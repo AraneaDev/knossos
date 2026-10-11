@@ -6,6 +6,7 @@
  * (language-fact-collector.js); how the scan reads the tree is the
  * project-paths, source-reading and input-reads modules'.
  */
+import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { isStackOverflow } from "./errors.js";
@@ -1053,11 +1054,33 @@ function configFilesForScan(root, requested) {
                 "TypeScript config_files must be a list of project-relative paths.",
             );
         }
-        return requested.map((item) =>
-            normalize(path.relative(root, validatedInside(root, item))),
+        return withoutShadowedJsconfigs(
+            root,
+            requested.map((item) =>
+                normalize(path.relative(root, validatedInside(root, item))),
+            ),
         );
     }
-    return discoverConfigFiles(root);
+    return withoutShadowedJsconfigs(root, discoverConfigFiles(root));
+}
+
+/**
+ * Leave out a jsconfig whose directory holds a tsconfig.json, as TypeScript's own tools do: that
+ * directory is a TypeScript project, and its jsconfig is an editor's leftover. Kept, it would sort
+ * first and claim the files both list, dropping the tsconfig's `paths`, `strict` and `types`.
+ *
+ * @param {string} root Absolute, already-validated project root.
+ * @param {string[]} configs Project-relative config paths.
+ * @returns {string[]} The same paths, shadowed jsconfigs left out.
+ */
+function withoutShadowedJsconfigs(root, configs) {
+    return configs.filter(
+        (config) =>
+            !path.basename(config).toLowerCase().startsWith("jsconfig") ||
+            !fs.existsSync(
+                path.join(root, path.dirname(config), "tsconfig.json"),
+            ),
+    );
 }
 
 /**

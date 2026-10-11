@@ -449,6 +449,31 @@ export default {
 });
 
 describe("a jsconfig.json", () => {
+    it("is left out where a tsconfig.json shares its directory, as TypeScript's own tools do", () => {
+        const files = {
+            "tsconfig.json":
+                '{"compilerOptions":{"strict":true,"paths":{"@/*":["./src/*"]}},"include":["src"]}\n',
+            "jsconfig.json": '{"compilerOptions":{"baseUrl":"."}}\n',
+            "src/a.ts": "import { b } from '@/b';\nexport const a = b;\n",
+            "src/b.ts": "export const b = 1;\n",
+        };
+        // Named by the core, and found by the worker's own walk alike.
+        for (const configFiles of [
+            ["jsconfig.json", "tsconfig.json"],
+            undefined,
+        ]) {
+            const { contributions } = scan(
+                files,
+                ["src/a.ts", "src/b.ts"],
+                configFiles,
+            );
+            expect(
+                edges(contributions, "imports").map((e) => e.target),
+                JSON.stringify(configFiles),
+            ).toContain("ts:module:src/b.ts");
+        }
+    });
+
     it("maps module roots as a tsconfig does, extensionless Vue components included", () => {
         const { contributions } = scan(
             {
@@ -470,6 +495,26 @@ describe("a jsconfig.json", () => {
             "ts:module:src/checkout/components/Search.js",
         );
         expect(targets).toContain("ts:module:src/checkout/components/Card.vue");
+    });
+
+    it("does not read the JavaScript of dependencies", () => {
+        const files = {
+            "jsconfig.json": "{}\n",
+            "src/main.js": "import foo from 'foo';\nexport default foo;\n",
+            "node_modules/foo/package.json":
+                '{"name":"foo","main":"index.js"}\n',
+            "node_modules/foo/index.js": "module.exports = require('bar');\n",
+            "node_modules/bar/package.json":
+                '{"name":"bar","main":"index.js"}\n',
+            "node_modules/bar/index.js": "module.exports = 1;\n",
+        };
+        const { result } = scan(files, ["src/main.js"], ["jsconfig.json"]);
+        const hashes = (result.result ?? result).input_hashes;
+        const read = Object.keys(hashes.files ?? hashes);
+
+        expect(
+            read.filter((file) => /^node_modules\/.+\/index\.js$/.test(file)),
+        ).toEqual([]);
     });
 });
 

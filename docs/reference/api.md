@@ -79,7 +79,7 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 | Runtime | Contract | Responsibility |
 | --- | --- | --- |
 | TypeScript | `TypeScriptScanner.scan` | Stream deterministic owned contributions for the requested source files |
-| TypeScript | `discoverConfigFiles` | Return sorted project-relative tsconfig paths below a validated root |
+| TypeScript | `discoverConfigFiles` | Return sorted project-relative tsconfig and jsconfig paths below a validated root |
 | PHP | `WorkerServer.run` | The protocol loop: read a request, dispatch it, write the reply |
 | PHP | `PhpScanner.scan` | Parse the requested files and return their contributions and diagnostics |
 | Rust | `server::run` | Read requests until stdin ends or `shutdown` arrives, writing replies to `output` |

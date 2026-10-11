@@ -75,6 +75,7 @@ directory holding one of these files, matched by name without regard to case:
   as `requirements-dev.txt`
 - `tsconfig.json`, or `tsconfig.` followed by any name and `.json`, such as
   `tsconfig.app.json`
+- `jsconfig.json`, or `jsconfig.` followed by any name and `.json`
 
 A directory of that name anywhere else, such as `src/build` or `apps/site` when
 `apps` holds no manifest, is scanned. Each skipped directory is reported as an
