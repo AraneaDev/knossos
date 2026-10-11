@@ -614,7 +614,9 @@ itself. The band, the notes and Changes count the same way.
 `f` opens the finder over any tab. Type part of a name and it lists the
 components and files whose name holds those letters in order (`dsvc` finds
 `DashboardService`), the closest first, a type before its members, at most
-twenty. The note says how many were found.
+twenty. The note says how many were found. Every kind of component is
+searched, routes and the kinds an enricher adds among them, except symbols from
+outside the project and fields, variables and parameters.
 
 The search runs after a short pause in the typing. Until its answer lands, the
 card says `searching…` and keeps the last matches. Knossos searches on the

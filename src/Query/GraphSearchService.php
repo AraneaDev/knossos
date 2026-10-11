@@ -14,13 +14,17 @@ use PDO;
  * A match is fuzzy: the typed characters must appear in the name in order,
  * any case, with anything between them (`dsvc` finds `DashboardService`).
  * Candidates are read with one bounded `LIKE` per kind of thing, each at most
- * {@see self::CANDIDATES} rows, then ranked here: the whole name, then the
+ * {@see self::CANDIDATES} rows, the strongest kinds of match first (see
+ * {@see self::strength()}) so the bound drops scattered letters before a name
+ * that starts with what was typed, then ranked here: the whole name, then the
  * name's start, then a run inside the name, then a run anywhere in the full
  * name or path, then the scattered letters, the fewest gaps first; among
  * equals a type before a function or member and a component before a file,
  * then shorter names before longer, then by name, so the order is stable.
- * External symbols (a vendor class, a built-in) are left out: they have no
- * place to open.
+ * Every kind of component is searched, routes and the kinds an enricher
+ * contributes among them, except external symbols (a vendor class, a
+ * built-in), which have no place to open, and the members there are too many
+ * of to look for by name ({@see self::UNSEARCHED}).
  *
  * Read-only, never scans; `truncated` says a list may have missed a match
  * because a candidate read stopped at its bound.
@@ -43,8 +47,11 @@ final readonly class GraphSearchService
      */
     private const SHARP_S = ['ß' => ['ẞ']];
 
-    /** The kinds a person looks for by name, in the order a tie is broken by. */
-    private const KINDS = ['class', 'interface', 'trait', 'enum', 'module', 'function', 'method'];
+    /** The kinds a tie is broken by, in order; any other kind comes after them. */
+    private const KINDS = ['class', 'interface', 'trait', 'enum', 'module', 'function', 'method', 'route', 'endpoint', 'command'];
+
+    /** Kinds there are too many of to look for by name: a class's fields and a function's locals. */
+    private const UNSEARCHED = ['property', 'variable', 'object', 'parameter'];
 
     public function __construct(private PDO $pdo) {}
 
@@ -97,14 +104,15 @@ final readonly class GraphSearchService
      */
     private function components(string $projectId, string $needle): array
     {
-        $kinds = implode(',', array_fill(0, count(self::KINDS), '?'));
+        $unsearched = implode(',', array_fill(0, count(self::UNSEARCHED), '?'));
         $statement = $this->pdo->prepare(
             'SELECT n.id, n.kind, n.canonical_name, n.display_name, n.start_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id '
-            . "WHERE n.project_id = ? AND n.kind IN ({$kinds}) AND ({$this->holds('n.display_name', $needle)} OR {$this->holds('n.canonical_name', $needle)}) "
-            . 'ORDER BY LENGTH(n.display_name), n.display_name LIMIT ' . (self::CANDIDATES + 1),
+            . "WHERE n.project_id = ? AND n.kind NOT LIKE 'external\\_%' ESCAPE '\\' AND n.kind NOT IN ({$unsearched}) "
+            . "AND ({$this->holds('n.display_name', $needle)} OR {$this->holds('n.canonical_name', $needle)}) "
+            . 'ORDER BY ' . self::strength('n.display_name', 'n.canonical_name') . ', LENGTH(n.display_name), n.display_name LIMIT ' . (self::CANDIDATES + 1),
         );
         $holds = self::holdsValues($needle);
-        $statement->execute([$projectId, ...self::KINDS, ...$holds, ...$holds]);
+        $statement->execute([$projectId, ...self::UNSEARCHED, ...$holds, ...$holds, ...self::strengthValues($needle)]);
         $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
         $order = array_flip(self::KINDS);
         $found = [];
@@ -128,9 +136,10 @@ final readonly class GraphSearchService
     private function files(string $projectId, string $needle): array
     {
         $statement = $this->pdo->prepare(
-            "SELECT relative_path FROM files WHERE project_id = ? AND {$this->holds('relative_path', $needle)} ORDER BY LENGTH(relative_path), relative_path LIMIT " . (self::CANDIDATES + 1),
+            "SELECT relative_path FROM files WHERE project_id = ? AND {$this->holds('relative_path', $needle)} "
+            . 'ORDER BY ' . self::strength(self::BASENAME, 'relative_path') . ', LENGTH(relative_path), relative_path LIMIT ' . (self::CANDIDATES + 1),
         );
-        $statement->execute([$projectId, ...self::holdsValues($needle)]);
+        $statement->execute([$projectId, ...self::holdsValues($needle), ...self::strengthValues($needle)]);
         $rows = $statement->fetchAll(PDO::FETCH_COLUMN);
         $found = [];
         foreach (array_slice($rows, 0, self::CANDIDATES) as $path) {
@@ -142,6 +151,36 @@ final readonly class GraphSearchService
         }
 
         return [$found, count($rows) > self::CANDIDATES];
+    }
+
+    /** A file's own name in SQL: what follows its last `/`. */
+    private const BASENAME = "SUBSTR(relative_path, LENGTH(RTRIM(relative_path, REPLACE(relative_path, '/', ''))) + 1)";
+
+    /**
+     * An SQL ordering term, lowest first for the strongest kinds of match, as
+     * {@see self::score()} ranks them: `$name` is the whole query, then starts
+     * with it, then holds it as a run, then `$full` holds it as a run, then
+     * the letters only scattered. Its values are bound by
+     * {@see self::strengthValues()}. `LOWER()` folds only ASCII, so a name
+     * whose non-ASCII letters differ in case falls to the last tier here and
+     * is still ranked right by {@see self::score()} if it is read.
+     */
+    private static function strength(string $name, string $full): string
+    {
+        return "CASE WHEN LOWER({$name}) = ? THEN 0 WHEN LOWER({$name}) LIKE ? ESCAPE '\\' THEN 1 "
+            . "WHEN LOWER({$name}) LIKE ? ESCAPE '\\' THEN 2 WHEN LOWER({$full}) LIKE ? ESCAPE '\\' THEN 3 ELSE 4 END";
+    }
+
+    /**
+     * The values {@see self::strength()} binds.
+     *
+     * @return list<string>
+     */
+    private static function strengthValues(string $needle): array
+    {
+        $literal = addcslashes($needle, '%_\\');
+
+        return [$needle, $literal . '%', '%' . $literal . '%', '%' . $literal . '%'];
     }
 
     /**
