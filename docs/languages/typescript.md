@@ -20,9 +20,19 @@ No framework module is imported and no bundler or application is started.
   TypeScript modules.
 - Pinia/Redux/Zustand-style `defineStore`, `createStore`, `configureStore`, and
   `create` factory declarations.
-- Literal `fetch` and `axios.get`, `post`, `put`, `patch` and `delete` calls as
-  `endpoint` nodes and `calls_endpoint` edges, including a static `method`
-  option on `fetch`.
+- `fetch` and `axios.get`, `post`, `put`, `patch`, `delete`, `head` and
+  `request` calls with a literal URL or a template literal as `endpoint` nodes
+  and `calls_endpoint` edges, including a static `method` option on `fetch`.
+  Each substitution in a template literal becomes `{}`, and the core joins the
+  endpoint to the route that serves it, as
+  [from request to handler](../concepts/request-to-handler.md) describes.
+- Requests through an axios instance. An instance is recognised only from
+  `axios.create` on a binding imported from `"axios"`, in the same module or
+  an imported one. A relative literal `baseURL` is joined to the request URL
+  with exactly one slash, and an absolute request URL ignores it. A missing,
+  absolute or computed `baseURL` gives an endpoint with an unknown prefix.
+  `request({ url })` without a `method` is a `GET`, and a method that is not a
+  literal gives no endpoint.
 - NestJS, described below.
 - A leading shebang marks the module `executable`, which keeps a script a shell
   runs (and that nothing therefore imports) off the dead-code report.
@@ -213,8 +223,9 @@ registered components, Vue template type semantics (slot props, `$emit` names,
 
 ## Limits
 
-Dynamic route segments stay in their source spelling, dynamic request URLs are
-omitted, and framework roles never override a language symbol kind. A NestJS
+Dynamic route segments stay in their source spelling, a request URL that is
+only substitutions is omitted, a URL starting with a substitution keeps an
+unknown prefix, and framework roles never override a language symbol kind. A NestJS
 route whose decorator argument is not a literal gets an empty segment rather
 than a guessed one.
 

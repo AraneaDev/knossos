@@ -119,6 +119,24 @@ kept only when its target resolves. One module mounting one router twice keeps
 one `mounts` edge, with the prefix of the first mount: edges are unique by kind,
 source and target.
 
+## HTTP clients and routes
+
+A call to `requests.get`, `post`, `put`, `patch`, `delete` or `head`, to
+`requests.request(method, url)` and to the same functions of `httpx` becomes an
+`endpoint` node and a `calls_endpoint` edge from the enclosing function, when
+the URL is a literal or an f-string and the name resolves to the imported
+module. `taskqueue.add(url=...)` and `taskqueue.Task(url=...)` from
+`google.appengine.api` give an endpoint and a `dispatches` edge, since the
+request happens later. The method is `POST` unless `method=` is a literal.
+`requests.Session()` and `httpx.Client()` receivers are not read.
+
+To let the core join these to the routes above, a `route` node says which
+`router` it hangs under, a `mounts` edge says which router it is mounted
+`onto`, and a Django `route` node carries the `module` that holds its
+`urlpatterns`. A Django route has a known prefix only in the module
+`ROOT_URLCONF` names. [From request to handler](../concepts/request-to-handler.md)
+describes the join.
+
 ## Limits
 
 - Dynamic imports, monkey-patching, runtime decorator effects, metaclass

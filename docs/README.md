@@ -40,6 +40,8 @@ is the short version.
 
 - [The graph and its evidence](concepts/graph-and-evidence.md): what does a
   scan store, and how far can I trust each fact?
+- [From request to handler](concepts/request-to-handler.md): how does a
+  `fetch` or `route()` call reach the route and handler that serve it?
 - [Finding components](concepts/finding-components.md): how do I find a
   project, a component, its relations and every place a symbol is used?
 - [Structure analysis](concepts/structure-analysis.md): what depends on this,
