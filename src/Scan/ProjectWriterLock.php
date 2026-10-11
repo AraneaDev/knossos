@@ -91,6 +91,7 @@ final readonly class ProjectWriterLock
         $delete->execute(['project' => $projectId, 'token' => $held]);
     }
 
+    /** This host's name as a lease records it. */
     private static function host(): string
     {
         $host = gethostname();

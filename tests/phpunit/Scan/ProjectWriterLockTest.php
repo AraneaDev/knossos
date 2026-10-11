@@ -51,7 +51,7 @@ final class ProjectWriterLockTest extends TestCase
 
         $lease = $lock->acquire('proj_1');
 
-        assertSame(true, $lease instanceof ProjectWriterLease);
+        assertSame('proj_1', $lease->projectId());
         assertSame(true, $this->rowExists($pdo, 'proj_1'));
         $lease->release();
     }
@@ -146,7 +146,7 @@ final class ProjectWriterLockTest extends TestCase
 
         $lease = $lock->acquire('proj_4');
 
-        assertSame(true, $lease instanceof ProjectWriterLease);
+        assertSame('proj_4', $lease->projectId());
         $row = $this->fetchRow($pdo, 'proj_4');
         assertSame(true, $row['owner_token'] !== 'stale-token');
         assertSame(1, preg_match('/:[0-9a-f]{32}$/', $row['owner_token']));
@@ -319,7 +319,7 @@ final class ProjectWriterLockTest extends TestCase
 
         $lease = $lock->acquire('proj_3601');
 
-        assertSame(true, $lease instanceof ProjectWriterLease);
+        assertSame('proj_3601', $lease->projectId());
         $row = $this->fetchRow($pdo, 'proj_3601');
         assertSame(true, $row['owner_token'] !== 'old-token');
         assertSame(1_000_000, (int) $row['acquired_at']);
@@ -373,7 +373,7 @@ final class ProjectWriterLockTest extends TestCase
 
         $lease = $lock->acquire('proj_bindings');
 
-        assertSame(true, $lease instanceof ProjectWriterLease);
+        assertSame('proj_bindings', $lease->projectId());
 
         $deleteSql = 'DELETE FROM scan_locks WHERE project_id = :project AND acquired_at < :expired';
         $insertSql = 'INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (:project, :token, :acquired)';
