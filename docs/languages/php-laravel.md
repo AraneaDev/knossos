@@ -35,13 +35,16 @@ or policy (`handle`, `failed`, the Gate abilities and so on) as
 ## Route names
 
 A literal route name passed to `route()`, `to_route()`, `redirect()->route()`,
-`URL::route()` or `Redirect::route()` becomes an `endpoint` node that carries
+`URL::route()`, `URL::signedRoute()`, `URL::temporarySignedRoute()` or
+`Redirect::route()` becomes an `endpoint` node that carries
 the name, with a `calls_endpoint` edge from the enclosing method or function.
 The core joins it to the route with that name, so `explain_flow` goes from a
 controller's `redirect()->route('orders.show')` to the `show` handler.
 `routeIs()` tests the current route and requests nothing, so it gives nothing,
 and neither does a name built at run time. A route in `routes/api.php` gets the
-`api` prefix by convention. Blade templates and Ziggy's `route()` are not read.
+`api` prefix by convention, and a route in any other file under `routes/`
+has an unknown prefix, because a service provider may load it with one. A
+`route()` call in a function outside any class belongs to that function. Blade templates and Ziggy's `route()` are not read.
 See [from request to handler](../concepts/request-to-handler.md).
 
 ## Limits

@@ -81,8 +81,8 @@ weakest edge first, then by fewest hops, so a short chain of certain edges
 beats a short chain of guesses. Only flow relationships
 count (`routes_to`, `calls`, `dispatches`, `handles`, `listens_to`,
 `constructs`, `injects`, `binds`, `observes`, `depends_on`, `imports`,
-`uses_middleware`, `calls_endpoint` and `resolves_to`), so a link through `extends` or `implements` is not a path. The two endpoint
-kinds are what carry a path from a caller's `fetch` or `route()` call to the
+`uses_middleware`, `calls_endpoint` and `resolves_to`), so a link through
+`extends` or `implements` is not a path. The two endpoint kinds are what carry a path from a caller's `fetch` or `route()` call to the
 handler that serves it, as [from request to handler](request-to-handler.md)
 describes.
 

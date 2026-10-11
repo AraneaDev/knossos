@@ -121,13 +121,15 @@ source and target.
 
 ## HTTP clients and routes
 
-A call to `requests.get`, `post`, `put`, `patch`, `delete` or `head`, to
-`requests.request(method, url)` and to the same functions of `httpx` becomes an
+A call to `requests.get`, `post`, `put`, `patch`, `delete`, `head` or
+`options`, to `requests.request(method, url)` (also with `method=` and `url=`
+keywords) and to the same functions of `httpx` becomes an
 `endpoint` node and a `calls_endpoint` edge from the enclosing function, when
 the URL is a literal or an f-string and the name resolves to the imported
 module. `taskqueue.add(url=...)` and `taskqueue.Task(url=...)` from
 `google.appengine.api` give an endpoint and a `dispatches` edge, since the
-request happens later. The method is `POST` unless `method=` is a literal.
+request happens later. The method is `POST` when `method=` is absent, and `ANY` when it is not a
+literal, as it is for `requests.request` with a method read from a variable.
 `requests.Session()` and `httpx.Client()` receivers are not read.
 
 To let the core join these to the routes above, a `route` node says which

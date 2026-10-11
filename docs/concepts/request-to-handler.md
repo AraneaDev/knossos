@@ -23,18 +23,21 @@ a `calls_endpoint` edge from the function or method that makes the call. A
 queued request, such as an App Engine task, gives a `dispatches` edge instead,
 the same distinction Celery submissions use.
 
-| Language   | Callers                                                                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| TypeScript | `fetch` and `axios.get`, `post`, `put`, `patch`, `delete`, `head` and `request`, with a literal URL or a template literal, also through an `axios.create` instance |
-| Python     | `requests` and `httpx` calls with a literal or f-string URL, `taskqueue.add` and `taskqueue.Task` from App Engine                                                  |
-| Laravel    | `route()`, `to_route()`, `redirect()->route()`, `URL::route()` and `Redirect::route()` with a literal route name                                                   |
-| Symfony    | `generateUrl()` and `redirectToRoute()` in a controller, `generate()` on a `UrlGeneratorInterface` or `RouterInterface`                                            |
+| Language   | Callers                                                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `fetch` and `axios.get`, `post`, `put`, `patch`, `delete`, `head` and `request`, with a literal URL or a template literal, also through an `axios.create` instance    |
+| Python     | `requests` and `httpx` calls with a literal or f-string URL, `taskqueue.add` and `taskqueue.Task` from App Engine                                                     |
+| Laravel    | `route()`, `to_route()`, `redirect()->route()`, `URL::route()`, `URL::signedRoute()`, `URL::temporarySignedRoute()` and `Redirect::route()` with a literal route name |
+| Symfony    | `generateUrl()` and `redirectToRoute()` in a controller, `generate()` on a `UrlGeneratorInterface` or `RouterInterface`                                               |
 
 A URL becomes a template: query string and fragment are dropped, a trailing
 slash does not count, and every substitution (`${id}`, an f-string field) is
 `{}`. A substitution inside a segment makes that whole segment a parameter.
 Methods compare as written, `ANY` matches any method, and a `GET` route also
-serves `HEAD`.
+serves `HEAD`. A method that is not a literal, such as `request({ method: verb,
+url })` or `requests.request(verb, url)`, gives an endpoint with method `ANY`.
+A missing method keeps the default of the call: `GET` for axios `request`,
+`POST` for a task.
 
 A URL whose path starts with something Knossos cannot read, such as a leading
 substitution or an axios instance with a missing, absolute or computed
@@ -47,7 +50,12 @@ A route's full template is its own path behind the prefixes of its `mounts`
 chain: FastAPI's `include_router(prefix=...)`, Flask's
 `register_blueprint(url_prefix=...)`, through any number of levels. A router
 mounted in two places gives two candidates. A route whose chain cannot be
-completed has an unknown prefix.
+completed has an unknown prefix. So has a FastAPI or Flask route on a router the
+scan cannot name, such as one built inside a function or handed in as a
+parameter, and a Laravel route in a file under `routes/` other than `web.php`
+and `api.php`, which a service provider may load with a prefix. A Flask
+`register_blueprint(url_prefix=...)` replaces the blueprint's own `url_prefix`,
+while FastAPI's `include_router(prefix=...)` adds to the router's.
 
 A reference by route name is an endpoint too, keyed by the name. It joins by
 name only.
@@ -88,6 +96,10 @@ into the route's full template, which is how you see where a prefix came from.
 
 ## Diagnostics
 
+Both diagnostics carry the owner key `knossos.reconciliation:endpoint-routes`,
+so `list_diagnostics` attributes them to the reconciliation and not to a
+language scanner.
+
 | Code                       | Severity  | When                                                                                                  |
 | -------------------------- | --------- | ----------------------------------------------------------------------------------------------------- |
 | `ENDPOINT_ROUTE_UNMATCHED` | `info`    | An endpoint that is not `external` matches no route, and the project has at least one route.          |
@@ -103,6 +115,11 @@ elsewhere, gets no unmatched diagnostics: there is nothing to match against.
 that.
 
 - An endpoint can now appear as a hub, because callers and routes meet there.
+  An endpoint belongs to no file: it is one node for every caller of the same
+  URL, so the file-level views (fan-in, the components a changed file holds, the
+  files a boundary spans) leave it out, as they do an `external_*` component.
+  Two callers of one URL therefore do not depend on each other. They meet only
+  at the endpoint, and a change to the route reaches both.
 - Boundary and policy checks can report frontend-to-backend dependencies that
   they did not see before.
 - Quality-gate deltas against a snapshot from before this change move once, by
@@ -122,6 +139,21 @@ so it grew with them.
 - Laravel routes in `routes/api.php` get the `api` prefix by convention. A
   prefix changed in `RouteServiceProvider` or `bootstrap/app.php` is not read.
 - A Django `re_path` pattern is not interpreted and takes no part in matching.
+  The route is marked `regex` and still counts as a route, so a project with
+  only such routes still reports unmatched endpoints.
+- `require("axios")` instances, the `import google.appengine.api.taskqueue`
+  module form, and a local variable that shadows `requests` or `httpx` are not
+  read as clients.
+- A literal `{}` in a plain string is read as a substitution.
+- A mount onto an app imported from another module reads as unknown, and so
+  does a Django settings module at `backend.settings` whose `ROOT_URLCONF` is
+  `app.urls`.
+- FastAPI sub-applications (`app.mount`), `{p:path}` parameters that span
+  several segments, NestJS `setGlobalPrefix` and Symfony YAML route imports
+  with a prefix are not modelled.
+- Symfony generators inherited from a parent class or a trait, or typed on a
+  closure parameter, are not recognised. The `Url` and `Redirect` facade checks
+  go by the written short name and do not resolve an alias.
 - Sessions and clients are out of scope: `requests.Session()` and
   `httpx.Client()` receivers, and PHP HTTP clients, give no endpoint.
 - Blade and Twig templates, and Ziggy's JavaScript `route()`, are not read.

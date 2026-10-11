@@ -32,7 +32,10 @@ No framework module is imported and no bundler or application is started.
   with exactly one slash, and an absolute request URL ignores it. A missing,
   absolute or computed `baseURL` gives an endpoint with an unknown prefix.
   `request({ url })` without a `method` is a `GET`, and a method that is not a
-  literal gives no endpoint.
+  literal gives an endpoint with method `ANY`, as it does on `fetch`. The
+  direct `axios` import reads `get`, `post`, `put`, `patch`, `delete`, `head`
+  and `request` the same way, and an instance exported as the default is
+  recognised too.
 - NestJS, described below.
 - A leading shebang marks the module `executable`, which keeps a script a shell
   runs (and that nothing therefore imports) off the dead-code report.
