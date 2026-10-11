@@ -42,7 +42,7 @@ final readonly class ProjectFindings
     /** Policy violations listed; the total counts them all. */
     private const VIOLATIONS = 20;
 
-    /** A diagnostic's message is cut to this many characters: the pane shows one line of it. */
+    /** A diagnostic's message is cut to this many characters, the last an ellipsis: the pane shows one line of it. */
     private const MESSAGE = 160;
 
     /**
@@ -94,15 +94,17 @@ final readonly class ProjectFindings
     /**
      * The project's scan diagnostics: counted by severity, and the first
      * errors, then warnings, by file and line. Information notes are counted
-     * but never listed.
+     * but never listed. Each names its `source`, the scanner or enricher that
+     * recorded it ({@see DiagnosticSource}), and says whether its message was
+     * `cut` to {@see self::MESSAGE} characters.
      *
-     * @return array{total: int, errors: int, warnings: int, infos: int, items: list<array{severity: string, code: string, message: string, path: string|null, line: int|null}>}
+     * @return array{total: int, errors: int, warnings: int, infos: int, items: list<array{severity: string, code: string, message: string, cut: bool, path: string|null, line: int|null, source: string|null}>}
      */
     public function diagnostics(string $projectId): array
     {
         $counts = $this->grouped('SELECT severity AS name, COUNT(*) AS n FROM diagnostics WHERE project_id = :project GROUP BY severity', $projectId);
         $statement = $this->pdo->prepare(
-            'SELECT d.severity, d.code, d.message, f.relative_path, d.start_line FROM diagnostics d LEFT JOIN files f ON f.id = d.file_id '
+            'SELECT d.severity, d.code, d.message, f.relative_path, d.start_line, d.owner_key FROM diagnostics d LEFT JOIN files f ON f.id = d.file_id '
             . "WHERE d.project_id = :project AND d.severity IN ('error', 'warning') "
             . "ORDER BY CASE d.severity WHEN 'error' THEN 0 ELSE 1 END, f.relative_path, d.start_line, d.code, d.id LIMIT :limit",
         );
@@ -115,13 +117,20 @@ final readonly class ProjectFindings
             'errors' => $counts['error'] ?? 0,
             'warnings' => $counts['warning'] ?? 0,
             'infos' => $counts['info'] ?? 0,
-            'items' => array_map(static fn(array $row): array => [
-                'severity' => (string) $row['severity'],
-                'code' => (string) $row['code'],
-                'message' => mb_substr((string) $row['message'], 0, self::MESSAGE),
-                'path' => $row['relative_path'] === null ? null : (string) $row['relative_path'],
-                'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
-            ], $statement->fetchAll(PDO::FETCH_ASSOC)),
+            'items' => array_map(static function (array $row): array {
+                $message = (string) $row['message'];
+                $cut = mb_strlen($message) > self::MESSAGE;
+
+                return [
+                    'severity' => (string) $row['severity'],
+                    'code' => (string) $row['code'],
+                    'message' => $cut ? mb_substr($message, 0, self::MESSAGE - 1) . '…' : $message,
+                    'cut' => $cut,
+                    'path' => $row['relative_path'] === null ? null : (string) $row['relative_path'],
+                    'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
+                    'source' => DiagnosticSource::of((string) $row['owner_key']),
+                ];
+            }, $statement->fetchAll(PDO::FETCH_ASSOC)),
         ];
     }
 

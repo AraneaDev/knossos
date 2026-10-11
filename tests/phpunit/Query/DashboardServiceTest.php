@@ -704,9 +704,11 @@ final class DashboardServiceTest extends KnossosTestCase
             assertSame(['error', 'error', 'error', 'warning', 'warning'], array_column($d['items'], 'severity'));
             assertSame([3, 5, 7, 2, 9], array_column($d['items'], 'line'));
             assertSame('src/Core/Greeter.php', $d['items'][0]['path']);
-            assertSame(['severity', 'code', 'message', 'path', 'line'], array_keys($d['items'][0]));
-            // One line of message is all the pane shows.
-            assertSame(160, strlen($d['items'][0]['message']));
+            assertSame(['severity', 'code', 'message', 'cut', 'path', 'line', 'source'], array_keys($d['items'][0]));
+            // One line of message is all the pane shows, its end marked as cut.
+            assertSame(160, mb_strlen($d['items'][0]['message']));
+            assertSame('…', mb_substr($d['items'][0]['message'], -1));
+            assertSame([true, 'test'], [$d['items'][0]['cut'], $d['items'][0]['source']]);
         } finally {
             $this->removeTempTree($root);
         }

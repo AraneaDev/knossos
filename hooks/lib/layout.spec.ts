@@ -620,6 +620,25 @@ describe('the header summary', () => {
 })
 
 describe('the issues tab', () => {
+  it("names each diagnostic's place by its project path and its source, and says how many are not listed", () => {
+    const diagnostics = {
+      total: 40,
+      errors: 30,
+      warnings: 6,
+      infos: 4,
+      items: [
+        { severity: 'error', code: 'E1', message: 'first', cut: false, path: 'apps/web/src/components/index.ts', line: 7, source: 'knossos.typescript' },
+        { severity: 'warning', code: 'W1', message: 'second', cut: true, path: 'src/index.ts', line: 3, source: null },
+      ],
+    }
+    const text = textOf(paneRows(fullInput({ tab: 'issues' }, full({ diagnostics })), 120))
+    // The path from the project root, cut from its start where the row is short: two files called index.ts stay apart.
+    expect(text).toMatch(/E1 first .*components\/index\.ts:7 · typescript/)
+    expect(text).toMatch(/W1 second +src\/index\.ts:3 · source unknown/)
+    expect(text).toContain('+34 not listed')
+  })
+
+
   for (const columns of WIDTHS) {
     it(`fits ${columns} columns`, () => {
       widthsFit(paneRows(fullInput({ tab: 'issues' }), columns), columns)

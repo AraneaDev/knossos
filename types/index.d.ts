@@ -79,7 +79,8 @@ export type Summary = {
   languages: { language: string; files: number }[]
   languages_truncated: boolean
 }
-export type Diagnostic = { severity: string; code: string; message: string; path: string | null; line: number | null }
+/** `source`: the scanner or enricher that recorded it, null when unknown (absent from an older knossos); `cut`: the message was shortened. */
+export type Diagnostic = { severity: string; code: string; message: string; path: string | null; line: number | null; cut?: boolean; source?: string | null }
 /** A JavaScript test runner the mod can hand a command for. */
 export type JsRunner = 'vitest' | 'jest'
 
