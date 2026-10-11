@@ -13,6 +13,8 @@ A call is attributed to a class when the receiver's type is known in the scope
 the call is written in:
 
 - a typed parameter or property, `$this`, or `(new Foo())`, which are certain
+- the variable of `catch (Foo $error)`, which is certain; a catch of several
+  classes (`catch (Foo | Bar $error)`) leaves it untyped
 - a local `$x = new Foo()` or the declared return type of a call, which are
   probable
 - `$x ??= new Foo()` when `$x` held no other type, which is probable

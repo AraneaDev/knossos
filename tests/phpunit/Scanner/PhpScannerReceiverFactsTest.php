@@ -65,6 +65,34 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
         assertArrayContains('shuffle', $scan['untyped']);
     }
 
+    public function testACaughtExceptionIsTypedByItsCatch(): void
+    {
+        $scan = $this->scan(<<<'PHP'
+            <?php
+            namespace App;
+
+            use App\Errors\TooLarge;
+
+            final class Gate
+            {
+                public function run(): void
+                {
+                    try {
+                        $this->read();
+                    } catch (TooLarge $tooLarge) {
+                        $tooLarge->reason();
+                    } catch (Busy | Gone $either) {
+                        $either->detail();
+                    }
+                }
+            }
+            PHP);
+
+        assertArrayContains(['calls', 'php:method:App\Gate::run', 'php:method:App\Errors\TooLarge::reason'], $scan['edges']);
+        // A catch of several classes names no one type for its variable.
+        assertArrayContains('detail', $scan['untyped']);
+    }
+
     public function testACallOnAConstructedObjectsResultIsNamedThroughTheCall(): void
     {
         $edges = $this->edges(<<<'PHP'

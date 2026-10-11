@@ -131,6 +131,8 @@ final class FactCollector extends NodeVisitorAbstract
             $this->receivers->coalescingAssignment($node, $this->currentClass());
         } elseif ($node instanceof Stmt\Foreach_) {
             $this->receivers->foreachLoop($node, $this->currentClass());
+        } elseif ($node instanceof Stmt\Catch_) {
+            $this->receivers->catchClause($node, $this->currentClass());
         } elseif ($node instanceof Expr\New_) {
             $this->newExpression($node);
         } elseif ($node instanceof Expr\StaticCall) {

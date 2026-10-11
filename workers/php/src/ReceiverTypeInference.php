@@ -399,6 +399,27 @@ final class ReceiverTypeInference
     }
 
     /**
+     * Type the variable of `catch (TooLarge $error)`: only an instance of the
+     * caught class reaches the block, so the binding is certain. A catch of
+     * several classes (`A | B $error`) names no one type, and binds nothing.
+     *
+     * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
+     */
+    public function catchClause(Stmt\Catch_ $node, ?array $class): void
+    {
+        if (!$node->var instanceof Expr\Variable || !is_string($node->var->name)) {
+            return;
+        }
+        $this->variables->clearPrefix($node->var->name);
+        if (count($node->types) !== 1) {
+            $this->variables->clear($node->var->name);
+
+            return;
+        }
+        $this->variables->set($node->var->name, $this->resolvedClassNameIn($node->types[0], $class));
+    }
+
+    /**
      * Track `$x = $typed->property`, the property read into a local first.
      *
      * A property this file types (`$this->parser`) types the variable; any
