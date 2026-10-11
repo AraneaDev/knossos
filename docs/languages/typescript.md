@@ -171,12 +171,17 @@ like any other module.
   `fileURLToPath(new URL('./x', import.meta.url))`.
 - The module roots a webpack config lists in `resolve.modules`, or Vue CLI's
   `chainWebpack` adds with `config.resolve.modules.add(…)`, resolve bare
-  imports such as `checkout/components/Search` under `src`, before
-  `node_modules` and unless a tsconfig maps `*` itself. A component extension in
-  `resolve.extensions` (`.vue`, `.svelte`) resolves extensionless imports of
-  that kind. A root is a directory name or `path.join|resolve(__dirname, …)`;
-  any other value is not run, and a `BUNDLER_CONFIG_UNREAD` warning names the
-  config and the key.
+  imports such as `checkout/components/Search` under `src`. As webpack does, a
+  root listed before `node_modules` (or added with `.prepend`) is tried before
+  packages, unless a tsconfig maps `*` itself, and a root after it (or added
+  with `.add`, after Vue CLI's defaults) only once no package answers. A root is
+  a directory name or `path.join|resolve(…)`, read against the config's
+  directory; webpack looks a directory name up in every parent directory, as it
+  does `node_modules`, so a nested `src` elsewhere is not a root here. Any other
+  value is not run, and a `BUNDLER_CONFIG_UNREAD` warning names the config and
+  the key. A component extension in `resolve.extensions` (`.vue`, `.svelte`)
+  resolves extensionless imports of that kind; an extension that cannot be
+  read is skipped.
 - webpack's `require.context('./dir', recursive, /pattern/)` imports every
   module in the graph it matches. The match happens when the graph is assembled,
   so an incremental scan that re-reads only the loading file keeps every edge.

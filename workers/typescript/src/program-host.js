@@ -262,15 +262,21 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
             extensions.filter((extension) => componentDialect(`x${extension}`)),
         ),
     ];
-    const moduleRoots = [
+    const rootsWhere = (late) => [
         ...new Set(
             roots
-                .map((target) => normalize(path.resolve(directory, target)))
+                .filter((entry) => entry.late === late)
+                .map((entry) =>
+                    normalize(path.resolve(directory, entry.target)),
+                )
                 .filter((target) => allowedCompilerPath(root, target)),
         ),
     ];
+    const moduleRoots = rootsWhere(false);
+    const lateModuleRoots = rootsWhere(true);
+    const extra = { componentExtensions, lateModuleRoots, bundlerDiagnostics };
     if (Object.keys(aliases).length === 0 && moduleRoots.length === 0)
-        return { ...parsed, componentExtensions, bundlerDiagnostics };
+        return { ...parsed, ...extra };
     const paths = { ...parsed.options.paths };
     for (const [name, target] of Object.entries(aliases)) {
         const absolute = normalize(path.resolve(directory, target));
@@ -281,16 +287,15 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
         paths[name] ??= [absolute];
         paths[`${name}/*`] ??= [`${absolute}/*`];
     }
-    // webpack looks a bare specifier up in each module root before
-    // node_modules; the compiler falls back to node_modules when no root
-    // holds it.
+    // A root webpack tries before node_modules: the compiler falls back to
+    // node_modules when no root holds the specifier. A root after it is
+    // tried by the resolver once the rest found nothing (componentResolver).
     if (moduleRoots.length > 0)
         paths["*"] ??= moduleRoots.map((target) => `${target}/*`);
     return {
         ...parsed,
         options: { ...parsed.options, paths },
-        componentExtensions,
-        bundlerDiagnostics,
+        ...extra,
     };
 }
 
@@ -299,8 +304,13 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
  * read without running it: `resolve: { modules: [...], extensions: [...] }`,
  * or Vue CLI's `config.resolve.modules.add(...)` in `chainWebpack`. A root
  * is a string (a directory name, read against the config's directory) or
- * `path.join|resolve(__dirname, …)`; `node_modules` is webpack's own and is
- * left out. `unread` names each key a value of which could not be read.
+ * `path.join|resolve(…)`. webpack tries the roots in order, `node_modules`
+ * among them: a root is `late` when it comes after `node_modules`, as one
+ * `.add` appends to Vue CLI's defaults does (`.prepend` puts it first). A
+ * rule's own `resolve` (under `rules` or `oneOf`) is left alone. `unread`
+ * names `resolve.modules` when a root could not be read; an extension that
+ * cannot be read is skipped, since only a component extension would change
+ * what resolves.
  */
 function declaredResolve(text) {
     const file = ts.createSourceFile(
@@ -311,22 +321,48 @@ function declaredResolve(text) {
         ts.ScriptKind.TS,
     );
     const found = { modules: [], extensions: [], unread: [] };
-    const add = (key, expression) => {
-        const value =
-            expression !== undefined && ts.isStringLiteralLike(expression)
-                ? expression.text
-                : key === "modules" && expression !== undefined
-                  ? aliasTarget(expression)
-                  : null;
-        if (value === null) {
-            if (!found.unread.includes(`resolve.${key}`))
-                found.unread.push(`resolve.${key}`);
-            return;
-        }
-        if (key === "modules" && value === "node_modules") return;
-        found[key].push(value);
+    const unread = () => {
+        if (!found.unread.includes("resolve.modules"))
+            found.unread.push("resolve.modules");
     };
-    // `config.resolve.modules`, or a call chained onto `….add(x)`.
+    const rootOf = (expression) =>
+        expression === undefined
+            ? null
+            : ts.isStringLiteralLike(expression)
+              ? expression.text
+              : aliasTarget(expression);
+    const isNodeModules = (target) =>
+        target !== null && path.posix.normalize(target) === "node_modules";
+    const addModules = (expressions, late) => {
+        const marker = expressions.findIndex((element) =>
+            isNodeModules(rootOf(element)),
+        );
+        expressions.forEach((element, index) => {
+            const target = rootOf(element);
+            if (target === null) unread();
+            else if (!isNodeModules(target))
+                found.modules.push({
+                    target,
+                    late: late || (marker !== -1 && index > marker),
+                });
+        });
+    };
+    const addExtension = (expression) => {
+        if (expression !== undefined && ts.isStringLiteralLike(expression))
+            found.extensions.push(expression.text);
+    };
+    const insideRule = (node) => {
+        for (let up = node.parent; up !== undefined; up = up.parent) {
+            if (
+                ts.isPropertyAssignment(up) &&
+                ["rules", "oneOf"].includes(staticPropertyName(up.name))
+            )
+                return true;
+        }
+        return false;
+    };
+    // `config.resolve.modules`, or a call chained onto `….add(x)`, and
+    // whether the call prepends.
     const chainKey = (expression) => {
         if (ts.isCallExpression(expression)) {
             const callee = expression.expression;
@@ -338,31 +374,41 @@ function declaredResolve(text) {
         return ts.isPropertyAccessExpression(expression) &&
             ["modules", "extensions"].includes(expression.name.text) &&
             ts.isPropertyAccessExpression(expression.expression) &&
-            expression.expression.name.text === "resolve"
+            expression.expression.name.text === "resolve" &&
+            ts.isIdentifier(expression.expression.expression)
             ? expression.name.text
             : null;
     };
     const visit = (node) => {
+        const key = ts.isPropertyAssignment(node)
+            ? staticPropertyName(node.name)
+            : null;
         if (
-            ts.isPropertyAssignment(node) &&
-            ["modules", "extensions"].includes(staticPropertyName(node.name)) &&
+            (key === "modules" || key === "extensions") &&
             ts.isObjectLiteralExpression(node.parent) &&
             ts.isPropertyAssignment(node.parent.parent) &&
-            staticPropertyName(node.parent.parent.name) === "resolve"
+            staticPropertyName(node.parent.parent.name) === "resolve" &&
+            !insideRule(node)
         ) {
-            const key = staticPropertyName(node.name);
-            if (ts.isArrayLiteralExpression(node.initializer)) {
-                for (const element of node.initializer.elements)
-                    add(key, element);
-            } else add(key, undefined);
+            const elements = ts.isArrayLiteralExpression(node.initializer)
+                ? [...node.initializer.elements]
+                : null;
+            if (key === "extensions") elements?.forEach(addExtension);
+            else if (elements === null) unread();
+            else addModules(elements, false);
         }
         if (
             ts.isCallExpression(node) &&
             ts.isPropertyAccessExpression(node.expression) &&
             ["add", "prepend"].includes(node.expression.name.text)
         ) {
-            const key = chainKey(node.expression.expression);
-            if (key !== null) add(key, node.arguments[0]);
+            const chained = chainKey(node.expression.expression);
+            if (chained === "extensions") addExtension(node.arguments[0]);
+            if (chained === "modules")
+                addModules(
+                    node.arguments.slice(0, 1),
+                    node.expression.name.text === "add",
+                );
         }
         ts.forEachChild(node, visit);
     };
@@ -439,14 +485,20 @@ function aliasTarget(expression) {
     if (!ts.isCallExpression(expression)) return null;
     const callee = expression.expression.getText();
     const [first, ...rest] = expression.arguments;
-    if (
-        /(?:^|\.)(?:join|resolve)$/.test(callee) &&
+    // Without `__dirname`, resolved against the working directory, which a
+    // build runs from: the config's own directory.
+    const parts =
         first !== undefined &&
         ts.isIdentifier(first) &&
-        first.text === "__dirname" &&
-        rest.every((part) => ts.isStringLiteralLike(part))
+        first.text === "__dirname"
+            ? rest
+            : expression.arguments;
+    if (
+        /(?:^|\.)(?:join|resolve)$/.test(callee) &&
+        parts.length > 0 &&
+        parts.every((part) => ts.isStringLiteralLike(part))
     )
-        return path.posix.join(".", ...rest.map((part) => part.text));
+        return path.posix.join(".", ...parts.map((part) => part.text));
     const url = expression.arguments[0];
     if (
         callee === "fileURLToPath" &&
@@ -577,6 +629,7 @@ export function createRestrictedProgram(
                 ...(parsed.componentExtensions ?? []),
             ]),
         ],
+        parsed.lateModuleRoots ?? [],
         parsed.outputSources ?? [],
         (file) => allowedCompilerPath(root, file),
     );
@@ -757,10 +810,11 @@ function sourceOfBuildOutput(result, outputs, host) {
  * project (from the manifests), as webpack and Vue CLI list it in
  * `resolve.extensions`, and any component extension a bundler config lists
  * there itself. The retry probes paths that are then recorded, so it stays
- * off elsewhere. The resolution mode follows a project reference's own
+ * off elsewhere. A bare specifier nothing else resolves is then tried under
+ * each of `lateRoots`, the module roots webpack lists after node_modules. The resolution mode follows a project reference's own
  * options, as the compiler's default loader does.
  */
-function componentResolver(host, cache, retried, outputs, readable) {
+function componentResolver(host, cache, retried, lateRoots, outputs, readable) {
     return (
         literals,
         containingFile,
@@ -784,31 +838,53 @@ function componentResolver(host, cache, retried, outputs, readable) {
                             compilerOptions,
                     ),
                 );
-            const direct = resolve(literal.text);
-            // Resolved to build output is resolved to nothing: it is never
-            // read (see allowedCompilerPath).
-            const resolved = componentTarget(
-                literal.text,
-                direct.resolvedModule === undefined ||
-                    !readable(direct.resolvedModule.resolvedFileName)
-                    ? (sourceOfBuildOutput(direct, outputs, host) ?? direct)
-                    : direct,
-            );
+            // The specifier as the compiler resolves it, then retried with
+            // each extension of `retried` when it names no extension.
+            const settle = (name) => {
+                const direct = resolve(name);
+                // Resolved to build output is resolved to nothing: it is
+                // never read (see allowedCompilerPath).
+                const resolved = componentTarget(
+                    name,
+                    direct.resolvedModule === undefined ||
+                        !readable(direct.resolvedModule.resolvedFileName)
+                        ? (sourceOfBuildOutput(direct, outputs, host) ?? direct)
+                        : direct,
+                );
+                if (
+                    retried.length === 0 ||
+                    resolved.resolvedModule !== undefined ||
+                    !name.includes("/") ||
+                    path.posix.extname(name) !== ""
+                )
+                    return resolved;
+                // Every attempt probed, and a file at any of those paths
+                // would change the answer, so the answer carries every miss.
+                let missed = resolved;
+                for (const extension of retried) {
+                    const component = resolve(`${name}${extension}`);
+                    if (component.resolvedModule !== undefined)
+                        return withFailedLookups(component, missed);
+                    missed = withFailedLookups(missed, component);
+                }
+                return missed;
+            };
+            const settled = settle(literal.text);
+            // A bare specifier no package answers, under each root webpack
+            // tries after node_modules.
             if (
-                retried.length === 0 ||
-                resolved.resolvedModule !== undefined ||
-                !literal.text.includes("/") ||
-                path.posix.extname(literal.text) !== ""
+                settled.resolvedModule !== undefined ||
+                lateRoots.length === 0 ||
+                /^\.{0,2}\//.test(literal.text) ||
+                path.isAbsolute(literal.text)
             )
-                return resolved;
-            // Every attempt probed, and a file at any of those paths would
-            // change the answer, so the answer carries every miss.
-            let missed = resolved;
-            for (const extension of retried) {
-                const component = resolve(`${literal.text}${extension}`);
-                if (component.resolvedModule !== undefined)
-                    return withFailedLookups(component, missed);
-                missed = withFailedLookups(missed, component);
+                return settled;
+            let missed = settled;
+            for (const root of lateRoots) {
+                const attempt = settle(`${root}/${literal.text}`);
+                if (attempt.resolvedModule !== undefined)
+                    return withFailedLookups(attempt, missed);
+                missed = withFailedLookups(missed, attempt);
             }
             return missed;
         });
