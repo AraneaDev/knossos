@@ -76,7 +76,9 @@ final readonly class SnapshotGraphReader
             $statement->execute(['project' => $projectId]);
             $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
             if (count($rows) > self::ROW_LIMIT) {
-                throw new InvalidArgumentException(sprintf('Active snapshot %s exceeds the %d-row %s diff limit.', $scanId, self::ROW_LIMIT, $table));
+                $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project', $table));
+                $count->execute(['project' => $projectId]);
+                throw new SnapshotTooLargeException($scanId, $table, (int) $count->fetchColumn(), self::ROW_LIMIT);
             }
             $facts[$table] = $rows;
         }

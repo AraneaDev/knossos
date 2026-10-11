@@ -99,6 +99,9 @@ final readonly class DashboardService
         $fanIn = (new FileFanInQuery($this->pdo))->aboveThreshold($id, $fanInThreshold, $this->fanInCap + 1);
         $series = $queries->architectureTrends($id, self::TREND_POINTS)->data['series'];
         $trend = self::trend($series);
+        // The live graph past the rows the trend reads a snapshot whole within: its point is missing, and this says why.
+        $activePoint = array_values(array_filter($series, static fn(array $point): bool => ($point['active'] ?? false) === true))[0] ?? null;
+        $trendLimit = $activePoint['reason'] ?? null;
         $labels = BoundaryLabels::load($this->pdo, $id);
         $findings = new ProjectFindings($this->pdo, $this->clock);
         $ranked = [...array_column($health['hubs'], 'component'), ...array_column($health['static_hotspots'], 'component')];
@@ -140,6 +143,7 @@ final readonly class DashboardService
                 'largest' => array_map(static fn(array $c): array => self::cycle($c, $labels), array_slice($cycles, 0, self::LARGEST_CYCLES)),
             ],
             'trend' => $trend,
+            'trend_limit' => $trendLimit,
             'deltas' => self::deltas($trend),
             'in_degree' => ['buckets' => $health['in_degree_histogram'], 'truncated' => $hubLimits !== []],
             'fan_in' => array_map(static fn(array $f): array => isset($fanInTop[$f['path']]) ? $f + ['top_dependents' => $fanInTop[$f['path']]] : $f, $fanInListed),

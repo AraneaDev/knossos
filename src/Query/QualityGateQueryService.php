@@ -277,7 +277,14 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             $archived = !$snapshot['active'] && $snapshot['complete_archive'] === true;
             $figures = $archived ? $cache->get($snapshot['scan_id'], (string) $snapshot['captured_at'], (int) $snapshot['byte_size']) : null;
             if ($figures === null) {
-                $figures = $this->metrics->snapshotFigures($this->snapshots->facts($projectId, $this->snapshots->resolve($projectId, $snapshot['scan_id'], $project['active_scan_id'] ?? '')));
+                try {
+                    // One expression, so the facts are freed once counted and never held beside the figures.
+                    $figures = $this->metrics->snapshotFigures($this->snapshots->facts($projectId, $this->snapshots->resolve($projectId, $snapshot['scan_id'], $project['active_scan_id'] ?? '')));
+                } catch (SnapshotTooLargeException $tooLarge) {
+                    // Past what a snapshot is read whole within: this point has no figures, and says why; the others still count.
+                    $series[] = ['scan_id' => $snapshot['scan_id'], 'active' => $snapshot['active'], 'complete' => false, 'reason' => $tooLarge->reason()];
+                    continue;
+                }
                 if ($archived) {
                     $cache->put($snapshot['scan_id'], (string) $snapshot['captured_at'], (int) $snapshot['byte_size'], $figures);
                 }
