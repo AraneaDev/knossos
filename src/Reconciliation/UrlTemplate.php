@@ -49,26 +49,31 @@ final readonly class UrlTemplate
         return array_map(static fn(array $segments): self => new self($segments), $variants);
     }
 
+    /** How many segments are literal rather than parameters. */
     public function literalCount(): int
     {
         return count(array_filter($this->segments, static fn(?string $segment): bool => $segment !== null));
     }
 
+    /** Whether every segment is a parameter. */
     public function isAllParameters(): bool
     {
         return $this->literalCount() === 0;
     }
 
+    /** Whether both templates have the same literal segments and this one has no parameter. */
     public function equalsExactly(self $route): bool
     {
         return !in_array(null, $this->segments, true) && $this->segments === $route->segments;
     }
 
+    /** Whether the templates have the same length and agree once route parameters match any segment. */
     public function matchesWithParameters(self $route): bool
     {
         return count($this->segments) === count($route->segments) && self::fits($this->segments, $route->segments);
     }
 
+    /** Whether this template ends with the route template on a segment boundary. */
     public function endsWith(self $route): bool
     {
         $length = count($route->segments);
@@ -77,22 +82,27 @@ final readonly class UrlTemplate
             && self::fits(array_slice($this->segments, count($this->segments) - $length), $route->segments);
     }
 
+    /** This template behind the prefix. */
     public function prepend(self $prefix): self
     {
         return new self([...$prefix->segments, ...$this->segments]);
     }
 
+    /** The template as a path, with each parameter written as {}. */
     public function __toString(): string
     {
         return '/' . implode('/', array_map(static fn(?string $segment): string => $segment ?? '{}', $this->segments));
     }
 
+    /** Whether a path segment is written as a parameter. */
     private static function isParameter(string $segment): bool
     {
         return preg_match('~^(\{[^}]*\}|<[^>]+>|:[A-Za-z_]\w*)$~', $segment) === 1;
     }
 
     /**
+     * Whether the caller segments agree with the route segments, position by position.
+     *
      * @param list<?string> $caller
      * @param list<?string> $route
      */

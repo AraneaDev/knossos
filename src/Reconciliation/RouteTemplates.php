@@ -14,6 +14,8 @@ final readonly class RouteTemplates
     private const MAX_MOUNT_DEPTH = 8;
 
     /**
+     * The full URL templates each route answers, with the methods, name and framework family.
+     *
      * @param array<string, array<string, mixed>> $nodes
      * @param array<string, array<string, mixed>> $edges
      * @param array<string, string> $evidencePaths node id to evidence path, for records that no longer carry one
@@ -70,6 +72,8 @@ final readonly class RouteTemplates
     }
 
     /**
+     * The upper-case methods a route answers, or ANY when it names none.
+     *
      * @param array<string, mixed> $attributes
      * @return list<string>
      */
@@ -135,6 +139,8 @@ final readonly class RouteTemplates
     }
 
     /**
+     * The prefixes in front of a router, one per chain of mounts, each with its status.
+     *
      * @param array<string, string> $byLocal
      * @param array<string, list<array{id: string, prefix: string, onto: mixed}>> $mountsInto
      * @param array<string, true> $seen routers already on this chain, so a loop of mounts ends it

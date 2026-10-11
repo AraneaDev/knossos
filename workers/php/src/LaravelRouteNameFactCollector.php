@@ -26,6 +26,7 @@ final readonly class LaravelRouteNameFactCollector
         private LaravelTraversalContext $context,
     ) {}
 
+    /** Records an endpoint and a calls_endpoint edge for each literal route name reference. */
     public function enterNode(Node $node): void
     {
         $name = match (true) {
@@ -46,6 +47,7 @@ final readonly class LaravelRouteNameFactCollector
         $this->facts->addEdge('calls_endpoint', $source, $id, $node);
     }
 
+    /** The literal name given to route() or to_route(), if any. */
     private function helperName(Expr\FuncCall $node): ?string
     {
         return $node->name instanceof Name && in_array(strtolower($node->name->toString()), ['route', 'to_route'], true)
@@ -53,6 +55,7 @@ final readonly class LaravelRouteNameFactCollector
             : null;
     }
 
+    /** The literal name given to a facade route() call such as URL::route, if any. */
     private function facadeName(Expr\StaticCall $node): ?string
     {
         return $node->class instanceof Name && $node->name instanceof Identifier
@@ -62,6 +65,7 @@ final readonly class LaravelRouteNameFactCollector
             : null;
     }
 
+    /** The literal name given to redirect()->route(), if any. */
     private function redirectorName(Expr\MethodCall $node): ?string
     {
         return $node->name instanceof Identifier && strtolower($node->name->toString()) === 'route'
@@ -71,6 +75,7 @@ final readonly class LaravelRouteNameFactCollector
             : null;
     }
 
+    /** The first argument when it is a plain string literal. */
     private static function literal(Expr\FuncCall|Expr\StaticCall|Expr\MethodCall $node): ?string
     {
         $first = $node->getArgs()[0]->value ?? null;

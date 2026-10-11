@@ -21,6 +21,8 @@ final readonly class EndpointRouteBinder
     public function __construct(private string $projectId) {}
 
     /**
+     * Joins each endpoint to the route that serves it, and reports the ones it cannot settle.
+     *
      * @param array<string, array<string, mixed>> $nodes
      * @param array<string, array<string, mixed>> $edges
      * @param array<string, string> $evidencePaths node id to evidence path, for records that no longer carry one
@@ -207,6 +209,8 @@ final readonly class EndpointRouteBinder
     }
 
     /**
+     * The grade and match a route candidate earns for a caller, or null when it does not fit.
+     *
      * @param array{template: UrlTemplate, prefix: string, mounts: list<string>} $candidate
      * @return ?array{0: string, 1: string}
      */
@@ -227,13 +231,19 @@ final readonly class EndpointRouteBinder
         return null;
     }
 
-    /** @param array<string, mixed> $endpoint */
+    /**
+     * The name an endpoint goes by in a diagnostic message.
+     *
+     * @param array<string, mixed> $endpoint
+     */
     private static function describe(array $endpoint): string
     {
         return (string) ($endpoint['canonical_name'] ?? $endpoint['id']);
     }
 
     /**
+     * One diagnostic record anchored to an endpoint.
+     *
      * @param array<string, mixed> $endpoint
      * @return array<string, string|int>
      */
