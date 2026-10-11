@@ -16,9 +16,10 @@ final readonly class RouteTemplates
     /**
      * @param array<string, array<string, mixed>> $nodes
      * @param array<string, array<string, mixed>> $edges
+     * @param array<string, string> $evidencePaths node id to evidence path, for records that no longer carry one
      * @return array<string, array{methods: list<string>, name: ?string, family: ?string, templates: list<array{template: UrlTemplate, prefix: string, mounts: list<string>}>}>
      */
-    public static function forRoutes(array $nodes, array $edges): array
+    public static function forRoutes(array $nodes, array $edges, array $evidencePaths = []): array
     {
         $byLocal = [];
         $rootUrlconfs = [];
@@ -50,7 +51,7 @@ final readonly class RouteTemplates
             }
             $own = UrlTemplate::parse($path);
             $templates = [];
-            foreach (self::prefixes($node, $byLocal, $mountsInto, $rootUrlconfs) as [$prefix, $status, $mounts]) {
+            foreach (self::prefixes($node, $evidencePaths[$id] ?? (string) ($node['evidence_path'] ?? ''), $byLocal, $mountsInto, $rootUrlconfs) as [$prefix, $status, $mounts]) {
                 foreach ($own as $template) {
                     $templates[] = ['template' => $prefix === null ? $template : $template->prepend($prefix), 'prefix' => $status, 'mounts' => $mounts];
                 }
@@ -90,11 +91,11 @@ final readonly class RouteTemplates
      * @param array<string, true> $rootUrlconfs
      * @return list<array{0: ?UrlTemplate, 1: string, 2: list<string>}>
      */
-    private static function prefixes(array $node, array $byLocal, array $mountsInto, array $rootUrlconfs): array
+    private static function prefixes(array $node, string $evidencePath, array $byLocal, array $mountsInto, array $rootUrlconfs): array
     {
         $attributes = $node['attributes'];
         $framework = $attributes['framework'] ?? null;
-        if ($framework === 'laravel' && str_ends_with((string) $node['evidence_path'], 'routes/api.php')) {
+        if ($framework === 'laravel' && str_ends_with($evidencePath, 'routes/api.php')) {
             return [[UrlTemplate::parse('/api')[0], 'convention', []]];
         }
         if ($framework === 'django') {
@@ -107,18 +108,19 @@ final readonly class RouteTemplates
             return [[null, 'declared', []]];
         }
 
-        return self::mountChains($byLocal[$router] ?? null, $byLocal, $mountsInto, 0);
+        return self::mountChains($byLocal[$router] ?? null, $byLocal, $mountsInto, []);
     }
 
     /**
      * @param array<string, string> $byLocal
      * @param array<string, list<array{id: string, prefix: string, onto: mixed}>> $mountsInto
+     * @param array<string, true> $seen routers already on this chain, so a loop of mounts ends it
      * @return list<array{0: ?UrlTemplate, 1: string, 2: list<string>}>
      */
-    private static function mountChains(?string $routerId, array $byLocal, array $mountsInto, int $depth): array
+    private static function mountChains(?string $routerId, array $byLocal, array $mountsInto, array $seen): array
     {
         $mounts = $routerId === null ? [] : ($mountsInto[$routerId] ?? []);
-        if ($mounts === [] || $depth >= self::MAX_MOUNT_DEPTH) {
+        if ($mounts === [] || isset($seen[$routerId]) || count($seen) >= self::MAX_MOUNT_DEPTH) {
             return [[null, 'unknown', []]];
         }
         $chains = [];
@@ -129,7 +131,7 @@ final readonly class RouteTemplates
                 continue;
             }
             $parent = is_string($mount['onto']) ? ($byLocal[$mount['onto']] ?? null) : null;
-            foreach (self::mountChains($parent, $byLocal, $mountsInto, $depth + 1) as [$outer, $status, $through]) {
+            foreach (self::mountChains($parent, $byLocal, $mountsInto, $seen + [$routerId => true]) as [$outer, $status, $through]) {
                 $chains[] = [$outer === null ? $here : $here->prepend($outer), $status, [...$through, $mount['id']]];
             }
         }

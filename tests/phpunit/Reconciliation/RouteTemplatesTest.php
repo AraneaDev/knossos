@@ -109,6 +109,42 @@ final class RouteTemplatesTest extends KnossosTestCase
         assertSame('unknown', $routes['elsewhere']['templates'][0]['prefix']);
     }
 
+    #[Group('reconciliation')]
+    public function testMountsThatLoopEndTheChainAtTheFirstRepeat(): void
+    {
+        $nodes = [
+            'route-1' => self::route('route-1', ['framework' => 'fastapi', 'path' => '/items', 'router' => 'py:router:a']),
+            'r-a' => self::router('r-a', 'py:router:a'),
+            'r-b' => self::router('r-b', 'py:router:b'),
+        ];
+        $edges = [
+            'm1' => self::mount('m1', 'r-a', '/a', 'py:router:b'),
+            'm2' => self::mount('m2', 'r-b', '/b', 'py:router:a'),
+        ];
+
+        $templates = RouteTemplates::forRoutes($nodes, $edges)['route-1']['templates'];
+
+        assertSame(1, count($templates));
+        assertSame('/b/a/items', (string) $templates[0]['template']);
+        assertSame('unknown', $templates[0]['prefix']);
+        assertSame(['m2', 'm1'], $templates[0]['mounts']);
+    }
+
+    #[Group('reconciliation')]
+    public function testAChainDeeperThanTheLimitIsUnknown(): void
+    {
+        $nodes = ['route-1' => self::route('route-1', ['framework' => 'fastapi', 'path' => '/x', 'router' => 'py:router:r0'])];
+        $edges = [];
+        for ($i = 0; $i < 12; ++$i) {
+            $nodes['r' . $i] = self::router('r' . $i, 'py:router:r' . $i);
+            $edges['m' . $i] = self::mount('m' . $i, 'r' . $i, '/p' . $i, $i === 11 ? 'app' : 'py:router:r' . ($i + 1));
+        }
+
+        $template = RouteTemplates::forRoutes($nodes, $edges)['route-1']['templates'][0];
+
+        assertSame('unknown', $template['prefix']);
+    }
+
     /**
      * @param array<string, mixed> $attributes
      * @return array<string, mixed>

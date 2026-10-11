@@ -208,6 +208,97 @@ final class EndpointRouteBinderTest extends KnossosTestCase
         assertSame($edge['id'], array_key_first($binding->edges));
     }
 
+    #[Group('reconciliation')]
+    public function testTheRouteWithMoreLiteralSegmentsWinsAtTheSameGrade(): void
+    {
+        $binding = self::bind([
+            self::endpoint('e', ['method' => 'GET', 'template' => '/orders/42']),
+            self::route('wild', ['methods' => ['GET'], 'uri' => '/{a}/{b}']),
+            self::route('show', ['methods' => ['GET'], 'uri' => '/orders/{id}']),
+        ]);
+
+        self::assertEdge($binding, 'show', 'probable', 'parameter');
+        assertSame([], $binding->warnings);
+    }
+
+    #[Group('reconciliation')]
+    public function testARouteReachedTwiceKeepsItsMoreLiteralTemplate(): void
+    {
+        $binding = self::bind([
+            self::endpoint('e', ['method' => 'GET', 'template' => '/v1/items/42']),
+            self::route('item', ['framework' => 'fastapi', 'methods' => ['GET'], 'path' => '/items/{id}', 'router' => 'py:router:items']),
+            [
+                'id' => 'r-items', 'kind' => 'router', 'canonical_name' => 'items', 'attributes' => ['scanner_local_id' => 'py:router:items'],
+                'evidence_path' => 'src/routes.py', 'file_id' => 'f', 'start_line' => 1, 'end_line' => 1, 'owner_key' => 'o',
+            ],
+        ], [
+            'm1' => ['id' => 'm1', 'kind' => 'mounts', 'source_id' => 'x', 'target_id' => 'r-items', 'attributes' => ['prefix' => '/{tenant}', 'onto' => 'app']],
+            'm2' => ['id' => 'm2', 'kind' => 'mounts', 'source_id' => 'x', 'target_id' => 'r-items', 'attributes' => ['prefix' => '/v1', 'onto' => 'app']],
+        ]);
+
+        self::assertEdge($binding, 'item', 'probable', 'parameter');
+        assertSame(['m2'], array_values($binding->edges)[0]['attributes']['prefix_from']);
+    }
+
+    #[Group('reconciliation')]
+    public function testARouteWithoutAReadablePathStillCountsAsARouteOfTheProject(): void
+    {
+        $binding = self::bind([
+            self::endpoint('e', ['method' => 'GET', 'template' => '/orders']),
+            self::route('dynamic', ['methods' => ['GET']]),
+        ]);
+
+        assertSame([], $binding->edges);
+        assertSame('ENDPOINT_ROUTE_UNMATCHED', $binding->warnings[0]['code']);
+    }
+
+    #[Group('reconciliation')]
+    public function testANameEndpointWithoutAFrameworkMatchesNothing(): void
+    {
+        $binding = self::bind([
+            self::endpoint('e', ['route_name' => 'orders.show']),
+            self::route('show', ['name' => 'orders.show', 'methods' => ['GET'], 'uri' => '/orders/{id}']),
+        ]);
+
+        assertSame([], $binding->edges);
+        assertSame('ENDPOINT_ROUTE_UNMATCHED', $binding->warnings[0]['code']);
+    }
+
+    #[Group('reconciliation')]
+    public function testAnyMethodEndpointReachesARouteOfAnyMethod(): void
+    {
+        $binding = self::bind([
+            self::endpoint('e', ['method' => 'ANY', 'template' => '/jobs']),
+            self::route('create', ['methods' => ['POST'], 'uri' => '/jobs']),
+        ]);
+
+        self::assertEdge($binding, 'create', 'certain', 'exact');
+    }
+
+    #[Group('reconciliation')]
+    public function testManyRoutesAndEndpointsAreJoinedCorrectly(): void
+    {
+        $records = [];
+        for ($i = 0; $i < 2000; ++$i) {
+            $records[] = self::route('route-' . $i, ['methods' => ['GET', 'POST'], 'uri' => sprintf('/area%d/items/{id}', $i)]);
+            $records[] = self::endpoint('endpoint-' . $i, ['method' => 'POST', 'template' => sprintf('/area%d/items/%d', $i, $i)]);
+        }
+        $records[] = self::endpoint('lost', ['method' => 'GET', 'template' => '/area0/other/1']);
+        $records[] = self::endpoint('proxied', ['method' => 'GET', 'template' => '/proxy/area7/items/3']);
+
+        $binding = self::bind($records);
+
+        $targets = [];
+        foreach ($binding->edges as $edge) {
+            $targets[$edge['source_id']] = [$edge['target_id'], $edge['confidence']];
+        }
+        assertSame(2001, count($binding->edges));
+        assertSame(['route-0', 'probable'], $targets['endpoint-0']);
+        assertSame(['route-1234', 'probable'], $targets['endpoint-1234']);
+        assertSame(['route-7', 'possible'], $targets['proxied']);
+        assertSame(['ENDPOINT_ROUTE_UNMATCHED'], array_column($binding->warnings, 'code'));
+    }
+
     /**
      * @param list<array<string, mixed>> $records nodes
      * @param array<string, array<string, mixed>> $edges

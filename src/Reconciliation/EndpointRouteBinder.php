@@ -23,19 +23,29 @@ final readonly class EndpointRouteBinder
     /**
      * @param array<string, array<string, mixed>> $nodes
      * @param array<string, array<string, mixed>> $edges
+     * @param array<string, string> $evidencePaths node id to evidence path, for records that no longer carry one
      */
-    public function bind(array $nodes, array $edges): EndpointRouteBinding
+    public function bind(array $nodes, array $edges, array $evidencePaths = []): EndpointRouteBinding
     {
-        $routes = RouteTemplates::forRoutes($nodes, $edges);
+        $routes = RouteTemplates::forRoutes($nodes, $edges, $evidencePaths);
+        $index = self::index($routes);
+        $hasRoutes = false;
+        foreach ($nodes as $node) {
+            if ($node['kind'] === 'route') {
+                $hasRoutes = true;
+                break;
+            }
+        }
         $bound = [];
         $warnings = [];
         foreach ($nodes as $endpoint) {
             if ($endpoint['kind'] !== 'endpoint' || ($endpoint['attributes']['external'] ?? false) === true || $endpoint['file_id'] === null) {
                 continue;
             }
-            $candidates = $this->candidates($endpoint['attributes'], $routes);
+            $endpoint['evidence_path'] = $evidencePaths[$endpoint['id']] ?? $endpoint['evidence_path'] ?? '';
+            $candidates = $this->candidates($endpoint['attributes'], $routes, $index);
             if ($candidates === []) {
-                if ($routes !== []) {
+                if ($hasRoutes) {
                     $warnings[] = $this->warning($endpoint, 'ENDPOINT_ROUTE_UNMATCHED', 'info', sprintf('%s matches no route of this project', self::describe($endpoint)));
                 }
                 continue;
@@ -61,19 +71,90 @@ final readonly class EndpointRouteBinder
     }
 
     /**
+     * The route templates indexed once per scan: per method, a trie of each template's segments
+     * read from the end (a parameter being a wildcard child), so a caller's URL reaches only the
+     * templates it can fit, whole or as a suffix; and routes by name.
+     *
+     * @param array<string, array{methods: list<string>, name: ?string, family: ?string, templates: list<array{template: UrlTemplate, prefix: string, mounts: list<string>}>}> $routes
+     * @return array{tries: array<string, array<string, mixed>>, names: array<string, list<string>>, order: array<string, int>}
+     */
+    private static function index(array $routes): array
+    {
+        $tries = [];
+        $names = [];
+        $order = [];
+        foreach ($routes as $id => $route) {
+            $order[$id] = count($order);
+            if ($route['name'] !== null && $route['family'] !== null) {
+                $names[$route['name']][] = $id;
+            }
+            foreach ($route['templates'] as $slot => $candidate) {
+                $entry = ['route' => $id, 'slot' => $slot] + $candidate;
+                foreach ($route['methods'] as $method) {
+                    $node = &$tries[$method];
+                    $node ??= ['children' => [], 'any' => null, 'entries' => []];
+                    foreach (array_reverse($candidate['template']->segments) as $segment) {
+                        if ($segment === null) {
+                            $node['any'] ??= ['children' => [], 'any' => null, 'entries' => []];
+                            $next = &$node['any'];
+                        } else {
+                            $node['children'][$segment] ??= ['children' => [], 'any' => null, 'entries' => []];
+                            $next = &$node['children'][$segment];
+                        }
+                        unset($node);
+                        $node = &$next;
+                        unset($next);
+                    }
+                    $node['entries'][] = $entry;
+                    unset($node);
+                }
+            }
+        }
+
+        return ['tries' => $tries, 'names' => $names, 'order' => $order];
+    }
+
+    /**
+     * Every template entry whose segments, read from the end, fit the caller's: the ones as long as
+     * the caller and the shorter ones that could be a suffix of it.
+     *
+     * @param array<string, mixed> $node
+     * @param list<?string> $reversed
+     * @param list<mixed> $entries
+     */
+    private static function walk(array $node, array $reversed, int $depth, array &$entries): void
+    {
+        foreach ($node['entries'] as $entry) {
+            $entries[] = $entry;
+        }
+        if ($depth >= count($reversed)) {
+            return;
+        }
+        $segment = $reversed[$depth];
+        if ($segment !== null && isset($node['children'][$segment])) {
+            self::walk($node['children'][$segment], $reversed, $depth + 1, $entries);
+        }
+        if ($node['any'] !== null) {
+            self::walk($node['any'], $reversed, $depth + 1, $entries);
+        }
+    }
+
+    /**
      * The routes left after keeping the best grade and, within it, the most literal segments.
      *
      * @param array<string, mixed> $attributes
      * @param array<string, array{methods: list<string>, name: ?string, family: ?string, templates: list<array{template: UrlTemplate, prefix: string, mounts: list<string>}>}> $routes
+     * @param array{tries: array<string, array<string, mixed>>, names: array<string, list<string>>, order: array<string, int>} $index
      * @return array<string, array{confidence: string, match: string, mounts: list<string>, literals: int}>
      */
-    private function candidates(array $attributes, array $routes): array
+    private function candidates(array $attributes, array $routes, array $index): array
     {
         $found = [];
         $name = $attributes['route_name'] ?? null;
         if (is_string($name)) {
-            foreach ($routes as $id => $route) {
-                if ($route['name'] === $name && $route['family'] === ($attributes['framework'] ?? null)) {
+            $family = $attributes['framework'] ?? null;
+            foreach ($index['names'][$name] ?? [] as $id) {
+                if ($family !== null && $routes[$id]['family'] === $family) {
                     $found[$id] = ['confidence' => 'certain', 'match' => 'name', 'mounts' => [], 'literals' => 0];
                 }
             }
@@ -88,19 +169,27 @@ final readonly class EndpointRouteBinder
         }
         $method = strtoupper((string) ($attributes['method'] ?? 'ANY'));
         $callerKnown = ($attributes['prefix'] ?? 'known') !== 'unknown';
-        foreach ($routes as $id => $route) {
-            if (!self::methodFits($method, $route['methods'])) {
+        $reversed = array_reverse($template->segments);
+        $methods = $method === 'ANY' ? array_keys($index['tries']) : [$method, 'ANY', ...($method === 'HEAD' ? ['GET'] : [])];
+        $entries = [];
+        foreach ($methods as $key) {
+            if (isset($index['tries'][$key])) {
+                self::walk($index['tries'][$key], $reversed, 0, $entries);
+            }
+        }
+        foreach ($entries as $entry) {
+            $grade = self::grade($template, $callerKnown, $entry);
+            if ($grade === null) {
                 continue;
             }
-            foreach ($route['templates'] as $candidate) {
-                $grade = self::grade($template, $callerKnown, $candidate);
-                if ($grade === null) {
-                    continue;
-                }
-                $best = $found[$id] ?? null;
-                if ($best === null || self::RANK[$grade[0]] > self::RANK[$best['confidence']]) {
-                    $found[$id] = ['confidence' => $grade[0], 'match' => $grade[1], 'mounts' => $candidate['mounts'], 'literals' => $candidate['template']->literalCount()];
-                }
+            $id = $entry['route'];
+            $literals = $entry['template']->literalCount();
+            $best = $found[$id] ?? null;
+            if ($best === null
+                || self::RANK[$grade[0]] > self::RANK[$best['confidence']]
+                || (self::RANK[$grade[0]] === self::RANK[$best['confidence']] && ($literals > $best['literals']
+                    || ($literals === $best['literals'] && $entry['slot'] < $best['slot'])))) {
+                $found[$id] = ['confidence' => $grade[0], 'match' => $grade[1], 'mounts' => $entry['mounts'], 'literals' => $literals, 'slot' => $entry['slot']];
             }
         }
         if ($found === []) {
@@ -109,8 +198,12 @@ final readonly class EndpointRouteBinder
         $top = max(array_map(static fn(array $match): int => self::RANK[$match['confidence']], $found));
         $found = array_filter($found, static fn(array $match): bool => self::RANK[$match['confidence']] === $top);
         $most = max(array_column($found, 'literals'));
+        $found = array_filter($found, static fn(array $match): bool => $match['literals'] === $most);
+        uksort($found, static fn(string $left, string $right): int => $index['order'][$left] <=> $index['order'][$right]);
 
-        return array_filter($found, static fn(array $match): bool => $match['literals'] === $most);
+        return array_map(static fn(array $match): array => [
+            'confidence' => $match['confidence'], 'match' => $match['match'], 'mounts' => $match['mounts'], 'literals' => $match['literals'],
+        ], $found);
     }
 
     /**
@@ -132,15 +225,6 @@ final readonly class EndpointRouteBinder
         }
 
         return null;
-    }
-
-    /** @param list<string> $routeMethods */
-    private static function methodFits(string $method, array $routeMethods): bool
-    {
-        return $method === 'ANY'
-            || in_array('ANY', $routeMethods, true)
-            || in_array($method, $routeMethods, true)
-            || ($method === 'HEAD' && in_array('GET', $routeMethods, true));
     }
 
     /** @param array<string, mixed> $endpoint */

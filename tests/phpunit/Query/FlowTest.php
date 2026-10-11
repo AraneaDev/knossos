@@ -11,20 +11,22 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use Knossos\Tests\Phpunit\Reconciliation\EndpointRouteReconcileTest;
+use Knossos\Tests\Phpunit\Support\EndpointRouteFixtures;
 use PHPUnit\Framework\Attributes\Group;
 
 final class FlowTest extends KnossosTestCase
 {
+    use EndpointRouteFixtures;
+
     #[Group('flow')]
     public function testAFlowFollowsACallerThroughTheRouteItsUrlResolvesTo(): void
     {
         $pdo = SqliteConnection::open(':memory:');
         (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-        EndpointRouteReconcileTest::reconcileInto(
+        self::reconcileEndpointGraph(
             new SqliteGraphRepository($pdo),
-            EndpointRouteReconcileTest::ordersContributions(),
-            EndpointRouteReconcileTest::ORDERS_PATHS,
+            self::ordersContributions(),
+            self::ordersPaths(),
         );
         $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
 

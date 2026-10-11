@@ -94,15 +94,7 @@ final readonly class GraphReconciler
         foreach ($externalNodes as $id => $node) {
             $nodes[$id] = $node;
         }
-        // attachNodeFiles drops the evidence path; the binder reads it from
-        // routes (a conventional prefix) and endpoints (their diagnostics).
-        $bindable = $nodes;
-        foreach ($bindable as $id => $node) {
-            if ($node['kind'] === 'route' || $node['kind'] === 'endpoint') {
-                $bindable[$id]['evidence_path'] = $evidencePaths[$id] ?? null;
-            }
-        }
-        $binding = (new EndpointRouteBinder($projectId))->bind($bindable, $edges);
+        $binding = (new EndpointRouteBinder($projectId))->bind($nodes, $edges, $evidencePaths);
         foreach ($binding->edges as $id => $edge) {
             $edges[$id] = $edge;
         }
