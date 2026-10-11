@@ -1022,6 +1022,34 @@ final class DashboardServiceTest extends KnossosTestCase
         }
     }
 
+    /** Past twelve boundaries every one keeps its row: the pane lists them all when the map would not hold them. */
+    #[Group('query')]
+    public function testTheBoundaryMatrixHoldsMoreThanTwelveBoundaries(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-boundaries-' . bin2hex(random_bytes(6));
+        $boundaries = [];
+        for ($i = 0; $i < 14; ++$i) {
+            mkdir("{$root}/src/B{$i}", 0o777, true);
+            $next = $i + 1;
+            $body = $i < 13 ? "public function run(): int { return (new \\App\\B{$next}\\C{$next}())->run(); }" : 'public function run(): int { return 1; }';
+            file_put_contents("{$root}/src/B{$i}/C{$i}.php", "<?php\n\nnamespace App\\B{$i};\n\nfinal class C{$i}\n{\n    {$body}\n}\n");
+            $boundaries[] = ['name' => "B{$i}", 'path_prefix' => "src/B{$i}/"];
+        }
+        file_put_contents("{$root}/composer.json", '{"name":"x/boundaries","autoload":{"psr-4":{"App\\\\":"src/"}}}');
+        file_put_contents("{$root}/knossos.json", json_encode(['version' => 1, 'boundaries' => $boundaries], JSON_THROW_ON_ERROR));
+        try {
+            $pdo = $this->freshTestDatabase();
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $matrix = (new DashboardService($pdo))->dashboard($root)['boundary_matrix'];
+            assertCount(14, $matrix['boundaries']);
+            assertSame(false, $matrix['boundaries_truncated']);
+            $at = array_flip($matrix['boundaries']);
+            assertGreaterThan(0, $matrix['cells'][$at['B12']][$at['B13']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** The count stops at its edge budget and its time limit, and says which. */
     #[Group('query')]
     public function testTheBoundaryMatrixReportsTheLimitThatStoppedIt(): void
