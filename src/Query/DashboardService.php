@@ -54,6 +54,13 @@ final readonly class DashboardService
     private const TOP_DEPENDENTS = 3;
     /** Boundaries listed with their member counts. */
     private const BOUNDARIES = 12;
+    /**
+     * The boundaries the matrix holds unless the caller asks for more: what a
+     * heat map draws. A pane that lists boundaries past it asks for up to
+     * {@see BoundaryMatrix::AXES}; one that only draws the map never gets more
+     * axes than it can draw.
+     */
+    public const BOUNDARY_AXES = 12;
 
     /**
      * @param PDO $pdo an existing, migrated graph database
@@ -75,9 +82,11 @@ final readonly class DashboardService
      * The dashboard for the project that owns `$path`, or an all-empty
      * `unscanned` picture when no scanned project contains it.
      *
+     * @param int $boundaryAxes the most boundaries the matrix holds, at most {@see BoundaryMatrix::AXES}
+     *
      * @return array<string, mixed>
      */
-    public function dashboard(string $path, int $fanInThreshold = 20): array
+    public function dashboard(string $path, int $fanInThreshold = 20, int $boundaryAxes = self::BOUNDARY_AXES): array
     {
         $absolute = realpath($path) ?: $path;
         $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
@@ -150,7 +159,7 @@ final readonly class DashboardService
             'fan_in_truncated' => count($fanIn) > $this->fanInCap,
             'summary' => $findings->summary($id),
             'boundaries' => $labels->listed(self::BOUNDARIES),
-            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null)),
+            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null), min($boundaryAxes, BoundaryMatrix::AXES)),
             'diagnostics' => $findings->diagnostics($id),
             'complexity_hotspots' => $findings->complexityHotspots($id),
             'over_budget' => $findings->overBudget($id, $root),

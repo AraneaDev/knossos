@@ -8,6 +8,7 @@
 import type { BranchState, ChurnState, ComponentDetail, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState } from '../../types'
 import { alertKeys, freshAlerts } from '../lib/alerts'
 import { BASELINES_KEY, baselinesOf, remember } from '../lib/baseline'
+import { BOUNDARY_AXES } from '../lib/boundaries'
 import type { Baseline } from '../lib/baseline'
 import { parseBlastRadius, parseBranchDiff, parseChurn, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parsePathBetween, parseSessionDiff, parseSessionHead, parseSessionRev } from '../lib/envelopes'
 import { flashKeys } from '../lib/flash'
@@ -53,7 +54,8 @@ async function loadDashboard(io: Port): Promise<void> {
   mod.dashboardStored = false
   if (mod.disabled) return
   mod.dashboardTriedAt = await io.clock.now()
-  const stdout = await wrapper(io, 'dashboard', [`--fan-in-threshold=${mod.threshold}`], DASHBOARD_TIMEOUT_MS)
+  // Every boundary, up to the core's cap: an older pane that draws only the heat map does not ask, and gets the twelve it can draw.
+  const stdout = await wrapper(io, 'dashboard', [`--fan-in-threshold=${mod.threshold}`, `--boundaries=${BOUNDARY_AXES}`], DASHBOARD_TIMEOUT_MS)
   const parsed = parseDashboard(stdout)
   if (parsed?.status === 'no-binary') {
     await disable(io)

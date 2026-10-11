@@ -1022,7 +1022,7 @@ final class DashboardServiceTest extends KnossosTestCase
         }
     }
 
-    /** Past twelve boundaries every one keeps its row: the pane lists them all when the map would not hold them. */
+    /** Past twelve boundaries every one keeps its row when the caller asks for them: the pane lists them all when the map would not hold them. */
     #[Group('query')]
     public function testTheBoundaryMatrixHoldsMoreThanTwelveBoundaries(): void
     {
@@ -1040,7 +1040,11 @@ final class DashboardServiceTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
-            $matrix = (new DashboardService($pdo))->dashboard($root)['boundary_matrix'];
+            // A pane that only draws the map gets what it can draw.
+            $drawn = (new DashboardService($pdo))->dashboard($root)['boundary_matrix'];
+            assertCount(12, $drawn['boundaries']);
+            assertSame(true, $drawn['boundaries_truncated']);
+            $matrix = (new DashboardService($pdo))->dashboard($root, 20, BoundaryMatrix::AXES)['boundary_matrix'];
             assertCount(14, $matrix['boundaries']);
             assertSame(false, $matrix['boundaries_truncated']);
             $at = array_flip($matrix['boundaries']);

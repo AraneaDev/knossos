@@ -356,6 +356,9 @@ const PER_MIN = 5
 /** The most boundaries the heat map draws: past it the tab lists them, as a map that size cannot be read. */
 export const HEAT_MAX = 12
 
+/** The most boundaries the pane asks the dashboard for, the core's own cap: past {@link HEAT_MAX} the tab lists them. */
+export const BOUNDARY_AXES = 100
+
 /** The heat map as a card: the map (each cell `scale` rows tall when it fits), and its key when `legend`; null without a map to draw. */
 export function heatSection(input: BoundariesInput | null, columns: number, hues: Hues = NO_HUES, legend = true, scale = 1, marked: HeatCell | null = null): Section | null {
   if (input === null || input.boundaries.length === 0) return null

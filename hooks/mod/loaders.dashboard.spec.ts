@@ -168,7 +168,7 @@ describe('refreshing the dashboard', () => {
         reset({ ...options, fanInThreshold: 37 })
         const { io, runs } = fakePort({}, { dashboard: json(dashboard('s1')) })
         await refreshDashboard(io)
-        expect(runs[0]).toEqual(['sh', '/plugin/hooks/scripts/knossos-run.sh', 'dashboard', ROOT, '--fan-in-threshold=37'])
+        expect(runs[0]).toEqual(['sh', '/plugin/hooks/scripts/knossos-run.sh', 'dashboard', ROOT, '--fan-in-threshold=37', '--boundaries=100'])
     })
 
     it('keeps the old figures and marks the refresh failed when the wrapper is silent', async () => {

@@ -382,6 +382,22 @@ final class BriefCommandTest extends KnossosTestCase
         }
     }
 
+    /** The pane asks for every boundary; past the matrix's own cap the option is an error, not a silent cut. */
+    #[Group('cli')]
+    public function testDashboardTakesHowManyBoundariesTheMatrixHolds(): void
+    {
+        $root = $this->scannedFixtureOnDisk();
+        try {
+            [, $one] = $this->runJson('dashboard', [$root], ['boundaries' => ['1']]);
+            assertSame(['Core'], $one['boundary_matrix']['boundaries']);
+            assertSame(true, $one['boundary_matrix']['boundaries_truncated']);
+            assertSame(['status' => 'error'], $this->runJson('dashboard', [$root], ['boundaries' => ['101']])[1]);
+            assertSame(['status' => 'error'], $this->runJson('dashboard', [$root], ['boundaries' => ['0']])[1]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     #[Group('cli')]
     public function testDashboardRejectsANonNumericThreshold(): void
     {
