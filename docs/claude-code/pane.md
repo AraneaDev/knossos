@@ -679,6 +679,9 @@ when a test depends on it, directly or through others the search found. The
 search goes four hops past the last ring for tests alone, so a component near
 the edge counts as tested when its test stands a little further out.
 
+A call through an interface or a parent class counts for every implementation
+of it, as impact analysis counts it.
+
 Tested means a static path from a test: code a test reaches only at runtime
 reads as untested even when coverage counts it. That covers a worker a test
 runs as a separate process, a script it includes by a computed path, and a

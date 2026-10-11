@@ -27,6 +27,16 @@ Use `impact_analysis` before you change a symbol. It walks the graph backwards
 from the symbol to everything that statically depends on it, up to `max_depth`
 (1–8, default 4) hops.
 
+A call through an interface or a parent class reaches every implementation.
+The graph records such a call as one into the supertype's method, so for a
+method the walk also takes what calls the methods of the same name its class's
+ancestors declare (over `extends` and `implements`). The supertype's method is
+passed through, never listed itself, and `via` names the edge into it. This
+over-approximates the way a static answer has to: a caller of the interface
+counts for each implementation, the same call dead-code analysis makes when it
+keeps a method that fulfils a supertype's alive. Test reach and the pane's
+blast radius walk the same way.
+
 ```sh
 knossos impact-analysis project_... 'Knossos\Scanner\ScannerClient' --json
 ```
