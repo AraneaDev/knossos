@@ -265,8 +265,11 @@ final class SourceClassifier
         if ($basename === 'requirements.txt' || (str_starts_with($basename, 'requirements-') && str_ends_with($basename, '.txt'))) {
             return 'requirements';
         }
-        if ($basename === 'tsconfig.json' || (str_starts_with($basename, 'tsconfig.') && str_ends_with($basename, '.json'))) {
-            return 'typescript';
+        // A jsconfig.json is a tsconfig for JavaScript: the TypeScript worker reads it the same way.
+        foreach (['tsconfig', 'jsconfig'] as $config) {
+            if ($basename === $config . '.json' || (str_starts_with($basename, $config . '.') && str_ends_with($basename, '.json'))) {
+                return 'typescript';
+            }
         }
         if ($basename === 'cargo.toml') {
             return 'cargo';
