@@ -19,6 +19,11 @@ use function PHPUnit\Framework\assertTrue;
  * The mod's entry point is the only caller of most of its library functions,
  * so ignoring it makes every one of them a dead-code candidate. Its imports of
  * the engine's run-time module resolve through a stand-in declaration instead.
+ *
+ * The mod's specs are scanned too: they are the only tests of its modules, so
+ * ignoring them marks every one of those modules as reached by no test. Their
+ * imports of dev dependencies a git archive does not carry resolve to external
+ * symbols, which the architecture gate does not count against its budgets.
  */
 final class RepositoryConfigurationTest extends KnossosTestCase
 {
@@ -31,10 +36,10 @@ final class RepositoryConfigurationTest extends KnossosTestCase
         assertFalse($ignores->matches('hooks/engine.d.ts'));
         assertFalse($ignores->matches('hooks/lib/layout.ts'));
         assertFalse($ignores->matches('hooks/mod/loaders.ts'));
-        // The tests import a dev dependency a git archive does not carry.
-        assertTrue($ignores->matches('hooks/register.test.ts'));
-        assertTrue($ignores->matches('hooks/lib/layout.spec.ts'));
-        assertTrue($ignores->matches('hooks/mod/loaders.spec.ts'));
+        assertFalse($ignores->matches('hooks/register.test.ts'));
+        assertFalse($ignores->matches('hooks/lib/layout.spec.ts'));
+        assertFalse($ignores->matches('hooks/mod/loaders.spec.ts'));
+        assertTrue($ignores->matches('tests/Fixtures/shop/src/Checkout.php'));
         assertStringContainsString("declare module 'claude-code'", (string) file_get_contents($root . '/hooks/engine.d.ts'));
     }
 }
