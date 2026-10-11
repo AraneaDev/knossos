@@ -52,6 +52,23 @@ final class ListUsagesTest extends KnossosTestCase
     }
 
     #[Group('query')]
+    public function testUsageCarriesTheQualificationsStoredOnItsEdge(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        // A usage that only holds under one profile: dropping the attribute
+        // turns a conditional relationship into an unconditional one.
+        $qualified = StableId::edge($ids['project'], 'calls', $ids['checkout'], $ids['invoice'], 'src/Checkout.php:15');
+        $repository->saveEdge($qualified, $ids['project'], 'calls', $ids['checkout'], $ids['invoice'], $ids['file'], 15, 15, 'ast', 'certain', ['profile' => 'TC'], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $usages = ArchitectureQueryService::forDatabase($pdo)->listUsages($ids['project'], 'App\\InvoiceService')->data['usages'];
+
+        assertSame([12, 15], array_column($usages, 'start_line'));
+        assertSame([], $usages[0]['attributes']);
+        assertSame(['profile' => 'TC'], $usages[1]['attributes']);
+    }
+
+    #[Group('query')]
     public function testAmbiguousAndMissingSymbolsReportCandidates(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
