@@ -14,7 +14,13 @@ import ts from "typescript";
 import { exceedsByteCap } from "./byte-caps.js";
 import { componentAliasSuffix, componentDialect } from "./component-source.js";
 import { rethrowStackOverflow } from "./errors.js";
-import { probeRecorded, recordProbe, recordRefused } from "./input-reads.js";
+import {
+    inRootFile,
+    probeNamedRecorded,
+    probeRecorded,
+    recordProbe,
+    recordRefused,
+} from "./input-reads.js";
 import {
     allowedCompilerPath,
     COMPONENT_ALIAS,
@@ -236,18 +242,49 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
     const roots = [];
     const extensions = [];
     const bundlerDiagnostics = [];
-    for (const name of ALIAS_CONFIGS) {
-        const config = path.join(directory, name);
-        if (
-            !allowedCompilerPath(root, config) ||
-            !probeRecorded(reads, root, config, maxFileBytes)
-        )
-            continue;
+    // The conventional names first, then the config a package script passes
+    // webpack, then each webpack config one of those requires (a base config
+    // merged into a dev or prod one).
+    const conventional = ALIAS_CONFIGS.map((name) =>
+        path.join(directory, name),
+    );
+    const configs = [
+        ...conventional,
+        ...scriptWebpackConfigs(root, directory, reads, maxFileBytes),
+    ];
+    const seen = new Set();
+    while (configs.length > 0 && seen.size < MAX_BUNDLER_CONFIGS) {
+        const config = configs.shift();
+        if (seen.has(config)) continue;
+        seen.add(config);
+        const name = path.basename(config);
+        const present = conventional.includes(config)
+            ? allowedCompilerPath(root, config) &&
+              probeRecorded(reads, root, config, maxFileBytes)
+            : probeNamedRecorded(reads, root, config, maxFileBytes);
+        if (!present) continue;
         if (name.startsWith("svelte.")) aliases.$lib ??= "src/lib";
         const text = readRecorded(root, config, reads, maxFileBytes);
         if (text === undefined) continue;
-        Object.assign(aliases, declaredAliases(text, name.startsWith("vite.")));
-        const resolve = declaredResolve(text);
+        // `__dirname` in a config elsewhere names that config's directory.
+        const dirname =
+            normalize(path.relative(directory, path.dirname(config))) || ".";
+        Object.assign(
+            aliases,
+            declaredAliases(text, name.startsWith("vite."), dirname),
+        );
+        const resolve = declaredResolve(text, dirname);
+        // A config a script names is webpack's whatever it is called.
+        if (/webpack/i.test(name) || !conventional.includes(config))
+            configs.push(
+                ...requiredWebpackConfigs(
+                    root,
+                    config,
+                    text,
+                    reads,
+                    maxFileBytes,
+                ),
+            );
         roots.push(...resolve.modules);
         extensions.push(...resolve.extensions);
         for (const key of resolve.unread)
@@ -299,6 +336,100 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
     };
 }
 
+// A bound on the configs one program follows, so a cycle of requires or a
+// tree of build configs cannot run on.
+const MAX_BUNDLER_CONFIGS = 32;
+
+/**
+ * The webpack configs the package.json in `directory` passes webpack with
+ * `--config` (or `-c`) in a script, as a project names a config webpack would
+ * not find by itself: `webpack --config build/webpack.prod.conf.js`. Read
+ * against the package's directory, which a script runs from. An absent
+ * manifest is not probed: discovery hashes every package.json already.
+ */
+function scriptWebpackConfigs(root, directory, reads, maxFileBytes) {
+    const manifest = path.join(directory, "package.json");
+    if (!allowedCompilerPath(root, manifest) || !inRootFile(root, manifest))
+        return [];
+    const text = readRecorded(root, manifest, reads, maxFileBytes);
+    let scripts;
+    try {
+        scripts = JSON.parse(text ?? "null")?.scripts;
+    } catch {
+        return [];
+    }
+    if (scripts === null || typeof scripts !== "object") return [];
+    const configs = [];
+    for (const script of Object.values(scripts)) {
+        if (typeof script !== "string") continue;
+        for (const command of script.split(/&&|\|\||[;|]/)) {
+            const rest =
+                /(?:^|\s)(?:\S*\/)?webpack(?:-cli|-dev-server)?(?=\s|$)(.*)$/.exec(
+                    command,
+                )?.[1];
+            const config =
+                rest === undefined
+                    ? undefined
+                    : /(?:^|\s)(?:--config(?:=|\s+)|-c\s+)(["']?)([^\s"']+)\1/.exec(
+                          rest,
+                      )?.[2];
+            if (config !== undefined)
+                configs.push(path.join(directory, config));
+        }
+    }
+    return configs;
+}
+
+/**
+ * The webpack configs a config requires or imports by a relative path, a
+ * base config merged into it: only a file whose name says webpack, since a
+ * helper module's `resolve` is not webpack's. A specifier without an
+ * extension is tried as Node would, and each candidate's answer is recorded.
+ */
+function requiredWebpackConfigs(root, config, text, reads, maxFileBytes) {
+    const file = ts.createSourceFile(
+        "config.ts",
+        text,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS,
+    );
+    const specifiers = [];
+    const visit = (node) => {
+        const specifier = ts.isImportDeclaration(node)
+            ? node.moduleSpecifier
+            : ts.isCallExpression(node) &&
+                ts.isIdentifier(node.expression) &&
+                node.expression.text === "require"
+              ? node.arguments[0]
+              : undefined;
+        if (
+            specifier !== undefined &&
+            ts.isStringLiteralLike(specifier) &&
+            /^\.{1,2}\//.test(specifier.text) &&
+            /webpack/i.test(path.posix.basename(specifier.text))
+        )
+            specifiers.push(specifier.text);
+        ts.forEachChild(node, visit);
+    };
+    visit(file);
+    const found = [];
+    for (const specifier of specifiers) {
+        const base = path.join(path.dirname(config), specifier);
+        const candidates = /\.[cm]?[jt]s$/.test(specifier)
+            ? [base]
+            : [
+                  base,
+                  ...[".js", ".cjs", ".mjs", ".ts"].map((ext) => base + ext),
+              ];
+        const present = candidates.find((candidate) =>
+            probeNamedRecorded(reads, root, candidate, maxFileBytes),
+        );
+        if (present !== undefined) found.push(present);
+    }
+    return found;
+}
+
 /**
  * The module roots and extensions a webpack config's `resolve` declares,
  * read without running it: `resolve: { modules: [...], extensions: [...] }`,
@@ -312,7 +443,7 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
  * cannot be read is skipped, since only a component extension would change
  * what resolves.
  */
-function declaredResolve(text) {
+function declaredResolve(text, dirname = ".") {
     const file = ts.createSourceFile(
         "config.ts",
         text,
@@ -330,7 +461,7 @@ function declaredResolve(text) {
             ? null
             : ts.isStringLiteralLike(expression)
               ? expression.text
-              : aliasTarget(expression);
+              : aliasTarget(expression, dirname);
     const isNodeModules = (target) =>
         target !== null && path.posix.normalize(target) === "node_modules";
     const addModules = (expressions, late) => {
@@ -424,7 +555,7 @@ function declaredResolve(text) {
  * package, not a directory, and is skipped. With `rootRelative` (Vite), a
  * target starting with `/` is read against the config's directory.
  */
-function declaredAliases(text, rootRelative) {
+function declaredAliases(text, rootRelative, dirname = ".") {
     const file = ts.createSourceFile(
         "config.ts",
         text,
@@ -434,7 +565,7 @@ function declaredAliases(text, rootRelative) {
     );
     const aliases = {};
     const add = (name, expression) => {
-        const target = name === null ? null : aliasTarget(expression);
+        const target = name === null ? null : aliasTarget(expression, dirname);
         if (target === null || name.endsWith("$")) return;
         // Vite reads `/src` against the project root, not the filesystem's.
         aliases[name] =
@@ -472,8 +603,11 @@ function declaredAliases(text, rootRelative) {
     return aliases;
 }
 
-/** A directory an alias maps to, relative to its config, or null. */
-function aliasTarget(expression) {
+/**
+ * A directory an alias maps to, relative to the program's directory, or null;
+ * `dirname` is the config's own directory relative to that.
+ */
+function aliasTarget(expression, dirname = ".") {
     if (ts.isStringLiteralLike(expression)) {
         // A path, not a package (`lodash-es`, `@scope/pkg`).
         const target = expression.text;
@@ -498,7 +632,10 @@ function aliasTarget(expression) {
         parts.length > 0 &&
         parts.every((part) => ts.isStringLiteralLike(part))
     )
-        return path.posix.join(".", ...parts.map((part) => part.text));
+        return path.posix.join(
+            parts === rest ? dirname : ".",
+            ...parts.map((part) => part.text),
+        );
     const url = expression.arguments[0];
     if (
         callee === "fileURLToPath" &&

@@ -182,6 +182,16 @@ like any other module.
   the key. A component extension in `resolve.extensions` (`.vue`, `.svelte`)
   resolves extensionless imports of that kind; an extension that cannot be
   read is skipped.
+- A webpack config under another name is read when the project says where it
+  is: the file a `package.json` script passes webpack with `--config` or `-c`
+  (`webpack-dev-server --config build/webpack.dev.conf.js`), and every config
+  one of those requires or imports by a relative path whose file name contains
+  `webpack` (a base config it merges, `require('./webpack.base.conf')`). Such a
+  config is read even under a directory discovery leaves out, such as `build/`,
+  and an edit to it marks the graph stale. In a config outside the program's
+  directory, `__dirname` names that config's own directory, and a path without
+  it is read against the directory the script runs from. A helper module a
+  config requires (`require('./utils')`) is not read as a config.
 - webpack's `require.context('./dir', recursive, /pattern/)` imports every
   module in the graph it matches. The match happens when the graph is assembled,
   so an incremental scan that re-reads only the loading file keeps every edge.
