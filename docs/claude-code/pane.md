@@ -364,6 +364,11 @@ it with.
   by its class and name), with a line under each pair saying where its two
   sides are declared (`views.py:12 → Client.php:40`).
 
+Past twelve boundaries a heat map can no longer be read, so the tab draws
+none. **Boundaries** lists every one with the same columns, its note counting
+them and their dependencies, and the marked boundary and its cell sit beside
+it, as they do under the map. The dashboard holds up to a hundred boundaries.
+
 `l` moves the cell to the next boundary the marked one depends on, as does a
 press on one of those boundaries. A boundary opens nothing; `c` copies its
 name and `q` asks Claude what its dependencies are for.
