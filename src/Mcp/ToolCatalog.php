@@ -808,7 +808,7 @@ final readonly class ToolCatalog
                 'from_boundary' => ['type' => 'string', 'minLength' => 1],
                 'allow_targets' => ['type' => 'array', 'maxItems' => 50, 'items' => ['type' => 'string', 'minLength' => 1]],
                 'deny_targets' => ['type' => 'array', 'maxItems' => 50, 'items' => ['type' => 'string', 'minLength' => 1]],
-                'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string', 'minLength' => 1]],
+                'edge_kinds' => ['type' => 'array', 'maxItems' => count(AbstractArchitectureQueryService::IMPACT_EDGE_KINDS), 'items' => ['type' => 'string', 'minLength' => 1]],
             ],
             'required' => ['id', 'from_boundary'],
             'anyOf' => [['required' => ['allow_targets']], ['required' => ['deny_targets']]],
