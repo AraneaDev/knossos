@@ -60,13 +60,15 @@ export type OverviewData = {
   /** The walk the histogram counts stopped early: the buckets are floors. */
   bucketsPartial: boolean
   health: HealthSeries[]
+  /** What the health card says it could not count: set when a snapshot past the row cap left figures out. */
+  healthLimit: string[]
   flows: Flow[]
   /** Every dependency between labelled components the matrix counted. */
   flowEdges: number
   flowsPartial: boolean
 }
 
-export const NO_OVERVIEW: OverviewData = { composition: [], buckets: [], bucketsPartial: false, health: [], flows: [], flowEdges: 0, flowsPartial: false }
+export const NO_OVERVIEW: OverviewData = { composition: [], buckets: [], bucketsPartial: false, health: [], healthLimit: [], flows: [], flowEdges: 0, flowsPartial: false }
 
 /** The most parts a stacked bar names before the rest become "other": boundaries keep their colours, the others three textures. */
 const BOUNDARY_PARTS = 5
@@ -146,7 +148,16 @@ export function overviewData(d: Dashboard, hues: Hues): OverviewData {
           return from !== undefined && to !== undefined && isCount(f.edges) ? [{ from, to, fromIndex: f.from, toIndex: f.to, edges: f.edges, forbidden: f.forbidden === true }] : []
         })
       : []
-  return { composition, buckets, bucketsPartial: d.in_degree?.truncated === true, health, flows, flowEdges: m?.edges ?? 0, flowsPartial: m?.truncated === true }
+  // A snapshot past the row cap kept only what COUNT(*) says: its series with gaps are left out, and the card says why.
+  const limit = d.trend_limit ?? null
+  const uncounted = points.some(p => p.cycles === null || p.max_degree === null || p.dead_code === null) || limit !== null
+  const healthLimit = uncounted
+    ? [
+        `cycles, ${UNREFERENCED} and max degree: not counted past ${grouped(limit?.limit ?? 200_000)} rows a table`,
+        ...(limit === null ? [] : [`the live graph holds ${grouped(limit.rows)} rows in ${limit.table}`]),
+      ]
+    : []
+  return { composition, buckets, bucketsPartial: d.in_degree?.truncated === true, health, healthLimit, flows, flowEdges: m?.edges ?? 0, flowsPartial: m?.truncated === true }
 }
 
 /** A bucket as its row names it: `0`, `1–5`, `101+`. */
@@ -376,7 +387,11 @@ function levels(values: number[], per: number): string {
  */
 export function healthBlock(data: OverviewData): Block | null {
   const series = data.health
-  if (series.length === 0 || (series[0]?.values.length ?? 0) < HEALTH_MIN_POINTS) return null
+  const limitRows = (columns: number): Row[] => data.healthLimit.map((line, i) => ({ key: `health-limit-${i}`, segments: [{ text: fit(`   ${line}`, columns), dim: true }] }))
+  if (series.length === 0 || (series[0]?.values.length ?? 0) < HEALTH_MIN_POINTS) {
+    // Nothing to draw over time, but a limit to say: the card says it rather than disappearing.
+    return data.healthLimit.length === 0 ? null : { key: 'health', make: (columns): Section => ({ key: 'health', title: 'Health over time', body: limitRows(columns) }) }
+  }
   return {
     key: 'health',
     make: (columns): Section | null => {
@@ -413,6 +428,7 @@ export function healthBlock(data: OverviewData): Block | null {
       body.push({ key: 'health-axis', segments: [{ text: lead }, { text: ends.slice(0, 6), dim: true }, { text: ends.slice(6, ends.length - 6), color: FAINT }, { text: ends.slice(ends.length - 6), dim: true }].filter(s => s.text !== '') })
       // Two counts of unused code stand on one screen: the row says which one it is.
       if (series.some(s => s.label === UNREFERENCED)) body.push({ key: 'health-said', segments: [{ text: fit(`   ${UNREFERENCED}: the quality gate's count, wider than the dead-code list`, columns), dim: true }] })
+      body.push(...limitRows(columns))
       const said = plural(points, 'snapshot', 'snapshots')
       return { key: 'health', title: 'Health over time', note: noteOf(said), body }
     },

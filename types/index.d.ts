@@ -133,7 +133,10 @@ export type Dashboard = {
    * nothing references), `diagnostics` (errors and warnings) and
    * `components` are absent from a knossos older than the Overview's charts.
    */
-  trend: { snapshot_id: string; cycles: number; max_degree: number; dead_code?: number; diagnostics?: number; components?: number }[]
+  /** A snapshot past the row cap counts no cycles, max degree or dead code: those are null in its point. */
+  trend: { snapshot_id: string; cycles: number | null; max_degree: number | null; dead_code?: number | null; diagnostics?: number; components?: number }[]
+  /** Why the live graph has only counted figures: the table past the row cap, its rows and the cap (absent from an older knossos). */
+  trend_limit?: { code: string; table: string; rows: number; limit: number } | null
   fan_in: FanIn[]
   fan_in_truncated: boolean
   // Optional from here on: a knossos older than the mod sends none of them.
@@ -198,7 +201,7 @@ export type Dashboard = {
 }
 
 /** How the newest snapshot's figures moved since `against`, the snapshot retained before it. */
-export type Deltas = { against: string; components: number; cycles: number; max_degree: number; dead_code: number; diagnostics: number }
+export type Deltas = { against: string; components: number; cycles: number | null; max_degree: number | null; dead_code: number | null; diagnostics: number }
 
 /** One bucket of the in-degree histogram: the in-degrees it spans (`to` null for no upper end) and how many components. */
 export type InDegreeBucket = { from: number; to: number | null; components: number }
