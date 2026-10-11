@@ -191,11 +191,15 @@ final readonly class StalenessProbe
         return max(0, ($this->wallClock)() - $then);
     }
 
-    /** Whether a later scan attempt exists, so a failed rescan is distinguishable from never trying. */
+    /**
+     * Whether a later scan attempt exists, so a failed rescan is distinguishable from never trying.
+     * A start is stored to the second, so attempts within one second are told apart by the order
+     * they were made in (`rowid`), never by their ids, which are hashes.
+     */
     private function hasNewerAttempt(string $projectId, string $activeScanId): bool
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, status FROM scans WHERE project_id = :project ORDER BY started_at DESC, id DESC LIMIT 1',
+            'SELECT id, status FROM scans WHERE project_id = :project ORDER BY started_at DESC, rowid DESC LIMIT 1',
         );
         $statement->execute(['project' => $projectId]);
         $latest = $statement->fetch();

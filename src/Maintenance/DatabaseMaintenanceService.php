@@ -73,7 +73,7 @@ final readonly class DatabaseMaintenanceService
         $cutoff = (new DateTimeImmutable())->modify(sprintf('-%d hours', $olderThanHours));
         $statement = $this->pdo->prepare(
             "SELECT s.id, s.status, s.started_at FROM scans s WHERE s.project_id = :project AND s.id <> COALESCE(:active, '') " .
-            "AND s.status IN ('running', 'failed', 'cancelled') ORDER BY s.started_at, s.id LIMIT 1001",
+            "AND s.status IN ('running', 'failed', 'cancelled') ORDER BY s.started_at, s.rowid LIMIT 1001",
         );
         $statement->execute(['project' => $projectId, 'active' => $project['active_scan_id']]);
         $candidates = [];
