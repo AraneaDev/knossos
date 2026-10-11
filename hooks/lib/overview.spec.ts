@@ -217,6 +217,24 @@ describe('the overview cards', () => {
     expect(rows.some(r => plainText(r).includes('tests and external code left out'))).toBe(true)
   })
 
+  it('draws the figures a snapshot past the row cap still counted, and says which it could not', () => {
+    // The last two snapshots grew past the cap: their cycles, max degree and unreferenced were not counted.
+    const partial = { ...dash, trend: dash.trend.map((t, i) => (i < 4 ? t : { ...t, cycles: null, max_degree: null, dead_code: null })) } as unknown as Dashboard
+    const mixed = overviewData(partial, hues)
+    expect(mixed.health.map(s => s.label)).toEqual(['diagnostics'])
+    const text = rowsOf(healthBlock(mixed)!, 100).map(plainText).join('\n')
+    expect(text).toMatch(/diagnostics +▁+/)
+    expect(text).toContain('cycles, gate unreferenced and max degree: not counted past 200,000 rows a table')
+    // A graph that was always past the cap still gets the card, saying so, instead of none.
+    const always = overviewData({ ...dash, trend: [{ snapshot_id: 's1', cycles: null, max_degree: null, dead_code: null, diagnostics: 4, components: 250_000 }], trend_limit: { code: 'row_limit', table: 'edges', rows: 400_000, limit: 200_000 } } as unknown as Dashboard, hues)
+    const lone = rowsOf(healthBlock(always)!, 100).map(plainText).join('\n')
+    expect(lone).toContain('cycles, gate unreferenced and max degree: not counted past 200,000 rows a table')
+    expect(lone).toContain('the live graph holds 400,000 rows in edges')
+    // Too narrow to plot: the card still says what was not counted rather than vanishing.
+    const narrow = rowsOf(healthBlock(mixed)!, 24).map(plainText).join('\n')
+    expect(narrow.replace(/[\s│]+/g, ' ')).toContain('cycles, gate unreferenced and max degree: not counted past 200,000 rows a table')
+  })
+
   it('draws health as one row per figure on one time axis, each its own scale, and only from five snapshots', () => {
     const rows = rowsOf(healthBlock(data)!, 100)
     const plots = rows.filter(r => /^health-\d$/.test(r.key)).map(r => r.segments.find(s => /^[▁-█]+$/.test(s.text))!)

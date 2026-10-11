@@ -363,7 +363,7 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
   const moved = (figure: 'components' | 'cycles' | 'max_degree' | 'diagnostics', worse = false): Pick<Stat, 'delta' | 'worse'> =>
     deltas === null || typeof deltas[figure] !== 'number' ? {} : { delta: deltas[figure], ...(worse ? { worse: 'up' as const } : {}) }
   // A series only when every snapshot carries it: an older knossos sends cycles and the largest degree alone.
-  const series = (pick: (t: Dashboard['trend'][number]) => number | undefined): Pick<Stat, 'trend'> => {
+  const series = (pick: (t: Dashboard['trend'][number]) => number | null | undefined): Pick<Stat, 'trend'> => {
     const values = d.trend.map(pick)
     return values.every((v): v is number => typeof v === 'number') ? { trend: values } : {}
   }

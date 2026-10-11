@@ -392,7 +392,8 @@ final readonly class DashboardService
                 'snapshot_id' => $entry['scan_id'],
                 'cycles' => $metrics['cycles'],
                 'max_degree' => $metrics['max_degree'],
-                'dead_code' => (int) ($metrics['unreferenced_candidates'] ?? 0),
+                // A partial point (a snapshot past the row cap) counted no unreferenced components: null, not zero.
+                'dead_code' => array_key_exists('unreferenced_candidates', $metrics) && $metrics['unreferenced_candidates'] === null ? null : (int) ($metrics['unreferenced_candidates'] ?? 0),
                 'diagnostics' => (int) ($metrics['error_diagnostics'] ?? 0) + (int) ($metrics['warning_diagnostics'] ?? 0),
                 'components' => (int) ($entry['counts']['components'] ?? 0),
             ];
@@ -420,7 +421,8 @@ final readonly class DashboardService
         [$before, $after] = [$trend[$count - 2], $trend[$count - 1]];
         $moved = ['against' => $before['snapshot_id']];
         foreach (['components', 'cycles', 'max_degree', 'dead_code', 'diagnostics'] as $figure) {
-            $moved[$figure] = $after[$figure] - $before[$figure];
+            // A figure one side did not count moved by an unknown amount.
+            $moved[$figure] = $after[$figure] === null || $before[$figure] === null ? null : $after[$figure] - $before[$figure];
         }
 
         return $moved;

@@ -75,7 +75,8 @@ final class SqliteSnapshotArchive
         $captured = $reason === null ? $this->streamSnapshotPayload($projectId) : null;
         if ($captured === null) {
             $reason ??= 'byte_limit';
-            $encoded = SqliteValues::json(['schema' => 1, 'reason' => $reason]);
+            // Past the row cap the facts are never read, but what COUNT(*) says without them still makes a trend point.
+            $encoded = SqliteValues::json(['schema' => 1, 'reason' => $reason] + ($reason === 'fact_limit' ? ['figures' => CountedSnapshotFigures::of($this->pdo, $projectId)] : []));
             $captured = [SnapshotPayload::encode($encoded), 0, strlen($encoded)];
         }
         [$payload, $factCount, $byteSize] = $captured;
