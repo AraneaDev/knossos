@@ -230,6 +230,9 @@ describe('the overview cards', () => {
     const lone = rowsOf(healthBlock(always)!, 100).map(plainText).join('\n')
     expect(lone).toContain('cycles, gate unreferenced and max degree: not counted past 200,000 rows a table')
     expect(lone).toContain('the live graph holds 400,000 rows in edges')
+    // Too narrow to plot: the card still says what was not counted rather than vanishing.
+    const narrow = rowsOf(healthBlock(mixed)!, 24).map(plainText).join('\n')
+    expect(narrow.replace(/[\s│]+/g, ' ')).toContain('cycles, gate unreferenced and max degree: not counted past 200,000 rows a table')
   })
 
   it('draws health as one row per figure on one time axis, each its own scale, and only from five snapshots', () => {

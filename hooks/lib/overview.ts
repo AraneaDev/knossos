@@ -34,7 +34,7 @@ import { timelineRow, untestedText } from './changes'
 import type { ChangesInput, LookAt } from './changes'
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups } from './rows'
+import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Openable } from './views'
 
@@ -387,7 +387,9 @@ function levels(values: number[], per: number): string {
  */
 export function healthBlock(data: OverviewData): Block | null {
   const series = data.health
-  const limitRows = (columns: number): Row[] => data.healthLimit.map((line, i) => ({ key: `health-limit-${i}`, segments: [{ text: fit(`   ${line}`, columns), dim: true }] }))
+  // Wrapped, not cut: on a narrow pane the line is all the card says.
+  const limitRows = (columns: number): Row[] =>
+    data.healthLimit.flatMap((line, i) => wrapWords(line, Math.max(1, columns - 3)).map((part, j) => ({ key: `health-limit-${i}-${j}`, segments: [{ text: `   ${part}`, dim: true }] })))
   if (series.length === 0 || (series[0]?.values.length ?? 0) < HEALTH_MIN_POINTS) {
     // Nothing to draw over time, but a limit to say: the card says it rather than disappearing.
     return data.healthLimit.length === 0 ? null : { key: 'health', make: (columns): Section => ({ key: 'health', title: 'Health over time', body: limitRows(columns) }) }
@@ -401,7 +403,8 @@ export function healthBlock(data: OverviewData): Block | null {
       const ranges = series.map(s => (Math.min(...s.values) === Math.max(...s.values) ? 'no change' : `${grouped(Math.min(...s.values))}–${grouped(Math.max(...s.values))}`))
       const rangeWidth = Math.max(...ranges.map(cells)) + 2
       const plotMax = columns - HEALTH_LABEL - 1 - 1 - lastWidth
-      if (plotMax < HEALTH_MIN_POINTS) return null
+      // Too narrow to plot: what was not counted is still said, the card never vanishing over it.
+      if (plotMax < HEALTH_MIN_POINTS) return data.healthLimit.length === 0 ? null : { key: 'health', title: 'Health over time', body: limitRows(columns) }
       const withRange = plotMax - rangeWidth >= HEALTH_MIN_POINTS * 2
       const plot = withRange ? plotMax - rangeWidth : plotMax
       const points = Math.min(series[0]!.values.length, plot)
