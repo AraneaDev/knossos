@@ -152,10 +152,16 @@ export class TypeScriptApplicationEnricher {
                 "axios.put",
                 "axios.patch",
                 "axios.delete",
+                "axios.head",
+                "axios.request",
             ].includes(calledName) ||
             !node.arguments[0]
         )
             return;
+        if (calledName === "axios.request") {
+            this.instanceCall(node, source, null);
+            return;
+        }
         const url = requestUrl(node.arguments[0]);
         if (url === null) return;
         const method =
@@ -165,6 +171,10 @@ export class TypeScriptApplicationEnricher {
         this.addEndpoint(node, source, method, url);
     }
 
+    /**
+     * A request through an axios instance, or through the direct import when
+     * `instance` is null: then the URL stands as written.
+     */
     instanceCall(node, source, instance) {
         const name = node.expression.name.text;
         const first = node.arguments[0];
@@ -174,16 +184,17 @@ export class TypeScriptApplicationEnricher {
             method = name.toUpperCase();
             argument = first;
         } else if (first && ts.isObjectLiteralExpression(first)) {
-            const methodField = objectField(first, "method");
-            if (methodField === undefined) method = "GET";
-            else if (ts.isStringLiteralLike(methodField))
-                method = methodField.text.toUpperCase();
-            else return;
+            method = optionMethod(first) ?? "GET";
             argument = objectField(first, "url");
         }
         const url = argument === undefined ? null : requestUrl(argument);
         if (url === null) return;
-        this.addEndpoint(node, source, method, joinBase(instance, url));
+        this.addEndpoint(
+            node,
+            source,
+            method,
+            instance === null ? url : joinBase(instance, url),
+        );
     }
 
     addEndpoint(node, source, method, url) {
@@ -260,14 +271,14 @@ function axiosInstanceBase(checker, receiver) {
     if (symbol && symbol.flags & ts.SymbolFlags.Alias)
         symbol = checker.getAliasedSymbol(symbol);
     const declaration = symbol?.valueDeclaration;
-    if (
-        !declaration ||
-        !ts.isVariableDeclaration(declaration) ||
-        !declaration.initializer ||
-        !isAxiosCreate(checker, declaration.initializer)
-    )
-        return null;
-    const options = declaration.initializer.arguments[0];
+    // `export default axios.create({ ... })` is an export assignment, not a variable.
+    let initializer;
+    if (declaration && ts.isVariableDeclaration(declaration))
+        initializer = declaration.initializer;
+    else if (declaration && ts.isExportAssignment(declaration))
+        initializer = declaration.expression;
+    if (!initializer || !isAxiosCreate(checker, initializer)) return null;
+    const options = initializer.arguments[0];
     const base = options ? objectField(options, "baseURL") : undefined;
     if (
         base !== undefined &&
@@ -329,17 +340,26 @@ function urlTemplate(uri, prefixUnknown) {
 function fetchMethod(call) {
     const options = call.arguments[1];
     if (!options || !ts.isObjectLiteralExpression(options)) return "GET";
+    return optionMethod(options) ?? "GET";
+}
+
+/**
+ * The method an options object names: undefined when it names none, the
+ * upper-cased text of a literal, and `ANY` for one read from a variable,
+ * since any method may be sent.
+ */
+function optionMethod(options) {
     const property = options.properties.find(
         (item) =>
-            ts.isPropertyAssignment(item) &&
+            (ts.isPropertyAssignment(item) ||
+                ts.isShorthandPropertyAssignment(item)) &&
             propertyNameText(item.name) === "method",
     );
-    return property &&
-        ts.isPropertyAssignment(property) &&
-        (ts.isStringLiteral(property.initializer) ||
-            ts.isNoSubstitutionTemplateLiteral(property.initializer))
+    if (!property) return undefined;
+    return ts.isPropertyAssignment(property) &&
+        ts.isStringLiteralLike(property.initializer)
         ? property.initializer.text.toUpperCase()
-        : "GET";
+        : "ANY";
 }
 
 function hasModifier(node, kind) {

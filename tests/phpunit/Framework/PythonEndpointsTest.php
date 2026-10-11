@@ -11,6 +11,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayHasKey;
+use function PHPUnit\Framework\assertArrayNotHasKey;
 use function PHPUnit\Framework\assertSame;
 
 /**
@@ -58,9 +59,8 @@ final class PythonEndpointsTest extends KnossosTestCase
         assertSame('/api/{}', $endpoints['GET /api/{}-list']['template']);
         assertSame('known', $endpoints['GET /api/{}-list']['prefix']);
         assertArrayHasKey('GET /api/orders', $endpoints);
-        foreach (array_keys($endpoints) as $name) {
-            assertSame(false, $name === 'GET {}{}' || $name === 'GET {}', $name);
-        }
+        assertArrayNotHasKey('GET {}{}', $endpoints);
+        assertArrayNotHasKey('GET {}', $endpoints);
     }
 
     public function testRoutesNameTheRouterTheyHangUnderAndMountsNameWhatTheyHangOn(): void
@@ -80,6 +80,206 @@ final class PythonEndpointsTest extends KnossosTestCase
         assertSame(1, count($mounts));
         assertSame('py:router:app.api.router', $mounts[0]->targetReference);
         assertSame(['app', '/v1'], [$mounts[0]->attributes['onto'], $mounts[0]->attributes['prefix']]);
+    }
+
+    public function testOptionsAndKeywordOnlyRequestsAreRead(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/c.py' => <<<'PY'
+            import httpx
+            import requests
+
+
+            def call() -> None:
+                requests.options("/api/a")
+                httpx.options("/api/b")
+                requests.request(method="PUT", url="/api/c")
+                httpx.request(url="/api/d", method="DELETE")
+            PY]);
+        $endpoints = $this->endpoints($nodes);
+
+        foreach (['OPTIONS /api/a', 'OPTIONS /api/b', 'PUT /api/c', 'DELETE /api/d'] as $name) {
+            assertArrayHasKey($name, $endpoints);
+        }
+    }
+
+    public function testAMethodThatIsNotLiteralMakesAnEndpointForAnyMethod(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/c.py' => <<<'PY'
+            import httpx
+            import requests
+            from google.appengine.api import taskqueue
+
+
+            def call(verb: str) -> None:
+                requests.request(verb, "/api/a")
+                httpx.request(method=verb, url="/api/b")
+                taskqueue.add(url="/task/c", method=verb)
+            PY]);
+        $endpoints = $this->endpoints($nodes);
+
+        foreach (['ANY /api/a', 'ANY /api/b', 'ANY /task/c'] as $name) {
+            assertArrayHasKey($name, $endpoints);
+            assertSame('ANY', $endpoints[$name]['method']);
+        }
+    }
+
+    public function testBlueprintsAndMountsNameTheRoutersTheyHangOn(): void
+    {
+        [$nodes, $edges] = $this->scanSource(['app/__init__.py' => '', 'app/web.py' => <<<'PY'
+            from flask import Blueprint, Flask
+
+            app = Flask(__name__)
+            admin = Blueprint("admin", __name__, url_prefix="/admin")
+            reports = Blueprint("reports", __name__)
+
+
+            @admin.route("/users")
+            def users() -> str:
+                return "ok"
+
+
+            admin.register_blueprint(reports, url_prefix="/reports")
+            app.register_blueprint(admin, url_prefix="/v2")
+            PY]);
+        $routes = $this->routes($nodes);
+
+        assertSame('py:router:app.web.admin', $routes['GET /admin/users']['router']);
+        $mounts = [];
+        foreach ($edges as $edge) {
+            if ($edge->kind === 'mounts') {
+                $mounts[$edge->targetReference] = $edge->attributes;
+            }
+        }
+        assertSame(['app', '/v2'], [$mounts['py:router:app.web.admin']['onto'], $mounts['py:router:app.web.admin']['prefix']]);
+        assertSame(['py:router:app.web.admin', '/reports'], [$mounts['py:router:app.web.reports']['onto'], $mounts['py:router:app.web.reports']['prefix']]);
+    }
+
+    public function testARouterBuiltInAFunctionOrHandedInHasAnUnknownPrefix(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/api.py' => <<<'PY'
+            from fastapi import APIRouter, FastAPI
+
+            app = FastAPI()
+            router = APIRouter(prefix="/api")
+
+
+            @router.get("/shared")
+            def shared() -> str:
+                return "ok"
+
+
+            def build() -> APIRouter:
+                router = APIRouter()
+
+                @router.get("/local")
+                def local() -> str:
+                    return "ok"
+
+                return router
+
+
+            def register(handed: APIRouter, router: APIRouter) -> None:
+                @handed.get("/handed")
+                def handed_route() -> str:
+                    return "ok"
+
+                @router.get("/param")
+                def param() -> str:
+                    return "ok"
+
+
+            @app.get("/direct")
+            def direct() -> str:
+                return "ok"
+            PY]);
+        $routes = $this->routes($nodes);
+
+        assertSame('py:router:app.api.router', $routes['GET /api/shared']['router']);
+        foreach (['GET /local', 'GET /handed', 'GET /param'] as $name) {
+            assertArrayHasKey($name, $routes);
+            assertSame('unknown', $routes[$name]['prefix'], $name);
+            assertArrayNotHasKey('router', $routes[$name]);
+        }
+        assertArrayNotHasKey('prefix', $routes['GET /direct']);
+    }
+
+    public function testAnAppRebuiltAsARouterIsNoLongerAnApp(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/api.py' => <<<'PY'
+            from fastapi import APIRouter, FastAPI
+
+            app = FastAPI()
+            app = APIRouter(prefix="/v1")
+
+
+            @app.get("/items")
+            def items() -> str:
+                return "ok"
+            PY]);
+        $routes = $this->routes($nodes);
+
+        assertSame('py:router:app.api.app', $routes['GET /v1/items']['router']);
+    }
+
+    public function testADjangoRePathRouteIsMarkedAsAPattern(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/urls.py' => <<<'PY'
+            from django.urls import path, re_path
+            from . import views
+
+            urlpatterns = [
+                path("plain/", views.plain),
+                re_path(r"^items/(?P<pk>[0-9]+)/$", views.item),
+            ]
+            PY, 'app/views.py' => <<<'PY'
+            def plain(request): ...
+            def item(request, pk): ...
+            PY]);
+        $routes = $this->routes($nodes);
+
+        assertSame(true, $routes['ANY /^items/(?P<pk>[0-9]+)/$']['regex']);
+        assertArrayNotHasKey('regex', $routes['ANY /plain/']);
+    }
+
+    /**
+     * @param array<string, string> $files
+     * @return array{0: list<NodeFact>, 1: list<EdgeFact>}
+     */
+    private function scanSource(array $files): array
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-python-endpoints-' . bin2hex(random_bytes(4));
+        foreach ($files as $path => $contents) {
+            @mkdir(dirname($root . '/' . $path), 0o777, true);
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]));
+            $client->shutdown();
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        return [
+            array_merge(...array_map(fn(ScanContribution $item): array => $item->nodes, $contributions)),
+            array_merge(...array_map(fn(ScanContribution $item): array => $item->edges, $contributions)),
+        ];
+    }
+
+    /**
+     * @param list<NodeFact> $nodes
+     * @return array<string, array<string, mixed>>
+     */
+    private function routes(array $nodes): array
+    {
+        $routes = [];
+        foreach ($nodes as $node) {
+            if ($node->kind === 'route') {
+                $routes[$node->displayName] = $node->attributes;
+            }
+        }
+
+        return $routes;
     }
 
     /** @return array{0: list<NodeFact>, 1: list<EdgeFact>} */

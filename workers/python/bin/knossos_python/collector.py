@@ -21,12 +21,19 @@ from .ast_helpers import (
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
 from .module_index import ProjectModuleIndex
 
-HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head"}
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 ABSOLUTE_URL = re.compile(r"^([a-z][a-z0-9+.-]*:|//)", re.IGNORECASE)
 
 
 def keyword_value(node: ast.Call, name: str) -> ast.expr | None:
     return next((item.value for item in node.keywords if item.arg == name), None)
+
+
+def static_method(node: ast.AST) -> str:
+    """An HTTP method written as a string literal, upper-cased; ``ANY`` when it is computed."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value.strip().upper()
+    return "ANY"
 
 
 def request_url(node: ast.AST | None) -> str | None:
@@ -760,12 +767,12 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if bound in {"requests", "httpx"}:
             if member in HTTP_METHODS:
                 url, method = node.args[0] if node.args else keyword_value(node, "url"), member.upper()
-            elif member == "request" and len(node.args) > 0:
-                first = node.args[0]
-                if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+            elif member == "request":
+                given = node.args[0] if node.args else keyword_value(node, "method")
+                if given is None:
                     return
                 url = node.args[1] if len(node.args) > 1 else keyword_value(node, "url")
-                method = first.value.upper()
+                method = static_method(given)
             else:
                 return
             uri = request_url(url)
@@ -774,12 +781,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         elif bound == "google.appengine.api.taskqueue" and member in {"add", "Task"}:
             uri = request_url(keyword_value(node, "url"))
             method_node = keyword_value(node, "method")
-            if method_node is None:
-                method = "POST"
-            elif isinstance(method_node, ast.Constant) and isinstance(method_node.value, str):
-                method = method_node.value.upper()
-            else:
-                return
+            method = "POST" if method_node is None else static_method(method_node)
             if uri is not None:
                 self.add_endpoint("dispatches", "appengine", method, uri, node)
 

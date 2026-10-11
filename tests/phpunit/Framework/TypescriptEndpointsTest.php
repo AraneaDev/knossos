@@ -104,7 +104,7 @@ final class TypescriptEndpointsTest extends KnossosTestCase
         assertContains('ts:function:src/direct.js#direct -> ts:endpoint:GET /orders', $edges);
     }
 
-    public function testRequestWithoutAMethodIsAGetAndOneWithAComputedMethodNamesNoEndpoint(): void
+    public function testRequestWithoutAMethodIsAGetAndOneWithAComputedMethodIsAnyMethod(): void
     {
         $endpoints = $this->endpoints([
             'src/http.js' => "import axios from \"axios\";\nexport const api = axios.create({ baseURL: \"/api\" });\n",
@@ -115,7 +115,51 @@ final class TypescriptEndpointsTest extends KnossosTestCase
             'node_modules/axios/index.d.ts' => self::INSTANCES['node_modules/axios/index.d.ts'],
         ], ['src/http.js', 'src/use.js']);
 
-        assertSame(['GET /api/a'], array_keys($endpoints));
+        $names = array_keys($endpoints);
+        sort($names);
+        assertSame(['ANY /api/b', 'GET /api/a'], $names);
+    }
+
+    public function testTheDirectAxiosImportReadsHeadAndRequestLikeAnInstance(): void
+    {
+        $endpoints = $this->endpoints([
+            'src/use.js' => "import axios from \"axios\";\n"
+                . "export const a = () => axios.head(\"/api/a\");\n"
+                . "export const b = () => axios.request({ method: \"post\", url: \"/api/b\" });\n"
+                . "export const c = () => axios.request({ url: \"/api/c\" });\n"
+                . "export const d = (m) => axios.request({ method: m, url: \"/api/d\" });\n"
+                . "export const e = (id) => axios.request({ method: \"get\", url: `/api/e/\${id}` });\n",
+        ], ['src/use.js']);
+
+        $names = array_keys($endpoints);
+        sort($names);
+        assertSame(['ANY /api/d', 'GET /api/c', 'GET /api/e/{}', 'HEAD /api/a', 'POST /api/b'], $names);
+    }
+
+    public function testAnInstanceExportedAsTheDefaultIsRecognised(): void
+    {
+        $endpoints = $this->endpoints([
+            'src/http.js' => "import axios from \"axios\";\nexport default axios.create({ baseURL: \"/api\" });\n",
+            'src/use.js' => "import api from \"./http\";\nexport const a = () => api.get(\"/x\");\n",
+            'node_modules/axios/package.json' => self::INSTANCES['node_modules/axios/package.json'],
+            'node_modules/axios/index.d.ts' => self::INSTANCES['node_modules/axios/index.d.ts'],
+        ], ['src/http.js', 'src/use.js']);
+
+        assertSame(['GET /api/x'], array_keys($endpoints));
+    }
+
+    public function testAFetchWithAComputedMethodIsAnyMethod(): void
+    {
+        $endpoints = $this->endpoints([
+            'src/use.js' => "export const a = (m) => fetch(\"/api/a\", { method: m });\n"
+                . "export const b = () => fetch(\"/api/b\", { method: \"put\" });\n"
+                . "export const c = () => fetch(\"/api/c\");\n"
+                . "export const d = (method) => fetch(\"/api/d\", { method });\n",
+        ], ['src/use.js']);
+
+        $names = array_keys($endpoints);
+        sort($names);
+        assertSame(['ANY /api/a', 'ANY /api/d', 'GET /api/c', 'PUT /api/b'], $names);
     }
 
     public function testAnInstanceCreatedThroughAnyNameForAxiosOrReExportedIsRecognised(): void
