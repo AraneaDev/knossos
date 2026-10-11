@@ -6,6 +6,7 @@
  * (language-fact-collector.js); how the scan reads the tree is the
  * project-paths, source-reading and input-reads modules'.
  */
+import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { isStackOverflow } from "./errors.js";
@@ -1053,29 +1054,56 @@ function configFilesForScan(root, requested) {
                 "TypeScript config_files must be a list of project-relative paths.",
             );
         }
-        return requested.map((item) =>
-            normalize(path.relative(root, validatedInside(root, item))),
+        return withoutShadowedJsconfigs(
+            root,
+            requested.map((item) =>
+                normalize(path.relative(root, validatedInside(root, item))),
+            ),
         );
     }
-    return discoverConfigFiles(root);
+    return withoutShadowedJsconfigs(root, discoverConfigFiles(root));
 }
 
 /**
- * Return sorted project-relative tsconfig paths below a validated root.
+ * Leave out a jsconfig whose directory holds a tsconfig.json, as TypeScript's own tools do: that
+ * directory is a TypeScript project, and its jsconfig is an editor's leftover. Kept, it would sort
+ * first and claim the files both list, dropping the tsconfig's `paths`, `strict` and `types`.
+ *
+ * @param {string} root Absolute, already-validated project root.
+ * @param {string[]} configs Project-relative config paths.
+ * @returns {string[]} The same paths, shadowed jsconfigs left out.
+ */
+function withoutShadowedJsconfigs(root, configs) {
+    return configs.filter(
+        (config) =>
+            !path.basename(config).toLowerCase().startsWith("jsconfig") ||
+            !fs.existsSync(
+                path.join(root, path.dirname(config), "tsconfig.json"),
+            ),
+    );
+}
+
+/**
+ * Return sorted project-relative tsconfig and jsconfig paths below a validated root.
  *
  * Walking is the fallback, not the norm: the core names `config_files` on every
  * scan it plans, so this runs only for a request that supplied none.
  *
  * @param {string} root Absolute, already-validated project root.
- * @returns {string[]} Project-relative tsconfig paths, sorted.
+ * @returns {string[]} Project-relative tsconfig and jsconfig paths, sorted.
  */
 export function discoverConfigFiles(root) {
     const configs = [];
     walk(root, root, (absolute, relative) => {
         const basename = path.basename(relative).toLowerCase();
+        // A jsconfig.json is a tsconfig for JavaScript: TypeScript reads it the same way, with its
+        // JavaScript defaults (allowJs among them) chosen by the file's name.
         if (
             basename === "tsconfig.json" ||
-            (basename.startsWith("tsconfig.") && basename.endsWith(".json"))
+            basename === "jsconfig.json" ||
+            ((basename.startsWith("tsconfig.") ||
+                basename.startsWith("jsconfig.")) &&
+                basename.endsWith(".json"))
         ) {
             configs.push(relative);
         }

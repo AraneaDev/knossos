@@ -71,6 +71,9 @@ final class SourceClassifierTest extends TestCase
         yield 'not requirements' => ['requirements-dev.md', null];
         yield 'tsconfig' => ['tsconfig.json', 'typescript'];
         yield 'tsconfig variant' => ['tsconfig.build.json', 'typescript'];
+        yield 'jsconfig' => ['jsconfig.json', 'typescript'];
+        yield 'jsconfig variant' => ['web/jsconfig.app.json', 'typescript'];
+        yield 'not a jsconfig' => ['jsconfig.md', null];
         yield 'cargo' => ['crates/a/Cargo.toml', 'cargo'];
         yield 'tool config' => ['vite.config.ts', 'tool_config'];
         yield 'cypress' => ['cypress.json', 'tool_config'];

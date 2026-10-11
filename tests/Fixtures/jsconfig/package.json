@@ -1,0 +1,5 @@
+{
+  "name": "jsconfig-fixture",
+  "private": true,
+  "dependencies": { "vue": "^2.7.0" }
+}

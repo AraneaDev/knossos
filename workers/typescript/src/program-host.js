@@ -73,9 +73,11 @@ export function parseConfig(root, configPath, reads) {
         },
         onUnRecoverableConfigFileDiagnostic: () => {},
     };
+    // A jsconfig.json defaults maxNodeModuleJsDepth to 2, which would read
+    // the JavaScript of dependencies; the graph holds the project's own code.
     const parsed = ts.getParsedCommandLineOfConfigFile(
         absolute,
-        { noEmit: true },
+        { noEmit: true, maxNodeModuleJsDepth: 0 },
         host,
         undefined,
         undefined,
@@ -106,7 +108,7 @@ export function parseConfig(root, configPath, reads) {
         visited.add(referenceConfig);
         const referenced = ts.getParsedCommandLineOfConfigFile(
             referenceConfig,
-            { noEmit: true },
+            { noEmit: true, maxNodeModuleJsDepth: 0 },
             host,
             undefined,
             undefined,
