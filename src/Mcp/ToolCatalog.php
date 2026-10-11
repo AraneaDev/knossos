@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp;
 
+use Knossos\Query\AbstractArchitectureQueryService;
+
 /**
  * The MCP tool catalogue: every tool this server advertises, and its input schema.
  *
@@ -276,7 +278,7 @@ final readonly class ToolCatalog
                         ...self::commonReadProperties(),
                         'project_id' => ['type' => 'string', 'minLength' => 1],
                         'symbol' => ['type' => 'string', 'minLength' => 1],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 500, 'default' => 100],
                     ],
@@ -396,7 +398,7 @@ final readonly class ToolCatalog
                         'to' => ['type' => 'string', 'minLength' => 1],
                         'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 6],
                         'max_paths' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 20, 'default' => 5],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                     ],
@@ -417,7 +419,7 @@ final readonly class ToolCatalog
                         'symbol' => ['type' => 'string', 'minLength' => 1],
                         'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 4],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                     ],
@@ -435,7 +437,7 @@ final readonly class ToolCatalog
                     'properties' => [
                         ...self::commonReadProperties(),
                         'project_id' => ['type' => 'string', 'minLength' => 1],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 20],
                         'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50000, 'default' => 50000],
@@ -457,7 +459,7 @@ final readonly class ToolCatalog
                     'properties' => [
                         ...self::commonReadProperties(),
                         'project_id' => ['type' => 'string', 'minLength' => 1],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 20],
                         'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50000, 'default' => 50000],
@@ -532,7 +534,7 @@ final readonly class ToolCatalog
                         'max_commits' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 500],
                         'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 4],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                     ],
@@ -555,7 +557,7 @@ final readonly class ToolCatalog
                         'base_ref' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200, 'description' => 'Git ref to diff the working tree against. Requires working_tree: true.'],
                         'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 4],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                     ],
@@ -590,7 +592,7 @@ final readonly class ToolCatalog
                         'base_ref' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
                         'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 4],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                     ],
@@ -654,7 +656,7 @@ final readonly class ToolCatalog
                         'project_id' => ['type' => 'string', 'minLength' => 1],
                         'format' => ['type' => 'string', 'enum' => ['mermaid', 'plantuml'], 'default' => 'mermaid'],
                         'boundary' => ['type' => 'string', 'minLength' => 1],
-                        'edge_kinds' => ['type' => 'array', 'maxItems' => 24, 'items' => ['type' => 'string']],
+                        'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'direction' => ['type' => 'string', 'enum' => ['LR', 'TB'], 'default' => 'LR'],
                         'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 400, 'default' => 200],
@@ -747,6 +749,17 @@ final readonly class ToolCatalog
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => false],
             ],
         ];
+    }
+
+    /**
+     * The `edge_kinds` filter: as many distinct kinds as the dependency
+     * relationships there are, so a client can name every one of them.
+     *
+     * @return array<string, mixed>
+     */
+    private static function edgeKindsSchema(): array
+    {
+        return ['type' => 'array', 'maxItems' => count(AbstractArchitectureQueryService::IMPACT_EDGE_KINDS), 'items' => ['type' => 'string']];
     }
 
     /**
