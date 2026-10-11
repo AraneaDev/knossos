@@ -169,6 +169,14 @@ like any other module.
   can be read without running the config count: a string,
   `path.join|resolve(__dirname, …)`, or
   `fileURLToPath(new URL('./x', import.meta.url))`.
+- The module roots a webpack config lists in `resolve.modules`, or Vue CLI's
+  `chainWebpack` adds with `config.resolve.modules.add(…)`, resolve bare
+  imports such as `checkout/components/Search` under `src`, before
+  `node_modules` and unless a tsconfig maps `*` itself. A component extension in
+  `resolve.extensions` (`.vue`, `.svelte`) resolves extensionless imports of
+  that kind. A root is a directory name or `path.join|resolve(__dirname, …)`;
+  any other value is not run, and a `BUNDLER_CONFIG_UNREAD` warning names the
+  config and the key.
 - webpack's `require.context('./dir', recursive, /pattern/)` imports every
   module in the graph it matches. The match happens when the graph is assembled,
   so an incremental scan that re-reads only the loading file keeps every edge.
