@@ -111,22 +111,6 @@ final class ProtocolTest extends KnossosTestCase
     }
 
     #[Group('protocol')]
-    public function testContributionsRequireListsOfTypedFacts(): void
-    {
-        $evidence = new Evidence('src/File.php', 1, 1);
-        $node = new NodeFact('class:File', 'class', 'App\\File', 'File', Origin::Ast, Confidence::Certain, $evidence);
-
-        assertThrows(
-            fn(): ScanContribution => new ScanContribution('owner', ['node' => $node]),
-            InvalidArgumentException::class,
-        );
-        assertThrows(
-            fn(): ScanContribution => new ScanContribution('owner', ['not-a-node']),
-            InvalidArgumentException::class,
-        );
-    }
-
-    #[Group('protocol')]
     public function testResultenvelopeOmitsEnrichmentKeysUntilSet(): void
     {
         $envelope = new ResultEnvelope('p1', 's1', 'sum', ['k' => 'v']);

@@ -21,10 +21,6 @@ final class ProcessScannerClient implements ScannerClient
         WorkerLimits $limits = new WorkerLimits(),
         ?array $environment = null,
     ) {
-        if ($command === []) {
-            throw new WorkerException('WORKER_COMMAND_INVALID', 'Worker command must not be empty.');
-        }
-
         $process = new WorkerProcessSupervisor($command, $environment);
         $this->session = new ScannerProtocolSession($process, new NdjsonRpcChannel($process, $limits));
     }

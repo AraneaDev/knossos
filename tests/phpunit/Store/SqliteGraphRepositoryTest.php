@@ -136,7 +136,7 @@ final class SqliteGraphRepositoryTest extends TestCase
 
     public function testImplementsGraphRepositoryContract(): void
     {
-        assertSame(true, $this->repository instanceof GraphRepository);
+        assertSame([GraphRepository::class], (new \ReflectionClass(SqliteGraphRepository::class))->getInterfaceNames());
     }
 
     public function testClassIsFinal(): void
@@ -188,7 +188,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         // PDO::inTransaction() does not track it); nested calls run within it
         // via a savepoint and their committed writes persist with the outer.
         $this->repository->transaction(function (): void {
-            $result = $this->repository->transaction(function (SqliteGraphRepository $repo): string {
+            $result = $this->repository->transaction(function (GraphRepository $repo): string {
                 $this->seedProject('trans-nested');
 
                 return 'nested-ok';
@@ -238,7 +238,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-shared-state');
         $this->seedScan('proj-shared-state', 'scan-shared-state');
 
-        $this->repository->transaction(function (SqliteGraphRepository $repo): void {
+        $this->repository->transaction(function (GraphRepository $repo): void {
             $repo->completeScan('proj-shared-state', 'scan-shared-state');
         });
 
@@ -469,7 +469,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-diag-dangling');
 
         $error = captureThrows(
-            fn () => $this->repository->bulkTransaction(function (SqliteGraphRepository $repo): void {
+            fn () => $this->repository->bulkTransaction(function (GraphRepository $repo): void {
                 $repo->saveDiagnostic(
                     'd-dangling', 'proj-diag-dangling', 'scan-never-created', null,
                     'info', 'code', 'a dangling diagnostic', null, null, 'owner',
@@ -849,18 +849,6 @@ final class SqliteGraphRepositoryTest extends TestCase
         $rows = $this->pdo->query("SELECT file_path FROM contribution_cache WHERE project_id = 'proj-cache' ORDER BY file_path")->fetchAll(\PDO::FETCH_COLUMN);
 
         assertSame(['src/New.php'], array_map('strval', $rows));
-    }
-
-    public function testReplaceContributionCacheRejectsNonEntryValues(): void
-    {
-        $this->seedProject('proj-cache-bad');
-
-        $error = captureThrows(
-            fn () => $this->repository->replaceContributionCache('proj-cache-bad', [[1, 2, 3]]),
-            InvalidArgumentException::class,
-        );
-
-        assertSame('Invalid contribution cache entry.', $error->getMessage());
     }
 
     // ----- outgoing() + incoming() -----

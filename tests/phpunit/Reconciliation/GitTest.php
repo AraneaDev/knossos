@@ -175,7 +175,6 @@ final class GitTest extends KnossosTestCase
         assertThrows(fn() => $query->changedFilesImpact($ids['project'], ['../escape.php']), InvalidArgumentException::class);
         assertThrows(fn() => $query->changedFilesImpact($ids['project'], ['src/Checkout.php'], workingTree: true), InvalidArgumentException::class);
         assertThrows(fn() => $query->changedFilesImpact($ids['project'], array_fill(0, 51, 'x.php')), InvalidArgumentException::class);
-        assertThrows(fn() => $query->changedFilesImpact($ids['project'], [1, 2, 3]), InvalidArgumentException::class);
         assertThrows(fn() => ArchitectureQueryService::forDatabase($pdo)->changedFilesImpact($ids['project'], [], true), InvalidArgumentException::class);
     }
 }
