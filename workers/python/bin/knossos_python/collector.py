@@ -705,11 +705,30 @@ class PythonAstFactCollector(ast.NodeVisitor):
                     self.facts.add_edge("references", self.current(), named, node)
         self.generic_visit(node)
 
+    def submitted_task(self, name: str | None) -> str | None:
+        """The function a Celery submission queues: ``<task>.delay(...)`` or ``<task>.apply_async(...)``.
+
+        Only a receiver that resolves to a function of the project counts. A
+        signature (``<task>.s(...)``) queues nothing until something applies it.
+        """
+        if not name or "." not in name:
+            return None
+        receiver, method = name.rsplit(".", 1)
+        if method not in {"delay", "apply_async"}:
+            return None
+        target = self.resolve_name(receiver, "function")
+        return target if target is not None and target.startswith("py:function:") else None
+
     def visit_Call(self, node: ast.Call) -> None:
         self.called_attributes.add(id(node.func))
         name = dotted(node.func)
         target = None
-        if name:
+        submitted = self.submitted_task(name)
+        if submitted is not None:
+            # `deliver.delay(order_id)` queues `deliver` to run later: a
+            # dispatch, not a call, and `delay` is no function of the project.
+            self.facts.add_edge("dispatches", self.current(), submitted, node)
+        elif name:
             member = name.rsplit(".", 1)
             if len(member) == 2:
                 target = self.receiver_member(member[0], member[1])
