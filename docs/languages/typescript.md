@@ -34,6 +34,11 @@ No framework module is imported and no bundler or application is started.
   imported, by `node scripts/seed.js` or as a bundler's entry, and is
   `executable` too. Any `export`, or `module.exports` or `exports` named
   anywhere in the file, rules it out.
+- A `jsconfig.json` (or `jsconfig.*.json`) is read as a tsconfig is, with the
+  defaults TypeScript gives a jsconfig (JavaScript allowed): its `baseUrl` and
+  `paths` resolve a JavaScript project's bare imports, such as
+  `checkout/components/Search` under `"baseUrl": "src"`, extensionless Vue
+  components included.
 - A file no tsconfig includes is read under fallback options: the module
   resolution options of the config nearest to it, without its `strict`, `lib`
   or `types`. Which globals and type libraries the project loads is unknown
