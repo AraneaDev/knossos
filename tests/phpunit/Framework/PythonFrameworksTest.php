@@ -15,6 +15,37 @@ use RuntimeException;
 
 final class PythonFrameworksTest extends KnossosTestCase
 {
+    /**
+     * `task.delay()` and `task.apply_async()` schedule the task rather than run
+     * it: a `dispatches` edge, which flow follows, where a call to the task
+     * itself stays `calls`. A signature (`task.s()`) schedules nothing.
+     */
+    #[Group('python-frameworks')]
+    public function testCelerySubmissionsDispatchTheTaskTheyQueue(): void
+    {
+        $client = $this->pythonWorkerClient();
+        $contributions = iterator_to_array($client->scan([
+            'root' => self::repositoryRoot() . '/tests/Fixtures/python-celery',
+            'files' => ['app/__init__.py', 'app/billing.py', 'app/submissions.py'],
+        ]));
+        $client->shutdown();
+        $edges = array_merge(...array_map(fn(ScanContribution $item): array => $item->edges, $contributions));
+        $tuples = array_map(
+            fn(EdgeFact $edge): array => [$edge->kind, $edge->sourceReference, $edge->targetReference],
+            array_values(array_filter($edges, fn(EdgeFact $edge): bool => in_array($edge->kind, ['calls', 'dispatches'], true))),
+        );
+
+        assertArrayContains(['calls', 'py:function:app.submissions.place', 'py:function:app.submissions.deliver'], $tuples);
+        assertArrayContains(['dispatches', 'py:function:app.submissions.place', 'py:function:app.submissions.deliver'], $tuples);
+        assertArrayContains(['dispatches', 'py:function:app.submissions.nightly', 'py:function:app.billing.reconcile_orders'], $tuples);
+        $fromPrepare = array_values(array_filter($tuples, fn(array $tuple): bool => $tuple[1] === 'py:function:app.submissions.prepare'));
+        assertSame([], array_values(array_filter($fromPrepare, fn(array $tuple): bool => $tuple[0] === 'dispatches')));
+        // The submission method is no function of the project.
+        foreach ($tuples as [, , $target]) {
+            assertSame(false, (bool) preg_match('/\.(delay|apply_async)$/', $target), $target);
+        }
+    }
+
     #[Group('python-frameworks')]
     public function testPythonFrameworkEnrichmentExtractsFastapiDjangoDependenciesSettingsAndTasks(): void
     {
