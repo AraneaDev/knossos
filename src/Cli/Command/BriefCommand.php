@@ -10,7 +10,7 @@ use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\ProjectDatabaseLocator;
 use Knossos\Cli\ProjectReference;
-use Knossos\Query\{BoundaryCouplingsService, BranchDiffService, ComponentDetailService, DashboardService, FileContextService, FileDetailService, GraphSearchService, PaneQueries, RescanService, SessionChangesService, TurnBriefService};
+use Knossos\Query\{BoundaryCouplingsService, BoundaryMatrix, BranchDiffService, ComponentDetailService, DashboardService, FileContextService, FileDetailService, GraphSearchService, PaneQueries, RescanService, SessionChangesService, TurnBriefService};
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Store\SqliteConnection;
 use Throwable;
@@ -63,7 +63,7 @@ final class BriefCommand implements CliCommand
             'session-changes' => ['db', 'json', 'since'],
             'boundary-couplings' => ['db', 'json', 'from', 'to'],
             'churn', 'blast-radius', 'path-between', 'annotate' => ['db', 'json', ...PaneQueries::options($command)],
-            default => ['db', 'json', 'fan-in-threshold'],
+            default => ['db', 'json', 'fan-in-threshold', 'boundaries'],
         };
     }
 
@@ -166,7 +166,8 @@ final class BriefCommand implements CliCommand
         }
         if ($command === 'dashboard') {
             $threshold = $context->options->integer($options, 'fan-in-threshold', 20, 1, 100_000);
-            return (new DashboardService($pdo))->dashboard($path, $threshold);
+            $axes = $context->options->integer($options, 'boundaries', DashboardService::BOUNDARY_AXES, 1, BoundaryMatrix::AXES);
+            return (new DashboardService($pdo))->dashboard($path, $threshold, $axes);
         }
         $policiesFile = $context->options->single($options, 'policies');
         return (new TurnBriefService($pdo, $databasePath, $context->installationRoot()))->brief(

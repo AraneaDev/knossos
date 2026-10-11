@@ -27,6 +27,13 @@ use PDO;
  */
 final readonly class BoundaryMatrix
 {
+    /**
+     * The most boundaries the matrix holds. The pane draws a heat map of up
+     * to twelve and lists the rest; a hundred is 10,000 cells, a few tens of
+     * kilobytes in the dashboard.
+     */
+    public const AXES = 100;
+
     /** The boundary-to-boundary dependencies listed as flows, strongest first. */
     private const FLOWS = 8;
 
@@ -56,7 +63,7 @@ final readonly class BoundaryMatrix
      *
      * @return array{boundaries: list<string>, members: list<int>, labelled: int, boundaries_truncated: bool, cells: list<list<int>>, forbidden: list<array{int, int}>, flows: list<array{from: int, to: int, edges: int, forbidden: bool}>, edges: int, truncated: bool, truncation_reasons: list<string>}
      */
-    public function build(string $projectId, BoundaryLabels $labels, array $policies, int $limit = 12): array
+    public function build(string $projectId, BoundaryLabels $labels, array $policies, int $limit = self::AXES): array
     {
         $labelled = $labels->forProject($projectId);
         $members = array_count_values($labelled);
