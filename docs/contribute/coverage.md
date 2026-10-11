@@ -43,7 +43,7 @@ number that is enforced.
 
 | Runtime                  | Line floor | Branch floor | Also enforced                       |
 | ------------------------ | ---------: | -----------: | ----------------------------------- |
-| PHP core and PHP scanner |      93.5% |          n/a | nine component floors, see below    |
+| PHP core and PHP scanner |      96.6% |          n/a | nine component floors, see below    |
 | TypeScript/JavaScript    |        90% |        79.2% | 97% functions, 90% statements       |
 | Python scanner           |        90% |      tracked | branch data is in the total         |
 | Rust scanner             |      90.7% |          n/a | `cargo llvm-cov --fail-under-lines` |
@@ -59,15 +59,15 @@ neglected one:
 
 | component             |  floor |
 | --------------------- | -----: |
-| `bundle-git-watch`    |  88.5% |
-| `discovery-config`    | 95.63% |
-| `maintenance-runtime` | 94.72% |
-| `php-scanner`         | 93.62% |
-| `query-analysis`      | 94.09% |
+| `bundle-git-watch`    |  94.2% |
+| `discovery-config`    |  97.2% |
+| `maintenance-runtime` |  97.3% |
+| `php-scanner`         |  96.3% |
+| `query-analysis`      |  96.9% |
 | `reconciliation`      | 98.49% |
-| `scanner-runtime`     |    94% |
-| `storage`             | 96.47% |
-| `transport`           | 92.29% |
+| `scanner-runtime`     |  96.8% |
+| `storage`             |  98.0% |
+| `transport`           |  96.8% |
 
 Floors may only move upward unless a reviewed risk exception is documented with
 before/after evidence.
