@@ -25,6 +25,8 @@ use PHPUnit\Framework\Attributes\Group;
 
 final class EndpointRouteReconcileTest extends KnossosTestCase
 {
+    public const ORDERS_PATHS = ['src/app.ts', 'routes/web.php', 'app/OrdersController.php'];
+
     private PDO $pdo;
 
     private SqliteGraphRepository $repository;
@@ -88,25 +90,97 @@ final class EndpointRouteReconcileTest extends KnossosTestCase
         ], $rows);
     }
 
+    #[Group('reconciliation')]
+    public function testACallerIsJoinedToTheRouteThatServesItsUrl(): void
+    {
+        $this->reconcile(self::ordersContributions(), self::ORDERS_PATHS);
+
+        $rows = $this->pdo->query("SELECT origin, confidence, attributes_json FROM edges WHERE kind = 'resolves_to'")->fetchAll(PDO::FETCH_ASSOC);
+        assertSame(1, count($rows));
+        assertSame('derived', $rows[0]['origin']);
+        assertSame('probable', $rows[0]['confidence']);
+        $attributes = json_decode((string) $rows[0]['attributes_json'], true);
+        assertSame('parameter', $attributes['match']);
+    }
+
+    /**
+     * A TypeScript module calling GET /api/orders/42 and a Laravel route
+     * serving GET api/orders/{id}, which a controller method handles.
+     *
+     * @return list<ScanContribution>
+     */
+    public static function ordersContributions(): array
+    {
+        $call = new Evidence('src/app.ts', 7, 7);
+        $route = new Evidence('routes/web.php', 3, 3);
+        $handler = new Evidence('app/OrdersController.php', 5, 9);
+
+        return [
+            new ScanContribution(
+                'knossos.typescript:file:src/app.ts',
+                [
+                    new NodeFact('ts:module:src/app.ts', 'module', 'src/app.ts', 'src/app.ts', Origin::Ast, Confidence::Certain, $call),
+                    new NodeFact('ts:endpoint:GET /api/orders/42', 'endpoint', 'GET /api/orders/42', 'GET /api/orders/42', Origin::Ast, Confidence::Certain, $call, [
+                        'method' => 'GET', 'uri' => '/api/orders/42', 'template' => '/api/orders/42', 'prefix' => 'known',
+                    ]),
+                ],
+                [new EdgeFact('calls_endpoint', 'ts:module:src/app.ts', 'ts:endpoint:GET /api/orders/42', Origin::Ast, Confidence::Certain, $call)],
+                [],
+            ),
+            new ScanContribution(
+                'knossos.php:file:routes/web.php',
+                [new NodeFact('php:route:GET api/orders/{id}', 'route', 'GET api/orders/{id}', 'GET api/orders/{id}', Origin::FrameworkConvention, Confidence::Certain, $route, [
+                    'framework' => 'laravel', 'methods' => ['GET'], 'uri' => 'api/orders/{id}',
+                ])],
+                [new EdgeFact('routes_to', 'php:route:GET api/orders/{id}', 'php:method:App\\OrdersController::show', Origin::FrameworkConvention, Confidence::Certain, $route)],
+                [],
+            ),
+            new ScanContribution(
+                'knossos.php:file:app/OrdersController.php',
+                [new NodeFact('php:method:App\\OrdersController::show', 'method', 'App\\OrdersController::show', 'show', Origin::Ast, Confidence::Certain, $handler)],
+                [],
+                [],
+            ),
+        ];
+    }
+
     /**
      * @param list<ScanContribution> $contributions
      * @param list<string> $paths
      */
     private function reconcile(array $contributions, array $paths): void
     {
-        $scanners = [new ScannerManifest('knossos.typescript', '0.1.0', '1.0', '1.0', ['typescript'], ['ts'], [])];
-        (new GraphReconciler($this->repository))->reconcile(
-            new FullScanRequest('endpoint-route', 'Endpoint Route', $this->discovery($paths), $scanners, $contributions),
+        self::reconcileInto($this->repository, $contributions, $paths);
+    }
+
+    /**
+     * @param list<ScanContribution> $contributions
+     * @param list<string> $paths
+     */
+    public static function reconcileInto(SqliteGraphRepository $repository, array $contributions, array $paths): void
+    {
+        $scanners = [
+            new ScannerManifest('knossos.typescript', '0.1.0', '1.0', '1.0', ['typescript'], ['ts'], []),
+            new ScannerManifest('knossos.php', '0.1.0', '1.0', '1.0', ['php'], ['php'], []),
+        ];
+        (new GraphReconciler($repository))->reconcile(
+            new FullScanRequest('endpoint-route', 'Endpoint Route', self::discoveryOf($paths), $scanners, $contributions),
         );
     }
 
     /** @param list<string> $paths */
     private function discovery(array $paths): DiscoveryResult
     {
+        return self::discoveryOf($paths);
+    }
+
+    /** @param list<string> $paths */
+    private static function discoveryOf(array $paths): DiscoveryResult
+    {
         return new DiscoveryResult(
             '/workspace/endpoint-route',
             array_map(
-                static fn(string $path): DiscoveredFile => new DiscoveredFile($path, '/workspace/endpoint-route/' . $path, 'typescript', 30, 1_000, hash('sha256', $path)),
+                static fn(string $path): DiscoveredFile => new DiscoveredFile($path, '/workspace/endpoint-route/' . $path, str_ends_with($path, '.php') ? 'php' : 'typescript', 30, 1_000, hash('sha256', $path)),
                 $paths,
             ),
             [],

@@ -6,12 +6,34 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Store\MigrationRunner;
+use Knossos\Store\SqliteConnection;
+use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Reconciliation\EndpointRouteReconcileTest;
 use PHPUnit\Framework\Attributes\Group;
 
 final class FlowTest extends KnossosTestCase
 {
+    #[Group('flow')]
+    public function testAFlowFollowsACallerThroughTheRouteItsUrlResolvesTo(): void
+    {
+        $pdo = SqliteConnection::open(':memory:');
+        (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+        EndpointRouteReconcileTest::reconcileInto(
+            new SqliteGraphRepository($pdo),
+            EndpointRouteReconcileTest::ordersContributions(),
+            EndpointRouteReconcileTest::ORDERS_PATHS,
+        );
+        $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+
+        $flow = ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'src/app.ts', 'App\\OrdersController::show');
+
+        assertSame(1, count($flow->data['paths']));
+        assertSame(['calls_endpoint', 'resolves_to', 'routes_to'], array_column($flow->data['paths'][0]['hops'], 'kind'));
+    }
+
     #[Group('flow')]
     public function testFlowQueryRanksConfidenceBoundsCyclesAndAmbiguity(): void
     {

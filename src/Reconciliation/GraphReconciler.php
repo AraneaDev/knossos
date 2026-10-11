@@ -87,11 +87,24 @@ final readonly class GraphReconciler
         }
 
         [$nodeMap, $nodes, $nodeWarnings] = $this->collectNodes($projectId, $request->contributions);
+        $evidencePaths = array_map(static fn(array $node): string => $node['evidence_path'], $nodes);
         $this->attachNodeFiles($nodes, $fileIds);
         [$externalNodes, $edges, $edgeWarnings, $unconfirmedCalls] = $this->resolveEdges($projectId, $request->contributions, $nodeMap, $fileIds);
         self::recordUnconfirmedCalls($nodes, $unconfirmedCalls);
         foreach ($externalNodes as $id => $node) {
             $nodes[$id] = $node;
+        }
+        // attachNodeFiles drops the evidence path; the binder reads it from
+        // routes (a conventional prefix) and endpoints (their diagnostics).
+        $bindable = $nodes;
+        foreach ($bindable as $id => $node) {
+            if ($node['kind'] === 'route' || $node['kind'] === 'endpoint') {
+                $bindable[$id]['evidence_path'] = $evidencePaths[$id] ?? null;
+            }
+        }
+        $binding = (new EndpointRouteBinder($projectId))->bind($bindable, $edges);
+        foreach ($binding->edges as $id => $edge) {
+            $edges[$id] = $edge;
         }
 
         return new PreparedGraph(
@@ -104,7 +117,7 @@ final readonly class GraphReconciler
             $edges,
             $this->resolveClassifications($projectId, $request->classifications, $nodeMap, $fileIds),
             $this->resolveBoundaries($projectId, $request->boundaries, $nodeMap),
-            [...$nodeWarnings, ...$edgeWarnings],
+            [...$nodeWarnings, ...$edgeWarnings, ...$binding->warnings],
             count($externalNodes),
         );
     }

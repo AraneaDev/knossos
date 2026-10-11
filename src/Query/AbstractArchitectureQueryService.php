@@ -25,12 +25,14 @@ abstract readonly class AbstractArchitectureQueryService
     protected const FLOW_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs',
         'injects', 'binds', 'observes', 'depends_on', 'imports', 'uses_middleware',
+        'calls_endpoint', 'resolves_to',
     ];
     /** The relationships that count as one component depending on another: what a policy check and the boundary matrix walk. */
     public const IMPACT_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs', 'injects',
         'binds', 'observes', 'depends_on', 'imports', 'uses_middleware', 'references',
         'extends', 'implements', 'returns', 'exports', 're_exports', 'uses_trait',
+        'calls_endpoint', 'resolves_to',
     ];
     /**
      * The three confidence levels in order, so two can be compared. One
@@ -478,7 +480,7 @@ abstract readonly class AbstractArchitectureQueryService
     protected static function selectedEdgeKinds(array $requested, array $supported, string $relationship): array
     {
         $edgeKinds = $requested === [] ? $supported : array_values(array_unique($requested));
-        if (count($edgeKinds) > 20 || array_diff($edgeKinds, $supported) !== []) {
+        if (count($edgeKinds) > 24 || array_diff($edgeKinds, $supported) !== []) {
             throw new InvalidArgumentException(sprintf('edge_kinds contains an unsupported %s relationship.', $relationship));
         }
 
