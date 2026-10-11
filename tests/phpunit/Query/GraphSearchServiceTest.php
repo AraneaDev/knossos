@@ -104,6 +104,64 @@ final class GraphSearchServiceTest extends KnossosTestCase
         }
     }
 
+    /**
+     * The bounded read keeps the strongest matches, not the shortest names:
+     * 676 classes `GXrYe` hold `gre` only as scattered letters, never as a
+     * run, and are shorter than every name that starts with it.
+     */
+    #[Group('query')]
+    public function testANameStartingWithTheQueryIsKeptAheadOfShorterScatteredMatches(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $classes = '';
+            foreach (range('a', 'z') as $x) {
+                foreach (range('a', 'z') as $y) {
+                    $classes .= "final class G{$x}r{$y}e {}\n";
+                }
+            }
+            file_put_contents($root . '/src/Core/Many.php', "<?php\nnamespace App;\n" . $classes);
+            file_put_contents($root . '/src/Core/GreetingDispatcherService.php', "<?php\nnamespace App;\nfinal class GreetingDispatcherService {}\n");
+            (new \Knossos\Scan\ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+
+            $found = (new GraphSearchService($pdo))->search($root, 'gre');
+
+            $names = array_column($found['results'], 'canonical_name');
+            assertSame('App\\Greeter', $names[0]);
+            assertContains('App\\GreetingDispatcherService', $names);
+            assertSame(true, $found['truncated']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * Any kind a scanner or an enricher contributes is found by its name, a
+     * route as much as a class; only symbols from outside the project and
+     * the members too many to search (properties, variables) are left out.
+     */
+    #[Group('query')]
+    public function testRoutesAndContributedKindsAreFoundButExternalsAndPropertiesAreNot(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $owner = 'php:file:src/Checkout.php';
+        $node = function (string $kind, string $name) use ($repository, $ids, $owner): void {
+            $repository->saveNode(\Knossos\Store\StableId::symbol($ids['project'], 'php', $kind, $name), $ids['project'], 'php', $kind, $name, $name, null, $ids['file'], 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
+        };
+        $node('route', 'GET /checkout/confirm');
+        $node('celery_task', 'checkout.confirm_order');
+        $node('property', 'App\\Checkout::$confirmation');
+        $node('external_class', 'Confirmable');
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $names = array_column((new GraphSearchService($pdo))->search('/workspace/fixture-shop', 'confirm')['results'], 'canonical_name');
+
+        assertContains('GET /checkout/confirm', $names);
+        assertContains('checkout.confirm_order', $names);
+        assertNotContains('App\\Checkout::$confirmation', $names);
+        assertNotContains('Confirmable', $names);
+    }
+
     #[Group('query')]
     public function testANonAsciiQueryFindsANameBeyondTheCandidateBound(): void
     {
