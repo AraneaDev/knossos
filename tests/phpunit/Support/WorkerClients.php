@@ -17,8 +17,10 @@ trait WorkerClients
         );
     }
 
-    public function phpWorkerClient(): ProcessScannerClient
+    /** @param bool $assertions run the worker with PHP assertions on, as a default PHP install does */
+    public function phpWorkerClient(bool $assertions = false): ProcessScannerClient
     {
+        $options = $assertions ? ['-d', 'zend.assertions=1'] : [];
         $coverageDirectory = getenv('KNOSSOS_PHP_COVERAGE_DIR');
         $command = is_string($coverageDirectory) && $coverageDirectory !== ''
             // The worker runs under WorkerProcessSupervisor's env allowlist, which
@@ -29,11 +31,12 @@ trait WorkerClients
                 'env',
                 'KNOSSOS_PHP_COVERAGE_DIR=' . $coverageDirectory,
                 PHP_BINARY,
+                ...$options,
                 '-d', 'pcov.directory=' . self::repositoryRoot(),
                 '-d', 'auto_prepend_file=' . self::repositoryRoot() . '/tools/pcov-prepend.php',
                 self::repositoryRoot() . '/workers/php/bin/worker',
             ]
-            : [PHP_BINARY, self::repositoryRoot() . '/workers/php/bin/worker'];
+            : [PHP_BINARY, ...$options, self::repositoryRoot() . '/workers/php/bin/worker'];
         return new ProcessScannerClient(
             $command,
             new WorkerLimits(requestTimeoutMs: 10_000),

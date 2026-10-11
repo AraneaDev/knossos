@@ -55,12 +55,98 @@ final class SymfonyRouteNamesTest extends KnossosTestCase
         assertSame(['symfony', 'order_show'], [$routes[0]->attributes['framework'], $routes[0]->attributes['name']]);
     }
 
-    /** @return array{0: list<NodeFact>, 1: list<EdgeFact>} */
-    private function scan(): array
+    public function testAFirstClassCallableNextToAReferenceKeepsTheFactsOfTheFile(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-symfony-names-' . bin2hex(random_bytes(4));
-        mkdir($root . '/src/Controller', 0o777, true);
-        file_put_contents($root . '/src/Controller/OrderController.php', <<<'PHP'
+        [$nodes] = $this->scan(['src/Controller/ListController.php' => <<<'PHP'
+            <?php
+            namespace App\Controller;
+
+            use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+
+            final class ListController extends AbstractController
+            {
+                public function index(array $items)
+                {
+                    $format = array_map($this->format(...), $items);
+                    $link = $this->generateUrl(...);
+
+                    return [$format, $link, $this->generateUrl('list_show')];
+                }
+
+                private function format($item) { return $item; }
+            }
+            PHP], assertions: true);
+
+        assertSame(['list_show'], $this->routeNames($nodes));
+    }
+
+    public function testANameBuiltAtRuntimeNamesNoRoute(): void
+    {
+        [$nodes] = $this->scan(['src/Controller/DynamicController.php' => <<<'PHP'
+            <?php
+            namespace App\Controller;
+
+            use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+
+            final class DynamicController extends AbstractController
+            {
+                public function go(string $name)
+                {
+                    return [$this->generateUrl($name), $this->generateUrl('order_' . $name), $this->redirectToRoute("x_{$name}")];
+                }
+            }
+            PHP]);
+
+        assertSame([], $this->routeNames($nodes));
+    }
+
+    public function testANullableGeneratorPropertyIsRecognised(): void
+    {
+        [$nodes] = $this->scan(['src/Service/Links.php' => <<<'PHP'
+            <?php
+            namespace App\Service;
+
+            use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+
+            final class Links
+            {
+                private ?UrlGeneratorInterface $urls = null;
+
+                public function show(): string
+                {
+                    return $this->urls->generate('order_show');
+                }
+            }
+            PHP]);
+
+        assertSame(['order_show'], $this->routeNames($nodes));
+    }
+
+    /**
+     * @param list<NodeFact> $nodes
+     * @return list<string>
+     */
+    private function routeNames(array $nodes): array
+    {
+        $names = [];
+        foreach ($nodes as $node) {
+            if ($node->kind === 'endpoint') {
+                $names[] = $node->attributes['route_name'];
+            }
+        }
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * @param array<string, string>|null $files the tree to scan, or null for the default controller
+     * @return array{0: list<NodeFact>, 1: list<EdgeFact>}
+     */
+    private function scan(?array $files = null, bool $assertions = false): array
+    {
+        $files ??= [
+            'src/Controller/OrderController.php' => <<<'PHP'
             <?php
             namespace App\Controller;
 
@@ -86,12 +172,18 @@ final class SymfonyRouteNamesTest extends KnossosTestCase
                     $this->other->generate('not_a_route');
                 }
             }
-            PHP);
+            PHP,
+        ];
+        $root = sys_get_temp_dir() . '/knossos-stale-symfony-names-' . bin2hex(random_bytes(4));
+        foreach ($files as $path => $contents) {
+            @mkdir(dirname($root . '/' . $path), 0o777, true);
+            file_put_contents($root . '/' . $path, $contents);
+        }
         try {
-            $client = $this->phpWorkerClient();
+            $client = $this->phpWorkerClient($assertions);
             $contributions = iterator_to_array($client->scan([
                 'root' => $root,
-                'files' => ['src/Controller/OrderController.php'],
+                'files' => array_keys($files),
                 'frameworks' => ['symfony'],
             ]));
             $client->shutdown();

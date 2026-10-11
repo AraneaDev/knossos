@@ -12,14 +12,15 @@ use PhpParser\Node\Scalar\String_;
 
 /**
  * Records a reference to a route by its name: `route('orders.show')`,
- * `to_route(...)`, `redirect()->route(...)`, `URL::route(...)` and
- * `Redirect::route(...)`. Each is an endpoint the core joins to the route
+ * `to_route(...)`, `redirect()->route(...)`, `URL::route(...)`, `URL::signedRoute(...)`,
+ * `URL::temporarySignedRoute(...)` and `Redirect::route(...)`. Each is an endpoint the core joins to the route
  * of that name, so the controller a redirect lands on is reached. A name
  * built at runtime names nothing, and `routeIs()` only tests the current one.
  */
 final readonly class LaravelRouteNameFactCollector
 {
     private const FACADES = ['url', 'redirect'];
+    private const SIGNED = ['signedroute', 'temporarysignedroute'];
 
     public function __construct(
         private LaravelFactStore $facts,
@@ -58,11 +59,15 @@ final readonly class LaravelRouteNameFactCollector
     /** The literal name given to a facade route() call such as URL::route, if any. */
     private function facadeName(Expr\StaticCall $node): ?string
     {
-        return $node->class instanceof Name && $node->name instanceof Identifier
-            && strtolower($node->name->toString()) === 'route'
-            && in_array(strtolower($node->class->getLast()), self::FACADES, true)
-            ? self::literal($node)
-            : null;
+        if (!$node->class instanceof Name || !$node->name instanceof Identifier) {
+            return null;
+        }
+        $facade = strtolower($node->class->getLast());
+        $called = strtolower($node->name->toString());
+        $names = ($called === 'route' && in_array($facade, self::FACADES, true))
+            || ($facade === 'url' && in_array($called, self::SIGNED, true));
+
+        return $names ? self::literal($node) : null;
     }
 
     /** The literal name given to redirect()->route(), if any. */
@@ -78,6 +83,10 @@ final readonly class LaravelRouteNameFactCollector
     /** The first argument when it is a plain string literal. */
     private static function literal(Expr\FuncCall|Expr\StaticCall|Expr\MethodCall $node): ?string
     {
+        // A first-class callable such as `route(...)` has no arguments to read.
+        if ($node->isFirstClassCallable()) {
+            return null;
+        }
         $first = $node->getArgs()[0]->value ?? null;
 
         return $first instanceof String_ && $first->value !== '' ? $first->value : null;

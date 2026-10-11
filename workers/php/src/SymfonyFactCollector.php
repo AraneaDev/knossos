@@ -21,6 +21,8 @@ use PhpParser\NodeVisitorAbstract;
  */
 final class SymfonyFactCollector extends NodeVisitorAbstract
 {
+    use ResolvesDeclarationName;
+
     /** @var array<string, array<string, mixed>> */
     private array $nodes = [];
     /** @var array<string, array<string, mixed>> */
@@ -101,7 +103,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     /** Emit the class node plus the facts its attributes imply (routes, services, subscribers). */
     private function enterClass(Stmt\ClassLike $node): void
     {
-        $name = isset($node->namespacedName) ? $node->namespacedName->toString() : ($node->name?->toString() ?? '{anonymous}');
+        $name = $this->declarationName($node, $this->relativePath);
         $route = $this->attribute($node->attrGroups, 'Route');
         $prefix = $route === null ? '' : ($this->stringArgument($route, 'path', 0) ?? '');
         if ($route !== null && $prefix === '' && $this->argument($route, 'path', 0) !== null) {
@@ -236,8 +238,11 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     private function routeNameReference(Expr\MethodCall $call): void
     {
         $method = $this->methods === [] ? null : $this->methods[array_key_last($this->methods)];
+        if ($method === null || !$call->name instanceof Identifier || $call->isFirstClassCallable()) {
+            return;
+        }
         $first = $call->getArgs()[0]->value ?? null;
-        if ($method === null || !$call->name instanceof Identifier || !$first instanceof Scalar\String_ || $first->value === '') {
+        if (!$first instanceof Scalar\String_ || $first->value === '') {
             return;
         }
         $called = strtolower($call->name->toString());

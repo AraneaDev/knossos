@@ -32,6 +32,8 @@ final class LaravelTraversalContext
     {
         if ($node instanceof Stmt\ClassLike) {
             $this->classes[] = LaravelFactStore::classReference($this->declarationName($node, $this->relativePath));
+        } elseif ($node instanceof Stmt\Function_) {
+            $this->callables[] = 'php:function:' . ltrim($this->declarationName($node, $this->relativePath), '\\');
         } elseif ($node instanceof Stmt\ClassMethod) {
             $class = $this->currentClass();
             if ($class !== null) {
@@ -43,7 +45,7 @@ final class LaravelTraversalContext
     /** Pop the scope stacks on the way out, keeping them balanced with enterNode(). */
     public function leaveNode(Node $node): void
     {
-        if ($node instanceof Stmt\ClassMethod && $this->callables !== []) {
+        if (($node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_) && $this->callables !== []) {
             array_pop($this->callables);
         } elseif ($node instanceof Stmt\ClassLike) {
             array_pop($this->classes);
