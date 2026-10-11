@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Scan;
 
-use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertNotContains;
 use function PHPUnit\Framework\assertNotSame;
+use function PHPUnit\Framework\assertStringContainsString;
 
 /**
  * A webpack project declaring its module roots in `resolve.modules`, and a
@@ -46,39 +45,43 @@ final class WebpackModuleRootsScanTest extends KnossosTestCase
             @mkdir(dirname("{$root}/{$path}"), 0o777, true);
             file_put_contents("{$root}/{$path}", $contents);
         }
+        $root = (string) realpath($root);
         try {
-            $pdo = $this->freshTestDatabase();
-            $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
-            $targets = $this->importsOf($pdo, $projectId, 'src/main.js');
+            // Through the worker client, as the core drives it, so the worker's coverage is counted.
+            $client = $this->typescriptWorkerClient();
+            $contributions = iterator_to_array($client->scan([
+                'root' => $root,
+                'files' => ['src/main.js', 'src/checkout/Search.vue', 'lib/config/index.js', 'lib/helpers/format.js', 'vendor/strings/pad.js'],
+            ]), false);
+            $client->shutdown();
+            $targets = [];
+            $unread = [];
+            foreach ($contributions as $contribution) {
+                foreach ($contribution->edges as $edge) {
+                    if ($edge->kind === 'imports' && $edge->sourceReference === 'ts:module:src/main.js') {
+                        $targets[] = $edge->targetReference;
+                    }
+                }
+                foreach ($contribution->diagnostics as $diagnostic) {
+                    if ($diagnostic->code === 'BUNDLER_CONFIG_UNREAD') {
+                        $unread[] = $diagnostic->message;
+                    }
+                }
+            }
 
             // Before node_modules, and an extensionless component under it.
-            assertContains('src/checkout/Search.vue', $targets);
+            assertContains('ts:module:src/checkout/Search.vue', $targets);
             // After node_modules: only once no package answers.
-            assertContains('lib/helpers/format.js', $targets);
-            assertContains('vendor/strings/pad.js', $targets);
-            assertNotContains('lib/config/index.js', $targets);
-
-            $statement = $pdo->prepare("SELECT message FROM diagnostics WHERE project_id = ? AND code = 'BUNDLER_CONFIG_UNREAD'");
-            $statement->execute([$projectId]);
-            $messages = $statement->fetchAll(PDO::FETCH_COLUMN);
-            assertNotSame([], $messages);
-            foreach ($messages as $message) {
-                // The rule's own resolve and the spread extension say nothing.
-                assertNotSame(false, strpos((string) $message, 'webpack.config.js: resolve.modules could not be read'));
+            assertContains('ts:module:lib/helpers/format.js', $targets);
+            assertContains('ts:module:vendor/strings/pad.js', $targets);
+            assertNotContains('ts:module:lib/config/index.js', $targets);
+            // Only the root it cannot read; the rule's own resolve and the spread extension say nothing.
+            assertNotSame([], $unread);
+            foreach ($unread as $message) {
+                assertStringContainsString('webpack.config.js: resolve.modules could not be read', $message);
             }
         } finally {
             $this->removeTempTree($root);
         }
-    }
-
-    /** @return list<string> */
-    private function importsOf(PDO $pdo, string $projectId, string $source): array
-    {
-        $statement = $pdo->prepare(
-            "SELECT t.canonical_name FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id "
-            . "WHERE e.project_id = ? AND e.kind = 'imports' AND s.canonical_name = ?",
-        );
-        $statement->execute([$projectId, $source]);
-        return array_values(array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN)));
     }
 }
