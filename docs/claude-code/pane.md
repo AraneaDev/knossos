@@ -271,6 +271,13 @@ range, or `no change`. It appears from five retained snapshots on.
 references, which is wider than the dead-code tile, so the two differ by
 design.
 
+A snapshot with more than 200,000 rows in one table is not read whole, so only
+what a count says is kept of it: components, relationships and diagnostics.
+Its cycles, `gate unreferenced` and max degree are not counted, those rows are
+left out, and the card says so in a line of its own, with the table and its
+rows when it is the live graph. The card then shows even without five
+snapshots, so a large graph is never silently without one.
+
 **Cross-boundary flows**: the strongest dependencies from one boundary to
 another, `■ tests → ■ core` with a bar and the count. A pair a declared policy
 forbids has its bar in the error colour and says `× forbidden`. `o` on a flow
