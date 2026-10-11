@@ -233,6 +233,8 @@ const ALIAS_CONFIGS = [
  */
 function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
     const aliases = {};
+    const roots = [];
+    const extensions = [];
     for (const name of ALIAS_CONFIGS) {
         const config = path.join(directory, name);
         if (
@@ -242,13 +244,26 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
             continue;
         if (name.startsWith("svelte.")) aliases.$lib ??= "src/lib";
         const text = readRecorded(root, config, reads, maxFileBytes);
-        if (text !== undefined)
-            Object.assign(
-                aliases,
-                declaredAliases(text, name.startsWith("vite.")),
-            );
+        if (text === undefined) continue;
+        Object.assign(aliases, declaredAliases(text, name.startsWith("vite.")));
+        const resolve = declaredResolve(text);
+        roots.push(...resolve.modules);
+        extensions.push(...resolve.extensions);
     }
-    if (Object.keys(aliases).length === 0) return parsed;
+    const componentExtensions = [
+        ...new Set(
+            extensions.filter((extension) => componentDialect(`x${extension}`)),
+        ),
+    ];
+    const moduleRoots = [
+        ...new Set(
+            roots
+                .map((target) => normalize(path.resolve(directory, target)))
+                .filter((target) => allowedCompilerPath(root, target)),
+        ),
+    ];
+    if (Object.keys(aliases).length === 0 && moduleRoots.length === 0)
+        return { ...parsed, componentExtensions };
     const paths = { ...parsed.options.paths };
     for (const [name, target] of Object.entries(aliases)) {
         const absolute = normalize(path.resolve(directory, target));
@@ -259,7 +274,92 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
         paths[name] ??= [absolute];
         paths[`${name}/*`] ??= [`${absolute}/*`];
     }
-    return { ...parsed, options: { ...parsed.options, paths } };
+    // webpack looks a bare specifier up in each module root before
+    // node_modules; the compiler falls back to node_modules when no root
+    // holds it.
+    if (moduleRoots.length > 0)
+        paths["*"] ??= moduleRoots.map((target) => `${target}/*`);
+    return {
+        ...parsed,
+        options: { ...parsed.options, paths },
+        componentExtensions,
+    };
+}
+
+/**
+ * The module roots and extensions a webpack config's `resolve` declares,
+ * read without running it: `resolve: { modules: [...], extensions: [...] }`,
+ * or Vue CLI's `config.resolve.modules.add(...)` in `chainWebpack`. A root
+ * is a string (a directory name, read against the config's directory) or
+ * `path.join|resolve(__dirname, …)`; `node_modules` is webpack's own and is
+ * left out. `unread` names each key a value of which could not be read.
+ */
+function declaredResolve(text) {
+    const file = ts.createSourceFile(
+        "config.ts",
+        text,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS,
+    );
+    const found = { modules: [], extensions: [], unread: [] };
+    const add = (key, expression) => {
+        const value =
+            expression !== undefined && ts.isStringLiteralLike(expression)
+                ? expression.text
+                : key === "modules" && expression !== undefined
+                  ? aliasTarget(expression)
+                  : null;
+        if (value === null) {
+            if (!found.unread.includes(`resolve.${key}`))
+                found.unread.push(`resolve.${key}`);
+            return;
+        }
+        if (key === "modules" && value === "node_modules") return;
+        found[key].push(value);
+    };
+    // `config.resolve.modules`, or a call chained onto `….add(x)`.
+    const chainKey = (expression) => {
+        if (ts.isCallExpression(expression)) {
+            const callee = expression.expression;
+            return ts.isPropertyAccessExpression(callee) &&
+                ["add", "prepend"].includes(callee.name.text)
+                ? chainKey(callee.expression)
+                : null;
+        }
+        return ts.isPropertyAccessExpression(expression) &&
+            ["modules", "extensions"].includes(expression.name.text) &&
+            ts.isPropertyAccessExpression(expression.expression) &&
+            expression.expression.name.text === "resolve"
+            ? expression.name.text
+            : null;
+    };
+    const visit = (node) => {
+        if (
+            ts.isPropertyAssignment(node) &&
+            ["modules", "extensions"].includes(staticPropertyName(node.name)) &&
+            ts.isObjectLiteralExpression(node.parent) &&
+            ts.isPropertyAssignment(node.parent.parent) &&
+            staticPropertyName(node.parent.parent.name) === "resolve"
+        ) {
+            const key = staticPropertyName(node.name);
+            if (ts.isArrayLiteralExpression(node.initializer)) {
+                for (const element of node.initializer.elements)
+                    add(key, element);
+            } else add(key, undefined);
+        }
+        if (
+            ts.isCallExpression(node) &&
+            ts.isPropertyAccessExpression(node.expression) &&
+            ["add", "prepend"].includes(node.expression.name.text)
+        ) {
+            const key = chainKey(node.expression.expression);
+            if (key !== null) add(key, node.arguments[0]);
+        }
+        ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return found;
 }
 
 /**
@@ -463,7 +563,12 @@ export function createRestrictedProgram(
     host.resolveModuleNameLiterals = componentResolver(
         host,
         cache,
-        parsed.vueProject === true,
+        [
+            ...new Set([
+                ...(parsed.vueProject === true ? [".vue"] : []),
+                ...(parsed.componentExtensions ?? []),
+            ]),
+        ],
         parsed.outputSources ?? [],
         (file) => allowedCompilerPath(root, file),
     );
@@ -639,14 +744,15 @@ function sourceOfBuildOutput(result, outputs, host) {
  *
  * An import that names a component (`./Card.vue`) means the component even
  * when a real `Card.vue.ts` sits beside it, which the compiler would try
- * first. And in a Vue project (`vueProject`, from the manifests), a relative
- * or path-mapped specifier with no extension that resolves to nothing
- * resolves to `.vue`, as webpack and Vue CLI list it in
- * `resolve.extensions`; the retry probes paths that are then recorded, so it
- * stays off elsewhere. The resolution mode follows a project reference's own
+ * first. And a relative or path-mapped specifier with no extension that
+ * resolves to nothing is retried with each of `retried`: `.vue` in a Vue
+ * project (from the manifests), as webpack and Vue CLI list it in
+ * `resolve.extensions`, and any component extension a bundler config lists
+ * there itself. The retry probes paths that are then recorded, so it stays
+ * off elsewhere. The resolution mode follows a project reference's own
  * options, as the compiler's default loader does.
  */
-function componentResolver(host, cache, vueProject, outputs, readable) {
+function componentResolver(host, cache, retried, outputs, readable) {
     return (
         literals,
         containingFile,
@@ -681,18 +787,22 @@ function componentResolver(host, cache, vueProject, outputs, readable) {
                     : direct,
             );
             if (
-                !vueProject ||
+                retried.length === 0 ||
                 resolved.resolvedModule !== undefined ||
                 !literal.text.includes("/") ||
                 path.posix.extname(literal.text) !== ""
             )
                 return resolved;
-            const component = resolve(`${literal.text}.vue`);
-            // Both attempts probed, and a file at any of those paths would
-            // change the answer, so each carries the other's misses.
-            return component.resolvedModule !== undefined
-                ? withFailedLookups(component, resolved)
-                : withFailedLookups(resolved, component);
+            // Every attempt probed, and a file at any of those paths would
+            // change the answer, so the answer carries every miss.
+            let missed = resolved;
+            for (const extension of retried) {
+                const component = resolve(`${literal.text}${extension}`);
+                if (component.resolvedModule !== undefined)
+                    return withFailedLookups(component, missed);
+                missed = withFailedLookups(missed, component);
+            }
+            return missed;
         });
 }
 
