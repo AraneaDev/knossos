@@ -26,7 +26,7 @@ import { paneRows } from './__tests__/pane'
 import type { PaneInput, Row } from './layout'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
-import { gitLabel, shrinkRows, titleRow } from './layout'
+import { gitLabel, paneLayout, shrinkRows, titleRow } from './layout'
 import { chainGroups, cyclesInput } from './cycles'
 import { issueCount, issuesInput, issuesList, superscript } from './views'
 
@@ -340,11 +340,29 @@ describe('paneRows', () => {
   it('shows the key help on request', () => {
     const rows = paneRows(input({ showKeys: true }), 60)
     expect(textOf(rows)).toMatch(/1–8 +switch tabs \(or click one\)/)
-    expect(textOf(rows)).toMatch(/\n q +ask Claude about the marked row/)
+    expect(textOf(rows)).toMatch(/ q +ask Claude about the marked row/)
     // One key a line, the key in the accent; a long action wraps under its own column.
-    expect(row(rows, 'help-0')!.segments[1]).toMatchObject({ text: '1–8    ', color: 'suggestion' })
-    expect(rows.filter(r => r.key.startsWith('help-')).every(r => r.segments[1]!.text.length === 7)).toBe(true)
+    const keyOf = (r: Row) => r.segments.find(seg => seg.color === 'suggestion')
+    expect(keyOf(row(rows, 'help-0')!)).toMatchObject({ text: '1–8    ', color: 'suggestion' })
+    expect(rows.filter(r => r.key.includes('help-')).every(r => keyOf(r)?.text.length === 7)).toBe(true)
     expect(textOf(paneRows(input(), 60))).not.toContain('switch tabs')
+  })
+
+  it('draws the key help in place of the tab, under the header, however full the tab or short the pane', () => {
+    for (const height of [24, 40]) {
+      const { body, footer } = paneLayout(fullInput({ tab: 'hubs', showKeys: true }), 100, height)
+      const text = textOf(body)
+      // Its first key is on the first screen, and no tab card is drawn under it to push it away.
+      const first = body.findIndex(r => plainText(r).includes('switch tabs'))
+      expect(first, `${height}`).toBeGreaterThan(0)
+      expect(first, `${height}`).toBeLessThan(height - footer.length)
+      expect(text).not.toContain('Hubs and hotspots')
+      // The help says what closes it, and the marker walks nothing under it.
+      expect(textOf(footer)).toMatch(/h: hide keys/)
+      expect(textOf(footer)).toMatch(/x: close/)
+      expect(textOf(footer)).not.toMatch(/o: open/)
+    }
+    expect(listFor(fullInput({ tab: 'hubs', showKeys: true }))).toEqual([])
   })
 })
 

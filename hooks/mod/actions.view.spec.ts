@@ -168,6 +168,31 @@ describe('the plain view switches', () => {
         expect(port.view().showKeys).toBe(false)
     })
 
+    it('any other press closes the keys first, then does what it does', async () => {
+        // Through the pane's own press handler, as a click or a hotkey arrives.
+        const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+        const port = viewPort({ showKeys: true, tab: 'overview' })
+        handlersOf(port.io).press('tab:hubs')
+        await settle()
+        expect(port.view()).toMatchObject({ showKeys: false, tab: 'hubs' })
+        // The keys' own presses leave it to them, and an id no press answers changes nothing.
+        const kept = viewPort({ showKeys: false })
+        handlersOf(kept.io).press('keys')
+        await settle()
+        expect(kept.view().showKeys).toBe(true)
+        handlersOf(kept.io).press('no-such-press')
+        await settle()
+        expect(kept.view().showKeys).toBe(true)
+    })
+
+    it('keys-close hides the keys, and leaves them hidden when they were', async () => {
+        const port = viewPort({ showKeys: true })
+        await port.press('keys-close')
+        expect(port.view().showKeys).toBe(false)
+        await port.press('keys-close')
+        expect(port.view().showKeys).toBe(false)
+    })
+
     it('clear empties the filter and the degree, closing the field', async () => {
         const port = viewPort({ filter: 'Greet', filtering: true, degree: { from: 1, to: 4 }, selected: 3 })
         await port.press('clear')

@@ -52,7 +52,7 @@ export const longDashboard: Dashboard = {
   in_degree: { buckets: [{ from: 0, to: 0, components: 1_234_567 }, { from: 1, to: 99_999, components: 3 }, { from: 100_000, to: null, components: 1 }], truncated: true },
 }
 
-const VIEW: KnossosView = { inspect: null, isBandHidden: false, tab: 'overview', selected: 0, showKeys: true, filter: '', filtering: false, sort: 'in' }
+const VIEW: KnossosView = { inspect: null, isBandHidden: false, tab: 'overview', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }
 
 /** Every way a row could draw wider than laid out: past the pane, or a Button label that is not its segment's text. */
 function misfits(rows: Row[], columns: number): string[] {
@@ -86,6 +86,16 @@ describe('every row draws as laid out', () => {
             expect(misfits([...body, ...footer], columns), `${tab.id} ${columns}x${height} @${selected}`).toEqual([])
           }
         }
+      }
+    }
+  })
+
+  it('keeps the key list within the pane, and every Button to its text, at every width and height', () => {
+    for (const columns of [40, 60, 80, 100, 130, 140, 200]) {
+      for (const height of [24, 40, 60]) {
+        const input = paneInput(longDashboard, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, { ...VIEW, showKeys: true }, 0, true)
+        const { body, footer } = paneLayout(input, columns, height)
+        expect(misfits([...body, ...footer], columns), `${columns}x${height}`).toEqual([])
       }
     }
   })

@@ -273,10 +273,10 @@ describe('the key model', () => {
 
   it('lists every key in the help, t and d among them', () => {
     const text = textOf(paneRows({ ...pane({ session }), showKeys: true }, 90))
-    expect(text).toMatch(/\n {2}o +open the marked row: a component or a file shows what depends on/)
-    expect(text).toMatch(/\n {2}e +open the marked row's file in your editor\n/)
-    expect(text).toMatch(/\n {2}t +on Overview and Changes: copy the command for the tests/)
-    expect(text).toMatch(/\n {2}d +list the files drifted since the snapshot/)
+    expect(text).toMatch(/\n[│ ]+o +open the marked row: a component or a file shows what depends on/)
+    expect(text).toMatch(/\n[│ ]+e +open the marked row's file in your editor *│?\n/)
+    expect(text).toMatch(/\n[│ ]+t +on Overview and Changes: copy the command for the tests/)
+    expect(text).toMatch(/\n[│ ]+d +list the files drifted since the snapshot/)
   })
 })
 
