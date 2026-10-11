@@ -44,9 +44,9 @@ number that is enforced.
 | Runtime                  | Line floor | Branch floor | Also enforced                       |
 | ------------------------ | ---------: | -----------: | ----------------------------------- |
 | PHP core and PHP scanner |      96.6% |          n/a | nine component floors, see below    |
-| TypeScript/JavaScript    |        90% |        79.2% | 97% functions, 90% statements       |
-| Python scanner           |        90% |      tracked | branch data is in the total         |
-| Rust scanner             |      90.7% |          n/a | `cargo llvm-cov --fail-under-lines` |
+| TypeScript/JavaScript    |        96% |        88.8% | 97.3% functions, 96% statements     |
+| Python scanner           |      96.4% |      tracked | branch data is in the total         |
+| Rust scanner             |      93.2% |          n/a | `cargo llvm-cov --fail-under-lines` |
 
 PHP uses PCOV, which records executable-line coverage but not branch coverage.
 The JavaScript V8 report therefore carries the explicit ratcheted branch floor,

@@ -14,16 +14,16 @@
     }
   },
   "typescript": {
-    "lines": 90,
-    "branches": 79.2,
-    "functions": 97,
-    "statements": 90
+    "lines": 96.0,
+    "branches": 88.8,
+    "functions": 97.3,
+    "statements": 96.0
   },
   "python": {
-    "lines": 90
+    "lines": 96.4
   },
   "rust": {
-    "lines": 90.7
+    "lines": 93.2
   },
   "mod": {
     "lines": 96.9,
