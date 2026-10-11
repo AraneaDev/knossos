@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cells, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
+import { cells, editorCommand, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
 
 const PATH = 'src/Query/Drift/GitDriftOracle.php'
 
@@ -60,5 +60,30 @@ describe('display width', () => {
       expect(cells(drawn)).toBeLessThanOrEqual(width)
       expect(drawn.includes('\u200d') ? drawn.includes('👩\u200d💻') : true).toBe(true)
     }
+  })
+})
+
+describe('the editor command', () => {
+  const at = { path: '/work/app/src/My Router.php', line: 42 }
+  it('fills the file and line into the default, one argument each, spaces in the path intact', () => {
+    expect(editorCommand(undefined, at)).toEqual(['code', '-g', '/work/app/src/My Router.php:42'])
+    expect(editorCommand('', at)).toEqual(['code', '-g', '/work/app/src/My Router.php:42'])
+    expect(editorCommand('   ', at)).toEqual(['code', '-g', '/work/app/src/My Router.php:42'])
+  })
+
+  it('fills a template of its own, a quoted program whole, a place without a line as the path alone', () => {
+    expect(editorCommand('idea --line {line} {file}', at)).toEqual(['idea', '--line', '42', '/work/app/src/My Router.php'])
+    expect(editorCommand('"/opt/Sublime Text/subl" {file}:{line}', at)).toEqual(['/opt/Sublime Text/subl', '/work/app/src/My Router.php:42'])
+    expect(editorCommand('zed {file}:{line}', { path: '/a.ts', line: null })).toEqual(['zed', '/a.ts'])
+    expect(editorCommand('idea --line {line} {file}', { path: '/a.ts', line: null })).toEqual(['idea', '--line', '1', '/a.ts'])
+  })
+
+  it('puts the place last when the template names no file', () => {
+    expect(editorCommand('cursor -g', at)).toEqual(['cursor', '-g', '/work/app/src/My Router.php:42'])
+    expect(editorCommand('cursor -g', { path: '/a.ts', line: null })).toEqual(['cursor', '-g', '/a.ts'])
+  })
+
+  it('falls back to the default for a value that is not a usable string', () => {
+    for (const odd of [42, null, ['code'], '"unclosed {file}', '{file}']) expect(editorCommand(odd, at)[0], JSON.stringify(odd)).toBe('code')
   })
 })

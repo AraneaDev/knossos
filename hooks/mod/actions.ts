@@ -7,6 +7,7 @@ import type { AllowState, DiffFold, Inspected, KnossosView, NoteState, PaneTab, 
 import { diffPage, diffView } from '../lib/diff'
 import { parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
 import { askPrompt, editTarget, locOf, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
+import { editorCommand } from '../lib/rows'
 import type { Loc } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { request, requestDetail, showComponent } from './loaders'
@@ -24,12 +25,8 @@ const ALLOW_TIMEOUT_MS = 20_000
 /** How long the editor's command may take to hand a file to the editor. */
 const EDITOR_TIMEOUT_MS = 10_000
 
-/**
- * The command that opens `path:line` in the person's editor: VS Code's
- * `code -g`, which Cursor and the other forks also answer to. A terminal
- * editor (`$EDITOR`) needs a terminal of its own, which a press cannot give.
- */
-const EDITOR = ['code', '-g'] as const
+/** Where the person sets the editor command: what the installer itself tells them to run. */
+const EDITOR_SETTING = '/plugin configure knossos@knossos'
 
 /** How long the finder waits after a keystroke before it asks: a word typed fast is one search. */
 const SEARCH_DEBOUNCE_MS = 150
@@ -77,15 +74,18 @@ async function openRow(io: Port, index?: number): Promise<void> {
  */
 async function openLocation(io: Port, loc: Loc, surface?: RenderSurface): Promise<void> {
   const target = locText(loc)
-  const opened = await io.process
-    .run([...EDITOR, target], { timeoutMs: EDITOR_TIMEOUT_MS })
-    .then(
-      (r: ProcessRunResult) => r.exitCode === 0,
-      () => false,
-    )
-  if (opened) return say(io, '✓ opened in editor', 'ok')
+  // The plugin's `editor` setting, VS Code's `code -g` by default. A terminal editor
+  // (`$EDITOR`) needs a terminal of its own, which a press cannot give, so it is not asked.
+  const command = editorCommand(mod.editor, loc)
+  const failed = await io.process.run(command, { timeoutMs: EDITOR_TIMEOUT_MS }).then(
+    (r: ProcessRunResult) => (r.exitCode === 0 ? null : `exited ${r.exitCode}`),
+    () => 'did not start',
+  )
+  if (failed === null) return say(io, '✓ opened in editor', 'ok')
   const copied = await io.ui.copy({ text: target, ...(surface === undefined ? {} : { surface }) })
-  await say(io, copied.isCopied ? '✗ no editor · path copied' : '✗ no editor', 'alert')
+  const program = command[0]!.split('/').pop()!
+  await say(io, `✗ ${program} ${failed}${copied.isCopied ? ' · path copied' : ''}`, 'alert')
+  io.ui.toast(`knossos ran "${command.join(' ')}" to open the file. Set another editor command with ${EDITOR_SETTING}.`)
 }
 
 /** A press on a `file:` link the pane drew: opens its place. */

@@ -3344,8 +3344,10 @@ describe('knossos mod', () => {
           expect(await said(ui)).toBe('✓ opened in editor')
         } else {
           expect(w.copies.at(-1)).toEqual({ text: '/repo/src/Http/Router.php:40', surface })
-          expect(await said(ui)).toBe('✗ no editor · path copied')
-          expect((await ui.findAll({ type: 'Text', text: '✗ no editor · path copied' })).map(t => t.props.color)).toContain('error')
+          // The footer says how the command failed; a toast names it and where to set another.
+          expect(await said(ui)).toBe('✗ code did not start · path copied')
+          expect((await ui.findAll({ type: 'Text', text: '✗ code did not start · path copied' })).map(t => t.props.color)).toContain('error')
+          expect(String(w.toasts.at(-1))).toContain('/plugin configure knossos@knossos')
         }
         // e opens the marked row's place: the first violation.
         await ui.press({ key: 'edit' })
