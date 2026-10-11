@@ -192,7 +192,7 @@ final readonly class RefreshPolicy
         $total = max(0.0, (float) $row['duration_ms']);
         $recent = $this->pdo->prepare(
             'SELECT MIN(duration_ms) FROM (SELECT duration_ms FROM scans WHERE project_id = :id AND mode = :mode AND status = :status ' .
-            'AND duration_ms IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT :sample)',
+            'AND duration_ms IS NOT NULL ORDER BY started_at DESC, rowid DESC LIMIT :sample)',
         );
         $recent->bindValue(':id', $projectId);
         $recent->bindValue(':mode', 'incremental');

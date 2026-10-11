@@ -45,7 +45,8 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
             '(SELECT COUNT(*) FROM diagnostics d WHERE d.project_id = p.id) AS diagnostic_count ' .
             'FROM projects p LEFT JOIN scans active ON active.id = p.active_scan_id ' .
             'LEFT JOIN scans latest ON latest.id = (SELECT s.id FROM scans s WHERE s.project_id = p.id ' .
-            'ORDER BY s.started_at DESC, s.id DESC LIMIT 1) ' .
+            // Within one second, the order the scans were made in: their ids are hashes.
+            'ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1) ' .
             'ORDER BY p.updated_at DESC, p.id ASC LIMIT :limit OFFSET :offset',
         );
         $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
