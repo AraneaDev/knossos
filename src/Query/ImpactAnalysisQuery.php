@@ -117,7 +117,14 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
             if ($distance >= $maxDepth) {
                 continue;
             }
-            foreach ($this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgesTruncated) as $edge) {
+            // A call through an interface or a parent goes to the supertype's method, so what calls that may
+            // run this one: its edges count as this node's, the supertype method itself never listed.
+            $edges = $this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgesTruncated);
+            foreach (SupertypeMethods::of($this->pdo, $projectId, [$current['id']])[$current['id']] ?? [] as $supertype) {
+                $seen[$supertype] = true;
+                array_push($edges, ...$this->impactEdges($projectId, $supertype, $edgeKinds, $minimumRank, $edgesTruncated));
+            }
+            foreach ($edges as $edge) {
                 $edgeConfidence = self::CONFIDENCE_RANK[$edge['confidence']];
                 if (isset($seen[$edge['source_id']])) {
                     // Already discovered: if this equal-distance alternate path

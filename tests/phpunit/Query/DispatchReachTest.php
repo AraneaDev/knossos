@@ -75,6 +75,26 @@ final class DispatchReachTest extends KnossosTestCase
         }
     }
 
+    #[Group('query')]
+    public function testImpactAnalysisReachesTheCallerThroughTheInterface(): void
+    {
+        [$pdo, $projectId, $root] = $this->dispatching();
+        try {
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $fromRead = $queries->impactAnalysis($projectId, 'App\\Fancy::read')->data['dependants'];
+            $byName = array_column(array_map(static fn(array $d): array => ['name' => $d['node']['canonical_name'], 'd' => $d], $fromRead), 'd', 'name');
+            assertSame(1, $byName['App\\Uses::run']['distance'] ?? null);
+            // The hop names the edge it went by: the call into the interface's method.
+            assertSame(self::id($pdo, $projectId, 'App\\Reads::read'), $byName['App\\Uses::run']['via']['target_id']);
+            assertNotContains('App\\Reads::read', array_keys($byName));
+            $fromHelper = $queries->impactAnalysis($projectId, 'App\\Helper::shine')->data['dependants'];
+            $distances = array_column(array_map(static fn(array $d): array => ['name' => $d['node']['canonical_name'], 'distance' => $d['distance']], $fromHelper), 'distance', 'name');
+            assertSame(2, $distances['App\\Uses::run'] ?? null);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /**
      * Two implementations of one interface method, met at different hops:
      * `Fancy::read` uses `Helper` at once, `Plain::read` through `Shade`.
