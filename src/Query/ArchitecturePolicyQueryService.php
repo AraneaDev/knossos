@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\SharedNodeKinds;
 use Throwable;
 
 /**
@@ -294,7 +295,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
             ($sourceFiles === [] ? '' : sprintf(
                 'AND source.file_id IN (SELECT id FROM files WHERE project_id = ? AND relative_path IN (%s)) ',
                 $placeholders($sourceFiles),
-            )) .
+            ) . 'AND ' . SharedNodeKinds::ownedByFileSql('source.kind') . ' ') .
             // One JSON parameter however many ids: a list of 2,000 bound twice
             // would pass SQLite's 999-variable floor.
             ($touchingIds === [] ? '' : 'AND (e.source_id IN (SELECT value FROM json_each(?)) OR e.target_id IN (SELECT value FROM json_each(?))) ') .

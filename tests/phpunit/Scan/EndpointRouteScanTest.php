@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Scan;
 
+use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\FileFanInQuery;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -87,6 +89,30 @@ final class EndpointRouteScanTest extends KnossosTestCase
             assertSame(1, count($rows));
             assertSame('certain', $rows[0]['confidence']);
             assertSame('name', json_decode($rows[0]['attributes_json'], true)['match']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testTwoCallersOfOneUrlDoNotDependOnEachOther(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanFiles([
+            'package.json' => '{"name":"x","dependencies":{}}',
+            'src/a.ts' => "export function loadA() { return fetch('/api/orders'); }\n",
+            'src/b.ts' => "export function loadB() { return fetch('/api/orders'); }\n",
+        ]);
+        try {
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $impact = $queries->changedFilesImpact($projectId, ['src/a.ts']);
+            $reached = array_map(
+                static fn(array $row): string => (string) $row['node']['canonical_name'],
+                $impact->data['impacted_components'],
+            );
+            assertSame([], array_values(array_filter($reached, static fn(string $name): bool => str_contains($name, 'b.ts'))), implode(', ', $reached));
+
+            $fanIn = (new FileFanInQuery($pdo))->forPaths($projectId, ['src/a.ts', 'src/b.ts']);
+            assertSame(0, $fanIn['src/a.ts']['dependent_files']);
+            assertSame(0, $fanIn['src/b.ts']['dependent_files']);
         } finally {
             $this->removeTempTree($root);
         }

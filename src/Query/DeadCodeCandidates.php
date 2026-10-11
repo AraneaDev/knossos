@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
@@ -291,7 +292,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
     {
         $rows = [];
         $sql = 'SELECT n.id, n.language, n.kind, n.canonical_name, n.display_name, n.origin, n.confidence, n.attributes_json, '
-            . 'n.start_line, n.end_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.id IN (%s)';
+            . 'n.start_line, n.end_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' WHERE n.id IN (%s)';
         foreach (ChunkedInQuery::rows($this->pdo, $sql, array_values(array_unique($ids)), size: self::CHUNK) as $row) {
             $rows[(string) $row['id']] = $row;
         }

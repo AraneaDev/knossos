@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
@@ -20,7 +21,7 @@ use PDO;
  *
  * `dependents` counts the other files with a component that depends on one
  * of this file's, over the same relationships the fan-in map counts and
- * leaving out the same `external_*` stand-ins ({@see FileFanInQuery}), names
+ * leaving out the same stand-ins for what no one file owns ({@see FileFanInQuery}), names
  * the boundaries they sit in, and lists the most connected few with how many
  * relationships run from each and its own boundary label. `components` counts
  * what the file declares (never the module node that stands for the file
@@ -125,7 +126,7 @@ final readonly class FileDetailService
               JOIN nodes tn ON tn.id = e.target_id
               JOIN nodes sn ON sn.id = e.source_id
               JOIN files ff ON ff.id = {$far}.file_id
-             WHERE {$near}.file_id = ? AND ff.id <> {$near}.file_id AND e.kind IN ({$this->kinds()}) AND tn.kind NOT LIKE 'external\_%' ESCAPE '\'
+             WHERE {$near}.file_id = ? AND ff.id <> {$near}.file_id AND e.kind IN ({$this->kinds()}) AND {$this->owned('tn')} AND {$this->owned('sn')}
              GROUP BY ff.id
              ORDER BY edges DESC, path ASC
              LIMIT ?
@@ -145,12 +146,18 @@ final readonly class FileDetailService
               FROM edges e
               JOIN nodes tn ON tn.id = e.target_id
               JOIN nodes sn ON sn.id = e.source_id
-             WHERE sn.file_id = ? AND tn.file_id IS NOT NULL AND tn.file_id <> sn.file_id AND e.kind IN ({$this->kinds()}) AND tn.kind NOT LIKE 'external\_%' ESCAPE '\'
+             WHERE sn.file_id = ? AND tn.file_id IS NOT NULL AND tn.file_id <> sn.file_id AND e.kind IN ({$this->kinds()}) AND {$this->owned('tn')} AND {$this->owned('sn')}
             SQL);
         $this->bindKinds($statement, $fileId);
         $statement->execute();
 
         return (int) $statement->fetchColumn();
+    }
+
+    /** The condition that a node's file stands for its owner; see {@see SharedNodeKinds}. */
+    private function owned(string $alias): string
+    {
+        return SharedNodeKinds::ownedByFileSql($alias . '.kind');
     }
 
     /** One placeholder per impact relationship kind, for an `IN (...)`. */
@@ -182,10 +189,10 @@ final readonly class FileDetailService
                    (SELECT COUNT(DISTINCT sn.id)
                       FROM edges e
                       JOIN nodes sn ON sn.id = e.source_id
-                     WHERE e.target_id = n.id AND sn.file_id IS NOT NULL AND sn.file_id <> n.file_id
+                     WHERE e.target_id = n.id AND sn.file_id IS NOT NULL AND sn.file_id <> n.file_id AND {$this->owned('sn')}
                        AND e.kind IN ($kinds)) AS used_by
               FROM nodes n
-             WHERE n.file_id = ? AND n.kind <> 'module' AND n.kind NOT LIKE 'external\_%' ESCAPE '\'
+             WHERE n.file_id = ? AND n.kind <> 'module' AND {$this->owned('n')}
              ORDER BY used_by DESC, n.start_line IS NULL, n.start_line, n.canonical_name
              LIMIT ?
             SQL);
@@ -209,7 +216,7 @@ final readonly class FileDetailService
     /** How many components the file declares. */
     private function componentCount(string $fileId): int
     {
-        $statement = $this->pdo->prepare("SELECT COUNT(*) FROM nodes WHERE file_id = :file AND kind <> 'module' AND kind NOT LIKE 'external\\_%' ESCAPE '\\'");
+        $statement = $this->pdo->prepare("SELECT COUNT(*) FROM nodes WHERE file_id = :file AND kind <> 'module' AND " . SharedNodeKinds::ownedByFileSql('kind'));
         $statement->execute(['file' => $fileId]);
 
         return (int) $statement->fetchColumn();

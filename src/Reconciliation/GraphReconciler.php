@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Store\GraphRepository;
+use Knossos\Store\SharedNodeKinds;
 use Knossos\Store\StableId;
 
 /**
@@ -367,7 +368,7 @@ final readonly class GraphReconciler
                     // re-declaration there is not suspicious. For kinds that are suspicious, warn
                     // once per stable id rather than once per re-declaring file.
                     $existingPath = $nodes[$id]['evidence_path'];
-                    $sharedByDesign = $node->kind === 'package' || $node->kind === 'endpoint' || str_starts_with($node->kind, 'external_');
+                    $sharedByDesign = SharedNodeKinds::isSharedByDesign($node->kind);
                     if ($existingPath !== $node->evidence->relativePath && !$sharedByDesign && !isset($warnedIds[$id])) {
                         $warnedIds[$id] = true;
                         $warnings[] = [

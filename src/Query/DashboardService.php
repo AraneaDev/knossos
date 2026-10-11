@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use Knossos\Query\Drift\DriftCounts;
 use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
@@ -229,8 +230,8 @@ final readonly class DashboardService
     /**
      * Where each component is declared, by id: its file relative to the
      * project root and its first line. A stand-in for something outside the
-     * project (`external_*`) is filed under the first file that names it,
-     * which is not where it lives, so it has no place.
+     * project (`external_*`) and a URL (`endpoint`) are filed under the first
+     * file that names them, which is not where they live, so they have no place.
      *
      * @param list<array<string, mixed>> $components
      * @return array<string, array{path: string, line: int|null}>
@@ -243,7 +244,7 @@ final readonly class DashboardService
         }
         $statement = $this->pdo->prepare(
             'SELECT n.id, f.relative_path, n.start_line FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            "WHERE n.kind NOT LIKE 'external%' AND n.id IN (" . implode(',', array_fill(0, count($ids), '?')) . ')',
+            'WHERE ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' AND n.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')',
         );
         $statement->execute($ids);
         $places = [];
