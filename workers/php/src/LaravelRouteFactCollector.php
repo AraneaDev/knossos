@@ -206,6 +206,7 @@ final class LaravelRouteFactCollector
         $id = 'php:route:' . $canonical;
         $middleware = array_values(array_unique([...$group['middleware'], ...$modifiers['middleware']]));
         $this->facts->addNode($id, 'route', $canonical, implode('|', $methods) . ' ' . $uri, $evidence, [
+            'framework' => 'laravel',
             'methods' => $methods,
             'uri' => $uri,
             'name' => $group['name'] . $modifiers['name'],
