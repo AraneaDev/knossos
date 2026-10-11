@@ -174,6 +174,8 @@ final readonly class BlastRadiusService
         $frontier = [$target];
         $seen = [$target => true];
         $truncated = false;
+        /** @var array<string, list<string>> $callersOf what was read calling each supertype method passed through */
+        $callersOf = [];
         // The last ring's components, and whether what depends on them was read.
         $edge = [];
         $readPast = false;
@@ -182,8 +184,24 @@ final readonly class BlastRadiusService
             if ($distance === self::DEPTH + 1) {
                 $edge = $frontier;
             }
+            // A call through an interface or a parent goes to the supertype's method: read what calls that
+            // too, and count each such edge as one into the method that fulfils it, never listing the supertype's.
+            // A supertype method read at an earlier hop is not read again: its callers are recorded for this method too.
+            $standsFor = [];
+            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $method => $supertypes) {
+                foreach ($supertypes as $supertype) {
+                    if (isset($callersOf[$supertype])) {
+                        foreach ($callersOf[$supertype] as $caller) {
+                            $out[$caller][] = $method;
+                        }
+                    } elseif (!isset($seen[$supertype])) {
+                        // Not marked seen: one found later as a dependant in its own right still enters the rings.
+                        $standsFor[$supertype][] = $method;
+                    }
+                }
+            }
             $next = [];
-            foreach (array_chunk($frontier, 400) as $chunk) {
+            foreach (array_chunk([...$frontier, ...array_keys($standsFor)], 400) as $chunk) {
                 if (hrtime(true) > $deadline) {
                     $truncated = $truncated || !$past;
                     break 2;
@@ -197,8 +215,14 @@ final readonly class BlastRadiusService
                     if ($source === $target) {
                         continue;
                     }
-                    if ($to !== $target) {
-                        $out[$source][] = $to;
+                    if (isset($standsFor[$to])) {
+                        $callersOf[$to][] = $source;
+                    }
+                    // Into the methods a passed-through supertype stands for, and into itself when it is a dependant too.
+                    foreach (isset($standsFor[$to]) ? [...$standsFor[$to], ...(isset($hop[$to]) ? [$to] : [])] : [$to] as $into) {
+                        if ($into !== $target) {
+                            $out[$source][] = $into;
+                        }
                     }
                     if (isset($seen[$source])) {
                         continue;
@@ -217,6 +241,23 @@ final readonly class BlastRadiusService
             }
             $readPast = $readPast || $past;
             $frontier = $next;
+        }
+        // A supertype method found as a dependant in its own right was walked as itself, not passed through:
+        // what calls it may run each method found that fulfils it, so those callers count for that method too.
+        $calling = [];
+        foreach ($out as $source => $targets) {
+            foreach ($targets as $into) {
+                $calling[$into][] = (string) $source;
+            }
+        }
+        foreach (SupertypeMethods::of($this->pdo, $projectId, array_map('strval', array_keys($hop))) as $method => $supertypes) {
+            foreach ($supertypes as $supertype) {
+                if (isset($hop[$supertype])) {
+                    foreach ($calling[$supertype] ?? [] as $caller) {
+                        $out[$caller][] = $method;
+                    }
+                }
+            }
         }
         // Past the last ring there may be more the walk did not read: an edge left unread is a cut.
         $truncated = $truncated || (!$readPast && $edge !== [] && $this->hasDependents($projectId, $edge, $kinds));

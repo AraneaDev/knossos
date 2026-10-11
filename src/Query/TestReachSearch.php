@@ -73,10 +73,24 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         }
         $this->markTests($projectId, $frontier, 0, $tests);
         $examined = 0;
+        // Supertype methods already read through: apart from $seen, so one found later as a dependant in its own right still counts.
+        $passed = [];
         for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== []; ++$level) {
-            sort($frontier, SORT_STRING);
+            // A call through an interface or a parent goes to the supertype's method: what calls that
+            // may run the frontier's own, so its dependants are read too, the supertype method passed through.
+            $through = [];
+            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $supertypes) {
+                foreach ($supertypes as $supertype) {
+                    if (!isset($seen[$supertype]) && !isset($passed[$supertype])) {
+                        $passed[$supertype] = true;
+                        $through[] = $supertype;
+                    }
+                }
+            }
+            $targets = [...$frontier, ...$through];
+            sort($targets, SORT_STRING);
             $next = [];
-            foreach (array_chunk($frontier, self::CHUNK) as $chunk) {
+            foreach (array_chunk($targets, self::CHUNK) as $chunk) {
                 $rows = $this->dependantRows($projectId, $chunk, $edgeKinds, $minimumRank);
                 $row = 0;
                 while (($sourceId = $rows->fetchColumn()) !== false) {
