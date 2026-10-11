@@ -61,7 +61,7 @@ other language.
 
 | Symptom or code                 | Meaning                                                               | Safe action                                                                                                                        |
 | ------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `KNOSSOS_SCAN_BUSY`             | Another writer owns the project scan lease.                           | Wait for that scan or terminate its owning process cleanly, then retry.                                                            |
+| `KNOSSOS_SCAN_BUSY`             | Another writer owns the project scan lease.                           | Wait for that scan, or stop its process; a lease whose process is gone is taken over by the next scan.                             |
 | `KNOSSOS_SCAN_CANCELLED`        | The client or signal cancelled work.                                  | Retry; the prior active snapshot remains available.                                                                                |
 | `KNOSSOS_SCAN_SNAPSHOT_CHANGED` | A file changed or was removed while the scan was running.             | Rerun once writes to the tree have stopped; the message names the file. No graph row was written, so the previous graph is intact. |
 | `KNOSSOS_SCAN_SNAPSHOT_CHANGED` | A discovered file stopped being readable while the scan was running.  | Waiting does not help: make the named path a readable file again, then rerun. The message wording tells this from a rewrite.       |
