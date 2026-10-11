@@ -7,6 +7,8 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\CountedSnapshotFigures;
+use Knossos\Store\SnapshotPayload;
 use PDO;
 
 /**
@@ -256,6 +258,40 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
         ];
     }
 
+    /**
+     * The stub an archive stopped short of its facts stores: its reason, and for a snapshot past the
+     * row cap the figures counted without reading it ({@see CountedSnapshotFigures}).
+     *
+     * @return array<string, mixed>
+     */
+    private function stoppedArchive(string $scanId): array
+    {
+        $statement = $this->pdo->prepare('SELECT payload_json FROM scan_snapshots WHERE scan_id = :scan');
+        $statement->execute(['scan' => $scanId]);
+        $stored = $statement->fetchColumn();
+        if (!is_string($stored)) {
+            return [];
+        }
+        $decoded = json_decode(SnapshotPayload::decode($stored), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * A trend point of counted figures: the counts, the diagnostics, and null for what needs the graph itself.
+     *
+     * @param string|array<string, mixed> $reason
+     * @param array{counts: array<string, int>, metrics: array{error_diagnostics: int, warning_diagnostics: int}} $figures
+     * @return array<string, mixed>
+     */
+    private static function partialPoint(string|array $reason, array $figures): array
+    {
+        return ['partial' => true, 'reason' => $reason, 'counts' => $figures['counts'], 'metrics' => [
+            'cycles' => null, 'max_degree' => null, 'error_diagnostics' => $figures['metrics']['error_diagnostics'],
+            'warning_diagnostics' => $figures['metrics']['warning_diagnostics'], 'unreferenced_candidates' => null,
+        ]];
+    }
+
     /** How metrics moved across recent snapshots, plus release-note material. */
 
     public function architectureTrends(string $projectId, int $limit = 10, ?string $releaseFrom = null): ResultEnvelope
@@ -269,7 +305,10 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
         $cache = new SnapshotMetricsCache($this->pdo);
         foreach (array_reverse($listed->data['snapshots']) as $snapshot) {
             if ($snapshot['retained'] && $snapshot['complete_archive'] === false) {
-                $series[] = ['scan_id' => $snapshot['scan_id'], 'captured_at' => $snapshot['captured_at'], 'complete' => false];
+                // Stopped short of its facts: a snapshot past the row cap kept what COUNT(*) said of it, a partial point.
+                $stub = $this->stoppedArchive($snapshot['scan_id']);
+                $series[] = ['scan_id' => $snapshot['scan_id'], 'captured_at' => $snapshot['captured_at'], 'complete' => false]
+                    + (isset($stub['figures']) ? self::partialPoint((string) ($stub['reason'] ?? ''), $stub['figures']) : []);
                 continue;
             }
             // A complete archive never changes, so its figures are computed once (see SnapshotMetricsCache);
@@ -281,8 +320,9 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                     // One expression, so the facts are freed once counted and never held beside the figures.
                     $figures = $this->metrics->snapshotFigures($this->snapshots->facts($projectId, $this->snapshots->resolve($projectId, $snapshot['scan_id'], $project['active_scan_id'] ?? '')));
                 } catch (SnapshotTooLargeException $tooLarge) {
-                    // Past what a snapshot is read whole within: this point has no figures, and says why; the others still count.
-                    $series[] = ['scan_id' => $snapshot['scan_id'], 'active' => $snapshot['active'], 'complete' => false, 'reason' => $tooLarge->reason()];
+                    // Past what a snapshot is read whole within: a partial point of what COUNT(*) says of the live tables, and why.
+                    $series[] = ['scan_id' => $snapshot['scan_id'], 'active' => $snapshot['active'], 'complete' => false]
+                        + self::partialPoint($tooLarge->reason(), CountedSnapshotFigures::of($this->pdo, $projectId));
                     continue;
                 }
                 if ($archived) {

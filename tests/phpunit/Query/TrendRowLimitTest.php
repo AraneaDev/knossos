@@ -6,11 +6,13 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\DashboardService;
+use Knossos\Store\SnapshotPayload;
+use Knossos\Store\SqliteValues;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayNotHasKey;
-use function PHPUnit\Framework\assertNotContains;
+use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 
 /**
@@ -35,14 +37,61 @@ final class TrendRowLimitTest extends KnossosTestCase
 
             $series = ArchitectureQueryService::forDatabase($pdo)->architectureTrends($projectId, 2)->data['series'];
             $active = array_values(array_filter($series, static fn(array $p): bool => ($p['active'] ?? false) === true))[0];
-            assertSame(false, $active['complete']);
+            assertSame([false, true], [$active['complete'], $active['partial']]);
             assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => 200000], $active['reason']);
-            assertArrayNotHasKey('metrics', $active);
+            // What COUNT(*) says without reading the rows; what needs the graph itself is not counted.
+            assertSame($rows, $active['counts']['components']);
+            assertSame(['cycles' => null, 'max_degree' => null, 'error_diagnostics' => 0, 'warning_diagnostics' => 0, 'unreferenced_candidates' => null], $active['metrics']);
 
             $dashboard = (new DashboardService($pdo))->dashboard($root);
             assertSame('ok', $dashboard['status']);
-            assertNotContains($scan, array_column($dashboard['trend'], 'snapshot_id'));
+            $point = array_values(array_filter($dashboard['trend'], static fn(array $p): bool => $p['snapshot_id'] === $scan))[0];
+            assertSame(['cycles' => null, 'max_degree' => null, 'dead_code' => null, 'diagnostics' => 0, 'components' => $rows], array_intersect_key($point, array_flip(['cycles', 'max_degree', 'dead_code', 'diagnostics', 'components'])));
             assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => 200000], $dashboard['trend_limit']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * Retains an older snapshot of the project, stored as `$stub` the way the archive stores one past a limit.
+     *
+     * @param array<string, mixed> $stub
+     */
+    private static function retainStub(\PDO $pdo, string $projectId, string $scanId, array $stub): void
+    {
+        $at = '2026-01-01T00:00:00Z';
+        $pdo->prepare("INSERT INTO scans (id, project_id, mode, status, scanner_set_hash, started_at, finished_at) VALUES (:id, :project, 'full', 'complete', 'h', :at, :at)")
+            ->execute(['id' => $scanId, 'project' => $projectId, 'at' => $at]);
+        $json = SqliteValues::json($stub);
+        $pdo->prepare('INSERT INTO scan_snapshots (scan_id, project_id, scanner_set_hash, config_hash, complete, fact_count, byte_size, payload_json, captured_at) VALUES (:scan, :project, :h, :c, 0, 0, :bytes, :payload, :at)')
+            ->execute(['scan' => $scanId, 'project' => $projectId, 'h' => 'h', 'c' => 'c', 'bytes' => strlen($json), 'payload' => SnapshotPayload::encode($json), 'at' => $at]);
+    }
+
+    #[Group('query')]
+    public function testAnArchivedSnapshotPastTheRowCapIsAPartialPointWithItsCountedFigures(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
+        try {
+            $counts = ['components' => 250000, 'relationships' => 400000, 'roles' => 10, 'boundaries' => 3, 'diagnostics' => 7];
+            self::retainStub($pdo, $projectId, 'scan_old', ['schema' => 1, 'reason' => 'fact_limit']);
+            self::retainStub($pdo, $projectId, 'scan_big', ['schema' => 1, 'reason' => 'fact_limit', 'figures' => ['counts' => $counts, 'metrics' => ['error_diagnostics' => 2, 'warning_diagnostics' => 5]]]);
+
+            $series = ArchitectureQueryService::forDatabase($pdo)->architectureTrends($projectId, 5)->data['series'];
+            $byId = array_column($series, null, 'scan_id');
+            assertSame([false, true, 'fact_limit'], [$byId['scan_big']['complete'], $byId['scan_big']['partial'], $byId['scan_big']['reason']]);
+            assertSame($counts, $byId['scan_big']['counts']);
+            assertSame(['cycles' => null, 'max_degree' => null, 'error_diagnostics' => 2, 'warning_diagnostics' => 5, 'unreferenced_candidates' => null], $byId['scan_big']['metrics']);
+            // A stub from before figures were kept says only that it is incomplete, as it always did.
+            assertSame(false, $byId['scan_old']['complete']);
+            assertArrayNotHasKey('metrics', $byId['scan_old']);
+
+            // A delta never subtracts a figure that was not counted.
+            $deltas = (new DashboardService($pdo))->dashboard($root)['deltas'];
+            assertSame('scan_big', $deltas['against']);
+            assertNull($deltas['cycles']);
+            assertNull($deltas['max_degree']);
+            assertNull($deltas['dead_code']);
         } finally {
             $this->removeTempTree($root);
         }
