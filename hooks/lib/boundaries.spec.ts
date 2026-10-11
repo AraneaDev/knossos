@@ -238,6 +238,31 @@ describe('the marked heat map cell', () => {
     expect(row(rows, 'heat-1')!.segments.some(s => s.bg !== undefined)).toBe(false)
   })
 
+  it('names each side of a pair as the rest of the pane does, never by a record id, with where each is declared', () => {
+    const enriched = {
+      status: 'ok' as const,
+      edges: 12,
+      truncated: false,
+      couplings: [
+        {
+          source: { name: 'CheckoutView.get', canonical_name: 'route:3f9a1c27e0b4d6a8', kind: 'route', path: 'checkout/views.py', line: 12 },
+          target: { name: 'get', canonical_name: 'App\\Http\\Client::get', kind: 'method', path: 'src/Http/Client.php', line: 40 },
+          edges: 9,
+        },
+        { source: { name: 'cli', canonical_name: 'cli', kind: 'module' }, target: { name: 'Core', canonical_name: 'Core', kind: 'module' }, edges: 3 },
+      ],
+    }
+    const view = couplingView({ phase: 'done', answer: enriched })!
+    // A route by its display name, a method by its class and name: the record id is kept for lookups alone.
+    expect(view.items[0]).toMatchObject({ source: 'CheckoutView.get', target: 'Client::get', sourceCanonical: 'route:3f9a1c27e0b4d6a8', targetCanonical: 'App\\Http\\Client::get' })
+    const text = couplingSection(input, { from: 0, to: 1 }, view, 100)!.body.map(plainText).join('\n')
+    expect(text).toMatch(/CheckoutView\.get +──► Client::get +9/)
+    // Under the pair, where each side is declared; a pair with no place says none.
+    expect(text).toMatch(/\n +views\.py:12 → Client\.php:40\n/)
+    expect(text).not.toMatch(/3f9a1c27e0b4d6a8/)
+    expect(text.split('\n').filter(line => line.includes('→') && !line.includes('──►') && !line.includes('│'))).toHaveLength(1)
+  })
+
   it('is spelled out as A → B, its deps, and the pairs behind it, most first, at every width', () => {
     for (const columns of WIDTHS) {
       const section = couplingSection(input, { from: 0, to: 1 }, couplingView({ phase: 'done', answer }), columns)!

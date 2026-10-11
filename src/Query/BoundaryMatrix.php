@@ -103,7 +103,7 @@ final readonly class BoundaryMatrix
      * as {@see self::build()}, so `edges` matches the cell and `truncated`
      * says when both are floors.
      *
-     * @return array{edges: int, couplings: list<array{source: array{name: string, canonical_name: string, kind: string}, target: array{name: string, canonical_name: string, kind: string}, edges: int}>, truncated: bool, truncation_reasons: list<string>}
+     * @return array{edges: int, couplings: list<array{source: array{name: string, canonical_name: string, kind: string, path: string|null, line: int|null}, target: array{name: string, canonical_name: string, kind: string, path: string|null, line: int|null}, edges: int}>, truncated: bool, truncation_reasons: list<string>}
      */
     public function couplings(string $projectId, BoundaryLabels $labels, string $from, string $to, int $limit = 5): array
     {
@@ -132,7 +132,7 @@ final readonly class BoundaryMatrix
      * pair whose component is gone is not listed, and never takes a place.
      *
      * @param array<int|string, int> $pairs
-     * @return list<array{source: array{name: string, canonical_name: string, kind: string}, target: array{name: string, canonical_name: string, kind: string}, edges: int}>
+     * @return list<array{source: array{name: string, canonical_name: string, kind: string, path: string|null, line: int|null}, target: array{name: string, canonical_name: string, kind: string, path: string|null, line: int|null}, edges: int}>
      */
     private function strongest(array $pairs, int $limit): array
     {
@@ -297,7 +297,7 @@ final readonly class BoundaryMatrix
      * The named components among `$ids`, by id, as a coupling lists them.
      *
      * @param list<string> $ids
-     * @return array<string, array{name: string, canonical_name: string, kind: string}>
+     * @return array<string, array{name: string, canonical_name: string, kind: string, path: string|null, line: int|null}>
      */
     private function nodes(array $ids): array
     {
@@ -306,9 +306,13 @@ final readonly class BoundaryMatrix
         }
         $nodes = [];
         // A chunk at a time: SQLite binds at most 32,766 values in one statement (as it is usually built).
-        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT id, display_name, canonical_name, kind FROM nodes WHERE id IN (%s)', array_values($ids), size: self::IDS_PER_QUERY) as $row) {
+        $sql = 'SELECT n.id, n.display_name, n.canonical_name, n.kind, f.relative_path, n.start_line FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.id IN (%s)';
+        foreach (ChunkedInQuery::rows($this->pdo, $sql, array_values($ids), size: self::IDS_PER_QUERY) as $row) {
             $canonical = (string) $row['canonical_name'];
-            $nodes[(string) $row['id']] = ['name' => (string) ($row['display_name'] ?? $canonical), 'canonical_name' => $canonical, 'kind' => (string) $row['kind']];
+            $nodes[(string) $row['id']] = [
+                'name' => (string) ($row['display_name'] ?? $canonical), 'canonical_name' => $canonical, 'kind' => (string) $row['kind'],
+                'path' => $row['relative_path'] === null ? null : (string) $row['relative_path'], 'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
+            ];
         }
         return $nodes;
     }

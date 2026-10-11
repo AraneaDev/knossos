@@ -22,7 +22,7 @@ import type { Dashboard } from '../../types'
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, huesOf, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { HEAT_KEYS } from './raster'
-import { blank, button, cells, dimRow, fit, grouped, numberWidth, padEnd, shortName, spaces, SWATCH, tableHead, tableRow, tableSpec, wrapGroups } from './rows'
+import { blank, button, cells, dimRow, displayName, fit, grouped, numberWidth, padEnd, placeOf, spaces, SWATCH, tableHead, tableRow, tableSpec, wrapGroups } from './rows'
 import type { Row, Segment, TableSpec, Tier } from './rows'
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
@@ -354,11 +354,15 @@ export function heatSection(input: BoundariesInput | null, columns: number, hues
  * holds (each a source and a target component, short names and full, and
  * its edges), or nothing when knossos did not answer.
  */
+/** One side of a coupling as the answer names it. */
+type Side = { name: string; canonical_name: string; kind: string; path?: string | null; line?: number | null }
+
 export type CouplingView = {
   phase: 'loading' | 'done' | 'silent'
   edges: number | null
   truncated: boolean
-  items: { source: string; target: string; sourceCanonical: string; targetCanonical: string; edges: number }[]
+  /** `place`: where the two sides are declared (`views.py:12 → Client.php:40`), empty when neither says. */
+  items: { source: string; target: string; sourceCanonical: string; targetCanonical: string; edges: number; place: string }[]
 }
 
 /**
@@ -385,12 +389,22 @@ export function couplingSection(input: BoundariesInput, cell: HeatCell, view: Co
   if (view === null || view.phase === 'loading') body.push(dimRow('coupling-loading', '   reading the couplings…', columns))
   else if (view.phase === 'silent') body.push(dimRow('coupling-silent', '   knossos did not say which components; press l to try another cell', columns))
   else if (view.items.length === 0) body.push(dimRow('coupling-none', '   no component pair listed', columns))
-  else body.push(...pairColumns(view.items.map(i => ({ source: i.source, target: i.target, edges: grouped(i.edges) })), columns, {}, {}, INDENT, 'coupling'))
+  else {
+    // Each pair, then under it where its two sides are declared, so two of one name can be told apart.
+    const pairs = pairColumns(view.items.map(i => ({ source: i.source, target: i.target, edges: grouped(i.edges) })), columns, {}, {}, INDENT, 'coupling')
+    body.push(...pairs.flatMap((pair, n) => (view.items[n]!.place === '' ? [pair] : [pair, dimRow(`coupling-place-${n}`, `${spaces(INDENT + 2)}${view.items[n]!.place}`, columns)])))
+  }
   return { key: 'coupling', title, note, body }
 }
 
-/** The couplings answer as the card draws it: short names, most edges first; null before anything was asked. */
-export function couplingView(state: { phase: 'loading' | 'done'; answer: { status: string; edges: number; truncated: boolean; couplings: { source: { name: string; canonical_name: string; kind: string }; target: { name: string; canonical_name: string; kind: string }; edges: number }[] } | null } | null): CouplingView | null {
+/**
+ * The couplings answer as the card draws it, most edges first: each side by
+ * the name the rest of the pane gives it ({@link displayName}: a method by
+ * its class and name, anything else by its own name), never by the record id
+ * an enricher may give it, which is kept for lookups; null before anything
+ * was asked.
+ */
+export function couplingView(state: { phase: 'loading' | 'done'; answer: { status: string; edges: number; truncated: boolean; couplings: { source: Side; target: Side; edges: number }[] } | null } | null): CouplingView | null {
   if (state === null) return null
   if (state.phase === 'loading') return { phase: 'loading', edges: null, truncated: false, items: [] }
   const answer = state.answer
@@ -399,7 +413,14 @@ export function couplingView(state: { phase: 'loading' | 'done'; answer: { statu
     phase: 'done',
     edges: answer.edges,
     truncated: answer.truncated,
-    items: answer.couplings.map(c => ({ source: shortName(c.source.canonical_name), target: shortName(c.target.canonical_name), sourceCanonical: c.source.canonical_name, targetCanonical: c.target.canonical_name, edges: c.edges })),
+    items: answer.couplings.map(c => ({
+      source: displayName(c.source),
+      target: displayName(c.target),
+      sourceCanonical: c.source.canonical_name,
+      targetCanonical: c.target.canonical_name,
+      edges: c.edges,
+      place: [c.source, c.target].some(side => (side.path ?? null) !== null) ? `${placeOf(c.source.path ?? null, c.source.line ?? null) || '?'} → ${placeOf(c.target.path ?? null, c.target.line ?? null) || '?'}` : '',
+    })),
   }
 }
 
