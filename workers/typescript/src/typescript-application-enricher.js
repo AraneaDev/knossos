@@ -132,13 +132,16 @@ export class TypeScriptApplicationEnricher {
     call(node, source, calledName) {
         if (source === null) return;
         if (ts.isPropertyAccessExpression(node.expression)) {
-            const instance = axiosInstanceBase(
-                this.context.checker,
-                node.expression.expression,
-            );
-            if (instance !== null) {
-                this.instanceCall(node, source, instance);
-                return;
+            const name = node.expression.name.text;
+            if (INSTANCE_METHODS.has(name) || name === "request") {
+                const instance = axiosInstanceBase(
+                    this.context.checker,
+                    node.expression.expression,
+                );
+                if (instance !== null) {
+                    this.instanceCall(node, source, instance);
+                    return;
+                }
             }
         }
         if (
@@ -170,21 +173,17 @@ export class TypeScriptApplicationEnricher {
         if (INSTANCE_METHODS.has(name)) {
             method = name.toUpperCase();
             argument = first;
-        } else if (name === "request" && first) {
+        } else if (first && ts.isObjectLiteralExpression(first)) {
             const methodField = objectField(first, "method");
-            method =
-                methodField && ts.isStringLiteralLike(methodField)
-                    ? methodField.text.toUpperCase()
-                    : "ANY";
+            if (methodField === undefined) method = "GET";
+            else if (ts.isStringLiteralLike(methodField))
+                method = methodField.text.toUpperCase();
+            else return;
             argument = objectField(first, "url");
         }
         const url = argument === undefined ? null : requestUrl(argument);
         if (url === null) return;
-        this.addEndpoint(node, source, method, {
-            uri: `${instance.base}${url.uri}`,
-            prefixUnknown: url.prefixUnknown || !instance.known,
-            dropLeading: url.prefixUnknown && instance.base === "",
-        });
+        this.addEndpoint(node, source, method, joinBase(instance, url));
     }
 
     addEndpoint(node, source, method, url) {
@@ -237,6 +236,7 @@ function requestUrl(argument) {
     const uri =
         argument.head.text +
         argument.templateSpans.map((span) => `{}${span.literal.text}`).join("");
+    if (uri.replaceAll("{}", "") === "") return null;
     return { uri, prefixUnknown: argument.head.text === "" };
 }
 
@@ -264,8 +264,7 @@ function axiosInstanceBase(checker, receiver) {
         !declaration ||
         !ts.isVariableDeclaration(declaration) ||
         !declaration.initializer ||
-        !ts.isCallExpression(declaration.initializer) ||
-        declaration.initializer.expression.getText() !== "axios.create"
+        !isAxiosCreate(checker, declaration.initializer)
     )
         return null;
     const options = declaration.initializer.arguments[0];
@@ -279,10 +278,50 @@ function axiosInstanceBase(checker, receiver) {
     return { base: "", known: false };
 }
 
+/** A `<name>.create(...)` call whose receiver is an import of `axios`. */
+function isAxiosCreate(checker, call) {
+    if (
+        !ts.isCallExpression(call) ||
+        !ts.isPropertyAccessExpression(call.expression) ||
+        call.expression.name.text !== "create"
+    )
+        return false;
+    const symbol = checker.getSymbolAtLocation(call.expression.expression);
+    return (symbol?.declarations ?? []).some((declaration) => {
+        const statement = ts.findAncestor(declaration, ts.isImportDeclaration);
+        return (
+            statement !== undefined &&
+            ts.isStringLiteral(statement.moduleSpecifier) &&
+            statement.moduleSpecifier.text === "axios"
+        );
+    });
+}
+
+/**
+ * The URL an instance call requests: axios ignores `baseURL` for an absolute
+ * URL, and otherwise joins the two with exactly one slash. An unknown base
+ * leads the uri as a `{}` segment, as a leading substitution does, so the
+ * endpoint is never confused with a direct request to the same path.
+ */
+function joinBase(instance, url) {
+    if (ABSOLUTE_URL.test(url.uri)) return url;
+    const path = url.uri.replace(/^\/+/, "");
+    if (instance.known)
+        return {
+            uri: `${instance.base}/${path}`,
+            prefixUnknown: false,
+            dropLeading: false,
+        };
+    return { uri: `{}/${path}`, prefixUnknown: true, dropLeading: true };
+}
+
 /** The path template a URL stands for, as the core normalises it. */
 function urlTemplate(uri, prefixUnknown) {
     const path = uri.replace(/[?#].*$/s, "");
-    const segments = path.split("/").filter((segment) => segment !== "");
+    const segments = path
+        .split("/")
+        .filter((segment) => segment !== "")
+        .map((segment) => (segment.includes("{}") ? "{}" : segment));
     const kept = prefixUnknown ? segments.slice(1) : segments;
     return `/${kept.join("/")}`;
 }

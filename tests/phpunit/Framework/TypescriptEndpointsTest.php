@@ -8,6 +8,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayHasKey;
+use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertSame;
 
 /**
@@ -58,14 +59,92 @@ final class TypescriptEndpointsTest extends KnossosTestCase
     {
         $endpoints = $this->endpoints(self::INSTANCES, ['src/http.js', 'src/orders.js']);
 
-        assertSame(['GET /api/orders/{}', 'POST /api/orders', 'GET /orders'], array_slice(array_keys($endpoints), 0, 3));
+        foreach (['GET /api/orders/{}', 'POST /api/orders', 'GET {}/orders'] as $name) {
+            assertArrayHasKey($name, $endpoints);
+        }
         assertSame('known', $endpoints['GET /api/orders/{}']['prefix']);
         assertSame('known', $endpoints['POST /api/orders']['prefix']);
-        assertSame('unknown', $endpoints['GET /orders']['prefix']);
+        assertSame(['unknown', '/orders'], [$endpoints['GET {}/orders']['prefix'], $endpoints['GET {}/orders']['template']]);
         assertSame(3, count($endpoints));
         foreach ($endpoints as $attributes) {
             assertSame(false, $attributes['external']);
         }
+    }
+
+    public function testAnInstanceBaseAndTheRequestUrlJoinWithOneSlashAndAnAbsoluteUrlStandsAlone(): void
+    {
+        $endpoints = $this->endpoints([
+            'src/http.js' => "import axios from \"axios\";\nexport const api = axios.create({ baseURL: \"/api\" });\nexport const slashed = axios.create({ baseURL: \"/v1/\" });\n",
+            'src/use.js' => "import { api, slashed } from \"./http\";\n"
+                . "export const a = () => api.get(\"orders\");\n"
+                . "export const b = (x) => api.get(`\${x}/orders`);\n"
+                . "export const c = () => api.get(\"https://other.example.com/x\");\n"
+                . "export const d = () => slashed.get(\"/orders\");\n",
+            'node_modules/axios/package.json' => self::INSTANCES['node_modules/axios/package.json'],
+            'node_modules/axios/index.d.ts' => self::INSTANCES['node_modules/axios/index.d.ts'],
+        ], ['src/http.js', 'src/use.js']);
+
+        assertSame(['/api/orders', '/api/orders', 'known'], [$endpoints['GET /api/orders']['uri'], $endpoints['GET /api/orders']['template'], $endpoints['GET /api/orders']['prefix']]);
+        assertSame(['/api/{}/orders', 'known'], [$endpoints['GET /api/{}/orders']['template'], $endpoints['GET /api/{}/orders']['prefix']]);
+        assertSame(true, $endpoints['GET https://other.example.com/x']['external']);
+        assertArrayHasKey('GET /v1/orders', $endpoints);
+        assertSame(4, count($endpoints));
+    }
+
+    public function testAnUnknownBaseAndAKnownDirectRequestAreDistinctEndpoints(): void
+    {
+        $tree = self::INSTANCES;
+        $tree['src/direct.js'] = "export const direct = () => fetch(\"/orders\");\n";
+        [$endpoints, $edges] = $this->scanEndpoints($tree, ['src/http.js', 'src/orders.js', 'src/direct.js']);
+
+        assertSame(['/orders', 'known'], [$endpoints['GET /orders']['template'], $endpoints['GET /orders']['prefix']]);
+        assertSame(['/orders', 'unknown'], [$endpoints['GET {}/orders']['template'], $endpoints['GET {}/orders']['prefix']]);
+        assertContains('ts:function:src/orders.js#show -> ts:endpoint:GET /api/orders/{}', $edges);
+        assertContains('ts:function:src/orders.js#plain -> ts:endpoint:GET {}/orders', $edges);
+        assertContains('ts:function:src/direct.js#direct -> ts:endpoint:GET /orders', $edges);
+    }
+
+    public function testRequestWithoutAMethodIsAGetAndOneWithAComputedMethodNamesNoEndpoint(): void
+    {
+        $endpoints = $this->endpoints([
+            'src/http.js' => "import axios from \"axios\";\nexport const api = axios.create({ baseURL: \"/api\" });\n",
+            'src/use.js' => "import { api } from \"./http\";\n"
+                . "export const a = () => api.request({ url: \"/a\" });\n"
+                . "export const b = (m) => api.request({ method: m, url: \"/b\" });\n",
+            'node_modules/axios/package.json' => self::INSTANCES['node_modules/axios/package.json'],
+            'node_modules/axios/index.d.ts' => self::INSTANCES['node_modules/axios/index.d.ts'],
+        ], ['src/http.js', 'src/use.js']);
+
+        assertSame(['GET /api/a'], array_keys($endpoints));
+    }
+
+    public function testAnInstanceCreatedThroughAnyNameForAxiosOrReExportedIsRecognised(): void
+    {
+        $endpoints = $this->endpoints([
+            'src/http.js' => "import http from \"axios\";\nexport const api = http.create({ baseURL: \"/api\" });\n",
+            'src/index.js' => "export { api } from \"./http\";\n",
+            'src/use.js' => "import { api } from \"./index\";\nexport const a = () => api.get(\"/x\");\n",
+            'node_modules/axios/package.json' => self::INSTANCES['node_modules/axios/package.json'],
+            'node_modules/axios/index.d.ts' => self::INSTANCES['node_modules/axios/index.d.ts'],
+        ], ['src/http.js', 'src/index.js', 'src/use.js']);
+
+        assertSame(['GET /api/x'], array_keys($endpoints));
+    }
+
+    public function testASubstitutionInsideASegmentMakesTheSegmentAParameterAndABareOneNamesNoPath(): void
+    {
+        [$endpoints, $edges] = $this->scanEndpoints(['src/api.js' => "export const a = (s) => fetch(`/api/orders\${s}`);\n"
+            . "export const b = (k) => fetch(`/api/\${k}-list`);\n"
+            . "export const c = (x, y) => fetch(`/api/\${x}/lines/\${y}`);\n"
+            . "export const d = (x, y) => fetch(`\${x}\${y}`);\n"
+            . "export const e = (id) => fetch(`https://h.example.com/\${id}`);\n"], ['src/api.js']);
+
+        assertSame('/api/{}', $endpoints['GET /api/orders{}']['template']);
+        assertSame('/api/{}', $endpoints['GET /api/{}-list']['template']);
+        assertSame('/api/{}/lines/{}', $endpoints['GET /api/{}/lines/{}']['template']);
+        assertSame(true, $endpoints['GET https://h.example.com/{}']['external']);
+        assertSame(4, count($endpoints));
+        assertSame(4, count($edges));
     }
 
     /**
@@ -75,20 +154,36 @@ final class TypescriptEndpointsTest extends KnossosTestCase
      */
     private function endpoints(array $tree, array $files): array
     {
+        return $this->scanEndpoints($tree, $files)[0];
+    }
+
+    /**
+     * @param array<string, string> $tree
+     * @param list<string> $files
+     * @return array{array<string, array<string, mixed>>, list<string>} endpoint attributes by canonical name, and the "source -> target" of each calls_endpoint edge
+     */
+    private function scanEndpoints(array $tree, array $files): array
+    {
         $root = $this->writeTree($tree);
         try {
             $client = $this->typescriptWorkerClient();
             $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => $files]), false);
             $client->shutdown();
             $found = [];
+            $edges = [];
             foreach ($contributions as $contribution) {
+                foreach ($contribution->edges as $edge) {
+                    if ($edge->kind === 'calls_endpoint') {
+                        $edges[] = "{$edge->sourceReference} -> {$edge->targetReference}";
+                    }
+                }
                 foreach ($contribution->nodes as $node) {
                     if ($node->kind === 'endpoint') {
                         $found[$node->canonicalName][] = $node->attributes;
                     }
                 }
             }
-            return array_map(static fn(array $all): array => $all[0], $found);
+            return [array_map(static fn(array $all): array => $all[0], $found), $edges];
         } finally {
             $this->removeTempTree($root);
         }
