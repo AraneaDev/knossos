@@ -86,6 +86,8 @@ class RouterMounts:
         self.framework_objects: dict[str, tuple[str, str]] = {}
         # The variables this file assigned a router to, each a node it emits.
         self.routers: set[str] = set()
+        # The variables bound to an application object (``FastAPI()``, ``Flask()``) rather than a router.
+        self.apps: set[str] = set()
 
     def emit_router(self, variable: str, value: ast.Call, framework: str, prefix: str) -> None:
         """Declare the router node a module-level ``variable = APIRouter(...)`` or ``Blueprint(...)`` builds."""
@@ -101,6 +103,22 @@ class RouterMounts:
         self.facts.add_edge("contains", self.module_id, router_id, value)
         self.routers.add(variable)
 
+    def router_reference(self, variable: str | None) -> str | None:
+        """The ``py:router:`` reference a router variable stands for, None for anything else."""
+        if variable is None or variable in self.apps:
+            return None
+        if variable in self.routers:
+            return ref("router", f"{self.module}.{variable}")
+        resolved = self.resolve_name(variable, "router") or ""
+        return resolved if resolved.startswith("py:router:") else None
+
+    def owner_attributes(self, decorator: ast.AST) -> dict[str, Any]:
+        """The ``router`` attribute of a route whose decorator hangs off a router variable."""
+        if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+            return {}
+        router = self.router_reference(dotted(decorator.func.value))
+        return {} if router is None else {"router": router}
+
     def mount(self, node: ast.Call, prefix_keyword: str) -> None:
         """Emit the ``mounts`` edge of ``include_router(router)`` or ``register_blueprint(bp)``.
 
@@ -113,6 +131,11 @@ class RouterMounts:
         if router is None:
             return
         attributes: dict[str, Any] = {"prefix": keyword_string(node, prefix_keyword) or ""}
+        receiver = dotted(node.func.value) if isinstance(node.func, ast.Attribute) else None
+        if receiver in self.apps:
+            attributes["onto"] = "app"
+        elif (onto := self.router_reference(receiver)) is not None:
+            attributes["onto"] = onto
         target = ref("router", f"{self.module}.{router}")
         if router not in self.routers:
             resolved = self.resolve_name(router, "router") or ""
@@ -143,6 +166,8 @@ class FastApiFactEnricher(RouterMounts):
         if resolved.endswith(("fastapi.FastAPI", "fastapi.APIRouter")):
             prefix = keyword_string(value, "prefix") or ""
             self.framework_objects[variable] = ("fastapi", prefix)
+            if resolved.endswith("fastapi.FastAPI"):
+                self.apps.add(variable)
         # A router built inside a function is that call's own, one per call:
         # no module-level node names it, though its routes keep its prefix.
         if module_level and resolved.endswith("fastapi.APIRouter"):
@@ -181,12 +206,15 @@ class FastApiFactEnricher(RouterMounts):
             # No prefix: a router built elsewhere carries its own, and this
             # function cannot see it.
             self.framework_objects[argument.arg] = ("fastapi", "")
+            if resolved.endswith("fastapi.FastAPI"):
+                self.apps.add(argument.arg)
         return restore
 
     def restore_parameters(self, restore: list[tuple[str, tuple[str, str] | None]]) -> None:
         for variable, previous in reversed(restore):
             if previous is None:
                 self.framework_objects.pop(variable, None)
+                self.apps.discard(variable)
             else:
                 self.framework_objects[variable] = previous
 
@@ -225,7 +253,7 @@ class FastApiFactEnricher(RouterMounts):
                 route_canonical,
                 f"{method} {path}",
                 decorator,
-                {"framework": "fastapi", "methods": [method], "path": path},
+                {"framework": "fastapi", "methods": [method], "path": path, **self.owner_attributes(decorator)},
             )
             self.facts.add_edge("routes_to", route_id, local_id, decorator)
         self.decorator_dependencies(node, local_id)
@@ -325,7 +353,12 @@ class DjangoFactEnricher:
             canonical,
             f"ANY /{path.lstrip('/')}",
             expression,
-            {"framework": "django", "path": path, "name": keyword_string(expression, "name")},
+            {
+                "framework": "django",
+                "path": path,
+                "name": keyword_string(expression, "name"),
+                "module": self.module,
+            },
         )
         if target:
             self.facts.add_edge("routes_to", route_id, target, expression)
@@ -358,6 +391,8 @@ class FlaskFactEnricher(RouterMounts):
         if resolved.endswith(("flask.Flask", "flask.Blueprint")):
             prefix = keyword_string(value, "url_prefix") or ""
             self.framework_objects[variable] = ("flask", prefix)
+            if resolved.endswith("flask.Flask"):
+                self.apps.add(variable)
         if module_level and resolved.endswith("flask.Blueprint"):
             self.emit_router(variable, value, "flask", keyword_string(value, "url_prefix") or "")
 
@@ -415,7 +450,7 @@ class FlaskFactEnricher(RouterMounts):
                 route_canonical,
                 f"{method} {path}",
                 decorator,
-                {"framework": "flask", "methods": [method], "path": path},
+                {"framework": "flask", "methods": [method], "path": path, **self.owner_attributes(decorator)},
             )
             self.facts.add_edge("routes_to", route_id, local_id, decorator)
 

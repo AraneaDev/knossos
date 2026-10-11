@@ -28,6 +28,7 @@ class PythonFactAccumulator:
         display: str,
         node: ast.AST,
         attributes: dict[str, Any] | None = None,
+        origin: str = "ast",
     ) -> None:
         self.nodes.setdefault(
             local_id,
@@ -36,7 +37,7 @@ class PythonFactAccumulator:
                 "kind": kind,
                 "canonical_name": canonical,
                 "display_name": display,
-                "origin": "ast",
+                "origin": origin,
                 "confidence": "certain",
                 "evidence": evidence(self.relative, node),
                 "attributes": attributes or {},
@@ -44,14 +45,20 @@ class PythonFactAccumulator:
         )
 
     def add_edge(
-        self, kind: str, source: str, target: str, node: ast.AST, attributes: dict[str, Any] | None = None
+        self,
+        kind: str,
+        source: str,
+        target: str,
+        node: ast.AST,
+        attributes: dict[str, Any] | None = None,
+        origin: str = "ast",
     ) -> None:
         added: dict[str, Any] = attributes or {}
         item: dict[str, Any] = {
             "kind": kind,
             "source": source,
             "target": target,
-            "origin": "ast",
+            "origin": origin,
             "confidence": "certain",
             "evidence": evidence(self.relative, node),
             "attributes": added,
