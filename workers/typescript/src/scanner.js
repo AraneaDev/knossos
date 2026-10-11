@@ -1061,21 +1061,26 @@ function configFilesForScan(root, requested) {
 }
 
 /**
- * Return sorted project-relative tsconfig paths below a validated root.
+ * Return sorted project-relative tsconfig and jsconfig paths below a validated root.
  *
  * Walking is the fallback, not the norm: the core names `config_files` on every
  * scan it plans, so this runs only for a request that supplied none.
  *
  * @param {string} root Absolute, already-validated project root.
- * @returns {string[]} Project-relative tsconfig paths, sorted.
+ * @returns {string[]} Project-relative tsconfig and jsconfig paths, sorted.
  */
 export function discoverConfigFiles(root) {
     const configs = [];
     walk(root, root, (absolute, relative) => {
         const basename = path.basename(relative).toLowerCase();
+        // A jsconfig.json is a tsconfig for JavaScript: TypeScript reads it the same way, with its
+        // JavaScript defaults (allowJs among them) chosen by the file's name.
         if (
             basename === "tsconfig.json" ||
-            (basename.startsWith("tsconfig.") && basename.endsWith(".json"))
+            basename === "jsconfig.json" ||
+            ((basename.startsWith("tsconfig.") ||
+                basename.startsWith("jsconfig.")) &&
+                basename.endsWith(".json"))
         ) {
             configs.push(relative);
         }

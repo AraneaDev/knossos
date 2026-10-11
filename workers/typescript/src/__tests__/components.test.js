@@ -448,6 +448,31 @@ export default {
     });
 });
 
+describe("a jsconfig.json", () => {
+    it("maps module roots as a tsconfig does, extensionless Vue components included", () => {
+        const { contributions } = scan(
+            {
+                "jsconfig.json": '{"compilerOptions":{"baseUrl":"src"}}\n',
+                "src/main.js":
+                    "import Search from 'checkout/components/Search';\nimport Card from 'checkout/components/Card';\nexport default [Search, Card];\n",
+                "src/checkout/components/Search.js":
+                    "export default function Search() {}\n",
+                "src/checkout/components/Card.vue":
+                    "<template><div/></template>\n<script>\nexport default { name: 'Card' };\n</script>\n",
+            },
+            undefined,
+            undefined,
+            { vue_projects: [""] },
+        );
+
+        const targets = edges(contributions, "imports").map((e) => e.target);
+        expect(targets).toContain(
+            "ts:module:src/checkout/components/Search.js",
+        );
+        expect(targets).toContain("ts:module:src/checkout/components/Card.vue");
+    });
+});
+
 describe("a bundler's module aliases", () => {
     it("resolve imports when no tsconfig maps them", () => {
         const { contributions } = scan(
