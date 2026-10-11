@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.1](https://github.com/AraneaDev/knossos/compare/v0.24.0...v0.24.1) (2026-10-11)
+
+
+### Fixes
+
+* take over a scan lease whose process is gone ([#233](https://github.com/AraneaDev/knossos/issues/233)) ([23e8f76](https://github.com/AraneaDev/knossos/commit/23e8f763c859d5ebc9b31e86fe8ca421cfb90e7b))
+* type the variable of a catch by the class it catches, so calls on a caught exception resolve ([#236](https://github.com/AraneaDev/knossos/issues/236)) ([c0f1a9a](https://github.com/AraneaDev/knossos/commit/c0f1a9aeee807bb3e8d1a05ec634f369fb54e7e7))
+
 ## [0.24.0](https://github.com/AraneaDev/knossos/compare/v0.23.0...v0.24.0) (2026-10-11)
 
 
