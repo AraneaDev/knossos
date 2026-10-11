@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Scan;
 
 use Knossos\Configuration\ProjectConfiguration;
+use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\DiscoveryDiagnostic;
 use Knossos\Discovery\DiscoveryResult;
 use Knossos\Reconciliation\ReconciliationResult;
@@ -22,11 +23,16 @@ final class ScanResultFactoryTest extends TestCase
 {
     private function makePreparation(array $diagnostics = [], int $files = 0): ScanPreparation
     {
+        $discovered = [];
+        for ($index = 0; $index < $files; ++$index) {
+            $discovered[] = new DiscoveredFile('src/File' . $index . '.php', '/tmp/foo/src/File' . $index . '.php', 'php', 0, 0, hash('sha256', 'File' . $index));
+        }
+
         return new ScanPreparation(
             configuration: new ProjectConfiguration(),
             discovery: new DiscoveryResult(
                 rootRealpath: '/tmp/foo',
-                files: array_fill(0, $files, 'placeholder'),
+                files: $discovered,
                 units: [],
                 diagnostics: $diagnostics,
                 inputHash: '',

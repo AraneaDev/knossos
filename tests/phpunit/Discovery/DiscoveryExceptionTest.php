@@ -28,7 +28,7 @@ final class DiscoveryExceptionTest extends TestCase
         // final, so the opening stops here rather than becoming a hierarchy.
         $this->assertFalse((new \ReflectionClass(DiscoveryException::class))->isFinal());
         $this->assertTrue((new \ReflectionClass(RootNotFoundException::class))->isFinal());
-        $this->assertTrue(is_subclass_of(RootNotFoundException::class, DiscoveryException::class));
+        assertSame(DiscoveryException::class, get_parent_class(RootNotFoundException::class));
     }
 
     public function testARootNotFoundExceptionIsCaughtByEveryExistingDiscoveryCatch(): void
@@ -71,7 +71,6 @@ final class DiscoveryExceptionTest extends TestCase
             $caught = $e;
         }
 
-        $this->assertNotNull($caught);
         assertSame('discovery failed', $caught->getMessage());
         assertSame('Knossos\\Discovery\\DiscoveryException', $caught::class);
     }

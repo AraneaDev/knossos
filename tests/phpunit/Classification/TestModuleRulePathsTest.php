@@ -40,8 +40,13 @@ final class TestModuleRulePathsTest extends KnossosTestCase
     {
         assertSame(true, self::isTestCode('tests/Foo.php'));
 
-        foreach (['tests\\Foo.php', '/tests/Foo.php', 'tests/../Foo.php'] as $rejected) {
-            assertThrows(static fn() => new Evidence($rejected, 1, 2), \InvalidArgumentException::class, $rejected);
+        foreach ([
+            'tests\\Foo.php' => 'Evidence path must be a normalized project-relative path.',
+            '/tests/Foo.php' => 'Evidence path must not be absolute.',
+            'tests/../Foo.php' => 'Evidence path contains an invalid path segment.',
+        ] as $rejected => $message) {
+            $error = captureThrows(static fn() => new Evidence($rejected, 1, 2), \InvalidArgumentException::class);
+            assertSame($message, $error->getMessage());
         }
     }
 

@@ -72,10 +72,12 @@ final class CancellationTokenTest extends TestCase
             $calls++;
             return false;
         };
-        new CancellationToken($poll);
+        $token = new CancellationToken($poll);
         // The poll closure must be lazy — only called when isCancelled() is
         // invoked, not stored in the constructor.
         assertSame(0, $calls);
+        assertSame(false, $token->isCancelled());
+        assertSame(1, $calls);
     }
 
     public function testIsCancelledInvokesPollWhenStateIsFresh(): void

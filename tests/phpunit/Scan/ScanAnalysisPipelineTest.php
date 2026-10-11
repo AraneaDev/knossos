@@ -9,7 +9,6 @@ use Knossos\Classification\ManifestEntryPointRule;
 use Knossos\Configuration\ProjectConfiguration;
 use Knossos\Discovery\DiscoveryResult;
 use Knossos\Discovery\ProjectUnit;
-use Knossos\Scan\ScanAnalysis;
 use Knossos\Scan\ScanAnalysisPipeline;
 use Knossos\Scan\ScanPlan;
 use Knossos\Scan\ScanPreparation;
@@ -67,7 +66,6 @@ final class ScanAnalysisPipelineTest extends TestCase
 
         $analysis = $pipeline->analyze($plan, []);
 
-        assertSame(true, $analysis instanceof ScanAnalysis);
         assertSame([], $analysis->classifications);
         assertSame([], $analysis->boundaries);
     }
@@ -85,9 +83,8 @@ final class ScanAnalysisPipelineTest extends TestCase
 
         $analysis = $pipeline->analyze($plan, []);
 
-        assertSame(true, $analysis instanceof ScanAnalysis);
-        assertSame(true, is_array($analysis->classifications));
-        assertSame(true, is_array($analysis->boundaries));
+        assertSame([], $analysis->classifications);
+        assertSame([], $analysis->boundaries);
     }
 
     public function testAnalyzeWithSymfonyEnabledDoesNotThrow(): void
@@ -103,9 +100,8 @@ final class ScanAnalysisPipelineTest extends TestCase
 
         $analysis = $pipeline->analyze($plan, []);
 
-        assertSame(true, $analysis instanceof ScanAnalysis);
-        assertSame(true, is_array($analysis->classifications));
-        assertSame(true, is_array($analysis->boundaries));
+        assertSame([], $analysis->classifications);
+        assertSame([], $analysis->boundaries);
     }
 
     public function testAnalyzeWithBothLaravelAndSymfonyEnabledDoesNotThrow(): void
@@ -121,9 +117,8 @@ final class ScanAnalysisPipelineTest extends TestCase
 
         $analysis = $pipeline->analyze($plan, []);
 
-        assertSame(true, $analysis instanceof ScanAnalysis);
-        assertSame(true, is_array($analysis->classifications));
-        assertSame(true, is_array($analysis->boundaries));
+        assertSame([], $analysis->classifications);
+        assertSame([], $analysis->boundaries);
     }
 
     public function testAnalyzeWithContributionsReturnsScanAnalysis(): void
@@ -140,9 +135,8 @@ final class ScanAnalysisPipelineTest extends TestCase
         // Pass a non-empty list of contributions with no nodes/edges/diagnostics
         $analysis = $pipeline->analyze($plan, [new ScanContribution('test'), new ScanContribution('test2')]);
 
-        assertSame(true, $analysis instanceof ScanAnalysis);
-        assertSame(true, is_array($analysis->classifications));
-        assertSame(true, is_array($analysis->boundaries));
+        assertSame([], $analysis->classifications);
+        assertSame([], $analysis->boundaries);
     }
 
     public function testAnalyzeTagsRustRouteHandlersAsClassifications(): void
@@ -274,12 +268,10 @@ final class ScanAnalysisPipelineTest extends TestCase
             $this->makeModuleNode('src/index.ts'),
         ])]);
 
-        $tagged = [];
-        foreach ($analysis->classifications as $fact) {
-            if ($fact->role === ManifestEntryPointRule::ROLE) {
-                $tagged[] = $fact->nodeReference;
-            }
-        }
+        $tagged = array_map(
+            static fn(ClassificationFact $fact): string => $fact->nodeReference,
+            array_filter($analysis->classifications, static fn(ClassificationFact $fact): bool => $fact->role === ManifestEntryPointRule::ROLE),
+        );
         sort($tagged, SORT_STRING);
 
         assertSame(['file:bin/tool.js', 'file:scripts/build.mjs'], $tagged);

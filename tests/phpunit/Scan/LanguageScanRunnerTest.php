@@ -125,7 +125,6 @@ final class LanguageScanRunnerTest extends TestCase
 
         $result = $runner->run($this->makePlan(), new CancellationToken());
 
-        assertSame(true, $result instanceof LanguageScanResult);
         assertSame(0, $result->parsed);
         assertSame(0, $result->unchanged);
         assertSame(0, $result->added);
@@ -425,7 +424,6 @@ final class LanguageScanRunnerTest extends TestCase
         $result = $runner->run($this->makePlan(), $token);
 
         assertSame(false, $token->isCancelled());
-        assertSame(true, $result instanceof LanguageScanResult);
         assertSame(0, $result->parsed);
     }
 

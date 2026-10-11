@@ -132,7 +132,7 @@ final class ReconciliationResultTest extends TestCase
         $result = new ReconciliationResult('pid', 'sid', 1, 2, 3, 4, 5);
         $error = null;
         try {
-            $result->projectId = 'new';
+            (new ReflectionProperty(ReconciliationResult::class, 'projectId'))->setValue($result, 'new');
         } catch (Error $e) {
             $error = $e;
         }

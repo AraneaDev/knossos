@@ -9,7 +9,6 @@ use DOMElement;
 use DOMXPath;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
-use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertInstanceOf;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
@@ -99,10 +98,12 @@ final class PhpunitShardTest extends KnossosTestCase
             [$file, $shard] = explode("\t", $line);
             $listed[$shard][] = $file;
         }
-        assertCount(3, $listed);
+        $expected = [];
         foreach (range(1, 3) as $shard) {
-            assertSame($listed[(string) $shard], $this->selectedFiles($list, $shard, 3));
+            $expected[$shard] = $this->selectedFiles($list, $shard, 3);
         }
+        ksort($listed);
+        assertSame($expected, $listed);
     }
 
     /** Files the weights do not know weigh the same, and are then dealt out by name, neighbours apart. */

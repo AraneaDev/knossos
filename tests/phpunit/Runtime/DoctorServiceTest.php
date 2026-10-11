@@ -98,7 +98,6 @@ final class DoctorServiceTest extends KnossosTestCase
 
         $result = $service->run();
 
-        $this->assertIsArray($result);
         $this->assertArrayHasKey('ok', $result);
         $this->assertArrayHasKey('checks', $result);
         $this->assertIsBool($result['ok']);

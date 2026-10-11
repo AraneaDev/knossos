@@ -99,10 +99,11 @@ final class GitIgnoreTest extends KnossosTestCase
             }
             $read = [$pipes[1]];
             $write = $except = null;
-            if (@stream_select($read, $write, $except, (int) $remaining, 0) === false) {
+            $ready = @stream_select($read, $write, $except, (int) $remaining, 0);
+            if ($ready === false) {
                 break;
             }
-            if ($read === []) {
+            if ($ready === 0) {
                 continue;
             }
             $chunk = fread($pipes[1], 65536);

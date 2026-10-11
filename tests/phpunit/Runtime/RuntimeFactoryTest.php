@@ -130,8 +130,6 @@ final class RuntimeFactoryTest extends TestCase
 
         $pdo = $factory->database($root . '/runtime.sqlite');
 
-        $this->assertNotNull($pdo);
-        assertSame(true, $pdo instanceof PDO);
         // schema_migrations table was created by the runner
         assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'")->fetchColumn());
         // projects table is one of the migrated targets
@@ -145,7 +143,7 @@ final class RuntimeFactoryTest extends TestCase
 
         $pdo = (new RuntimeFactory(self::projectRoot()))->database($deepPath);
 
-        $this->assertNotNull($pdo);
+        assertSame('sqlite', $pdo->getAttribute(PDO::ATTR_DRIVER_NAME));
         assertSame(true, is_file($deepPath));
         assertSame(true, is_dir(dirname($deepPath)));
     }
@@ -155,11 +153,11 @@ final class RuntimeFactoryTest extends TestCase
         $root = $this->freshTempDir();
         $factory = new RuntimeFactory(self::projectRoot());
 
-        $factory->database($root . '/runtime.sqlite');
+        $applied = (int) $factory->database($root . '/runtime.sqlite')->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
 
         // Second call should be a no-op for migrations (already applied).
         $pdo = $factory->database($root . '/runtime.sqlite');
-        $this->assertNotNull($pdo);
+        assertSame($applied, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
     }
 
     public function testDatabaseThrowsWhenTheParentDirectoryCannotBeCreated(): void

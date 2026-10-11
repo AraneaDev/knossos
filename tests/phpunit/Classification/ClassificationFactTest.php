@@ -64,9 +64,10 @@ final class ClassificationFactTest extends TestCase
     {
         $fact = $this->makeFact();
 
-        $error = captureThrows(static function () use ($fact): void {
-            $fact->role = 'hacked';
-        }, \Error::class);
+        $error = captureThrows(
+            static fn() => (new \ReflectionProperty(ClassificationFact::class, 'role'))->setValue($fact, 'hacked'),
+            \Error::class,
+        );
 
         assertContains('readonly', $error->getMessage());
     }

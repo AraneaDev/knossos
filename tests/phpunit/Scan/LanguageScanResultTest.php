@@ -64,7 +64,7 @@ final class LanguageScanResultTest extends TestCase
         $result = new LanguageScanResult([], [], [], 0, 0, 0, 0, [], []);
 
         $error = captureThrows(static function () use ($result): void {
-            $result->parsed = 9999;
+            (new \ReflectionProperty(LanguageScanResult::class, 'parsed'))->setValue($result, 9999);
         }, \Error::class);
 
         assertContains('readonly', $error->getMessage());
@@ -75,7 +75,7 @@ final class LanguageScanResultTest extends TestCase
         $result = new LanguageScanResult([], [], [], 0, 0, 0, 0, [], []);
 
         $error = captureThrows(static function () use ($result): void {
-            $result->manifests = ['hacked'];
+            (new \ReflectionProperty(LanguageScanResult::class, 'manifests'))->setValue($result, []);
         }, \Error::class);
 
         assertContains('readonly', $error->getMessage());

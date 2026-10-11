@@ -309,19 +309,10 @@ final class ProcessGitProviderTest extends KnossosTestCase
         // With git's default core.quotePath=true, paths with bytes >0x7F are
         // octal-escaped and backslash-quoted, which RelativePath rejects and the
         // parser silently drops. The provider must pass -c core.quotePath=false.
-        $captured = [];
-        $runner = new class($captured) implements GitProcessRunnerInterface {
-            /** @param list<string> $captured */
-            public function __construct(private array &$captured) {}
-
-            public function run(array $command, int $timeoutMs, string $operation): string
-            {
-                $this->captured = $command;
-                return '';
-            }
-        };
+        $runner = new RecordingGitRunner();
         $provider = new ProcessGitHistoryProvider(runner: $runner);
         $provider->history($this->existingDir, 30, 10, 100);
+        $captured = $runner->commandsWith('log')[0];
 
         // The '-c core.quotePath=false' config pair must appear before 'log'.
         $configIndex = array_search('core.quotePath=false', $captured, true);
@@ -339,7 +330,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
      */
     public function testWorkingTreeDiffIsScopedToTheProjectDirectory(): void
     {
-        $runner = $this->recordingRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? str_repeat('a', 40) . "\n" : '');
+        $runner = new RecordingGitRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? str_repeat('a', 40) . "\n" : '');
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, null, 10, 100);
 
         $diffs = $runner->commandsWith('diff');
@@ -357,7 +348,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
      */
     public function testHistoryIsScopedToTheProjectDirectory(): void
     {
-        $runner = $this->recordingRunner(static fn(array $command): string => '');
+        $runner = new RecordingGitRunner(static fn(array $command): string => '');
         (new ProcessGitHistoryProvider(runner: $runner))->history($this->existingDir, 30, 10, 100);
 
         $logs = $runner->commandsWith('log');
@@ -419,7 +410,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     /** A rename takes three tokens: the entry after it is read from the right place. */
     public function testAnEntryAfterARenameIsReadInStep(): void
     {
-        $runner = $this->recordingRunner(static fn(array $command): string => match (true) {
+        $runner = new RecordingGitRunner(static fn(array $command): string => match (true) {
             in_array('rev-parse', $command, true) => str_repeat('a', 40),
             in_array('diff', $command, true) => "R090\0src/old.php\0src/new.php\0M\0src/other.php\0",
             default => '',
@@ -433,7 +424,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     /** A rename whose source is no valid project path is no rename: the target alone is listed, as an add. */
     public function testARenameFromAnInvalidPathIsListedAsAnAdd(): void
     {
-        $runner = $this->recordingRunner(static fn(array $command): string => match (true) {
+        $runner = new RecordingGitRunner(static fn(array $command): string => match (true) {
             in_array('rev-parse', $command, true) => str_repeat('a', 40),
             in_array('diff', $command, true) => "R100\0../outside.php\0src/x.php\0",
             default => '',
@@ -446,7 +437,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     /** A base ref is resolved to the commit it names (`^{commit}`), so a tag peels to its commit. */
     public function testABaseRefIsPeeledToItsCommit(): void
     {
-        $runner = $this->recordingRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? str_repeat('b', 40) : '');
+        $runner = new RecordingGitRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? str_repeat('b', 40) : '');
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, 'v1.0', 10, 100);
 
         assertSame(['rev-parse', '--verify', 'v1.0^{commit}'], array_slice($runner->commandsWith('rev-parse')[0], -3));
@@ -463,7 +454,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
      */
     public function testAnUnbornBranchIsDiffedThroughTheIndexInsteadOfHead(): void
     {
-        $runner = $this->recordingRunner(static function (array $command): string {
+        $runner = new RecordingGitRunner(static function (array $command): string {
             if (in_array('rev-parse', $command, true)) {
                 throw new RuntimeException('fatal: Needed a single revision');
             }
@@ -489,7 +480,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     /** An empty answer to `rev-parse --verify -q HEAD`, a bare line break included, is the same unborn branch as a failed one. */
     public function testAnEmptyHeadAnswerIsTreatedAsAnUnbornBranch(): void
     {
-        $runner = $this->recordingRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? "\n" : '');
+        $runner = new RecordingGitRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? "\n" : '');
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, null, 10, 100);
 
         $diffs = $runner->commandsWith('diff');
@@ -501,7 +492,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     public function testABornBranchIsDiffedAgainstHead(): void
     {
         $hash = str_repeat('c', 40);
-        $runner = $this->recordingRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? $hash . "\n" : '');
+        $runner = new RecordingGitRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? $hash . "\n" : '');
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, null, 10, 100);
 
         $revParse = $runner->commandsWith('rev-parse');
@@ -555,7 +546,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     public function testHistoryKeepsPathsGitWouldQuote(): void
     {
         $header = "KNOSSOS_COMMIT\x1fabc\x1f2026-07-20T10:00:00+00:00\x1f1784541600\x1fa@test.dev";
-        $runner = $this->recordingRunner(static fn(array $command): string => self::logOutput([[$header, ['we"ird.ts', "tab\tname.ts", "new\nline.ts", ' spaced.ts ']]]));
+        $runner = new RecordingGitRunner(static fn(array $command): string => self::logOutput([[$header, ['we"ird.ts', "tab\tname.ts", "new\nline.ts", ' spaced.ts ']]]));
 
         $history = (new ProcessGitHistoryProvider(runner: $runner))->history($this->existingDir, 30, 10, 100);
 
@@ -651,41 +642,6 @@ final class ProcessGitProviderTest extends KnossosTestCase
             }
             file_put_contents($root . '/' . $path, $content);
         }
-    }
-
-    /**
-     * A runner that records every command and answers through `$respond`.
-     *
-     * @param callable(list<string>): string $respond
-     */
-    private function recordingRunner(callable $respond): GitProcessRunnerInterface
-    {
-        return new class($respond) implements GitProcessRunnerInterface {
-            /** @var list<list<string>> */
-            public array $commands = [];
-
-            /** @var callable(list<string>): string */
-            private $respond;
-
-            /** @param callable(list<string>): string $respond */
-            public function __construct(callable $respond)
-            {
-                $this->respond = $respond;
-            }
-
-            public function run(array $command, int $timeoutMs, string $operation): string
-            {
-                $this->commands[] = $command;
-
-                return ($this->respond)($command);
-            }
-
-            /** @return list<list<string>> the recorded commands whose subcommand is `$subcommand` */
-            public function commandsWith(string $subcommand): array
-            {
-                return array_values(array_filter($this->commands, static fn(array $command): bool => in_array($subcommand, $command, true)));
-            }
-        };
     }
 
     private function mockRunner(string $returnValue): GitProcessRunnerInterface

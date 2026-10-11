@@ -236,7 +236,7 @@ final class ScanInputHashesTest extends TestCase
         $undiscovered = ScanInputHashes::verify($decoded, $this->declaring(), $this->discovery());
 
         assertSame(['src/x.ts', '42'], array_map(strval(...), array_keys($undiscovered)));
-        assertSame(hash('sha256', 'x'), $undiscovered['42']);
+        assertSame([null, hash('sha256', 'x')], array_values($undiscovered));
     }
 
     public function testAnObjectKeyedOnlyByZeroIsRefusedBecauseItDecodesToAList(): void
@@ -256,7 +256,6 @@ final class ScanInputHashesTest extends TestCase
         return [$path => new DiscoveredFile($path, '/nonexistent/' . $path, 'typescript', strlen(self::OTHER), 0, hash('sha256', self::OTHER))];
     }
 
-    /** @return array<string, DiscoveredFile> */
     public function testVerifyAllReturnsEveryEntryAndVerifyOnlyTheUndiscoveredOnes(): void
     {
         $other = hash('sha256', self::OTHER);
@@ -270,6 +269,7 @@ final class ScanInputHashesTest extends TestCase
         assertSame($all['undiscovered'], ScanInputHashes::verify($result, $this->declaring(), $this->discovery()));
     }
 
+    /** @return array<string, DiscoveredFile> */
     private function discovery(): array
     {
         return ['src/Other.ts' => new DiscoveredFile('src/Other.ts', '/nonexistent/src/Other.ts', 'typescript', strlen(self::OTHER), 0, hash('sha256', self::OTHER))];

@@ -54,7 +54,7 @@ final class ContributionPartitionTest extends TestCase
         $partition = new ContributionPartition([], [], [], 0, 0);
 
         $error = captureThrows(static function () use ($partition): void {
-            $partition->added = 9999;
+            (new \ReflectionProperty(ContributionPartition::class, 'added'))->setValue($partition, 9999);
         }, \Error::class);
 
         assertContains('readonly', $error->getMessage());
@@ -65,7 +65,7 @@ final class ContributionPartitionTest extends TestCase
         $partition = new ContributionPartition([], [], [], 0, 0);
 
         $error = captureThrows(static function () use ($partition): void {
-            $partition->cached = ['hacked-contribution'];
+            (new \ReflectionProperty(ContributionPartition::class, 'cached'))->setValue($partition, []);
         }, \Error::class);
 
         assertContains('readonly', $error->getMessage());

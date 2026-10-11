@@ -14,7 +14,6 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDOException;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
-use stdClass;
 
 final class FaultInjectionTest extends KnossosTestCase
 {
@@ -82,7 +81,7 @@ final class FaultInjectionTest extends KnossosTestCase
             $client->initialize();
             $polls = 0;
             $error = captureThrows(
-                fn() => iterator_to_array($client->scan([new stdClass()], function () use (&$polls): bool {
+                fn() => iterator_to_array($client->scan(['request_id' => 'child-scan'], function () use (&$polls): bool {
                     return ++$polls >= 4;
                 })),
                 WorkerException::class,

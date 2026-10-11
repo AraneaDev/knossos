@@ -41,7 +41,6 @@ final class BundleIdMapBuilderTest extends TestCase
     {
         $id = BundleIdMapBuilder::mappedId('proj', 'files', 'old-1');
 
-        $this->assertIsString($id);
         $this->assertStringStartsWith('bundle-', $id);
     }
 
@@ -303,13 +302,10 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         foreach (['files', 'nodes', 'boundaries'] as $table) {
+            $payload = ['files' => [], 'nodes' => [], 'boundaries' => []];
+            $payload[$table] = ['not-an-object'];
             $error = captureThrows(
-                static fn () => $builder->build('proj', [
-                    'files' => [],
-                    'nodes' => [],
-                    'boundaries' => [],
-                    $table => ['not-an-object'],
-                ]),
+                static fn () => $builder->build('proj', $payload),
                 InvalidArgumentException::class,
             );
             $this->assertStringContainsString('Bundle ' . $table . ' row must be an object.', $error->getMessage());

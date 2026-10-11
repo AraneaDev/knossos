@@ -16,9 +16,10 @@ use PHPUnit\Framework\Attributes\Group;
 final readonly class SccProbe extends AbstractArchitectureQueryService
 {
     /**
-     * @param array<string, list<string>> $adjacency
-     * @param array<string, list<string>> $reverse
-     * @return array{components: list<list<string>>, timed_out: bool}
+     * @template TNode of array-key
+     * @param array<TNode, list<TNode>> $adjacency
+     * @param array<TNode, list<TNode>> $reverse
+     * @return array{components: list<list<TNode>>, timed_out: bool}
      */
     public function scc(array $adjacency, array $reverse, ?int $deadline): array
     {

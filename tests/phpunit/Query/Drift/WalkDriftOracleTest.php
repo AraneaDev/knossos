@@ -38,7 +38,6 @@ final class WalkDriftOracleTest extends KnossosTestCase
 
             $drift = self::drift($pdo, $projectId, $root);
 
-            $this->assertNotNull($drift);
             $this->assertSame(1, $drift->changed);
             $this->assertSame(1, $drift->deleted);
             $this->assertSame(0, $drift->added);
@@ -68,7 +67,6 @@ final class WalkDriftOracleTest extends KnossosTestCase
 
             $drift = self::drift($pdo, $projectId, $root);
 
-            $this->assertNotNull($drift);
             $this->assertSame(DriftCounts::NAMED + 3, $drift->deleted);
             $this->assertCount(DriftCounts::NAMED, $drift->paths);
         } finally {

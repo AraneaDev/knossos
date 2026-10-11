@@ -44,7 +44,7 @@ final class UnscannableFileTest extends KnossosTestCase
     public function testThePhpWorkerStillRejectsAnUninterpretableRequest(): void
     {
         $client = $this->phpWorkerClient();
-        $error = self::captureThrown(
+        $error = captureThrows(
             fn() => iterator_to_array($client->scan([
                 'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
                 'files' => [1],

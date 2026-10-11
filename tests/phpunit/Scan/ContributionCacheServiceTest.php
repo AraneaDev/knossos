@@ -9,7 +9,6 @@ use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Discovery\DiscoveredFile;
 use Knossos\Scan\CachedReads;
 use Knossos\Scan\ContributionCacheService;
-use Knossos\Scan\ContributionPartition;
 use Knossos\Scan\PartitionContext;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Protocol\{Confidence, Diagnostic, Evidence, NodeFact, Origin};
@@ -166,7 +165,7 @@ final class ContributionCacheServiceTest extends TestCase
 
         $partition = $service->partition([$file], $manifest, new PartitionContext('cfg', [], false, 'analysis'));
 
-        assertSame(true, $partition instanceof ContributionPartition);
+        assertSame([$file], $partition->filesToScan);
         assertSame(1, $partition->added);
     }
 
@@ -239,7 +238,7 @@ final class ContributionCacheServiceTest extends TestCase
         }
         $read = hash('sha256', 'dep');
         $cachedReads = new CachedReads(
-            ['knossos.php:file:A.php' => ['scanner_id' => 'knossos.php', 'file_path' => 'A.php', 'content_hash' => $files[0]->contentHash, 'read_attribution' => true, 'read_group' => null]],
+            ['knossos.php:file:A.php' => ['scanner_id' => 'knossos.php', 'file_path' => 'A.php', 'content_hash' => $files[0]->contentHash, 'scanner_version' => $version, 'configuration_hash' => 'cfg', 'read_attribution' => true, 'read_group' => null]],
             ['knossos.php:file:A.php' => ['dep.php' => $read]],
             [],
         );

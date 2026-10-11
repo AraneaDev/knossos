@@ -52,8 +52,7 @@ final class ScanLeafTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testScanCancelledExceptionIsRuntimeExceptionSubclass(): void
     {
-        $error = new ScanCancelledException('cancelled');
-        assertSame(true, $error instanceof RuntimeException);
+        assertSame(RuntimeException::class, get_parent_class(new ScanCancelledException('cancelled')));
     }
 
     public function testScanCancelledExceptionCanBeThrownAndCaught(): void
@@ -74,8 +73,7 @@ final class ScanLeafTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testScanBusyExceptionIsRuntimeExceptionSubclass(): void
     {
-        $error = new ScanBusyException('busy');
-        assertSame(true, $error instanceof RuntimeException);
+        assertSame(RuntimeException::class, get_parent_class(new ScanBusyException('busy')));
     }
 
     public function testScanBusyExceptionCanBeThrownAndCaught(): void

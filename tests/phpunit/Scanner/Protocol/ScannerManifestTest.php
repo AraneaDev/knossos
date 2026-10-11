@@ -63,18 +63,26 @@ final class ScannerManifestTest extends TestCase
 
     public function testRejectsEmptyId(): void
     {
-        assertThrows(
-            static fn() => new ScannerManifest('', 'v', 'p', 'o', ['php'], ['php'], []),
+        $data = self::minimalData();
+        $data['id'] = '';
+
+        $error = captureThrows(
+            static fn() => ScannerManifest::fromArray($data),
             InvalidArgumentException::class,
         );
+        assertSame('Scanner identity and version fields must not be empty.', $error->getMessage());
     }
 
     public function testRejectsEmptyVersion(): void
     {
-        assertThrows(
-            static fn() => new ScannerManifest('id', '', 'p', 'o', ['php'], ['php'], []),
+        $data = self::minimalData();
+        $data['version'] = '';
+
+        $error = captureThrows(
+            static fn() => ScannerManifest::fromArray($data),
             InvalidArgumentException::class,
         );
+        assertSame('Scanner identity and version fields must not be empty.', $error->getMessage());
     }
 
     public function testRejectsEmptyProtocolVersion(): void
@@ -103,26 +111,38 @@ final class ScannerManifestTest extends TestCase
 
     public function testRejectsNonStringInLanguages(): void
     {
-        assertThrows(
-            static fn() => new ScannerManifest('id', 'v', 'p', 'o', ['php', 42], ['php'], []),
+        $data = self::minimalData();
+        $data['languages'] = ['php', 42];
+
+        $error = captureThrows(
+            static fn() => ScannerManifest::fromArray($data),
             InvalidArgumentException::class,
         );
+        assertSame('Manifest field "languages" must contain non-empty strings.', $error->getMessage());
     }
 
     public function testRejectsEmptyStringInFileExtensions(): void
     {
-        assertThrows(
-            static fn() => new ScannerManifest('id', 'v', 'p', 'o', ['php'], [''], []),
+        $data = self::minimalData();
+        $data['file_extensions'] = [''];
+
+        $error = captureThrows(
+            static fn() => ScannerManifest::fromArray($data),
             InvalidArgumentException::class,
         );
+        assertSame('Manifest field "fileExtensions" must contain non-empty strings.', $error->getMessage());
     }
 
     public function testRejectsEmptyStringInCapabilities(): void
     {
-        assertThrows(
-            static fn() => new ScannerManifest('id', 'v', 'p', 'o', ['php'], ['php'], ['']),
+        $data = self::minimalData();
+        $data['capabilities'] = [''];
+
+        $error = captureThrows(
+            static fn() => ScannerManifest::fromArray($data),
             InvalidArgumentException::class,
         );
+        assertSame('Manifest field "capabilities" must contain non-empty strings.', $error->getMessage());
     }
 
     // ----- fromArray -----
@@ -140,7 +160,7 @@ final class ScannerManifestTest extends TestCase
         assertSame(['scan'], $m->capabilities);
     }
 
-    /** @return list<array{string, mixed, string}> */
+    /** @return array<string, array{string, mixed, string}> */
     public static function missingStringFieldProvider(): array
     {
         return [
@@ -151,7 +171,7 @@ final class ScannerManifestTest extends TestCase
         ];
     }
 
-    /** @return list<array{string, mixed, string}> */
+    /** @return array<string, array{string, mixed, string}> */
     public static function missingListFieldProvider(): array
     {
         return [

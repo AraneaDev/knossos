@@ -61,16 +61,16 @@ final class PolicyBoundaryReferencesTest extends KnossosTestCase
 
         $names = $pdo->query('SELECT name FROM boundaries ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
         assertSame(['composer:acme/lib (+node:web)', 'module:src'], $names);
-        self::assertIsString($check('node:web'));
-        self::assertIsString($check($oldId));
-        self::assertIsString($check('composer:acme/lib'));
+        assertSame('Found 0 declared architecture policy violations.', $check('node:web'));
+        assertSame('Found 0 declared architecture policy violations.', $check($oldId));
+        assertSame('Found 0 declared architecture policy violations.', $check('composer:acme/lib'));
         // Targets resolve the same way: an allow list naming a former name is
         // compiled, one naming nothing is refused.
         $allow = static fn(string $target): string => (new ArchitecturePolicyQueryService($pdo))->checkArchitecture(
             $projectId,
             [['id' => 'web-allows', 'from_boundary' => 'node:web', 'allow_targets' => [$target]]],
         )->summary;
-        self::assertIsString($allow('node:web'));
+        assertSame('Found 0 declared architecture policy violations.', $allow('node:web'));
         $error = captureThrows(static fn() => $allow('Nowhere'), InvalidArgumentException::class);
         assertSame('Unknown policy boundary: Nowhere', $error->getMessage());
     }

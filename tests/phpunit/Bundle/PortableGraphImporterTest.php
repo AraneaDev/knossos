@@ -581,10 +581,10 @@ final class PortableGraphImporterTest extends TestCase
     public function testImportRejectsRowThatIsAList(): void
     {
         // The BundleIdMapBuilder rejects non-object rows BEFORE the importer sees them.
+        $payload = $this->minimalPayload();
+        $payload['files'] = [['this-is', 'a-list']];
         $error = captureThrows(
-            fn () => $this->callImportWithPayload(
-                $this->payloadWith(['files' => [['this-is', 'a-list']]])
-            ),
+            fn () => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
 
@@ -593,10 +593,10 @@ final class PortableGraphImporterTest extends TestCase
 
     public function testImportRejectsRowThatIsNotAnArray(): void
     {
+        $payload = $this->minimalPayload();
+        $payload['files'] = ['not-an-object-string'];
         $error = captureThrows(
-            fn () => $this->callImportWithPayload(
-                $this->payloadWith(['files' => ['not-an-object-string']])
-            ),
+            fn () => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
 

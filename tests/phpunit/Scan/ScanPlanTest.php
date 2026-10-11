@@ -20,7 +20,7 @@ final class ScanPlanTest extends TestCase
     public function testConstructorAssignsAllFieldsViaNamedArgs(): void
     {
         $prep = $this->makePreparation();
-        $cache = ['src/foo.php' => ['entry-foo'], 'src/bar.php' => ['entry-bar']];
+        $cache = ["knossos.php\0src/foo.php" => ['content_hash' => 'hash-foo'], "knossos.php\0src/bar.php" => ['content_hash' => 'hash-bar']];
 
         $plan = new ScanPlan(
             preparation: $prep,
@@ -40,7 +40,7 @@ final class ScanPlanTest extends TestCase
     public function testConstructorAssignsAllFieldsViaPositionalArgs(): void
     {
         $prep = $this->makePreparation();
-        $cache = ['only.php' => ['entry']];
+        $cache = ["knossos.php\0only.php" => ['content_hash' => 'hash-only']];
 
         $plan = new ScanPlan($prep, 'proj-positional', 'incremental', $cache, 1);
 
@@ -58,7 +58,7 @@ final class ScanPlanTest extends TestCase
 
         // Reassigning a readonly typed property triggers a PHP Error.
         $error = captureThrows(static function () use ($plan): void {
-            $plan->effectiveMode = 'hacked';
+            (new \ReflectionProperty(ScanPlan::class, 'effectiveMode'))->setValue($plan, 'hacked');
         }, \Error::class);
 
         // The Error is the readonly-reassignment error.
