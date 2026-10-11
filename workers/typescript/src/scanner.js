@@ -562,7 +562,12 @@ export class TypeScriptScanner {
             );
             this.#cacheProgram(key, program);
             recordUnreadSourceFiles(root, program, reads, maxFileBytes);
-            this.#emitProgram(program, request, key.endsWith(FALLBACK_KEY));
+            this.#emitProgram(
+                program,
+                request,
+                key.endsWith(FALLBACK_KEY),
+                parsed.bundlerDiagnostics ?? [],
+            );
             request.attribution.program(program, request.program, (relative) =>
                 request.ownedByProgram(relative, request.program),
             );
@@ -673,7 +678,7 @@ export class TypeScriptScanner {
     }
 
     /** @param {ScanRequest} request */
-    #emitProgram(program, request, fallback) {
+    #emitProgram(program, request, fallback, configDiagnostics) {
         const { root, emitted, emit, maxFileBytes, owner } = request;
         // The fallback program emits whatever no config's program did, a
         // file some config lists included, so it is given no owners to defer
@@ -682,12 +687,11 @@ export class TypeScriptScanner {
         const owners = fallback ? new Map() : request.owners;
         const tracker = declarationTracker(program.getTypeChecker());
         const skipped = emissionSkipped(request, owners, fallback);
-        const { byFile: diagnosticsByFile, programLevel } = programDiagnostics(
-            program,
-            root,
-            maxFileBytes,
-            fallback,
-        );
+        const { byFile: diagnosticsByFile, programLevel: compilerLevel } =
+            programDiagnostics(program, root, maxFileBytes, fallback);
+        // A bundler config the program's options were read from counts as
+        // its configuration: what could not be read of it applies to all.
+        const programLevel = [...compilerLevel, ...configDiagnostics];
 
         // A diagnostic that names no file describes the whole program, so it
         // is reported once, on one fixed file of the program. The carrier is
