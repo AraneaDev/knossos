@@ -407,15 +407,6 @@ final class ClassificationModuleTest extends KnossosTestCase
         assertSame('laravel.queued', $facts[2]->role);
     }
 
-    public function testClassificationEngineConstructorRejectsNonRule(): void
-    {
-        // Engine throw path: a non-ClassificationRule in the constructor array throws.
-        assertThrows(
-            fn() => new ClassificationEngine(['not-a-rule']),
-            InvalidArgumentException::class,
-        );
-    }
-
     public function testClassificationEngineThrowsOnInconsistentProvenance(): void
     {
         // Engine throw path: a fake rule that emits a fact with the wrong

@@ -195,7 +195,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $dbPath,
             );
             $cmd = new BundleCommand();
-            assertSame(0, $cmd->run('export-bundle', [$projectId], ['output' => [$outputPath], 'json' => [true]], $context));
+            assertSame(0, $cmd->run('export-bundle', [$projectId], ['output' => [$outputPath], 'json' => ['']], $context));
             assertSame(true, is_file($outputPath), 'Bundle file was created');
             assertSame(true, filesize($outputPath) > 0, 'Bundle file is non-empty');
 
@@ -549,7 +549,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         $cmd = new MaintenanceCommand();
         ob_start();
         try {
-            $exit = $cmd->run('doctor', [], ['json' => [true]], $this->newContext());
+            $exit = $cmd->run('doctor', [], ['json' => ['']], $this->newContext());
         } finally {
             $output = (string) ob_get_clean();
         }
@@ -605,7 +605,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $dbPath,
             );
             $cmd = new MaintenanceCommand();
-            assertSame(0, $cmd->run('remove-project', [$projectId], ['execute' => [true]], $context));
+            assertSame(0, $cmd->run('remove-project', [$projectId], ['execute' => ['']], $context));
         } finally {
             $cleanup();
         }
@@ -624,7 +624,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $dbPath,
             );
             $cmd = new MaintenanceCommand();
-            assertSame(0, $cmd->run('maintain-database', ['integrity'], ['execute' => [true]], $context));
+            assertSame(0, $cmd->run('maintain-database', ['integrity'], ['execute' => ['']], $context));
         } finally {
             $cleanup();
         }
@@ -645,7 +645,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $dbPath,
             );
             $cmd = new MaintenanceCommand();
-            assertSame(0, $cmd->run('cleanup-stale-scans', [$projectId], ['older-than-hours' => ['1'], 'execute' => [true]], $context));
+            assertSame(0, $cmd->run('cleanup-stale-scans', [$projectId], ['older-than-hours' => ['1'], 'execute' => ['']], $context));
         } finally {
             $cleanup();
         }
@@ -1128,7 +1128,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             $cmd = new QueryCommand();
             ob_start();
             try {
-                $exit = $cmd->run('review-diff', [$project], ['json' => [true]], $context);
+                $exit = $cmd->run('review-diff', [$project], ['json' => ['']], $context);
             } finally {
                 $output = (string) ob_get_clean();
             }
@@ -1292,7 +1292,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 file_put_contents($budgetsFile, json_encode($budgets, JSON_THROW_ON_ERROR));
                 ob_start();
                 try {
-                    $exit = (new QueryCommand())->run('quality-gate', [$projectId, $archivedScanId], ['budgets' => [$budgetsFile], 'json' => [true]], $context);
+                    $exit = (new QueryCommand())->run('quality-gate', [$projectId, $archivedScanId], ['budgets' => [$budgetsFile], 'json' => ['']], $context);
                 } finally {
                     $printed = (string) ob_get_clean();
                 }
@@ -1374,9 +1374,10 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             ] as $command => [$positionals, $options]) {
                 ob_start();
                 try {
-                    (new QueryCommand())->run($command, $positionals, [...$options, 'json' => [true]], $context);
+                    (new QueryCommand())->run($command, $positionals, [...$options, 'json' => ['']], $context);
+                    $printed = (string) ob_get_contents();
                 } finally {
-                    $printed = (string) ob_get_clean();
+                    ob_end_clean();
                 }
                 $bounds = json_decode($printed, true, 512, JSON_THROW_ON_ERROR)['data']['bounds'];
                 $expected = $defaults[str_replace('-', '_', $command)];
@@ -1409,7 +1410,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             );
             $cmd = new QueryCommand();
             ob_start();
-            $exit = $cmd->run('check-architecture', [$projectId], ['policies' => [$policiesFile], 'json' => [true]], $context);
+            $exit = $cmd->run('check-architecture', [$projectId], ['policies' => [$policiesFile], 'json' => ['']], $context);
             $rendered = (string) ob_get_clean();
             $decoded = json_decode(trim($rendered), true);
             $count = $decoded['data']['bounds']['violation_count'] ?? count($decoded['data']['violations']);

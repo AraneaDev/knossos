@@ -39,17 +39,17 @@ final class ArchitectureContextBoundsTest extends KnossosTestCase
         }
 
         // The timeout range, at both ends and just outside each.
-        assertSame(true, is_array($queries->architectureContext($this->project, 'refunds', timeoutMs: 1)->data));
-        assertSame(true, is_array($queries->architectureContext($this->project, 'refunds', timeoutMs: 5_000)->data));
+        assertSame(30_000, $queries->architectureContext($this->project, 'refunds', timeoutMs: 1)->data['budget']['max_chars']);
+        assertSame(30_000, $queries->architectureContext($this->project, 'refunds', timeoutMs: 5_000)->data['budget']['max_chars']);
         foreach ([0, 5_001] as $outside) {
             assertThrows(fn() => $queries->architectureContext($this->project, 'refunds', timeoutMs: $outside), InvalidArgumentException::class);
         }
 
         // A task description of exactly the ceiling is accepted.
-        assertSame(true, is_array($queries->architectureContext($this->project, str_repeat('a', 2_000))->data));
+        assertSame(30_000, $queries->architectureContext($this->project, str_repeat('a', 2_000))->data['budget']['max_chars']);
         assertThrows(fn() => $queries->architectureContext($this->project, str_repeat('a', 2_001)), InvalidArgumentException::class);
         // Counted in characters: 2,000 CJK characters are 6,000 bytes and still within it.
-        assertSame(true, is_array($queries->architectureContext($this->project, str_repeat('界', 2_000))->data));
+        assertSame(30_000, $queries->architectureContext($this->project, str_repeat('界', 2_000))->data['budget']['max_chars']);
         $refused = captureThrows(fn() => $queries->architectureContext($this->project, str_repeat('界', 2_001)), InvalidArgumentException::class);
         assertSame('task_description must not exceed 2000 characters.', $refused->getMessage());
 

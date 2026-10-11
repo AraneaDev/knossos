@@ -129,7 +129,7 @@ final class BoundaryInference
         }
         $seenExplicit = [];
         foreach ($explicit as $rule) {
-            if (!is_array($rule) || !is_string($rule['name'] ?? null)) {
+            if (!is_string($rule['name'] ?? null)) {
                 throw new InvalidArgumentException('Explicit boundary requires a name.');
             }
             if (in_array($rule['name'], $seenExplicit, true)) {

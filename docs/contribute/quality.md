@@ -218,7 +218,7 @@ where they run:
 
 | Surface                      | Enforced tools                                                                  |
 | ---------------------------- | ------------------------------------------------------------------------------- |
-| PHP                          | PHP syntax, PHP-CS-Fixer 3.95.12, PHPStan 2.2.5                                 |
+| PHP                          | PHP syntax, PHP-CS-Fixer 3.95.12, PHPStan 2.2.5 (level 5, over the tests too)   |
 | JavaScript/TypeScript worker | ESLint 10.7.0, Prettier 3.9.5, TypeScript compiler checks, vitest suite         |
 | Claude Code mod              | ESLint, `npm run typecheck:mod`, vitest, `claude plugin validate`/`test`        |
 | Python worker                | Ruff 0.15.12, mypy 2.3.0, pytest, isolated compile/runtime tests                |

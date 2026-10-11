@@ -109,7 +109,7 @@ final class ResultEnvelopeTest extends TestCase
     public function testWithPreservesExistingStalenessWhenOtherArgsPassed(): void
     {
         $original = new ResultEnvelope('p', 's', 'sum', [], staleness: ['s' => 1]);
-        $updated = $original->with(nextSteps: [['x']]);
+        $updated = $original->with(nextSteps: [['tool' => 'x']]);
 
         assertSame(['s' => 1], $updated->staleness);
     }
@@ -126,16 +126,16 @@ final class ResultEnvelopeTest extends TestCase
 
     public function testWithPreservesNextStepsWhenNullPassed(): void
     {
-        $original = new ResultEnvelope('p', 's', 'sum', [], nextSteps: [['x']]);
+        $original = new ResultEnvelope('p', 's', 'sum', [], nextSteps: [['tool' => 'x']]);
         $updated = $original->with(nextSteps: null);
 
-        assertSame([['x']], $updated->nextSteps);
+        assertSame([['tool' => 'x']], $updated->nextSteps);
     }
 
     public function testWithReplacingNextStepsWithEmptyArrayClearsItNotKeepsOriginal(): void
     {
         // Same `??` vs `?:` mutation kill for the nextSteps field.
-        $original = new ResultEnvelope('p', 's', 'sum', [], nextSteps: [['orig']]);
+        $original = new ResultEnvelope('p', 's', 'sum', [], nextSteps: [['tool' => 'orig']]);
         $updated = $original->with(nextSteps: []);
 
         assertSame([], $updated->nextSteps);
@@ -186,7 +186,7 @@ final class ResultEnvelopeTest extends TestCase
 
         $updated = $envelope->with(
             staleness: ['fresh' => 2],
-            nextSteps: [['a']],
+            nextSteps: [['tool' => 'a']],
             meta: ['m' => 3],
         );
 
@@ -202,11 +202,11 @@ final class ResultEnvelopeTest extends TestCase
     public function testWithReturnsNewInstanceEachCall(): void
     {
         $envelope = new ResultEnvelope('p', 's', 'sum', []);
-        $first = $envelope->with(staleness: ['a']);
-        $second = $first->with(staleness: ['b']);
+        $first = $envelope->with(staleness: ['state' => 'a']);
+        $second = $first->with(staleness: ['state' => 'b']);
 
-        assertSame(['a'], $first->staleness);
-        assertSame(['b'], $second->staleness);
+        assertSame(['state' => 'a'], $first->staleness);
+        assertSame(['state' => 'b'], $second->staleness);
         assertSame(null, $envelope->staleness);
     }
 
@@ -341,7 +341,7 @@ final class ResultEnvelopeTest extends TestCase
 
     public function testJsonSerializeVerifiesSnakeCaseKeys(): void
     {
-        $array = (new ResultEnvelope('pid', 'sid', 'sum', [], nextSteps: [['x']]))->jsonSerialize();
+        $array = (new ResultEnvelope('pid', 'sid', 'sum', [], nextSteps: [['tool' => 'x']]))->jsonSerialize();
         $this->assertArrayHasKey('project_id', $array);
         $this->assertArrayHasKey('snapshot_id', $array);
         $this->assertArrayHasKey('next_steps', $array);
@@ -377,21 +377,21 @@ final class ResultEnvelopeTest extends TestCase
             evidence: [],
             warnings: [],
             truncated: false,
-            staleness: ['orig'],
+            staleness: ['state' => 'orig'],
             nextSteps: [],
             meta: null,
         );
 
-        $copy = $original->with(staleness: ['new'], nextSteps: [['n']], meta: ['m' => 1]);
+        $copy = $original->with(staleness: ['state' => 'new'], nextSteps: [['tool' => 'n']], meta: ['m' => 1]);
 
         // The original must remain unchanged.
-        assertSame(['orig'], $original->staleness);
+        assertSame(['state' => 'orig'], $original->staleness);
         assertSame([], $original->nextSteps);
         assertSame(null, $original->meta);
 
         // The copy has the new values.
-        assertSame(['new'], $copy->staleness);
-        assertSame([['n']], $copy->nextSteps);
+        assertSame(['state' => 'new'], $copy->staleness);
+        assertSame([['tool' => 'n']], $copy->nextSteps);
         assertSame(['m' => 1], $copy->meta);
     }
 

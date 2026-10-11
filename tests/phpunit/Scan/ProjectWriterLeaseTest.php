@@ -88,7 +88,7 @@ final class ProjectWriterLeaseTest extends TestCase
         $lease->release();
 
         assertSame(1, $prepareCount);
-        assertSame(true, $lease instanceof ProjectWriterLease);
+        assertSame('', $lease->projectId());
     }
 
     public function testReleaseDoesNotExecuteWhenTokenIsEmpty(): void

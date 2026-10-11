@@ -122,7 +122,7 @@ npm --prefix workers/typescript ci --dry-run --ignore-scripts --no-audit --no-fu
 
 composer lint
 vendor/bin/php-cs-fixer check --using-cache=no --allow-risky=yes --sequential
-vendor/bin/phpstan analyse --no-progress --debug --memory-limit=512M
+vendor/bin/phpstan analyse --no-progress --debug --memory-limit=1G
 npm run lint:js
 # The mod's sources under hooks/lib, then every module and spec under
 # hooks/lib and hooks/mod. Vitest strips the specs' types without reading

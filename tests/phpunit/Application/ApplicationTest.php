@@ -51,7 +51,8 @@ final class ApplicationTest extends TestCase
         $app = new Application();
         $return = $app->run(['help']);
 
-        $this->assertIsInt($return);
+        $this->assertSame('int', (string) $reflection->getReturnType());
+        $this->assertSame(0, $return);
     }
 
     // ----- meta-command: help -----

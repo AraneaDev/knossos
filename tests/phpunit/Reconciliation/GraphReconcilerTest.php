@@ -57,7 +57,7 @@ final class GraphReconcilerTest extends TestCase
         $reflection = new \ReflectionMethod(GraphReconciler::class, 'reconcile');
         $this->assertTrue($reflection->isPublic());
         $returnType = $reflection->getReturnType();
-        $this->assertNotNull($returnType);
+        $this->assertInstanceOf(\ReflectionNamedType::class, $returnType);
         assertSame(ReconciliationResult::class, $returnType->getName());
     }
 
@@ -106,7 +106,6 @@ final class GraphReconcilerTest extends TestCase
         assertSame($expectedProjectId, $result->projectId);
         assertSame($expectedProjectId, $expectedScanArgs[1]);
         assertSame('incremental', $expectedScanArgs[2]);
-        $this->assertIsString($result->scanId);
         $this->assertStringStartsWith('scan_', $result->scanId);
         assertSame($result->scanId, $expectedScanArgs[0]);
     }

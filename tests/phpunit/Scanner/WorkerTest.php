@@ -15,13 +15,6 @@ use PHPUnit\Framework\Attributes\Group;
 final class WorkerTest extends KnossosTestCase
 {
     #[Group('worker')]
-    public function testProcessScannerClientRejectsEmptyCommand(): void
-    {
-        $error = captureThrows(static fn() => new ProcessScannerClient([]), WorkerException::class);
-        assertSame('WORKER_COMMAND_INVALID', $error->diagnosticCode);
-    }
-
-    #[Group('worker')]
     public function testWorkerSupervisorInitializesScansCancelsAndShutsDown(): void
     {
         $client = $this->fakeWorkerClient('compliant');

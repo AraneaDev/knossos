@@ -144,8 +144,7 @@ final class SharedWatchTest extends KnossosTestCase
         $held = WatchLock::acquire(dirname($database) . '/watch', $projectId);
         assertNotNull($held);
         $held->write(['project_id' => $projectId, 'snapshot_id' => null, 'phase' => 'idle']);
-        $polls = 0;
-        $events = $this->watch($pdo, $database, $root, 6, null, function (array $event) use (&$polls, $held, $pdo, $root): void {
+        $events = $this->watch($pdo, $database, $root, 6, null, function (array $event) use ($held, $pdo, $root): void {
             if ($event['event'] !== 'following') {
                 return;
             }
@@ -215,7 +214,8 @@ final class SharedWatchTest extends KnossosTestCase
         $first = WatchLock::acquire($dir, 'project-a');
         assertNotNull($first);
         $first->write(['phase' => 'idle']);
-        assertNull(WatchLock::acquire($dir, 'project-a'));
+        $refused = WatchLock::acquire($dir, 'project-a');
+        assertNull($refused);
         assertSame(getmypid(), WatchLock::owner($dir, 'project-a')['pid'] ?? null);
         $other = WatchLock::acquire($dir, 'project-b');
         assertNotNull($other);

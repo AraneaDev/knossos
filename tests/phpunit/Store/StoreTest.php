@@ -7,7 +7,7 @@ namespace Knossos\Tests\Phpunit\Store;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
-use Knossos\Store\SqliteGraphRepository;
+use Knossos\Store\GraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -185,7 +185,7 @@ final class StoreTest extends KnossosTestCase
 
         assertThrows(
             function () use ($repository, $ids): void {
-                $repository->transaction(function (SqliteGraphRepository $store) use ($ids): void {
+                $repository->transaction(function (GraphRepository $store) use ($ids): void {
                     $id = StableId::symbol($ids['project'], 'php', 'class', 'App\\RolledBack');
                     $store->saveNode(
                         $id,

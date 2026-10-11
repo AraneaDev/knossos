@@ -37,8 +37,13 @@ final class DiagramBoundsTest extends KnossosTestCase
         assertSame(1, $query->exportDiagram($ids['project'], maxEdges: 1)->data['bounds']['max_edges']);
         assertSame(1_000, $query->exportDiagram($ids['project'], maxEdges: 1_000)->data['bounds']['max_edges']);
 
-        foreach ([['maxNodes' => 0], ['maxNodes' => 401], ['maxEdges' => 0], ['maxEdges' => 1_001]] as $outside) {
-            assertThrows(fn() => $query->exportDiagram($ids['project'], ...$outside), InvalidArgumentException::class);
+        foreach ([
+            fn() => $query->exportDiagram($ids['project'], maxNodes: 0),
+            fn() => $query->exportDiagram($ids['project'], maxNodes: 401),
+            fn() => $query->exportDiagram($ids['project'], maxEdges: 0),
+            fn() => $query->exportDiagram($ids['project'], maxEdges: 1_001),
+        ] as $outside) {
+            assertThrows($outside, InvalidArgumentException::class);
         }
         // One unsupported kind is enough, however short the list.
         assertThrows(fn() => $query->exportDiagram($ids['project'], edgeKinds: ['calls', 'teleports_to']), InvalidArgumentException::class);

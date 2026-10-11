@@ -9,12 +9,12 @@ use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Discovery\DiscoveredFile;
 use Knossos\Scan\CachedReads;
 use Knossos\Scan\ContributionCacheService;
-use Knossos\Scan\ContributionPartition;
 use Knossos\Scan\PartitionContext;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Protocol\{Confidence, Diagnostic, Evidence, NodeFact, Origin};
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
+use Knossos\Store\SqliteConnection;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
 use PHPUnit\Framework\Attributes\Group;
@@ -166,7 +166,7 @@ final class ContributionCacheServiceTest extends TestCase
 
         $partition = $service->partition([$file], $manifest, new PartitionContext('cfg', [], false, 'analysis'));
 
-        assertSame(true, $partition instanceof ContributionPartition);
+        assertSame([$file], $partition->filesToScan);
         assertSame(1, $partition->added);
     }
 
@@ -207,9 +207,11 @@ final class ContributionCacheServiceTest extends TestCase
         $version = ContributionCacheService::cacheVersion($manifest, 'analysis');
         // PHP 8.4 moved the driver-specific API onto Pdo\Sqlite and PHP 8.5
         // deprecates the old PDO methods and constants, so use the new ones
-        // wherever they exist.
-        $modern = method_exists(\PDO::class, 'connect');
-        $pdo = $modern ? \PDO::connect('sqlite::memory:') : new \PDO('sqlite::memory:');
+        // wherever they exist: the connection as the store opens it (the
+        // driver's own class where there is one), and the function API
+        // chosen through a callable and a constant name, so the same code
+        // runs and analyses alike on 8.3 and on 8.4 and later.
+        $pdo = SqliteConnection::open(':memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         // Every payload the partition reads goes through read_payload(), which
         // records whose it was.
@@ -219,11 +221,10 @@ final class ContributionCacheServiceTest extends TestCase
 
             return $payload;
         };
-        if ($pdo instanceof \Pdo\Sqlite) {
-            $pdo->createFunction('read_payload', $readPayload, 2, \Pdo\Sqlite::DETERMINISTIC);
-        } else {
-            $pdo->sqliteCreateFunction('read_payload', $readPayload, 2, \PDO::SQLITE_DETERMINISTIC);
-        }
+        $register = [$pdo, 'createFunction'];
+        $register = is_callable($register) ? $register : [$pdo, 'sqliteCreateFunction'];
+        $deterministic = defined('Pdo\Sqlite::DETERMINISTIC') ? 'Pdo\Sqlite::DETERMINISTIC' : 'PDO::SQLITE_DETERMINISTIC';
+        $register('read_payload', $readPayload, 2, constant($deterministic));
         $pdo->exec('CREATE TABLE contribution_cache (project_id TEXT, owner_key TEXT, stored TEXT, payload_json TEXT GENERATED ALWAYS AS (read_payload(owner_key, stored)) VIRTUAL)');
         $cache = [];
         $files = [];
@@ -239,7 +240,7 @@ final class ContributionCacheServiceTest extends TestCase
         }
         $read = hash('sha256', 'dep');
         $cachedReads = new CachedReads(
-            ['knossos.php:file:A.php' => ['scanner_id' => 'knossos.php', 'file_path' => 'A.php', 'content_hash' => $files[0]->contentHash, 'read_attribution' => true, 'read_group' => null]],
+            ['knossos.php:file:A.php' => ['scanner_id' => 'knossos.php', 'file_path' => 'A.php', 'content_hash' => $files[0]->contentHash, 'scanner_version' => $version, 'configuration_hash' => 'cfg', 'read_attribution' => true, 'read_group' => null]],
             ['knossos.php:file:A.php' => ['dep.php' => $read]],
             [],
         );

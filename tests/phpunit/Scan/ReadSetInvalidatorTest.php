@@ -64,11 +64,11 @@ final class ReadSetInvalidatorTest extends KnossosTestCase
     public function testAChangedUndiscoveredGroupReadInvalidatesEveryOwnerOfTheGroup(): void
     {
         $cached = new CachedReads(
-            [
+            array_map(self::entry(...), [
                 'p' => self::row('p', [], group: 'G'),
                 'q' => self::row('q', [], group: 'G'),
                 'r' => self::row('r', []),
-            ],
+            ]),
             ['p' => [], 'q' => [], 'r' => []],
             ['G' => ['node_modules/t.d.ts' => self::hash('H1')]],
         );
@@ -240,9 +240,9 @@ final class ReadSetInvalidatorTest extends KnossosTestCase
     {
         $cached = new CachedReads(
             [
-                'src/lib.rs' => ['scanner_id' => 'knossos.rust', 'file_path' => 'src/lib.rs', 'content_hash' => self::hash('src/lib.rs'), 'read_attribution' => true, 'read_group' => null],
-                'a.ts' => ['scanner_id' => 'knossos.typescript', 'file_path' => 'a.ts', 'content_hash' => self::hash('a.ts'), 'read_attribution' => true, 'read_group' => 'g'],
-                'b.ts' => ['scanner_id' => 'knossos.typescript', 'file_path' => 'b.ts', 'content_hash' => self::hash('b.ts'), 'read_attribution' => true, 'read_group' => null],
+                'src/lib.rs' => ['scanner_id' => 'knossos.rust', 'file_path' => 'src/lib.rs', 'content_hash' => self::hash('src/lib.rs'), 'scanner_version' => '1', 'configuration_hash' => 'c', 'read_attribution' => true, 'read_group' => null],
+                'a.ts' => ['scanner_id' => 'knossos.typescript', 'file_path' => 'a.ts', 'content_hash' => self::hash('a.ts'), 'scanner_version' => '1', 'configuration_hash' => 'c', 'read_attribution' => true, 'read_group' => 'g'],
+                'b.ts' => ['scanner_id' => 'knossos.typescript', 'file_path' => 'b.ts', 'content_hash' => self::hash('b.ts'), 'scanner_version' => '1', 'configuration_hash' => 'c', 'read_attribution' => true, 'read_group' => null],
             ],
             ['src/lib.rs' => ['src/helper.rs' => self::hash('src/helper.rs')], 'a.ts' => [], 'b.ts' => []],
             ['g' => ['vendor/x.d.ts' => self::hash('vendor/x.d.ts')]],
@@ -261,11 +261,11 @@ final class ReadSetInvalidatorTest extends KnossosTestCase
     public function testAnOwnerWhoseReadGroupIsMissingIsInvalidated(): void
     {
         $cached = new CachedReads(
-            [
+            array_map(self::entry(...), [
                 'p' => self::row('p', [], group: 'gone'),
                 'q' => self::row('q', [], group: 'G'),
                 'r' => self::row('r', []),
-            ],
+            ]),
             ['p' => [], 'q' => [], 'r' => []],
             ['G' => ['tsconfig.json' => self::hash('t')]],
         );
@@ -329,11 +329,7 @@ final class ReadSetInvalidatorTest extends KnossosTestCase
             'o.ts' => self::row('o.ts', [], scanner: 'knossos.typescript', attributed: false),
         ];
         $cached = new CachedReads(
-            array_map(static function (array $row): array {
-                unset($row['reads']);
-
-                return $row;
-            }, $rows),
+            array_map(self::entry(...), $rows),
             array_map(static fn(array $row): array => $row['reads'], $rows),
             ['G' => ['node_modules/g.d.ts' => self::hash('g')]],
         );
@@ -375,7 +371,7 @@ final class ReadSetInvalidatorTest extends KnossosTestCase
             }
             for ($owner = 0; $owner < 250; ++$owner) {
                 $path = sprintf('src/g%d/f%03d.ts', $group, $owner);
-                $rows[$path] = ['scanner_id' => 'knossos.typescript', 'file_path' => $path, 'content_hash' => self::hash($path), 'read_attribution' => true, 'read_group' => 'G' . $group];
+                $rows[$path] = ['scanner_id' => 'knossos.typescript', 'file_path' => $path, 'content_hash' => self::hash($path), 'scanner_version' => '1', 'configuration_hash' => 'c', 'read_attribution' => true, 'read_group' => 'G' . $group];
                 $owners[$path] = [];
             }
         }
@@ -452,25 +448,36 @@ final class ReadSetInvalidatorTest extends KnossosTestCase
         assertSame(["knossos.python\0m.py" => ['owner_key' => 'm.py'] + $loaded->rows['m.py'], "knossos.typescript\0a.ts" => ['owner_key' => 'a.ts'] + $loaded->rows['a.ts']], $byScannerPath);
     }
 
-    /** @param array<string, array{scanner_id: string, file_path: string, content_hash: string, read_attribution: bool, read_group: ?string, reads: array<string, ?string>}> $rows */
+    /** @param array<string, array{scanner_id: string, file_path: string, content_hash: string, scanner_version: string, configuration_hash: string, read_attribution: bool, read_group: ?string, reads: array<string, ?string>}> $rows */
     private static function cached(array $rows): CachedReads
     {
-        $reads = [];
-        foreach ($rows as $owner => $row) {
-            $reads[$owner] = $row['reads'];
-            unset($rows[$owner]['reads']);
-        }
-
-        return new CachedReads($rows, $reads, []);
+        return new CachedReads(
+            array_map(self::entry(...), $rows),
+            array_map(static fn(array $row): array => $row['reads'], $rows),
+            [],
+        );
     }
 
     /**
      * @param array<string, ?string> $reads
-     * @return array{scanner_id: string, file_path: string, content_hash: string, read_attribution: bool, read_group: ?string, reads: array<string, ?string>}
+     * @return array{scanner_id: string, file_path: string, content_hash: string, scanner_version: string, configuration_hash: string, read_attribution: bool, read_group: ?string, reads: array<string, ?string>}
      */
     private static function row(string $path, array $reads, string $scanner = 'knossos.php', bool $attributed = true, ?string $group = null): array
     {
-        return ['scanner_id' => $scanner, 'file_path' => $path, 'content_hash' => self::hash($path), 'read_attribution' => $attributed, 'read_group' => $group, 'reads' => $reads];
+        return ['scanner_id' => $scanner, 'file_path' => $path, 'content_hash' => self::hash($path), 'scanner_version' => '1', 'configuration_hash' => 'c', 'read_attribution' => $attributed, 'read_group' => $group, 'reads' => $reads];
+    }
+
+    /**
+     * A row as the cache holds it, its reads stored apart.
+     *
+     * @param array{scanner_id: string, file_path: string, content_hash: string, scanner_version: string, configuration_hash: string, read_attribution: bool, read_group: ?string, reads: array<string, ?string>} $row
+     * @return array{scanner_id: string, file_path: string, content_hash: string, scanner_version: string, configuration_hash: string, read_attribution: bool, read_group: ?string}
+     */
+    private static function entry(array $row): array
+    {
+        unset($row['reads']);
+
+        return $row;
     }
 
     /**

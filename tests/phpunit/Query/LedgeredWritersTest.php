@@ -14,6 +14,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
+use function PHPUnit\Framework\assertNotFalse;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
@@ -67,7 +68,7 @@ final class LedgeredWritersTest extends KnossosTestCase
         $scan = static function () use ($root, $database): void {
             $command = [PHP_BINARY, self::repositoryRoot() . '/bin/knossos', 'scan', $root, '--db=' . $database, '--json'];
             $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-            assertNotNull($process);
+            assertNotFalse($process);
             stream_get_contents($pipes[1]);
             stream_get_contents($pipes[2]);
             assertSame(0, proc_close($process));

@@ -58,7 +58,14 @@ if (!function_exists('assertThrows')) {
 }
 
 if (!function_exists('captureThrows')) {
-    /** @param class-string<\Throwable> $expected */
+    /**
+     * The error `$callback` throws, typed as the class expected of it, so a
+     * caller reads its own fields (`diagnosticCode`) without a cast.
+     *
+     * @template T of \Throwable
+     * @param class-string<T> $expected
+     * @return T
+     */
     function captureThrows(callable $callback, string $expected): \Throwable
     {
         try {

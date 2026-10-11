@@ -79,23 +79,6 @@ final class ClassificationEngineTest extends TestCase
         assertSame([], $engine->classify([]));
     }
 
-    public function testConstructorRejectsNonClassificationRuleEntries(): void
-    {
-        $notARule = new class () {
-            public function id(): string
-            {
-                return 'fake';
-            }
-        };
-
-        $error = captureThrows(
-            static fn () => new ClassificationEngine([$notARule]),
-            InvalidArgumentException::class,
-        );
-
-        assertSame('Classification rules must implement ClassificationRule.', $error->getMessage());
-    }
-
     // ----- classify(): empty inputs -----
 
     public function testClassifyReturnsEmptyListForNoContributions(): void
@@ -155,13 +138,9 @@ final class ClassificationEngineTest extends TestCase
 
     public function testClassifyWalksEveryNodeInOrder(): void
     {
-        $capturedOrder = [];
-
-        $captureRule = new class ($capturedOrder) implements ClassificationRule {
-            /** @param list<string> $capturedOrder */
-            public function __construct(private array &$capturedOrder)
-            {
-            }
+        $captureRule = new class () implements ClassificationRule {
+            /** @var list<string> */
+            public array $capturedOrder = [];
 
             public function id(): string
             {
@@ -187,7 +166,7 @@ final class ClassificationEngineTest extends TestCase
             self::contribution('owner-1', self::node('alpha', 'Alpha'), self::node('bravo', 'Bravo'), self::node('charlie', 'Charlie')),
         ]);
 
-        assertSame(['alpha', 'bravo', 'charlie'], $capturedOrder);
+        assertSame(['alpha', 'bravo', 'charlie'], $captureRule->capturedOrder);
         assertSame(['alpha', 'bravo', 'charlie'], array_map(static fn (ClassificationFact $f): string => $f->nodeReference, $facts));
     }
 

@@ -42,7 +42,7 @@ final class ScanAnalysisTest extends TestCase
 
         // Reassigning a readonly typed property triggers a PHP Error.
         $error = captureThrows(static function () use ($analysis): void {
-            $analysis->classifications = ['hacked'];
+            (new \ReflectionProperty(ScanAnalysis::class, 'classifications'))->setValue($analysis, []);
         }, \Error::class);
 
         // The Error is the readonly-reassignment error.

@@ -183,7 +183,7 @@ final class QueryCommandContractTest extends KnossosTestCase
      * value is refused by the service, which an option the command dropped
      * (or replaced by its default) would never be.
      *
-     * @return iterable<string, array{string, list<string>, array<string, list<string>>, string}>
+     * @return iterable<string, array{string, int, array<string, list<string>>, string}>
      */
     public static function invalidValueOptions(): iterable
     {
@@ -471,8 +471,9 @@ final class QueryCommandContractTest extends KnossosTestCase
                 ob_start();
                 try {
                     (new QueryCommand())->run('architecture-summary', [$argument], ['json' => ['1']], $context);
+                    $out = json_decode((string) ob_get_contents(), true, 512, JSON_THROW_ON_ERROR);
                 } finally {
-                    $out = json_decode((string) ob_get_clean(), true, 512, JSON_THROW_ON_ERROR);
+                    ob_end_clean();
                 }
                 assertSame($projectId, $out['project_id'], $argument);
             }

@@ -6,7 +6,7 @@ namespace Knossos\Tests\Phpunit\Store;
 
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\ContributionCacheEntry;
-use Knossos\Store\SqliteGraphRepository;
+use Knossos\Store\GraphRepository;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
@@ -64,7 +64,7 @@ final class ContributionCacheWriteTest extends KnossosTestCase
             self::entry('b.ts', ['y.ts' => self::hash('y')]),
         ]);
 
-        $repository->bulkTransaction(static function (SqliteGraphRepository $repository) use ($ids): void {
+        $repository->bulkTransaction(static function (GraphRepository $repository) use ($ids): void {
             $repository->replaceContributionCache($ids['project'], [self::entry('a.ts', [], fromCache: true)]);
         });
 

@@ -62,7 +62,7 @@ final class GitHeadResolverTest extends KnossosTestCase
     #[Group('git')]
     public function testItPinsTheCommandItIssues(): void
     {
-        $runner = $this->capturingRunner();
+        $runner = new RecordingGitRunner();
         (new GitHeadResolver($runner))->resolve('/tmp/knossos-head-fixture');
 
         self::assertSame([
@@ -107,29 +107,6 @@ final class GitHeadResolverTest extends KnossosTestCase
             public function run(array $command, int $timeoutMs, string $operation): string
             {
                 return $this->output;
-            }
-        };
-    }
-
-    /** A runner that records what it was asked to run, for pinning the argv. */
-    private function capturingRunner(): GitProcessRunnerInterface
-    {
-        return new class implements GitProcessRunnerInterface {
-            /** @var list<list<string>> */
-            public array $commands = [];
-            /** @var list<int> */
-            public array $timeouts = [];
-            /** @var list<string> */
-            public array $operations = [];
-
-            /** Records the call and answers with nothing. */
-            public function run(array $command, int $timeoutMs, string $operation): string
-            {
-                $this->commands[] = $command;
-                $this->timeouts[] = $timeoutMs;
-                $this->operations[] = $operation;
-
-                return '';
             }
         };
     }

@@ -214,8 +214,7 @@ final class DiscoveryLeafTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // RuntimeException. Verifies the class hierarchy with no body
         // mutations to test against (per batch 7 classification rule:
         // empty-body extends-Exception classes are structural-infimum).
-        assertSame(true, is_subclass_of(DiscoveryException::class, RuntimeException::class));
-        assertSame(true, is_subclass_of(DiscoveryException::class, \Throwable::class));
+        assertSame(RuntimeException::class, get_parent_class(DiscoveryException::class));
     }
 
     public function testDiscoveryExceptionAcceptsMessageAndCanBeThrown(): void
@@ -235,11 +234,9 @@ final class DiscoveryLeafTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testDiscoveryExceptionMessagePreservedFromConstructor(): void
     {
-        // M13 / DiscoveryException message preservation: instanceof
-        // check + getMessage() call. Verifies that the standard
+        // M13 / DiscoveryException message preservation: getMessage() call. Verifies that the standard
         // RuntimeException constructor accepts the message arg.
         $exception = new DiscoveryException('disk full');
-        assertSame(true, $exception instanceof DiscoveryException);
         assertSame('disk full', $exception->getMessage());
     }
 }

@@ -15,21 +15,10 @@ use PHPUnit\Framework\TestCase;
 #[Group('scanner-worker')]
 final class ScannerProtocolSessionTest extends TestCase
 {
-    /** @return array{ProcessSupervisorInterface, RpcChannelInterface} */
+    /** @return array{FakeWorkerProcess, RpcChannelInterface} */
     private function mockDependencies(): array
     {
-        $process = new class implements ProcessSupervisorInterface {
-            public bool $closed = false;
-
-            public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            /** @return array{command: string, pid: int, running: bool, signaled: bool, stopped: bool, exitcode: int, termsig: int, stopsig: int} */
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->closed = true; }
-        };
+        $process = new FakeWorkerProcess();
 
         $channel = new class implements RpcChannelInterface {
             public int $beginCount = 0;
@@ -87,11 +76,11 @@ final class ScannerProtocolSessionTest extends TestCase
         [$process, $channel] = $this->mockDependencies();
         $session = new ScannerProtocolSession($process, $channel);
 
-        assertSame(false, $process->closed);
+        assertSame(true, $process->running);
 
         $session->close(false);
 
-        assertSame(true, $process->closed);
+        assertSame(false, $process->running);
     }
 
     public function testCloseWithTerminateDelegatesTrue(): void
@@ -158,19 +147,6 @@ final class ScannerProtocolSessionTest extends TestCase
     }
 
     // ── initialize() ───────────────────────────────────────────────────────
-
-    private function makeManifestResult(?string $protocolVersion = null, ?string $schemaVersion = null): array
-    {
-        return [
-            'id' => 'php-scanner',
-            'version' => '1.0.0',
-            'protocol_version' => $protocolVersion ?? Protocol::VERSION,
-            'output_schema_version' => $schemaVersion ?? Protocol::OUTPUT_SCHEMA_VERSION,
-            'languages' => ['php'],
-            'file_extensions' => ['.php'],
-            'capabilities' => [],
-        ];
-    }
 
     public function testInitializeSendsInitializeAndReturnsManifest(): void
     {

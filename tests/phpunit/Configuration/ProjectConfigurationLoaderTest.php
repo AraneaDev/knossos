@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Configuration;
 
-use Knossos\Configuration\ProjectConfiguration;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Discovery\DiscoveryException;
 use PHPUnit\Framework\Attributes\Group;
@@ -424,7 +423,7 @@ JSON;
 
         $config = ProjectConfigurationLoader::load($root, [$root]);
 
-        assertSame(true, $config instanceof ProjectConfiguration);
+        assertSame(['vendor/', '*.bak'], $config->ignores);
     }
 
     // ----- dead code suppressions -----

@@ -62,10 +62,6 @@ final readonly class ScanContribution implements JsonSerializable
         if ($environment !== null && preg_match('/\A[0-9a-f]{64}\z/', $environment) !== 1) {
             throw new InvalidArgumentException('Contribution environment must be lowercase SHA-256 hex.');
         }
-
-        self::assertInstances($nodes, NodeFact::class, 'nodes');
-        self::assertInstances($edges, EdgeFact::class, 'edges');
-        self::assertInstances($diagnostics, Diagnostic::class, 'diagnostics');
     }
 
     /**
@@ -108,23 +104,5 @@ final readonly class ScanContribution implements JsonSerializable
         }
 
         return $wire;
-    }
-
-    /**
-     * Reject a list containing anything but the expected fact type.
-     *
-     * @param list<mixed> $values @param class-string $expected
-     */
-    private static function assertInstances(array $values, string $expected, string $field): void
-    {
-        if (!array_is_list($values)) {
-            throw new InvalidArgumentException(sprintf('Contribution field "%s" must be a list.', $field));
-        }
-
-        foreach ($values as $value) {
-            if (!$value instanceof $expected) {
-                throw new InvalidArgumentException(sprintf('Contribution field "%s" contains an invalid value.', $field));
-            }
-        }
     }
 }

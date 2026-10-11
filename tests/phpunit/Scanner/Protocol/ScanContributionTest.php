@@ -67,38 +67,6 @@ final class ScanContributionTest extends TestCase
         );
     }
 
-    public function testRejectsNonListNodes(): void
-    {
-        assertThrows(
-            static fn() => new ScanContribution('o', ['not-a-node']),
-            InvalidArgumentException::class,
-        );
-    }
-
-    public function testRejectsWrongInstanceInNodes(): void
-    {
-        assertThrows(
-            static fn() => new ScanContribution('o', [new \stdClass()]),
-            InvalidArgumentException::class,
-        );
-    }
-
-    public function testRejectsNonListEdges(): void
-    {
-        assertThrows(
-            static fn() => new ScanContribution('o', [], ['not-an-edge']),
-            InvalidArgumentException::class,
-        );
-    }
-
-    public function testRejectsNonListDiagnostics(): void
-    {
-        assertThrows(
-            static fn() => new ScanContribution('o', [], [], ['not-a-diagnostic']),
-            InvalidArgumentException::class,
-        );
-    }
-
     // ----- jsonSerialize -----
 
     public function testJsonSerialization(): void

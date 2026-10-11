@@ -4,6 +4,13 @@ parameters:
         - src
         - bin
         - workers/php/src
+        - tests/phpunit
+    # The global assertion helpers the PHPUnit bootstrap loads, and the tools
+    # library a test requires at runtime.
+    bootstrapFiles:
+        - tests/phpunit/Support/Assertions.php
+    scanFiles:
+        - tools/lib/php-function-metrics.php
     excludePaths:
         analyse:
             - bin/knossos

@@ -14,148 +14,14 @@ use PHPUnit\Framework\TestCase;
 #[Group('scanner-worker')]
 final class NdjsonRpcChannelTest extends TestCase
 {
-    private function mockProcess(): ProcessSupervisorInterface
+    private function mockProcess(): FakeWorkerProcess
     {
-        return new class implements ProcessSupervisorInterface {
-            /** @var array<int, resource> */
-            public array $pipes = [];
-
-            public bool $started = false;
-            public bool $running = true;
-            // How the process ended, so a test can distinguish a worker that
-            // chose its exit code from one something else killed.
-            public bool $signaled = false;
-            public int $termsig = 0;
-            public int $exitcode = -1;
-
-            public function start(): void
-            {
-                $this->started = true;
-                if (!isset($this->pipes[0])) {
-                    $this->pipes[0] = fopen('php://temp', 'r+');
-                    $this->pipes[1] = fopen('php://temp', 'r+');
-                    $this->pipes[2] = fopen('php://temp', 'r+');
-                }
-            }
-
-            public function isRunning(): bool
-            {
-                return $this->running;
-            }
-
-            public function stdin()
-            {
-                $this->start();
-                return $this->pipes[0];
-            }
-
-            public function stdout()
-            {
-                $this->start();
-                return $this->pipes[1];
-            }
-
-            public function stderr()
-            {
-                $this->start();
-                return $this->pipes[2];
-            }
-
-            /** @return array{command: string, pid: int, running: bool, signaled: bool, stopped: bool, exitcode: int, termsig: int, stopsig: int} */
-            public function status(): array
-            {
-                return [
-                    'command' => '',
-                    'pid' => 0,
-                    'running' => $this->running,
-                    'signaled' => $this->signaled,
-                    'stopped' => false,
-                    'exitcode' => $this->exitcode,
-                    'termsig' => $this->termsig,
-                    'stopsig' => 0,
-                ];
-            }
-
-            public function close(bool $terminate): void
-            {
-                foreach ($this->pipes as $pipe) {
-                    if (is_resource($pipe)) {
-                        fclose($pipe);
-                    }
-                }
-                $this->pipes = [];
-                $this->running = false;
-            }
-        };
+        return new FakeWorkerProcess();
     }
 
-    private function pipeOnlyProcess(): ProcessSupervisorInterface
+    private function pipeOnlyProcess(): PipeOnlyWorkerProcess
     {
-        return new class implements ProcessSupervisorInterface {
-            /** @var resource|null */
-            public $stdinPipe = null;
-            /** @var resource|null */
-            public $stdoutPipe = null;
-            /** @var resource|null */
-            public $stderrPipe = null;
-
-            public bool $started = false;
-
-            /** Number of liveness probes, i.e. completed readMessage() loop iterations. */
-            public int $statusChecks = 0;
-
-            public function start(): void
-            {
-                $this->started = true;
-            }
-
-            public function isRunning(): bool
-            {
-                return true;
-            }
-
-            /** @return resource|null */
-            public function stdin()
-            {
-                return $this->stdinPipe;
-            }
-
-            /** @return resource|null */
-            public function stdout()
-            {
-                return $this->stdoutPipe;
-            }
-
-            /** @return resource|null */
-            public function stderr()
-            {
-                return $this->stderrPipe;
-            }
-
-            /** @return array{command: string, pid: int, running: bool, signaled: bool, stopped: bool, exitcode: int, termsig: int, stopsig: int} */
-            public function status(): array
-            {
-                ++$this->statusChecks;
-
-                return [
-                    'command' => '',
-                    'pid' => 0,
-                    'running' => true,
-                    'signaled' => false,
-                    'stopped' => false,
-                    'exitcode' => -1,
-                    'termsig' => 0,
-                    'stopsig' => 0,
-                ];
-            }
-
-            public function close(bool $terminate): void
-            {
-                $this->stdinPipe = null;
-                $this->stdoutPipe = null;
-                $this->stderrPipe = null;
-            }
-        };
+        return new PipeOnlyWorkerProcess();
     }
 
     // ----- send() tests -----
@@ -510,7 +376,6 @@ final class NdjsonRpcChannelTest extends TestCase
         $deadline = $channel->beginRequest();
 
         assertSame(true, $process->started);
-        assertSame(true, is_int($deadline));
         assertSame(true, $deadline > 0);
     }
 

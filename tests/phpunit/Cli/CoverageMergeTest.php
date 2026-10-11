@@ -95,7 +95,9 @@ final class CoverageMergeTest extends KnossosTestCase
     public static function brokenShards(): iterable
     {
         yield 'a shard never finished' => [
-            static fn(self $test) => unlink($test->directory . '/raw/coverage-shard-2/shard.json'),
+            static function (self $test): void {
+                unlink($test->directory . '/raw/coverage-shard-2/shard.json');
+            },
             'coverage-shard-2 has no valid shard.json',
         ];
         yield 'a shard is missing' => [
@@ -103,15 +105,21 @@ final class CoverageMergeTest extends KnossosTestCase
             'shard 3 of 3 is missing',
         ];
         yield 'the shards disagree on N' => [
-            static fn(self $test) => file_put_contents($test->directory . '/raw/coverage-shard-3/shard.json', '{"shard": 3, "of": 4}'),
+            static function (self $test): void {
+                file_put_contents($test->directory . '/raw/coverage-shard-3/shard.json', '{"shard": 3, "of": 4}');
+            },
             'disagree on the shard count',
         ];
         yield 'a shard index appears twice' => [
-            static fn(self $test) => file_put_contents($test->directory . '/raw/coverage-shard-3/shard.json', '{"shard": 2, "of": 3}'),
+            static function (self $test): void {
+                file_put_contents($test->directory . '/raw/coverage-shard-3/shard.json', '{"shard": 2, "of": 3}');
+            },
             'shard 2 appears twice',
         ];
         yield 'a shard left no PHP data' => [
-            static fn(self $test) => unlink($test->directory . '/raw/coverage-shard-1/php/pcov-7.json'),
+            static function (self $test): void {
+                unlink($test->directory . '/raw/coverage-shard-1/php/pcov-7.json');
+            },
             'shard 1 left no PHP coverage data',
         ];
         yield 'a test file ran nowhere' => [
@@ -134,7 +142,9 @@ final class CoverageMergeTest extends KnossosTestCase
             'tests/phpunit/D/StrayTest.php ran in shard 3 but is not a test file of this suite',
         ];
         yield 'a shard has no JUnit log' => [
-            static fn(self $test) => unlink($test->directory . '/raw/coverage-shard-3/junit.xml'),
+            static function (self $test): void {
+                unlink($test->directory . '/raw/coverage-shard-3/junit.xml');
+            },
             'shard 3 has no readable junit.xml',
         ];
     }

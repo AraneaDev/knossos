@@ -365,9 +365,6 @@ final class SqliteGraphWriter
         $pdo = $this->statements->pdo();
         $wanted = [];
         foreach ($entries as $entry) {
-            if (!$entry instanceof ContributionCacheEntry) {
-                throw new InvalidArgumentException('Invalid contribution cache entry.');
-            }
             $wanted[$entry->contribution->ownerKey] = true;
         }
         $storedGroups = $this->statements->prepare('SELECT 1 FROM contribution_read_groups WHERE project_id = :project AND group_id = :group LIMIT 1');

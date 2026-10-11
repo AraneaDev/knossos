@@ -65,14 +65,6 @@ final class SqliteGraphWriterTest extends KnossosTestCase
         assertSame('0', (string) $pdo->query('SELECT COUNT(*) FROM contribution_cache')->fetchColumn());
     }
 
-    #[Group('store')]
-    public function testReplaceContributionCacheRejectsSomethingThatIsNotAnEntry(): void
-    {
-        [$pdo, , $ids] = $this->storeFixture();
-
-        assertThrows(static fn() => self::writer($pdo)->replaceContributionCache($ids['project'], ['not an entry']), InvalidArgumentException::class);
-    }
-
     private static function writer(PDO $pdo): SqliteGraphWriter
     {
         return new SqliteGraphWriter(new SqliteStatementCache($pdo));

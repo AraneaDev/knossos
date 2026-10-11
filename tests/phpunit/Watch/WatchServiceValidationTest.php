@@ -42,15 +42,6 @@ final class WatchServiceValidationTest extends TestCase
         return new WatchService($scanner, $allowedRoots);
     }
 
-    // ----- constructor -----
-
-    public function testConstructorAcceptsAllowedRoots(): void
-    {
-        $service = self::serviceWith([self::ROOT]);
-
-        $this->assertNotNull($service);
-    }
-
     // ----- run() input validation -----
 
     /**

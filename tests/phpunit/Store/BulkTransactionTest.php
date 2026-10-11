@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Store;
 
-use Knossos\Store\SqliteGraphRepository;
+use Knossos\Store\GraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -26,7 +26,7 @@ final class BulkTransactionTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $source = StableId::symbol($ids['project'], 'php', 'class', 'App\\Later');
 
-        $repository->bulkTransaction(function (SqliteGraphRepository $repository) use ($ids, $source): void {
+        $repository->bulkTransaction(function (GraphRepository $repository) use ($ids, $source): void {
             $repository->saveEdge(
                 StableId::edge($ids['project'], 'calls', $source, $ids['invoice'], 'src/Later.php:4'),
                 $ids['project'], 'calls', $source, $ids['invoice'], $ids['file'], 4, 4, 'ast', 'certain', [], 'php:file:src/Later.php', $ids['scan'],
@@ -46,7 +46,7 @@ final class BulkTransactionTest extends KnossosTestCase
         $missing = StableId::symbol($ids['project'], 'php', 'class', 'App\\NeverWritten');
 
         self::assertThrowsWith(
-            fn() => $repository->bulkTransaction(function (SqliteGraphRepository $repository) use ($ids, $missing): void {
+            fn() => $repository->bulkTransaction(function (GraphRepository $repository) use ($ids, $missing): void {
                 $repository->saveEdge(
                     StableId::edge($ids['project'], 'calls', $missing, $ids['invoice'], 'src/Ghost.php:4'),
                     $ids['project'], 'calls', $missing, $ids['invoice'], $ids['file'], 4, 4, 'ast', 'certain', [], 'php:file:src/Ghost.php', $ids['scan'],
@@ -84,8 +84,8 @@ final class BulkTransactionTest extends KnossosTestCase
         // promises and must run as an ordinary nested transaction instead.
         [$pdo, $repository, $ids] = $this->storeFixture();
 
-        $result = $repository->transaction(static fn(SqliteGraphRepository $outer): string => $outer->bulkTransaction(
-            static function (SqliteGraphRepository $inner) use ($ids): string {
+        $result = $repository->transaction(static fn(GraphRepository $outer): string => $outer->bulkTransaction(
+            static function (GraphRepository $inner) use ($ids): string {
                 $inner->saveProject($ids['project'], 'Renamed Inside', '/workspace/fixture-shop');
 
                 return 'nested';

@@ -17,14 +17,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 final readonly class ClassificationEngine
 {
     /** @param list<ClassificationRule> $rules */
-    public function __construct(private array $rules)
-    {
-        foreach ($rules as $rule) {
-            if (!$rule instanceof ClassificationRule) {
-                throw new InvalidArgumentException('Classification rules must implement ClassificationRule.');
-            }
-        }
-    }
+    public function __construct(private array $rules) {}
 
     /**
      * Apply every rule to a node, collecting facts rather than resolving disagreements.

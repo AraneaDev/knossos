@@ -13,7 +13,6 @@ use Knossos\Cli\CliHelpRenderer;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Discovery\DiscoveryException;
-use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ScanBusyException;
@@ -250,8 +249,8 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         try {
             $loader = new CliInputLoader();
             $result = $loader->policies($path);
-            assertSame(true, is_array($result), 'Result must be an array');
             assertSame(true, array_is_list($result), 'Result must be a list');
+            assertSame(1, count($result));
         } finally {
             unlink($path);
         }
@@ -286,8 +285,8 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         try {
             $loader = new CliInputLoader();
             $result = $loader->jsonObject($path);
-            assertSame(true, is_array($result), 'Result must be an array');
             assertSame(true, !array_is_list($result), 'Result must be an object');
+            assertSame(['k'], array_keys($result));
         } finally {
             unlink($path);
         }
@@ -511,14 +510,16 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testCommandContextConstructorStoresPromotedFields(): void
     {
+        $options = new CliOptionParser();
+        $input = new CliInputLoader();
         $context = new CliCommandContext(
-            new CliOptionParser(),
-            new CliInputLoader(),
+            $options,
+            $input,
             new RuntimeFactory(self::repositoryRoot()),
             ':memory:',
         );
-        assertSame(true, $context->options instanceof CliOptionParser);
-        assertSame(true, $context->input instanceof CliInputLoader);
+        assertSame($options, $context->options);
+        assertSame($input, $context->input);
         assertSame(':memory:', $context->databasePath());
         assertSame(self::repositoryRoot(), $context->installationRoot());
     }
@@ -532,7 +533,6 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             ':memory:',
         );
         $pdo = $context->database();
-        assertSame(true, $pdo instanceof \PDO);
         assertSame('sqlite', $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME));
         // Subsequent calls return the same lazy-initialised instance.
         assertSame($pdo, $context->database());
@@ -547,7 +547,6 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             ':memory:',
         );
         $maint = $context->maintenance();
-        assertSame(true, $maint instanceof DatabaseMaintenanceService);
         // Lazy: same instance on the second call.
         assertSame($maint, $context->maintenance());
     }
@@ -603,7 +602,8 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             ':memory:',
         );
         $token = $context->cancellationToken();
-        assertSame(true, $token instanceof \Knossos\Cancellation\CancellationToken);
+        assertSame(false, $token->isCancelled());
+        assertNotSame($token, $context->cancellationToken());
     }
 
     public function testCommandContextCancellationTokenWithHandleTermination(): void
@@ -623,7 +623,6 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             ':memory:',
         );
         $token = $context->cancellationToken(true);
-        assertSame(true, $token instanceof \Knossos\Cancellation\CancellationToken);
         assertSame(false, $token->isCancelled());
     }
 }

@@ -158,12 +158,13 @@ final class ToolCatalogPolicyTest extends KnossosTestCase
     #[Group('mcp')]
     public function testThePolicyNamesOnlyRealTools(): void
     {
-        $names = array_keys(self::definitions());
+        $definitions = self::definitions();
+        $names = array_keys($definitions);
         foreach ([...self::WRITE_TOOLS, ...self::DESTRUCTIVE_TOOLS, ...self::NON_IDEMPOTENT_TOOLS, ...self::ENVIRONMENT_TOOLS] as $tool) {
             assertSame(true, in_array($tool, $names, true), sprintf('Policy names %s, which is not a tool.', $tool));
         }
         foreach (self::DESTRUCTIVE_TOOLS as $tool) {
-            assertSame(true, in_array($tool, self::WRITE_TOOLS, true), sprintf('%s destroys data, so it cannot be read-only.', $tool));
+            assertSame(false, $definitions[$tool]['annotations']['readOnlyHint'], sprintf('%s destroys data, so it cannot be read-only.', $tool));
         }
     }
 

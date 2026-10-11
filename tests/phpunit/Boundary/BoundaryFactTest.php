@@ -51,9 +51,10 @@ final class BoundaryFactTest extends TestCase
             nodeReferences: [],
         );
 
-        $error = captureThrows(static function () use ($fact): void {
-            $fact->name = 'hacked';
-        }, \Error::class);
+        $error = captureThrows(
+            static fn() => (new \ReflectionProperty(BoundaryFact::class, 'name'))->setValue($fact, 'hacked'),
+            \Error::class,
+        );
 
         assertContains('readonly', $error->getMessage());
     }
@@ -117,52 +118,19 @@ final class BoundaryFactTest extends TestCase
         );
     }
 
-    public function testRejectsNonListNodeReferences(): void
+    public function testRejectsAnEmptyNodeReference(): void
     {
-        // Associative array (string keys) violates array_is_list check.
-        assertThrows(
-            static function (): BoundaryFact {
-                return new BoundaryFact(
-                    name: 'payments',
-                    matcher: ['type' => 'path_prefix', 'value' => 'src/'],
-                    source: 'explicit',
-                    nodeReferences: ['non-list-key' => 'a', 'another-key' => 'b'],
-                );
-            },
+        $error = captureThrows(
+            static fn(): BoundaryFact => new BoundaryFact(
+                name: 'payments',
+                matcher: ['type' => 'path_prefix', 'value' => 'src/'],
+                source: 'explicit',
+                nodeReferences: ['node-a', '', 'node-b'],
+            ),
             InvalidArgumentException::class,
         );
-    }
 
-    public function testRejectsEmptyStringInNodeReferences(): void
-    {
-        // List containing '' violates the non-empty-string-per-reference check.
-        assertThrows(
-            static function (): BoundaryFact {
-                return new BoundaryFact(
-                    name: 'payments',
-                    matcher: ['type' => 'path_prefix', 'value' => 'src/'],
-                    source: 'explicit',
-                    nodeReferences: ['node-a', '', 'node-b'],
-                );
-            },
-            InvalidArgumentException::class,
-        );
-    }
-
-    public function testRejectsNonStringInNodeReferences(): void
-    {
-        // Integer in node references violates the is_string check.
-        assertThrows(
-            static function (): BoundaryFact {
-                return new BoundaryFact(
-                    name: 'payments',
-                    matcher: ['type' => 'path_prefix', 'value' => 'src/'],
-                    source: 'explicit',
-                    nodeReferences: [42, 'node-a'],
-                );
-            },
-            InvalidArgumentException::class,
-        );
+        assertSame('Boundary member references must be non-empty strings.', $error->getMessage());
     }
 
     public function testExplicitSourceIsAccepted(): void

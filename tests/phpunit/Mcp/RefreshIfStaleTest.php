@@ -261,7 +261,7 @@ final class RefreshIfStaleTest extends KnossosTestCase
             public function __construct(private DriftCounts $counts) {}
 
             /** Answers the fixed verdict whatever it is asked about. */
-            public function drift(string $projectId, string $activeScanId, string $root, ?string $finishedAt): ?DriftCounts
+            public function drift(string $projectId, string $activeScanId, string $root, ?string $finishedAt): DriftCounts
             {
                 return $this->counts;
             }

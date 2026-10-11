@@ -401,7 +401,7 @@ final class GitDriftOracleTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root, $scanId] = $this->seedWithHead(self::HEAD);
         try {
-            $runner = $this->capturingRunner();
+            $runner = new CapturingGitRunner();
             (new GitDriftOracle($pdo, $runner))->drift($projectId, $scanId, $root, $this->finishedAt($pdo, $scanId));
             $prefix = ['git', '--no-optional-locks', '--no-pager', '-C', $root];
 
@@ -970,29 +970,6 @@ final class GitDriftOracleTest extends KnossosTestCase
             private static function framed(array $paths): string
             {
                 return $paths === [] ? '' : implode("\0", $paths) . "\0";
-            }
-        };
-    }
-
-    /** A runner that records what it was asked to run and answers nothing, for pinning the argv. */
-    private function capturingRunner(): GitProcessRunnerInterface
-    {
-        return new class implements GitProcessRunnerInterface {
-            /** @var list<list<string>> */
-            public array $commands = [];
-            /** @var list<int> */
-            public array $timeouts = [];
-            /** @var list<string> */
-            public array $operations = [];
-
-            /** Records the call and answers with an empty listing. */
-            public function run(array $command, int $timeoutMs, string $operation): string
-            {
-                $this->commands[] = $command;
-                $this->timeouts[] = $timeoutMs;
-                $this->operations[] = $operation;
-
-                return '';
             }
         };
     }

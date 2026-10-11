@@ -100,7 +100,7 @@ final class NanoDtosTest extends KnossosTestCase
             discoveryMilliseconds: 0.0,
             planningMilliseconds: 0.0,
         );
-        $cache = ['knossos.php' => ['cache-key-1']];
+        $cache = ["php\0knossos.php" => ['owner_key' => 'php:file:knossos.php', 'scanner_id' => 'php', 'file_path' => 'knossos.php']];
         $plan = new ScanPlan(
             preparation: $preparation,
             projectId: 'project-id',

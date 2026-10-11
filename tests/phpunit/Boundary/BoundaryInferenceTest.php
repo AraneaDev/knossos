@@ -286,22 +286,12 @@ final class BoundaryInferenceTest extends TestCase
 
     public function testInferWithExplicitBoundaryWithoutNameThrows(): void
     {
-        $explicit = [['path_prefix' => 'src/']];
-
-        assertThrows(
-            static fn(): array => (new BoundaryInference())->infer([], [], $explicit),
+        $error = captureThrows(
+            static fn(): array => (new BoundaryInference())->infer([], [], [['path_prefix' => 'src/']]),
             InvalidArgumentException::class,
         );
-    }
 
-    public function testInferWithExplicitBoundaryThatIsNotAnArrayThrows(): void
-    {
-        $explicit = ['not-an-array'];
-
-        assertThrows(
-            static fn(): array => (new BoundaryInference())->infer([], [], $explicit),
-            InvalidArgumentException::class,
-        );
+        assertSame('Explicit boundary requires a name.', $error->getMessage());
     }
 
     public function testInferWithExplicitPathPrefixContainingDotDotThrows(): void

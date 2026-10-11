@@ -44,11 +44,8 @@ final readonly class BoundaryFact
         if ($identityName === '') {
             throw new InvalidArgumentException('Boundary identity name must not be empty.');
         }
-        if (!array_is_list($nodeReferences)) {
-            throw new InvalidArgumentException('Boundary members must be a list.');
-        }
         foreach ($nodeReferences as $reference) {
-            if (!is_string($reference) || $reference === '') {
+            if ($reference === '') {
                 throw new InvalidArgumentException('Boundary member references must be non-empty strings.');
             }
         }

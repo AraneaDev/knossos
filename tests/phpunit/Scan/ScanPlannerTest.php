@@ -8,7 +8,6 @@ use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfiguration;
 use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\DiscoveryResult;
-use Knossos\Scan\ScanPlan;
 use Knossos\Scan\ScanPlanner;
 use Knossos\Scan\ScanPreparation;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
@@ -421,7 +420,6 @@ TOML);
 
         assertSame([], $plan->cacheByScannerPath);
         assertSame(0, $plan->deletedFiles);
-        assertSame(true, $plan instanceof ScanPlan);
     }
 
     public function testPrepareRejectsInvalidMode(): void

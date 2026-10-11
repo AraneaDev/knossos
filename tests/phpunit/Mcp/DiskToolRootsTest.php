@@ -111,7 +111,7 @@ final class DiskToolRootsTest extends KnossosTestCase
     {
         $oneChanged = new class implements DriftOracle {
             /** Reports one changed file, whatever is asked. */
-            public function drift(string $projectId, string $activeScanId, string $root, ?string $finishedAt): ?DriftCounts
+            public function drift(string $projectId, string $activeScanId, string $root, ?string $finishedAt): DriftCounts
             {
                 return new DriftCounts(1, 0, 0);
             }

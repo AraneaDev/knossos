@@ -339,9 +339,6 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
             throw new InvalidArgumentException('base_ref requires working_tree.');
         }
         foreach ($files as $path) {
-            if (!is_string($path)) {
-                throw new InvalidArgumentException('files must contain project-relative strings.');
-            }
             RelativePath::assertValid($path, 'Changed file');
         }
         $files = array_values(array_unique($files));

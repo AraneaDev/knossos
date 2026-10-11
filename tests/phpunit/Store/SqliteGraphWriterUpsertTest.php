@@ -181,6 +181,7 @@ final class SqliteGraphWriterUpsertTest extends KnossosTestCase
                 'second' => ['name' => 'Core', 'matcher_json' => '{"path_prefix":"src/Core"}', 'source' => 'inferred', 'last_scan_id' => 'scan-2'],
                 'save' => static fn(array $c) => $write->saveBoundary('boundary-under-test', $project, $c['name'], json_decode($c['matcher_json'], true), $c['source'], $c['last_scan_id']),
             ],
+            default => throw new \InvalidArgumentException('No upsert case for writer ' . $writer . '.'),
         };
         // The columns the skip-unchanged comparison must cover: every replaced
         // column except the scan stamp, and parent_id, which the batch writer

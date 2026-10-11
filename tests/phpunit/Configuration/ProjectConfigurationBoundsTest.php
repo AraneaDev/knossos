@@ -155,7 +155,6 @@ final class ProjectConfigurationBoundsTest extends KnossosTestCase
             assertThrows(
                 static fn() => ProjectConfigurationLoader::load($root, [$root]),
                 DiscoveryException::class,
-                json_encode($configuration),
             );
         } finally {
             exec('rm -rf ' . escapeshellarg($root));
