@@ -102,7 +102,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `architecture_trends`
 
-See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each retained snapshot's figures in the graph database, so a repeat call skips decoding its archive.
+See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each retained snapshot's figures in the graph database, so a repeat call skips decoding its archive. A snapshot past the 200,000 rows per table a snapshot is read whole within has no figures, and its point says why (`reason`: the table, its rows and the limit).
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
