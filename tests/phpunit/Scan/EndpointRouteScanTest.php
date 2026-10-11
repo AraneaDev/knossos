@@ -118,6 +118,42 @@ final class EndpointRouteScanTest extends KnossosTestCase
         }
     }
 
+    public function testARouterBuiltInAFunctionGivesNoCertainLink(): void
+    {
+        [$pdo, , $root] = $this->scanFiles([
+            'pyproject.toml' => "[project]\nname = \"api\"\ndependencies = [\"fastapi\"]\n",
+            'backend/__init__.py' => '',
+            'backend/api.py' => <<<'PY'
+                from fastapi import APIRouter, FastAPI
+
+                app = FastAPI()
+
+
+                def build() -> APIRouter:
+                    router = APIRouter(prefix="/api")
+
+                    @router.get("/orders")
+                    def orders() -> list:
+                        return []
+
+                    return router
+                PY,
+            'package.json' => '{"name":"web","dependencies":{}}',
+            'src/api.ts' => "export const bare = () => fetch('/orders');\nexport const full = () => fetch('/api/orders');\n",
+        ]);
+        try {
+            $rows = $pdo->query(<<<'SQL'
+                SELECT s.canonical_name AS endpoint, e.confidence, e.attributes_json FROM edges e
+                JOIN nodes s ON s.id = e.source_id WHERE e.kind = 'resolves_to'
+                SQL)->fetchAll(\PDO::FETCH_ASSOC);
+            $joined = array_column($rows, 'confidence', 'endpoint');
+            assertSame(['GET /api/orders' => 'possible'], $joined);
+            assertSame('suffix', json_decode($rows[0]['attributes_json'], true)['match']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /**
      * @param array<string, string> $files
      * @return array{0: \PDO, 1: string, 2: string}

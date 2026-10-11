@@ -163,6 +163,79 @@ final class RouteTemplatesTest extends KnossosTestCase
         assertSame('unknown', $template['prefix']);
     }
 
+    #[Group('reconciliation')]
+    public function testARouteThePythonWorkerCouldNotPlaceUnderAnyRouterIsUnknown(): void
+    {
+        $nodes = ['route-1' => self::route('route-1', ['framework' => 'fastapi', 'path' => '/orders', 'prefix' => 'unknown'])];
+
+        $template = RouteTemplates::forRoutes($nodes, [])['route-1']['templates'][0];
+
+        assertSame('/orders', (string) $template['template']);
+        assertSame('unknown', $template['prefix']);
+    }
+
+    #[Group('reconciliation')]
+    public function testARegularExpressionRouteHasNoTemplate(): void
+    {
+        $nodes = [
+            'pattern' => self::route('pattern', ['framework' => 'django', 'path' => '^items/(?P<pk>[0-9]+)/$', 'regex' => true, 'module' => 'proj.urls']),
+            'plain' => self::route('plain', ['framework' => 'django', 'path' => 'items/', 'module' => 'proj.urls']),
+        ];
+
+        $routes = RouteTemplates::forRoutes($nodes, []);
+
+        assertSame(['plain'], array_keys($routes));
+    }
+
+    #[Group('reconciliation')]
+    public function testALaravelRouteFileThatAProviderMayLoadWithAPrefixIsUnknown(): void
+    {
+        $nodes = [
+            'web' => self::route('web', ['framework' => 'laravel', 'uri' => '/a']),
+            'admin' => self::route('admin', ['framework' => 'laravel', 'uri' => '/b']),
+            'nested' => self::route('nested', ['framework' => 'laravel', 'uri' => '/c']),
+            'elsewhere' => self::route('elsewhere', ['framework' => 'laravel', 'uri' => '/d']),
+        ];
+        $paths = ['web' => 'routes/web.php', 'admin' => 'routes/admin.php', 'nested' => 'app/routes/shop/v1.php', 'elsewhere' => 'app/Providers/Routes.php'];
+
+        $routes = RouteTemplates::forRoutes($nodes, [], $paths);
+
+        assertSame(
+            ['declared', 'unknown', 'unknown', 'declared'],
+            array_map(static fn(array $route): string => $route['templates'][0]['prefix'], array_values($routes)),
+        );
+    }
+
+    #[Group('reconciliation')]
+    public function testAFlaskMountPrefixReplacesTheBlueprintsOwnPrefix(): void
+    {
+        $nodes = [
+            'route-1' => self::route('route-1', ['framework' => 'flask', 'path' => '/admin/users', 'router' => 'py:router:admin']),
+            'r-admin' => self::router('r-admin', 'py:router:admin') + [],
+        ];
+        $nodes['r-admin']['attributes'] += ['framework' => 'flask', 'prefix' => '/admin'];
+
+        $replaced = RouteTemplates::forRoutes($nodes, ['m1' => self::mount('m1', 'r-admin', '/v2', 'app')])['route-1']['templates'][0];
+        $kept = RouteTemplates::forRoutes($nodes, ['m1' => self::mount('m1', 'r-admin', '', 'app')])['route-1']['templates'][0];
+
+        assertSame('/v2/users', (string) $replaced['template']);
+        assertSame('/admin/users', (string) $kept['template']);
+    }
+
+    #[Group('reconciliation')]
+    public function testAFastapiMountPrefixAddsToTheRoutersOwnPrefix(): void
+    {
+        $nodes = [
+            'route-1' => self::route('route-1', ['framework' => 'fastapi', 'path' => '/items/x', 'router' => 'py:router:items']),
+            'r-items' => self::router('r-items', 'py:router:items'),
+        ];
+        $nodes['r-items']['attributes'] += ['framework' => 'fastapi', 'prefix' => '/items'];
+
+        $template = RouteTemplates::forRoutes($nodes, ['m1' => self::mount('m1', 'r-items', '/v2', 'app')])['route-1']['templates'][0];
+
+        assertSame('/v2/items/x', (string) $template['template']);
+    }
+
     /**
      * @param array<string, mixed> $attributes
      * @return array<string, mixed>

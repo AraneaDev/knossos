@@ -38,9 +38,11 @@ final readonly class RouteTemplates
             }
         }
         $mountsInto = [];
+        $mountPrefixes = [];
         foreach ($edges as $edgeId => $edge) {
             if ($edge['kind'] === 'mounts') {
                 $mountsInto[$edge['target_id']][] = ['id' => $edgeId, 'prefix' => (string) ($edge['attributes']['prefix'] ?? ''), 'onto' => $edge['attributes']['onto'] ?? null];
+                $mountPrefixes[$edgeId] = (string) ($edge['attributes']['prefix'] ?? '');
             }
         }
         $routes = [];
@@ -53,10 +55,14 @@ final readonly class RouteTemplates
             if (!is_string($path)) {
                 continue;
             }
+            // A pattern is not a path: matching its text as segments would invent routes.
+            if (($attributes['regex'] ?? false) === true) {
+                continue;
+            }
             $own = UrlTemplate::parse($path);
             $templates = [];
             foreach (self::prefixes($node, $evidencePaths[$id] ?? (string) ($node['evidence_path'] ?? ''), $byLocal, $mountsInto, $rootUrlconfs) as [$prefix, $status, $mounts]) {
-                foreach ($own as $template) {
+                foreach (self::ownTemplates($path, $own, $nodes[$byLocal[$attributes['router'] ?? ''] ?? ''] ?? null, $mounts === [] ? null : $mountPrefixes[$mounts[array_key_last($mounts)]] ?? null) as $template) {
                     $templates[] = ['template' => $prefix === null ? $template : $template->prepend($prefix), 'prefix' => $status, 'mounts' => $mounts];
                 }
             }
@@ -69,6 +75,30 @@ final readonly class RouteTemplates
         }
 
         return $routes;
+    }
+
+    /**
+     * The route's own path as templates. A Flask `register_blueprint(url_prefix=...)` replaces the
+     * blueprint's own `url_prefix`, which its routes already carry, so that prefix is taken off
+     * before the mount's goes on. FastAPI's `include_router(prefix=...)` adds to the router's.
+     *
+     * @param list<UrlTemplate> $own
+     * @param ?array<string, mixed> $router
+     * @return list<UrlTemplate>
+     */
+    private static function ownTemplates(string $path, array $own, ?array $router, ?string $mountPrefix): array
+    {
+        $declared = $router['attributes']['prefix'] ?? null;
+        if (($router['attributes']['framework'] ?? null) !== 'flask' || !is_string($declared) || trim($declared, '/') === '' || trim((string) $mountPrefix, '/') === '') {
+            return $own;
+        }
+        $stripped = '/' . trim($declared, '/');
+        $normal = '/' . ltrim($path, '/');
+        if ($normal !== $stripped && !str_starts_with($normal, $stripped . '/')) {
+            return $own;
+        }
+
+        return UrlTemplate::parse(substr($normal, strlen($stripped)) ?: '/');
     }
 
     /**
@@ -122,8 +152,15 @@ final readonly class RouteTemplates
     {
         $attributes = $node['attributes'];
         $framework = $attributes['framework'] ?? null;
+        if (($attributes['prefix'] ?? null) === 'unknown') {
+            return [[null, 'unknown', []]];
+        }
         if ($framework === 'laravel' && str_ends_with($evidencePath, 'routes/api.php')) {
             return [[UrlTemplate::parse('/api')[0], 'convention', []]];
+        }
+        if ($framework === 'laravel' && preg_match('#(?:^|/)routes/(?!web\.php$|api\.php$)[^/].*$#', $evidencePath) === 1) {
+            // A service provider may load any other route file with a prefix of its own.
+            return [[null, 'unknown', []]];
         }
         if ($framework === 'django') {
             $module = $attributes['module'] ?? null;

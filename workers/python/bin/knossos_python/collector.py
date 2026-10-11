@@ -381,6 +381,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.local_variable_types.append({})
         self.parameter_types.append(self.annotated_parameters(node))
         self.bound_names.append(bound_names(node))
+        self.fastapi.enter_scope()
+        self.flask.enter_scope()
         restore_fastapi = self.fastapi.register_parameters(node)
         # An import inside the function binds its names in the function only.
         # Restored in place: the framework enrichers hold this same mapping.
@@ -389,6 +391,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.aliases.clear()
         self.aliases.update(outer_aliases)
         self.fastapi.restore_parameters(restore_fastapi)
+        self.fastapi.leave_scope()
+        self.flask.leave_scope()
         self.parameter_types.pop()
         self.bound_names.pop()
         self.local_variable_types.pop()
