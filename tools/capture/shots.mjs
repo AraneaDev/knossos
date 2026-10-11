@@ -39,18 +39,19 @@
  * somewhere a refactor can move it; change it here, once, when it does.
  */
 export const FIXTURE = {
-    // A top hub: the class in src/Result/ResultEnvelope.php, third on the Hubs tab
-    // sorted by in-degree (so two `j` mark it). Its blast radius has three rings.
+    // A top hub: the class in src/Result/ResultEnvelope.php, fourth on the Hubs tab
+    // sorted by in-degree (so three `j` mark it). Its blast radius has three rings.
     hub: "ResultEnvelope",
     // Letters of the hub's name the finder is given; ResultEnvelope must be the first match.
     hubLetters: "ResultEnv",
     // A command that reaches the hub in a few hops: ServeCommand::run in src/Cli/Command/ServeCommand.php.
     routeFrom: "ServeCommand::run",
-    // The boundary pair the Boundaries tab marks first: the tests and core boundaries of knossos.json,
-    // the heaviest flow (tests depend on core the most).
-    boundaryPair: "tests → core",
-    // The label hooks/lib/diagram.ts draws under a cycle once the diagram closes the loop.
-    cycleDrawn: "back to the start",
+    // The boundary pair the Boundaries tab marks first: the tests boundary of knossos.json and the
+    // namespace boundary it depends on most.
+    boundaryPair: "tests → Scanner",
+    // The first row of the Cycles tab's list, drawn with the first cycle's diagram once the
+    // cycles have loaded. Not the diagram's "back to the start": a short cycle has no room for it.
+    cycleDrawn: "cycle 1 · ",
     // The Issues tab's Over budget rule: max_php_function_lines in maintainability-budgets.json.
     overBudget: "functions over 205 lines",
     // The small file the hero's turn edits, and the line the edit goes above.
@@ -190,7 +191,9 @@ const hubDetail = (theme) =>
     pane(
         theme === "light" ? "hubs-detail-light" : "hubs-detail",
         [
-            press("2"),
+            // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
+            press("2", String.raw`›\s+StableId\s`),
+            press("j"),
             press("j"),
             press("j"),
             wait(
@@ -216,7 +219,9 @@ export const SHOTS = {
             hold(250),
             ...openPane(PANE[160]),
             hold(1000),
-            press("2"),
+            // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
+            press("2", String.raw`›\s+StableId\s`),
+            press("j"),
             press("j"),
             press("j"),
             wait("hub marked", marked(FIXTURE.hub), { fixture: "hub" }),
@@ -227,7 +232,8 @@ export const SHOTS = {
             }),
             hold(1000),
             press("3"),
-            wait("boundaries", String.raw`Per boundary`),
+            // The marked boundary's card: drawn under the map and beside the list alike.
+            wait("boundaries", String.raw`depends on`),
             hold(1000),
             ...openHub(60),
             press("End"),
@@ -247,7 +253,7 @@ export const SHOTS = {
                 timeoutMs: 180000,
                 lapse: 8,
             }),
-            press("b", String.raw`Per boundary`),
+            press("b", String.raw`depends on`),
             press("Home"),
             press("6", String.raw`± Changes this session`),
             wait("change listed", marked(FIXTURE.edited), {

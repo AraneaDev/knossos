@@ -177,11 +177,11 @@ concentrate.
 
 Hubs: the most depended-on components, with the marked one's neighbourhood beside the list.
 
-![The Cycles tab: a 13-member dependency cycle drawn as a serpentine of boxes with a return edge labelled back to the start, and the list of all cycles below](docs/images/claude-code/cycles.png)
+![The Cycles tab: a 4-member dependency cycle in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of both cycles below](docs/images/claude-code/cycles.png)
 
 Cycles: each dependency cycle drawn as boxes, from its first member back to the start.
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: one scan from this session, the file with its two dependents and no test reaching it, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 28 tests that reach it, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
 
 Changes: every file changed since the session began, its dependents, the tests that reach it,
 and its diff.

@@ -31,7 +31,7 @@ The pane needs three things, and shows nothing useful without them:
 
 ## The band
 
-![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 2 dependents, with details and hide](../images/claude-code/band.png)
+![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](../images/claude-code/band.png)
 
 After a turn that edited files, one line above the prompt sums up the turn:
 
@@ -330,7 +330,7 @@ still: here `ResultEnvelope`, used by 89 and using 15.
 
 ## Boundaries
 
-![The Boundaries tab: a heat map of dependencies between ten boundaries with forbidden cells crossed, the per-boundary table, and the tests to core flow drawn](../images/claude-code/boundaries.png)
+![The Boundaries tab past twelve boundaries: all 29 listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Scanner flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
 
 **The heat map** shows how much each boundary depends on each other one. Rows
 are where a dependency starts, columns where it lands. The axes are lettered,
@@ -377,7 +377,7 @@ name and `q` asks Claude what its dependencies are for.
 
 ## Cycles
 
-![The Cycles tab: a 13-member dependency cycle drawn as a serpentine of boxes with a return edge labelled back to the start, and the list of all cycles below](../images/claude-code/cycles.png)
+![The Cycles tab: a 4-member dependency cycle in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of both cycles below](../images/claude-code/cycles.png)
 
 **Cycle 1** draws the marked dependency cycle as a serpentine of boxes, one box
 per member: the first row left to right, the next right to left, an arrow from
@@ -436,7 +436,7 @@ longest function.
 
 ## Changes
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: one scan from this session, the file with its two dependents and no test reaching it, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 28 tests that reach it, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
 
 Changes lists everything that changed in the project since the session began,
 whoever changed it: the session's own turns and subagents, your editor, a
@@ -658,7 +658,7 @@ brings the tab under it back as it was.
 
 ## A route between two components
 
-![A route from ServeCommand::run to ResultEnvelope: five routes found, the strongest drawn as boxes with the call and its file and line on each hop](../images/claude-code/route.png)
+![A route from ServeCommand::run to ResultEnvelope: three routes found, the strongest drawn as boxes with the call and its file and line on each hop](../images/claude-code/route.png)
 
 `p` on a component's detail starts a route. The finder opens, offering
 components only, and the one you open is where the route ends.

@@ -95,7 +95,7 @@ truncated. `bounds.visited_states` and `bounds.queued_states` say how far the
 search got. An empty `paths` list from a truncated search means none were found
 before that bound, not that none exist.
 
-![A route from ServeCommand::run to ResultEnvelope: five routes found, the strongest drawn as boxes with the call and its file and line on each hop](../images/claude-code/route.png)
+![A route from ServeCommand::run to ResultEnvelope: three routes found, the strongest drawn as boxes with the call and its file and line on each hop](../images/claude-code/route.png)
 
 ## Dependency cycles
 
@@ -127,7 +127,7 @@ through an edge whose node no longer exists, which only a graph written before
 foreign keys were enforced can hold, lists the members it could load and is
 marked truncated with `missing_detail`.
 
-![The Cycles tab: a 13-member dependency cycle drawn as a serpentine of boxes with a return edge labelled back to the start, and the list of all cycles below](../images/claude-code/cycles.png)
+![The Cycles tab: a 4-member dependency cycle in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of both cycles below](../images/claude-code/cycles.png)
 
 ## Architecture health
 
