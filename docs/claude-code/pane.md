@@ -145,7 +145,7 @@ Every key is also a button, so a click works as well. The footer bar at the
 bottom of the pane lists the keys that do something in the view on show:
 moving about on the left, what you can do to the marked row on the right. For
 a moment after an action the footer says what it did (`✓ copied StableId`,
-`✓ opened in editor`, `✗ no editor · path copied`). `h` lists every key, one
+`✓ opened in editor`, `✗ code exited 1 · path copied`). `h` lists every key, one
 a line, in place of whatever is open; `h` or `x` closes the list, and so does
 any other press, a tab or `f`, which then does what it does:
 
@@ -174,10 +174,14 @@ so `b` is the way back.
 
 **Opening a file.** Every `file:line` the pane shows is a link. A ctrl- or
 cmd-click opens it as a link in one of Claude's replies would. A plain click,
-or `e`, runs `code -g <path>:<line>`, which VS Code and its forks answer. When
-no such command answers, the pane copies `path:line` to your clipboard and the
-footer says so. A terminal editor from `$EDITOR` cannot be started this way,
-since it needs a terminal of its own.
+or `e`, runs the `editor` [setting](#settings), `code -g {file}:{line}` unless
+you set another, which VS Code and its forks answer (`idea --line {line}
+{file}` for IntelliJ, `"/opt/Sublime Text/subl" {file}:{line}` for a program
+whose path has spaces). When the command fails, the pane copies `path:line` to
+your clipboard, the footer says how it failed (`✗ code did not start · path
+copied`), and a toast names the command it ran and where to set another. A
+terminal editor from `$EDITOR` cannot be started this way, since it needs a
+terminal of its own.
 
 **Asking Claude.** `q` submits one prompt for the marked row. For a component
 or a file:
@@ -842,16 +846,17 @@ runs in a process of its own, so the memory it peaks at goes back when it ends.
 The settings appear in Claude Code's plugin configuration under the plugin's
 name:
 
-| setting           | default | what it does                                                            |
-| ----------------- | ------- | ----------------------------------------------------------------------- |
-| `enabled`         | `true`  | turns the band, the notes and the pane on or off                        |
-| `fanInThreshold`  | `20`    | dependent files at which a Read or an edit gets a note, 1 to 100,000    |
-| `agentNotes`      | `true`  | gives the model its [notes](agent-notes.md); the toast on an edit stays |
-| `enforcePolicies` | `true`  | tells the model about violations a turn introduced                      |
-| `openPaneOnStart` | `false` | opens the pane when a session starts                                    |
-| `watch`           | `true`  | runs the live watcher                                                   |
-| `watchPollMs`     | `1000`  | how often the watcher looks for changes, 250 to 60,000 milliseconds     |
-| `notifications`   | `true`  | toasts each new cycle or policy violation a scan brings, once           |
+| setting           | default                 | what it does                                                                |
+| ----------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `enabled`         | `true`                  | turns the band, the notes and the pane on or off                            |
+| `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a note, 1 to 100,000        |
+| `agentNotes`      | `true`                  | gives the model its [notes](agent-notes.md); the toast on an edit stays     |
+| `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                          |
+| `openPaneOnStart` | `false`                 | opens the pane when a session starts                                        |
+| `watch`           | `true`                  | runs the live watcher                                                       |
+| `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds         |
+| `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once               |
+| `editor`          | `code -g {file}:{line}` | the command `e` and a click on a place run, `{file}` and `{line}` filled in |
 
 ## What it writes
 

@@ -273,6 +273,40 @@ export function absolute(root: string, path: string): string {
 /** `path:line` (or the path alone), as an editor's go-to and a copy take it. */
 export const locText = (loc: Loc): string => (loc.line === null ? loc.path : `${loc.path}:${loc.line}`)
 
+/** The editor command the pane runs when no other is set: VS Code's, which Cursor and the other forks answer to too. */
+export const DEFAULT_EDITOR = 'code -g {file}:{line}'
+
+/**
+ * The command that opens `loc` in an editor, as its arguments: `template`
+ * (the plugin's `editor` setting) split on spaces, a double-quoted part kept
+ * whole, with `{file}` and `{line}` filled in. A place with no line drops a
+ * `:{line}` that follows the file, so it opens as the path alone, and fills
+ * a `{line}` standing on its own with the first. A template that names no
+ * `{file}` gets the place appended. A
+ * value that is not a usable command (not a string, blank, an unclosed
+ * quote, or a placeholder where the program goes) falls back to
+ * {@link DEFAULT_EDITOR}. The path is one argument whatever it holds: no
+ * shell reads it.
+ */
+export function editorCommand(template: unknown, loc: Loc): string[] {
+  const parts = typeof template === 'string' ? splitCommand(template) : null
+  const usable = parts !== null && parts.length > 0 && !parts[0]!.includes('{') ? parts : splitCommand(DEFAULT_EDITOR)!
+  const line = String(loc.line ?? 1)
+  const named = usable.some(part => part.includes('{file}'))
+  const filled = usable.map(part => (loc.line === null ? part.replaceAll('{file}:{line}', '{file}') : part).replaceAll('{file}', loc.path).replaceAll('{line}', line))
+  return named ? filled : [...filled, locText(loc)]
+}
+
+/** `text` split on spaces with double-quoted parts kept whole, or null for an unclosed quote. */
+function splitCommand(text: string): string[] | null {
+  const parts: string[] = []
+  for (const match of text.matchAll(/"([^"]*)"|(\S+)/g)) {
+    if (match[2] !== undefined && match[2].includes('"')) return null
+    parts.push(match[1] ?? match[2]!)
+  }
+  return parts
+}
+
 /** A path segment percent-encoded, with the characters `encodeURIComponent` keeps that a Markdown link target cannot: `( ) ! ' *`. */
 const encodeSegment = (segment: string): string => encodeURIComponent(segment).replace(/[!'()*]/g, ch => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`)
 

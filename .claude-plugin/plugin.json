@@ -57,6 +57,13 @@
       "title": "Watcher poll interval (ms)",
       "description": "How often the live watcher checks the project for changes, 250 to 60000 milliseconds.",
       "default": 1000
+    },
+    "editor": {
+      "type": "string",
+      "title": "Editor command",
+      "description": "The command e and a click on a file:line run to open it, {file} and {line} filled in; a double-quoted part stays one argument. A terminal editor needs a terminal of its own, so name a windowed one.",
+      "required": false,
+      "default": "code -g {file}:{line}"
     }
   }
 }

@@ -133,6 +133,8 @@ export const mod = {
   /** Whether the live watcher runs at all (userConfig `watch`), and its poll interval (`watchPollMs`). */
   watchOn: true,
   watchPollMs: 1_000,
+  /** The editor command `e` and a click on a place run (userConfig `editor`), as set: {@link editorCommand} reads it. */
+  editor: undefined as unknown,
   /** The watcher child's stream while it runs: leaving its loop, or `return()` on it, ends the child. */
   watcher: null as AsyncGenerator<unknown, unknown> | null,
   /** The running watcher's process id, as it said: signalled when it is stopped. */
@@ -267,6 +269,7 @@ export function reset(options: PluginOptions): void {
   stopWatcher()
   mod.watchOn = options.watch !== false
   mod.watchPollMs = watchPollMsOf(options.watchPollMs)
+  mod.editor = options.editor
   mod.watchRefused = false
   mod.watchFailures = 0
   mod.watchRetryAt = 0

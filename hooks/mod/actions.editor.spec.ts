@@ -5,6 +5,7 @@ import { fileHref } from '../lib/rows'
 import { copyCommand, handlersOf, PRESSES, pressOf } from './actions'
 import type { Port } from './port'
 import { currentInput } from './render'
+import { mod } from './state'
 
 vi.mock('./render', async importOriginal => ({ ...(await importOriginal<typeof import('./render')>()), currentInput: vi.fn() }))
 
@@ -18,13 +19,14 @@ type Copy = (args: { text: string; surface?: RenderSurface }) => Promise<{ isCop
 /** A port whose editor command and clipboard are the given fakes, and whose footer feedback is kept in memory. */
 function port(run: Run, copy: Copy = vi.fn(async () => ({ isCopied: true }))) {
     let feedback: unknown = null
+    const toasts: string[] = []
     const io = {
         process: { run: vi.fn(run) },
-        ui: { copy: vi.fn(copy) },
+        ui: { copy: vi.fn(copy), toast: (text: string) => void toasts.push(text) },
         clock: { now: async () => NOW },
         state: { feedback: { read: async () => feedback, update: async (change: (v: unknown) => unknown) => void (feedback = change(feedback)) } },
     } as unknown as Port
-    return { io, run: io.process.run as unknown as ReturnType<typeof vi.fn>, copy: io.ui.copy as unknown as ReturnType<typeof vi.fn>, feedback: () => feedback }
+    return { io, run: io.process.run as unknown as ReturnType<typeof vi.fn>, copy: io.ui.copy as unknown as ReturnType<typeof vi.fn>, feedback: () => feedback, toasts }
 }
 
 const exited =
@@ -42,6 +44,7 @@ const press = (io: Port, id: string, surface?: RenderSurface) => {
 
 beforeEach(() => {
     vi.mocked(currentInput).mockReset()
+    mod.editor = undefined
 })
 
 describe('a press on a file: link', () => {
@@ -68,7 +71,7 @@ describe('a press on a file: link', () => {
         await settle()
         expect(copy).toHaveBeenCalledTimes(1)
         expect(copy).toHaveBeenCalledWith({ text: '/work/app/src/A.php:12', surface: SURFACE })
-        expect(feedback()).toEqual({ text: '✗ no editor · path copied', tone: 'alert', until: NOW + FEEDBACK_MS })
+        expect(feedback()).toEqual({ text: '✗ code exited 1 · path copied', tone: 'alert', until: NOW + FEEDBACK_MS })
     })
 
     it('treats an editor command that cannot start (ENOENT) as not opened, and copies instead', async () => {
@@ -78,14 +81,28 @@ describe('a press on a file: link', () => {
         handlersOf(io).link(fileHref(PLACE), SURFACE)
         await settle()
         expect(copy).toHaveBeenCalledWith({ text: '/work/app/src/A.php:12', surface: SURFACE })
-        expect(feedback()).toEqual({ text: '✗ no editor · path copied', tone: 'alert', until: NOW + FEEDBACK_MS })
+        expect(feedback()).toEqual({ text: '✗ code did not start · path copied', tone: 'alert', until: NOW + FEEDBACK_MS })
     })
 
-    it('says only that there is no editor when the clipboard refuses too', async () => {
+    it('says only how the editor failed when the clipboard refuses too', async () => {
         const { io, feedback } = port(exited(127), async () => ({ isCopied: false, reason: 'no clipboard' }))
         handlersOf(io).link(fileHref(PLACE), SURFACE)
         await settle()
-        expect(feedback()).toEqual({ text: '✗ no editor', tone: 'alert', until: NOW + FEEDBACK_MS })
+        expect(feedback()).toEqual({ text: '✗ code exited 127', tone: 'alert', until: NOW + FEEDBACK_MS })
+    })
+
+    it('runs the editor command the plugin is set to, and says where to set it when it fails', async () => {
+        mod.editor = 'idea --line {line} {file}'
+        const opened = port(exited(0))
+        handlersOf(opened.io).link(fileHref(PLACE), SURFACE)
+        await settle()
+        expect(opened.run).toHaveBeenCalledWith(['idea', '--line', '12', '/work/app/src/A.php'], { timeoutMs: 10_000 })
+        expect(opened.toasts).toEqual([])
+        const failed = port(exited(2))
+        handlersOf(failed.io).link(fileHref(PLACE), SURFACE)
+        await settle()
+        expect(failed.feedback()).toMatchObject({ text: '✗ idea exited 2 · path copied', tone: 'alert' })
+        expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with /plugin configure knossos@knossos.'])
     })
 
     it('names no surface at all to the clipboard when the press came from none', async () => {
