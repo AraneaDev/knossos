@@ -139,24 +139,35 @@ export class TypeScriptApplicationEnricher {
                 "axios.patch",
                 "axios.delete",
             ].includes(calledName) ||
-            !node.arguments[0] ||
-            (!ts.isStringLiteral(node.arguments[0]) &&
-                !ts.isNoSubstitutionTemplateLiteral(node.arguments[0]))
+            !node.arguments[0]
         )
             return;
+        const url = requestUrl(node.arguments[0]);
+        if (url === null) return;
         const method =
             calledName === "fetch"
                 ? fetchMethod(node)
                 : calledName.split(".").at(-1).toUpperCase();
-        const uri = node.arguments[0].text;
-        const endpointId = reference("endpoint", `${method} ${uri}`);
+        this.addEndpoint(node, source, method, url);
+    }
+
+    addEndpoint(node, source, method, url) {
+        const attributes = {
+            framework: "web",
+            method,
+            uri: url.uri,
+            template: urlTemplate(url.uri, url.prefixUnknown),
+            prefix: url.prefixUnknown ? "unknown" : "known",
+            external: ABSOLUTE_URL.test(url.uri),
+        };
+        const endpointId = reference("endpoint", `${method} ${url.uri}`);
         this.context.addNode(
             endpointId,
             "endpoint",
-            `${method} ${uri}`,
-            `${method} ${uri}`,
+            `${method} ${url.uri}`,
+            `${method} ${url.uri}`,
             node,
-            { framework: "web", method, uri },
+            attributes,
             "framework_convention",
         );
         this.context.addEdge(
@@ -168,6 +179,34 @@ export class TypeScriptApplicationEnricher {
             "framework_convention",
         );
     }
+}
+
+const ABSOLUTE_URL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
+
+/**
+ * A request URL as written, each substitution shown as `{}`, and whether
+ * anything before its path is unknown: a leading substitution names a base
+ * the worker cannot read. Null for anything but a string or template literal.
+ */
+function requestUrl(argument) {
+    if (
+        ts.isStringLiteral(argument) ||
+        ts.isNoSubstitutionTemplateLiteral(argument)
+    )
+        return { uri: argument.text, prefixUnknown: false };
+    if (!ts.isTemplateExpression(argument)) return null;
+    const uri =
+        argument.head.text +
+        argument.templateSpans.map((span) => `{}${span.literal.text}`).join("");
+    return { uri, prefixUnknown: argument.head.text === "" };
+}
+
+/** The path template a URL stands for, as the core normalises it. */
+function urlTemplate(uri, prefixUnknown) {
+    const path = uri.replace(/[?#].*$/s, "");
+    const segments = path.split("/").filter((segment) => segment !== "");
+    const kept = prefixUnknown ? segments.slice(1) : segments;
+    return `/${kept.join("/")}`;
 }
 
 function fetchMethod(call) {
