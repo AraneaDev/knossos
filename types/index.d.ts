@@ -342,7 +342,8 @@ export type BoundaryCouplings = {
   to?: string
   snapshot_id?: string | null
   edges: number
-  couplings: { source: Listed; target: Listed; edges: number }[]
+  /** Each side's file and first line (absent from an older knossos). */
+  couplings: { source: Listed & { path?: string | null; line?: number | null }; target: Listed & { path?: string | null; line?: number | null }; edges: number }[]
   truncated: boolean
 }
 

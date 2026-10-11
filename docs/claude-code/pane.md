@@ -353,7 +353,9 @@ it with.
 - **The marked cell**: the boundary's row, in the column of what it depends on
   most. A box for each boundary, the arrow between them with how many
   dependencies run that way, and under it the five component pairs that make
-  up most of them.
+  up most of them, each side named as the rest of the pane names it (a method
+  by its class and name), with a line under each pair saying where its two
+  sides are declared (`views.py:12 → Client.php:40`).
 
 `l` moves the cell to the next boundary the marked one depends on, as does a
 press on one of those boundaries. A boundary opens nothing; `c` copies its

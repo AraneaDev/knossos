@@ -53,6 +53,11 @@ final class BoundaryCouplingsServiceTest extends KnossosTestCase
                 $ids->execute([$projectId, $pair['target']['canonical_name']]);
                 $target = (string) $ids->fetchColumn();
                 assertSame(['Edge', 'Core'], [$labelled[$source] ?? null, $labelled[$target] ?? null]);
+                // Each side says where it is declared, so a pair of like names can be told apart.
+                foreach (['source', 'target'] as $side) {
+                    assertSame(true, str_starts_with((string) $pair[$side]['path'], 'src/'), $side);
+                    assertSame(true, is_int($pair[$side]['line']), $side);
+                }
                 $edges->execute([$source, $target, ...AbstractArchitectureQueryService::IMPACT_EDGE_KINDS]);
                 assertSame((int) $edges->fetchColumn(), $pair['edges']);
                 assertLessThanOrEqual($previous, $pair['edges']);
@@ -204,8 +209,11 @@ final class BoundaryCouplingsServiceTest extends KnossosTestCase
         $kinds = implode(',', array_fill(0, count(AbstractArchitectureQueryService::IMPACT_EDGE_KINDS), '?'));
         $statement = $pdo->prepare("SELECT source_id, target_id, COUNT(*) FROM edges WHERE project_id = ? AND kind IN ({$kinds}) GROUP BY source_id, target_id");
         $statement->execute([$projectId, ...AbstractArchitectureQueryService::IMPACT_EDGE_KINDS]);
-        $names = $pdo->query('SELECT id, display_name, canonical_name, kind FROM nodes')->fetchAll(PDO::FETCH_ASSOC | PDO::FETCH_UNIQUE);
-        $node = static fn(string $id): array => ['name' => (string) ($names[$id]['display_name'] ?? $names[$id]['canonical_name']), 'canonical_name' => (string) $names[$id]['canonical_name'], 'kind' => (string) $names[$id]['kind']];
+        $names = $pdo->query('SELECT n.id, n.display_name, n.canonical_name, n.kind, f.relative_path, n.start_line FROM nodes n LEFT JOIN files f ON f.id = n.file_id')->fetchAll(PDO::FETCH_ASSOC | PDO::FETCH_UNIQUE);
+        $node = static fn(string $id): array => [
+            'name' => (string) ($names[$id]['display_name'] ?? $names[$id]['canonical_name']), 'canonical_name' => (string) $names[$id]['canonical_name'], 'kind' => (string) $names[$id]['kind'],
+            'path' => $names[$id]['relative_path'] === null ? null : (string) $names[$id]['relative_path'], 'line' => $names[$id]['start_line'] === null ? null : (int) $names[$id]['start_line'],
+        ];
         $expected = [];
         foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$source, $target, $count]) {
             if (($labelled[$source] ?? null) === 'Edge' && ($labelled[$target] ?? null) === 'Core' && isset($names[$source], $names[$target])) {
