@@ -26,6 +26,21 @@ final class TypescriptEndpointsTest extends KnossosTestCase
             . "export const five = (id) => axios.delete(`/api/orders/\${id}/lines`);\n",
     ];
 
+    private const INSTANCES = [
+        'src/http.js' => "import axios from \"axios\";\n"
+            . "export const api = axios.create({ baseURL: \"/api\" });\n"
+            . "export const remote = axios.create({ baseURL: \"https://x.example.com\" });\n"
+            . "export const bare = axios.create();\n",
+        'src/orders.js' => "import { api, remote, bare } from \"./http\";\n"
+            . "export const show = (id) => api.get(`/orders/\${id}`);\n"
+            . "export const store = () => api.request({ method: \"post\", url: \"/orders\" });\n"
+            . "export const other = () => remote.get(\"/orders\");\n"
+            . "export const plain = () => bare.get(\"/orders\");\n",
+        'node_modules/axios/package.json' => '{"name":"axios","version":"1.0.0","types":"index.d.ts"}',
+        'node_modules/axios/index.d.ts' => "export interface Instance {\n  get(url: string): Promise<unknown>;\n  request(config: { method?: string; url?: string }): Promise<unknown>;\n}\n"
+            . "declare const axios: { create(config?: { baseURL?: string }): Instance; delete(url: string): Promise<unknown> };\nexport default axios;\n",
+    ];
+
     public function testRequestUrlsBecomeEndpointsWithTheirPathTemplate(): void
     {
         $endpoints = $this->endpoints(self::API, ['src/api.js']);
@@ -37,6 +52,20 @@ final class TypescriptEndpointsTest extends KnossosTestCase
         assertSame(['{}/orders/new', '/orders/new', 'unknown'], [$unknown['uri'], $unknown['template'], $unknown['prefix']]);
         assertSame(true, $endpoints['GET https://api.example.com/v1/orders']['external']);
         assertArrayHasKey('DELETE /api/orders/{}/lines', $endpoints);
+    }
+
+    public function testRequestsThroughAnAxiosInstanceCarryTheInstancesBaseUrl(): void
+    {
+        $endpoints = $this->endpoints(self::INSTANCES, ['src/http.js', 'src/orders.js']);
+
+        assertSame(['GET /api/orders/{}', 'POST /api/orders', 'GET /orders'], array_slice(array_keys($endpoints), 0, 3));
+        assertSame('known', $endpoints['GET /api/orders/{}']['prefix']);
+        assertSame('known', $endpoints['POST /api/orders']['prefix']);
+        assertSame('unknown', $endpoints['GET /orders']['prefix']);
+        assertSame(3, count($endpoints));
+        foreach ($endpoints as $attributes) {
+            assertSame(false, $attributes['external']);
+        }
     }
 
     /**

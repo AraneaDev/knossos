@@ -1,5 +1,6 @@
 import path from "node:path";
 import ts from "typescript";
+import { objectField } from "./syntax-predicates.js";
 import {
     addFrameworkRoute,
     callName,
@@ -129,8 +130,18 @@ export class TypeScriptApplicationEnricher {
     }
 
     call(node, source, calledName) {
+        if (source === null) return;
+        if (ts.isPropertyAccessExpression(node.expression)) {
+            const instance = axiosInstanceBase(
+                this.context.checker,
+                node.expression.expression,
+            );
+            if (instance !== null) {
+                this.instanceCall(node, source, instance);
+                return;
+            }
+        }
         if (
-            source === null ||
             ![
                 "fetch",
                 "axios.get",
@@ -151,12 +162,40 @@ export class TypeScriptApplicationEnricher {
         this.addEndpoint(node, source, method, url);
     }
 
+    instanceCall(node, source, instance) {
+        const name = node.expression.name.text;
+        const first = node.arguments[0];
+        let method;
+        let argument;
+        if (INSTANCE_METHODS.has(name)) {
+            method = name.toUpperCase();
+            argument = first;
+        } else if (name === "request" && first) {
+            const methodField = objectField(first, "method");
+            method =
+                methodField && ts.isStringLiteralLike(methodField)
+                    ? methodField.text.toUpperCase()
+                    : "ANY";
+            argument = objectField(first, "url");
+        }
+        const url = argument === undefined ? null : requestUrl(argument);
+        if (url === null) return;
+        this.addEndpoint(node, source, method, {
+            uri: `${instance.base}${url.uri}`,
+            prefixUnknown: url.prefixUnknown || !instance.known,
+            dropLeading: url.prefixUnknown && instance.base === "",
+        });
+    }
+
     addEndpoint(node, source, method, url) {
         const attributes = {
             framework: "web",
             method,
             uri: url.uri,
-            template: urlTemplate(url.uri, url.prefixUnknown),
+            template: urlTemplate(
+                url.uri,
+                url.dropLeading ?? url.prefixUnknown,
+            ),
             prefix: url.prefixUnknown ? "unknown" : "known",
             external: ABSOLUTE_URL.test(url.uri),
         };
@@ -199,6 +238,45 @@ function requestUrl(argument) {
         argument.head.text +
         argument.templateSpans.map((span) => `{}${span.literal.text}`).join("");
     return { uri, prefixUnknown: argument.head.text === "" };
+}
+
+const INSTANCE_METHODS = new Set([
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "head",
+]);
+
+/**
+ * The `baseURL` of an axios instance a receiver resolves to through the
+ * checker, as `{ base, known }`, or null when the receiver is no
+ * `axios.create(...)` result. A relative literal base is known; a missing,
+ * absolute or computed one is not.
+ */
+function axiosInstanceBase(checker, receiver) {
+    let symbol = checker.getSymbolAtLocation(receiver);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias)
+        symbol = checker.getAliasedSymbol(symbol);
+    const declaration = symbol?.valueDeclaration;
+    if (
+        !declaration ||
+        !ts.isVariableDeclaration(declaration) ||
+        !declaration.initializer ||
+        !ts.isCallExpression(declaration.initializer) ||
+        declaration.initializer.expression.getText() !== "axios.create"
+    )
+        return null;
+    const options = declaration.initializer.arguments[0];
+    const base = options ? objectField(options, "baseURL") : undefined;
+    if (
+        base !== undefined &&
+        ts.isStringLiteralLike(base) &&
+        !ABSOLUTE_URL.test(base.text)
+    )
+        return { base: base.text.replace(/\/+$/, ""), known: true };
+    return { base: "", known: false };
 }
 
 /** The path template a URL stands for, as the core normalises it. */
