@@ -331,7 +331,7 @@ final readonly class GraphReconciler
      * Assign stable ids to the reported nodes and index them for edge resolution.
      *
      * @param list<ScanContribution> $contributions
-     * @return array{0: array<string, string>, 1: array<string, array<string, mixed>>, 2: list<array<string, string>>}
+     * @return array{0: array<string, string>, 1: array<string, array<string, mixed>>, 2: list<array<string, string|int>>}
      */
     private function collectNodes(string $projectId, array $contributions): array
     {
@@ -356,12 +356,13 @@ final readonly class GraphReconciler
                     // genuine collision is a re-declaration from a different
                     // evidence file; keep the first and surface a warning rather
                     // than silently discarding the divergent provenance.
-                    // `package`/`external_*` kinds are exempt: they are shared
-                    // across every importing file by design, so a re-declaration
-                    // there is not suspicious. For kinds that are suspicious, warn
+                    // `package`/`endpoint`/`external_*` kinds are exempt: they are
+                    // shared across every importing file by design (an endpoint is
+                    // a URL, which every file calling it declares), so a
+                    // re-declaration there is not suspicious. For kinds that are suspicious, warn
                     // once per stable id rather than once per re-declaring file.
                     $existingPath = $nodes[$id]['evidence_path'];
-                    $sharedByDesign = $node->kind === 'package' || str_starts_with($node->kind, 'external_');
+                    $sharedByDesign = $node->kind === 'package' || $node->kind === 'endpoint' || str_starts_with($node->kind, 'external_');
                     if ($existingPath !== $node->evidence->relativePath && !$sharedByDesign && !isset($warnedIds[$id])) {
                         $warnedIds[$id] = true;
                         $warnings[] = [
@@ -393,7 +394,7 @@ final readonly class GraphReconciler
      * @param list<ScanContribution> $contributions
      * @param array<string, string> $nodeMap
      * @param array<string, string> $fileIds
-     * @return array{0: array<string, array<string, mixed>>, 1: array<string, array<string, mixed>>, 2: list<array<string, string>>, 3: array<string, array<string, true>>}
+     * @return array{0: array<string, array<string, mixed>>, 1: array<string, array<string, mixed>>, 2: list<array<string, string|int>>, 3: array<string, array<string, true>>}
      */
     private function resolveEdges(string $projectId, array $contributions, array $nodeMap, array $fileIds): array
     {
