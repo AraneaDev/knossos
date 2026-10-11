@@ -30,7 +30,9 @@ final readonly class RouteTemplates
             }
             if ($node['kind'] === 'setting' && str_ends_with((string) ($node['canonical_name'] ?? ''), '.ROOT_URLCONF')
                 && is_string($node['attributes']['value'] ?? null)) {
-                $rootUrlconfs[$node['attributes']['value']] = true;
+                foreach (self::urlconfNames((string) $node['canonical_name'], $node['attributes']['value']) as $name) {
+                    $rootUrlconfs[$name] = true;
+                }
             }
         }
         $mountsInto = [];
@@ -80,6 +82,27 @@ final readonly class RouteTemplates
             static fn(mixed $method): string => ($upper = strtoupper((string) $method)) === 'ALL' ? 'ANY' : $upper,
             $methods,
         )));
+    }
+
+    /**
+     * The module names a ROOT_URLCONF value can have in the graph. A settings module nested below the
+     * scanned root (`backend.app.settings`) names its urlconf from the package root (`app.urls`), so the
+     * packages in front of the value's first part are tried as a prefix too.
+     *
+     * @return list<string>
+     */
+    private static function urlconfNames(string $settingName, string $value): array
+    {
+        $names = [$value];
+        $module = explode('.', substr($settingName, 0, -strlen('.ROOT_URLCONF')));
+        $first = explode('.', $value)[0];
+        foreach ($module as $index => $part) {
+            if ($index > 0 && $part === $first) {
+                $names[] = implode('.', array_slice($module, 0, $index)) . '.' . $value;
+            }
+        }
+
+        return $names;
     }
 
     /**

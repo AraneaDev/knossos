@@ -110,6 +110,24 @@ final class RouteTemplatesTest extends KnossosTestCase
     }
 
     #[Group('reconciliation')]
+    public function testARootUrlconfNamedFromAPackageRootBelowTheProjectRootIsStillTheRoot(): void
+    {
+        $nodes = [
+            'setting' => [
+                'id' => 'setting', 'kind' => 'setting', 'canonical_name' => 'backend.app.settings.ROOT_URLCONF',
+                'attributes' => ['value' => 'app.urls'], 'evidence_path' => 'backend/app/settings.py',
+            ],
+            'in-root' => self::route('in-root', ['framework' => 'django', 'path' => 'a/', 'module' => 'backend.app.urls']),
+            'elsewhere' => self::route('elsewhere', ['framework' => 'django', 'path' => 'b/', 'module' => 'other.app.urls']),
+        ];
+
+        $routes = RouteTemplates::forRoutes($nodes, []);
+
+        assertSame('declared', $routes['in-root']['templates'][0]['prefix']);
+        assertSame('unknown', $routes['elsewhere']['templates'][0]['prefix']);
+    }
+
+    #[Group('reconciliation')]
     public function testMountsThatLoopEndTheChainAtTheFirstRepeat(): void
     {
         $nodes = [
