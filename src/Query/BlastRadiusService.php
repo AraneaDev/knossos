@@ -174,6 +174,8 @@ final readonly class BlastRadiusService
         $frontier = [$target];
         $seen = [$target => true];
         $truncated = false;
+        /** @var array<string, list<string>> $callersOf what was read calling each supertype method passed through */
+        $callersOf = [];
         // The last ring's components, and whether what depends on them was read.
         $edge = [];
         $readPast = false;
@@ -182,8 +184,24 @@ final readonly class BlastRadiusService
             if ($distance === self::DEPTH + 1) {
                 $edge = $frontier;
             }
+            // A call through an interface or a parent goes to the supertype's method: read what calls that
+            // too, and count each such edge as one into the method that fulfils it, never listing the supertype's.
+            // A supertype method read at an earlier hop is not read again: its callers are recorded for this method too.
+            $standsFor = [];
+            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $method => $supertypes) {
+                foreach ($supertypes as $supertype) {
+                    if (isset($callersOf[$supertype])) {
+                        foreach ($callersOf[$supertype] as $caller) {
+                            $out[$caller][] = $method;
+                        }
+                    } elseif (!isset($seen[$supertype]) || isset($standsFor[$supertype])) {
+                        $seen[$supertype] = true;
+                        $standsFor[$supertype][] = $method;
+                    }
+                }
+            }
             $next = [];
-            foreach (array_chunk($frontier, 400) as $chunk) {
+            foreach (array_chunk([...$frontier, ...array_keys($standsFor)], 400) as $chunk) {
                 if (hrtime(true) > $deadline) {
                     $truncated = $truncated || !$past;
                     break 2;
@@ -197,8 +215,13 @@ final readonly class BlastRadiusService
                     if ($source === $target) {
                         continue;
                     }
-                    if ($to !== $target) {
-                        $out[$source][] = $to;
+                    if (isset($standsFor[$to])) {
+                        $callersOf[$to][] = $source;
+                    }
+                    foreach ($standsFor[$to] ?? [$to] as $into) {
+                        if ($into !== $target) {
+                            $out[$source][] = $into;
+                        }
                     }
                     if (isset($seen[$source])) {
                         continue;
