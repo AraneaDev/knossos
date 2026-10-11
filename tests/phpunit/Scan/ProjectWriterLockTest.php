@@ -64,8 +64,8 @@ final class ProjectWriterLockTest extends TestCase
         $lease = $lock->acquire('proj_1');
 
         $row = $this->fetchRow($pdo, 'proj_1');
-        assertSame(32, strlen($row['owner_token']));
-        assertSame(true, ctype_xdigit($row['owner_token']));
+        // Who holds it, so a lease whose process is gone can be taken over (see testAcquireTakesOverALeaseWhoseProcessIsGone).
+        assertSame(1, preg_match('/^' . getmypid() . '@' . preg_quote((string) gethostname(), '/') . ':[0-9a-f]{32}$/', $row['owner_token']));
         assertSame(true, $row['acquired_at'] > 0);
         assertSame(true, abs($row['acquired_at'] - time()) < 5);
         $lease->release();
@@ -149,10 +149,61 @@ final class ProjectWriterLockTest extends TestCase
         assertSame(true, $lease instanceof ProjectWriterLease);
         $row = $this->fetchRow($pdo, 'proj_4');
         assertSame(true, $row['owner_token'] !== 'stale-token');
-        assertSame(32, strlen($row['owner_token']));
-        assertSame(true, ctype_xdigit($row['owner_token']));
+        assertSame(1, preg_match('/:[0-9a-f]{32}$/', $row['owner_token']));
         assertSame(2_000_000_000, (int) $row['acquired_at']);
         $lease->release();
+    }
+
+    /** A scan killed by a signal never runs its lease's destructor: its lease is taken over at once, not an hour later. */
+    public function testAcquireTakesOverALeaseWhoseProcessIsGone(): void
+    {
+        $pdo = $this->createSchema();
+        $this->holdLease($pdo, 'proj_dead', '4242@' . gethostname() . ':' . str_repeat('a', 32));
+        $lock = new ProjectWriterLock($pdo, alive: static fn(int $pid): bool => $pid !== 4242);
+
+        $lease = $lock->acquire('proj_dead');
+
+        assertSame(1, preg_match('/^' . getmypid() . '@/', $this->fetchRow($pdo, 'proj_dead')['owner_token']));
+        $lease->release();
+    }
+
+    /** A holder still running keeps its lease, and so does one on another host, whose processes this one cannot see. */
+    public function testAcquireLeavesALeaseItCannotProveAbandoned(): void
+    {
+        $pdo = $this->createSchema();
+        $held = [
+            'proj_live' => ['4242@' . gethostname() . ':' . str_repeat('b', 32), static fn(int $pid): bool => true],
+            'proj_remote' => ['4242@another-host:' . str_repeat('c', 32), static fn(int $pid): bool => false],
+            // A lease an older knossos took names no process.
+            'proj_old' => [str_repeat('d', 32), static fn(int $pid): bool => false],
+        ];
+        foreach ($held as $project => [$token, $alive]) {
+            $this->holdLease($pdo, $project, $token);
+            captureThrows(static fn(): ProjectWriterLease => (new ProjectWriterLock($pdo, alive: $alive))->acquire($project), ScanBusyException::class);
+            assertSame($token, $this->fetchRow($pdo, $project)['owner_token'], $project);
+        }
+    }
+
+    /** The operating system's answer: a process that has exited is gone, this one runs. */
+    public function testAcquireAsksTheSystemWhetherTheHolderRuns(): void
+    {
+        $pdo = $this->createSchema();
+        $process = proc_open([PHP_BINARY, '-r', 'sleep(30);'], [], $pipes);
+        assertSame(true, is_resource($process));
+        $exited = proc_get_status($process)['pid'];
+        proc_terminate($process, 9);
+        proc_close($process);
+        $this->holdLease($pdo, 'proj_exited', $exited . '@' . gethostname() . ':' . str_repeat('e', 32));
+        $this->holdLease($pdo, 'proj_running', getmypid() . '@' . gethostname() . ':' . str_repeat('f', 32));
+
+        (new ProjectWriterLock($pdo))->acquire('proj_exited')->release();
+        captureThrows(static fn(): ProjectWriterLease => (new ProjectWriterLock($pdo))->acquire('proj_running'), ScanBusyException::class);
+        assertSame(true, $this->rowExists($pdo, 'proj_running'));
+    }
+
+    private function holdLease(PDO $pdo, string $projectId, string $token): void
+    {
+        $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')->execute([$projectId, $token, time()]);
     }
 
     public function testAcquireRethrowsNonUniquePdoExceptionAfterRollback(): void
