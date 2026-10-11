@@ -247,7 +247,7 @@ export function fileHubList(files: FileHub[], filter: string): FileHub[] {
 }
 
 /** What a list addresses: the fields the selection, `o`, `e`, `c` and `q` read. */
-export type ListInput = Pick<PaneInput, 'tab' | 'items' | 'filter' | 'sort' | 'degree' | 'issues' | 'detail' | 'changes' | 'cycles' | 'boundaries' | 'lookAt' | 'overview' | 'drift' | 'driftOpen' | 'fileHubs'> & Partial<Pick<PaneInput, 'finder' | 'branch' | 'churn' | 'route'>>
+export type ListInput = Pick<PaneInput, 'tab' | 'items' | 'filter' | 'sort' | 'degree' | 'issues' | 'detail' | 'changes' | 'cycles' | 'boundaries' | 'lookAt' | 'overview' | 'drift' | 'driftOpen' | 'fileHubs'> & Partial<Pick<PaneInput, 'finder' | 'branch' | 'churn' | 'route' | 'showKeys'>>
 
 /** A file row of a list: it opens as the file's detail, and `e` opens the file. */
 const fileRow = (path: string, loc: Loc | null): Openable => ({ name: path, canonical: path, loc, file: true })
@@ -291,7 +291,9 @@ const filesShown = (input: Pick<PaneInput, 'fileHubs' | 'filter' | 'degree'>): F
 
 /** The rows the selection walks: the detail's counterparts, else the drifted files when listed, else the tab's list. */
 export function listFor(input: ListInput): Openable[] {
-  // The finder stands over everything: its matches are what the marker walks.
+  // The key list stands over everything, the finder included, and lists nothing to walk.
+  if (input.showKeys === true) return []
+  // The finder stands over everything else: its matches are what the marker walks.
   if (input.finder !== undefined && input.finder !== null) return finderList(input.finder)
   if (input.route !== undefined && input.route !== null) return routeList(input.route)
   if (input.detail !== null) return input.detail.file === undefined ? detailList(input.detail) : input.detail.file === null ? [] : fileDetailList(input.detail.file)
@@ -869,12 +871,13 @@ function padded(row: Row, pad: number, columns: number, bg?: string): Row {
  * stands at the right edge (`● live · 7s`). Only the keys that do something
  * in this view are offered. Each group stays whole; past the width the
  * actions wrap under the moves, and a key is never dropped, since it would
- * stop working. The key list `h` opens is returned apart (`help`): it is
- * drawn above the bar, not in it.
+ * stop working. While the key list `h` opens is shown, the bar offers only
+ * closing it.
  */
-export function footerRows(input: PaneInput, columns: number, hasList: boolean, scrolled = false): { bar: Row[]; help: Row[] } {
+export function footerRows(input: PaneInput, columns: number, hasList: boolean, scrolled = false): { bar: Row[] } {
   const moves: Segment[] = []
   const actions: Segment[] = []
+  if (input.showKeys) return keysFooter(input, columns, scrolled)
   if (input.finder !== null) return finderFooter(input, columns, hasList)
   const onTab = input.detail === null && input.route === null && !input.driftOpen
   if (input.detail !== null || input.route !== null) moves.push(button('back', 'back', 'b'))
@@ -901,7 +904,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   }
   // From a component's own detail, a route to any other component (the finder picks where it ends).
   if (input.route === null && input.detail?.component !== null && input.detail?.component !== undefined && input.detail.file === undefined) actions.push(button('route', 'route to…', 'p'))
-  actions.push(button('find', 'find', 'f'), button('keys', input.showKeys ? 'hide keys' : 'keys', 'h'))
+  actions.push(button('find', 'find', 'f'), button('keys', 'keys', 'h'))
   const pad = padOf(tier)
   const inner = Math.max(1, columns - 2 * pad)
   const said: Segment[] = input.feedback === null ? [] : [{ text: input.feedback.text, color: input.feedback.tone === 'ok' ? STATUS_COLOURS.ok : STATUS_COLOURS.alert }]
@@ -917,8 +920,21 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
     if (moves.length > 0) lines.push(...wrapGroups('keys', moves.map(k => [{ ...k, dim: true }]), inner))
     lines.push(...wrapGroups(moves.length > 0 ? 'keys-actions' : 'keys', [...actions.map(k => [{ ...k, dim: true }]), ...(state.length > 0 ? [state] : [])], inner))
   }
-  // One key a line, its action wrapped beside it: a list to look up, not a paragraph to read.
-  return { bar: lines.map(row => padded(row, pad, columns, BAR_BG)), help: input.showKeys ? keyHelp(inner, pad, columns) : [] }
+  return { bar: lines.map(row => padded(row, pad, columns, BAR_BG)) }
+}
+
+/**
+ * The footer bar while the key list is shown: closing it, which puts back
+ * what it stood in for, and the graph's state once the header is out of view.
+ */
+function keysFooter(input: PaneInput, columns: number, scrolled: boolean): { bar: Row[] } {
+  const pad = padOf(tierOf(columns))
+  const inner = Math.max(1, columns - 2 * pad)
+  const state: Segment[] = scrolled ? [{ text: `● ${input.status.text}`, color: STATUS_COLOURS[input.status.tone] }] : []
+  const actions = [button('keys-close', 'close', 'x'), button('keys', 'hide keys', 'h')].map(k => [{ ...k, dim: true }])
+  const right = joinGroups([...actions, ...(state.length > 0 ? [state] : [])])
+  const lines = segmentsWidth(right) <= inner ? [spread('keys', [], right, inner)] : wrapGroups('keys', [...actions, ...(state.length > 0 ? [state] : [])], inner)
+  return { bar: lines.map(row => padded(row, pad, columns, BAR_BG)) }
 }
 
 /**
@@ -927,27 +943,35 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
  * field holds the focus the keys type into it: Enter opens the first match,
  * and a click opens any.
  */
-function finderFooter(input: PaneInput, columns: number, hasList: boolean): { bar: Row[]; help: Row[] } {
+function finderFooter(input: PaneInput, columns: number, hasList: boolean): { bar: Row[] } {
   const pad = padOf(tierOf(columns))
   const inner = Math.max(1, columns - 2 * pad)
   const moves = hasList ? [button('down', '↓', 'j'), button('up', '↑', 'k')] : []
-  const actions = [...(hasList ? [button('open', 'open', 'o')] : []), button('find-close', 'close', 'x'), button('keys', input.showKeys ? 'hide keys' : 'keys', 'h')]
+  const actions = [...(hasList ? [button('open', 'open', 'o')] : []), button('find-close', 'close', 'x'), button('keys', 'keys', 'h')]
   const left = joinGroups(moves.map(k => [{ ...k, dim: true }]))
   const right = joinGroups(actions.map(k => [{ ...k, dim: true }]))
   const lines = segmentsWidth(left) + 2 + segmentsWidth(right) <= inner ? [spread('keys', left, right, inner)] : [...(moves.length > 0 ? wrapGroups('keys', moves.map(k => [{ ...k, dim: true }]), inner) : []), ...wrapGroups(moves.length > 0 ? 'keys-actions' : 'keys', actions.map(k => [{ ...k, dim: true }]), inner)]
-  return { bar: lines.map(row => padded(row, pad, columns, BAR_BG)), help: input.showKeys ? keyHelp(inner, pad, columns) : [] }
+  return { bar: lines.map(row => padded(row, pad, columns, BAR_BG)) }
 }
 
-/** The key list `h` opens: one key a line, its action wrapped beside it. */
-function keyHelp(inner: number, pad: number, columns: number): Row[] {
-  const help: Row[] = []
-  let n = 0
-  for (const [key, action] of [...KEY_HELP, ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
-    wrapWords(action, Math.max(1, inner - KEY_WIDTH)).forEach((line, i) =>
-      help.push(padded({ key: `help-${n++}`, segments: [{ text: padEnd(i === 0 ? key : '', KEY_WIDTH), color: ACCENT }, { text: line, dim: true }] }, pad, columns)),
-    )
+/**
+ * The key list `h` opens, as a card that stands in for the tab, the detail
+ * or the finder while it is shown: one key a line, its action wrapped
+ * beside it, a list to look up rather than a paragraph to read. Drawn under
+ * the header, so nothing that lands later can push it out of view.
+ */
+function keysBlock(): Block {
+  const lines = (columns: number): Row[] => {
+    const help: Row[] = []
+    let n = 0
+    for (const [key, action] of [...KEY_HELP, ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
+      wrapWords(action, Math.max(1, columns - 3 - KEY_WIDTH)).forEach((line, i) =>
+        help.push({ key: `help-${n++}`, segments: [{ text: '   ' }, { text: padEnd(i === 0 ? key : '', KEY_WIDTH), color: ACCENT }, { text: line, dim: true }] }),
+      )
+    }
+    return help
   }
-  return help
+  return { key: 'keys', grow: { length: lines(80).length, min: lines(80).length }, make: columns => ({ key: 'keys', title: 'Keys', body: lines(columns) }) }
 }
 
 /** Groups of segments on one line, two cells apart. */
@@ -1170,10 +1194,13 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
   rows.push({ key: 'head-rule', segments: [{ text: '─'.repeat(width), color: FAINT }] })
   const header = rows.length
   if (input.allow !== null) rows.push(blank('gap-allow-top'), ...allowRows(input.allow, width))
-  const { bar, help } = footerRows(input, width, list.length > 0, offset >= header)
+  const { bar } = footerRows(input, width, list.length > 0, offset >= header)
   const footer = [...(short ? [] : [blank('gap-keys')]), ...bar]
-  const room = () => height - rows.length - footer.length - help.length
-  if (input.finder !== null) {
+  const room = () => height - rows.length - footer.length
+  if (input.showKeys) {
+    // The key list stands in for whatever is open; closing it puts that back as it was.
+    rows.push(...fillColumn(fitBlocks([keysBlock()], width, tier, room()), width, room(), tier))
+  } else if (input.finder !== null) {
     // The finder stands in for the tab or the detail while it is open; closing it puts them back as they were.
     rows.push(...fillColumn(fitBlocks([finderBlock(input.finder, selected, tier, input.hues)], width, tier, room()), width, room(), tier))
   } else if (input.route !== null) {
@@ -1201,7 +1228,6 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
       rows.push(...besideRows(master.length >= detail.length ? master : fillColumn(master, left, detail.length, PANEL, 'stretch-m'), detail, left))
     }
   }
-  if (help.length > 0) rows.push(blank('gap-help'), ...help)
   const body = rows.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
   // Counted as drawn: a diff element takes a row for each of its lines, so a long change pins the bar and scrolls.
   const fill = height - rowsHeight(body) - footer.length

@@ -146,7 +146,8 @@ bottom of the pane lists the keys that do something in the view on show:
 moving about on the left, what you can do to the marked row on the right. For
 a moment after an action the footer says what it did (`✓ copied StableId`,
 `✓ opened in editor`, `✗ no editor · path copied`). `h` lists every key, one
-a line:
+a line, in place of whatever is open; `h` or `x` closes the list, and so does
+any other press, a tab or `f`, which then does what it does:
 
 | key         | what it does                                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------------------ |

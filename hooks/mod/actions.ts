@@ -591,6 +591,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   // Back from a route goes to the detail it was picked from; from a detail, to the tab.
   ['back', viewing(v => ((v.route ?? null) !== null ? { ...v, route: null, selected: 0 } : { ...v, inspect: null, selected: v.opened ?? 0 }))],
   ['keys', viewing(v => ({ ...v, showKeys: !v.showKeys }))],
+  ['keys-close', viewing(v => ({ ...v, showKeys: false }))],
   ['filter', io => openFilter(io)],
   ['clear', viewing(v => ({ ...v, filter: '', filtering: false, degree: null, selected: 0 }))],
   ['sort', viewing(v => ({ ...v, sort: SORTS[(SORTS.indexOf(v.sort) + 1) % SORTS.length] ?? 'in', selected: 0 }))],
@@ -618,7 +619,10 @@ export function pressOf(id: string): { key: string; rest: string } | null {
 /** What a press on the pane does, by the pressed element's id; `surface` is where the press came from. */
 async function pressAction(io: Port, id: string, surface?: RenderSurface): Promise<unknown> {
   const press = pressOf(id)
-  return press === null ? undefined : PRESSES.get(press.key)!(io, press.rest, surface, id)
+  if (press === null) return undefined
+  // The key list stands in for the whole pane: any other press (a tab, find, a row) closes it first.
+  if (press.key !== 'keys' && press.key !== 'keys-close' && (await io.state.view.read()).showKeys) await io.state.view.update(v => ({ ...v, showKeys: false }))
+  return PRESSES.get(press.key)!(io, press.rest, surface, id)
 }
 
 /** Into the field `field` (the finder's, a note's, the hubs filter's): what was typed, kept at once. */

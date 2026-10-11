@@ -4718,18 +4718,18 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
       await tall.unmount()
       // Shorter than what it draws: the bar is drawn over the window's last rows, and says the graph's state once the header is out of view.
       const short = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 0, bodyRows: 16 } } })
-      // The lists shrink to the height; the key list does not.
+      // The lists shrink to the height; the key list, which stands in for the tab, does not.
       expect(await short.find({ key: 'bar' })).toBeUndefined()
       await short.press({ key: 'keys' })
       const bar = await short.find({ key: 'bar' })
-      // Hubs offers more keys than fit one row at 60 columns: the bar is three rows.
-      expect(bar?.props).toMatchObject({ position: 'absolute', top: 13 })
+      // While the key list is shown the bar offers only closing it: one row.
+      expect(bar?.props).toMatchObject({ position: 'absolute', top: 15 })
       expect(bar?.text).not.toContain('● fresh')
       await short.unmount()
       const scrolled = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 6, bodyRows: 16 } } })
       // The key list is still open: the view outlives the mount.
       // Its state joins the bar's last row.
-      expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 19 })
+      expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 21 })
       expect((await scrolled.find({ key: 'bar' }))?.text).toContain('● fresh 1s')
       await scrolled.press({ key: 'keys' })
       await scrolled.unmount()
@@ -4820,7 +4820,8 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     await w.clock.settle()
     expect(w.couplingRuns()).toEqual([['sh', expect.stringMatching(/knossos-run\.sh$/), 'boundary-couplings', ROOT, '--from=Http', '--to=Core']])
     expect((await ui.find({ key: 'coupling-0' }))?.text).toMatch(/Router::route +──► Kernel +9$/)
-    // Read once for this cell of this graph.
+    // Read once for this cell of this graph, however often the pane is drawn again.
+    await ui.press({ key: 'keys' })
     await ui.press({ key: 'keys' })
     await w.clock.settle()
     expect(w.couplingRuns()).toHaveLength(1)
