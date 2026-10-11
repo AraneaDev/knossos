@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.0](https://github.com/AraneaDev/knossos/compare/v0.24.1...v0.25.0) (2026-10-11)
+
+
+### Features
+
+* a Celery task submission dispatches the task it queues ([#241](https://github.com/AraneaDev/knossos/issues/241)) ([dc2beb4](https://github.com/AraneaDev/knossos/commit/dc2beb44a80e9a30a593f6d0e95dd96839c6f404))
+
+
+### Fixes
+
+* keep the stored edge attributes on each list_usages row ([#238](https://github.com/AraneaDev/knossos/issues/238)) ([e259f9d](https://github.com/AraneaDev/knossos/commit/e259f9d52bc2dd9f37b9b4cf4b9b83585d6806e1))
+* read the webpack config a package script names, and the base config it requires ([#239](https://github.com/AraneaDev/knossos/issues/239)) ([1e6f9f5](https://github.com/AraneaDev/knossos/commit/1e6f9f543661b1f94572eb97d8bab4a2ce7d3ba2))
+
 ## [0.24.1](https://github.com/AraneaDev/knossos/compare/v0.24.0...v0.24.1) (2026-10-11)
 
 
