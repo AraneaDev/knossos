@@ -25,8 +25,15 @@ use PDO;
  */
 final readonly class BlastRadiusService
 {
-    /** How many hops the search goes out. */
+    /** How many hops the rings go out. */
     public const DEPTH = 6;
+
+    /**
+     * How many hops past the last ring the search goes on, for tests alone: a
+     * component near the edge is as tested as one near the middle when its
+     * test stands a few hops further out.
+     */
+    public const TEST_REACH = 4;
 
     /** The most dependents read. */
     private const DEPENDENTS = 1500;
@@ -73,7 +80,7 @@ final readonly class BlastRadiusService
             'path' => $places[$node]['path'], 'line' => $places[$node]['line'], 'boundary' => $labels[$node] ?? null];
         $rings = [];
         foreach ([1, 2, 3] as $ring) {
-            $in = static fn(string $node): bool => $ring < 3 ? $hop[$node] === $ring : $hop[$node] >= 3;
+            $in = static fn(string $node): bool => $ring < 3 ? $hop[$node] === $ring : $hop[$node] >= 3 && $hop[$node] <= self::DEPTH;
             $members = array_values(array_filter($ids, static fn(string $node): bool => $in($node) && !isset($tests[$node])));
             // Built once per ring, not once per test it is checked against.
             $memberSet = array_flip($members);
@@ -148,7 +155,13 @@ final readonly class BlastRadiusService
      * Everything that depends on `$target`, hop by hop over the impact
      * edges, up to {@see self::DEPTH} hops, {@see self::DEPENDENTS} components
      * and {@see self::TIMEOUT_MS}: each one's hop, the edges read between
-     * them (source to its targets), and whether a bound cut the search.
+     * them (source to its targets), and whether the rings are cut short.
+     *
+     * The walk goes on {@see self::TEST_REACH} hops past the rings, within
+     * the same bounds, so the tests standing there count: what it finds there
+     * carries its hop past {@see self::DEPTH} and is no ring's member. Only
+     * the rings' own bounds make the answer truncated; that more depends on
+     * them than they hold does too.
      *
      * @return array{0: array<string, int>, 1: array<string, list<string>>, 2: bool}
      */
@@ -161,11 +174,18 @@ final readonly class BlastRadiusService
         $frontier = [$target];
         $seen = [$target => true];
         $truncated = false;
-        for ($distance = 1; $distance <= self::DEPTH && $frontier !== []; ++$distance) {
+        // The last ring's components, and whether what depends on them was read.
+        $edge = [];
+        $readPast = false;
+        for ($distance = 1; $distance <= self::DEPTH + self::TEST_REACH && $frontier !== []; ++$distance) {
+            $past = $distance > self::DEPTH;
+            if ($distance === self::DEPTH + 1) {
+                $edge = $frontier;
+            }
             $next = [];
             foreach (array_chunk($frontier, 400) as $chunk) {
                 if (hrtime(true) > $deadline) {
-                    $truncated = true;
+                    $truncated = $truncated || !$past;
                     break 2;
                 }
                 $statement = $this->pdo->prepare(
@@ -183,19 +203,23 @@ final readonly class BlastRadiusService
                     if (isset($seen[$source])) {
                         continue;
                     }
+                    // Read or not, something depending on the last ring is more than the rings hold.
+                    $more = $distance <= self::DEPTH + 1;
                     if (count($hop) >= self::DEPENDENTS) {
-                        $truncated = true;
+                        $truncated = $truncated || $more;
                         continue;
                     }
                     $seen[$source] = true;
                     $hop[$source] = $distance;
                     $next[] = $source;
+                    $truncated = $truncated || $distance === self::DEPTH + 1;
                 }
             }
+            $readPast = $readPast || $past;
             $frontier = $next;
         }
-        // Past the last hop there may be more: a frontier left unread is a cut.
-        $truncated = $truncated || ($frontier !== [] && $this->hasDependents($projectId, $frontier, $kinds));
+        // Past the last ring there may be more the walk did not read: an edge left unread is a cut.
+        $truncated = $truncated || (!$readPast && $edge !== [] && $this->hasDependents($projectId, $edge, $kinds));
 
         return [$hop, $out, $truncated];
     }
