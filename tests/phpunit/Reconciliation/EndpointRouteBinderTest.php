@@ -65,6 +65,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
         assertSame([], $longer->edges);
         assertSame('ENDPOINT_ROUTE_UNMATCHED', $longer->warnings[0]['code']);
         assertSame('info', $longer->warnings[0]['severity']);
+        assertSame('knossos.reconciliation:endpoint-routes', $longer->warnings[0]['owner']);
     }
 
     #[Group('reconciliation')]
@@ -80,6 +81,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
         assertSame('ENDPOINT_ROUTE_AMBIGUOUS', $binding->warnings[0]['code']);
         assertSame('warning', $binding->warnings[0]['severity']);
         assertSame('GET /orders/{} matches 2 routes equally: route:a, route:b', $binding->warnings[0]['message']);
+        assertSame('knossos.reconciliation:endpoint-routes', $binding->warnings[0]['owner']);
         assertSame(7, $binding->warnings[0]['start_line']);
     }
 

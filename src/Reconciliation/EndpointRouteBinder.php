@@ -18,6 +18,9 @@ final readonly class EndpointRouteBinder
 {
     private const RANK = ['certain' => 3, 'probable' => 2, 'possible' => 1];
 
+    /** The owner of the diagnostics: the join is made by the core, not by the scanner that read the endpoint. */
+    public const OWNER = 'knossos.reconciliation:endpoint-routes';
+
     public function __construct(private string $projectId) {}
 
     /**
@@ -250,7 +253,7 @@ final readonly class EndpointRouteBinder
     private function warning(array $endpoint, string $code, string $severity, string $message): array
     {
         return [
-            'owner' => $endpoint['owner_key'], 'code' => $code, 'message' => $message, 'path' => $endpoint['evidence_path'],
+            'owner' => self::OWNER, 'code' => $code, 'message' => $message, 'path' => $endpoint['evidence_path'],
             'severity' => $severity, 'start_line' => $endpoint['start_line'], 'end_line' => $endpoint['end_line'],
         ];
     }
