@@ -47,7 +47,7 @@ export type BoundariesInput = {
   /** `forbidden[from][to]`: a declared policy forbids the pair. */
   forbidden: boolean[][]
   edges: string
-  /** More boundaries label components than the axes hold. */
+  /** More boundaries label components than the matrix holds (a hundred). */
   more: boolean
 }
 
@@ -65,7 +65,7 @@ const INDENT = 3
 /** The corner above the row labels: rows depend on columns. */
 const CORNER = 'from→to'
 
-/** The axis letter of the boundary at `index`: A to Z, then a1, b1, ... (the axes hold twelve). */
+/** The axis letter of the boundary at `index`: A to Z, then a1, b1, ... (the matrix holds up to a hundred). */
 export const axisCode = (index: number): string =>
   index < 26 ? String.fromCharCode(65 + index) : `${String.fromCharCode(97 + (index % 26))}${Math.floor(index / 26)}`
 
@@ -323,7 +323,15 @@ function focusSection(input: BoundariesInput, index: number, columns: number, hu
     })
   }
   const forbidden = input.boundaries.filter((_, to) => to !== index && (input.forbidden[index]?.[to] ?? false))
-  const line = (key: string, title: string, groups: Segment[][]): Row[] => wrapGroups(key, [label(title), ...groups], columns, 2, INDENT)
+  // At most FOCUS_ROWS rows a line, the rest counted: with many boundaries the cell's card stays in view.
+  const line = (key: string, title: string, groups: Segment[][]): Row[] => {
+    for (let shown = groups.length; shown >= 0; shown--) {
+      const rest = groups.length - shown
+      const rows = wrapGroups(key, [label(title), ...groups.slice(0, shown), ...(rest === 0 ? [] : [[{ text: `+${rest} more`, dim: true }]])], columns, 2, INDENT)
+      if (rows.length <= FOCUS_ROWS || shown === 0) return rows
+    }
+    return []
+  }
   return {
     key: 'focus',
     title: `${b.code} ${b.label}`,
@@ -335,6 +343,9 @@ function focusSection(input: BoundariesInput, index: number, columns: number, hu
     ],
   }
 }
+
+/** The most rows each line of the marked boundary takes. */
+const FOCUS_ROWS = 3
 
 /** The width of the label before what the marked boundary depends on. */
 const FOCUS_LABEL = 'may not use'.length

@@ -367,7 +367,9 @@ it with.
 Past twelve boundaries a heat map can no longer be read, so the tab draws
 none. **Boundaries** lists every one with the same columns, its note counting
 them and their dependencies, and the marked boundary and its cell sit beside
-it, as they do under the map. The dashboard holds up to a hundred boundaries.
+it on a wide pane, under it otherwise. The dashboard holds up to a hundred
+boundaries. However many boundaries the marked one touches, each of its lines
+takes at most three rows and counts the rest (`+40 more`).
 
 `l` moves the cell to the next boundary the marked one depends on, as does a
 press on one of those boundaries. A boundary opens nothing; `c` copies its

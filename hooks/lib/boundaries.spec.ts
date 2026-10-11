@@ -340,6 +340,27 @@ describe('the Boundaries tab past twelve boundaries', () => {
     expect(keys(rows)).toContain('coupling-head')
   })
 
+  it('keeps the marked boundary to a few rows, so its cell stays on the pane however many boundaries it touches', () => {
+    // Every boundary depends on every other one.
+    const n = 100
+    const dense = boundariesInput(
+      dash(
+        matrix({
+          boundaries: Array.from({ length: n }, (_, i) => `boundary-${i}`),
+          members: Array.from({ length: n }, () => 10),
+          cells: Array.from({ length: n }, (_, from) => Array.from({ length: n }, (__, to) => (to === from ? 0 : 1 + ((from + to) % 7)))),
+          forbidden: [],
+        }),
+      ),
+    )!
+    for (const [columns, tier] of [[40, 'narrow'], [100, 'medium'], [140, 'wide']] as const) {
+      const rows = arrange(boundariesArrangement(dense, tier, NO_HUES, 50), columns, 40)
+      expect(keys(rows).indexOf('coupling-head'), `${columns}`).toBeGreaterThan(-1)
+      expect(keys(rows).indexOf('coupling-head'), `${columns}`).toBeLessThan(40)
+      expect(textOf(rows), `${columns}`).toMatch(/\+\d+ more/)
+    }
+  })
+
   it('keeps the map up to twelve', () => {
     const rows = arrange(boundariesArrangement(many(12), 'wide', NO_HUES, 0), 140, 1_000)
     expect(keys(rows)).toContain('heat-head')
