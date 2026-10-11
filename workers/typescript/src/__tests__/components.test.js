@@ -607,6 +607,25 @@ describe("a bundler's module roots", () => {
         );
     });
 
+    it("say which key could not be read without running the config", () => {
+        const { contributions } = scan(
+            project({
+                "webpack.config.js":
+                    "const roots = ['src'];\nmodule.exports = { resolve: { modules: roots, extensions: ['.js', ext()] } };\n",
+            }),
+            ["src/main.ts", "src/checkout/components/Search.vue"],
+        );
+
+        const unread = contributions
+            .flatMap((c) => c.diagnostics)
+            .filter((d) => d.code === "BUNDLER_CONFIG_UNREAD");
+        expect(unread.map((d) => d.severity)).toEqual(["warning", "warning"]);
+        expect(unread.map((d) => d.message).join("\n")).toMatch(
+            /webpack\.config\.js.*resolve\.modules[^]*webpack\.config\.js.*resolve\.extensions/,
+        );
+        expect(contributions.some((c) => c.nodes.length > 0)).toBe(true);
+    });
+
     it("leave a tsconfig's own catch-all mapping in place", () => {
         const { contributions } = scan(
             {

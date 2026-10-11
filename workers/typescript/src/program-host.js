@@ -235,6 +235,7 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
     const aliases = {};
     const roots = [];
     const extensions = [];
+    const bundlerDiagnostics = [];
     for (const name of ALIAS_CONFIGS) {
         const config = path.join(directory, name);
         if (
@@ -249,6 +250,12 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
         const resolve = declaredResolve(text);
         roots.push(...resolve.modules);
         extensions.push(...resolve.extensions);
+        for (const key of resolve.unread)
+            bundlerDiagnostics.push({
+                severity: "warning",
+                code: "BUNDLER_CONFIG_UNREAD",
+                message: `${normalize(path.relative(root, config))}: ${key} could not be read without running the config, so imports through it are not resolved (applies to the whole program)`,
+            });
     }
     const componentExtensions = [
         ...new Set(
@@ -263,7 +270,7 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
         ),
     ];
     if (Object.keys(aliases).length === 0 && moduleRoots.length === 0)
-        return { ...parsed, componentExtensions };
+        return { ...parsed, componentExtensions, bundlerDiagnostics };
     const paths = { ...parsed.options.paths };
     for (const [name, target] of Object.entries(aliases)) {
         const absolute = normalize(path.resolve(directory, target));
@@ -283,6 +290,7 @@ function withBundlerAliases(root, directory, parsed, reads, maxFileBytes) {
         ...parsed,
         options: { ...parsed.options, paths },
         componentExtensions,
+        bundlerDiagnostics,
     };
 }
 
