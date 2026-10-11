@@ -342,6 +342,9 @@ const FOCUS_LABEL = 'may not use'.length
 /** The fewest boundaries the per-boundary table lists, however short the pane. */
 const PER_MIN = 5
 
+/** The most boundaries the heat map draws: past it the tab lists them, as a map that size cannot be read. */
+export const HEAT_MAX = 12
+
 /** The heat map as a card: the map (each cell `scale` rows tall when it fits), and its key when `legend`; null without a map to draw. */
 export function heatSection(input: BoundariesInput | null, columns: number, hues: Hues = NO_HUES, legend = true, scale = 1, marked: HeatCell | null = null): Section | null {
   if (input === null || input.boundaries.length === 0) return null
@@ -441,6 +444,8 @@ export function heatBlock(input: BoundariesInput | null, hues: Hues, legend: boo
  * marked boundary, its column `target`, else what it depends on most)
  * spelled out as the component pairs behind it. Wide, two rows of two equal
  * columns: the map beside the table, the marked boundary beside its cell.
+ * Past {@link HEAT_MAX} boundaries there is no map: the table lists them all,
+ * the marked boundary and its cell beside it.
  */
 export function boundariesArrangement(input: BoundariesInput | null, tier: Tier, hues: Hues = NO_HUES, selected = 0, target: string | null = null, couplings: CouplingView | null = null, lit: ReadonlySet<string> = new Set()): Arrangement {
   const said = (text: string): Block => ({ key: 'bounds', make: columns => ({ key: 'bounds', title: 'Boundaries', body: [dimRow('bounds-none', `   ${text}`, columns)] }) })
@@ -449,13 +454,18 @@ export function boundariesArrangement(input: BoundariesInput | null, tier: Tier,
   const marked = Math.min(Math.max(0, selected), input.boundaries.length - 1)
   const cell = markedCell(input, marked, target)
   const heat = heatBlock(input, hues, true, true, cell)
+  const listed = input.boundaries.length > HEAT_MAX
+  // Without the map, the table's note carries what the map's would.
+  const note = listed ? `${input.boundaries.length}${input.more ? '+' : ''} boundaries · ${input.edges} deps across` : 'deps across'
   const per: Block = {
     key: 'bounds-list',
     grow: { length: input.boundaries.length, min: PER_MIN },
-    make: (columns, limit) => ({ key: 'bounds-list', title: 'Per boundary', note: noteOf('deps across'), body: perBoundaryRows(input, marked, columns, limit, tier, hues, lit) }),
+    make: (columns, limit) => ({ key: 'bounds-list', title: listed ? 'Boundaries' : 'Per boundary', note: noteOf(note), body: perBoundaryRows(input, marked, columns, limit, tier, hues, lit) }),
   }
   const focus: Block = { key: 'focus', make: columns => focusSection(input, marked, columns, hues, cell) }
   const coupling: Block[] = cell === null ? [] : [{ key: 'coupling', make: columns => couplingSection(input, cell, couplings, columns, hues) }]
+  // Past the map's size, the list first: the table beside the marked boundary and its cell.
+  if (listed) return { left: [per], right: [focus, ...coupling], split: 0.5 }
   // Wide, a fixed grid: the map beside the table, then the marked boundary beside its cell, each row's cards equally tall.
   return { left: [heat], right: [per, focus, ...coupling], rows: [[heat, per], [focus, ...coupling]], split: 0.5 }
 }

@@ -309,3 +309,45 @@ describe('the marked heat map cell', () => {
     expect(presses).toEqual(['cell:1', 'cell:2', 'cell:3'])
   })
 })
+
+describe('the Boundaries tab past twelve boundaries', () => {
+  // A chain: each boundary depends on the next one.
+  const many = (n: number) =>
+    boundariesInput(
+      dash(
+        matrix({
+          boundaries: Array.from({ length: n }, (_, i) => `b${i}`),
+          members: Array.from({ length: n }, () => 10),
+          cells: Array.from({ length: n }, (_, from) => Array.from({ length: n }, (__, to) => (to === from + 1 ? from + 1 : 0))),
+          forbidden: [],
+        }),
+      ),
+    )!
+  const keys = (rows: Row[]) => rows.flatMap(r => r.key.split('|'))
+
+  it('lists every boundary instead of drawing the map, the marked one and its cell beside the list', () => {
+    for (const columns of WIDTHS) {
+      const tier = columns < 80 ? 'narrow' : columns <= 130 ? 'medium' : 'wide'
+      const rows = arrange(boundariesArrangement(many(13), tier, NO_HUES, 12), columns, 1_000)
+      expect(keys(rows), `${columns}`).not.toContain('heat-head')
+      expect(keys(rows), `${columns}`).toContain('focus-head')
+      expect(textOf(rows), `${columns}`).toContain('M b12')
+      for (const r of rows) expect(rowWidth(r), `${columns} ${r.key}`).toBeLessThanOrEqual(columns)
+    }
+    const rows = arrange(boundariesArrangement(many(13), 'wide', NO_HUES, 3), 140, 1_000)
+    expect(textOf(rows)).toContain('13 boundaries')
+    // The marked boundary's cell is spelled out as on the map: D → E.
+    expect(keys(rows)).toContain('coupling-head')
+  })
+
+  it('keeps the map up to twelve', () => {
+    const rows = arrange(boundariesArrangement(many(12), 'wide', NO_HUES, 0), 140, 1_000)
+    expect(keys(rows)).toContain('heat-head')
+  })
+
+  it('pages a long list around the marked boundary, past the axis letters of the alphabet', () => {
+    const rows = arrange(boundariesArrangement(many(30), 'medium', NO_HUES, 27), 100, 24)
+    expect(textOf(rows)).toContain('b1 b27')
+    expect(textOf(rows)).not.toContain('A b0')
+  })
+})
