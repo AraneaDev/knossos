@@ -606,13 +606,39 @@ export function probeRecorded(reads, root, file, maxFileBytes) {
     const absolute = normalize(path.resolve(file));
     if (contains(defaultLibDirectory(), absolute))
         return ts.sys.fileExists(absolute);
+    // A path discovery leaves out is never read, whatever the answer: the
+    // host refuses it, so no file there can change a fact.
+    return probeInRoot(
+        reads,
+        root,
+        absolute,
+        maxFileBytes,
+        !excludedByProjectLayoutPath(root, absolute),
+    );
+}
+
+/**
+ * probeRecorded for a file a project names on purpose, such as the webpack
+ * config a package script passes: recorded even where the project's layout
+ * excludes it (Vue CLI 2 keeps its configs under `build/`), since the worker
+ * reads it there. The core verifies such a read at commit like any other
+ * file discovery never hashed.
+ */
+export function probeNamedRecorded(reads, root, file, maxFileBytes) {
+    return probeInRoot(
+        reads,
+        root,
+        normalize(path.resolve(file)),
+        maxFileBytes,
+        true,
+    );
+}
+
+function probeInRoot(reads, root, absolute, maxFileBytes, record) {
     if (!contains(root, absolute)) return false;
     const walked = walkPath(absolute);
     const present = walked.kind === "file" && contains(root, walked.location);
-    // A path discovery leaves out is never read, whatever the answer: the
-    // host refuses it, so no file there can change a fact.
-    if (!excludedByProjectLayoutPath(root, absolute))
-        recordProbe(reads, root, walked, present, maxFileBytes);
+    if (record) recordProbe(reads, root, walked, present, maxFileBytes);
     return present;
 }
 
