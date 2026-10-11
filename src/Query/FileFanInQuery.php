@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Store\ChunkedInQuery;
+
 /**
  * How many other files depend on each file, over the impact edge kinds.
  *
@@ -105,19 +107,9 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
     {
         $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
         $pathFilter = $paths === null ? '' : ' AND tf.relative_path IN (' . implode(',', array_fill(0, count($paths), '?')) . ')';
+        // Ranked and cut first: the boundaries are then read for the files kept alone, not for every candidate.
         $sql = <<<SQL
-            SELECT tf.relative_path AS path,
-                   COUNT(DISTINCT sn.file_id) AS dependent_files,
-                   (SELECT GROUP_CONCAT(name, char(31)) FROM (
-                        SELECT DISTINCT b.name AS name
-                          FROM edges e2
-                          JOIN nodes t2 ON t2.id = e2.target_id
-                          JOIN nodes s2 ON s2.id = e2.source_id
-                          JOIN boundary_memberships bm ON bm.node_id = s2.id
-                          JOIN boundaries b ON b.id = bm.boundary_id
-                         WHERE t2.file_id = tf.id AND s2.file_id <> tf.id AND e2.project_id = tf.project_id
-                           AND e2.kind IN ($kinds) AND t2.kind NOT LIKE 'external\_%' ESCAPE '\'
-                         ORDER BY b.name)) AS boundary_names
+            SELECT tf.relative_path AS path, COUNT(DISTINCT sn.file_id) AS dependent_files
               FROM edges e
               JOIN nodes tn ON tn.id = e.target_id
               JOIN files tf ON tf.id = tn.file_id
@@ -132,18 +124,52 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
              LIMIT ?
             SQL;
         $statement = $this->pdo->prepare($sql);
-        $this->bindAll($statement, [...self::IMPACT_EDGE_KINDS, $projectId, ...self::IMPACT_EDGE_KINDS, ...($paths ?? []), $threshold, $cap]);
+        $this->bindAll($statement, [$projectId, ...self::IMPACT_EDGE_KINDS, ...($paths ?? []), $threshold, $cap]);
         $statement->execute();
         $rows = [];
         foreach ($statement->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-            $names = (string) ($row['boundary_names'] ?? '');
-            $rows[(string) $row['path']] = [
-                'path' => (string) $row['path'],
-                'dependent_files' => (int) $row['dependent_files'],
-                'boundaries' => $names === '' ? [] : explode("\x1F", $names),
-            ];
+            $rows[(string) $row['path']] = ['path' => (string) $row['path'], 'dependent_files' => (int) $row['dependent_files'], 'boundaries' => []];
+        }
+        foreach ($this->dependentBoundaries($projectId, array_map('strval', array_keys($rows))) as $path => $names) {
+            $rows[$path]['boundaries'] = $names;
         }
         return $rows;
+    }
+
+    /**
+     * For each of `$paths`, the boundaries its dependents sit in, each once and
+     * by name: over the same impact edges {@see self::select()} counts, the
+     * file's own components and external symbols left out.
+     *
+     * @param list<string> $paths
+     * @return array<string, list<string>>
+     */
+    private function dependentBoundaries(string $projectId, array $paths): array
+    {
+        if ($paths === []) {
+            return [];
+        }
+        $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
+        $sql = <<<SQL
+            SELECT tf.relative_path, b.name
+              FROM files tf
+              JOIN nodes t2 ON t2.file_id = tf.id
+              JOIN edges e2 ON e2.target_id = t2.id
+              JOIN nodes s2 ON s2.id = e2.source_id
+              JOIN boundary_memberships bm ON bm.node_id = s2.id
+              JOIN boundaries b ON b.id = bm.boundary_id
+             WHERE tf.project_id = ? AND tf.relative_path IN (%s)
+               AND e2.project_id = tf.project_id AND s2.file_id <> tf.id
+               AND e2.kind IN ($kinds) AND t2.kind NOT LIKE 'external\_%' ESCAPE '\'
+             GROUP BY tf.relative_path, b.name
+             ORDER BY tf.relative_path, b.name
+            SQL;
+        $boundaries = [];
+        foreach (ChunkedInQuery::rows($this->pdo, $sql, $paths, [$projectId], self::IMPACT_EDGE_KINDS, \PDO::FETCH_NUM) as [$path, $name]) {
+            $boundaries[(string) $path][] = (string) $name;
+        }
+
+        return $boundaries;
     }
 
     /**
