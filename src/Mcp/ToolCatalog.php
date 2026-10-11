@@ -337,7 +337,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'list_diagnostics',
                 'title' => 'List diagnostics',
-                'description' => 'The scan diagnostics of the active graph (compiler and worker errors, warnings and notes), by file and line. Use to see what the dashboard counts as diagnostics, filtered by severity or path prefix.',
+                'description' => 'The scan diagnostics of the active graph (compiler and worker errors, warnings and notes), by file and line, each with the scanner or enricher that recorded it (`source`, null when unknown). Use to see what the dashboard counts as diagnostics, filtered by severity or path prefix.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

@@ -396,9 +396,13 @@ Issues gathers what needs fixing, one card each, in the order a pane this wide s
 
 - **Policy violations**: each declared policy violation, with the offending
   file and line.
-- **Diagnostics**: the scan's errors and warnings. The marker walks them:
-  `o` opens a diagnostic's file and `e` opens it at its line. A diagnostic
-  about no file only takes the marker: `o` and `e` do nothing on it.
+- **Diagnostics**: the scan's errors and warnings, the first twenty, then
+  `+N not listed`; notes are counted, never listed. Each row ends in its path
+  from the project root and its line, cut from the start where the row is
+  short, then the scanner or enricher that recorded it (`· typescript`, or
+  `· source unknown`). A message longer than one line ends in `…`. The marker
+  walks them: `o` opens a diagnostic's file and `e` opens it at its line. A
+  diagnostic about no file only takes the marker: `o` and `e` do nothing on it.
 - **Over budget**: files with a PHP function longer than the
   `max_php_function_lines` budget in `maintainability-budgets.json`, with how
   many functions are over and the longest. Its note names the rule

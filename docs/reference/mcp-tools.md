@@ -226,7 +226,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `list_diagnostics`
 
-The scan diagnostics of the active graph (compiler and worker errors, warnings and notes), by file and line. Use to see what the dashboard counts as diagnostics, filtered by severity or path prefix.
+The scan diagnostics of the active graph (compiler and worker errors, warnings and notes), by file and line, each with the scanner or enricher that recorded it (`source`, null when unknown). Use to see what the dashboard counts as diagnostics, filtered by severity or path prefix.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |

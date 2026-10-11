@@ -39,7 +39,7 @@ final readonly class DiagnosticsQueryService extends AbstractArchitectureQuerySe
         $count->execute($parameters);
         $total = (int) $count->fetchColumn();
         $statement = $this->pdo->prepare(
-            "SELECT d.severity, d.code, d.message, f.relative_path, d.start_line FROM diagnostics d LEFT JOIN files f ON f.id = d.file_id WHERE {$where} "
+            "SELECT d.severity, d.code, d.message, f.relative_path, d.start_line, d.owner_key FROM diagnostics d LEFT JOIN files f ON f.id = d.file_id WHERE {$where} "
             . 'ORDER BY f.relative_path IS NULL, f.relative_path, d.start_line, d.code, d.id LIMIT :limit OFFSET :offset',
         );
         foreach ($parameters as $key => $value) {
@@ -54,6 +54,7 @@ final readonly class DiagnosticsQueryService extends AbstractArchitectureQuerySe
             'message' => (string) $row['message'],
             'path' => $row['relative_path'] === null ? null : (string) $row['relative_path'],
             'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
+            'source' => DiagnosticSource::of((string) $row['owner_key']),
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
         $next = $offset + count($rows) < $total ? $offset + count($rows) : null;
 

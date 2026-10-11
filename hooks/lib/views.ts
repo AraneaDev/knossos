@@ -11,7 +11,7 @@ import { diffBlock } from './diff'
 import type { DiffView } from './diff'
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
-import type { ComponentDetail, Counterpart, Dashboard, DetailState, Inspected, NoteState, PaneTab } from '../../types'
+import type { ComponentDetail, Counterpart, Dashboard, Diagnostic, DetailState, Inspected, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
 import type { RingsInput } from './rings'
 import { countLabel, detailLines } from './envelopes'
@@ -80,7 +80,8 @@ export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null };
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
 export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean }
 /** A diagnostic as Issues lists it; `path` null for one about no file (the project's own setup). */
-export type DiagnosticLine = { severity: string; text: string; path: string | null; place: string; loc: Loc | null }
+/** `place` names it in the walk (file and line); `where` is what its row says: the project path, then its source. */
+export type DiagnosticLine = { severity: string; text: string; path: string | null; place: string; where: string; loc: Loc | null }
 
 export type IssuesInput = {
   /** Null when the knossos that answered sends no policy section. */
@@ -188,7 +189,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
             errors: diagnostics.errors,
             warnings: diagnostics.warnings,
             infos: diagnostics.infos,
-            items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeOf(x.path, x.line), loc: locIn(root, x.path, x.line) })),
+            items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeOf(x.path, x.line), where: diagnosticWhere(x), loc: locIn(root, x.path, x.line) })),
           },
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
@@ -219,6 +220,20 @@ export function issueCount(issues: IssuesInput): { n: number; plus: boolean } {
   const policy = issues.policy?.evaluated ? issues.policy.count : 0
   const diagnostics = issues.diagnostics === null ? 0 : issues.diagnostics.errors + issues.diagnostics.warnings
   return { n: policy + diagnostics, plus: issues.policy?.total.endsWith('+') ?? false }
+}
+
+/**
+ * Where a diagnostic stands, as its row says it: its path from the project
+ * root and its line, since two files of one name are common enough to need
+ * telling apart, then the scanner or enricher that recorded it (`knossos.`
+ * left off, `source unknown` when none is known). A row too narrow for it
+ * cuts the path's start first. An older knossos sends no source, and none is
+ * said.
+ */
+function diagnosticWhere(x: Diagnostic): string {
+  const source = x.source === undefined ? null : x.source === null ? 'source unknown' : x.source.replace(/^knossos\./, '')
+  const place = x.path === null ? '' : x.line === null ? x.path : `${x.path}:${x.line}`
+  return [place, source].filter((part): part is string => part !== null && part !== '').join(' · ')
 }
 
 /** The rows the Issues tab walks: each violation's source, each dead-code candidate, then the hotspot files and the files over budget. */
@@ -363,7 +378,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const diagEntries: Entry[] = (d?.items ?? []).map((x, i) => ({
     selected: diagOffset + i === selected,
     mark: x.severity === 'error' ? { text: '✗', color: STATUS_COLOURS.alert } : { text: '▲', color: STATUS_COLOURS.warn },
-    place: x.place,
+    place: x.where,
     loc: x.loc,
     need: cells(x.text),
     main: width => [button(`row:${diagOffset + i}`, fit(x.text, width))],
@@ -416,6 +431,8 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
           : [plural(d.errors, 'error', 'errors'), plural(d.warnings, 'warning', 'warnings'), ...(d.infos > 0 ? [plural(d.infos, 'note', 'notes')] : [])].join(' · ')
       const local = selected - diagOffset
       const body = listed('diag', diagEntries, columns, limit, local >= 0 && local < diagEntries.length ? local : -1, diagOffset)
+      // Only the first errors and warnings come listed; notes are counted, never listed.
+      if (d !== null && d.errors + d.warnings > d.items.length) body.push(dimRow('diag-more', `   +${d.errors + d.warnings - d.items.length} not listed`, columns))
       return { key: 'diag', title: 'Diagnostics', note: noteOf(counts), body, empty: 'none' }
     },
   }
