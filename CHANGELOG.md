@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.24.0](https://github.com/AraneaDev/knossos/compare/v0.23.0...v0.24.0) (2026-10-11)
+
+
+### Features
+
+* give a snapshot past the row cap a partial trend point of what it still counts ([#229](https://github.com/AraneaDev/knossos/issues/229)) ([16f55df](https://github.com/AraneaDev/knossos/commit/16f55dfbd6f04eb8dd965fe071bae01c727d39ab))
+* list every boundary on the Boundaries tab past twelve ([#232](https://github.com/AraneaDev/knossos/issues/232)) ([4108d58](https://github.com/AraneaDev/knossos/commit/4108d58ca952159ca2559492612ea02acc592006))
+* read jsconfig.json as a TypeScript program ([#230](https://github.com/AraneaDev/knossos/issues/230)) ([e2cda4e](https://github.com/AraneaDev/knossos/commit/e2cda4e4c54bfe75aacdfae748398fe8f38c6d5e))
+* resolve imports through the module roots and extensions a webpack config declares ([#231](https://github.com/AraneaDev/knossos/issues/231)) ([0b1a4a7](https://github.com/AraneaDev/knossos/commit/0b1a4a7f7621978bc490aecff9ee33689aa7c618))
+
+
+### Fixes
+
+* give each diagnostic its source and project path, mark a cut message, and say how many are not listed ([#224](https://github.com/AraneaDev/knossos/issues/224)) ([4fff877](https://github.com/AraneaDev/knossos/commit/4fff877b34d243f3b77793b781a2178f0e7ec63d))
+* let a call through an interface or a parent reach every implementation ([#228](https://github.com/AraneaDev/knossos/issues/228)) ([9f07675](https://github.com/AraneaDev/knossos/commit/9f076750832b953fbceeaa42a76c35ed449e0321))
+* let a snapshot past the row limit cost the trend its point, not the whole dashboard ([#227](https://github.com/AraneaDev/knossos/issues/227)) ([e41afa2](https://github.com/AraneaDev/knossos/commit/e41afa2efd26f926f74b724ab02a0878e2b50697))
+* let the editor command be set, and say how it failed and where to set another ([#223](https://github.com/AraneaDev/knossos/issues/223)) ([a6acfd4](https://github.com/AraneaDev/knossos/commit/a6acfd4016e1ad5f52f5d8da1e512f8477151d98))
+* let the finder find every kind of component, and keep the strongest matches inside its bound ([#220](https://github.com/AraneaDev/knossos/issues/220)) ([ea3e465](https://github.com/AraneaDev/knossos/commit/ea3e465263fb68a05830a82ae1c0ec27e7e2a968))
+* name each side of a boundary coupling as the pane names it, and say where each is declared ([#225](https://github.com/AraneaDev/knossos/issues/225)) ([96dc68e](https://github.com/AraneaDev/knossos/commit/96dc68e81daeeace54d0029cb378de89d36a5519))
+* order scans started in the same second by when they were made, not by their ids ([#219](https://github.com/AraneaDev/knossos/issues/219)) ([64be1a0](https://github.com/AraneaDev/knossos/commit/64be1a06da50617fe28fc5e6e98dba1663affb68))
+* show the pane's key list in place of the tab, so nothing drawn later pushes it out of view ([#222](https://github.com/AraneaDev/knossos/issues/222)) ([2137359](https://github.com/AraneaDev/knossos/commit/21373599cbe328f52e12ba1eb7872360bf42e409))
+* stop the blast radius and test reach calling tested code untested ([#218](https://github.com/AraneaDev/knossos/issues/218)) ([2d9204e](https://github.com/AraneaDev/knossos/commit/2d9204e25822381e7de204b50494662f63eb51dc))
+
+
+### Performance
+
+* rank and cut the file fan-in before reading its dependents' boundaries ([#221](https://github.com/AraneaDev/knossos/issues/221)) ([2e46345](https://github.com/AraneaDev/knossos/commit/2e4634502e4b770e44502e71f441f02c4eb2aa3f))
+
 ## [0.23.0](https://github.com/AraneaDev/knossos/compare/v0.22.0...v0.23.0) (2026-10-10)
 
 
