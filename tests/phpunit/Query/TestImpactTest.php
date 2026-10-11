@@ -37,6 +37,30 @@ final class TestImpactTest extends KnossosTestCase
         assertSame(true, str_contains(implode(' ', $result->warnings), 'lower bound'));
     }
 
+    /**
+     * A symbol from outside the project (`count`, `Array.prototype.flatMap`)
+     * is filed under whichever file first named it. It is no part of that
+     * file: a test calling the built-in does not exercise the file.
+     */
+    #[Group('query')]
+    public function testATestCallingABuiltInFiledUnderTheFileDoesNotReachIt(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $owner = 'php:file:src/Checkout.php';
+        $external = StableId::symbol($ids['project'], 'php', 'external_function', 'count');
+        $repository->saveNode($external, $ids['project'], 'php', 'external_function', 'count', 'count', null, $ids['file'], 1, 1, 'derived', 'possible', ['unresolved' => true], $owner, $ids['scan']);
+        $testFile = StableId::file($ids['project'], 'tests/CountTest.php');
+        $repository->saveFile($testFile, $ids['project'], 'tests/CountTest.php', hash('sha256', 'count test'), 40, 1, 'php', '0.1.0', $ids['scan']);
+        $testClass = StableId::symbol($ids['project'], 'php', 'class', 'Tests\\CountTest');
+        $repository->saveNode($testClass, $ids['project'], 'php', 'class', 'Tests\\CountTest', 'CountTest', null, $testFile, 3, 20, 'ast', 'certain', [], $owner, $ids['scan']);
+        $repository->saveClassification(StableId::classification($ids['project'], $testClass, 'quality.test_module', 'core.test.modules.v1'), $ids['project'], $testClass, 'quality.test_module', 'derived', 'probable', 'core.test.modules.v1', $testFile, 3, 20, [], $ids['scan']);
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $testClass, $external, 'tests/CountTest.php:8'), $ids['project'], 'calls', $testClass, $external, $testFile, 8, 8, 'ast', 'certain', [], $owner, $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $result = ArchitectureQueryService::forDatabase($pdo)->testImpact($ids['project'], files: ['src/Checkout.php']);
+        assertSame([], $result->data['test_files']);
+    }
+
     #[Group('query')]
     public function testChangedTestFileItselfIsDistanceZero(): void
     {

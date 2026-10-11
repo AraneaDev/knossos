@@ -1,12 +1,7 @@
 {
   "$schema": "./schemas/project-config-v1.schema.json",
   "version": 1,
-  "ignores": [
-    "tests/Fixtures",
-    "hooks/register.test.ts",
-    "hooks/lib/*.spec.ts",
-    "hooks/mod/*.spec.ts"
-  ],
+  "ignores": ["tests/Fixtures"],
   "boundaries": [
     {
       "name": "core",

@@ -349,9 +349,13 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
         $direct = [];
         if ($files !== []) {
             $placeholders = implode(',', array_fill(0, count($files), '?'));
+            // An `external_*` node is a symbol from outside the project (`count`, a vendor
+            // class), filed under whichever file first named it. It is no part of that
+            // file: counting it would make every caller of the built-in depend on the file.
             $statement = $this->pdo->prepare(
                 'SELECT n.id, n.kind, n.canonical_name, n.display_name, n.confidence, f.relative_path, n.start_line, n.end_line ' .
                 'FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = ? AND f.relative_path IN (' . $placeholders . ') ' .
+                "AND n.kind NOT LIKE 'external\\_%' ESCAPE '\\' " .
                 sprintf('ORDER BY f.relative_path, n.canonical_name, n.id LIMIT %d', self::MAX_DIRECT_COMPONENTS + 1),
             );
             $statement->execute([$projectId, ...$files]);

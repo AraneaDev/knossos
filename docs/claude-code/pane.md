@@ -662,7 +662,14 @@ ring.
 Each frame's top edge carries its hop and how many components it holds
 (`2 hops · 53`), and on the right either `✓ all tested` or how many no test
 reaches (`▲ 1 untested`, in the warning colour). A component counts as tested
-when a test depends on it, directly or through others the search found.
+when a test depends on it, directly or through others the search found. The
+search goes four hops past the last ring for tests alone, so a component near
+the edge counts as tested when its test stands a little further out.
+
+Tested means a static path from a test: code a test reaches only at runtime
+reads as untested even when coverage counts it. That covers a worker a test
+runs as a separate process, a script it includes by a computed path, and a
+reader picked from a table of class names.
 
 Inside each frame, before the next ring in:
 
@@ -673,7 +680,8 @@ composer:knossos`);
 - the test files that reach the ring, nearest first (`✓ 19 test files:
 McpTest.php, SessionChangesServiceTest.php +17`).
 
-The search stops at six hops, 1,500 components or two seconds. Every named
+The rings stop at six hops, and the search at ten hops, 1,500 components or two
+seconds. Every named
 component is a row the marker walks, after the detail's dependencies, and `o`
 opens it as its detail. Below 44 columns the rings are plain lists.
 
