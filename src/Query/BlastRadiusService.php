@@ -194,8 +194,8 @@ final readonly class BlastRadiusService
                         foreach ($callersOf[$supertype] as $caller) {
                             $out[$caller][] = $method;
                         }
-                    } elseif (!isset($seen[$supertype]) || isset($standsFor[$supertype])) {
-                        $seen[$supertype] = true;
+                    } elseif (!isset($seen[$supertype])) {
+                        // Not marked seen: one found later as a dependant in its own right still enters the rings.
                         $standsFor[$supertype][] = $method;
                     }
                 }
@@ -218,7 +218,8 @@ final readonly class BlastRadiusService
                     if (isset($standsFor[$to])) {
                         $callersOf[$to][] = $source;
                     }
-                    foreach ($standsFor[$to] ?? [$to] as $into) {
+                    // Into the methods a passed-through supertype stands for, and into itself when it is a dependant too.
+                    foreach (isset($standsFor[$to]) ? [...$standsFor[$to], ...(isset($hop[$to]) ? [$to] : [])] : [$to] as $into) {
                         if ($into !== $target) {
                             $out[$source][] = $into;
                         }
@@ -240,6 +241,23 @@ final readonly class BlastRadiusService
             }
             $readPast = $readPast || $past;
             $frontier = $next;
+        }
+        // A supertype method found as a dependant in its own right was walked as itself, not passed through:
+        // what calls it may run each method found that fulfils it, so those callers count for that method too.
+        $calling = [];
+        foreach ($out as $source => $targets) {
+            foreach ($targets as $into) {
+                $calling[$into][] = (string) $source;
+            }
+        }
+        foreach (SupertypeMethods::of($this->pdo, $projectId, array_map('strval', array_keys($hop))) as $method => $supertypes) {
+            foreach ($supertypes as $supertype) {
+                if (isset($hop[$supertype])) {
+                    foreach ($calling[$supertype] ?? [] as $caller) {
+                        $out[$caller][] = $method;
+                    }
+                }
+            }
         }
         // Past the last ring there may be more the walk did not read: an edge left unread is a cut.
         $truncated = $truncated || (!$readPast && $edge !== [] && $this->hasDependents($projectId, $edge, $kinds));

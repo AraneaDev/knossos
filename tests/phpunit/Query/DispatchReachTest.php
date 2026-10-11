@@ -40,6 +40,90 @@ final class DispatchReachTest extends KnossosTestCase
         return [$pdo, $projectId, $root];
     }
 
+    /**
+     * A scanned fixture with `$files` (path => PHP body under `namespace App;`, or a whole file for `tests/`).
+     *
+     * @param array<string, string> $files
+     * @return array{0: PDO, 1: string, 2: string}
+     */
+    private function scanned(array $files): array
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
+        foreach ($files as $path => $body) {
+            file_put_contents($root . '/' . $path, str_starts_with($path, 'tests/') ? $body : "<?php\n\ndeclare(strict_types=1);\n\nnamespace App;\n\n{$body}\n");
+        }
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+
+        return [$pdo, $projectId, $root];
+    }
+
+    /**
+     * `Fancy::read` overrides `Base::read`; `Base::read` is a dependant of `Helper::shine` in
+     * its own right, through `Other::x`. Passing it through for `Fancy::read` must not hide it.
+     *
+     * @return array{0: PDO, 1: string, 2: string}
+     */
+    private function overriding(): array
+    {
+        $test = static fn(string $class, string $extends, string $call, string $abstract = ''): string => "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nuse App\\Helper;\nuse App\\Other;\n\n{$abstract}class {$class} extends {$extends}\n{\n    public function testRun(): void\n    {\n        self::assertNotSame('', {$call});\n    }\n}\n";
+
+        return $this->scanned([
+            'src/Core/Helper.php' => "final class Helper\n{\n    public static function shine(string \$text): string\n    {\n        return '*' . \$text . '*';\n    }\n}",
+            'src/Core/Other.php' => "final class Other\n{\n    public static function x(): string\n    {\n        return Helper::shine('x');\n    }\n}",
+            'src/Core/Base.php' => "class Base\n{\n    public function read(): string\n    {\n        return Other::x();\n    }\n}",
+            'src/Core/Fancy.php' => "final class Fancy extends Base\n{\n    public function read(): string\n    {\n        return Helper::shine('fancy');\n    }\n}",
+            'tests/BaseCase.php' => $test('BaseCase', '\\PHPUnit\\Framework\\TestCase', 'Other::x()', 'abstract '),
+            'tests/ChildTest.php' => $test('ChildTest', 'BaseCase', "Helper::shine('c')"),
+        ]);
+    }
+
+    #[Group('query')]
+    public function testAParentMethodPassedThroughIsStillFoundWhenItDependsInItsOwnRight(): void
+    {
+        [$pdo, $projectId, $root] = $this->overriding();
+        try {
+            $impact = ArchitectureQueryService::forDatabase($pdo)->impactAnalysis($projectId, 'App\\Helper::shine')->data['dependants'];
+            $distances = array_column(array_map(static fn(array $d): array => ['name' => $d['node']['canonical_name'], 'distance' => $d['distance']], $impact), 'distance', 'name');
+            assertSame(2, $distances['App\\Base::read'] ?? null);
+            $listed = [];
+            foreach ((new BlastRadiusService($pdo))->rings($root, 'App\\Helper::shine')['rings'] as $ring) {
+                array_push($listed, ...array_column($ring['items'], 'canonical_name'));
+            }
+            assertContains('App\\Base::read', $listed);
+            $tests = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Helper.php'])->data['test_files'];
+            assertContains('tests/BaseCase.php', array_column($tests, 'path'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * `Reads::read` and `Fancy::read` both return a `Dto`: the interface's method is a
+     * dependant in its own right, at the same hop. Its callers still count for `Fancy::read`.
+     */
+    #[Group('query')]
+    public function testAnImplementationIsTestedThroughASupertypeMethodThatIsADependantToo(): void
+    {
+        [$pdo, , $root] = $this->scanned([
+            'src/Core/Dto.php' => "final class Dto\n{\n}",
+            'src/Core/Reads.php' => "interface Reads\n{\n    public function read(): Dto;\n}",
+            'src/Core/Fancy.php' => "final class Fancy implements Reads\n{\n    public function read(): Dto\n    {\n        return new Dto();\n    }\n}",
+            'src/Core/Uses.php' => "final class Uses\n{\n    public function run(Reads \$reads): Dto\n    {\n        return \$reads->read();\n    }\n}",
+            'tests/UsesTest.php' => "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nuse App\\Fancy;\nuse App\\Uses;\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class UsesTest extends TestCase\n{\n    public function testRuns(): void\n    {\n        self::assertNotNull((new Uses())->run(new Fancy()));\n    }\n}\n",
+        ]);
+        try {
+            $tested = [];
+            foreach ((new BlastRadiusService($pdo))->rings($root, 'App\\Dto')['rings'] as $ring) {
+                foreach ($ring['items'] as $item) {
+                    $tested[$item['canonical_name']] = $item['tested'];
+                }
+            }
+            assertSame(true, $tested['App\\Fancy::read'] ?? null);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     private static function id(PDO $pdo, string $projectId, string $name): string
     {
         $statement = $pdo->prepare('SELECT id FROM nodes WHERE project_id = ? AND canonical_name = ?');
@@ -86,6 +170,8 @@ final class DispatchReachTest extends KnossosTestCase
             assertSame(1, $byName['App\\Uses::run']['distance'] ?? null);
             // The hop names the edge it went by: the call into the interface's method.
             assertSame(self::id($pdo, $projectId, 'App\\Reads::read'), $byName['App\\Uses::run']['via']['target_id']);
+            // Which implementation runs is a guess: the hop is probable at best, whatever the call's own confidence.
+            assertSame('probable', $byName['App\\Uses::run']['path_confidence']);
             assertNotContains('App\\Reads::read', array_keys($byName));
             $fromHelper = $queries->impactAnalysis($projectId, 'App\\Helper::shine')->data['dependants'];
             $distances = array_column(array_map(static fn(array $d): array => ['name' => $d['node']['canonical_name'], 'distance' => $d['distance']], $fromHelper), 'distance', 'name');
