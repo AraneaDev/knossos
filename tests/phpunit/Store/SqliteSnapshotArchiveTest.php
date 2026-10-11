@@ -134,11 +134,14 @@ final class SqliteSnapshotArchiveTest extends KnossosTestCase
      */
     private static function assertStoppedFor(string $reason, array $row): void
     {
-        $stored = sprintf('{"schema":1,"reason":"%s"}', $reason);
+        $stored = \Knossos\Store\SnapshotPayload::decode((string) $row['payload_json']);
         assertSame(0, (int) $row['complete']);
         assertSame(0, (int) $row['fact_count']);
         assertSame(strlen($stored), (int) $row['byte_size']);
-        assertSame($stored, \Knossos\Store\SnapshotPayload::decode((string) $row['payload_json']));
+        $decoded = json_decode($stored, true, flags: JSON_THROW_ON_ERROR);
+        assertSame([1, $reason], [$decoded['schema'], $decoded['reason']]);
+        // Only a snapshot past the row cap carries counted figures (see SnapshotArchiveFiguresTest).
+        assertSame($reason === 'fact_limit', isset($decoded['figures']));
     }
 
     private static function archive(PDO $pdo): SqliteSnapshotArchive

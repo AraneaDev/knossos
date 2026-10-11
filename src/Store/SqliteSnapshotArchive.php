@@ -75,7 +75,8 @@ final class SqliteSnapshotArchive
         $captured = $reason === null ? $this->streamSnapshotPayload($projectId) : null;
         if ($captured === null) {
             $reason ??= 'byte_limit';
-            $encoded = SqliteValues::json(['schema' => 1, 'reason' => $reason]);
+            // Past the row cap the facts are never read, but what COUNT(*) says without them still makes a trend point.
+            $encoded = SqliteValues::json(['schema' => 1, 'reason' => $reason] + ($reason === 'fact_limit' ? ['figures' => $this->countedFigures($projectId)] : []));
             $captured = [SnapshotPayload::encode($encoded), 0, strlen($encoded)];
         }
         [$payload, $factCount, $byteSize] = $captured;
@@ -91,6 +92,36 @@ final class SqliteSnapshotArchive
             'complete' => $reason === null ? 1 : 0, 'facts' => $factCount, 'bytes' => $byteSize,
             'payload' => $payload, 'captured' => SqliteValues::now(),
         ]);
+    }
+
+    /**
+     * What a trend point can say of a snapshot past the row cap without
+     * reading its rows: how many components, relationships, roles,
+     * boundaries and diagnostics it holds, and its errors and warnings. The
+     * figures that need the graph itself (cycles, hub degree, unreferenced
+     * components) are not counted.
+     *
+     * @return array{counts: array{components: int, relationships: int, roles: int, boundaries: int, diagnostics: int}, metrics: array{error_diagnostics: int, warning_diagnostics: int}}
+     */
+    private function countedFigures(string $projectId): array
+    {
+        $count = function (string $sql) use ($projectId): int {
+            $statement = $this->pdo->prepare($sql);
+            $statement->execute(['project' => $projectId]);
+            return (int) $statement->fetchColumn();
+        };
+        $rows = static fn(string $table): string => sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project', $table);
+
+        return [
+            'counts' => [
+                'components' => $count($rows('nodes')), 'relationships' => $count($rows('edges')), 'roles' => $count($rows('classifications')),
+                'boundaries' => $count($rows('boundaries')), 'diagnostics' => $count($rows('diagnostics')),
+            ],
+            'metrics' => [
+                'error_diagnostics' => $count($rows('diagnostics') . " AND severity = 'error'"),
+                'warning_diagnostics' => $count($rows('diagnostics') . " AND severity = 'warning'"),
+            ],
+        ];
     }
 
     /**
