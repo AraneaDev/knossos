@@ -214,7 +214,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $kindPlaceholders = implode(',', array_fill(0, count($edgeKinds), '?'));
         $confidencePlaceholders = implode(',', array_fill(0, count($allowedConfidence), '?'));
         $statement = $this->pdo->prepare(
-            'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.start_line, e.end_line, f.relative_path, ' .
+            'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, f.relative_path, ' .
             's.id AS source_id, s.kind AS source_kind, s.canonical_name AS source_canonical, s.display_name AS source_display ' .
             'FROM edges e JOIN nodes s ON s.id = e.source_id LEFT JOIN files f ON f.id = e.file_id ' .
             'WHERE e.project_id = ? AND e.target_id = ? AND e.kind IN (' . $kindPlaceholders . ') ' .
@@ -243,6 +243,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         foreach ($rows as $row) {
             $usages[] = [
                 'edge_id' => $row['edge_id'], 'kind' => $row['kind'], 'confidence' => $row['confidence'], 'origin' => $row['origin'],
+                'attributes' => self::decode($row['attributes_json']),
                 'source' => ['id' => $row['source_id'], 'kind' => $row['source_kind'], 'canonical_name' => $row['source_canonical'], 'display_name' => $row['source_display']],
                 'path' => $row['relative_path'], 'start_line' => $row['start_line'], 'end_line' => $row['end_line'],
             ];

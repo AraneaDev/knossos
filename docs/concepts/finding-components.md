@@ -106,6 +106,9 @@ Use `list_usages` when you need every call/reference site of a symbol with
 file:line evidence: the grep killer. Because edges are occurrence-level
 facts (their stable id includes the evidence location), this is a direct
 listing: two calls from the same caller to the same callee on different lines are two distinct rows.
+Each row carries the edge's stored `attributes`, so a qualification an enricher
+recorded on the relationship (a profile, a condition) stays attached to the
+usage instead of reading as unconditional.
 
 ```json
 {
