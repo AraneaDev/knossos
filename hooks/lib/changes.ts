@@ -39,7 +39,7 @@ import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
-import { REACH, SEVERITY, mark } from './marks'
+import { CHANGE, REACH, SEVERITY, mark } from './marks'
 
 /** The most files, tests and violations a session keeps; past them `truncated` is set. */
 export const FILE_CAP = 500
@@ -417,7 +417,7 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
 }
 
 /** One scan on the timeline. */
-const TIMELINE_DOT = '●'
+const TIMELINE_DOT = CHANGE.scan.glyph
 
 /** The files the Changes tab walks: each opens as a file's detail (who depends on it), and `e` opens it in the editor. */
 export function changesList(input: ChangesInput): Openable[] {
@@ -458,10 +458,10 @@ export function reachRows(key: string, lead: string, boundaries: string[], colum
   return wrapGroups(key, groups(shown), columns, 1, 3)
 }
 
-/** A one-cell mark for how a file stands: `+` added, `−` deleted, nothing for changed. */
+/** A one-cell mark for how a file stands: `+` added, `−` deleted, `~` changed. */
 export function statusMark(status: TouchStatus): Segment {
-  if (status === 'added') return { text: '+', color: STATUS_COLOURS.ok }
-  return status === 'deleted' ? { text: '−', color: STATUS_COLOURS.alert } : { text: ' ' }
+  if (status === 'added') return mark(CHANGE.added)
+  return status === 'deleted' ? mark(CHANGE.removed) : mark(CHANGE.changed)
 }
 
 /** The fewest changed files and tests the Changes tab lists, however short the pane. */

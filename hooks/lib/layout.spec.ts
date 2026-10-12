@@ -241,8 +241,8 @@ describe('paneRows', () => {
   it('draws the header with the project, the status and the rescan action', () => {
     const rows = paneRows(input(), 60)
     // Narrow: the name and the status as a pill in its colour, the rescan beside it; no summary line under it.
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +● stale 11h {3}r: rescan$/)
-    expect(row(rows, 'title')!.segments.find(s => s.text === ' ● stale 11h ')).toMatchObject({ bg: 'warning', color: 'inverseText', bold: true })
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +stale 11h {3}r: rescan$/)
+    expect(row(rows, 'title')!.segments.find(s => s.text === ' stale 11h ')).toMatchObject({ bg: 'warning', color: 'inverseText', bold: true })
     expect(row(rows, 'summary')).toBeUndefined()
     // Narrow: no row above the name, one between it and the tabs, then a blank row and a rule before the first card.
     expect(rows.slice(0, 5).map(r => r.key)).toEqual(['title', 'head-gap', 'tabs', 'head-end', 'head-rule'])
@@ -255,7 +255,9 @@ describe('paneRows', () => {
     expect(plainText(row(paneRows(input({}, fresh), 60), 'title')!)).toMatch(/rescan$/)
     const scanning = paneInput(dash(), null, FETCHED, { phase: 'scanning', reason: null }, view(), 0, true)
     const title = plainText(row(paneRows(scanning, 60), 'title')!)
-    expect(title).toContain('● scanning…')
+    // The pill's colour and words say how the graph stands; ● only ever means probably dead.
+    expect(title).toContain(' scanning…')
+    expect(title).not.toContain('●')
     expect(title).not.toContain('rescan')
   })
 
@@ -1467,28 +1469,28 @@ describe('the header: the project, where its checkout stands, its languages and 
 
   it('gives way chips first, then the commit, then the branch, keeping the name, the pill and the rescan', () => {
     const at = (columns: number) => plainText(titleRow(pane(), columns, columns < 80 ? 'narrow' : columns <= 130 ? 'medium' : 'wide'))
-    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +● stale 11h {3}r: rescan$/)
-    expect(at(80)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 +● stale 11h {3}r: rescan$/)
-    expect(at(66)).toMatch(/^Knossos-MCP +● stale 11h {3}r: rescan$/)
+    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +stale 11h {3}r: rescan$/)
+    expect(at(80)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 +stale 11h {3}r: rescan$/)
+    expect(at(66)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     // Narrow: the name and the pill alone, however much room.
-    expect(at(79)).toMatch(/^Knossos-MCP +● stale 11h {3}r: rescan$/)
-    expect(at(40)).toMatch(/^Knossos-MCP +● stale 11h {3}r: rescan$/)
+    expect(at(79)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
+    expect(at(40)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     for (const columns of [10, 16, 20, 24, 30]) expect(rowWidth(titleRow(pane(), columns, 'narrow')), `${columns}`).toBeLessThanOrEqual(columns)
   })
 
   it('draws the status as a pill in its tone, the words on the fill, and why beside it', () => {
-    const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.text.startsWith(' ● '))!
-    expect(pill(pane())).toMatchObject({ text: ' ● stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
+    const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!
+    expect(pill(pane())).toMatchObject({ text: ' stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
     const live = paneInput(full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 } }), brief(), FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }, { git })
-    expect(pill(live)).toMatchObject({ text: ' ● live · 7s ', bg: 'success' })
+    expect(pill(live)).toMatchObject({ text: ' live · 7s ', bg: 'success' })
     const failed = paneInput(full(), brief(), FETCHED, { phase: 'failed', reason: 'not an allowed root' }, view(), 0, true, null, null, undefined, null, undefined, { git })
-    expect(pill(failed)).toMatchObject({ text: ' ● scan failed ', bg: 'error' })
-    expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}● scan failed {3}r: rescan$/)
+    expect(pill(failed)).toMatchObject({ text: ' scan failed ', bg: 'error' })
+    expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}scan failed {3}r: rescan$/)
   })
 
   it('becomes the way back in a detail: project › tab › what is shown', () => {
     const rows = paneRows({ ...detailPane(), git }, 140)
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +● stale 11h {3}r: rescan$/)
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +stale 11h {3}r: rescan$/)
     expect(row(rows, 'tabs')).toBeUndefined()
     // Cut from the label: the project and the way back stay.
     const narrow = plainText(row(paneRows({ ...detailPane(), git }, 50), 'title')!)

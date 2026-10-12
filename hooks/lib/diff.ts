@@ -15,6 +15,7 @@ import type { DiffFold, DiffState, Inspected, SessionDiff, SessionRev } from '..
 import { button, dimRow, fit, pathText, plural, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Block, Section } from './cards'
+import { CHANGE } from './marks'
 
 /** Lines of one hunk shown; past them the rest is folded into "N more lines". */
 export const HUNK_LINES = 40
@@ -281,7 +282,7 @@ function hunkRows(key: string, hunk: Hunk, shown: string[], columns: number): Ro
   const line = (text: string, i: number): Row => {
     const mark = text.charAt(0)
     const style: Omit<Segment, 'text'> = mark === '+' ? { color: 'diffAddedWord' } : mark === '-' ? { color: 'diffRemovedWord' } : { dim: true }
-    return { key: `${key}-${i}`, segments: [{ text: fit(`${mark === '-' ? '−' : mark} ${text.slice(1).replace(/\t/g, '  ')}`, columns), ...style }] }
+    return { key: `${key}-${i}`, segments: [{ text: fit(`${mark === '-' ? CHANGE.removed.glyph : mark} ${text.slice(1).replace(/\t/g, '  ')}`, columns), ...style }] }
   }
   return [{ key: `${key}-head`, segments: [{ text: fit(head, columns), dim: true }] }, ...shown.map(line)]
 }

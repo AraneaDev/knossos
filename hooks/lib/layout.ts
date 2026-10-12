@@ -653,9 +653,9 @@ export function gitLabel(git: GitHead | undefined): string {
   return git.branch === null ? `@ ${short}` : `${git.branch} · ${short}`
 }
 
-/** The status as a pill: the dot and the words on the status colour, in the text set on a fill. */
+/** The status as a pill: the words on the status colour, in the text set on a fill. No dot: ● means probably dead. */
 function pill(status: PaneStatus): Segment {
-  return { text: ` ● ${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
+  return { text: ` ${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
 }
 
 /**
@@ -883,7 +883,7 @@ function padded(row: Row, pad: number, columns: number, bg?: string): Row {
  * left, what can be done to the marked row on the right, and between them,
  * for a moment after an action, what it did (`✓ copied`, `✗ no editor`).
  * Once the header is scrolled out of view (`scrolled`), the graph's state
- * stands at the right edge (`● live · 7s`). Only the keys that do something
+ * stands at the right edge (`live · 7s`). Only the keys that do something
  * in this view are offered. Each group stays whole; past the width the
  * actions wrap under the moves, and a key is never dropped, since it would
  * stop working. While the key list `h` opens is shown, the bar offers only
@@ -923,7 +923,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   const pad = padOf(tier)
   const inner = Math.max(1, columns - 2 * pad)
   const said: Segment[] = input.feedback === null ? [] : [{ text: input.feedback.text, color: input.feedback.tone === 'ok' ? STATUS_COLOURS.ok : STATUS_COLOURS.alert }]
-  const state: Segment[] = scrolled ? [{ text: `● ${input.status.text}`, color: STATUS_COLOURS[input.status.tone] }] : []
+  const state: Segment[] = scrolled ? [{ text: input.status.text, color: STATUS_COLOURS[input.status.tone] }] : []
   const left = joinGroups(moves.map(k => [{ ...k, dim: true }]))
   const right = joinGroups([...actions.map(k => [{ ...k, dim: true }]), ...(state.length > 0 ? [state] : [])])
   const lines: Row[] = []
@@ -945,7 +945,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
 function keysFooter(input: PaneInput, columns: number, scrolled: boolean): { bar: Row[] } {
   const pad = padOf(tierOf(columns))
   const inner = Math.max(1, columns - 2 * pad)
-  const state: Segment[] = scrolled ? [{ text: `● ${input.status.text}`, color: STATUS_COLOURS[input.status.tone] }] : []
+  const state: Segment[] = scrolled ? [{ text: input.status.text, color: STATUS_COLOURS[input.status.tone] }] : []
   const actions = [button('keys-close', 'close', 'x'), button('keys', 'hide keys', 'h')].map(k => [{ ...k, dim: true }])
   const right = joinGroups([...actions, ...(state.length > 0 ? [state] : [])])
   const lines = segmentsWidth(right) <= inner ? [spread('keys', [], right, inner)] : wrapGroups('keys', [...actions, ...(state.length > 0 ? [state] : [])], inner)

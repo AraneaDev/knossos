@@ -215,7 +215,7 @@ describe('the drifted files', () => {
     const open = pane({ view: { drift: true } })
     const rows = paneRows(open, 90)
     expect(plainText(row(rows, 'drift-head')!)).toMatch(/^Drifted since the snapshot +23$/)
-    expect(plainText(row(rows, 'drift-0')!)).toMatch(/^› {2}src\/Http\/Router\.php +■ Http$/)
+    expect(plainText(row(rows, 'drift-0')!)).toMatch(/^›~ src\/Http\/Router\.php +■ Http$/)
     expect(plainText(row(rows, 'drift-1')!)).toMatch(/^ \+ src\/Http\/New\.php/)
     expect(plainText(row(rows, 'drift-2')!)).toMatch(/^ − src\/Core\/Gone\.php +■ Core$/)
     expect(plainText(row(rows, 'drift-more')!)).toBe('   +20 not listed')
