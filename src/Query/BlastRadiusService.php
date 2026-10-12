@@ -44,8 +44,11 @@ final readonly class BlastRadiusService
     /** Components and tests named per ring. */
     public const NAMED = 12;
 
-    /** @param PDO $pdo an existing, migrated graph database */
-    public function __construct(private PDO $pdo) {}
+    /**
+     * @param PDO $pdo an existing, migrated graph database
+     * @param int $dependents the most dependents read; {@see self::DEPENDENTS} unless a test gives its own
+     */
+    public function __construct(private PDO $pdo, private int $dependents = self::DEPENDENTS) {}
 
     /**
      * The rings around `$component` in the project owning `$path`; `unscanned`,
@@ -75,8 +78,12 @@ final readonly class BlastRadiusService
         $reached = self::reachedByTests(array_keys($tests), $out);
         // Everything some test reaches.
         $covered = $reached === [] ? [] : array_replace(...array_values($reached));
+        // A walk the bound cut never read what stands past the cut, tests included: each member no test it read
+        // reaches gets a search of its own, as far out as an uncut walk would have looked.
+        $beyond = $truncated ? $this->testsBeyondCut($id, $hop, $tests, $covered) : [];
+        $covered += array_fill_keys(array_keys($beyond), true);
         $labels = BoundaryLabels::load($this->pdo, $id)->forNodes([(string) $target['id'], ...$ids]);
-        $places = $this->places($ids);
+        $places = $this->places([...$ids, ...array_keys(array_replace([], ...array_values($beyond)))]);
         $named = fn(string $node): array => ['name' => (string) $places[$node]['display_name'], 'canonical_name' => (string) $places[$node]['canonical_name'], 'kind' => (string) $places[$node]['kind'],
             'path' => $places[$node]['path'], 'line' => $places[$node]['line'], 'boundary' => $labels[$node] ?? null];
         $rings = [];
@@ -95,6 +102,12 @@ final readonly class BlastRadiusService
                 $file = $places[$test]['path'] ?? $places[$test]['canonical_name'];
                 $files[$file] = min($files[$file] ?? PHP_INT_MAX, $hop[$test]);
             }
+            foreach (array_intersect_key($beyond, $memberSet) as $member => $found) {
+                foreach ($found as $test => $distance) {
+                    $file = $places[$test]['path'] ?? $places[$test]['canonical_name'];
+                    $files[$file] = min($files[$file] ?? PHP_INT_MAX, $hop[$member] + $distance);
+                }
+            }
             uksort($files, static fn(string $a, string $b): int => [$files[$a], $a] <=> [$files[$b], $b]);
             $rings[] = [
                 'hop' => $ring,
@@ -111,6 +124,39 @@ final readonly class BlastRadiusService
             'rings' => $rings,
             'truncated' => $truncated,
         ] + $envelope;
+    }
+
+    /**
+     * The tests a cut-off walk left unread, for each ring member no test it
+     * read reaches: one search from the member alone, stopped at the first
+     * level a test stands at, out to the hop an uncut walk would have read
+     * (`DEPTH + TEST_REACH`, counted from the target), the nearest members
+     * first. Within a {@see self::TIMEOUT_MS} of its own; a member the time
+     * does not reach stays untested, as the walk alone left it.
+     *
+     * @param array<string, int> $hop each dependent's hop
+     * @param array<string, int> $tests the tests the walk read
+     * @param array<string, true> $covered what those tests reach
+     * @return array<string, array<string, int>> member id => test id => hops from the member
+     */
+    private function testsBeyondCut(string $projectId, array $hop, array $tests, array $covered): array
+    {
+        $deadline = hrtime(true) + self::TIMEOUT_MS * 1_000_000;
+        $search = new TestReachSearch($this->pdo);
+        $members = array_filter($hop, static fn(int $at, string $node): bool => $at <= self::DEPTH && !isset($tests[$node]) && !isset($covered[$node]), ARRAY_FILTER_USE_BOTH);
+        asort($members);
+        $beyond = [];
+        foreach ($members as $member => $at) {
+            if (hrtime(true) > $deadline) {
+                break;
+            }
+            $found = $search->search($projectId, [(string) $member], self::DEPTH + self::TEST_REACH - $at, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, $deadline, first: true)['tests'];
+            if ($found !== []) {
+                $beyond[(string) $member] = $found;
+            }
+        }
+
+        return $beyond;
     }
 
     /**
@@ -177,6 +223,8 @@ final readonly class BlastRadiusService
         $truncated = false;
         /** @var array<string, list<string>> $callersOf what was read calling each supertype method passed through */
         $callersOf = [];
+        /** @var array<string, list<string>> $constructorsOf what was read constructing each class passed through */
+        $constructorsOf = [];
         // The last ring's components, and whether what depends on them was read.
         $edge = [];
         $readPast = false;
@@ -189,7 +237,9 @@ final readonly class BlastRadiusService
             // too, and count each such edge as one into the method that fulfils it, never listing the supertype's.
             // A supertype method read at an earlier hop is not read again: its callers are recorded for this method too.
             $standsFor = [];
-            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $method => $supertypes) {
+            // Nothing points at a property: its class's methods read it, so what uses the class counts as using it.
+            $owners = array_map(static fn(string $class): array => [$class], PropertyOwners::of($this->pdo, $projectId, $frontier));
+            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) + $owners as $method => $supertypes) {
                 foreach ($supertypes as $supertype) {
                     if (isset($callersOf[$supertype])) {
                         foreach ($callersOf[$supertype] as $caller) {
@@ -201,26 +251,47 @@ final readonly class BlastRadiusService
                     }
                 }
             }
+            // Constructing a class runs its constructor, which the graph records against the class: what constructs
+            // it counts as an edge into the constructor, and only that edge, a type in a signature constructing nothing.
+            $constructed = [];
+            foreach (ConstructedClasses::of($this->pdo, $projectId, $frontier) as $constructor => $classes) {
+                foreach ($classes as $class) {
+                    if (isset($constructorsOf[$class])) {
+                        foreach ($constructorsOf[$class] as $caller) {
+                            $out[$caller][] = $constructor;
+                        }
+                    } else {
+                        $constructed[$class][] = $constructor;
+                    }
+                }
+            }
             $next = [];
-            foreach (array_chunk([...$frontier, ...array_keys($standsFor)], 400) as $chunk) {
+            $reads = [
+                ...array_map(static fn(array $chunk): array => [$chunk, $kinds, false], array_chunk([...$frontier, ...array_keys($standsFor)], 400)),
+                ...array_map(static fn(array $chunk): array => [$chunk, [ConstructedClasses::EDGE_KIND], true], array_chunk(array_map('strval', array_keys($constructed)), 400)),
+            ];
+            foreach ($reads as [$chunk, $readKinds, $throughClass]) {
                 if (hrtime(true) > $deadline) {
                     $truncated = $truncated || !$past;
                     break 2;
                 }
                 $statement = $this->pdo->prepare(
-                    'SELECT DISTINCT source_id, target_id FROM edges WHERE project_id = ? AND target_id IN (' . implode(',', array_fill(0, count($chunk), '?')) . ') AND kind IN (' . implode(',', array_fill(0, count($kinds), '?')) . ')',
+                    'SELECT DISTINCT source_id, target_id FROM edges WHERE project_id = ? AND target_id IN (' . implode(',', array_fill(0, count($chunk), '?')) . ') AND kind IN (' . implode(',', array_fill(0, count($readKinds), '?')) . ')',
                 );
-                $statement->execute([$projectId, ...$chunk, ...$kinds]);
+                $statement->execute([$projectId, ...$chunk, ...$readKinds]);
                 foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$source, $to]) {
                     [$source, $to] = [(string) $source, (string) $to];
                     if ($source === $target) {
                         continue;
                     }
-                    if (isset($standsFor[$to])) {
+                    if ($throughClass) {
+                        $constructorsOf[$to][] = $source;
+                    } elseif (isset($standsFor[$to])) {
                         $callersOf[$to][] = $source;
                     }
-                    // Into the methods a passed-through supertype stands for, and into itself when it is a dependant too.
-                    foreach (isset($standsFor[$to]) ? [...$standsFor[$to], ...(isset($hop[$to]) ? [$to] : [])] : [$to] as $into) {
+                    // Into the methods a passed-through supertype or class stands for, and into itself when it is a dependant too.
+                    $standing = $throughClass ? $constructed[$to] : ($standsFor[$to] ?? null);
+                    foreach ($standing !== null ? [...$standing, ...(!$throughClass && isset($hop[$to]) ? [$to] : [])] : [$to] as $into) {
                         if ($into !== $target) {
                             $out[$source][] = $into;
                         }
@@ -230,7 +301,7 @@ final readonly class BlastRadiusService
                     }
                     // Read or not, something depending on the last ring is more than the rings hold.
                     $more = $distance <= self::DEPTH + 1;
-                    if (count($hop) >= self::DEPENDENTS) {
+                    if (count($hop) >= $this->dependents) {
                         $truncated = $truncated || $more;
                         continue;
                     }

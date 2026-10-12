@@ -102,7 +102,10 @@ at the right edge the status pill:
 | `● scan failed`       | a rescan failed; the reason stands beside the pill                              |
 
 When the leading watcher stops answering, the pill says
-`another session's watcher is stuck` beside it. As the pane narrows, the
+`another session's watcher is stuck` beside it. While another process holds the
+scan lock (the model's `scan_project`, `knossos scan` from a shell), the pill says
+`scanning…` with `another process is scanning (pid 1234)` beside it, and the pane
+offers no rescan of its own until that scan ends. As the pane narrows, the
 language chips go first, then the commit, the branch and the reason.
 
 In a detail, the first row is the way back instead: `knossos › Hubs ›
@@ -244,8 +247,8 @@ the marker on its first row, whichever kind that is. At zero there is nothing to
 degree` is a single figure, so it is always plain.
 
 **This session**: the session's scans as a row of dots, how many files it
-touched, their dependents and the tests that reach them, with a warning when no
-test does. A warning about files no test reaches is a button: it opens Changes
+touched, their dependents and the tests that reach them (within six hops), with
+a warning when no test does. A warning about files no test reaches is a button: it opens Changes
 with only those files listed, as `u` does. The marker starts on the way to the
 Changes tab. `t` copies the tests' command. Before anything changed it is one
 line, `nothing changed yet`.
@@ -691,10 +694,14 @@ Each frame's top edge carries its hop and how many components it holds
 reaches (`▲ 1 untested`, in the warning colour). A component counts as tested
 when a test depends on it, directly or through others the search found. The
 search goes four hops past the last ring for tests alone, so a component near
-the edge counts as tested when its test stands a little further out.
+the edge counts as tested when its test stands a little further out. When so much
+depends on the component that the search stops before its tests, each
+component it left untested gets a search of its own, out as far as the full
+search would have gone.
 
 A call through an interface or a parent class counts for every implementation
-of it, as impact analysis counts it.
+of it, constructing a class counts for its constructor, and using a class counts
+for its properties, as impact analysis counts them.
 
 Tested means a static path from a test: code a test reaches only at runtime
 reads as untested even when coverage counts it. That covers a worker a test

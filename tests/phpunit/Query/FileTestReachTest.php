@@ -37,6 +37,30 @@ final class FileTestReachTest extends KnossosTestCase
         }
     }
 
+    /**
+     * Code a few layers under what a test calls is still reached: `Deep`
+     * sits five hops from its test (`Deep` < `L1` < `L2` < `L3` < `L4` <
+     * the test), past the four an impact query looks by default.
+     */
+    #[Group('query')]
+    public function testAFileFiveHopsFromItsTestIsReached(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $php = static fn(string $class, string $calls): string => "<?php\nnamespace App;\nfinal class {$class}\n{\n    public static function run(): string\n    {\n        return {$calls};\n    }\n}\n";
+            file_put_contents($root . '/src/Core/Deep.php', $php('Deep', "'deep'"));
+            foreach (['L1' => 'Deep', 'L2' => 'L1', 'L3' => 'L2', 'L4' => 'L3'] as $class => $callee) {
+                file_put_contents($root . "/src/Core/{$class}.php", $php($class, "{$callee}::run()"));
+            }
+            file_put_contents($root . '/tests/LayersTest.php', "<?php\nnamespace App\\Tests;\n\nuse App\\L4;\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class LayersTest extends TestCase\n{\n    public function testRuns(): void\n    {\n        self::assertSame('deep', L4::run());\n    }\n}\n");
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+
+            assertSame(['src/Core/Deep.php' => 1], (new FileTestReach($pdo))->reach($projectId, ['src/Core/Deep.php']));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     #[Group('query')]
     public function testFilesPastTheCapOrTheDeadlineAreNotCounted(): void
     {
