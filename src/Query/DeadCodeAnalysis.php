@@ -430,6 +430,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         foreach ($ancestors as $ancestorId) {
             if ($graph->isExternal($ancestorId)) {
                 $meta = $graph->meta($ancestorId);
+                // A base whose hooks are known hides nothing else: its hooks
+                // were excluded as inherited before this verdict is read.
+                if (FrameworkHookMethods::isKnownBase((string) ($meta['canonical_name'] ?? ''))) {
+                    continue;
+                }
                 $externalAncestor ??= $meta === null ? 'an unresolved type' : (string) $meta['display_name'];
                 continue;
             }

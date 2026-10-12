@@ -33,7 +33,22 @@ final class FrameworkHookMethods
         'Illuminate\\Console\\Command' => ['handle', '__invoke'],
         'PHPOpenSourceSaver\\JWTAuth\\Contracts\\JWTSubject' => ['getJWTIdentifier', 'getJWTCustomClaims'],
         'Tymon\\JWTAuth\\Contracts\\JWTSubject' => ['getJWTIdentifier', 'getJWTCustomClaims'],
+        // Model traits: what each calls on the model that uses it.
+        'Illuminate\\Database\\Eloquent\\Factories\\HasFactory' => ['newFactory'],
+        'Illuminate\\Database\\Eloquent\\Concerns\\HasUuids' => ['newUniqueId', 'uniqueIds'],
+        'Illuminate\\Database\\Eloquent\\Concerns\\HasUlids' => ['newUniqueId', 'uniqueIds'],
+        'Illuminate\\Database\\Eloquent\\SoftDeletes' => ['getDeletedAtColumn'],
+        'Illuminate\\Notifications\\Notifiable' => ['routeNotificationForMail', 'routeNotificationForDatabase', 'routeNotificationForBroadcast', 'receivesBroadcastNotificationsOn', 'preferredLocale'],
     ];
+
+    /**
+     * Whether `$type` (a canonical name) is a base whose hooks this list
+     * knows, so that it hides no member of a subtype beyond them.
+     */
+    public static function isKnownBase(string $type): bool
+    {
+        return isset(self::HOOKS[ltrim($type, '\\')]);
+    }
 
     /**
      * Whether one of `$ancestors` (canonical names) calls a member named `$name`.

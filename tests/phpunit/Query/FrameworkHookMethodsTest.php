@@ -154,6 +154,44 @@ final class FrameworkHookMethodsTest extends KnossosTestCase
     }
 
     /**
+     * Once the members a known framework base calls are excluded, the base
+     * hides nothing else, so an unused method of its subclass is probably
+     * dead. A base nothing knows the hooks of still makes it only possible,
+     * and so does a property read by that name on a receiver nobody could
+     * type, which is how an Eloquent relation is often reached.
+     */
+    public function testAKnownFrameworkBaseNoLongerMakesEveryMemberOnlyPossiblyDead(): void
+    {
+        $data = $this->healthOf([
+            'app/Models/Item.php' => <<<'PHP'
+                <?php
+                namespace App\Models;
+                use Illuminate\Database\Eloquent\Concerns\HasUuids;
+                use Illuminate\Database\Eloquent\Factories\HasFactory;
+                use Illuminate\Database\Eloquent\Model;
+                final class Item extends Model
+                {
+                    use HasFactory, HasUuids;
+                    public function scopeRetired($query) { return $query; }
+                    public function owner() { return $this->belongsTo(Item::class); }
+                    public function keeper() { return $this->belongsTo(Item::class); }
+                }
+                PHP,
+            'app/Services/Reader.php' => "<?php\nnamespace App\\Services;\nfinal class Reader\n{\n    public function read(\$item): mixed { return [\$item->owner, \$item->parent->keeper]; }\n}\n",
+            'app/Vendorish.php' => "<?php\nnamespace App;\nuse Acme\\Unknown\\Base;\nfinal class Vendorish extends Base\n{\n    public function helper(): void {}\n}\n",
+        ]);
+
+        $confidence = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $confidence[$candidate['component']['display_name']] = $candidate['confidence'];
+        }
+        self::assertSame('probable', $confidence['scopeRetired'] ?? null, 'scopeRetired');
+        self::assertSame('possible', $confidence['owner'] ?? null, 'owner, read on an untyped receiver');
+        self::assertSame('possible', $confidence['keeper'] ?? null, 'keeper, read at the end of an untyped chain');
+        self::assertSame('possible', $confidence['helper'] ?? null, 'helper, under an unknown vendor base');
+    }
+
+    /**
      * @param array<string, string> $files
      * @return array<string, mixed>
      */

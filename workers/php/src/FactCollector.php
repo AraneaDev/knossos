@@ -654,15 +654,23 @@ final class FactCollector extends NodeVisitorAbstract
      */
     private function propertyRead(Expr\PropertyFetch|Expr\NullsafePropertyFetch $node): void
     {
-        if (!$node->name instanceof Identifier || !$node->var instanceof Expr\Variable || !is_string($node->var->name)) {
+        if (!$node->name instanceof Identifier) {
             return;
         }
-        $class = $node->var->name === 'this'
-            ? $this->currentClass()['name'] ?? null
-            : $this->variables->type($node->var->name);
+        $class = null;
+        if ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            $class = $node->var->name === 'this'
+                ? $this->currentClass()['name'] ?? null
+                : $this->variables->type($node->var->name);
+        }
         if ($class !== null) {
             $this->addEdge('references', $this->currentSource(), self::reference('method', $class . '::' . $node->name->toString()), $node, 'probable', ['speculative' => true]);
+
+            return;
         }
+        // Nothing types the receiver, and a relation read this way runs a
+        // method of the name, so it counts like an untyped call does.
+        $this->untypedCalls[$this->currentSource()][$node->name->toString()] = true;
     }
 
     /** Remember a variable assigned a query that starts with a static call on a class. */
