@@ -66,6 +66,9 @@ final class EdgeTargetResolver
     /** Built on the first prefix edge of a language that reads names without regard to case. */
     private ?NodeReferenceIndex $caselessReferences = null;
 
+    /** @var ?array<string, string> Artisan command name => declaring class, built on the first Artisan call. */
+    private ?array $artisanCommands = null;
+
     /** The same lookups over the case-insensitive matching keys, built with {@see $caseless}'s first retry. */
     private ?self $caselessTargets = null;
 
@@ -186,7 +189,60 @@ final class EdgeTargetResolver
             ?? $this->nodeMap[$reference]
             ?? $this->aliasedTypeTarget($reference)
             ?? $this->inheritedMemberTarget($reference)
-            ?? $this->localScopeTarget($reference))];
+            ?? $this->localScopeTarget($reference)
+            ?? $this->artisanCommandTarget($reference))];
+    }
+
+    /**
+     * The entry method of the console command an Artisan call names:
+     * `php:artisan_command:orders:poll` reaches `handle()` (or `__invoke()`)
+     * of the command whose `$signature` or `$name` declares `orders:poll`.
+     * The scanner reads each declaration and the call in different files, so
+     * only here are the two together. Null when no command declares the name.
+     */
+    private function artisanCommandTarget(string $reference): ?string
+    {
+        if (!str_starts_with($reference, 'php:artisan_command:')) {
+            return null;
+        }
+        $this->artisanCommands ??= self::artisanCommands($this->contributions);
+        $command = $this->artisanCommands[substr($reference, strlen('php:artisan_command:'))] ?? null;
+        if ($command === null) {
+            return null;
+        }
+        foreach (['handle', '__invoke'] as $entry) {
+            $method = 'php:method:' . $command . '::' . $entry;
+            $target = $this->nodeMap[$method] ?? $this->inheritedMemberTarget($method);
+            if ($target !== null) {
+                return $target;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Artisan command name => the class declaring it, from the `artisan_command`
+     * attribute the PHP scanner puts on a command's `$signature` or `$name`.
+     * The first declaration wins, as it does for a duplicate node.
+     *
+     * @param list<ScanContribution> $contributions
+     * @return array<string, string>
+     */
+    private static function artisanCommands(array $contributions): array
+    {
+        $commands = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                $name = $node->attributes['artisan_command'] ?? null;
+                $separator = strrpos($node->canonicalName, '::$');
+                if (is_string($name) && $separator !== false) {
+                    $commands[$name] ??= substr($node->canonicalName, 0, $separator);
+                }
+            }
+        }
+
+        return $commands;
     }
 
     /**

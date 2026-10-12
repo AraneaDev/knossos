@@ -535,7 +535,7 @@ final class FactCollector extends NodeVisitorAbstract
         foreach ($node->props as $property) {
             $name = $class['name'] . '::$' . $property->name->toString();
             $id = self::reference('property', $name);
-            $this->addNode($id, 'property', $name, '$' . $property->name->toString(), $property);
+            $this->addNode($id, 'property', $name, '$' . $property->name->toString(), $property, self::artisanCommand($property));
             $this->addEdge('contains', $class['id'], $id, $property);
             foreach ($types as $type) {
                 $this->addEdge('references', $id, self::reference('class', $type), $node->type ?? $node);
@@ -544,6 +544,23 @@ final class FactCollector extends NodeVisitorAbstract
                 $this->setPropertyType($property->name->toString(), $types[0]);
             }
         }
+    }
+
+    /**
+     * The Artisan command a console command's `$signature` or `$name` declares,
+     * as an attribute of that property: `'orders:poll {--dry-run}'` is `orders:poll`.
+     * The core reads it to resolve `artisan('orders:poll')` to the command.
+     *
+     * @return array<string, string>
+     */
+    private static function artisanCommand(Node\PropertyItem $property): array
+    {
+        if (!in_array($property->name->toString(), ['signature', 'name'], true) || !$property->default instanceof Node\Scalar\String_) {
+            return [];
+        }
+        $command = preg_split('/[\s{]/', trim($property->default->value), 2)[0] ?? '';
+
+        return $command === '' ? [] : ['artisan_command' => $command];
     }
 
     /** Emit an `instantiates` edge for a `new` whose class is statically known. */
