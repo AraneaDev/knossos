@@ -322,6 +322,22 @@ export async function drain(queue, concurrency, execute, state) {
     await Promise.all(Array.from({ length: concurrency }, worker));
 }
 
+/**
+ * The SIGINT/SIGTERM handler. It runs once: a second signal while the first
+ * is still cleaning up must not run it again and exit before it finishes.
+ */
+export function signalHandler(code, state, ops) {
+    return async () => {
+        if (state.stop === "signal") return;
+        // Before anything else, so no worker starts a session the live snapshot misses.
+        state.stop = "signal";
+        await ops.terminate();
+        await ops.stopWatchers();
+        await ops.release();
+        ops.exit(code);
+    };
+}
+
 /** Throws unless `prepare` left what the queued arms need. */
 async function assertPrepared(queue, paths, s) {
     const bases = queue.map((e) => parseArm(e.arm).base);
@@ -372,14 +388,13 @@ async function continueRun(args, s) {
     const release = await acquireLock(path.join(paths.root, "continue.lock"));
     const live = new Set();
     const state = { stop: null, firstError: null };
-    const onSignal = (code) => async () => {
-        // First, so no worker starts a session the snapshot below does not know.
-        state.stop = "signal";
-        await terminateGroups([...live], 5000);
-        await stopWatchers(paths.data);
-        await release();
-        process.exit(code);
-    };
+    const onSignal = (code) =>
+        signalHandler(code, state, {
+            terminate: () => terminateGroups([...live], 5000),
+            stopWatchers: () => stopWatchers(paths.data),
+            release,
+            exit: process.exit,
+        });
     const handlers = { SIGINT: onSignal(130), SIGTERM: onSignal(143) };
     for (const [name, handler] of Object.entries(handlers))
         process.on(name, handler);

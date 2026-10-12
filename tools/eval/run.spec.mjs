@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { readLedger } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
-import { acquireLock, drain, main } from "./run.mjs";
+import { acquireLock, drain, main, signalHandler } from "./run.mjs";
 
 vi.mock("../capture/session.mjs", async (importOriginal) => {
     const actual = await importOriginal();
@@ -423,5 +423,35 @@ describe("continue cleanup", () => {
             access(path.join(env.KNOSSOS_EVAL_ROOT, "continue.lock")),
         ).rejects.toThrow();
         expect(process.listenerCount("SIGINT")).toBe(before);
+    });
+});
+
+describe("signalHandler", () => {
+    it("sets stop first and runs its cleanup once, however many signals arrive", async () => {
+        const state = { stop: null, firstError: null };
+        const calls = [];
+        let finishTerminate;
+        const ops = {
+            terminate: () =>
+                new Promise((resolve) => {
+                    calls.push(`terminate:${state.stop}`);
+                    finishTerminate = resolve;
+                }),
+            stopWatchers: async () => calls.push("watchers"),
+            release: async () => calls.push("release"),
+            exit: (code) => calls.push(`exit:${code}`),
+        };
+        const handler = signalHandler(130, state, ops);
+        const first = handler();
+        await handler(); // a second Ctrl-C while the first is still terminating
+        expect(calls).toEqual(["terminate:signal"]);
+        finishTerminate();
+        await first;
+        expect(calls).toEqual([
+            "terminate:signal",
+            "watchers",
+            "release",
+            "exit:130",
+        ]);
     });
 });
