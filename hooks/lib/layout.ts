@@ -341,21 +341,20 @@ const languagesOf = (d: Dashboard): string => (d.summary?.languages ?? []).map(l
 
 /**
  * The stat tiles: components and boundaries (from a dashboard that reports
- * them), cycles, the largest degree, dead code and the diagnostics (when they
- * were read), each but dead code with how it moved since the previous
- * snapshot and its trend when every snapshot carries one, then the policy
- * violations (when checked) and the drifted files (a press that lists them,
- * when the dashboard names them). Dead code is the candidates the Issues tab
- * lists; the snapshots carry only the quality gate's wider count, which the
- * health card draws under its own name, so the tile has no delta or trend
- * of its own. Each says how it deviates: cycles and diagnostics above zero
- * warn, violations above zero are errors, drift above zero is the accent.
- * Cycles and diagnostics are statuses: their deltas take the status colours.
+ * them), cycles and the largest degree, each with how it moved since the
+ * previous snapshot and its trend when every snapshot carries one, then the
+ * issues and the drifted files (a press that lists them, when the dashboard
+ * names them). Issues is one figure for everything the Issues tab lists: the
+ * dead-code candidates, the diagnostics' errors and warnings, the policy
+ * violations and the functions over budget, and a press opens that tab. It
+ * takes the worst tone among them, violations an error and diagnostics a
+ * warning, and no delta or trend, since no snapshot carries that sum. Cycles
+ * above zero warn and drift above zero is the accent; the cycles' delta takes
+ * the status colours.
  */
 export function statsOf(d: Dashboard, summary: string[], policy: string | null, diagnostics: number | null, drift: boolean): Stat[] {
   const above = (value: string) => value !== '0'
   const cycles = cycleCount(d.cycles)
-  const dead = countLabel(d.dead_code_candidates, d.dead_code_truncated)
   const maxDegree = d.trend.at(-1)?.max_degree ?? null
   const drifted = d.freshness.drift_files
   const deltas = d.deltas ?? null
@@ -382,27 +381,24 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
         ]),
     { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
     ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), ...series(t => t.max_degree), ...moved('max_degree') }]),
-    // The candidates Issues lists; the trend's `dead_code` is the gate's wider count, drawn on the health card under its own name.
-    // Split by confidence when knossos says, so the count does not read as that much dead code: both press to the same list.
-    ...(d.dead_code_probable === undefined
-      ? [{ key: 'dead', label: 'dead code', value: dead, ...listing('dead', dead) }]
-      : deadSplit(d.dead_code_candidates, d.dead_code_probable, d.dead_code_truncated).map(([key, label, value]) => ({ key, label, value, ...listing('dead', value) }))),
-    ...(diagnostics === null ? [] : [{ key: 'diagnostics', label: 'diagnostics', value: grouped(diagnostics), ...series(t => t.diagnostics), ...moved('diagnostics', true), ...(diagnostics > 0 ? { tone: 'warn' as const } : {}), ...listing('diagnostics', grouped(diagnostics)) }]),
-    ...(policy === null ? [] : [{ key: 'policy', label: 'policy', value: policy, ...(above(policy) ? { tone: 'alert' as const } : {}), ...listing('policy', policy) }]),
+    issuesTile(d, policy, diagnostics, listing),
     { key: 'drifted', label: 'drifted', value: grouped(drifted), ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
   ]
 }
 
 /**
- * The dead-code tiles when knossos splits the count by confidence: the probably
- * dead, then the only possibly dead. A list the search cut short is a floor,
- * and only the possible share can grow past what was counted, so it carries the `+`.
+ * The issues tile: the dead-code candidates, the diagnostics' errors and
+ * warnings, the policy violations and the functions over budget, as one
+ * figure that presses to the Issues tab. A dead-code list the search cut short
+ * makes it a floor, `+`. Its tone is the worst among them.
  */
-function deadSplit(total: number, probable: number, truncated: boolean): [string, string, string][] {
-  return [
-    ['dead-probable', 'probably dead', grouped(probable)],
-    ['dead-possible', 'possibly dead', countLabel(total - probable, truncated)],
-  ]
+function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | null, listing: (key: string, value: string) => Pick<Stat, 'press'>): Stat {
+  const violations = policy === null ? 0 : Number(policy.replace(/\D/g, '')) || 0
+  const errors = diagnostics ?? 0
+  const total = d.dead_code_candidates + errors + violations + (d.over_budget?.total ?? 0)
+  const value = d.dead_code_truncated ? `${grouped(total)}+` : grouped(total)
+  const tone = violations > 0 ? { tone: 'alert' as const } : errors > 0 ? { tone: 'warn' as const } : {}
+  return { key: 'issues', label: total === 1 && !d.dead_code_truncated ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
 }
 
 /**

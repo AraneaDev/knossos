@@ -510,7 +510,7 @@ async function showAllFiles(io: Port): Promise<void> {
 }
 
 /** Where each figure that counts a set is listed: its tab, and the place of its first item there (null: the top). */
-const STAT_LISTS: Readonly<Record<string, PaneTab>> = { cycles: 'cycles', components: 'hubs', boundaries: 'boundaries', boundary: 'boundaries', dead: 'issues', policy: 'issues', diagnostics: 'issues' }
+const STAT_LISTS: Readonly<Record<string, PaneTab>> = { cycles: 'cycles', components: 'hubs', boundaries: 'boundaries', boundary: 'boundaries', issues: 'issues', dead: 'issues', policy: 'issues', diagnostics: 'issues' }
 
 /**
  * A figure that counts a set (an Overview tile, the violations a session

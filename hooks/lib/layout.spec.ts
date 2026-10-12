@@ -298,12 +298,13 @@ describe('paneRows', () => {
     const text = textOf(paneRows(input(), 60))
     // Narrow, the stat tiles collapse to a line of every figure, deltas beside them when the dashboard sends them.
     const line = (rows: Row[]) => rows.filter(r => r.key.startsWith('tiles-line')).map(plainText).join(' / ')
-    expect(line(paneRows(input(), 60))).toMatch(/^2 cycles {3}161 max degree {3}12 probably dead +(\/ )?43 possibly dead {3}0 policy( \/)? +41 drifted$/)
+    // What Issues lists is one figure here: the dead code and the policy violations together.
+    expect(line(paneRows(input(), 60))).toMatch(/^2 cycles {3}161 max degree {3}55 issues( \/)? +41 drifted$/)
     const moved = dash({ deltas: { against: 's4', components: 0, cycles: 1, max_degree: -3, dead_code: 0, diagnostics: 0 } })
-    expect(line(paneRows(input({}, moved), 60))).toMatch(/^2 cycles ▲1 {3}161 max degree ▼3 {3}12 probably dead +(\/ )?43 possibly dead/)
-    // Dead code counts the listed candidates; the trend carries the gate's wider count, so the tile takes neither its delta nor its trend.
+    expect(line(paneRows(input({}, moved), 60))).toMatch(/^2 cycles ▲1 {3}161 max degree ▼3 {3}55 issues/)
+    // Issues counts the listed candidates; the trend carries the gate's wider dead-code count, so the tile takes neither its delta nor its trend.
     const gate = dash({ deltas: { against: 's4', components: 0, cycles: 0, max_degree: 0, dead_code: 25, diagnostics: 0 } })
-    expect(line(paneRows(input({}, gate), 60))).toMatch(/43 possibly dead +0 policy/)
+    expect(line(paneRows(input({}, gate), 60))).toMatch(/ {3}55 issues( \/)? +41 drifted$/)
     for (const gone of ['Most depended on', 'Last turn', 'Files most depended on', 'Look at now']) expect(text).not.toContain(gone)
     // Nothing changed this session and no chart sent: nothing to walk, and the session card is one line.
     expect(listFor(input())).toEqual([])
@@ -330,7 +331,8 @@ describe('paneRows', () => {
 
   it('names a policy violation in the error colour', () => {
     const rows = paneRows(input({}, dash(), brief({ policy: { status: 'evaluated', total: 3, violations: [], truncated: false } })), 60)
-    const seg = rows.filter(r => r.key.startsWith('tiles-line')).flatMap(r => r.segments).find(s => s.text === '3')
+    // The violations join the dead code in the issues figure, 55 and 3, which takes the error colour.
+    const seg = rows.filter(r => r.key.startsWith('tiles-line')).flatMap(r => r.segments).find(s => s.text === '58')
     expect(seg?.color).toBe('error')
   })
 
@@ -1107,19 +1109,21 @@ describe('colour', () => {
 })
 
 describe('the overview stat tiles', () => {
-  it('show the project policy and diagnostics when knossos reports them, coloured only where they deviate', () => {
+  it('count what Issues lists in one tile, coloured by the worst of it, and press to that tab', () => {
     const rows = paneRows(fullInput(), 140)
     const figures = plainText(row(rows, 'tiles-0-value')!)
     const labels = plainText(row(rows, 'tiles-0-label')!)
-    expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ probably dead +│ possibly dead +│ diagnostics +│ policy +│ drifted$/)
-    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ 12 +│ 43 +│ 2 +│ 7 +│ 41$/)
+    expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ issues +│ drifted$/)
+    // 55 dead code, an error and a warning, 7 policy violations and 3 functions over budget.
+    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ 67 +│ 41$/)
     const colour = (text: string) => row(rows, 'tiles-0-value')!.segments.find(s => s.text === text)?.color
     expect(colour('7,878')).toBe('text')
-    expect(colour('12')).toBe('text')
-    expect(colour('43')).toBe('text')
+    // A policy violation among them is the worst there is.
+    expect(colour('67')).toBe('error')
     expect(colour('41')).toBe('suggestion')
-    expect(colour('7')).toBe('error')
-    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning', 'warning'])
+    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning'])
+    const issues = row(rows, 'tiles-0-label')!.segments.find(s => s.text.startsWith('issues'))
+    expect(issues?.press?.id).toBe('stat:issues')
     // Every figure stands at the left edge of its tile, over its label: the rules line up.
     const at = (r: Row) => [...rawText(r)].flatMap((ch, i) => (ch === '│' ? [i] : []))
     expect(at(row(rows, 'tiles-0-value')!)).toEqual(at(row(rows, 'tiles-0-label')!))

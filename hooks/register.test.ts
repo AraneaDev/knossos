@@ -1569,7 +1569,7 @@ describe('knossos mod', () => {
       // The header is two rows, the title and the tabs: no summary line under them.
       expect(await ui.find({ key: 'summary' })).toBeUndefined()
       // Narrow, the stat tiles are a line of figures under the tabs.
-      expect(await tilesLine(ui)).toMatch(/^1 cycle +12 max degree +4 dead code +0 drifted$/)
+      expect(await tilesLine(ui)).toMatch(/^1 cycle +12 max degree +4 issues +0 drifted$/)
       expect(await ui.find({ key: 'top-0' })).toBeUndefined()
       expect(titled((await ui.find({ key: 'session-head' }))?.text)).toMatch(/^This session +nothing changed yet$/)
       await ui.press({ key: 'tab:hubs' })
@@ -1618,7 +1618,7 @@ describe('knossos mod', () => {
     await $.session.start(START)
     await w.clock.settle()
     const ui = await mountPane($)
-    expect(await tilesLine(ui)).toMatch(/^50\+ cycles +12 max degree +100\+ dead code +0 drifted$/)
+    expect(await tilesLine(ui)).toMatch(/^50\+ cycles +12 max degree +100\+ issues +0 drifted$/)
     await ui.unmount()
   })
 
@@ -3101,13 +3101,14 @@ describe('knossos mod', () => {
       const ui = await mountPane($, surface)
       // Narrow: the tiles' line says every figure, the title row the name and the pill alone.
       expect(await ui.find({ key: 'summary' })).toBeUndefined()
-      expect(await tilesLine(ui)).toMatch(/^1,234 components +2 boundaries .*1 diagnostics +2 policy +0 drifted$/)
+      // The diagnostic and the two violations count among the issues, beside the dead code.
+      expect(await tilesLine(ui)).toMatch(/^1,234 components +2 boundaries .*7 issues +0 drifted$/)
       await ui.unmount()
       // From the medium tier the tiles say the figures, and the languages are chips in the title row.
       const wide = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 140, scroll: { offset: 0, bodyRows: 40 } } })
       expect((await wide.findAll({ type: 'Text' })).filter(t => t.props.backgroundColor === 'userMessageBackground').map(t => t.text).slice(0, 2)).toEqual([' PHP ', ' TS '])
-      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ diagnostics +│ policy +│ drifted +│$/)
-      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ 1 +│ 2 +│ 0 +│$/)
+      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ issues +│ drifted +│$/)
+      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ 7 +│ 0 +│$/)
       await wide.unmount()
     }
   })
@@ -3609,6 +3610,11 @@ describe('knossos mod', () => {
       expect(tiles).toContain('stat:cycles')
       await ui.press({ key: 'stat:cycles' })
       expect(await ui.find({ key: 'tab:cycles-bg' })).toBeDefined()
+      await ui.press({ key: 'tab:overview' })
+      // The issues tile opens Issues at its top.
+      expect(tiles).toContain('stat:issues')
+      await ui.press({ key: 'stat:issues' })
+      expect(await ui.find({ key: 'tab:issues-bg' })).toBeDefined()
       await ui.press({ key: 'tab:overview' })
       // Forty hubs on a short pane: the line under the list moves the marker onto the first it hides.
       await ui.redraw({ ...PANE_PROPS, bodyColumns: 120, scroll: { offset: 0, bodyRows: 24 } })
