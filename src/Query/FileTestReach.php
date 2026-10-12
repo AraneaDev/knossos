@@ -39,6 +39,14 @@ final readonly class FileTestReach
     /** The time one of {@see self::testsOf()}'s searches may take. */
     private const CHUNK_MS = 1000;
 
+    /**
+     * How many hops a test may stand from a changed file and still count:
+     * past the four an impact query looks by default, since code a few
+     * layers under a service is routinely tested only through it, and a
+     * file marked untested that a test does reach is the worse mistake.
+     */
+    public const DEPTH = 6;
+
     /** Tests counted per file: a count at it is a floor, which is all a mark needs. */
     public const COUNTED = 20;
 
@@ -66,7 +74,7 @@ final readonly class FileTestReach
             if ($left <= 0) {
                 break;
             }
-            $found = $queries->testImpact($projectId, [$file], limit: self::COUNTED, timeoutMs: max(1, min(self::PER_FILE_MS, $left)));
+            $found = $queries->testImpact($projectId, [$file], maxDepth: self::DEPTH, limit: self::COUNTED, timeoutMs: max(1, min(self::PER_FILE_MS, $left)));
             $tests = count($found->data['test_files'] ?? []);
             $unplaced = in_array($file, $found->data['unresolved_files'] ?? [], true);
             if ($unplaced || ($tests === 0 && $found->truncated)) {
@@ -110,7 +118,7 @@ final readonly class FileTestReach
             }
             // test_impact accepts a limit of 1 to 100; this list is cut to
             // $limit below either way, so a smaller or larger one is clamped.
-            $found = $queries->testImpact($projectId, $chunk, limit: max(1, min(100, $limit)), timeoutMs: max(1, min(self::CHUNK_MS, $left)));
+            $found = $queries->testImpact($projectId, $chunk, maxDepth: self::DEPTH, limit: max(1, min(100, $limit)), timeoutMs: max(1, min(self::CHUNK_MS, $left)));
             $truncated = $truncated || $found->truncated;
             foreach ($found->data['test_files'] ?? [] as $test) {
                 $path = (string) $test['path'];

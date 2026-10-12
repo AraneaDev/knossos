@@ -28,14 +28,14 @@ final class VariableTypeScope
      * last: their variables, the bindings a closure captured by reference, and
      * the namespace prefixes held in their variables.
      *
-     * @var list<array{variables: array<string, array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, invokes?: string}>, by_reference: array<string, ?array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, invokes?: string}>, prefixes: array<string, string>}>
+     * @var list<array{variables: array<string, array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, shape?: array<string, string>, invokes?: string}>, by_reference: array<string, ?array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, shape?: array<string, string>, invokes?: string}>, prefixes: array<string, string>}>
      */
     private array $scopes = [];
 
     /**
      * The variables of code no callable encloses.
      *
-     * @var array<string, array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, invokes?: string}>
+     * @var array<string, array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, shape?: array<string, string>, invokes?: string}>
      */
     private array $fileVariables = [];
 
@@ -147,6 +147,18 @@ final class VariableTypeScope
         $variables[$variable] = ($variables[$variable] ?? ['type' => null, 'confidence' => 'probable']) + ['element' => $element];
     }
 
+    /**
+     * Remember the class each key of a variable's array holds, as its
+     * docblock's shape gives it, keeping whatever else is known about it.
+     *
+     * @param array<string, string> $keys
+     */
+    public function setShape(string $variable, array $keys): void
+    {
+        $variables = &$this->variables();
+        $variables[$variable] = ($variables[$variable] ?? ['type' => null, 'confidence' => 'probable']) + ['shape' => $keys];
+    }
+
     /** Remember what calling the closure a variable holds yields. */
     public function setInvokes(string $variable, string $yields): void
     {
@@ -191,6 +203,12 @@ final class VariableTypeScope
         return $this->variables()[$variable]['element'] ?? null;
     }
 
+    /** The class a key of the array a variable holds is, when its docblock's shape says. */
+    public function shapeKey(string $variable, string $key): ?string
+    {
+        return $this->variables()[$variable]['shape'][$key] ?? null;
+    }
+
     /** What calling the closure a variable holds yields, when that is declared. */
     public function invokes(string $variable): ?string
     {
@@ -227,7 +245,7 @@ final class VariableTypeScope
      * A function does not see the file's variables, which is why each
      * callable keeps its own.
      *
-     * @return array<string, array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, invokes?: string}>
+     * @return array<string, array{type: ?string, confidence: string, returned_by?: string, held_in?: string, element?: string, shape?: array<string, string>, invokes?: string}>
      */
     private function &variables(): array
     {

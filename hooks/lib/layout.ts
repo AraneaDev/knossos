@@ -327,6 +327,11 @@ export function paneStatus(d: Dashboard, refresh: RefreshState, rescan: RescanSt
   if (rescan.phase === 'failed') return { tone: 'alert', text: 'scan failed', ...(rescan.reason ? { note: rescan.reason } : {}) }
   if (refresh.failed) return { tone: 'alert', text: aged('refresh failed') }
   if (live.phase === 'scanning') return { tone: 'warn', text: state === 'fresh' ? 'scanning…' : aged(`scanning… · ${state}`) }
+  // Another process holds the scan lock: a rescan from here would only wait for it.
+  if (live.external !== undefined) {
+    const note = live.external.pid === null ? 'another process is scanning' : `another process is scanning (pid ${live.external.pid})`
+    return { tone: 'warn', text: state === 'fresh' ? 'scanning…' : aged(`scanning… · ${state}`), note }
+  }
   // The leader's watcher is stuck or gone quiet: the graph is not being kept current, whatever its age says.
   if (live.phase === 'following' && live.stale === true) return { tone: 'warn', text: aged(state), note: "another session's watcher is stuck" }
   if ((live.phase === 'live' || live.phase === 'following') && state === 'fresh' && d.freshness.drift_files === 0) {
@@ -479,7 +484,7 @@ export function paneInput(
     // Always on offer, fresh or not: freshness is the snapshot's own account,
     // and a person who knows the code moved should not have to wait for it to
     // agree. Only a scan already running, a rescan or the watcher's, holds it back.
-    canRescan: rescan.phase !== 'scanning' && live.phase !== 'scanning',
+    canRescan: rescan.phase !== 'scanning' && live.phase !== 'scanning' && live.external === undefined,
     summary,
     languages: languagesOf(d),
     tab: view.tab,

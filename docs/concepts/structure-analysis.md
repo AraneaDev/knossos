@@ -39,6 +39,20 @@ at best. Test reach and the pane's blast radius walk the same way. A method a
 trait supplies is not linked to the interface method it satisfies: only
 `extends` and `implements` between classes are followed.
 
+A constructor runs whenever its class is constructed. The graph records
+`new Foo()` as a `constructs` edge into the class `Foo`, not into its
+constructor, so for a constructor the walk also takes what constructs its
+class, or a subclass that declares no constructor of its own. Only `constructs`
+edges count there: a type named in a signature constructs nothing. The class
+is passed through, never listed itself. Test reach and the pane's blast radius
+walk the same way.
+
+Nothing points at a property: a method that reads `$this->helper` is recorded
+as calling into what the property holds, not as reading it. So for a property
+the walk takes what uses its class instead, the class passed through and never
+listed. Which use touches the property is a guess, so such a hop is `probable`
+at best. Test reach and the pane's blast radius walk the same way.
+
 ```sh
 knossos impact-analysis project_... 'Knossos\Scanner\ScannerClient' --json
 ```

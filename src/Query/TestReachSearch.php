@@ -51,10 +51,11 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      *
      * @param list<string> $startIds direct components, distance 0
      * @param list<string> $edgeKinds validated impact edge kinds
+     * @param bool $first stop after the level the first test is met at: enough to say whether any test reaches
      * @return array{tests: array<string, int>, visited: int, edges_examined: int, truncation_reasons: list<string>}
      *         tests: test-role node id => shortest distance
      */
-    public function search(string $projectId, array $startIds, int $maxDepth, array $edgeKinds, int $minimumRank, int $deadline): array
+    public function search(string $projectId, array $startIds, int $maxDepth, array $edgeKinds, int $minimumRank, int $deadline, bool $first = false): array
     {
         $seen = [];
         $tests = [];
@@ -73,9 +74,9 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         }
         $this->markTests($projectId, $frontier, 0, $tests);
         $examined = 0;
-        // Supertype methods already read through: apart from $seen, so one found later as a dependant in its own right still counts.
+        // Supertype methods and constructed classes already read through: apart from $seen, so one found later as a dependant in its own right still counts.
         $passed = [];
-        for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== []; ++$level) {
+        for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $tests !== []); ++$level) {
             // A call through an interface or a parent goes to the supertype's method: what calls that
             // may run the frontier's own, so its dependants are read too, the supertype method passed through.
             $through = [];
@@ -87,11 +88,33 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
                     }
                 }
             }
+            // Nothing points at a property: its class's methods read it, so what uses the class may use it.
+            foreach (PropertyOwners::of($this->pdo, $projectId, $frontier) as $class) {
+                if (!isset($seen[$class]) && !isset($passed[$class])) {
+                    $passed[$class] = true;
+                    $through[] = $class;
+                }
+            }
             $targets = [...$frontier, ...$through];
             sort($targets, SORT_STRING);
+            // A constructor runs whenever its class is constructed, which the graph records against the class:
+            // what constructs the class reaches the constructor, and nothing else that names the class does.
+            $constructed = [];
+            if (in_array(ConstructedClasses::EDGE_KIND, $edgeKinds, true)) {
+                foreach (ConstructedClasses::of($this->pdo, $projectId, $frontier) as $classes) {
+                    foreach ($classes as $class) {
+                        if (!isset($seen[$class]) && !isset($passed[$class])) {
+                            $passed[$class] = true;
+                            $constructed[] = $class;
+                        }
+                    }
+                }
+                sort($constructed, SORT_STRING);
+            }
             $next = [];
-            foreach (array_chunk($targets, self::CHUNK) as $chunk) {
-                $rows = $this->dependantRows($projectId, $chunk, $edgeKinds, $minimumRank);
+            $reads = [...array_map(static fn(array $chunk): array => [$chunk, $edgeKinds], array_chunk($targets, self::CHUNK)), ...array_map(static fn(array $chunk): array => [$chunk, [ConstructedClasses::EDGE_KIND]], array_chunk($constructed, self::CHUNK))];
+            foreach ($reads as [$chunk, $kinds]) {
+                $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
                 $row = 0;
                 while (($sourceId = $rows->fetchColumn()) !== false) {
                     if ($row++ % self::CLOCK_EVERY === 0 && $this->now() > $deadline) {

@@ -192,6 +192,31 @@ final class WatchServiceScanOutcomeTest extends KnossosTestCase
     }
 
     /**
+     * The initial scan waits for another process's lease before it can
+     * start, with no poll to say so: the watcher says who holds the lease
+     * first, so the pane shows that scan while the initial one waits on it.
+     */
+    public function testALeaseHeldBeforeTheInitialScanIsSaidBeforeItStarts(): void
+    {
+        $events = [];
+        $scanned = false;
+        $scanner = function () use (&$events, &$scanned): ResultEnvelope {
+            $scanned = true;
+            $events[] = ['event' => '(initial scan)'];
+            return new ResultEnvelope('watch-project', 'snapshot-1', 'ok', ['parsed_files' => 1]);
+        };
+        $hooks = new WatchHooks(scanHolder: static function () use (&$scanned): ?array {
+            return $scanned ? null : ['pid' => 4242, 'held_seconds' => 2];
+        });
+        (new WatchService($scanner, [$this->root]))->run($this->root, pollMs: 1, debounceMs: 0, maxQueue: 100, cancellation: new CancellationToken(), observer: static function (array $event) use (&$events): void {
+            $events[] = $event;
+        }, maxPolls: 2, hooks: $hooks);
+
+        assertSame(['external_scan', '(initial scan)', 'ready', 'external_scan_ended', 'stopped'], array_column($events, 'event'));
+        assertSame(4242, $events[0]['holder_pid']);
+    }
+
+    /**
      * Runs a watch whose scanner answers each call from `$script` in turn,
      * repeating the last entry: `ok`, `ok+change` (succeeds and edits a file,
      * so another scan is due), `timeout`, `fail` (a retryable failure),

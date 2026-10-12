@@ -69,4 +69,46 @@ final class BlastRadiusTestReachTest extends KnossosTestCase
         // More depends on the rings than they hold: D1 and the test past the last hop.
         assertSame(true, $rings['truncated']);
     }
+
+    /**
+     * A hub's dependents can fill the search before its tests are read: a
+     * component whose test the cut-off left unread is still tested, and the
+     * ring names that test. `App\Checkout` < C1 < C2 < the test, with room
+     * for two dependents: C1 and C2 fit, the test does not.
+     */
+    #[Group('query')]
+    public function testAComponentWhoseTestTheDependentsBoundCutOffIsStillTested(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $owner = 'php:file:src/Checkout.php';
+        $node = function (string $name, string $path, bool $test = false) use ($repository, $ids, $owner): string {
+            $file = StableId::file($ids['project'], $path);
+            $repository->saveFile($file, $ids['project'], $path, hash('sha256', $path), 20, 1, 'php', '0.1.0', $ids['scan']);
+            $id = StableId::symbol($ids['project'], 'php', 'class', $name);
+            $repository->saveNode($id, $ids['project'], 'php', 'class', $name, substr((string) strrchr('\\' . $name, '\\'), 1), null, $file, 1, 10, 'ast', 'certain', [], $owner, $ids['scan']);
+            if ($test) {
+                $repository->saveClassification(StableId::classification($ids['project'], $id, 'quality.test_module', 'core.test.modules.v1'), $ids['project'], $id, 'quality.test_module', 'derived', 'probable', 'core.test.modules.v1', $file, 1, 10, [], $ids['scan']);
+            }
+            return $id;
+        };
+        $calls = function (string $from, string $to, string $at) use ($repository, $ids, $owner): void {
+            $repository->saveEdge(StableId::edge($ids['project'], 'calls', $from, $to, $at), $ids['project'], 'calls', $from, $to, null, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
+        };
+        $c1 = $node('App\\C1', 'src/C1.php');
+        $calls($c1, $ids['checkout'], 'src/C1.php:5');
+        $c2 = $node('App\\C2', 'src/C2.php');
+        $calls($c2, $c1, 'src/C2.php:5');
+        $test = $node('Tests\\ChainTest', 'tests/ChainTest.php', test: true);
+        $calls($test, $c2, 'tests/ChainTest.php:5');
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $rings = (new BlastRadiusService($pdo, dependents: 2))->rings('/workspace/fixture-shop', 'App\\Checkout');
+
+        assertSame(true, $rings['truncated']);
+        [$one, $two] = $rings['rings'];
+        assertSame([1, 1], [$one['count'], $one['tested']]);
+        assertSame([1, 1], [$two['count'], $two['tested']]);
+        assertSame([true], array_column($two['items'], 'tested'));
+        assertSame([['path' => 'tests/ChainTest.php', 'hop' => 3]], $two['tests']['items']);
+    }
 }

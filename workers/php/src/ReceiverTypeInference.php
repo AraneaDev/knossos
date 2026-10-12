@@ -49,6 +49,15 @@ final class ReceiverTypeInference
      */
     private array $closureReturns = [];
 
+    /**
+     * The class each element of the list a method returns is, keyed as
+     * {@see self::$returnTypes} is, for a method whose docblock declares
+     * `@return list<X>`. The native type says only `array`.
+     *
+     * @var array<string, string>
+     */
+    private array $elementReturns = [];
+
     public function __construct(
         private readonly VariableTypeScope $variables,
         private readonly DocblockTypes $docblocks,
@@ -56,7 +65,8 @@ final class ReceiverTypeInference
 
     /**
      * Index what the closures returned by one namespace block's methods yield,
-     * as their docblocks declare it, read through that block's imports.
+     * and what the lists they return hold, as their docblocks declare it, read
+     * through that block's imports.
      *
      * @param array<\PhpParser\Node> $statements
      */
@@ -65,10 +75,18 @@ final class ReceiverTypeInference
         foreach ((new NodeFinder())->findInstanceOf($statements, Stmt\ClassLike::class) as $class) {
             $className = $class->namespacedName?->toString();
             foreach ($className === null ? [] : $class->getMethods() as $method) {
-                $yielded = DocblockTypes::documentedClosureResult($method->getDocComment()?->getText() ?? '');
+                $docComment = $method->getDocComment()?->getText() ?? '';
+                $key = strtolower($className . '::' . $method->name->toString());
+                $yielded = DocblockTypes::documentedClosureResult($docComment);
                 $resolved = $yielded === null ? null : $this->docblocks->documentedClass($yielded, $scope, $namespace, $className);
                 if ($resolved !== null) {
-                    $this->closureReturns[strtolower($className . '::' . $method->name->toString())] = $resolved;
+                    $this->closureReturns[$key] = $resolved;
+                }
+                $returned = DocblockTypes::documentedReturn($docComment);
+                $element = $returned === null ? null : DocblockTypes::elementType($returned);
+                $elementClass = $element === null ? null : $this->docblocks->documentedClass($element, $scope, $namespace, $className);
+                if ($elementClass !== null) {
+                    $this->elementReturns[$key] = $elementClass;
                 }
             }
         }
@@ -119,6 +137,22 @@ final class ReceiverTypeInference
         if ($node->expr instanceof Expr\New_ && $node->expr->class instanceof Name) {
             // Inferred from local construction flow — only ever probable.
             $this->variables->set($node->var->name, $this->resolvedClassNameIn($node->expr->class, $class), 'probable');
+
+            return;
+        }
+        $read = $this->readElementType($node->expr, $class);
+        if ($read !== null) {
+            // `$route = $candidate['template']`, `$first = self::own()[0]`: what
+            // a docblock says the array holds there.
+            $this->variables->set($node->var->name, $read, 'probable');
+
+            return;
+        }
+        $list = $this->returnedElementType($node->expr, $class);
+        if ($list !== null) {
+            // `$items = self::own()`: the variable holds the list, so a loop over it or a read from it is an element.
+            $this->variables->clear($node->var->name);
+            $this->variables->setElement($node->var->name, $list);
 
             return;
         }
@@ -228,9 +262,10 @@ final class ReceiverTypeInference
         }
         $element = $node->expr instanceof Expr\Variable && is_string($node->expr->name)
             ? $this->variables->element($node->expr->name)
-            : null;
+            : $this->returnedElementType($node->expr, $class);
         if ($element !== null) {
-            // A parameter whose docblock names its element type.
+            // A parameter whose docblock names its element type, or a call to
+            // a method of this file whose docblock returns a list of one.
             $this->variables->set($node->valueVar->name, $element, 'probable');
 
             return;
@@ -366,6 +401,44 @@ final class ReceiverTypeInference
         }
 
         return rtrim($match[1], '\\') . ($nested ? '\\**' : '');
+    }
+
+    /**
+     * The class each element of the list a call to one of this file's own
+     * methods returns is, as that method's docblock declares it.
+     *
+     * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
+     */
+    private function returnedElementType(Expr $expression, ?array $class): ?string
+    {
+        $key = $this->calledMethodKey($expression, $class);
+
+        return $key === null ? null : ($this->elementReturns[$key] ?? null);
+    }
+
+    /**
+     * What an array read holds when a docblock says: a literal key of a
+     * parameter whose shape names it, an element of a list a variable holds,
+     * or any element of what a call to one of this file's methods is declared
+     * to return a list of.
+     *
+     * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
+     */
+    private function readElementType(Expr $expression, ?array $class): ?string
+    {
+        if (!$expression instanceof Expr\ArrayDimFetch) {
+            return null;
+        }
+        if ($expression->var instanceof Expr\Variable && is_string($expression->var->name)) {
+            $key = $expression->dim instanceof Scalar\String_ || $expression->dim instanceof Scalar\Int_
+                ? $this->variables->shapeKey($expression->var->name, (string) $expression->dim->value)
+                : null;
+
+            // A key its shape names, else any element of the list the variable holds.
+            return $key ?? $this->variables->element($expression->var->name);
+        }
+
+        return $this->returnedElementType($expression->var, $class);
     }
 
     /**

@@ -211,6 +211,144 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
     }
 
     /**
+     * A key read out of a parameter whose docblock gives the array's shape
+     * holds that key's type; a scalar key or one the shape does not name holds
+     * nothing a call could be attributed to.
+     */
+    public function testAKeyReadFromADocumentedArrayShapeTypesItsVariable(): void
+    {
+        $scan = $this->scan(<<<'PHP'
+            <?php
+            namespace App;
+
+            use App\Routing\Template;
+
+            final class Grader
+            {
+                /**
+                 * @param array{template: Template, 'owner'?: ?\App\User, prefix: string, mounts: list<string>} $candidate
+                 */
+                public function grade(array $candidate): void
+                {
+                    $route = $candidate['template'];
+                    $route->isAllParameters();
+                    $owner = $candidate['owner'];
+                    $owner->name();
+                    $prefix = $candidate['prefix'];
+                    $prefix->nothing();
+                    $missing = $candidate['absent'];
+                    $missing->unknown();
+                }
+            }
+            PHP);
+
+        assertArrayContains(['calls', 'php:method:App\Grader::grade', 'php:method:App\Routing\Template::isAllParameters'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Grader::grade', 'php:method:App\User::name'], $scan['edges']);
+        assertArrayContains('nothing', $scan['untyped']);
+        assertArrayContains('unknown', $scan['untyped']);
+    }
+
+    /**
+     * A method of the file whose docblock returns a list of a class hands back
+     * instances of it: a loop over its result, or an element read out of it,
+     * holds one.
+     */
+    public function testAnElementOfADocumentedReturnTypesItsVariable(): void
+    {
+        $scan = $this->scan(<<<'PHP'
+            <?php
+            namespace App;
+
+            final class Routes
+            {
+                /** @return list<Template> */
+                private static function own(): array
+                {
+                    return [];
+                }
+
+                /** @return array<string, \App\Mount> */
+                private function mounts(): array
+                {
+                    return [];
+                }
+
+                /** @return list<string> */
+                private function names(): array
+                {
+                    return [];
+                }
+
+                public function build(): void
+                {
+                    foreach (self::own() as $template) {
+                        $template->prepend();
+                    }
+                    foreach ($this->mounts() as $key => $mount) {
+                        $mount->prefix();
+                    }
+                    $first = self::own()[0];
+                    $first->literalCount();
+                    foreach ($this->names() as $name) {
+                        $name->nothing();
+                    }
+                }
+            }
+            PHP);
+
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Template::prepend'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Mount::prefix'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Template::literalCount'], $scan['edges']);
+        assertArrayContains('nothing', $scan['untyped']);
+    }
+
+    /**
+     * The element type survives the list being held in a variable first, an
+     * analyser's own return tag wins over a plain one, and a shape nesting
+     * another shape still types its direct keys.
+     */
+    public function testAnElementTypeSurvivesAVariableAnAnalyserTagAndANestedShape(): void
+    {
+        $scan = $this->scan(<<<'PHP'
+            <?php
+            namespace App;
+
+            final class Routes
+            {
+                /**
+                 * @return array
+                 * @phpstan-return list<Template>
+                 */
+                private static function own(): array
+                {
+                    return [];
+                }
+
+                /** @param array{template: Template, options: array{enabled: bool}} $candidate */
+                public function grade(array $candidate): void
+                {
+                    $route = $candidate['template'];
+                    $route->isAllParameters();
+                }
+
+                public function build(): void
+                {
+                    $items = self::own();
+                    foreach ($items as $item) {
+                        $item->prepend();
+                    }
+                    $first = $items[0];
+                    $first->literalCount();
+                }
+            }
+            PHP);
+
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Template::prepend'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Template::literalCount'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Routes::grade', 'php:method:App\Template::isAllParameters'], $scan['edges']);
+    }
+
+    /**
      * A method declared to return `\Closure(): X` hands back work that yields
      * an X: the variable the closure's result is assigned to holds one. A
      * closure literal with a declared return type says the same.
