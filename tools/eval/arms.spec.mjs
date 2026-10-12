@@ -48,14 +48,40 @@ describe("armArgv", () => {
             ),
         ).toBe("mcp__knossos__list_usages");
     });
-    it("runs headless, read-only and without prompts in every arm", () => {
+    it("runs headless, without prompts and with a fixed read-only tool set in every arm", () => {
+        const allowed = (argv) =>
+            argv.slice(argv.indexOf("--allowedTools") + 1);
+        const readOnly = [
+            "Read",
+            "Skill",
+            ...[
+                "rg",
+                "grep",
+                "ls",
+                "cat",
+                "head",
+                "tail",
+                "wc",
+                "git log",
+                "git grep",
+                "git show",
+            ].map((c) => `Bash(${c} *)`),
+        ];
+        const expected = {
+            baseline: readOnly,
+            tools: [...readOnly, "mcp__knossos__*"],
+            full: [...readOnly, "mcp__knossos__*"],
+        };
         for (const arm of ["baseline", "tools", "full"]) {
             const argv = armArgv(arm, opts);
             expect(argv[0]).toBe("-p");
             expect(after(argv, "--permission-mode")).toBe("dontAsk");
             expect(after(argv, "--output-format")).toBe("stream-json");
-            expect(argv).not.toContain("Edit");
-            expect(argv).not.toContain("Write");
+            expect(after(argv, "--tools")).toBe("Read,Bash,Skill");
+            expect(allowed(argv)).toEqual(expected[arm]);
+            expect(
+                allowed(argv).filter((e) => /Edit|Write|find|sed/.test(e)),
+            ).toEqual([]);
         }
     });
 });
