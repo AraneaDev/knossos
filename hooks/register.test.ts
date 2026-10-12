@@ -1576,7 +1576,7 @@ describe('knossos mod', () => {
       // The marked row is tinted to the card's edge: the spaces that carry the tint end it.
       expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41/)
       // A hotspot that is not a hub is listed once, marked.
-      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ C Kernel/)
+      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/✦ C Kernel/)
       await ui.press({ key: 'tab:overview' })
       await ui.unmount()
     }
@@ -1674,7 +1674,7 @@ describe('knossos mod', () => {
       expect((await ui.find({ key: 'tab:hubs' }))?.props.dimColor).toBeUndefined()
       expect((await ui.find({ key: 'hub-head' }))?.text).toMatch(/name +in out cross$/)
       expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41 +3 +2 *$/)
-      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ C Kernel/)
+      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/✦ C Kernel/)
       await ui.press({ key: 'tab:boundaries' })
       expect((await ui.find({ key: 'pane' }))?.text).toContain('sends no boundary map')
       expect(await ui.find({ key: 'hub-0' })).toBeUndefined()

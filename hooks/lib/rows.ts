@@ -24,7 +24,7 @@
  */
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, FLASH_BG, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
-import { kindMark } from './marks'
+import { PLACE, RANKING, kindMark, mark } from './marks'
 
 /** A pressable segment: drawn as a plain Button, `hotkey: label` when it has a hotkey. */
 export type Press = { id: string; label: string; hotkey?: string }
@@ -386,7 +386,7 @@ export const boundaryStyle = (boundary: string | null, hues: Hues = NO_HUES): Pi
 }
 
 /** The swatch a boundary chip starts with: one cell in the boundary's colour. */
-export const SWATCH = '■'
+export const SWATCH = PLACE.swatch.glyph
 
 /**
  * A boundary as a chip: a swatch in its colour (the faint ink for a boundary
@@ -641,7 +641,7 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   const named = line.press === undefined ? linked(parts.base, line.link ?? null) : { ...button(line.press, parts.base), press: { id: line.press, label: line.name } }
   const segments: Segment[] = [
     { text: line.selected ? '›' : ' ', color: ACCENT, bold: true },
-    line.mark ?? { text: line.hotspotOnly ? '◆' : ' ', dim: true },
+    line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : { text: ' ' }),
     { text: ' ' },
     ...((spec.kind ?? 0) > 0 ? [kindMark(line.kind)] : []),
     { text: parts.dir, dim: true },

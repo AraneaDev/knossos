@@ -17,11 +17,11 @@
 import type { BlastRadius, RingsState } from '../../types'
 import { noteOf } from './cards'
 import type { Block } from './cards'
-import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
+import { FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
 import { absolute, baseName, button, cells, chip, dimRow, displayName, fit, grouped, plural, segmentsWidth, spaces, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
-import { REACH, kindMark, mark } from './marks'
+import { PLACE, REACH, kindMark, mark } from './marks'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
 export type RingMember = { name: string; canonical: string; kind: string; boundary: string | null; tested: boolean; loc: Loc | null }
@@ -178,7 +178,7 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
   if (centre !== null) {
     const room = columns - 4 * n
     const own = chip(centre.boundary, hues)
-    const label: Segment[] = [{ text: '◉ ', color: ACCENT }, { text: fit(centre.name, Math.max(4, room - segmentsWidth(own) - 4)), bold: true, color: HEADING }, ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])]
+    const label: Segment[] = [mark(PLACE.centre, ' '), { text: fit(centre.name, Math.max(4, room - segmentsWidth(own) - 4)), bold: true, color: HEADING }, ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])]
     const pad = Math.max(0, Math.floor((room - segmentsWidth(label)) / 2))
     rows.push(inside('ring-centre', n, [{ text: spaces(pad) }, ...label]))
   }

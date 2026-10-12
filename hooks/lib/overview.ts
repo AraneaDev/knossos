@@ -37,6 +37,7 @@ import type { Hues } from './palette'
 import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Openable } from './views'
+import { PLACE, mark } from './marks'
 
 /** One part of a whole: its label, how many, and how its share of the bar is drawn (a glyph in a colour). */
 export type Part = { label: string; value: number; glyph: string; colour: string }
@@ -351,7 +352,7 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
       const body = buckets.map((b, i) => {
         const glyphs = bar(b.components, max, width)
         const segments: Segment[] = [
-          i === top ? { text: '◆', color: ACCENT } : { text: ' ' },
+          i === top ? mark(PLACE.hub) : { text: ' ' },
           { text: ' ' },
           button(`row:${offset + i}`, labels[i]!),
           { text: spaces(labelWidth - cells(labels[i]!) + 1) },

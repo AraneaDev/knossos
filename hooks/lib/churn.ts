@@ -14,12 +14,13 @@
 import type { Churn, ChurnState } from '../../types'
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block } from './cards'
-import { ACCENT, FAINT, HEADING, NO_HUES, STATUS_COLOURS } from './palette'
+import { FAINT, HEADING, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { cells, dimRow, grouped, numberWidth, padStart, plural, spaces, tableHead, tableRow, tableSpec, wrapWords } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
+import { PLACE, mark } from './marks'
 
 /** One ranked file as the tab draws it. */
 export type ChurnFile = { path: string; commits: number; dependents: number; score: number; boundary: string | null; loc: Loc | null }
@@ -106,7 +107,7 @@ export function scatterRows(files: ChurnFile[], columns: number, height: number,
   const chosen = files[marked]
   if (chosen !== undefined) {
     const [x, y] = place(chosen)
-    plot[y]![x] = { text: '◉', color: ACCENT, bold: true }
+    plot[y]![x] = { ...mark(PLACE.centre), bold: true }
   }
   const rows: Row[] = plot.map((line, y) => {
     const label = y === 0 ? grouped(maxD) : y === height - 1 ? grouped(minD) : ''

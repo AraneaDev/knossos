@@ -69,7 +69,7 @@ import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInp
 import { arrange, besideRows, cardInner, DEFAULT_ROWS, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
-import { SEVERITY } from './marks'
+import { RANKING, SEVERITY, legend } from './marks'
 
 // Everything the specs and the render hook draw with, from one module.
 export { bar, button, cells, displayName, fileHref, fit, linkMarkdown, locOf, locText, rowWidth, tableSpec, tierOf, wrapWords } from './rows'
@@ -97,7 +97,7 @@ export type Item = {
   cross: number
   /** How many other files reference it; null from a knossos that does not say. */
   files: number | null
-  /** Ranked as a hotspot but not as a hub: marked `◆`. */
+  /** Ranked as a hotspot but not as a hub: marked `✦`. */
   hotspotOnly: boolean
   /** Where it is declared, so `e` opens its file; null when the dashboard places it nowhere. */
   loc: Loc | null
@@ -996,7 +996,7 @@ function joinGroups(groups: Segment[][]): Segment[] {
 
 /** The hubs tab: one card with the filter field or line, and the filtered, sorted table, as long as the pane allows. */
 function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier): Block {
-  const hotspots = input.items.some(i => i.hotspotOnly) ? '◆ hotspot only' : ''
+  const hotspots = input.items.some(i => i.hotspotOnly) ? legend([[RANKING.hotspotOnly, '']]) : ''
   const range = input.degree
   const note = sharedNote(list, [hotspots, input.partial ? 'partial' : ''].filter(s => s !== '').join(' · '), input.hues)
   return {

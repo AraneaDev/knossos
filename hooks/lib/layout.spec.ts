@@ -282,10 +282,17 @@ describe('paneRows', () => {
     expect(plainText(row(past, `hub-${last}`)!).startsWith('›')).toBe(true)
   })
 
+  it('marks a hotspot that is no hub with ✦ and names it in the card note', () => {
+    const text = textOf(paneRows(input({ tab: 'hubs' }), 100))
+    expect(text).toMatch(/✦ hotspot only/)
+    expect(text).toMatch(/✦ m ProjectScanService::scan/)
+    expect(text).not.toContain('◆')
+  })
+
   it('makes each listed name pressable by its row', () => {
     const rows = paneRows(input({ tab: 'hubs' }), 60)
     expect(row(rows, 'hub-3')!.segments.find(s => s.press)?.press).toEqual({ id: 'row:3', label: 'ProjectScanService::scan' })
-    expect(plainText(row(rows, 'hub-3')!)).toMatch(/^ ◆ m ProjectScanService::scan/)
+    expect(plainText(row(rows, 'hub-3')!)).toMatch(/^ ✦ m ProjectScanService::scan/)
   })
 
   it('colours a boundary and its bar alike, its track faint, and draws no boundary neutral', () => {
@@ -686,7 +693,7 @@ describe('the issues tab', () => {
     expect(text).toMatch(/scanner\.ts:14$/m)
     // The note is the legend for the two marks before each name.
     expect(text).toMatch(/Dead code +55 · ● 12 probable · ◆ 9 tests only · first 2/)
-    // How sure the scan is (● probable, ○ possible) and what reaches it (◆ tests only, ∅ nothing), before the name.
+    // How sure the scan is (● probable, ○ possible) and what reaches it (◐ tests only, ∅ nothing), before the name.
     expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
     expect(text).toMatch(/● ◐ f helper/)
     expect(text).not.toContain('◇')
@@ -968,7 +975,7 @@ describe('tables packed to the left', () => {
   it("sets the title, the sort and the note into the card's top edge, which spans the card like its rows", () => {
     const rows = paneRows(fullInput({ tab: 'hubs' }), 100)
     const head = row(rows, 'hubs-head')!
-    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +◆ hotspot only$/)
+    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +✦ hotspot only$/)
     expect(rowWidth(head)).toBe(100)
     expect(rowWidth(row(rows, 'hub-0')!)).toBe(100)
   })
@@ -1107,7 +1114,7 @@ describe('the hubs filter and sort', () => {
   })
   it('names the sort, draws its bar, and offers n, s and x as keys, and f to find', () => {
     const rows = paneRows(input({ tab: 'hubs', sort: 'out', filter: 'a' }), 90)
-    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +◆ hotspot only$/)
+    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +✦ hotspot only$/)
     expect(plainText(row(rows, 'hub-0')!)).toMatch(/ProjectScanService::scan +■ core +[━╸]+·* +119 +58 +0$/)
     const keys = rows.filter(r => r.key.startsWith('keys')).flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.hotkey] : [])))
     expect(keys).toEqual(['j', 'k', 'o', 'c', 'q', 'n', 's', 'x', 'f', 'h'])
