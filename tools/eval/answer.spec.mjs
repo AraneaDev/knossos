@@ -20,6 +20,28 @@ describe("extractAnswer", () => {
     });
 });
 
+describe("extractAnswer backslashes", () => {
+    it("recovers an unescaped PHP namespace", () => {
+        expect(extractAnswer(block('["App\\Billing::summarise"]'))).toEqual([
+            "App\\Billing::summarise",
+        ]);
+    });
+    it("does not turn a backslash-n into a newline", () => {
+        expect(extractAnswer(block('["App\\name::x"]'))).toEqual([
+            "App\\name::x",
+        ]);
+    });
+    it("leaves a correctly escaped block unchanged", () => {
+        expect(extractAnswer(block('["App\\\\Billing::x", "a\\"b"]'))).toEqual([
+            "App\\Billing::x",
+            'a"b',
+        ]);
+    });
+    it("gives null when the block is still invalid after the retry", () => {
+        expect(extractAnswer(block('["App\\Billing::x",]'))).toBeNull();
+    });
+});
+
 describe("normalise", () => {
     const php = { unit: "symbol", language: "php" };
     it("matches PHP symbols on class and method, case-insensitively", () => {

@@ -9,20 +9,37 @@ export const ANSWER_INSTRUCTION = [
     "",
     "",
     "When you are done, end your reply with a fenced code block tagged `answer` that holds a JSON array of strings: your complete answer, one entry per item.",
+    "The block must be valid JSON, so write each backslash in a name twice.",
     "Name symbols by their fully qualified name (for example Namespace\\\\Class::method or package.module.Class.method) and files by their path relative to the repository root.",
 ].join("\n");
 
 const BLOCK = /```answer[ \t]*\r?\n([\s\S]*?)```/g;
 
+const isStrings = (value) =>
+    Array.isArray(value) && value.every((v) => typeof v === "string");
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f]/;
+
+/** Doubles every lone backslash, leaving `\\` pairs and `\"` alone. */
+const doubleLoneBackslashes = (raw) =>
+    raw.replace(/\\[\\"]|\\/g, (m) => (m.length === 2 ? m : "\\\\"));
+
 export function extractAnswer(text) {
     if (typeof text !== "string") return null;
     const blocks = [...text.matchAll(BLOCK)];
     if (blocks.length === 0) return null;
+    const raw = blocks.at(-1)[1];
     try {
-        const value = JSON.parse(blocks.at(-1)[1]);
-        return Array.isArray(value) && value.every((v) => typeof v === "string")
-            ? value
-            : null;
+        const value = JSON.parse(raw);
+        if (!isStrings(value)) return null;
+        if (!value.some((v) => CONTROL.test(v))) return value;
+    } catch {
+        // fall through to the lenient retry
+    }
+    // An unescaped PHP namespace is invalid JSON, or parses `\n` as a newline; retry once with lone backslashes doubled.
+    try {
+        const value = JSON.parse(doubleLoneBackslashes(raw));
+        return isStrings(value) ? value : null;
     } catch {
         return null;
     }
