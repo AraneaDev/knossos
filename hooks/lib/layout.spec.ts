@@ -301,7 +301,7 @@ describe('paneRows', () => {
     // What Issues lists is one figure here: the dead code and the policy violations together.
     expect(line(paneRows(input(), 60))).toMatch(/^2 cycles {3}161 max degree {3}55 issues( \/)? +41 drifted$/)
     const moved = dash({ deltas: { against: 's4', components: 0, cycles: 1, max_degree: -3, dead_code: 0, diagnostics: 0 } })
-    expect(line(paneRows(input({}, moved), 60))).toMatch(/^2 cycles ▲1 {3}161 max degree ▼3 {3}55 issues/)
+    expect(line(paneRows(input({}, moved), 60))).toMatch(/^2 cycles \+1 {3}161 max degree −3 {3}55 issues/)
     // Issues counts the listed candidates; the trend carries the gate's wider dead-code count, so the tile takes neither its delta nor its trend.
     const gate = dash({ deltas: { against: 's4', components: 0, cycles: 0, max_degree: 0, dead_code: 25, diagnostics: 0 } })
     expect(line(paneRows(input({}, gate), 60))).toMatch(/ {3}55 issues( \/)? +41 drifted$/)

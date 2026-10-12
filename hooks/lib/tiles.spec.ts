@@ -3,6 +3,7 @@ import { rowWidth } from './rows'
 import { deltaSegment, moves, tileRows, tileSlots, tilesBlock } from './tiles'
 import type { Stat } from './tiles'
 import { plainText, rawText } from './__tests__/plain-text'
+import { STATUS_COLOURS } from './palette'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 
@@ -75,20 +76,20 @@ describe('stat tiles', () => {
       { key: 'degree', label: 'max degree', value: '165', delta: 0 },
       { key: 'drifted', label: 'drifted', value: '0' },
     ]
-    expect(deltaSegment(moved[0]!)).toEqual({ text: '▲12', dim: true })
-    expect(deltaSegment(moved[1]!)).toEqual({ text: '▲1', color: 'warning' })
-    expect(deltaSegment(moved[2]!)).toEqual({ text: '▼2', color: 'success' })
+    expect(deltaSegment(moved[0]!)).toEqual({ text: '+12', dim: true })
+    expect(deltaSegment(moved[1]!)).toEqual({ text: '+1', color: 'warning' })
+    expect(deltaSegment(moved[2]!)).toEqual({ text: '−2', color: 'success' })
     expect(deltaSegment(moved[3]!)).toEqual({ text: '±0', dim: true })
     expect(deltaSegment(moved[4]!)).toBeNull()
-    expect(deltaSegment({ delta: 12_345 })?.text).toBe('▲12,345')
+    expect(deltaSegment({ delta: 12_345 })?.text).toBe('+12,345')
     for (const columns of WIDTHS) {
       const tier = columns < 80 ? 'narrow' : columns <= 130 ? 'medium' : 'wide'
       const rows = tileRows(moved, columns, tier)
       for (const r of rows) expect(rowWidth(r), `${columns} ${r.key}`).toBeLessThanOrEqual(columns)
-      expect(rows.map(rawText).join('\n'), `${columns}`).toMatch(/9,186 (components )?▲12/)
+      expect(rows.map(rawText).join('\n'), `${columns}`).toMatch(/9,186 (components )?\+12/)
     }
     // The delta follows the figure, a space apart, on the tile's first line.
-    expect(rawText(tileRows(moved, 140, 'wide').find(r => r.key === 'tiles-0-value')!)).toMatch(/^│ 9,186 ▲12 +│ 2 ▲1 +│ 3 ▼2 +│ 165 ±0 +│ 0 +│$/)
+    expect(rawText(tileRows(moved, 140, 'wide').find(r => r.key === 'tiles-0-value')!)).toMatch(/^│ 9,186 \+12 +│ 2 \+1 +│ 3 −2 +│ 165 ±0 +│ 0 +│$/)
   })
 
   it('draw nothing without figures, and frame themselves as a bare section', () => {
@@ -104,5 +105,14 @@ describe('stat tiles', () => {
     expect(moves([2, 2, 2, 2, 2])).toBe(false)
     expect(moves([2, 2, 2, 2, 3])).toBe(true)
     expect(moves(undefined)).toBe(false)
+  })
+})
+
+describe('a delta', () => {
+  it('reads as a signed number, coloured only for a status', () => {
+    expect(deltaSegment({ delta: 3 })).toEqual({ text: '+3', dim: true })
+    expect(deltaSegment({ delta: -2, worse: 'up' })).toEqual({ text: '−2', color: STATUS_COLOURS.ok })
+    expect(deltaSegment({ delta: 1, worse: 'up' })).toEqual({ text: '+1', color: STATUS_COLOURS.warn })
+    expect(deltaSegment({ delta: 0 })).toEqual({ text: '±0', dim: true })
   })
 })

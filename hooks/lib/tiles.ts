@@ -15,9 +15,10 @@
 import { FRAME } from './cards'
 import type { Block, Section } from './cards'
 import { ACCENT, FLASH_BG, HEADING, STATUS_COLOURS } from './palette'
-import { cells, grouped, padEnd, spaces, wrapGroups } from './rows'
+import { cells, padEnd, spaces, wrapGroups } from './rows'
 import type { Row, Segment, Tier } from './rows'
 import { sparkline } from './sparkline'
+import { signed } from './marks'
 
 /** How a figure deviates: drawn in that colour; plain when absent. */
 export type StatTone = 'warn' | 'alert' | 'accent'
@@ -57,16 +58,15 @@ function label(stat: Stat, width: number): Segment {
 }
 
 /**
- * How a figure moved since the previous snapshot: `▲3`, `▼2`, or `±0`, the
- * glyph saying which way so the colour never has to. Coloured only for a
- * status (see {@link Stat}); empty when the dashboard says nothing.
+ * How a figure moved since the previous snapshot, as a signed number:
+ * `+3`, `−2`, or `±0`. Coloured only for a status (see {@link Stat}); empty
+ * when the dashboard says nothing.
  */
 export function deltaSegment(stat: Pick<Stat, 'delta' | 'worse'>): Segment | null {
   const d = stat.delta
   if (d === undefined) return null
-  if (d === 0) return { text: '±0', dim: true }
-  const text = `${d > 0 ? '▲' : '▼'}${grouped(Math.abs(d))}`
-  if (stat.worse !== 'up') return { text, dim: true }
+  const text = signed(d)
+  if (d === 0 || stat.worse !== 'up') return { text, dim: true }
   return { text, color: d > 0 ? STATUS_COLOURS.warn : STATUS_COLOURS.ok }
 }
 
