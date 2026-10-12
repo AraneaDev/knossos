@@ -69,6 +69,7 @@ final readonly class BlastRadiusService
         }
         [$hop, $out, $truncated] = $this->dependents($id, (string) $target['id']);
         $ids = array_map('strval', array_keys($hop));
+        $out = $this->throughFrameworkHooks($id, (string) $target['id'], $ids, $out);
         $roles = $this->roles($ids);
         $tests = array_flip(array_filter($ids, static fn(string $node): bool => ReportableComponent::isTest($roles[$node] ?? [])));
         $reached = self::reachedByTests(array_keys($tests), $out);
@@ -263,6 +264,49 @@ final readonly class BlastRadiusService
         $truncated = $truncated || (!$readPast && $edge !== [] && $this->hasDependents($projectId, $edge, $kinds));
 
         return [$hop, $out, $truncated];
+    }
+
+    /**
+     * `$out` with an edge into each framework hook among the dependents from
+     * whatever uses its class: the class itself or one of its members.
+     *
+     * The framework calls a hook (`booted`, `newFactory`) whenever its class is
+     * used, so nothing names it, and no test reached it however much its
+     * class is tested. Only what the walk read counts as a user, so a hook is
+     * as tested as its class within the rings and no further.
+     *
+     * @param list<string> $ids the dependents
+     * @param array<string, list<string>> $out
+     * @return array<string, list<string>>
+     */
+    private function throughFrameworkHooks(string $projectId, string $target, array $ids, array $out): array
+    {
+        $hooks = FrameworkHookMethods::among($this->pdo, $projectId, $ids);
+        if ($hooks === []) {
+            return $out;
+        }
+        $walked = array_flip($ids);
+        $kinds = AbstractArchitectureQueryService::IMPACT_EDGE_KINDS;
+        foreach (array_unique($hooks) as $class) {
+            $statement = $this->pdo->prepare(
+                'SELECT DISTINCT source_id FROM edges WHERE project_id = ? AND kind IN (' . implode(',', array_fill(0, count($kinds), '?')) . ') '
+                . "AND (target_id = ? OR target_id IN (SELECT target_id FROM edges WHERE project_id = ? AND kind = 'contains' AND source_id = ?))",
+            );
+            $statement->execute([$projectId, ...$kinds, $class, $projectId, $class]);
+            $users = array_values(array_filter(
+                array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN)),
+                static fn(string $user): bool => isset($walked[$user]) && $user !== $target,
+            ));
+            foreach (array_keys($hooks, $class, true) as $hook) {
+                foreach ($users as $user) {
+                    if ($user !== $hook) {
+                        $out[$user][] = (string) $hook;
+                    }
+                }
+            }
+        }
+
+        return $out;
     }
 
     /**
