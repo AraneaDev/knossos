@@ -228,6 +228,41 @@ final class PythonEndpointsTest extends KnossosTestCase
         assertArrayNotHasKey('prefix', $routes['GET /direct']);
     }
 
+    public function testAMountOntoAnUnknownReceiverHasNoOnto(): void
+    {
+        [, $edges] = $this->scanSource(['app/__init__.py' => '', 'app/api.py' => <<<'PY'
+            from fastapi import APIRouter
+
+            child = APIRouter(prefix="/child")
+
+
+            def attach(parent: APIRouter) -> None:
+                parent.include_router(child, prefix="/v1")
+            PY]);
+        $mounts = array_values(array_filter($edges, static fn(EdgeFact $edge): bool => $edge->kind === 'mounts'));
+
+        assertSame(1, count($mounts));
+        assertArrayNotHasKey('onto', $mounts[0]->attributes);
+        assertSame('/v1', $mounts[0]->attributes['prefix']);
+    }
+
+    public function testCallsThatNameNoRequestedUrlMakeNoEndpoint(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/clients.py' => <<<'PY'
+            import requests
+            from google.appengine.api import taskqueue
+
+
+            def calls(target: str) -> None:
+                requests.request(url="/no-method")
+                requests.Session()
+                taskqueue.add(url=target)
+                requests.get("/kept")
+            PY]);
+
+        assertSame(['GET /kept'], array_keys($this->endpoints($nodes)));
+    }
+
     public function testAnAppRebuiltAsARouterIsNoLongerAnApp(): void
     {
         [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/api.py' => <<<'PY'

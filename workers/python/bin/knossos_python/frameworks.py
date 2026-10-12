@@ -141,9 +141,8 @@ class RouterMounts:
         parameter) gets its prefix from a mount the scan cannot see, so its
         prefix is unknown.
         """
-        if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-            return {}
-        owner = dotted(decorator.func.value)
+        func = decorator.func if isinstance(decorator, ast.Call) else None
+        owner = dotted(func.value) if isinstance(func, ast.Attribute) else None
         router = self.router_reference(owner)
         if router is not None:
             return {"router": router}
