@@ -618,7 +618,8 @@ final class FactCollector extends NodeVisitorAbstract
      */
     private function eagerLoads(Expr\MethodCall|Expr\NullsafeMethodCall|Expr\StaticCall $node, ?string $class): void
     {
-        if ($class === null || !$node->name instanceof Identifier
+        // `$order->load(...)` is a first-class callable: it has no arguments to read.
+        if ($class === null || $node->isFirstClassCallable() || !$node->name instanceof Identifier
             || !in_array(strtolower($node->name->toString()), self::RELATION_NAMING_METHODS, true)) {
             return;
         }
@@ -720,7 +721,7 @@ final class FactCollector extends NodeVisitorAbstract
                 return null;
             }
         } while ($expression instanceof Expr\MethodCall);
-        if (!$expression instanceof Expr\StaticCall || !$expression->class instanceof Name
+        if (!$expression instanceof Expr\StaticCall || $expression->isFirstClassCallable() || !$expression->class instanceof Name
             || !$expression->name instanceof Identifier || strtolower($expression->name->toString()) !== 'factory') {
             return null;
         }

@@ -76,6 +76,28 @@ final class LaravelRouteNamesTest extends KnossosTestCase
         assertSame(['invites.accept', 'invites.cancel'], $this->routeNames($nodes));
     }
 
+    public function testFirstClassCallablesOfTheEloquentAndTestHelpersKeepTheFactsOfTheFile(): void
+    {
+        [$nodes] = $this->scanSource(<<<'PHP'
+            <?php
+            namespace App\Http\Controllers;
+
+            use App\Models\Order;
+
+            final class OrderController
+            {
+                public function index(Order $order)
+                {
+                    $callables = [$order->load(...), Order::with(...), Order::factory(...), $this->get(...), $this->artisan(...)];
+
+                    return [$callables, route('orders.show')];
+                }
+            }
+            PHP, 'app/Http/Controllers/OrderController.php', assertions: true);
+
+        assertSame(['orders.show'], $this->routeNames($nodes));
+    }
+
     public function testAFirstClassCallableNextToAReferenceKeepsTheFactsOfTheFile(): void
     {
         [$nodes] = $this->scanSource(<<<'PHP'
