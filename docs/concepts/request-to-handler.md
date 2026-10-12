@@ -145,6 +145,9 @@ so it grew with them.
   module form, and a local variable that shadows `requests` or `httpx` are not
   read as clients.
 - A literal `{}` in a plain string is read as a substitution.
+- File-level views (a file's fan-in, the dependents and uses in `file_context`,
+  and hotspots) do not show the frontend files that call a backend route file.
+  Flow, impact and usage do.
 - A mount onto an app imported from another module reads as unknown, and so
   does a Django settings module at `backend.settings` whose `ROOT_URLCONF` is
   `app.urls`.

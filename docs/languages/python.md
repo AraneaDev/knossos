@@ -113,7 +113,8 @@ or `Blueprint` assigned to a name at module level is a `router` node,
 `py:router:<module>.<name>`, and a `mounts` edge from `include_router` or
 `register_blueprint` reaches the router node it names, in the same file or
 imported from another module. A router built inside a function belongs to each
-call of it, so it has no node, though routes declared on it keep its prefix. A
+call of it, so it has no node, and routes declared on it read an unknown prefix,
+as does an `add_url_rule` on an object whose type the scan cannot see. A
 router handed in as a parameter has no node of its own either, so its mount is
 kept only when its target resolves. One module mounting one router twice keeps
 one `mounts` edge, with the prefix of the first mount: edges are unique by kind,

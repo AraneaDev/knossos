@@ -43,7 +43,8 @@ instead: `routes_to`, `calls`, `dispatches`, `handles`, `listens_to`,
 `constructs`, `injects`, `binds`, `observes`, `depends_on`, `imports`,
 `uses_middleware`, `references`, `extends`, `implements`, `returns`, `exports`,
 `re_exports`, `uses_trait`, `calls_endpoint` and `resolves_to`. Pass
-`edge_kinds` to narrow them. `contains` is rejected there. How `resolves_to` joins a request to its route is on
+`edge_kinds` to narrow them. `contains` is rejected there. How `resolves_to`
+joins a request to its route is on
 [from request to handler](request-to-handler.md).
 
 When code refers to something outside the scanned tree, such as a framework

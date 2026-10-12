@@ -44,7 +44,8 @@ controller's `redirect()->route('orders.show')` to the `show` handler.
 and neither does a name built at run time. A route in `routes/api.php` gets the
 `api` prefix by convention, and a route in any other file under `routes/`
 has an unknown prefix, because a service provider may load it with one. A
-`route()` call in a function outside any class belongs to that function. Blade templates and Ziggy's `route()` are not read.
+`route()` call in a function outside any class belongs to that function. Blade
+templates and Ziggy's `route()` are not read.
 See [from request to handler](../concepts/request-to-handler.md).
 
 ## Limits
