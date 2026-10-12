@@ -13,6 +13,9 @@ export const METRICS = [
     { key: "durationMs", label: "time (ms)", higherIsBetter: false },
 ];
 
+/** Fewer paired tasks than this cannot carry a verdict. */
+export const MIN_PAIRED_TASKS = 5;
+
 export function median(xs) {
     if (xs.length === 0) return NaN;
     const s = [...xs].sort((a, b) => a - b);
@@ -22,7 +25,9 @@ export function median(xs) {
 
 export function taskMedians(rows, metric) {
     const values = new Map();
-    for (const r of rows.filter((r) => SCORABLE.has(r.status))) {
+    for (const r of rows.filter(
+        (r) => SCORABLE.has(r.status) && Number.isFinite(r[metric]),
+    )) {
         if (!values.has(r.arm)) values.set(r.arm, new Map());
         const byTask = values.get(r.arm);
         if (!byTask.has(r.task)) byTask.set(r.task, []);
@@ -68,8 +73,9 @@ export function bootstrapCi(
     };
 }
 
-export function verdict(ci, { higherIsBetter }) {
-    if (ci === null) return "no detectable effect";
+export function verdict(ci, { higherIsBetter }, n) {
+    if (ci === null) return "no data";
+    if (n < MIN_PAIRED_TASKS) return "too few tasks";
     if (ci.low > 0) return higherIsBetter ? "helps" : "hurts";
     if (ci.high < 0) return higherIsBetter ? "hurts" : "helps";
     return "no detectable effect";

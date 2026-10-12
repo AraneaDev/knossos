@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     bootstrapCi,
     median,
+    MIN_PAIRED_TASKS,
     pairedDeltas,
     selectAblations,
     taskMedians,
@@ -39,6 +40,19 @@ describe("taskMedians and pairedDeltas", () => {
         expect(m.get("full").get("t1")).toBe(0.8);
         expect(m.get("baseline").has("t2")).toBe(false);
     });
+    it("leaves out rows whose metric is not a finite number", () => {
+        const m = taskMedians(
+            [
+                row("t1", "full", NaN),
+                row("t1", "full", undefined),
+                row("t1", "full", 0.4),
+                row("t2", "full", NaN),
+            ],
+            "f1",
+        );
+        expect(m.get("full").get("t1")).toBe(0.4);
+        expect(m.get("full").has("t2")).toBe(false);
+    });
     it("pairs only tasks both arms have", () => {
         expect(
             pairedDeltas(taskMedians(rows, "f1"), "full", "baseline"),
@@ -56,20 +70,29 @@ describe("bootstrapCi and verdict", () => {
     it("finds a clear positive effect and calls it", () => {
         const ci = bootstrapCi(Array(20).fill(0.3), { seed: 1 });
         expect(ci.low).toBeCloseTo(0.3);
-        expect(verdict(ci, { higherIsBetter: true })).toBe("helps");
-        expect(verdict(ci, { higherIsBetter: false })).toBe("hurts");
+        expect(verdict(ci, { higherIsBetter: true }, 20)).toBe("helps");
+        expect(verdict(ci, { higherIsBetter: false }, 20)).toBe("hurts");
+    });
+    it("calls a negative interval the other way round", () => {
+        const ci = bootstrapCi(Array(20).fill(-0.3), { seed: 1 });
+        expect(verdict(ci, { higherIsBetter: true }, 20)).toBe("hurts");
+        expect(verdict(ci, { higherIsBetter: false }, 20)).toBe("helps");
+    });
+    it("refuses a verdict on fewer paired tasks than the minimum", () => {
+        const ci = bootstrapCi([0.3, 0.3, 0.3, 0.3], { seed: 1 });
+        expect(MIN_PAIRED_TASKS).toBe(5);
+        expect(verdict(ci, { higherIsBetter: true }, 4)).toBe("too few tasks");
+        expect(verdict(ci, { higherIsBetter: true }, 5)).toBe("helps");
     });
     it("calls an interval across zero no detectable effect", () => {
         const ci = bootstrapCi([-0.5, 0.5, -0.4, 0.4, 0.1, -0.1], { seed: 1 });
-        expect(verdict(ci, { higherIsBetter: true })).toBe(
+        expect(verdict(ci, { higherIsBetter: true }, 6)).toBe(
             "no detectable effect",
         );
     });
     it("returns null without data", () => {
         expect(bootstrapCi([], {})).toBeNull();
-        expect(verdict(null, { higherIsBetter: true })).toBe(
-            "no detectable effect",
-        );
+        expect(verdict(null, { higherIsBetter: true }, 0)).toBe("no data");
     });
 });
 
