@@ -1,5 +1,12 @@
-import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import {
+    access,
+    mkdir,
+    mkdtemp,
+    readFile,
+    rm,
+    writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +14,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { readLedger } from "./ledger.mjs";
-import { main } from "./run.mjs";
+import { acquireLock, main } from "./run.mjs";
 
 const git = promisify(execFile);
 const FAKE = fileURLToPath(
@@ -15,7 +22,7 @@ const FAKE = fileURLToPath(
 );
 const tmp = (p) => mkdtemp(path.join(os.tmpdir(), p));
 
-async function fixture() {
+async function fixture({ second = false } = {}) {
     const origin = await tmp("eval-origin-");
     await git("git", ["init", "-q", origin]);
     await writeFile(path.join(origin, "a.php"), "<?php\n");
@@ -47,8 +54,38 @@ async function fixture() {
     await writeFile(
         path.join(corpus, "repos.json"),
         JSON.stringify({
-            repos: { demo: { url: origin, commit, language: "php" } },
+            repos: {
+                demo: { url: origin, commit, language: "php" },
+                ...(second
+                    ? { other: { url: origin, commit, language: "php" } }
+                    : {}),
+            },
         }),
+    );
+    if (second) {
+        await mkdir(path.join(corpus, "tasks", "other"), { recursive: true });
+        await writeFile(
+            path.join(corpus, "tasks", "other", "other-callers-a.json"),
+            JSON.stringify({
+                id: "other-callers-a",
+                repo: "other",
+                kind: "question",
+                category: "callers",
+                subject: "Invoice::total",
+                prompt: "Who calls Invoice::total?",
+                answer: {
+                    unit: "symbol",
+                    expected: ["App\\Billing::summarise"],
+                },
+                verified: "2026-10-13",
+            }),
+        );
+    }
+    const pluginDir = await tmp("eval-plugin-");
+    await mkdir(path.join(pluginDir, ".claude-plugin"));
+    await writeFile(
+        path.join(pluginDir, ".claude-plugin", "plugin.json"),
+        "{}",
     );
     await mkdir(path.join(corpus, "tasks", "demo"), { recursive: true });
     for (const id of ["demo-callers-a", "demo-callers-b"]) {
@@ -75,12 +112,13 @@ async function fixture() {
         KNOSSOS_EVAL_ROOT: await tmp("eval-root-"),
         KNOSSOS_EVAL_CLAUDE: FAKE,
         KNOSSOS_EVAL_REAL_HOME: await tmp("eval-nohome-"),
+        KNOSSOS_EVAL_PLUGIN_DIR: pluginDir,
     };
     return { corpus, env };
 }
 
-async function started(extra = []) {
-    const { corpus, env } = await fixture();
+async function started(extra = [], options = {}) {
+    const { corpus, env } = await fixture(options);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect(
         await main(
@@ -192,4 +230,137 @@ describe("run CLI", () => {
         );
         await expect(access(root)).rejects.toThrow();
     });
+    it("lets the other session finish and rethrows when one session cannot start", async () => {
+        const { env, runId, dir } = await started(["--arms", "baseline"], {
+            second: true,
+        });
+        await rm(path.join(env.KNOSSOS_EVAL_ROOT, "repos", "other"), {
+            recursive: true,
+        });
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await expect(
+            main(["continue", runId, "--batch", "2", "--concurrency", "2"], {
+                ...env,
+                FAKE_SLEEP_MS: "400",
+            }),
+        ).rejects.toThrow();
+        log.mockRestore();
+        const rows = await readLedger(path.join(dir, "ledger.jsonl"));
+        expect(rows.map((r) => r.repo)).toEqual(["demo"]);
+    });
+    it("gives a second run in the same second its own directory", async () => {
+        const { corpus, env } = await fixture();
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-10-13T10:00:00Z"));
+        const args = [
+            "start",
+            "--corpus",
+            corpus,
+            "--repeats",
+            "1",
+            "--seed",
+            "1",
+        ];
+        await main(args, env);
+        await main(args, env);
+        await main(args, env);
+        vi.useRealTimers();
+        const ids = log.mock.calls.map((c) => c[0]);
+        log.mockRestore();
+        expect(ids).toEqual([
+            "20261013-100000-sonnet",
+            "20261013-100000-sonnet-2",
+            "20261013-100000-sonnet-3",
+        ]);
+        for (const id of ids)
+            await access(path.join(env.KNOSSOS_EVAL_RUNS, id, "meta.json"));
+    });
+    it("rejects bad numbers and unknown arms with a clear message", async () => {
+        const { corpus, env, runId } = await started();
+        const start = (...extra) =>
+            main(["start", "--corpus", corpus, ...extra], env);
+        await expect(start("--repeats", "0")).rejects.toThrow(
+            /--repeats must be a positive integer/,
+        );
+        await expect(start("--repeats", "1.5")).rejects.toThrow(/--repeats/);
+        await expect(start("--budget", "abc")).rejects.toThrow(/--budget/);
+        await expect(start("--timeout", "-1")).rejects.toThrow(/--timeout/);
+        await expect(start("--arms", "baseline,bogus")).rejects.toThrow(
+            /unknown arm bogus/,
+        );
+        await expect(
+            main(["continue", runId, "--batch", "0"], env),
+        ).rejects.toThrow(/--batch/);
+        await expect(
+            main(["continue", runId, "--concurrency", "x"], env),
+        ).rejects.toThrow(/--concurrency/);
+        await expect(
+            main(["continue", runId, "--max-utilization", "1.5"], env),
+        ).rejects.toThrow(/at most 1/);
+        await expect(
+            main(["ablate", runId, "--threshold", "0"], env),
+        ).rejects.toThrow(/--threshold/);
+    });
+    it("refuses to spend a session before prepare produced what the arm needs", async () => {
+        const { env, runId } = await started();
+        const noPlugin = {
+            ...env,
+            KNOSSOS_EVAL_PLUGIN_DIR: await tmp("eval-noplugin-"),
+        };
+        await expect(main(["continue", runId], noPlugin)).rejects.toThrow(
+            /run prepare first/,
+        );
+        await rm(path.join(env.KNOSSOS_EVAL_ROOT, "mcp.json"));
+        await expect(main(["continue", runId], env)).rejects.toThrow(
+            /run prepare first.*mcp\.json/,
+        );
+    });
+    it("does not need the plugin or the MCP config for a baseline-only run", async () => {
+        const { env, runId } = await started(["--arms", "baseline"]);
+        await rm(path.join(env.KNOSSOS_EVAL_ROOT, "mcp.json"));
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        const code = await main(["continue", runId, "--batch", "1"], {
+            ...env,
+            KNOSSOS_EVAL_PLUGIN_DIR: await tmp("eval-noplugin-"),
+        });
+        log.mockRestore();
+        expect(code).toBe(0);
+    });
+    it("refuses a second continue while the first holds the lock", async () => {
+        const { env, runId } = await started();
+        const release = await acquireLock(
+            path.join(env.KNOSSOS_EVAL_ROOT, "continue.lock"),
+        );
+        await expect(main(["continue", runId], env)).rejects.toThrow(
+            new RegExp(`another continue is running \\(pid ${process.pid}\\)`),
+        );
+        await release();
+    });
 });
+
+describe("acquireLock", () => {
+    it("throws while a live process holds it and releases cleanly", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        const release = await acquireLock(file);
+        await expect(acquireLock(file)).rejects.toThrow(
+            /another continue is running \(pid \d+\)/,
+        );
+        await release();
+        await release2(file);
+    });
+    it("takes over a lock whose process is gone", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        const child = spawn("true");
+        await new Promise((resolve) => child.once("exit", resolve));
+        await writeFile(file, String(child.pid));
+        await release2(file);
+        expect(await readFile(file, "utf8").catch(() => "")).toBe("");
+    });
+});
+
+async function release2(file) {
+    const release = await acquireLock(file);
+    expect(await readFile(file, "utf8")).toBe(String(process.pid));
+    await release();
+}

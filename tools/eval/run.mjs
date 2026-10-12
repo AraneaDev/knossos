@@ -12,14 +12,14 @@
  *   node tools/eval/report.mjs <run-id>               write report.md
  */
 import { execFile } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { stopWatchers } from "../capture/session.mjs";
 import { ANSWER_INSTRUCTION } from "./answer.mjs";
-import { ablationArm, armArgv } from "./arms.mjs";
+import { ablationArm, armArgv, parseArm } from "./arms.mjs";
 import { corpusHash, loadCorpus } from "./corpus.mjs";
 import {
     ensureClone,
@@ -36,7 +36,7 @@ import {
     readLedger,
     sessionKey,
 } from "./ledger.mjs";
-import { buildRow, runSession } from "./session.mjs";
+import { buildRow, runSession, terminateGroups } from "./session.mjs";
 import { selectAblations } from "./stats.mjs";
 import { parseTranscript } from "./transcript.mjs";
 
@@ -69,6 +69,56 @@ export function settings(env = process.env) {
 const readJson = async (file) => JSON.parse(await readFile(file, "utf8"));
 const writeJson = (file, value) =>
     writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
+
+/** A positive finite number from a flag, or a clear error naming the flag. */
+export function positive(
+    name,
+    value,
+    { integer = false, max = Infinity } = {},
+) {
+    const n = Number(value);
+    const kind = integer ? "a positive integer" : "a positive number";
+    const limit = max === Infinity ? "" : ` of at most ${max}`;
+    if (
+        !Number.isFinite(n) ||
+        n <= 0 ||
+        n > max ||
+        (integer && !Number.isInteger(n))
+    )
+        throw new Error(`--${name} must be ${kind}${limit}, got "${value}"`);
+    return n;
+}
+
+const alive = (pid) => {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return error.code === "EPERM";
+    }
+};
+
+/**
+ * Takes `file` with the pid of this process; throws while another live
+ * process holds it, takes it over when the holder is gone. Returns a release.
+ */
+export async function acquireLock(file) {
+    await mkdir(path.dirname(file), { recursive: true });
+    for (;;) {
+        try {
+            await writeFile(file, String(process.pid), { flag: "wx" });
+            return () => rm(file, { force: true });
+        } catch (error) {
+            if (error.code !== "EEXIST") throw error;
+        }
+        const pid = Number(
+            (await readFile(file, "utf8").catch(() => "")).trim(),
+        );
+        if (pid > 0 && alive(pid))
+            throw new Error(`another continue is running (pid ${pid})`);
+        await rm(file, { force: true });
+    }
+}
 
 export async function openRun(runId, s) {
     const dir = path.join(s.runsDir, runId);
@@ -103,6 +153,14 @@ async function start(args, s) {
             timeout: { type: "string", default: "600" },
         },
     });
+    const repeats = positive("repeats", values.repeats, { integer: true });
+    const budgetUsd = positive("budget", values.budget);
+    const timeoutSeconds = positive("timeout", values.timeout);
+    const seed = Number(values.seed);
+    if (!Number.isInteger(seed))
+        throw new Error(`--seed must be an integer, got "${values.seed}"`);
+    const arms = values.arms.split(",");
+    for (const arm of arms) parseArm(arm);
     const corpusDir = path.resolve(values.corpus);
     const corpus = await loadCorpus(corpusDir);
     const stamp = new Date()
@@ -110,18 +168,29 @@ async function start(args, s) {
         .replace(/[-:]/g, "")
         .replace("T", "-")
         .slice(0, 15);
-    const runId = `${stamp}-${values.model}`;
+    // Two runs in the same second get -2, -3, ...; a directory is never reused.
+    await mkdir(s.runsDir, { recursive: true });
+    let runId = `${stamp}-${values.model}`;
+    for (let n = 2; ; n += 1) {
+        try {
+            await mkdir(path.join(s.runsDir, runId));
+            break;
+        } catch (error) {
+            if (error.code !== "EEXIST") throw error;
+            runId = `${stamp}-${values.model}-${n}`;
+        }
+    }
     const meta = {
         runId,
         createdAt: new Date().toISOString(),
         corpusDir,
         corpusHash: corpusHash(corpus),
         model: values.model,
-        arms: values.arms.split(","),
-        repeats: Number(values.repeats),
-        seed: Number(values.seed),
-        budgetUsd: Number(values.budget),
-        timeoutMs: Number(values.timeout) * 1000,
+        arms,
+        repeats,
+        seed,
+        budgetUsd,
+        timeoutMs: timeoutSeconds * 1000,
     };
     const dir = path.join(s.runsDir, runId);
     await mkdir(path.join(dir, "transcripts"), { recursive: true });
@@ -203,6 +272,8 @@ async function executeEntry(entry, ctx) {
         env,
         transcriptPath: path.join(run.dir, transcript),
         timeoutMs: run.meta.timeoutMs,
+        onSpawn: ctx.onSpawn,
+        onClose: ctx.onClose,
     });
     return buildRow({
         entry,
@@ -211,6 +282,8 @@ async function executeEntry(entry, ctx) {
         workspace,
         record: parseTranscript(outcome.lines),
         timedOut: outcome.timedOut,
+        exitCode: outcome.exitCode,
+        stderr: outcome.stderr,
         maxUtilization,
         priorErrors: rows.filter(
             (r) => sessionKey(r) === sessionKey(entry) && r.status === "error",
@@ -218,6 +291,22 @@ async function executeEntry(entry, ctx) {
         transcript,
         model: run.meta.model,
     });
+}
+
+/** Throws unless `prepare` left what the queued arms need. */
+async function assertPrepared(queue, paths, s) {
+    const bases = queue.map((e) => parseArm(e.arm).base);
+    const need = [];
+    if (bases.some((b) => b !== "baseline")) need.push(paths.mcpConfig);
+    if (bases.includes("full"))
+        need.push(path.join(s.pluginDir, ".claude-plugin", "plugin.json"));
+    for (const file of need) {
+        await access(file).catch((error) => {
+            throw new Error(`run prepare first: ${file} is missing`, {
+                cause: error,
+            });
+        });
+    }
 }
 
 async function continueRun(args, s) {
@@ -230,9 +319,18 @@ async function continueRun(args, s) {
             "max-utilization": { type: "string", default: "0.85" },
         },
     });
+    const batch = positive("batch", values.batch, { integer: true });
+    const concurrency = positive("concurrency", values.concurrency, {
+        integer: true,
+    });
+    const maxUtilization = positive(
+        "max-utilization",
+        values["max-utilization"],
+        { max: 1 },
+    );
     const run = await openRun(positionals[0], s);
     const rows = await readLedger(run.ledger);
-    const queue = pending(run.plan, rows).slice(0, Number(values.batch));
+    const queue = pending(run.plan, rows).slice(0, batch);
     if (queue.length === 0) {
         console.log(
             `run ${run.meta.runId} is complete; write the report with: node tools/eval/report.mjs ${run.meta.runId}`,
@@ -241,48 +339,72 @@ async function continueRun(args, s) {
     }
     const paths = evalPaths(s.evalRoot);
     const env = await evalEnv(paths, { base: s.env });
-    const workspaces = [
-        ...new Set(run.plan.map((e) => path.join(paths.repos, e.repo))),
-    ];
-    await seedConfig(paths, workspaces, { realHome: s.realHome });
-    const ctx = {
-        run,
-        s,
-        paths,
-        env,
-        rows,
-        maxUtilization: Number(values["max-utilization"]),
+    await assertPrepared(queue, paths, s);
+    const release = await acquireLock(path.join(paths.root, "continue.lock"));
+    const live = new Set();
+    let signalled = false;
+    const onSignal = (code) => async () => {
+        if (signalled) return;
+        signalled = true;
+        await terminateGroups([...live], 5000);
+        await stopWatchers(paths.data);
+        await release();
+        process.exit(code);
     };
-    const busy = new Set();
+    const handlers = { SIGINT: onSignal(130), SIGTERM: onSignal(143) };
+    for (const [name, handler] of Object.entries(handlers))
+        process.on(name, handler);
     let stop = null;
-    const worker = async () => {
-        while (stop === null && queue.length > 0) {
-            const at = queue.findIndex((e) => !busy.has(e.repo));
-            if (at === -1) {
-                await sleep(100);
-                continue;
-            }
-            const [entry] = queue.splice(at, 1);
-            busy.add(entry.repo);
-            try {
-                const row = await executeEntry(entry, ctx);
-                await appendRow(run.ledger, row);
-                console.log(
-                    `${row.status.padEnd(12)} ${entry.task} ${entry.arm} #${entry.repeat}`,
-                );
-                if (row.limit !== "ok") stop = row.limit;
-            } finally {
-                busy.delete(entry.repo);
-            }
-        }
-    };
+    let firstError = null;
     try {
-        await Promise.all(
-            Array.from({ length: Number(values.concurrency) }, worker),
-        );
+        const workspaces = [
+            ...new Set(run.plan.map((e) => path.join(paths.repos, e.repo))),
+        ];
+        await seedConfig(paths, workspaces, { realHome: s.realHome });
+        const ctx = {
+            run,
+            s,
+            paths,
+            env,
+            rows,
+            maxUtilization,
+            onSpawn: (pid) => live.add(pid),
+            onClose: (pid) => live.delete(pid),
+        };
+        const busy = new Set();
+        const worker = async () => {
+            while (stop === null && queue.length > 0) {
+                const at = queue.findIndex((e) => !busy.has(e.repo));
+                if (at === -1) {
+                    await sleep(100);
+                    continue;
+                }
+                const [entry] = queue.splice(at, 1);
+                busy.add(entry.repo);
+                try {
+                    const row = await executeEntry(entry, ctx);
+                    await appendRow(run.ledger, row);
+                    console.log(
+                        `${row.status.padEnd(12)} ${entry.task} ${entry.arm} #${entry.repeat}`,
+                    );
+                    if (row.limit !== "ok") stop = row.limit;
+                } catch (error) {
+                    // The other workers finish the session they are in, and start no more.
+                    firstError ??= error;
+                    stop = "error";
+                } finally {
+                    busy.delete(entry.repo);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: concurrency }, worker));
     } finally {
         await stopWatchers(paths.data);
+        for (const [name, handler] of Object.entries(handlers))
+            process.off(name, handler);
+        await release();
     }
+    if (firstError !== null) throw firstError;
     const left = pending(run.plan, await readLedger(run.ledger)).length;
     if (stop !== null) {
         console.log(
@@ -300,12 +422,13 @@ async function ablate(args, s) {
         allowPositionals: true,
         options: { threshold: { type: "string", default: "0.2" } },
     });
+    const threshold = positive("threshold", values.threshold);
     const run = await openRun(positionals[0], s);
     const rows = await readLedger(run.ledger);
     const have = new Set(run.plan.map(sessionKey));
     const added = [];
     for (const { tool, taskIds } of selectAblations(rows, run.corpus.tasks, {
-        threshold: Number(values.threshold),
+        threshold,
     })) {
         for (const id of taskIds) {
             const task = run.corpus.tasks.find((t) => t.id === id);
