@@ -374,6 +374,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             if (!$inherited && $classId !== null) {
                 $inherited = $graph->isInheritedViaSubtype($classId, $methodNames[$methodId]);
             }
+            // A hook a framework base calls by name: the base is vendor code,
+            // so the member it would declare is never in the graph to match.
+            if (!$inherited) {
+                $inherited = FrameworkHookMethods::isHook(self::externalAncestorNames($graph, $ancestors), $methodNames[$methodId]);
+            }
             $result[$methodId] = [
                 'inherited' => $inherited,
                 'implemented' => $classId !== null
@@ -390,6 +395,25 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             ];
         }
         return $result;
+    }
+
+    /**
+     * The canonical names of the external types among `$ancestors`.
+     *
+     * @param list<string> $ancestors
+     * @return list<string>
+     */
+    private static function externalAncestorNames(InheritanceGraph $graph, array $ancestors): array
+    {
+        $names = [];
+        foreach ($ancestors as $ancestorId) {
+            $name = $graph->meta($ancestorId)['canonical_name'] ?? null;
+            if (is_string($name) && $graph->isExternal($ancestorId)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
     }
 
     /**
