@@ -1,10 +1,11 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { armArgv } from "./arms.mjs";
-import { buildRow, runSession } from "./session.mjs";
+import { buildRow, runSession, terminateGroups } from "./session.mjs";
 import { parseTranscript } from "./transcript.mjs";
 
 const FAKE = fileURLToPath(
@@ -133,5 +134,89 @@ describe("buildRow", () => {
             300,
         );
         expect(row(outcome, "full").status).toBe("timeout");
+    });
+});
+
+describe("status order and diagnostics", () => {
+    it("reruns a usage cut-off even when the session then hung", async () => {
+        const { outcome } = await session("full", {
+            FAKE_LIMIT_STATUS: "rejected",
+        });
+        expect(row(outcome, "full", { timedOut: true }).status).toBe("limited");
+    });
+    it("keeps the exit code and the tail of stderr on the row", async () => {
+        const { outcome } = await session("full");
+        const r = row(outcome, "full", {
+            exitCode: 7,
+            stderr: `${"x".repeat(3000)}tail`,
+        });
+        expect(r.exitCode).toBe(7);
+        expect(r.stderr).toHaveLength(2000);
+        expect(r.stderr.endsWith("tail")).toBe(true);
+    });
+});
+
+describe("runSession failures", () => {
+    it("kills the group and rejects when the transcript cannot be written", async () => {
+        await expect(
+            runSession({
+                claudeBin: FAKE,
+                argv: [],
+                prompt: "q",
+                cwd: os.tmpdir(),
+                env: { ...process.env, FAKE_SLEEP_MS: "5000" },
+                transcriptPath: "/nonexistent-eval-dir/t.jsonl",
+                timeoutMs: 10000,
+            }),
+        ).rejects.toThrow(/ENOENT/);
+    });
+    it("reports the pid it spawned and the pid that closed", async () => {
+        const seen = [];
+        const dir = await mkdtemp(path.join(os.tmpdir(), "eval-session-"));
+        await runSession({
+            claudeBin: FAKE,
+            argv: [],
+            prompt: "q",
+            cwd: dir,
+            env: process.env,
+            transcriptPath: path.join(dir, "t.jsonl"),
+            timeoutMs: 10000,
+            onSpawn: (pid) => seen.push(["spawn", pid]),
+            onClose: (pid) => seen.push(["close", pid]),
+        });
+        expect(seen.map(([k]) => k)).toEqual(["spawn", "close"]);
+        expect(seen[0][1]).toBe(seen[1][1]);
+    });
+});
+
+describe("terminateGroups", () => {
+    const exited = (child) =>
+        new Promise((resolve) =>
+            child.once("exit", (code, signal) => resolve(signal)),
+        );
+
+    it("stops a process group with SIGTERM", async () => {
+        const child = spawn("sleep", ["30"], {
+            detached: true,
+            stdio: "ignore",
+        });
+        const gone = exited(child);
+        await terminateGroups([child.pid], 2000);
+        expect(await gone).toBe("SIGTERM");
+    });
+    it("escalates to SIGKILL for a group that ignores SIGTERM", async () => {
+        const child = spawn("sh", ["-c", 'trap "" TERM; sleep 30 & wait'], {
+            detached: true,
+            stdio: "ignore",
+        });
+        const gone = exited(child);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await terminateGroups([child.pid], 300);
+        expect(await gone).toBe("SIGKILL");
+    });
+    it("ignores a group that is already gone", async () => {
+        await expect(
+            terminateGroups([2 ** 22 + 12345], 100),
+        ).resolves.toBeUndefined();
     });
 });

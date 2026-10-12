@@ -9,6 +9,28 @@ import { contamination } from "./arms.mjs";
 import { limitState } from "./ledger.mjs";
 import { finalText, grepAfterGraph, knossosCounts } from "./transcript.mjs";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const signalGroup = (pid, signal) => {
+    try {
+        process.kill(-pid, signal);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/** SIGTERM to each process group, SIGKILL to any still there after `graceMs`. */
+export async function terminateGroups(pids, graceMs = 5000) {
+    let alive = pids.filter((pid) => signalGroup(pid, "SIGTERM"));
+    const end = Date.now() + graceMs;
+    while (alive.length > 0 && Date.now() < end) {
+        await sleep(50);
+        alive = alive.filter((pid) => signalGroup(pid, 0));
+    }
+    for (const pid of alive) signalGroup(pid, "SIGKILL");
+}
+
 export function runSession({
     claudeBin,
     argv,
@@ -18,6 +40,8 @@ export function runSession({
     transcriptPath,
     timeoutMs,
     graceMs = 5000,
+    onSpawn = () => {},
+    onClose = () => {},
 }) {
     return new Promise((resolve, reject) => {
         const child = spawn(claudeBin, argv, {
@@ -26,23 +50,26 @@ export function runSession({
             detached: true,
             stdio: ["pipe", "pipe", "pipe"],
         });
+        onSpawn(child.pid);
         const out = createWriteStream(transcriptPath);
         const lines = [];
         let buffer = "";
         let stderr = "";
         let timedOut = false;
-        const kill = (signal) => {
-            try {
-                process.kill(-child.pid, signal);
-            } catch {
-                // Already gone.
-            }
-        };
+        const kill = (signal) => signalGroup(child.pid, signal);
+        let killTimer = null;
         const timer = setTimeout(() => {
             timedOut = true;
             kill("SIGTERM");
-            setTimeout(() => kill("SIGKILL"), graceMs).unref();
+            killTimer = setTimeout(() => kill("SIGKILL"), graceMs);
+            killTimer.unref();
         }, timeoutMs);
+        out.on("error", (error) => {
+            clearTimeout(timer);
+            kill("SIGKILL");
+            onClose(child.pid);
+            reject(error);
+        });
         child.stdout.setEncoding("utf8");
         child.stdout.on("data", (chunk) => {
             out.write(chunk);
@@ -67,6 +94,8 @@ export function runSession({
         });
         child.on("close", (exitCode) => {
             clearTimeout(timer);
+            clearTimeout(killTimer);
+            onClose(child.pid);
             if (buffer.trim() !== "") lines.push(buffer);
             out.end(() => resolve({ lines, timedOut, exitCode, stderr }));
         });
@@ -76,8 +105,9 @@ export function runSession({
 }
 
 function statusOf({ record, timedOut, limit, reasons, score, priorErrors }) {
-    if (timedOut) return "timeout";
+    // A usage cut-off outranks a hang after it: the session must be rerun, not scored.
     if (limit === "limited") return "limited";
+    if (timedOut) return "timeout";
     if (record.result === null || record.result.isError) {
         if (
             /budget/.test(
@@ -102,6 +132,8 @@ export function buildRow({
     priorErrors,
     transcript,
     model,
+    exitCode = null,
+    stderr = "",
     now = new Date(),
 }) {
     const limit = limitState(record, { maxUtilization });
@@ -147,6 +179,8 @@ export function buildRow({
         grepAfter: grepAfterGraph(record, task.subject),
         fiveHourUtilization: record.rateLimit?.fiveHourUtilization ?? null,
         transcript,
+        exitCode,
+        stderr: stderr.slice(-2000),
         finishedAt: now.toISOString(),
     };
 }
