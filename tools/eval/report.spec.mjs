@@ -68,11 +68,16 @@ describe("buildReport", () => {
     });
     it("summarises each arm and counts excluded sessions", () => {
         expect(md).toMatch(/\| full \| 3 \|/);
-        expect(md).toMatch(/contaminated: 1/);
+        expect(md).toMatch(
+            /- full: excluded: contaminated 1, failed 0; counted, scored as 0 or partial: no-answer 0, timeout 0, budget 0/,
+        );
     });
     it("gives each comparison a verdict", () => {
         expect(md).toMatch(/\| full vs baseline \| F1 \|/);
-        expect(md).toMatch(/helps|hurts|no detectable effect/);
+        expect(md).toMatch(
+            /\| full vs baseline \| F1 \| 3 \|.*\| too few tasks \|/,
+        );
+        expect(md).toMatch(/Too few paired tasks \(3\) to call an effect/);
     });
     it("reports tool usage, errors, grep-after and the ablation delta", () => {
         expect(md).toMatch(/\| list_usages \| 33% \| 50% \| 100% \| \+0\.50/);
@@ -93,5 +98,41 @@ describe("buildReport", () => {
             previous: { runId: "r0", rows: rows.map((r) => ({ ...r, f1: 0 })) },
         });
         expect(withPrev).toMatch(/r0/);
+    });
+});
+
+describe("buildReport with enough paired tasks", () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({
+        id: `k${i}`,
+        category: "callers",
+    }));
+    const big = many.flatMap((t) => [
+        row(t.id, "baseline", 0.4, { costUsd: 0.1 }),
+        row(t.id, "full", 0.9, { costUsd: 0.2 }),
+    ]);
+    const md = buildReport({
+        meta: { ...meta, arms: ["baseline", "full"] },
+        rows: big,
+        tasks: many,
+    });
+    it("calls a clear F1 gain helps", () => {
+        expect(md).toMatch(/\| full vs baseline \| F1 \| 6 \|.*\| helps \|/);
+        expect(md).not.toMatch(/Too few paired tasks/);
+    });
+    it("calls a higher cost hurts, since lower is better", () => {
+        expect(md).toMatch(
+            /\| full vs baseline \| cost \(USD\) \| 6 \|.*\| hurts \|/,
+        );
+    });
+    it("says so when no task scored lower with Knossos", () => {
+        expect(md).toContain("No task scored lower with Knossos than without.");
+    });
+    it("prints no data for a category without paired tasks", () => {
+        const other = buildReport({
+            meta,
+            rows: [row("a1", "baseline", 0.5)],
+            tasks: [{ id: "a1", category: "x" }],
+        });
+        expect(other).toMatch(/\| x \| 0 \|.*\| no data \|/);
     });
 });

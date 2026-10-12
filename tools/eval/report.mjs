@@ -8,6 +8,7 @@ import { parseArm } from "./arms.mjs";
 import {
     bootstrapCi,
     METRICS,
+    MIN_PAIRED_TASKS,
     pairedDeltas,
     taskMedians,
     verdict,
@@ -18,7 +19,8 @@ const COMPARISONS = [
     ["full", "baseline"],
     ["full", "tools"],
 ];
-const EXCLUDED = ["contaminated", "failed", "no-answer", "timeout", "budget"];
+const EXCLUDED = ["contaminated", "failed"];
+const COUNTED = ["no-answer", "timeout", "budget"];
 
 const avg = (xs) =>
     xs.length === 0 ? NaN : xs.reduce((s, x) => s + x, 0) / xs.length;
@@ -31,6 +33,14 @@ const table = (head, body) => [
     `|${head.map(() => "---").join("|")}|`,
     ...body.map((r) => `| ${r.join(" | ")} |`),
 ];
+
+const tally = (rows, arm, statuses) =>
+    statuses
+        .map(
+            (s) =>
+                `${s} ${rows.filter((r) => r.arm === arm && r.status === s).length}`,
+        )
+        .join(", ");
 
 function armMeans(rows, arm, metric) {
     return avg([...(taskMedians(rows, metric).get(arm) ?? new Map()).values()]);
@@ -58,7 +68,7 @@ function summary(meta, rows) {
         "",
         ...arms.map(
             (arm) =>
-                `- ${arm}: ${EXCLUDED.map((s) => `${s}: ${rows.filter((r) => r.arm === arm && r.status === s).length}`).join(", ")}`,
+                `- ${arm}: excluded: ${tally(rows, arm, EXCLUDED)}; counted, scored as 0 or partial: ${tally(rows, arm, COUNTED)}`,
         ),
     );
     lines.push("", ...comparisons(rows, meta.seed));
@@ -81,7 +91,7 @@ function comparisons(rows, seed) {
                 String(deltas.length),
                 signed(ci.mean, 3),
                 `[${signed(ci.low, 3)}, ${signed(ci.high, 3)}]`,
-                verdict(ci, m),
+                verdict(ci, m, deltas.length),
             ]);
         }
     }
@@ -99,7 +109,10 @@ function comparisons(rows, seed) {
     if (detect)
         lines.push(
             "",
-            `With ${detect.n} paired tasks the F1 interval for full vs baseline is about +/-${fmt(detect.half)} wide: smaller effects stay invisible in this run. Notes and the band fire mostly on edits, so full vs tools on question tasks undersells the plugin layer.`,
+            (detect.n < MIN_PAIRED_TASKS
+                ? `Too few paired tasks (${detect.n}) to call an effect.`
+                : `With ${detect.n} paired tasks the F1 interval for full vs baseline is about +/-${fmt(detect.half)} wide: smaller effects stay invisible in this run.`) +
+                ` Notes and the band fire mostly on edits, so full vs tools on question tasks undersells the plugin layer.`,
         );
     return lines;
 }
@@ -124,7 +137,7 @@ function byCategory(rows, tasks, seed) {
             fmt(armMeans(subset, "baseline", "f1")),
             fmt(armMeans(subset, "full", "f1")),
             ci ? `[${signed(ci.low)}, ${signed(ci.high)}]` : "-",
-            verdict(ci, { higherIsBetter: true }),
+            verdict(ci, { higherIsBetter: true }, deltas.length),
         ]);
     }
     return [
@@ -172,7 +185,7 @@ function perTool(rows, seed) {
             pct(calls === 0 ? NaN : errors / calls),
             pct(using.filter((r) => r.grepAfter > 0).length / using.length),
             ci ? signed(ci.mean) : "not ablated",
-            ci ? verdict(ci, { higherIsBetter: true }) : "-",
+            ci ? verdict(ci, { higherIsBetter: true }, deltas.length) : "-",
         ];
     });
     return [
