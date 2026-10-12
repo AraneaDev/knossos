@@ -83,6 +83,7 @@ final class PluginCommand implements CliCommand
         '/hooks/lib/hover.ts',
         '/hooks/lib/layout.ts',
         '/hooks/lib/live.ts',
+        '/hooks/lib/marks.ts',
         '/hooks/lib/notes.ts',
         '/hooks/lib/overview.ts',
         '/hooks/lib/palette.ts',
