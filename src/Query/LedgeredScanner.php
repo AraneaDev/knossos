@@ -80,8 +80,8 @@ final readonly class LedgeredScanner implements ProjectScanner
             return $this->service->scan($root, ...$options);
         }
         $projectId = (string) $project['id'];
-        // Another writer's scan is mostly about to end: wait for it, and scan what it left.
-        $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS);
+        // Another writer's scan is mostly about to end: wait for it (unless the scan is cancelled), and scan what it left.
+        $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS, ProjectScanService::cancellationIn($options));
         try {
             $ledger = new ScanLedger($this->pdo);
             $from = $ledger->activeSnapshot($projectId);

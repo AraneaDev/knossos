@@ -95,6 +95,8 @@ final readonly class WatchService
         $gate->remember($state->fingerprint, $directories, $walkStartedAt);
         $scanned = $hooks->current === null || !($hooks->current)($state->fingerprint, null);
         $running = true;
+        // An initial scan that finds another process's lease waits on it with no poll to say so: say it first.
+        $external->poll($emit);
         if ($scanned) {
             $running = $this->initial($root, $state, $pollMs, $cancellation, $emit);
         } else {

@@ -148,6 +148,14 @@ final class ReceiverTypeInference
 
             return;
         }
+        $list = $this->returnedElementType($node->expr, $class);
+        if ($list !== null) {
+            // `$items = self::own()`: the variable holds the list, so a loop over it or a read from it is an element.
+            $this->variables->clear($node->var->name);
+            $this->variables->setElement($node->var->name, $list);
+
+            return;
+        }
         $invoked = $this->invokedType($node->expr);
         if ($invoked !== null) {
             // `$result = $run()` where `$run` holds a closure whose result type is declared.
@@ -410,8 +418,9 @@ final class ReceiverTypeInference
 
     /**
      * What an array read holds when a docblock says: a literal key of a
-     * parameter whose shape names it, or any element of what a call to one of
-     * this file's methods is declared to return a list of.
+     * parameter whose shape names it, an element of a list a variable holds,
+     * or any element of what a call to one of this file's methods is declared
+     * to return a list of.
      *
      * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
      */
@@ -421,9 +430,12 @@ final class ReceiverTypeInference
             return null;
         }
         if ($expression->var instanceof Expr\Variable && is_string($expression->var->name)) {
-            return $expression->dim instanceof Scalar\String_ || $expression->dim instanceof Scalar\Int_
+            $key = $expression->dim instanceof Scalar\String_ || $expression->dim instanceof Scalar\Int_
                 ? $this->variables->shapeKey($expression->var->name, (string) $expression->dim->value)
                 : null;
+
+            // A key its shape names, else any element of the list the variable holds.
+            return $key ?? $this->variables->element($expression->var->name);
         }
 
         return $this->returnedElementType($expression->var, $class);

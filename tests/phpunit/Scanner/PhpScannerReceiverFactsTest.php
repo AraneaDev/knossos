@@ -303,6 +303,52 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
     }
 
     /**
+     * The element type survives the list being held in a variable first, an
+     * analyser's own return tag wins over a plain one, and a shape nesting
+     * another shape still types its direct keys.
+     */
+    public function testAnElementTypeSurvivesAVariableAnAnalyserTagAndANestedShape(): void
+    {
+        $scan = $this->scan(<<<'PHP'
+            <?php
+            namespace App;
+
+            final class Routes
+            {
+                /**
+                 * @return array
+                 * @phpstan-return list<Template>
+                 */
+                private static function own(): array
+                {
+                    return [];
+                }
+
+                /** @param array{template: Template, options: array{enabled: bool}} $candidate */
+                public function grade(array $candidate): void
+                {
+                    $route = $candidate['template'];
+                    $route->isAllParameters();
+                }
+
+                public function build(): void
+                {
+                    $items = self::own();
+                    foreach ($items as $item) {
+                        $item->prepend();
+                    }
+                    $first = $items[0];
+                    $first->literalCount();
+                }
+            }
+            PHP);
+
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Template::prepend'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Routes::build', 'php:method:App\Template::literalCount'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Routes::grade', 'php:method:App\Template::isAllParameters'], $scan['edges']);
+    }
+
+    /**
      * A method declared to return `\Closure(): X` hands back work that yields
      * an X: the variable the closure's result is assigned to holds one. A
      * closure literal with a declared return type says the same.

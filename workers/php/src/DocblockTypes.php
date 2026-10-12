@@ -19,8 +19,8 @@ use PhpParser\NodeFinder;
  */
 final class DocblockTypes
 {
-    /** One docblock type, generic arguments, shapes and callable signatures included. */
-    private const DOC_TYPE = '(?:[^\\s<>{}()]|<(?:[^<>]|<[^<>]*>)*>|\\{[^{}]*\\}|\\([^()]*\\))+';
+    /** One docblock type, generic arguments, shapes (one nested in another too) and callable signatures included. */
+    private const DOC_TYPE = '(?:[^\\s<>{}()]|<(?:[^<>]|<[^<>]*>)*>|\\{(?:[^{}]|\\{[^{}]*\\})*\\}|\\([^()]*\\))+';
 
     /** Docblock types that name no class. */
     private const DOC_PSEUDO_TYPES = [
@@ -165,10 +165,20 @@ final class DocblockTypes
         return $types;
     }
 
-    /** What a docblock's `@return` tag declares, as written. */
+    /**
+     * What a docblock's return tag declares, as written: an analyser's own
+     * (`@phpstan-return`, `@psalm-return`) over a plain `@return`, which
+     * often says only `array` beside it.
+     */
     public static function documentedReturn(string $docComment): ?string
     {
-        return preg_match('/@(?:phpstan-|psalm-)?return\s+(' . self::DOC_TYPE . ')/', $docComment, $matches) === 1 ? $matches[1] : null;
+        foreach (['(?:phpstan|psalm)-return', 'return'] as $tag) {
+            if (preg_match('/@' . $tag . '\s+(' . self::DOC_TYPE . ')/', $docComment, $matches) === 1) {
+                return $matches[1];
+            }
+        }
+
+        return null;
     }
 
     /**

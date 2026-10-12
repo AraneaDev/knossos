@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Scan;
 
+use Knossos\Cancellation\CancellationToken;
+use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Scan\ProjectWriterLease;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Store\ScanBusyException;
@@ -117,7 +119,8 @@ final class ProjectWriterLockTest extends TestCase
     public function testAcquireThrowsScanBusyExceptionOnUniqueCollision(): void
     {
         $pdo = $this->createSchema();
-        $lock = new ProjectWriterLock($pdo);
+        // A fixed clock: the age in the message must not depend on a second boundary falling between the two acquires.
+        $lock = new ProjectWriterLock($pdo, clock: static fn(): int => 1_000_000);
         $lease = $lock->acquire('proj_3');
 
         $error = captureThrows(
@@ -565,5 +568,23 @@ final class ProjectWriterLockTest extends TestCase
         assertSame(1_000, $slept);
         captureThrows(static fn(): ProjectWriterLease => $lock->acquire('proj_stuck'), ScanBusyException::class);
         assertSame(1_000, $slept);
+    }
+
+    /** A caller cancelled while it waits for the lease stops waiting at the next try, and takes no lease. */
+    public function testAcquireStopsWaitingOnceCancelled(): void
+    {
+        $pdo = $this->createSchema();
+        $this->holdLease($pdo, 'proj_cancel', '4242@' . gethostname() . ':' . str_repeat('a', 32));
+        $cancellation = new CancellationToken();
+        $slept = 0;
+        $lock = new ProjectWriterLock($pdo, alive: static fn(int $pid): bool => true, sleep: static function () use (&$slept, $cancellation): void {
+            ++$slept;
+            $cancellation->cancel();
+        });
+
+        captureThrows(static fn(): ProjectWriterLease => $lock->acquire('proj_cancel', waitMs: 30_000, cancellation: $cancellation), ScanCancelledException::class);
+
+        assertSame(1, $slept);
+        assertSame('4242@' . gethostname() . ':' . str_repeat('a', 32), $this->fetchRow($pdo, 'proj_cancel')['owner_token']);
     }
 }

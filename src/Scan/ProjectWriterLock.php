@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Scan;
 
 use Closure;
+use Knossos\Cancellation\CancellationToken;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteBusy;
 use PDO;
@@ -53,9 +54,10 @@ final readonly class ProjectWriterLock
      *
      * A caller given `$waitMs` tries again until the holder lets go or that
      * long has passed: a scan that finds another one running mostly finds it
-     * about to end, and its own then has little left to do.
+     * about to end, and its own then has little left to do. A cancellation
+     * stops the wait at the next try.
      */
-    public function acquire(string $projectId, int $waitMs = 0): ProjectWriterLease
+    public function acquire(string $projectId, int $waitMs = 0, ?CancellationToken $cancellation = null): ProjectWriterLease
     {
         for ($waited = 0; ; $waited += self::WAIT_POLL_MS) {
             try {
@@ -64,6 +66,7 @@ final readonly class ProjectWriterLock
                 if ($waited >= $waitMs) {
                     throw $busy;
                 }
+                $cancellation?->throwIfCancelled();
                 ($this->sleep)(self::WAIT_POLL_MS);
             }
         }

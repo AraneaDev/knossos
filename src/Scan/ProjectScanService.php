@@ -67,6 +67,21 @@ final class ProjectScanService implements ProjectScanner
     }
 
     /**
+     * The cancellation among {@see self::scan()}'s arguments after the root,
+     * passed by name or by position, for a caller that forwards them and
+     * waits before the scan starts.
+     *
+     * @param array<int|string, mixed> $options
+     */
+    public static function cancellationIn(array $options): ?CancellationToken
+    {
+        // `$cancellation` is scan()'s seventh parameter: the sixth after the root.
+        $cancellation = $options['cancellation'] ?? $options[5] ?? null;
+
+        return $cancellation instanceof CancellationToken ? $cancellation : null;
+    }
+
+    /**
      * Run a scan end to end and return its result envelope.
      *
      * A caller that already holds the project's write lease (a scanner that

@@ -18,11 +18,15 @@ use Throwable;
  *
  * Polled between the watcher's own scans, so a lease it sees is someone
  * else's. Each start is said once (`external_scan`, with who holds the lease
- * and for how long) and so is its end (`external_scan_ended`).
+ * and for how long, again when another process takes it over) and so is its
+ * end (`external_scan_ended`).
  */
 final class ExternalScanProbe
 {
     private bool $scanning = false;
+
+    /** The process the last start named. */
+    private ?int $pid = null;
 
     /** @param (Closure(): ?array{pid: ?int, held_seconds: int})|null $holder who holds the lease, if anyone */
     public function __construct(private readonly ?Closure $holder) {}
@@ -57,10 +61,13 @@ final class ExternalScanProbe
             // A database busy with that very scan says nothing new: keep what was said.
             return;
         }
-        if (($holder !== null) === $this->scanning) {
+        // Present before and still held by the same process: nothing new. Another process taking the lease
+        // between two polls is a new start, so the pane names the scan that runs now.
+        if ($holder === null ? !$this->scanning : $this->scanning && $holder['pid'] === $this->pid) {
             return;
         }
         $this->scanning = $holder !== null;
+        $this->pid = $holder['pid'] ?? null;
         $emit($holder === null
             ? ['event' => 'external_scan_ended']
             : ['event' => 'external_scan', 'holder_pid' => $holder['pid'], 'held_seconds' => $holder['held_seconds']]);
