@@ -4,16 +4,15 @@
  */
 export const BASE_ARMS = ["baseline", "tools", "full"];
 
+// No `find` (its -delete and -exec act) and no `sed -n` (its w command writes): neither is read-only.
 const READ_ONLY_BASH = [
     "rg",
     "grep",
-    "find",
     "ls",
     "cat",
     "head",
     "tail",
     "wc",
-    "sed -n",
     "git log",
     "git grep",
     "git show",
