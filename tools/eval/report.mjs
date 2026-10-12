@@ -3,8 +3,13 @@
  * verdicts, per-tool usage and ablation, the tasks Knossos made worse, and
  * the change since the previous run.
  */
-import { SCORABLE } from "./ledger.mjs";
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { SCORABLE, readLedger } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
+import { evalPaths } from "./env.mjs";
+import { openRun, settings } from "./run.mjs";
 import {
     bootstrapCi,
     METRICS,
@@ -290,4 +295,61 @@ export function buildReport({
         ...sincePrevious(rows, previous),
         "",
     ].join("\n");
+}
+
+async function previousRun(run, s) {
+    const ids = (await readdir(s.runsDir))
+        .filter((id) => id < run.meta.runId)
+        .sort()
+        .reverse();
+    for (const id of ids) {
+        try {
+            const meta = JSON.parse(
+                await readFile(path.join(s.runsDir, id, "meta.json"), "utf8"),
+            );
+            if (
+                meta.corpusHash === run.meta.corpusHash &&
+                meta.model === run.meta.model
+            ) {
+                return {
+                    runId: id,
+                    rows: await readLedger(
+                        path.join(s.runsDir, id, "ledger.jsonl"),
+                    ),
+                };
+            }
+        } catch {
+            // Not a run directory.
+        }
+    }
+    return null;
+}
+
+async function readDefects(dir) {
+    try {
+        const files = (await readdir(dir))
+            .filter((f) => f.endsWith(".json"))
+            .sort();
+        return Promise.all(
+            files.map(async (f) =>
+                JSON.parse(await readFile(path.join(dir, f), "utf8")),
+            ),
+        );
+    } catch {
+        return [];
+    }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const s = settings();
+    const run = await openRun(process.argv[2], s);
+    const md = buildReport({
+        meta: run.meta,
+        rows: await readLedger(run.ledger),
+        tasks: run.corpus.tasks,
+        previous: await previousRun(run, s),
+        defects: await readDefects(evalPaths(s.evalRoot).defects),
+    });
+    await writeFile(path.join(run.dir, "report.md"), md);
+    console.log(path.join(run.dir, "report.md"));
 }
