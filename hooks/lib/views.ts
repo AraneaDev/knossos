@@ -88,8 +88,8 @@ export type IssuesInput = {
   /** Null when the knossos that answered sends no policy section. */
   policy: { evaluated: boolean; total: string; count: number; items: ViolationLine[] } | null
   diagnostics: { errors: number; warnings: number; infos: number; items: DiagnosticLine[] } | null
-  /** `probable` is how many of `total` are probably dead, null from a knossos that does not say. */
-  deadCode: { total: string; probable: number | null; items: DeadLine[] }
+  /** `probable` is how many of `total` are probably dead and `testOnly` how many only tests reach, each null from a knossos that does not say. */
+  deadCode: { total: string; probable: number | null; testOnly: number | null; items: DeadLine[] }
   /** The files a change is riskiest in: lines times dependents, the highest first. */
   hotspots: { path: string; lines: number; dependents: number; score: number; loc: Loc | null }[]
   /** The files over the project's function-length budget; null without a budget, undefined when the knossos that answered does not say. */
@@ -196,6 +196,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
       probable: d.dead_code_probable ?? null,
+      testOnly: d.dead_code_test_only ?? null,
       items: (d.dead_code ?? []).map(c => ({
         name: displayName(c),
         canonical: c.canonical_name,
@@ -389,21 +390,22 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   }))
   const dead = issues.deadCode
   const offset = diagOffset + diagEntries.length
-  // How sure the scan is, a column before the name: a possible one is dimmed, since something no scan sees may reach it.
-  // Too narrow to keep {@link MAIN_MIN} for the names beside it, the column goes from every row at once,
-  // so it never shows on some rows and not others; the names keep their room.
-  const certaintyWidth = Math.max(0, ...dead.items.map(c => cells(c.certainty)))
+  // Two marks before the name, the card's note their legend: how sure the scan is, ● probable or a dim ○ possible
+  // (something no scan sees may reach it), then what reaches it, ◆ tests only in the warning colour (finished work
+  // no product path runs) or a dim ∅ nothing at all. Where even the marks would squeeze the names below
+  // {@link MAIN_MIN} they go from every row at once, so they never show on some rows and not others.
+  const MARKS = 4
   const deadEntries: Entry[] = dead.items.map((c, i) => ({
     selected: offset + i === selected,
-    mark: c.testOnly ? { text: '◇', dim: true } : undefined,
     boundary: c.boundary,
     place: c.place,
     loc: c.loc ?? null,
-    need: cells(c.name) + (certaintyWidth === 0 ? 0 : certaintyWidth + 2),
+    need: cells(c.name) + MARKS,
     main: width => {
-      if (certaintyWidth === 0 || width - certaintyWidth - 2 < MAIN_MIN) return [button(`row:${offset + i}`, fit(c.name, width))]
-      const certainty: Segment = { text: c.certainty.padEnd(certaintyWidth + 2), ...(c.certainty === 'probable' ? {} : { dim: true }) }
-      return [certainty, button(`row:${offset + i}`, fit(c.name, width - certaintyWidth - 2))]
+      if (width - MARKS < MAIN_MIN) return [button(`row:${offset + i}`, fit(c.name, width))]
+      const certainty: Segment = c.certainty === 'probable' ? { text: '● ' } : { text: '○ ', dim: true }
+      const reach: Segment = c.testOnly ? { text: '◆ ', color: STATUS_COLOURS.warn } : { text: '∅ ', dim: true }
+      return [certainty, reach, button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },
   }))
   /**
@@ -452,8 +454,9 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     key: 'dead',
     grow: { length: deadEntries.length, min: ISSUES_MIN },
     make: (columns, limit) => {
-      // The probable count beside the total, so the card does not read as that much dead code.
-      const sure = dead.probable === null || dead.total === '0' ? '' : ` · ${dead.probable} probable`
+      // The probable and test-only counts beside the total, so the card does not read as that much dead code.
+      const sure =
+        dead.total === '0' ? '' : `${dead.probable === null ? '' : ` · ● ${dead.probable} probable`}${dead.testOnly === null ? '' : ` · ◆ ${dead.testOnly} tests only`}`
       const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
       const body = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset)
       return { key: 'dead', title: 'Dead code', note: noteOf(deadNote), body, empty: 'none' }

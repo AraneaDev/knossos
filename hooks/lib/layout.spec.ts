@@ -65,6 +65,7 @@ const dash = (over: Partial<Dashboard> = {}): Dashboard => ({
   ],
   dead_code_candidates: 55,
   dead_code_probable: 12,
+  dead_code_test_only: 9,
   dead_code_truncated: false,
   cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [] },
   trend: [2, 2, 2, 2, 2, 2].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 161 })),
@@ -656,26 +657,34 @@ describe('the issues tab', () => {
     expect(text).toMatch(/Diagnostics +1 error · 1 warning · 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
-    expect(text).toMatch(/Dead code +55 · 12 probable · first 2/)
-    // Each candidate says how sure it is, in a column of its own before the name.
-    expect(text).toMatch(/possible +FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
-    expect(text).toMatch(/◇ probable +helper/)
+    // The note is the legend for the two marks before each name.
+    expect(text).toMatch(/Dead code +55 · ● 12 probable · ◆ 9 tests only · first 2/)
+    // How sure the scan is (● probable, ○ possible) and what reaches it (◆ tests only, ∅ nothing), before the name.
+    expect(text).toMatch(/○ ∅ FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
+    expect(text).toMatch(/● ◆ helper/)
+    expect(text).not.toContain('◇')
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
     expect(text).toMatch(/workers\/typescript\/src\/scanner\.js .*━+ +4,986 +20/)
     expect(text).toMatch(/Over budget +▲ 3 functions over 205 lines/)
     expect(text).toMatch(/▲ src\/Scan\/ProjectScanService\.php +2 +260/)
     expect(text).toContain('+2 not listed')
   })
-  it('shows the certainty column on every dead-code row or on none', () => {
-    for (const columns of [30, 40, 50, 60, 90]) {
+  it('shows the certainty and reachability columns on every dead-code row or on none', () => {
+    for (const columns of [30, 40, 50, 60, 90, 100, 140]) {
       const rows = [0, 1].map(i => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), `dead-${i}`)!))
-      const shown = rows.map(r => /\b(probable|possible)\b/.test(r))
+      const certain = /[●○]/
+      const reach = /[◆∅]/
+      const shown = rows.map(r => certain.test(r) && reach.test(r))
+      expect(rows.every(r => certain.test(r) === reach.test(r)), `${columns} columns: ${rows.join(' | ')}`).toBe(true)
       expect(new Set(shown).size, `${columns} columns: ${rows.join(' | ')}`).toBe(1)
     }
   })
   it('gives way in order: names are cut, then the boundary goes, then the place', () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    expect(dead(90)).toMatch(/possible +FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
+    expect(dead(90)).toMatch(/○ ∅ FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
+    expect(dead(70)).toMatch(/^ +○ ∅ FactCollector::/)
+    // Two marks cost four cells, so they stay even where the boundary and the place have gone.
+    expect(dead(30)).toMatch(/^ +○ ∅ FactCollector::/)
     expect(dead(50)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
