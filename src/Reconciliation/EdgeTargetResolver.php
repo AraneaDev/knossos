@@ -392,7 +392,8 @@ final class EdgeTargetResolver
             return null;
         }
         $returned = $this->returnTypes[$language . ':method:' . $callee]
-            ?? $this->inheritedReturnType($language, $callee);
+            ?? $this->inheritedReturnType($language, $callee)
+            ?? $this->modelFactoryType($language, $callee);
         if ($returned === null) {
             return null;
         }
@@ -431,6 +432,36 @@ final class EdgeTargetResolver
         $separator = strrpos($canonical, '\\');
 
         return $language . ':function:' . ($separator === false ? $canonical : substr($canonical, $separator + 1));
+    }
+
+    /**
+     * The factory class an Eloquent model's `factory()` returns.
+     *
+     * `factory()` comes from the vendor `HasFactory` trait, so no declaration
+     * in the graph gives it a return type and every state called on its result
+     * is dropped. Laravel builds the factory from the model's `newFactory()`
+     * when it declares one, and otherwise by convention: the model's name
+     * after `Models\`, or its short name, under `Database\Factories`, with a
+     * `Factory` suffix. The convention only counts when that class exists.
+     */
+    private function modelFactoryType(string $language, string $callee): ?string
+    {
+        if ($language !== 'php' || !str_ends_with($callee, '::factory')) {
+            return null;
+        }
+        $model = substr($callee, 0, -strlen('::factory'));
+        if ($model === '') {
+            return null;
+        }
+        $declared = $this->returnTypes['php:method:' . $model . '::newFactory'] ?? $this->inheritedReturnType('php', $model . '::newFactory');
+        if ($declared !== null) {
+            return $declared;
+        }
+        $modelsAt = strpos($model, '\\Models\\');
+        $relative = $modelsAt === false ? substr($model, (int) strrpos('\\' . $model, '\\')) : substr($model, $modelsAt + strlen('\\Models\\'));
+        $factory = 'php:class:Database\\Factories\\' . $relative . 'Factory';
+
+        return isset($this->nodeMap[$factory]) ? $factory : null;
     }
 
     /**
