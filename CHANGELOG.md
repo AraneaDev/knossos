@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/AraneaDev/knossos/compare/v0.27.0...v0.27.1) (2026-10-12)
+
+
+### Fixes
+
+* show a scan another process runs, and stop reporting reached code as dead or untested ([#246](https://github.com/AraneaDev/knossos/issues/246)) ([d3e1893](https://github.com/AraneaDev/knossos/commit/d3e18939b23b12169ee4b43a6510b4fe3040c444))
+
 ## [0.27.0](https://github.com/AraneaDev/knossos/compare/v0.26.0...v0.27.0) (2026-10-12)
 
 
