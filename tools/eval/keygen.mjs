@@ -117,9 +117,32 @@ export async function recordDefect(paths, task, command, diff) {
     }
     await writeFile(
         file,
-        JSON.stringify({ task, tool: command, ...diff }, null, 2),
+        JSON.stringify(
+            { task, tool: command, kind: "disagreement", ...diff },
+            null,
+            2,
+        ),
     );
     return true;
+}
+
+/** Writes `defects/<task>.json` for a subject Knossos did not resolve, so the report lists it instead of dropping it. */
+export async function recordUnresolved(paths, task, command, miss) {
+    await mkdir(paths.defects, { recursive: true });
+    await writeFile(
+        path.join(paths.defects, `${task}.json`),
+        JSON.stringify(
+            {
+                task,
+                tool: command,
+                kind: "unresolved",
+                query: miss.query,
+                candidates: miss.candidates,
+            },
+            null,
+            2,
+        ),
+    );
 }
 
 async function main(args) {
@@ -181,7 +204,10 @@ async function main(args) {
             `# Knossos did not resolve ${miss.query ?? values.query ?? task.subject}${miss.candidates.length > 0 ? `; candidates: ${miss.candidates.join(", ")}` : ""}`,
         );
         if (miss.summary !== null) console.log(`# ${miss.summary}`);
-        await clearDefect(paths, task.id);
+        await recordUnresolved(paths, task.id, command, {
+            query: miss.query ?? values.query ?? task.subject,
+            candidates: miss.candidates,
+        });
         return;
     }
     if (isTruncated(json))

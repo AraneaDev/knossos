@@ -24,6 +24,12 @@ const COMPARISONS = [
     ["full", "baseline"],
     ["full", "tools"],
 ];
+const metric = (key) => METRICS.find((m) => m.key === key);
+// F1 for every pair of arms, cost only where it matters: what the full plugin adds over no Knossos.
+const CATEGORY_COMPARISONS = [
+    ...COMPARISONS.map(([a, b]) => [a, b, metric("f1")]),
+    ["full", "baseline", metric("costUsd")],
+];
 const EXCLUDED = ["contaminated", "failed"];
 const COUNTED = ["no-answer", "timeout", "budget"];
 
@@ -115,6 +121,10 @@ function comparisons(rows, seed) {
         ],
         body,
     );
+    lines.push(
+        "",
+        "Cache warm-up makes the first session of an arm costlier, so cost alone is confounded; tokens excl. cache writes leaves that warm-up out.",
+    );
     if (detect)
         lines.push(
             "",
@@ -127,36 +137,39 @@ function comparisons(rows, seed) {
 }
 
 function byCategory(rows, tasks, seed) {
-    const lines = ["## By category", ""];
     const body = [];
     for (const cat of [...new Set(tasks.map((t) => t.category))].sort()) {
         const ids = new Set(
             tasks.filter((t) => t.category === cat).map((t) => t.id),
         );
         const subset = rows.filter((r) => ids.has(r.task));
-        const deltas = pairedDeltas(
-            taskMedians(subset, "f1"),
-            "full",
-            "baseline",
-        );
-        const ci = bootstrapCi(deltas, { seed });
-        body.push([
-            cat,
-            String(deltas.length),
-            fmt(armMeans(subset, "baseline", "f1")),
-            fmt(armMeans(subset, "full", "f1")),
-            ci ? `[${signed(ci.low)}, ${signed(ci.high)}]` : "-",
-            verdict(ci, { higherIsBetter: true }, deltas.length),
-        ]);
+        for (const [a, b, m] of CATEGORY_COMPARISONS) {
+            const deltas = pairedDeltas(taskMedians(subset, m.key), a, b);
+            const ci = bootstrapCi(deltas, { seed });
+            const digits = m.key === "costUsd" ? 3 : 2;
+            body.push([
+                cat,
+                `${a} vs ${b}`,
+                m.label,
+                String(deltas.length),
+                ci ? signed(ci.mean, digits) : "-",
+                ci
+                    ? `[${signed(ci.low, digits)}, ${signed(ci.high, digits)}]`
+                    : "-",
+                verdict(ci, m, deltas.length),
+            ]);
+        }
     }
     return [
-        ...lines,
+        "## By category",
+        "",
         ...table(
             [
                 "category",
+                "comparison",
+                "metric",
                 "tasks",
-                "baseline F1",
-                "full F1",
+                "mean delta",
                 "90% interval",
                 "verdict",
             ],
@@ -235,18 +248,33 @@ function belowBaseline(rows, defects) {
         );
     }
     lines.push("");
-    if (defects.length === 0)
+    // A defect written before kinds existed is a disagreement.
+    const unresolved = defects.filter((d) => d.kind === "unresolved");
+    const disagreements = defects.filter((d) => d.kind !== "unresolved");
+    if (disagreements.length === 0)
         lines.push(
             "No disagreements between answer keys and Knossos were recorded.",
         );
-    for (const d of defects) {
+    for (const d of disagreements) {
         lines.push(
-            `- ${d.task} (${d.tool}): missing ${d.missing.join(", ") || "none"}; extra ${d.extra.join(", ") || "none"}. Re-check the key before calling it a Knossos defect.`,
+            `- ${d.task} (${d.tool}): missing ${(d.missing ?? []).join(", ") || "none"}; extra ${(d.extra ?? []).join(", ") || "none"}. Re-check the key before calling it a Knossos defect.`,
         );
+    }
+    if (unresolved.length > 0) {
+        lines.push(
+            "",
+            "Knossos did not resolve the subject of these tasks, so its answer was never compared with the key:",
+            "",
+        );
+        for (const d of unresolved)
+            lines.push(
+                `- ${d.task} (${d.tool}): query ${d.query ?? "unknown"}; candidates ${(d.candidates ?? []).join(", ") || "none"}`,
+            );
     }
     return lines;
 }
 
+/** Per arm, F1 and cost against the previous run over the tasks both runs scored. */
 function sincePrevious(rows, previous) {
     const lines = ["## Since the previous run", ""];
     if (previous === null)
@@ -254,22 +282,72 @@ function sincePrevious(rows, previous) {
     const arms = [...new Set(rows.map((r) => r.arm))].filter(
         (a) => parseArm(a).minus === null,
     );
-    const body = arms.map((arm) => [
-        arm,
-        fmt(armMeans(previous.rows, arm, "f1")),
-        fmt(armMeans(rows, arm, "f1")),
-        fmt(armMeans(previous.rows, arm, "costUsd"), 3),
-        fmt(armMeans(rows, arm, "costUsd"), 3),
-    ]);
+    const body = [];
+    const skipped = [];
+    for (const arm of arms) {
+        for (const m of [metric("f1"), metric("costUsd")]) {
+            const now = taskMedians(rows, m.key).get(arm) ?? new Map();
+            const before =
+                taskMedians(previous.rows, m.key).get(arm) ?? new Map();
+            const paired = [...now.keys()].filter((t) => before.has(t));
+            const deltas = pairedDeltas(
+                new Map([
+                    ["now", now],
+                    ["before", before],
+                ]),
+                "now",
+                "before",
+            );
+            if (deltas.length < MIN_PAIRED_TASKS) {
+                skipped.push(
+                    `- ${arm} ${m.label}: ${deltas.length} tasks pair with the previous run, fewer than ${MIN_PAIRED_TASKS}, so it is not compared.`,
+                );
+                continue;
+            }
+            const digits = m.key === "costUsd" ? 3 : 2;
+            body.push([
+                arm,
+                m.label,
+                String(deltas.length),
+                fmt(avg(paired.map((t) => before.get(t))), digits),
+                fmt(avg(paired.map((t) => now.get(t))), digits),
+                signed(avg(deltas), digits),
+            ]);
+        }
+    }
     return [
         ...lines,
-        `Compared with run ${previous.runId}.`,
+        `Compared with run ${previous.runId}, task by task over the tasks both runs scored.`,
         "",
-        ...table(
-            ["arm", "F1 before", "F1 now", "cost before", "cost now"],
-            body,
-        ),
+        ...(body.length > 0
+            ? table(
+                  ["arm", "metric", "tasks", "before", "now", "mean delta"],
+                  body,
+              )
+            : []),
+        ...(body.length > 0 && skipped.length > 0 ? [""] : []),
+        ...skipped,
     ];
+}
+
+/** The build a run measured and, when prepare recorded it, how long the scans took. */
+function provenanceLines(meta, prepare) {
+    const dirty =
+        meta.knossosDirty === true
+            ? " with local changes"
+            : meta.knossosDirty === false
+              ? ", clean"
+              : "";
+    const lines = [
+        `Knossos commit ${meta.knossosCommit ?? "unknown"}${dirty}, plugin version ${meta.pluginVersion ?? "unknown"}.`,
+    ];
+    if (prepare !== null) {
+        const ms = Object.values(prepare).filter(Number.isFinite);
+        lines.push(
+            `Scanning ${ms.length} repos took ${fmt(ms.reduce((s, x) => s + x, 0) / 1000, 1)} s in all.`,
+        );
+    }
+    return lines;
 }
 
 export function buildReport({
@@ -278,11 +356,13 @@ export function buildReport({
     tasks,
     previous = null,
     defects = [],
+    prepare = null,
 }) {
     return [
         `# Eval run ${meta.runId}`,
         "",
         `Model ${meta.model}, arms ${meta.arms.join(", ")}, ${meta.repeats} repeats, seed ${meta.seed}, ${tasks.length} tasks.`,
+        ...provenanceLines(meta, prepare),
         "",
         ...summary(meta, rows),
         "",
@@ -325,6 +405,16 @@ async function previousRun(run, s) {
     return null;
 }
 
+async function readPrepare(dir) {
+    try {
+        return JSON.parse(
+            await readFile(path.join(dir, "prepare.json"), "utf8"),
+        );
+    } catch {
+        return null;
+    }
+}
+
 async function readDefects(dir) {
     try {
         const files = (await readdir(dir))
@@ -353,6 +443,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         tasks: run.corpus.tasks,
         previous: await previousRun(run, s),
         defects: await readDefects(evalPaths(s.evalRoot).defects),
+        prepare: await readPrepare(run.dir),
     });
     await writeFile(path.join(run.dir, "report.md"), md);
     console.log(path.join(run.dir, "report.md"));

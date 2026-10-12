@@ -136,7 +136,9 @@ describe("buildReport with enough paired tasks", () => {
             rows: [row("a1", "baseline", 0.5)],
             tasks: [{ id: "a1", category: "x" }],
         });
-        expect(other).toMatch(/\| x \| 0 \|.*\| no data \|/);
+        expect(other).toMatch(
+            /\| x \| full vs baseline \| F1 \| 0 \| - \| - \| no data \|/,
+        );
     });
 });
 
@@ -163,5 +165,175 @@ describe("report CLI", () => {
         expect(result.stderr).toContain(
             "usage: node tools/eval/report.mjs <run-id>",
         );
+    });
+});
+
+describe("report header", () => {
+    it("shows the commit, the dirty flag, the plugin version and the scan time", () => {
+        const md = buildReport({
+            meta: {
+                ...meta,
+                knossosCommit: "abc123",
+                knossosDirty: true,
+                pluginVersion: "0.27.0",
+            },
+            rows,
+            tasks,
+            prepare: { demo: 1500, other: 2500 },
+        });
+        expect(md).toContain(
+            "Knossos commit abc123 with local changes, plugin version 0.27.0.",
+        );
+        expect(md).toContain("Scanning 2 repos took 4.0 s in all.");
+    });
+    it("says unknown for a run without provenance and omits a missing scan time", () => {
+        const md = buildReport({ meta, rows, tasks });
+        expect(md).toContain("Knossos commit unknown, plugin version unknown.");
+        expect(md).not.toContain("Scanning");
+        expect(
+            buildReport({
+                meta: { ...meta, knossosCommit: "a", knossosDirty: false },
+                rows,
+                tasks,
+            }),
+        ).toContain("Knossos commit a, clean,");
+    });
+});
+
+describe("report metrics", () => {
+    it("compares tokens excluding cache writes and says why", () => {
+        const md = buildReport({
+            meta,
+            rows: rows.map((r) => ({ ...r, workTokens: 100 })),
+            tasks,
+        });
+        expect(md).toMatch(
+            /\| full vs baseline \| tokens excl\. cache writes \| 3 \|/,
+        );
+        expect(md).toMatch(
+            /Cache warm-up makes the first session of an arm costlier, so cost alone is confounded/,
+        );
+    });
+    it("prints an unknown cost as - rather than as free", () => {
+        const md = buildReport({
+            meta,
+            rows: rows.map((r) =>
+                r.arm === "tools" ? { ...r, costUsd: null, turns: null } : r,
+            ),
+            tasks,
+        });
+        expect(md).toMatch(/\| tools \| 3 \| 0\.90 \| - \| - \| 30 \|/);
+    });
+});
+
+describe("by category", () => {
+    it("shows all three F1 comparisons and full vs baseline cost", () => {
+        const md = buildReport({ meta, rows, tasks });
+        for (const [cmp, m] of [
+            ["tools vs baseline", "F1"],
+            ["full vs baseline", "F1"],
+            ["full vs tools", "F1"],
+            ["full vs baseline", "cost \\(USD\\)"],
+        ])
+            expect(md).toMatch(
+                new RegExp(`\\| callers \\| ${cmp} \\| ${m} \\| 2 \\|`),
+            );
+        expect(md).not.toMatch(/\| callers \| tools vs baseline \| cost/);
+    });
+});
+
+describe("since the previous run", () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({
+        id: `k${i}`,
+        category: "callers",
+    }));
+    const now = many.flatMap((t) => [
+        row(t.id, "baseline", 0.5),
+        row(t.id, "full", 0.9, { costUsd: 0.2 }),
+    ]);
+    it("pairs the runs task by task and leaves out tasks only one run scored", () => {
+        // The previous run also scored an easy task this run lacks; pooling would hide the change.
+        const before = [
+            ...many.map((t) => row(t.id, "full", 0.6, { costUsd: 0.1 })),
+            row("easy", "full", 1, { costUsd: 0 }),
+        ];
+        const md = buildReport({
+            meta,
+            rows: now,
+            tasks: many,
+            previous: { runId: "r0", rows: before },
+        });
+        expect(md).toMatch(
+            /\| full \| F1 \| 6 \| 0\.60 \| 0\.90 \| \+0\.30 \|/,
+        );
+        expect(md).toMatch(
+            /\| full \| cost \(USD\) \| 6 \| 0\.100 \| 0\.200 \| \+0\.100 \|/,
+        );
+        expect(md).toMatch(
+            /- baseline F1: 0 tasks pair with the previous run, fewer than 5, so it is not compared\./,
+        );
+    });
+    it("skips an arm with fewer paired tasks than the minimum", () => {
+        const md = buildReport({
+            meta,
+            rows: now,
+            tasks: many,
+            previous: {
+                runId: "r0",
+                rows: [row("k0", "full", 0.6), row("k1", "full", 0.6)],
+            },
+        });
+        expect(md).toMatch(/- full F1: 2 tasks pair with the previous run/);
+        expect(md).not.toMatch(/\| full \| F1 \| 2 \|/);
+    });
+});
+
+describe("key disagreements and unresolved subjects", () => {
+    it("lists unresolved subjects apart, and treats a defect without a kind as a disagreement", () => {
+        const md = buildReport({
+            meta,
+            rows,
+            tasks,
+            defects: [
+                {
+                    task: "c1",
+                    tool: "list-usages",
+                    missing: ["A::x"],
+                    extra: [],
+                },
+                {
+                    task: "c2",
+                    tool: "impact-analysis",
+                    kind: "unresolved",
+                    query: "Foo::bar",
+                    candidates: ["App\\Foo::bar"],
+                },
+            ],
+        });
+        expect(md).toMatch(/- c1 \(list-usages\): missing A::x; extra none/);
+        expect(md).toMatch(
+            /Knossos did not resolve the subject of these tasks[^\n]*\n\n- c2 \(impact-analysis\): query Foo::bar; candidates App\\Foo::bar/,
+        );
+        expect(md).not.toMatch(/- c2 \(impact-analysis\): missing/);
+    });
+    it("says no disagreements when only unresolved subjects were recorded", () => {
+        const md = buildReport({
+            meta,
+            rows,
+            tasks,
+            defects: [
+                {
+                    task: "c2",
+                    tool: "list-usages",
+                    kind: "unresolved",
+                    query: "Foo",
+                    candidates: [],
+                },
+            ],
+        });
+        expect(md).toContain(
+            "No disagreements between answer keys and Knossos were recorded.",
+        );
+        expect(md).toMatch(/- c2 \(list-usages\): query Foo; candidates none/);
     });
 });

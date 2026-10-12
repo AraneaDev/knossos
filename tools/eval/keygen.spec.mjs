@@ -9,6 +9,7 @@ import {
     isTruncated,
     knossosAnswer,
     recordDefect,
+    recordUnresolved,
     rgLines,
     unresolved,
 } from "./keygen.mjs";
@@ -133,6 +134,7 @@ describe("recordDefect", () => {
         ).toBe(true);
         expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
             task: "t1",
+            kind: "disagreement",
             missing: ["a"],
         });
         expect(
@@ -320,5 +322,31 @@ describe("dependants distance", () => {
             "src/near.php",
             "src/far.php",
         ]);
+    });
+});
+
+describe("recordUnresolved", () => {
+    it("writes an unresolved defect in place of any earlier one", async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "eval-defects-"));
+        const paths = { defects: path.join(root, "defects") };
+        await recordDefect(paths, "t3", "list-usages", {
+            missing: ["a"],
+            extra: [],
+        });
+        await recordUnresolved(paths, "t3", "list-usages", {
+            query: "Foo::bar",
+            candidates: ["App\\Foo::bar", "Lib\\Foo::bar"],
+        });
+        expect(
+            JSON.parse(
+                await readFile(path.join(paths.defects, "t3.json"), "utf8"),
+            ),
+        ).toEqual({
+            task: "t3",
+            tool: "list-usages",
+            kind: "unresolved",
+            query: "Foo::bar",
+            candidates: ["App\\Foo::bar", "Lib\\Foo::bar"],
+        });
     });
 });
