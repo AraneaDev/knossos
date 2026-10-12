@@ -66,9 +66,10 @@ import type { Flash } from './flash'
 import { cycleCount, cycleSteps, cyclesArrangement, cyclesInput, cyclesList, unfoldPress } from './cycles'
 import type { CyclesInput } from './cycles'
 import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInput, issuesList, locIn, superscript } from './views'
-import { arrange, besideRows, cardInner, DEFAULT_ROWS, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
+import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, cardInner, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
+import { RANKING, SEVERITY, kindLegend, legend } from './marks'
 
 // Everything the specs and the render hook draw with, from one module.
 export { bar, button, cells, displayName, fileHref, fit, linkMarkdown, locOf, locText, rowWidth, tableSpec, tierOf, wrapWords } from './rows'
@@ -96,7 +97,7 @@ export type Item = {
   cross: number
   /** How many other files reference it; null from a knossos that does not say. */
   files: number | null
-  /** Ranked as a hotspot but not as a hub: marked `◆`. */
+  /** Ranked as a hotspot but not as a hub: marked `✦`. */
   hotspotOnly: boolean
   /** Where it is declared, so `e` opens its file; null when the dashboard places it nowhere. */
   loc: Loc | null
@@ -341,21 +342,20 @@ const languagesOf = (d: Dashboard): string => (d.summary?.languages ?? []).map(l
 
 /**
  * The stat tiles: components and boundaries (from a dashboard that reports
- * them), cycles, the largest degree, dead code and the diagnostics (when they
- * were read), each but dead code with how it moved since the previous
- * snapshot and its trend when every snapshot carries one, then the policy
- * violations (when checked) and the drifted files (a press that lists them,
- * when the dashboard names them). Dead code is the candidates the Issues tab
- * lists; the snapshots carry only the quality gate's wider count, which the
- * health card draws under its own name, so the tile has no delta or trend
- * of its own. Each says how it deviates: cycles and diagnostics above zero
- * warn, violations above zero are errors, drift above zero is the accent.
- * Cycles and diagnostics are statuses: their deltas take the status colours.
+ * them), cycles and the largest degree, each with how it moved since the
+ * previous snapshot and its trend when every snapshot carries one, then the
+ * issues and the drifted files (a press that lists them, when the dashboard
+ * names them). Issues is one figure for everything the Issues tab lists: the
+ * dead-code candidates, the diagnostics' errors and warnings, the policy
+ * violations and the functions over budget, and a press opens that tab. It
+ * takes the worst tone among them, violations an error and diagnostics a
+ * warning, and no delta or trend, since no snapshot carries that sum. Cycles
+ * above zero warn and drift above zero is the accent; the cycles' delta takes
+ * the status colours.
  */
 export function statsOf(d: Dashboard, summary: string[], policy: string | null, diagnostics: number | null, drift: boolean): Stat[] {
   const above = (value: string) => value !== '0'
   const cycles = cycleCount(d.cycles)
-  const dead = countLabel(d.dead_code_candidates, d.dead_code_truncated)
   const maxDegree = d.trend.at(-1)?.max_degree ?? null
   const drifted = d.freshness.drift_files
   const deltas = d.deltas ?? null
@@ -382,12 +382,30 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
         ]),
     { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
     ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), ...series(t => t.max_degree), ...moved('max_degree') }]),
-    // The candidates Issues lists; the trend's `dead_code` is the gate's wider count, drawn on the health card under its own name.
-    { key: 'dead', label: 'dead code', value: dead, ...listing('dead', dead) },
-    ...(diagnostics === null ? [] : [{ key: 'diagnostics', label: 'diagnostics', value: grouped(diagnostics), ...series(t => t.diagnostics), ...moved('diagnostics', true), ...(diagnostics > 0 ? { tone: 'warn' as const } : {}), ...listing('diagnostics', grouped(diagnostics)) }]),
-    ...(policy === null ? [] : [{ key: 'policy', label: 'policy', value: policy, ...(above(policy) ? { tone: 'alert' as const } : {}), ...listing('policy', policy) }]),
+    issuesTile(d, policy, diagnostics, listing),
     { key: 'drifted', label: 'drifted', value: grouped(drifted), ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
   ]
+}
+
+/**
+ * The issues tile: the dead-code candidates, the diagnostics' errors and
+ * warnings, the policy violations and the functions over budget, as one
+ * figure that presses to the Issues tab. A dead-code or policy list the search cut short
+ * makes it a floor, `+`. Its tone is the worst among them.
+ */
+function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | null, listing: (key: string, value: string) => Pick<Stat, 'press'>): Stat {
+  const violations = policy === null ? 0 : Number(policy.replace(/\D/g, '')) || 0
+  const errors = diagnostics ?? 0
+  const total = d.dead_code_candidates + errors + violations + (d.over_budget?.total ?? 0)
+  const floor = d.dead_code_truncated || (policy?.endsWith('+') ?? false)
+  const figure = floor ? `${grouped(total)}+` : grouped(total)
+  // The worst finding's mark beside the figure, so the tile says how bad as well as how many: a violation or a
+  // diagnostic error is an error, a warning alone a warning, as the Issues cards mark them.
+  const diagnosticErrors = d.diagnostics?.errors ?? 0
+  const worst = violations > 0 || diagnosticErrors > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
+  const value = worst === null ? figure : `${worst.glyph} ${figure}`
+  const tone = worst === SEVERITY.error ? { tone: 'alert' as const } : worst === SEVERITY.warn ? { tone: 'warn' as const } : {}
+  return { key: 'issues', label: total === 1 && !floor ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
 }
 
 /**
@@ -401,7 +419,7 @@ export function summaryParts(d: Dashboard, hubs: number): string[] {
     return [
       plural(hubs, 'hub', 'hubs'),
       `${cycleCount(d.cycles)} ${d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles'}`,
-      `${countLabel(d.dead_code_candidates, d.dead_code_truncated)} dead code`,
+      `${countLabel(d.dead_code_candidates, d.dead_code_truncated)} dead code${d.dead_code_probable === undefined ? '' : ` (${d.dead_code_probable} probable)`}`,
       drift,
     ]
   }
@@ -605,7 +623,7 @@ export const askPrompt = (canonical: string): string =>
  */
 export function allowRows(allow: AllowInput, columns: number): Row[] {
   const lines = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] =>
-    wrapWords(text, Math.max(1, columns - 3)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: i === 0 ? '▲  ' : '   ', ...style }, { text: line, ...style }] }))
+    wrapWords(text, Math.max(1, columns - 3)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', ...style }, { text: line, ...style }] }))
   const answers = (groups: Segment[][]) => wrapGroups('allow-keys', groups, columns, 2, 3)
   if (allow.phase === 'confirming') {
     const where = allow.rootsFile === null ? 'the roots file knossos reads' : allow.rootsFile
@@ -616,7 +634,7 @@ export function allowRows(allow: AllowInput, columns: number): Row[] {
   }
   if (allow.phase === 'running') return [dimRow('allow-running', `   allowing ${allow.root}…`, columns)]
   if (allow.phase === 'done') {
-    return wrapWords(`✓ ${allow.root} allowed · the next turn scans it`, columns).map((line, i) => ({
+    return wrapWords(`${SEVERITY.ok.glyph} ${allow.root} allowed · the next turn scans it`, columns).map((line, i) => ({
       key: `allow-done-${i}`,
       segments: [{ text: line, color: STATUS_COLOURS.ok }],
     }))
@@ -638,9 +656,9 @@ export function gitLabel(git: GitHead | undefined): string {
   return git.branch === null ? `@ ${short}` : `${git.branch} · ${short}`
 }
 
-/** The status as a pill: the dot and the words on the status colour, in the text set on a fill. */
+/** The status as a pill: the words on the status colour, in the text set on a fill. No dot: ● means probably dead. */
 function pill(status: PaneStatus): Segment {
-  return { text: ` ● ${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
+  return { text: ` ${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
 }
 
 /**
@@ -775,7 +793,7 @@ function componentSpec(items: Item[], columns: number, withDegrees: boolean, hue
   const widths = degreeTitles(withDegrees, withFiles).map((t, i) => numberWidth(t, items.map(item => degreesOf(item, withDegrees, withFiles)[i] ?? 0), tier))
   const labels = sharedBoundary(items) === null ? items.map(i => boundaryLabel(i.boundary, hues)) : []
   const places = tier === 'narrow' ? [] : items.map(placeIn)
-  const kinds = tier === 'wide' ? items.map(i => i.kind) : []
+  const kinds = items.map(i => i.kind)
   return tableSpec(columns, items.map(i => i.name), labels, widths, undefined, { tier, places, kinds })
 }
 
@@ -868,7 +886,7 @@ function padded(row: Row, pad: number, columns: number, bg?: string): Row {
  * left, what can be done to the marked row on the right, and between them,
  * for a moment after an action, what it did (`✓ copied`, `✗ no editor`).
  * Once the header is scrolled out of view (`scrolled`), the graph's state
- * stands at the right edge (`● live · 7s`). Only the keys that do something
+ * stands at the right edge (`live · 7s`). Only the keys that do something
  * in this view are offered. Each group stays whole; past the width the
  * actions wrap under the moves, and a key is never dropped, since it would
  * stop working. While the key list `h` opens is shown, the bar offers only
@@ -908,7 +926,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   const pad = padOf(tier)
   const inner = Math.max(1, columns - 2 * pad)
   const said: Segment[] = input.feedback === null ? [] : [{ text: input.feedback.text, color: input.feedback.tone === 'ok' ? STATUS_COLOURS.ok : STATUS_COLOURS.alert }]
-  const state: Segment[] = scrolled ? [{ text: `● ${input.status.text}`, color: STATUS_COLOURS[input.status.tone] }] : []
+  const state: Segment[] = scrolled ? [{ text: input.status.text, color: STATUS_COLOURS[input.status.tone] }] : []
   const left = joinGroups(moves.map(k => [{ ...k, dim: true }]))
   const right = joinGroups([...actions.map(k => [{ ...k, dim: true }]), ...(state.length > 0 ? [state] : [])])
   const lines: Row[] = []
@@ -930,7 +948,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
 function keysFooter(input: PaneInput, columns: number, scrolled: boolean): { bar: Row[] } {
   const pad = padOf(tierOf(columns))
   const inner = Math.max(1, columns - 2 * pad)
-  const state: Segment[] = scrolled ? [{ text: `● ${input.status.text}`, color: STATUS_COLOURS[input.status.tone] }] : []
+  const state: Segment[] = scrolled ? [{ text: input.status.text, color: STATUS_COLOURS[input.status.tone] }] : []
   const actions = [button('keys-close', 'close', 'x'), button('keys', 'hide keys', 'h')].map(k => [{ ...k, dim: true }])
   const right = joinGroups([...actions, ...(state.length > 0 ? [state] : [])])
   const lines = segmentsWidth(right) <= inner ? [spread('keys', [], right, inner)] : wrapGroups('keys', [...actions, ...(state.length > 0 ? [state] : [])], inner)
@@ -981,7 +999,7 @@ function joinGroups(groups: Segment[][]): Segment[] {
 
 /** The hubs tab: one card with the filter field or line, and the filtered, sorted table, as long as the pane allows. */
 function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier): Block {
-  const hotspots = input.items.some(i => i.hotspotOnly) ? '◆ hotspot only' : ''
+  const hotspots = input.items.some(i => i.hotspotOnly) ? legend([[RANKING.hotspotOnly, '']]) : ''
   const range = input.degree
   const note = sharedNote(list, [hotspots, input.partial ? 'partial' : ''].filter(s => s !== '').join(' · '), input.hues)
   return {
@@ -999,7 +1017,11 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
         const counted = range.components === null ? '' : ` of ${grouped(range.components)}`
         rows.push(dimRow('degree-row', `   in-degree ${range.to === null ? `${range.from}+` : range.from === range.to ? `${range.from}` : `${range.from}–${range.to}`} · ${list.length} listed${counted}`, columns))
       }
-      const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(note), body })
+      // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
+      const kinds = kindLegend(list.map(i => i.kind))
+      const keyed = [note, kinds].filter(s => s !== '').join(' · ')
+      const told = cells(`Hubs and hotspots sorted by ${input.sort}`) + cells(keyed) + NOTE_ROOM <= columns ? keyed : note
+      const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(told), body })
       if (list.length === 0) return section([...rows, dimRow('hubs-none', input.filter === '' ? (range === null ? '   none' : '   none of the listed hubs is in this range') : `   no hub matches "${input.filter}"`, columns)])
       const spec = componentSpec(list, columns, true, input.hues, tier)
       const local = selected < list.length ? selected : -1

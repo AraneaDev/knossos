@@ -1412,7 +1412,7 @@ describe('knossos mod', () => {
     const ui = await mountPane($)
     await ui.press({ key: 'tab:hubs' })
     expect((await ui.find({ key: 'hub-0' }))?.text).toContain('Router')
-    expect((await ui.find({ key: 'title' }))?.text).toContain('● refresh failed 1s')
+    expect((await ui.find({ key: 'title' }))?.text).toContain('refresh failed 1s')
     await ui.unmount()
   })
 
@@ -1430,9 +1430,9 @@ describe('knossos mod', () => {
     await w.clock.settle()
     expect(w.calls.filter(c => c[2] === 'dashboard').length).toBe(before + 1)
     const ui = await mountPane($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● fresh 1s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/fresh 1s {3}rescan$/)
     await w.clock.advance(5_000)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● fresh 6s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/fresh 6s {3}rescan$/)
     await ui.unmount()
   })
 
@@ -1444,7 +1444,7 @@ describe('knossos mod', () => {
     await slash($, '')
     await w.clock.settle()
     const ui = await mountPane($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● refresh failed 11s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/refresh failed 11s {3}rescan$/)
     await ui.press({ key: 'tab:hubs' })
     expect((await ui.find({ key: 'hub-0' }))?.text).toContain('Router')
     await ui.unmount()
@@ -1565,18 +1565,18 @@ describe('knossos mod', () => {
     await w.clock.settle()
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await mountPane($, surface)
-      expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ repo +● fresh 1s {3}rescan$/)
+      expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ repo +fresh 1s {3}rescan$/)
       // The header is two rows, the title and the tabs: no summary line under them.
       expect(await ui.find({ key: 'summary' })).toBeUndefined()
       // Narrow, the stat tiles are a line of figures under the tabs.
-      expect(await tilesLine(ui)).toMatch(/^1 cycle +12 max degree +4 dead code +0 drifted$/)
+      expect(await tilesLine(ui)).toMatch(/^1 cycle +12 max degree +4 issues +0 drifted$/)
       expect(await ui.find({ key: 'top-0' })).toBeUndefined()
       expect(titled((await ui.find({ key: 'session-head' }))?.text)).toMatch(/^This session +nothing changed yet$/)
       await ui.press({ key: 'tab:hubs' })
       // The marked row is tinted to the card's edge: the spaces that carry the tint end it.
-      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +Router .*41/)
+      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41/)
       // A hotspot that is not a hub is listed once, marked.
-      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ Kernel/)
+      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/✦ C Kernel/)
       await ui.press({ key: 'tab:overview' })
       await ui.unmount()
     }
@@ -1618,7 +1618,7 @@ describe('knossos mod', () => {
     await $.session.start(START)
     await w.clock.settle()
     const ui = await mountPane($)
-    expect(await tilesLine(ui)).toMatch(/^50\+ cycles +12 max degree +100\+ dead code +0 drifted$/)
+    expect(await tilesLine(ui)).toMatch(/^50\+ cycles +12 max degree +100\+ issues +0 drifted$/)
     await ui.unmount()
   })
 
@@ -1673,8 +1673,8 @@ describe('knossos mod', () => {
       await ui.press({ key: 'tab:hubs' })
       expect((await ui.find({ key: 'tab:hubs' }))?.props.dimColor).toBeUndefined()
       expect((await ui.find({ key: 'hub-head' }))?.text).toMatch(/name +in out cross$/)
-      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +Router .*41 +3 +2 *$/)
-      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ Kernel/)
+      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41 +3 +2 *$/)
+      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/✦ C Kernel/)
       await ui.press({ key: 'tab:boundaries' })
       expect((await ui.find({ key: 'pane' }))?.text).toContain('sends no boundary map')
       expect(await ui.find({ key: 'hub-0' })).toBeUndefined()
@@ -2146,7 +2146,7 @@ describe('knossos mod', () => {
     await slash($, '')
     await slash($, '')
     await w.clock.settle()
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● stale 2h {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/stale 2h {3}rescan$/)
     expect(w.scanRuns()).toEqual([])
     await ui.unmount()
   })
@@ -2177,7 +2177,7 @@ describe('knossos mod', () => {
         // Nothing runs inside the press: the scan starts on a timer.
         expect(w.scanRuns()).toEqual([])
         await w.clock.settle()
-        expect((await ui.find({ key: 'title' }))?.text).toMatch(/● scanning… · stale \d+[smh] $/)
+        expect((await ui.find({ key: 'title' }))?.text).toMatch(/scanning… · stale \d+[smh] $/)
         expect(await ui.find({ key: 'rescan' })).toBeUndefined()
         await w.clock.advance(1000)
         await w.clock.settle()
@@ -2186,7 +2186,7 @@ describe('knossos mod', () => {
         expect(w.scanRuns()[0]).toEqual(['sh', expect.stringMatching(/\/hooks\/scripts\/knossos-run\.sh$/), 'scan', ROOT])
         expect(w.dashboardRuns().length).toBeGreaterThan(before)
       }
-      expect((await ui.find({ key: 'title' }))?.text).toMatch(/● fresh 1s {3}rescan$/)
+      expect((await ui.find({ key: 'title' }))?.text).toMatch(/fresh 1s {3}rescan$/)
       expect((await ui.find({ key: 'rescan' }))?.props.hotkey).toBe('r')
       await ui.unmount()
     }
@@ -2202,13 +2202,13 @@ describe('knossos mod', () => {
     const loads = w.dashboardRuns().length
     await ui.press({ key: 'rescan' })
     await w.clock.settle()
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/not an allowed root +● scan failed /)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/not an allowed root +scan failed /)
     expect((await ui.find({ key: 'hub-0' }))?.text).toContain('Router')
     expect(w.dashboardRuns().length).toBe(loads)
     // Still stale, so it can be tried again; silence is a failure too.
     await ui.press({ key: 'rescan' })
     await w.clock.settle()
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/knossos said nothing +● scan failed /)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/knossos said nothing +scan failed /)
     expect(w.scanRuns()).toHaveLength(2)
     await ui.unmount()
   })
@@ -2682,10 +2682,10 @@ describe('knossos mod', () => {
       expect((await ui.find({ key: 'tab:issues' }))?.text).toBe(' 5³ ')
       await ui.press({ key: 'tab:issues' })
       const text = drawn((await ui.find({ key: 'pane' }))?.text ?? '')
-      expect(titled(text)).toMatch(/Policy violations *▲ 2/)
+      expect(titled(text)).toMatch(/Policy violations *✗ 2/)
       expect(text).toContain('Kernel::boot')
       expect(text).toContain('Kernel.php:12')
-      expect(titled(text)).toMatch(/Diagnostics *1 error · 0 warnings/)
+      expect(titled(text)).toMatch(/Diagnostics *✗ 1 error ✗/)
       expect(text).toContain('PHP001 Syntax error')
       expect(titled(text)).toMatch(/Dead code *4 · first 1/)
       expect(text).toContain('Router::unused')
@@ -3067,7 +3067,7 @@ describe('knossos mod', () => {
       await ui.press({ key: 'tab:hubs' })
       const order = async () => {
         const names: (string | undefined)[] = []
-        for (const i of [0, 1, 2]) names.push((await ui.find({ key: `hub-${i}` }))?.text.replace(/^[›◆\s]+/, '').split(/\s+/)[0])
+        for (const i of [0, 1, 2]) names.push((await ui.find({ key: `hub-${i}` }))?.text.replace(/^[›◆✦\s]+/, '').split(/\s+/)[1])
         return names
       }
       expect(await order()).toEqual(['Router', 'Request', 'Kernel'])
@@ -3075,7 +3075,7 @@ describe('knossos mod', () => {
       expect((await ui.find({ key: 'sort' }))?.text).toBe('sort: in')
       await ui.press({ key: 'sort' })
       expect((await ui.find({ key: 'sort' }))?.text).toBe('sort: out')
-      expect(titled((await ui.find({ key: 'hubs-head' }))?.text)).toMatch(/by out$/)
+      expect(titled((await ui.find({ key: 'hubs-head' }))?.text)).toMatch(/by out( |$)/)
       expect(await order()).toEqual(['Kernel', 'Request', 'Router'])
       await ui.press({ key: 'sort' })
       expect(await order()).toEqual(['Kernel', 'Router', 'Request'])
@@ -3101,13 +3101,14 @@ describe('knossos mod', () => {
       const ui = await mountPane($, surface)
       // Narrow: the tiles' line says every figure, the title row the name and the pill alone.
       expect(await ui.find({ key: 'summary' })).toBeUndefined()
-      expect(await tilesLine(ui)).toMatch(/^1,234 components +2 boundaries .*1 diagnostics +2 policy +0 drifted$/)
+      // The diagnostic and the two violations count among the issues, beside the dead code.
+      expect(await tilesLine(ui)).toMatch(/^1,234 components +2 boundaries .*7 issues +0 drifted$/)
       await ui.unmount()
       // From the medium tier the tiles say the figures, and the languages are chips in the title row.
       const wide = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 140, scroll: { offset: 0, bodyRows: 40 } } })
       expect((await wide.findAll({ type: 'Text' })).filter(t => t.props.backgroundColor === 'userMessageBackground').map(t => t.text).slice(0, 2)).toEqual([' PHP ', ' TS '])
-      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ diagnostics +│ policy +│ drifted +│$/)
-      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ 1 +│ 2 +│ 0 +│$/)
+      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ issues +│ drifted +│$/)
+      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ ✗ 7 +│ 0 +│$/)
       await wide.unmount()
     }
   })
@@ -3411,7 +3412,7 @@ describe('knossos mod', () => {
       const text = drawn((await ui.find({ key: 'pane' }))?.text ?? '')
       expect(titled(text)).toMatch(/Changes this session +2 turns/)
       expect(text).toMatch(/2 files → 45 dependents reaching ■ Http ■ Core/)
-      expect(drawn((await ui.find({ key: 'change-0' }))?.text ?? '')).toMatch(/^› +src\/Router\.php +■ Http .*42 *$/)
+      expect(drawn((await ui.find({ key: 'change-0' }))?.text ?? '')).toMatch(/^›~ src\/Router\.php +■ Http .*42 *$/)
       expect(drawn((await ui.find({ key: 'change-1' }))?.text ?? '')).toMatch(/^ \+ src\/Kernel\.php +■ Core .*3$/)
       // Each test once, at its nearest distance.
       expect(titled(text)).toMatch(/Tests that reach these changes · 2 +nearest first/)
@@ -3609,6 +3610,11 @@ describe('knossos mod', () => {
       expect(tiles).toContain('stat:cycles')
       await ui.press({ key: 'stat:cycles' })
       expect(await ui.find({ key: 'tab:cycles-bg' })).toBeDefined()
+      await ui.press({ key: 'tab:overview' })
+      // The issues tile opens Issues at its top.
+      expect(tiles).toContain('stat:issues')
+      await ui.press({ key: 'stat:issues' })
+      expect(await ui.find({ key: 'tab:issues-bg' })).toBeDefined()
       await ui.press({ key: 'tab:overview' })
       // Forty hubs on a short pane: the line under the list moves the marker onto the first it hides.
       await ui.redraw({ ...PANE_PROPS, bodyColumns: 120, scroll: { offset: 0, bodyRows: 24 } })
@@ -3869,7 +3875,7 @@ describe('knossos mod', () => {
     expect(w.copies.at(-1)?.text).toBe('npx vitest run hooks/lib/band.spec.ts')
     await ui.press({ key: 'open' })
     expect((await ui.find({ key: 'tab:changes-bg' }))?.props.backgroundColor).toBe('selectionBg')
-    expect((await ui.find({ key: 'change-0' }))?.text).toMatch(/^› .*src\/Router\.php/)
+    expect((await ui.find({ key: 'change-0' }))?.text).toMatch(/^›~ src\/Router\.php/)
     await ui.press({ key: 'tab:overview' })
     await ui.unmount()
   })
@@ -3898,7 +3904,7 @@ describe('the live watcher', () => {
     expect(w.watcher.starts).toHaveLength(1)
     expect(w.watcher.starts[0]?.slice(2)).toEqual(['watch', ROOT, '--poll-ms=1000'])
     const ui = await mountPane($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● live · \d+s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/live · \d+s {3}rescan$/)
     await ui.unmount()
     // Its own ready names the snapshot the dashboard already has: no second load.
     expect(w.dashboardRuns()).toHaveLength(1)
@@ -3916,7 +3922,7 @@ describe('the live watcher', () => {
     w.watchSend({ event: 'scan_completed', mode: 'incremental', snapshot_id: 's2', parsed_files: 1 })
     await w.clock.advance(100)
     expect(w.dashboardRuns()).toHaveLength(2)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● live · \d+s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/live · \d+s {3}rescan$/)
     await ui.unmount()
   })
 
@@ -3925,7 +3931,7 @@ describe('the live watcher', () => {
     await $.session.start(START)
     await w.clock.settle()
     const ui = await mountPane($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● following · \d+s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/following · \d+s {3}rescan$/)
     w.watchSend({ event: 'snapshot', snapshot_id: 's9' })
     await w.clock.advance(100)
     expect(w.dashboardRuns()).toHaveLength(2)
@@ -4056,7 +4062,7 @@ describe('the live watcher', () => {
     await $.session.start(START)
     await w.clock.settle()
     const ui = await mountPane($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● live · \d+s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/live · \d+s {3}rescan$/)
     await $.session.end({ reason: 'resume', sessionId: 'x', resume: { id: 'x' } } as never)
     await w.clock.settle()
     // Nothing watches now: the header says so at once, and a brief in the gap scans for itself.
@@ -4069,7 +4075,7 @@ describe('the live watcher', () => {
     // The resumed session is watched again, from the next tick.
     await w.clock.advance(1_100)
     expect(w.watcher.starts).toHaveLength(2)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● live · \d+s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/live · \d+s {3}rescan$/)
     await ui.unmount()
   })
 
@@ -4101,7 +4107,7 @@ describe('the live watcher', () => {
     await $.session.start(START)
     await w.clock.settle()
     const ui = await mountPane($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/● live · \d+s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/live · \d+s {3}rescan$/)
     await ui.unmount()
   })
 
@@ -4691,8 +4697,8 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await wide($, surface)
       const title = (await ui.find({ key: 'title' }))?.text ?? ''
-      expect(title).toMatch(/^ {2}repo {2}feat\/pane · 0123456 {3}PHP {3}TS +● fresh 1s {3}rescan$/)
-      const pill = (await ui.findAll({ type: 'Text' })).find(t => t.text === ' ● fresh 1s ')
+      expect(title).toMatch(/^ {2}repo {2}feat\/pane · 0123456 {3}PHP {3}TS +fresh 1s {3}rescan$/)
+      const pill = (await ui.findAll({ type: 'Text' })).find(t => t.text === ' fresh 1s ')
       expect(pill?.props).toMatchObject({ backgroundColor: 'success', color: 'inverseText', bold: true })
       await ui.unmount()
     }
@@ -4726,13 +4732,13 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
       const bar = await short.find({ key: 'bar' })
       // While the key list is shown the bar offers only closing it: one row.
       expect(bar?.props).toMatchObject({ position: 'absolute', top: 15 })
-      expect(bar?.text).not.toContain('● fresh')
+      expect(bar?.text).not.toContain('fresh')
       await short.unmount()
       const scrolled = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 6, bodyRows: 16 } } })
       // The key list is still open: the view outlives the mount.
       // Its state joins the bar's last row.
       expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 21 })
-      expect((await scrolled.find({ key: 'bar' }))?.text).toContain('● fresh 1s')
+      expect((await scrolled.find({ key: 'bar' }))?.text).toContain('fresh 1s')
       await scrolled.press({ key: 'keys' })
       await scrolled.unmount()
     }
@@ -4743,11 +4749,11 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     await $.session.start(START)
     await w.clock.settle()
     const ui = await wide($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo +● fresh 1s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo +fresh 1s {3}rescan$/)
     await ui.press({ key: 'tab:hubs' })
     await ui.press({ key: 'open' })
     await w.clock.settle()
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo › Hubs › Router +● fresh 1s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo › Hubs › Router +fresh 1s {3}rescan$/)
     await ui.unmount()
   })
 
@@ -4870,7 +4876,7 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     const ui = await mountPane($)
     await ui.press({ key: 'tab:changes' })
     const row = (await ui.find({ key: 'changes-timeline' }))?.text ?? ''
-    expect(row).toMatch(/^ {3}scans ●● {2}\d this session/)
+    expect(row).toMatch(/^ {3}scans •• {2}\d this session/)
     await ui.unmount()
   })
 })
@@ -4934,8 +4940,8 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await mountPane($, surface, 100)
       const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
-      expect(text).toMatch(/1 hop · 2 +─+ ▲ 1 untested/)
-      expect(text).toMatch(/▲Caller {3}Router/)
+      expect(text).toMatch(/1 hop · 2 +─+ ✓ 1 tested · ▲ 1 untested/)
+      expect(text).toMatch(/▲ C Caller {3}C Router/)
       expect(text).toContain('✓ 1 test file: RouterTest.php')
       expect(text).toContain('◉ Greeter')
       await ui.unmount()
@@ -4982,7 +4988,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     await ui.press({ key: 'back' })
     await w.clock.settle()
     const back = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
-    expect(back).toMatch(/Overview › Greeter +●/)
+    expect(back).toMatch(/Overview › Greeter +fresh/)
     expect(back).not.toContain('Route ›')
     await ui.unmount()
   })

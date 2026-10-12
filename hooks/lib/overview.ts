@@ -37,6 +37,7 @@ import type { Hues } from './palette'
 import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Openable } from './views'
+import { PLACE, REACH, mark } from './marks'
 
 /** One part of a whole: its label, how many, and how its share of the bar is drawn (a glyph in a colour). */
 export type Part = { label: string; value: number; glyph: string; colour: string }
@@ -351,7 +352,7 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
       const body = buckets.map((b, i) => {
         const glyphs = bar(b.components, max, width)
         const segments: Segment[] = [
-          i === top ? { text: '◆', color: ACCENT } : { text: ' ' },
+          i === top ? mark(PLACE.hub) : { text: ' ' },
           { text: ' ' },
           button(`row:${offset + i}`, labels[i]!),
           { text: spaces(labelWidth - cells(labels[i]!) + 1) },
@@ -464,7 +465,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
       const body = flows.map((f, i) => {
         // The source's name is the press: a chip's label cannot carry a colour, so its swatch carries it.
         const name = fit(boundaryLabel(f.from, hues), fromWidth - 2)
-        const from: Segment[] = [{ text: '■', color: boundaryColour(f.from, hues) ?? FAINT }, { text: ' ' }, button(`row:${offset + i}`, name)]
+        const from: Segment[] = [{ text: PLACE.swatch.glyph, color: boundaryColour(f.from, hues) ?? FAINT }, { text: ' ' }, button(`row:${offset + i}`, name)]
         const to = chip(f.to, hues, toWidth, {})
         const pad = (s: Segment[], w: number) => [...s, { text: spaces(w - s.reduce((n, x) => n + cells(x.text), 0)) }]
         const glyphs = withBar ? bar(f.edges, max, width) : ''
@@ -509,9 +510,9 @@ export function sessionBlock(changes: ChangesInput, look: LookAt | null, selecte
       const said: Segment[][] = [
         [{ text: `${grouped(changes.files.length)}${plus}`, color: HEADING }, { text: ` ${changes.files.length === 1 ? 'file' : 'files'} ·`, dim: true }],
         [{ text: grouped(dependents), color: HEADING }, { text: ` ${dependents === 1 ? 'dependent' : 'dependents'} ·`, dim: true }],
-        tests === 0 ? [warned('▲ no test reaches them')] : [{ text: grouped(tests), color: HEADING }, { text: ` ${tests === 1 ? 'test reaches' : 'tests reach'} them`, dim: true }],
+        tests === 0 ? [warned(`${REACH.untested.glyph} no test reaches them`)] : [{ text: grouped(tests), color: HEADING }, { text: ` ${tests === 1 ? 'test reaches' : 'tests reach'} them`, dim: true }],
         // Of them, the files no test reaches at all: what a change leaves unchecked.
-        ...(tests > 0 && changes.untested > 0 ? [[{ text: '· ', dim: true }, warned(`▲ ${untestedText(changes.untested)}`)]] : []),
+        ...(tests > 0 && changes.untested > 0 ? [[{ text: '· ', dim: true }, warned(`${REACH.untested.glyph} ${untestedText(changes.untested)}`)]] : []),
       ]
       body.push(...wrapGroups('session-said', said, columns, 1, 3))
       const open: Segment[] = [{ text: '  ' }, button('row:0', 'Changes'), { text: '  every file, its dependents and its tests', dim: true }]

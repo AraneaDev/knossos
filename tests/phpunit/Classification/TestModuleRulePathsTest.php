@@ -69,6 +69,35 @@ final class TestModuleRulePathsTest extends KnossosTestCase
         assertSame(true, self::isTestCode('src/__tests__/Foo.php'));
     }
 
+    /**
+     * `src/test/` is the test root of Maven and Gradle and where Vitest and
+     * Jest setups keep their helpers, so `test` directly under `src` counts.
+     * Deeper, or under another source root, it stays ordinary source.
+     */
+    #[Group('classification')]
+    public function testATestDirectoryDirectlyUnderSrcIsTestCode(): void
+    {
+        assertSame(true, self::isTestCode('web/src/test/test-utils.tsx'));
+        assertSame(true, self::isTestCode('src/test/java/com/acme/Helpers.java'));
+        assertSame(false, self::isTestCode('src/openapi/test/Fixture.php'), 'Deeper under src it is source.');
+        assertSame(false, self::isTestCode('lib/test/Foo.php'), 'Only src is a test root this way.');
+        assertSame(false, self::isTestCode('src/tests/Foo.php'), 'Only the singular is the Maven layout.');
+    }
+
+    /**
+     * Laravel's model factories build fixtures for tests: `database/factories/`
+     * is test support, wherever the Laravel application sits. A `factories`
+     * directory anywhere else is ordinary source.
+     */
+    #[Group('classification')]
+    public function testLaravelModelFactoriesAreTestSupport(): void
+    {
+        assertSame(true, self::isTestCode('database/factories/UserFactory.php'));
+        assertSame(true, self::isTestCode('api/database/factories/Account/UserFactory.php'));
+        assertSame(false, self::isTestCode('app/Factories/ReportFactory.php'), 'Only under database/.');
+        assertSame(false, self::isTestCode('database/seeders/UserSeeder.php'));
+    }
+
     /** The filename convention is recognised whatever case it is written in. */
     #[Group('classification')]
     public function testTheFilenameConventionIsRecognisedInAnyCase(): void

@@ -35,10 +35,11 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
-import { moreRows, noteOf, windowOf } from './cards'
+import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
+import { CHANGE, REACH, SEVERITY, legend, mark } from './marks'
 
 /** The most files, tests and violations a session keeps; past them `truncated` is set. */
 export const FILE_CAP = 500
@@ -416,7 +417,7 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
 }
 
 /** One scan on the timeline. */
-const TIMELINE_DOT = '●'
+const TIMELINE_DOT = CHANGE.scan.glyph
 
 /** The files the Changes tab walks: each opens as a file's detail (who depends on it), and `e` opens it in the editor. */
 export function changesList(input: ChangesInput): Openable[] {
@@ -457,10 +458,10 @@ export function reachRows(key: string, lead: string, boundaries: string[], colum
   return wrapGroups(key, groups(shown), columns, 1, 3)
 }
 
-/** A one-cell mark for how a file stands: `+` added, `−` deleted, nothing for changed. */
+/** A one-cell mark for how a file stands: `+` added, `−` deleted, `~` changed. */
 export function statusMark(status: TouchStatus): Segment {
-  if (status === 'added') return { text: '+', color: STATUS_COLOURS.ok }
-  return status === 'deleted' ? { text: '−', color: STATUS_COLOURS.alert } : { text: ' ' }
+  if (status === 'added') return mark(CHANGE.added)
+  return status === 'deleted' ? mark(CHANGE.removed) : mark(CHANGE.changed)
 }
 
 /** The fewest changed files and tests the Changes tab lists, however short the pane. */
@@ -506,17 +507,23 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   const tested = input.files.some(f => f.tests !== null) && columns - origin > TESTS_WIDTH + 24 ? TESTS_WIDTH + 1 : 0
   const spec = tableSpec(columns - origin - tested, input.files.map(f => f.path), input.files.map(f => boundaryLabel(f.boundary)), [numberWidth('deps', input.files.map(f => f.dependents), tier)], PATH_MAX, { tier })
   const max = Math.max(0, ...input.files.map(f => f.dependents))
-  const note = `${input.sinceStart ? (input.since ?? 'since it began') : plural(input.turns, 'turn', 'turns')}${input.truncated ? ' · partial' : ''}`
+  // The file marks the card shows, counted: the note is their legend, where it fits beside the title. A note too
+  // long for the top edge is dropped whole, so the legend gives way first and what the note says otherwise stays.
+  const counted = (status: TouchStatus) => input.files.filter(f => f.status === status).length
+  const key = legend([[CHANGE.changed, counted('changed')], [CHANGE.added, counted('added')], [CHANGE.removed, counted('deleted')]])
+  const told = `${input.sinceStart ? (input.since ?? 'since it began') : plural(input.turns, 'turn', 'turns')}${input.truncated ? ' · partial' : ''}`
+  const keyed = key === '' ? told : `${told} · ${key}`
+  const note = cells(title) + cells(keyed) + NOTE_ROOM <= columns ? keyed : told
   if (input.fallback !== null) said('changes-fallback', input.fallback)
   // What the changes reach: the dependents, and every boundary they are in, each in its colour.
   rows.push(...reachRows('changes-reach', `${plural(input.files.length, 'file', 'files')} → ${grouped(deps)} dependents`, input.boundaries, columns, hues))
   if (input.violations > 0) {
     // The violations are listed on Issues: the press opens it on the first.
-    rows.push({ key: 'changes-policy', segments: [{ text: '   ' }, button('stat:policy', `▲ ${plural(input.violations, 'policy violation', 'policy violations')} introduced`, undefined, { color: STATUS_COLOURS.alert })] })
+    rows.push({ key: 'changes-policy', segments: [{ text: '   ' }, button('stat:policy', `${SEVERITY.error.glyph} ${plural(input.violations, 'policy violation', 'policy violations')} introduced`, undefined, { color: STATUS_COLOURS.alert })] })
   }
   // The count is a press that lists only those files; while it does, it says so, and a row offers every file back.
   if (input.untested > 0) {
-    const count: Segment[] = [button('untested-row', `▲ ${untestedText(input.untested)}`, undefined, { color: STATUS_COLOURS.warn })]
+    const count: Segment[] = [button('untested-row', `${REACH.untested.glyph} ${untestedText(input.untested)}`, undefined, { color: STATUS_COLOURS.warn })]
     rows.push(...wrapGroups('changes-untested', input.untestedOnly ? [count, [{ text: '· showing only these', dim: true }]] : [count], columns, 1, 3))
     if (input.untestedOnly) rows.push({ key: 'changes-all', segments: [{ text: '   ' }, button('untested-all', 'show all files', undefined, { dim: true })] })
   }
@@ -548,7 +555,7 @@ export const untestedText = (n: number): string => `${plural(n, 'file', 'files')
 /** A changed file's tests cell: `▲ none` in the warning tone, the count dim (`20+` at the cap), blank when not known. */
 function testsCell(tests: number | null): Segment {
   if (tests === null) return { text: spaces(TESTS_WIDTH) }
-  if (tests === 0) return { text: padStart('▲ none', TESTS_WIDTH), color: STATUS_COLOURS.warn }
+  if (tests === 0) return { ...mark(REACH.untested), text: padStart(`${REACH.untested.glyph} none`, TESTS_WIDTH) }
   return { text: padStart(tests >= TESTS_COUNTED ? `${TESTS_COUNTED}+` : String(tests), TESTS_WIDTH), dim: true }
 }
 
@@ -562,7 +569,7 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
   const title = 'Tests that reach these changes'
   if (input.tests.length === 0) {
     // With some file's reach known, the files none reaches are listed on their own by the press.
-    const said = '▲ no test reaches these changes'
+    const said = `${REACH.untested.glyph} no test reaches these changes`
     const warn: Segment = input.untested > 0 ? button('untested-none', said, undefined, { color: STATUS_COLOURS.warn }) : { text: said, color: STATUS_COLOURS.warn }
     return { key: 'tests', title, body: [{ key: 'tests-none', segments: [{ text: '   ' }, warn] }] }
   }

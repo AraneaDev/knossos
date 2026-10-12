@@ -20,6 +20,7 @@ import { button, cells, chip, displayName, fit, placeOf, plural, segmentsWidth, 
 import type { Loc, Row, Segment } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
+import { CARD_ICON, PLACE, SEVERITY } from './marks'
 
 /** One component on a route. */
 export type RouteNode = { name: string; canonical: string; kind: string; boundary: string | null }
@@ -101,7 +102,7 @@ export function routeDiagram(route: { nodes: RouteNode[]; hops: RouteHop[] }, co
     // The boundary beside the box, in its colour's swatch, where the width leaves room.
     const own = n.boundary === null ? '' : boundaryLabel(n.boundary, hues)
     const beside = columns - width - 2
-    if (own !== '' && beside >= 6) write(c, width + 2, y + 1, [{ text: '■', ...(colour === undefined ? { dim: true } : { color: colour }) }, { text: ` ${fit(own, beside - 2)}`, dim: true }])
+    if (own !== '' && beside >= 6) write(c, width + 2, y + 1, [{ text: PLACE.swatch.glyph, ...(colour === undefined ? { dim: true } : { color: colour }) }, { text: ` ${fit(own, beside - 2)}`, dim: true }])
     const hop = route.hops[i]
     if (hop === undefined) return
     line(c, [[centre, y + 2], [centre, y + 4]], { color: FAINT }, true)
@@ -127,7 +128,7 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
       title: `${input.from} → ${input.to}`,
       ...(input.loading ? { note: noteOf('looking…') } : {}),
       body: input.said.flatMap((text, i) =>
-        wrapWords(text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `route-said-${i}-${j}`, segments: [{ text: input.warn && j === 0 ? '▲  ' : '   ', color: STATUS_COLOURS.warn }, { text: part, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
+        wrapWords(text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `route-said-${i}-${j}`, segments: [{ text: input.warn && j === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: part, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
       ),
     }),
   }
@@ -135,7 +136,7 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
   if (route === undefined) return { left: [head] }
   const drawn: Block = {
     key: 'route-drawn',
-    make: columns => ({ key: 'route-drawn', title: input.routes.length > 1 ? `Route ${input.index + 1}` : 'Route', subtitle: plural(route.hops.length, 'hop', 'hops'), glyph: '⇢', body: routeRows(route, columns, selected, hues) }),
+    make: columns => ({ key: 'route-drawn', title: input.routes.length > 1 ? `Route ${input.index + 1}` : 'Route', subtitle: plural(route.hops.length, 'hop', 'hops'), glyph: CARD_ICON.route, body: routeRows(route, columns, selected, hues) }),
   }
   const others: Block = {
     key: 'route-others',

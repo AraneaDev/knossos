@@ -24,6 +24,7 @@
  */
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, FLASH_BG, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
+import { PLACE, RANKING, kindMark, mark } from './marks'
 
 /** A pressable segment: drawn as a plain Button, `hotkey: label` when it has a hotkey. */
 export type Press = { id: string; label: string; hotkey?: string }
@@ -111,8 +112,8 @@ const NAME_MAX = 32
 const BOUNDARY_MAX = 12
 /** The widest a file column grows. */
 const PLACE_MAX = 36
-/** The widest a kind column grows. */
-const KIND_MAX = 12
+/** The cells a kind mark takes before a name: its letter and a space. */
+const KIND_CELLS = 2
 /** The selection marker, the hotspot mark and a space. */
 export const MARK = 3
 
@@ -385,7 +386,7 @@ export const boundaryStyle = (boundary: string | null, hues: Hues = NO_HUES): Pi
 }
 
 /** The swatch a boundary chip starts with: one cell in the boundary's colour. */
-export const SWATCH = '■'
+export const SWATCH = PLACE.swatch.glyph
 
 /**
  * A boundary as a chip: a swatch in its colour (the faint ink for a boundary
@@ -554,12 +555,13 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
   const boundaryLongest = Math.max(0, ...boundaries.map(cells))
   const boundaryNeed = boundaryLongest === 0 ? 0 : Math.min(BOUNDARY_MAX, boundaryLongest) + 2
   const placeNeed = Math.min(PLACE_MAX, Math.max(0, ...(options.places ?? []).map(cells)))
-  const kindNeed = Math.min(KIND_MAX, Math.max(0, ...(options.kinds ?? []).map(cells)))
+  // A kind is a two-cell mark before the name (its letter and a space), so a table with kinds always has room for it.
+  const kindNeed = (options.kinds ?? []).length > 0 ? KIND_CELLS : 0
   // Beside a file or kind column a name may stop at the typical one's width: the few longest are cut rather than the column lost.
   const typical = Math.min(nameNeed, percentile(names.map(cells), 0.9))
   const attempt = (withBoundary: boolean, withBar: boolean, place: number, kind = 0): TableSpec | null => {
     const boundary = withBoundary && boundaryNeed > 0 ? boundaryNeed : 0
-    const fixed = MARK + numbers.reduce((n, w) => n + 1 + w, 0) + (place > 0 ? place + 1 : 0) + (kind > 0 ? kind + 1 : 0)
+    const fixed = MARK + numbers.reduce((n, w) => n + 1 + w, 0) + (place > 0 ? place + 1 : 0) + kind
     const avail = columns - fixed - (boundary > 0 ? boundary + 1 : 0)
     const placed = { ...(place > 0 ? { place } : {}), ...(kind > 0 ? { kind } : {}), ...compacted }
     if (!withBar) return avail >= Math.min(NAME_MIN, nameNeed) ? { name: Math.min(avail, nameNeed), boundary, bar: 0, numbers, ...placed } : null
@@ -571,10 +573,9 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
     return name >= Math.min(NAME_MIN, nameNeed) ? { name, boundary, bar: barWidth, numbers, ...placed } : null
   }
   return (
-    (placeNeed > 0 && kindNeed > 0 ? attempt(true, true, placeNeed, kindNeed) : null) ??
-    (placeNeed > 0 ? attempt(true, true, placeNeed) : null) ??
-    attempt(true, true, 0) ??
-    attempt(false, true, 0) ??
+    (placeNeed > 0 ? attempt(true, true, placeNeed, kindNeed) : null) ??
+    attempt(true, true, 0, kindNeed) ??
+    attempt(false, true, 0, kindNeed) ??
     attempt(false, false, 0) ?? { name: Math.max(1, columns - MARK - numbers.reduce((n, w) => n + 1 + w, 0)), boundary: 0, bar: 0, numbers, ...compacted }
   )
 }
@@ -588,8 +589,7 @@ export function percentile(values: number[], at: number): number {
 
 /** A column-title row for a table, dim. */
 export function tableHead(key: string, spec: TableSpec, titles: { name: string; boundary: string; numbers: string[]; place?: string; kind?: string }): Row {
-  let text = spaces(MARK) + padEnd(fit(titles.name, spec.name), spec.name)
-  if ((spec.kind ?? 0) > 0) text += ` ${padEnd(fit(titles.kind ?? 'kind', spec.kind ?? 0), spec.kind ?? 0)}`
+  let text = spaces(MARK + (spec.kind ?? 0)) + padEnd(fit(titles.name, spec.name), spec.name)
   // A title that would be cut says nothing: the column's colours say what it is.
   if (spec.boundary > 0) text += ` ${padEnd(cells(titles.boundary) <= spec.boundary ? titles.boundary : '', spec.boundary)}`
   if (spec.bar > 0) text += ` ${spaces(spec.bar)}`
@@ -641,13 +641,13 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   const named = line.press === undefined ? linked(parts.base, line.link ?? null) : { ...button(line.press, parts.base), press: { id: line.press, label: line.name } }
   const segments: Segment[] = [
     { text: line.selected ? '›' : ' ', color: ACCENT, bold: true },
-    line.mark ?? { text: line.hotspotOnly ? '◆' : ' ', dim: true },
+    line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : { text: ' ' }),
     { text: ' ' },
+    ...((spec.kind ?? 0) > 0 ? [kindMark(line.kind)] : []),
     { text: parts.dir, dim: true },
     line.preview === undefined ? named : { ...named, preview: line.preview },
     { text: spaces(spec.name - cells(parts.dir) - cells(parts.base)) },
   ]
-  if ((spec.kind ?? 0) > 0) segments.push({ text: ' ' }, { text: padEnd(fit(line.kind ?? '', spec.kind ?? 0), spec.kind ?? 0), dim: true })
   if (spec.boundary > 0) {
     // A chip: the boundary's colour on its swatch, its name in a text tone, the same on every row.
     const chipped = chip(line.boundary, hues, spec.boundary)

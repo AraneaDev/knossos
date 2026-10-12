@@ -374,6 +374,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             if (!$inherited && $classId !== null) {
                 $inherited = $graph->isInheritedViaSubtype($classId, $methodNames[$methodId]);
             }
+            // A hook a framework base calls by name: the base is vendor code,
+            // so the member it would declare is never in the graph to match.
+            if (!$inherited) {
+                $inherited = FrameworkHookMethods::isHook(self::externalAncestorNames($graph, $ancestors), $methodNames[$methodId]);
+            }
             $result[$methodId] = [
                 'inherited' => $inherited,
                 'implemented' => $classId !== null
@@ -393,6 +398,25 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
     }
 
     /**
+     * The canonical names of the external types among `$ancestors`.
+     *
+     * @param list<string> $ancestors
+     * @return list<string>
+     */
+    private static function externalAncestorNames(InheritanceGraph $graph, array $ancestors): array
+    {
+        $names = [];
+        foreach ($ancestors as $ancestorId) {
+            $name = $graph->meta($ancestorId)['canonical_name'] ?? null;
+            if (is_string($name) && $graph->isExternal($ancestorId)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * What a method's ancestors, in id order, say about it: whether one
      * declares a member of the same name, and the first external ancestor met
      * before that one, whose members are not statically visible.
@@ -406,6 +430,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         foreach ($ancestors as $ancestorId) {
             if ($graph->isExternal($ancestorId)) {
                 $meta = $graph->meta($ancestorId);
+                // A base whose hooks are known hides nothing else: its hooks
+                // were excluded as inherited before this verdict is read.
+                if (FrameworkHookMethods::isKnownBase((string) ($meta['canonical_name'] ?? ''))) {
+                    continue;
+                }
                 $externalAncestor ??= $meta === null ? 'an unresolved type' : (string) $meta['display_name'];
                 continue;
             }

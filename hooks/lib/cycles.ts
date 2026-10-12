@@ -30,6 +30,7 @@ import type { Hues } from './palette'
 import { blank, button, cells, chip, clip, displayName, fit, MARK, plural, SWATCH, tableRow, tinted, wrapGroups } from './rows'
 import type { Row, Segment, Tier } from './rows'
 import type { Openable } from './views'
+import { CARD_ICON } from './marks'
 
 export type CycleNode = { name: string; canonical: string; boundary: string | null }
 export type CycleLine = { size: number; nodes: CycleNode[]; more: number }
@@ -255,19 +256,19 @@ function chainRows(cycle: CycleLine, offset: number, local: number, columns: num
   const members = cycle.nodes.map((node, j) =>
     tableRow(`member-${j}`, { name: node.name, boundary: node.boundary, values: [], max: 0, press: `row:${offset + j}`, selected: j === local, mark: { text: j === 0 ? '┌' : '│', color: FAINT } }, spec, coloured ? hues : NO_HUES),
   )
-  const close: Row = { key: 'member-close', segments: [{ text: ' ' }, { text: cycle.more > 0 ? '┆' : '└', color: FAINT }, { text: cycle.more > 0 ? ` … +${cycle.more} more` : ` ↻ back to ${fit(cycle.nodes[0]?.name ?? '', Math.max(1, columns - 12))}`, dim: true }] }
+  const close: Row = { key: 'member-close', segments: [{ text: ' ' }, { text: cycle.more > 0 ? '┆' : '└', color: FAINT }, { text: cycle.more > 0 ? ` … +${cycle.more} more` : ` ${CARD_ICON.cycles} back to ${fit(cycle.nodes[0]?.name ?? '', Math.max(1, columns - 12))}`, dim: true }] }
   return [...chain, blank('chain-gap'), ...members, close]
 }
 
 /** A cycle's chain as groups that wrap whole: `↻`, then each member (in its boundary's colour) with the arrow after it, then the loop's close. */
 export function chainGroups(cycle: CycleLine, room: number, hues: Hues = NO_HUES, coloured = true): Segment[][] {
-  const groups: Segment[][] = [[{ text: '↻', color: ACCENT }]]
+  const groups: Segment[][] = [[{ text: CARD_ICON.cycles, color: ACCENT }]]
   cycle.nodes.forEach((node, j) => {
     const last = j === cycle.nodes.length - 1
     // Coloured, each member's boundary on a swatch before its name: the name stays in the text tone.
     const swatch: Segment[] = coloured && node.boundary !== null ? [{ text: `${SWATCH} `, color: boundaryColour(node.boundary, hues) ?? FAINT }] : []
     groups.push([...swatch, { text: fit(node.name, room - swatch.length * 2) }, ...(last && cycle.more === 0 ? [] : [{ text: ' →', dim: true }])])
   })
-  groups.push(cycle.more > 0 ? [{ text: `… +${cycle.more} more`, dim: true }] : [{ text: '→ ↻', dim: true }])
+  groups.push(cycle.more > 0 ? [{ text: `… +${cycle.more} more`, dim: true }] : [{ text: `→ ${CARD_ICON.cycles}`, dim: true }])
   return groups
 }

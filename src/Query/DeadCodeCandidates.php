@@ -37,13 +37,13 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      * exhausted PHP's default memory on a project of 50,000 of them.
      *
      * @param list<string> $edgeKinds
-     * @return array{candidates: list<array<string, mixed>>, total: int, test_only: int, excluded: array<string, int>, convention_excluded: int, truncated: bool}
+     * @return array{candidates: list<array<string, mixed>>, total: int, test_only: int, probable: int, excluded: array<string, int>, convention_excluded: int, truncated: bool}
      */
     public function find(string $projectId, array $edgeKinds, int $minConfidenceRank, bool $includeTests, int $deadline, string $confidence, int $offset, int $limit): array
     {
         $found = [
             'kept' => ['unreferenced' => [], 'test_only' => []], 'keep' => $offset + $limit, 'confidence' => $confidence,
-            'total' => 0, 'test_only' => 0, 'excluded' => [], 'convention_excluded' => 0, 'truncated' => false,
+            'total' => 0, 'test_only' => 0, 'probable' => 0, 'excluded' => [], 'convention_excluded' => 0, 'truncated' => false,
         ];
         $this->search($projectId, $edgeKinds, $minConfidenceRank, $includeTests, $deadline, $found);
         $page = [];
@@ -53,7 +53,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
 
         return [
             'candidates' => $this->hydrate(array_slice($page, $offset, $limit)),
-            'total' => $found['total'], 'test_only' => $found['test_only'], 'excluded' => $found['excluded'],
+            'total' => $found['total'], 'test_only' => $found['test_only'], 'probable' => $found['probable'], 'excluded' => $found['excluded'],
             'convention_excluded' => $found['convention_excluded'], 'truncated' => $found['truncated'],
         ];
     }
@@ -165,6 +165,9 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
             $class = $candidate['reachability'] === 'test_only' ? 'test_only' : 'unreferenced';
             if ($class === 'test_only') {
                 ++$found['test_only'];
+            }
+            if ($candidate['confidence'] === 'probable') {
+                ++$found['probable'];
             }
             // Compact until the page is known: ordering reads only the id and
             // name, and hydrate() rebuilds the rest for the page.

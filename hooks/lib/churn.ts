@@ -14,12 +14,13 @@
 import type { Churn, ChurnState } from '../../types'
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block } from './cards'
-import { ACCENT, FAINT, HEADING, NO_HUES, STATUS_COLOURS } from './palette'
+import { FAINT, HEADING, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { cells, dimRow, grouped, numberWidth, padStart, plural, spaces, tableHead, tableRow, tableSpec, wrapWords } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
+import { PLACE, SEVERITY, mark } from './marks'
 
 /** One ranked file as the tab draws it. */
 export type ChurnFile = { path: string; commits: number; dependents: number; score: number; boundary: string | null; loc: Loc | null }
@@ -101,12 +102,12 @@ export function scatterRows(files: ChurnFile[], columns: number, height: number,
     const [x, y] = place(f)
     if (i === marked || i >= rankAt[y]![x]!) return
     rankAt[y]![x] = i
-    plot[y]![x] = i < RANKED ? { text: rankOf(i), color: HEADING, bold: true } : { text: '•', color: FAINT }
+    plot[y]![x] = i < RANKED ? { text: rankOf(i), color: HEADING, bold: true } : { text: '·', color: FAINT }
   })
   const chosen = files[marked]
   if (chosen !== undefined) {
     const [x, y] = place(chosen)
-    plot[y]![x] = { text: '◉', color: ACCENT, bold: true }
+    plot[y]![x] = { ...mark(PLACE.centre), bold: true }
   }
   const rows: Row[] = plot.map((line, y) => {
     const label = y === 0 ? grouped(maxD) : y === height - 1 ? grouped(minD) : ''
@@ -149,7 +150,7 @@ export function churnArrangement(input: ChurnInput, selected: number, tier: Tier
         key: 'churn',
         title: 'Churn hotspots',
         note: noteOf(window),
-        body: wrapWords(input.said ?? '', Math.max(1, columns - 3)).map((line, i): Row => ({ key: `churn-said-${i}`, segments: [{ text: input.warn && i === 0 ? '▲  ' : '   ', color: STATUS_COLOURS.warn }, { text: line, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
+        body: wrapWords(input.said ?? '', Math.max(1, columns - 3)).map((line, i): Row => ({ key: `churn-said-${i}`, segments: [{ text: input.warn && i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: line, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
       }),
     }
     return { left: [said] }

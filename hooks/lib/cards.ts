@@ -22,6 +22,7 @@
 import { FAINT, HEADING } from './palette'
 import { cells, clip, dimRow, fit, rowsHeight, rowWidth, segmentsWidth, spaces, tierOf, tinted } from './rows'
 import type { Row, Segment, Tier } from './rows'
+import { CARD_ICON } from './marks'
 
 /**
  * One card: its title (and a dim subtitle beside it), a note against the
@@ -39,57 +40,10 @@ export type Section = { key: string; title: string; subtitle?: string; note?: Se
  * of thing a card lists, the same on every tab, so a card reads by its shape
  * before its words. Every glyph is one cell wide.
  */
-export const GLYPHS: Readonly<Record<string, string>> = {
-  look: '◆',
-  turn: '▤',
-  top: '◎',
-  hubs: '◎',
-  files: '≡',
-  map: '▦',
-  bounds: '▦',
-  'bounds-list': '▥',
-  focus: '◈',
-  coupling: '⇄',
-  cycles: '↻',
-  'cycle-members': '↻',
-  'cycle-diagram': '↻',
-  hood: '⇄',
-  policy: '!',
-  diag: '!',
-  dead: '!',
-  hotspots: '!',
-  branch: '⎇',
-  crossing: '⇄',
-  'branch-cycles': '↻',
-  grown: '◎',
-  'branch-dead': '!',
-  'branch-policy': '!',
-  'branch-files': '≡',
-  find: '⌕',
-  budget: '!',
-  churn: '≡',
-  'churn-plot': '∴',
-  'churn-list': '≡',
-  rings: '◎',
-  route: '⇢',
-  'route-others': '⇢',
-  changes: '±',
-  tests: '✓',
-  trend: '∿',
-  detail: '◇',
-  used: '←',
-  uses: '→',
-  deps: '←',
-  comps: '→',
-  notes: '✎',
-  diff: '±',
-  drift: 'Δ',
-  session: '±',
-  composition: '▥',
-  concentration: '◎',
-  health: '∿',
-  flows: '⇄',
-}
+export const GLYPHS: Readonly<Record<string, string>> = CARD_ICON
+
+/** The cells a card's top edge spends on its frame, glyph and gaps beside the title and the note. */
+export const NOTE_ROOM = 12
 
 /** The frame's ink: the faintest theme key, so the cards order the pane without competing with it. */
 export const FRAME = FAINT

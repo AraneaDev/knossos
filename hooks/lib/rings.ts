@@ -17,13 +17,14 @@
 import type { BlastRadius, RingsState } from '../../types'
 import { noteOf } from './cards'
 import type { Block } from './cards'
-import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
 import { absolute, baseName, button, cells, chip, dimRow, displayName, fit, grouped, plural, segmentsWidth, spaces, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
+import { PLACE, REACH, kindMark, mark } from './marks'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
-export type RingMember = { name: string; canonical: string; boundary: string | null; tested: boolean; loc: Loc | null }
+export type RingMember = { name: string; canonical: string; kind: string; boundary: string | null; tested: boolean; loc: Loc | null }
 
 /** One ring as the detail draws it. */
 export type Ring = { label: string; count: number; tested: number; members: RingMember[]; tests: { count: number; paths: string[] } }
@@ -54,7 +55,7 @@ export function ringsInput(state: RingsState | null, name: string, root: string 
       label: ringLabel(r.hop),
       count: r.count,
       tested: r.tested,
-      members: r.items.map(i => ({ name: displayName(i), canonical: i.canonical_name, boundary: i.boundary, tested: i.tested, loc: root === null || i.path === null || i.path === undefined ? null : { path: absolute(root, i.path), line: i.line ?? null } })),
+      members: r.items.map(i => ({ name: displayName(i), canonical: i.canonical_name, kind: i.kind, boundary: i.boundary, tested: i.tested, loc: root === null || i.path === null || i.path === undefined ? null : { path: absolute(root, i.path), line: i.line ?? null } })),
       tests: { count: r.tests.count, paths: r.tests.items.map(t => t.path) },
     })),
     truncated: answer.truncated,
@@ -67,11 +68,13 @@ export const ringsList = (input: RingsInput | null | undefined): { name: string;
 /** A ring's frame colour: the nearest in a text tone, the further ones faint. */
 const frameColour = (index: number): string => (index === 0 ? SECONDARY : FAINT)
 
-/** How a ring stands: all tested, how many are not, or empty. */
+/** How a ring stands, as the legend of its marks: all tested, or how many are tested and how many are not; or empty. */
 function standing(ring: Ring): Segment[] {
   if (ring.count === 0) return [{ text: 'none', dim: true }]
   const untested = ring.count - ring.tested
-  return untested === 0 ? [{ text: '✓ all tested', color: STATUS_COLOURS.ok }] : [{ text: `▲ ${grouped(untested)} untested`, color: STATUS_COLOURS.warn }]
+  if (untested === 0) return [mark(REACH.tested, ' all tested')]
+  const untestedPart = mark(REACH.untested, ` ${grouped(untested)} ${REACH.untested.legend}`)
+  return ring.tested === 0 ? [untestedPart] : [mark(REACH.tested, ` ${grouped(ring.tested)} ${REACH.tested.legend}`), { text: ' · ', dim: true }, untestedPart]
 }
 
 /**
@@ -85,11 +88,11 @@ function memberLines(ring: Ring, offset: number, width: number, selected: number
   let used = 0
   for (const [i, m] of ring.members.entries()) {
     const index = offset + i
-    const mark: Segment[] = m.tested ? [] : [{ text: '▲', color: STATUS_COLOURS.warn }]
+    const flag: Segment[] = m.tested ? [] : [mark(REACH.untested, ' ')]
     // A boundary is named only where it is not the component's own: what crosses stands out.
     const own = m.boundary === home ? [] : chip(m.boundary, hues)
     const name: Segment = { ...button(`rel:${index}`, fit(m.name, Math.max(4, width - 6))), ...(index === selected ? { bg: SELECTED_BG, bold: true } : {}) }
-    const piece: Segment[] = [...mark, name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
+    const piece: Segment[] = [...flag, kindMark(m.kind), name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
     const need = segmentsWidth(piece) + (used === 0 ? 0 : 3)
     if (used > 0 && used + need > width) {
       if (lines.length === NAME_LINES) break
@@ -113,8 +116,8 @@ function memberLines(ring: Ring, offset: number, width: number, selected: number
 /** The test files that reach a ring, by file name, as many as fit one line `width` wide, then how many more. */
 function testsLine(ring: Ring, width: number): Segment[] {
   if (ring.count === 0) return []
-  if (ring.tests.count === 0) return [{ text: '✗ no test file reaches it', color: STATUS_COLOURS.warn }]
-  const lead = `✓ ${plural(ring.tests.count, 'test file', 'test files')}`
+  if (ring.tests.count === 0) return [mark(REACH.untested, ' no test file reaches it')]
+  const lead = `${REACH.tested.glyph} ${plural(ring.tests.count, 'test file', 'test files')}`
   const said = (shown: string[]): string => {
     const rest = ring.tests.count - shown.length
     return shown.length === 0 ? lead : `${lead}: ${shown.join(', ')}${rest > 0 ? ` +${rest}` : ''}`
@@ -177,7 +180,7 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
   if (centre !== null) {
     const room = columns - 4 * n
     const own = chip(centre.boundary, hues)
-    const label: Segment[] = [{ text: '◉ ', color: ACCENT }, { text: fit(centre.name, Math.max(4, room - segmentsWidth(own) - 4)), bold: true, color: HEADING }, ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])]
+    const label: Segment[] = [mark(PLACE.centre, ' '), { text: fit(centre.name, Math.max(4, room - segmentsWidth(own) - 4)), bold: true, color: HEADING }, ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])]
     const pad = Math.max(0, Math.floor((room - segmentsWidth(label)) / 2))
     rows.push(inside('ring-centre', n, [{ text: spaces(pad) }, ...label]))
   }

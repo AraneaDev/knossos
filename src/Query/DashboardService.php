@@ -144,6 +144,10 @@ final readonly class DashboardService
             // The listed candidates are paged by the health limit, so the
             // total is the honest count; the list length would read as the page.
             'dead_code_candidates' => $health['bounds']['candidates_total'],
+            // How many of them are probably dead, so the count does not read as all dead code.
+            'dead_code_probable' => $health['bounds']['candidates_probable'],
+            // And how many only tests reach, which is finished work no product path runs.
+            'dead_code_test_only' => $health['bounds']['candidates_test_only'],
             'dead_code_truncated' => in_array('time_limit', $health['bounds']['candidate_truncation_reasons'], true),
             'dead_code' => self::deadCode($health['dead_code_candidates'], $healthResult->evidence, $labels),
             'cycles' => [

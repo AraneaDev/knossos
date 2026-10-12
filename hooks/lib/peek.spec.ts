@@ -46,7 +46,7 @@ describe('master-detail on a wide pane', () => {
   it('keeps the list on the left, its marker on the row the detail is of, and the detail framed beside it', () => {
     const rows = paneLayout(pane(view()), 200, 40).body
     const marked = rows.find(r => r.key.startsWith('hub-1|'))!
-    expect(plainText(marked)).toMatch(/^│ › +Hub1 /)
+    expect(plainText(marked)).toMatch(/^│ › +C Hub1 /)
     const head = rows.find(r => r.key.includes('|peek-detail-head'))!
     expect(rawText(head)).toMatch(/╭─ ◇ Hub1 .*╮ *$/)
     // The detail's presses open what it lists, apart from the tab's rows.

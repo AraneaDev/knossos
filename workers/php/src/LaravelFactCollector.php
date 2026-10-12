@@ -22,6 +22,7 @@ final class LaravelFactCollector extends NodeVisitorAbstract
     private readonly LaravelContainerFactCollector $container;
     private readonly LaravelDispatchFactCollector $dispatch;
     private readonly LaravelRouteNameFactCollector $routeNames;
+    private readonly LaravelTestRequestFactCollector $testRequests;
     private readonly LaravelProviderMapFactCollector $providerMaps;
 
     /** @param string $relativePath the file being visited, carried onto every emitted fact */
@@ -33,6 +34,7 @@ final class LaravelFactCollector extends NodeVisitorAbstract
         $this->container = new LaravelContainerFactCollector($this->facts, $this->context);
         $this->dispatch = new LaravelDispatchFactCollector($this->facts, $this->context);
         $this->routeNames = new LaravelRouteNameFactCollector($this->facts, $this->context);
+        $this->testRequests = new LaravelTestRequestFactCollector($this->facts, $this->context);
         $this->providerMaps = new LaravelProviderMapFactCollector($this->facts, $this->context);
     }
 
@@ -45,6 +47,7 @@ final class LaravelFactCollector extends NodeVisitorAbstract
         $this->container->enterNode($node);
         $this->dispatch->enterNode($node);
         $this->routeNames->enterNode($node);
+        $this->testRequests->enterNode($node);
         $this->providerMaps->enterNode($node);
 
         return null;

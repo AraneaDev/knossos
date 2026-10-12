@@ -64,6 +64,8 @@ const dash = (over: Partial<Dashboard> = {}): Dashboard => ({
     { ...hub('scan', 'Knossos\\Scan\\ProjectScanService::scan', 'method', 'core', 119, 58, 0), score: 177 },
   ],
   dead_code_candidates: 55,
+  dead_code_probable: 12,
+  dead_code_test_only: 9,
   dead_code_truncated: false,
   cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [] },
   trend: [2, 2, 2, 2, 2, 2].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 161 })),
@@ -239,8 +241,8 @@ describe('paneRows', () => {
   it('draws the header with the project, the status and the rescan action', () => {
     const rows = paneRows(input(), 60)
     // Narrow: the name and the status as a pill in its colour, the rescan beside it; no summary line under it.
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +● stale 11h {3}r: rescan$/)
-    expect(row(rows, 'title')!.segments.find(s => s.text === ' ● stale 11h ')).toMatchObject({ bg: 'warning', color: 'inverseText', bold: true })
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +stale 11h {3}r: rescan$/)
+    expect(row(rows, 'title')!.segments.find(s => s.text === ' stale 11h ')).toMatchObject({ bg: 'warning', color: 'inverseText', bold: true })
     expect(row(rows, 'summary')).toBeUndefined()
     // Narrow: no row above the name, one between it and the tabs, then a blank row and a rule before the first card.
     expect(rows.slice(0, 5).map(r => r.key)).toEqual(['title', 'head-gap', 'tabs', 'head-end', 'head-rule'])
@@ -253,23 +255,50 @@ describe('paneRows', () => {
     expect(plainText(row(paneRows(input({}, fresh), 60), 'title')!)).toMatch(/rescan$/)
     const scanning = paneInput(dash(), null, FETCHED, { phase: 'scanning', reason: null }, view(), 0, true)
     const title = plainText(row(paneRows(scanning, 60), 'title')!)
-    expect(title).toContain('● scanning…')
+    // The pill's colour and words say how the graph stands; ● only ever means probably dead.
+    expect(title).toContain(' scanning…')
+    expect(title).not.toContain('●')
     expect(title).not.toContain('rescan')
+  })
+
+  it('leaves the kind column blank for a kind the pane does not know, the names still aligned', () => {
+    const hubs = [
+      { name: 'Known', canonical_name: 'App\\Known', kind: 'class', boundary: 'core', in_degree: 9, out_degree: 1, cross_boundary_degree: 0 },
+      { name: 'Alias', canonical_name: 'App\\Alias', kind: 'mystery', boundary: 'core', in_degree: 8, out_degree: 1, cross_boundary_degree: 0 },
+    ]
+    const rows = paneRows(input({ tab: 'hubs' }, dash({ hubs, hotspots: [] })), 60)
+    const known = plainText(row(rows, 'hub-0')!)
+    const alias = plainText(row(rows, 'hub-1')!)
+    expect(known).toMatch(/^.{3}C Known/)
+    expect(alias).toMatch(/^ {5}Alias/)
+    expect(alias.indexOf('Alias')).toBe(known.indexOf('Known'))
   })
 
   it('marks the selected row and keeps the marker inside the list', () => {
     const rows = paneRows(input({ tab: 'hubs', selected: 1 }), 60)
-    expect(plainText(row(rows, 'hub-1')!)).toMatch(/^› {2}ArchitectureQueryService/)
-    expect(plainText(row(rows, 'hub-0')!)).toMatch(/^ {3}StableId/)
+    // Each hub's kind before its name: C for a class.
+    expect(plainText(row(rows, 'hub-1')!)).toMatch(/^› {2}C ArchitectureQueryService/)
+    expect(plainText(row(rows, 'hub-0')!)).toMatch(/^ {3}C StableId/)
     const past = paneRows(input({ tab: 'hubs', selected: 99 }), 60)
     const last = input().items.length - 1
     expect(plainText(row(past, `hub-${last}`)!).startsWith('›')).toBe(true)
   })
 
+  it('names the kinds its rows show in the Hubs note, where the note has room', () => {
+    expect(textOf(paneRows(input({ tab: 'hubs' }), 140))).toMatch(/C class · m method/)
+  })
+
+  it('marks a hotspot that is no hub with ✦ and names it in the card note', () => {
+    const text = textOf(paneRows(input({ tab: 'hubs' }), 100))
+    expect(text).toMatch(/✦ hotspot only/)
+    expect(text).toMatch(/✦ m ProjectScanService::scan/)
+    expect(text).not.toContain('◆')
+  })
+
   it('makes each listed name pressable by its row', () => {
     const rows = paneRows(input({ tab: 'hubs' }), 60)
     expect(row(rows, 'hub-3')!.segments.find(s => s.press)?.press).toEqual({ id: 'row:3', label: 'ProjectScanService::scan' })
-    expect(plainText(row(rows, 'hub-3')!)).toMatch(/^ ◆ ProjectScanService::scan/)
+    expect(plainText(row(rows, 'hub-3')!)).toMatch(/^ ✦ m ProjectScanService::scan/)
   })
 
   it('colours a boundary and its bar alike, its track faint, and draws no boundary neutral', () => {
@@ -296,12 +325,13 @@ describe('paneRows', () => {
     const text = textOf(paneRows(input(), 60))
     // Narrow, the stat tiles collapse to a line of every figure, deltas beside them when the dashboard sends them.
     const line = (rows: Row[]) => rows.filter(r => r.key.startsWith('tiles-line')).map(plainText).join(' / ')
-    expect(line(paneRows(input(), 60))).toBe('2 cycles   161 max degree   55 dead code   0 policy / 41 drifted')
+    // What Issues lists is one figure here: the dead code and the policy violations together.
+    expect(line(paneRows(input(), 60))).toMatch(/^2 cycles {3}161 max degree {3}55 issues( \/)? +41 drifted$/)
     const moved = dash({ deltas: { against: 's4', components: 0, cycles: 1, max_degree: -3, dead_code: 0, diagnostics: 0 } })
-    expect(line(paneRows(input({}, moved), 60))).toBe('2 cycles ▲1   161 max degree ▼3   55 dead code   0 policy / 41 drifted')
-    // Dead code counts the listed candidates; the trend carries the gate's wider count, so the tile takes neither its delta nor its trend.
+    expect(line(paneRows(input({}, moved), 60))).toMatch(/^2 cycles \+1 {3}161 max degree −3 {3}55 issues/)
+    // Issues counts the listed candidates; the trend carries the gate's wider dead-code count, so the tile takes neither its delta nor its trend.
     const gate = dash({ deltas: { against: 's4', components: 0, cycles: 0, max_degree: 0, dead_code: 25, diagnostics: 0 } })
-    expect(line(paneRows(input({}, gate), 60))).toContain('55 dead code   0 policy')
+    expect(line(paneRows(input({}, gate), 60))).toMatch(/ {3}55 issues( \/)? +41 drifted$/)
     for (const gone of ['Most depended on', 'Last turn', 'Files most depended on', 'Look at now']) expect(text).not.toContain(gone)
     // Nothing changed this session and no chart sent: nothing to walk, and the session card is one line.
     expect(listFor(input())).toEqual([])
@@ -328,7 +358,8 @@ describe('paneRows', () => {
 
   it('names a policy violation in the error colour', () => {
     const rows = paneRows(input({}, dash(), brief({ policy: { status: 'evaluated', total: 3, violations: [], truncated: false } })), 60)
-    const seg = rows.filter(r => r.key.startsWith('tiles-line')).flatMap(r => r.segments).find(s => s.text === '3')
+    // The violations join the dead code in the issues figure, 55 and 3, which takes the error colour.
+    const seg = rows.filter(r => r.key.startsWith('tiles-line')).flatMap(r => r.segments).find(s => s.text === '✗ 58')
     expect(seg?.color).toBe('error')
   })
 
@@ -518,7 +549,7 @@ const full = (over: Partial<Dashboard> = {}): Dashboard =>
         kind: 'function',
         boundary: 'core',
         reachability: 'test_only',
-        confidence: 'possible',
+        confidence: 'probable',
         path: 'src/Support/helper.php',
         line: 4,
       },
@@ -605,7 +636,9 @@ describe('the header summary', () => {
     expect(row(paneRows(fullInput(), 60), 'title')!.segments.some(s => s.text === ' PHP ')).toBe(false)
   })
   it('falls back to hubs, cycles and dead code from an older knossos', () => {
-    expect(summaryParts(dash(), 6)).toEqual(['6 hubs', '2 cycles', '55 dead code', '41 drifted'])
+    expect(summaryParts(dash(), 6)).toEqual(['6 hubs', '2 cycles', '55 dead code (12 probable)', '41 drifted'])
+    // An older knossos says nothing about confidence.
+    expect(summaryParts(dash({ dead_code_probable: undefined }), 6)).toEqual(['6 hubs', '2 cycles', '55 dead code', '41 drifted'])
   })
   it('counts every boundary, as a floor when cut, where none is declared', () => {
     const inferred = full({ boundaries: { items: [{ name: 'namespace:App', source: 'inferred', members: 3 }], truncated: true } })
@@ -645,26 +678,65 @@ describe('the issues tab', () => {
       widthsFit(paneRows(fullInput({ tab: 'issues', showKeys: true, terminal: false }), columns), columns)
     })
   }
+  it('names the kinds its rows show in the Dead code note, where the note has room', () => {
+    const head = textOf(paneRows(fullInput({ tab: 'issues' }), 200)).split('\n').find(l => l.includes('Dead code'))
+    expect(head).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2 · m method · f function/)
+  })
+
+  it('keeps the marks on dead-code rows whose names are all short', () => {
+    const short = (name: string, confidence: string) => ({ name, canonical_name: `App\\${name}`, kind: 'method', boundary: 'core', reachability: 'unreferenced', confidence, path: 'a.php', line: 1 })
+    const rows = paneRows(fullInput({ tab: 'issues' }, full({ dead_code: [short('oldOne', 'probable'), short('otherOne', 'possible')] })), 140)
+    expect(plainText(row(rows, 'dead-0')!)).toMatch(/● ∅ m oldOne/)
+    expect(plainText(row(rows, 'dead-1')!)).toMatch(/○ ∅ m otherOne/)
+  })
+
+  it('marks each dead-code candidate with its kind, and leaves an unknown kind blank', () => {
+    const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
+    expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse/)
+    expect(text).toMatch(/● ◐ f helper/)
+  })
+
+  it('marks an info diagnostic with a note mark and names all three in the card note', () => {
+    const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
+    expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
+  })
+
   it('lists violations, diagnostics, dead code, the complexity hotspots and the files over budget, each with its place', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
-    expect(text).toMatch(/Policy violations +▲ 7/)
+    expect(text).toMatch(/Policy violations +✗ 7/)
     expect(text).toMatch(/ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core +ArchitectureQueryService\.php:191/)
     expect(text).toContain('+6 not listed')
-    expect(text).toMatch(/Diagnostics +1 error · 1 warning · 1 note/)
+    expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
-    expect(text).toMatch(/Dead code +55 · first 2/)
-    expect(text).toMatch(/FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
-    expect(text).toMatch(/◇ helper/)
+    // The note is the legend for the two marks before each name.
+    expect(text).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2/)
+    // How sure the scan is (● probable, ○ possible) and what reaches it (◐ tests only, ∅ nothing), before the name.
+    expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
+    expect(text).toMatch(/● ◐ f helper/)
+    expect(text).not.toContain('◇')
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
     expect(text).toMatch(/workers\/typescript\/src\/scanner\.js .*━+ +4,986 +20/)
     expect(text).toMatch(/Over budget +▲ 3 functions over 205 lines/)
     expect(text).toMatch(/▲ src\/Scan\/ProjectScanService\.php +2 +260/)
     expect(text).toContain('+2 not listed')
   })
+  it('shows the certainty and reachability columns on every dead-code row or on none', () => {
+    for (const columns of [30, 40, 50, 60, 90, 100, 140]) {
+      const rows = [0, 1].map(i => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), `dead-${i}`)!))
+      const certain = /[●○]/
+      const reach = /[◐∅]/
+      const shown = rows.map(r => certain.test(r) && reach.test(r))
+      expect(rows.every(r => certain.test(r) === reach.test(r)), `${columns} columns: ${rows.join(' | ')}`).toBe(true)
+      expect(new Set(shown).size, `${columns} columns: ${rows.join(' | ')}`).toBe(1)
+    }
+  })
   it('gives way in order: names are cut, then the boundary goes, then the place', () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    expect(dead(90)).toMatch(/FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
+    expect(dead(90)).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
+    expect(dead(70)).toMatch(/^ +○ ∅ m FactCollector::/)
+    // Two marks cost four cells, so they stay even where the boundary and the place have gone.
+    expect(dead(30)).toMatch(/^ +○ ∅ m FactCollector::/)
     expect(dead(50)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
@@ -724,7 +796,7 @@ describe('the issues tab', () => {
 
   it('reads a policy total cut short as a floor', () => {
     const cut = full({ policy: { status: 'evaluated', total: 100, truncated: true, truncation_reasons: ['time_limit'], items: [] } })
-    expect(textOf(paneRows(fullInput({ tab: 'issues' }, cut), 60))).toContain('▲ 100+')
+    expect(textOf(paneRows(fullInput({ tab: 'issues' }, cut), 60))).toContain('✗ 100+')
     expect(issueCount(issuesInput(cut)).plus).toBe(true)
   })
 })
@@ -869,7 +941,7 @@ describe('the detail view', () => {
     const raw = paneRows(detailPane(), 60).map(rawText).join('\n')
     expect(raw.indexOf('DashboardServiceTest::')).toBeLessThan(raw.indexOf('│ DashboardService '))
     expect(raw.indexOf('│ DashboardService ')).toBeLessThan(raw.indexOf('BoundaryLabels'))
-    expect(raw).toContain('▼')
+    expect(raw).toContain('▾')
     const text = textOf(paneRows(detailPane(), 40))
     expect(text.indexOf('Used by · 19')).toBeLessThan(text.indexOf('Uses · 2'))
     expect(text).toMatch(/BoundaryLabels +■ core +[━╸·]+ +4/)
@@ -921,7 +993,7 @@ describe('tables packed to the left', () => {
   it("sets the title, the sort and the note into the card's top edge, which spans the card like its rows", () => {
     const rows = paneRows(fullInput({ tab: 'hubs' }), 100)
     const head = row(rows, 'hubs-head')!
-    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +◆ hotspot only$/)
+    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +✦ hotspot only( · .+)?$/)
     expect(rowWidth(head)).toBe(100)
     expect(rowWidth(row(rows, 'hub-0')!)).toBe(100)
   })
@@ -1060,7 +1132,7 @@ describe('the hubs filter and sort', () => {
   })
   it('names the sort, draws its bar, and offers n, s and x as keys, and f to find', () => {
     const rows = paneRows(input({ tab: 'hubs', sort: 'out', filter: 'a' }), 90)
-    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +◆ hotspot only$/)
+    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +✦ hotspot only( · .+)?$/)
     expect(plainText(row(rows, 'hub-0')!)).toMatch(/ProjectScanService::scan +■ core +[━╸]+·* +119 +58 +0$/)
     const keys = rows.filter(r => r.key.startsWith('keys')).flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.hotkey] : [])))
     expect(keys).toEqual(['j', 'k', 'o', 'c', 'q', 'n', 's', 'x', 'f', 'h'])
@@ -1087,18 +1159,49 @@ describe('colour', () => {
 })
 
 describe('the overview stat tiles', () => {
-  it('show the project policy and diagnostics when knossos reports them, coloured only where they deviate', () => {
+  it('keeps the Issues total a floor when policy or dead-code counts are truncated', () => {
+    const tile = (policyTruncated: boolean, deadTruncated: boolean) => {
+      const dashboard = full({
+        policy: { status: 'evaluated', total: 7, truncated: policyTruncated, truncation_reasons: policyTruncated ? ['time_limit'] : [], items: [] },
+        dead_code_truncated: deadTruncated,
+      })
+      return plainText(row(paneRows(fullInput({}, dashboard), 140), 'tiles-0-value')!)
+    }
+    expect(tile(false, false)).toMatch(/│ ✗ 67 +│/)
+    expect(tile(true, false)).toMatch(/│ ✗ 67\+ +│/)
+    expect(tile(false, true)).toMatch(/│ ✗ 67\+ +│/)
+    expect(tile(true, true)).toMatch(/│ ✗ 67\+ +│/)
+  })
+
+  it('marks the issues tile ✗ for a diagnostic error and ▲ for a warning alone, as the Diagnostics card does', () => {
+    const tile = (diagnostics: { errors: number; warnings: number }) =>
+      plainText(row(paneRows(fullInput({}, full({ policy: { status: 'evaluated', total: 0, truncated: false, truncation_reasons: [], items: [] }, diagnostics: { ...full().diagnostics!, ...diagnostics, infos: 0, items: [] } })), 140), 'tiles-0-value')!)
+    expect(tile({ errors: 1, warnings: 0 })).toMatch(/│ ✗ \d+ +│/)
+    expect(tile({ errors: 0, warnings: 2 })).toMatch(/│ ▲ \d+ +│/)
+  })
+
+  it('puts the worst finding\'s severity mark on the issues tile', () => {
+    const figures = plainText(row(paneRows(fullInput(), 140), 'tiles-0-value')!)
+    expect(figures).toMatch(/│ ✗ 67 +│/)
+    // Only dead code: no severity, the figure alone.
+    expect(plainText(row(paneRows(input(), 140), 'tiles-0-value')!)).toMatch(/│ 55 +│/)
+  })
+
+  it('count what Issues lists in one tile, coloured by the worst of it, and press to that tab', () => {
     const rows = paneRows(fullInput(), 140)
     const figures = plainText(row(rows, 'tiles-0-value')!)
     const labels = plainText(row(rows, 'tiles-0-label')!)
-    expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ dead code +│ diagnostics +│ policy +│ drifted$/)
-    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ 55 +│ 2 +│ 7 +│ 41$/)
+    expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ issues +│ drifted$/)
+    // 55 dead code, an error and a warning, 7 policy violations and 3 functions over budget.
+    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ ✗ 67 +│ 41$/)
     const colour = (text: string) => row(rows, 'tiles-0-value')!.segments.find(s => s.text === text)?.color
     expect(colour('7,878')).toBe('text')
-    expect(colour('55')).toBe('text')
+    // A policy violation among them is the worst there is.
+    expect(colour('✗ 67')).toBe('error')
     expect(colour('41')).toBe('suggestion')
-    expect(colour('7')).toBe('error')
-    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning', 'warning'])
+    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning'])
+    const issues = row(rows, 'tiles-0-label')!.segments.find(s => s.text.startsWith('issues'))
+    expect(issues?.press?.id).toBe('stat:issues')
     // Every figure stands at the left edge of its tile, over its label: the rules line up.
     const at = (r: Row) => [...rawText(r)].flatMap((ch, i) => (ch === '│' ? [i] : []))
     expect(at(row(rows, 'tiles-0-value')!)).toEqual(at(row(rows, 'tiles-0-label')!))
@@ -1403,28 +1506,28 @@ describe('the header: the project, where its checkout stands, its languages and 
 
   it('gives way chips first, then the commit, then the branch, keeping the name, the pill and the rescan', () => {
     const at = (columns: number) => plainText(titleRow(pane(), columns, columns < 80 ? 'narrow' : columns <= 130 ? 'medium' : 'wide'))
-    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +● stale 11h {3}r: rescan$/)
-    expect(at(80)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 +● stale 11h {3}r: rescan$/)
-    expect(at(66)).toMatch(/^Knossos-MCP +● stale 11h {3}r: rescan$/)
+    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +stale 11h {3}r: rescan$/)
+    expect(at(80)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 +stale 11h {3}r: rescan$/)
+    expect(at(66)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     // Narrow: the name and the pill alone, however much room.
-    expect(at(79)).toMatch(/^Knossos-MCP +● stale 11h {3}r: rescan$/)
-    expect(at(40)).toMatch(/^Knossos-MCP +● stale 11h {3}r: rescan$/)
+    expect(at(79)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
+    expect(at(40)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     for (const columns of [10, 16, 20, 24, 30]) expect(rowWidth(titleRow(pane(), columns, 'narrow')), `${columns}`).toBeLessThanOrEqual(columns)
   })
 
   it('draws the status as a pill in its tone, the words on the fill, and why beside it', () => {
-    const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.text.startsWith(' ● '))!
-    expect(pill(pane())).toMatchObject({ text: ' ● stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
+    const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!
+    expect(pill(pane())).toMatchObject({ text: ' stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
     const live = paneInput(full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 } }), brief(), FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }, { git })
-    expect(pill(live)).toMatchObject({ text: ' ● live · 7s ', bg: 'success' })
+    expect(pill(live)).toMatchObject({ text: ' live · 7s ', bg: 'success' })
     const failed = paneInput(full(), brief(), FETCHED, { phase: 'failed', reason: 'not an allowed root' }, view(), 0, true, null, null, undefined, null, undefined, { git })
-    expect(pill(failed)).toMatchObject({ text: ' ● scan failed ', bg: 'error' })
-    expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}● scan failed {3}r: rescan$/)
+    expect(pill(failed)).toMatchObject({ text: ' scan failed ', bg: 'error' })
+    expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}scan failed {3}r: rescan$/)
   })
 
   it('becomes the way back in a detail: project › tab › what is shown', () => {
     const rows = paneRows({ ...detailPane(), git }, 140)
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +● stale 11h {3}r: rescan$/)
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +stale 11h {3}r: rescan$/)
     expect(row(rows, 'tabs')).toBeUndefined()
     // Cut from the label: the project and the way back stay.
     const narrow = plainText(row(paneRows({ ...detailPane(), git }, 50), 'title')!)

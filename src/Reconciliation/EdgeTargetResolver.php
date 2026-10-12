@@ -66,6 +66,9 @@ final class EdgeTargetResolver
     /** Built on the first prefix edge of a language that reads names without regard to case. */
     private ?NodeReferenceIndex $caselessReferences = null;
 
+    /** @var ?array<string, string> Artisan command name => declaring class, built on the first Artisan call. */
+    private ?array $artisanCommands = null;
+
     /** The same lookups over the case-insensitive matching keys, built with {@see $caseless}'s first retry. */
     private ?self $caselessTargets = null;
 
@@ -185,7 +188,87 @@ final class EdgeTargetResolver
         return [$reference, $reference === null ? null : (self::implementationTarget($reference, $this->nodeMap)
             ?? $this->nodeMap[$reference]
             ?? $this->aliasedTypeTarget($reference)
-            ?? $this->inheritedMemberTarget($reference))];
+            ?? $this->inheritedMemberTarget($reference)
+            ?? $this->localScopeTarget($reference)
+            ?? $this->artisanCommandTarget($reference))];
+    }
+
+    /**
+     * The entry method of the console command an Artisan call names:
+     * `php:artisan_command:orders:poll` reaches `handle()` (or `__invoke()`)
+     * of the command whose `$signature` or `$name` declares `orders:poll`.
+     * The scanner reads each declaration and the call in different files, so
+     * only here are the two together. Null when no command declares the name.
+     */
+    private function artisanCommandTarget(string $reference): ?string
+    {
+        if (!str_starts_with($reference, 'php:artisan_command:')) {
+            return null;
+        }
+        $this->artisanCommands ??= self::artisanCommands($this->contributions);
+        $command = $this->artisanCommands[substr($reference, strlen('php:artisan_command:'))] ?? null;
+        if ($command === null) {
+            return null;
+        }
+        foreach (['handle', '__invoke'] as $entry) {
+            $method = 'php:method:' . $command . '::' . $entry;
+            $target = $this->nodeMap[$method] ?? $this->inheritedMemberTarget($method);
+            if ($target !== null) {
+                return $target;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Artisan command name => the class declaring it, from the `artisan_command`
+     * attribute the PHP scanner puts on a command's `$signature` or `$name`.
+     * The first declaration wins, as it does for a duplicate node.
+     *
+     * @param list<ScanContribution> $contributions
+     * @return array<string, string>
+     */
+    private static function artisanCommands(array $contributions): array
+    {
+        $commands = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                $name = $node->attributes['artisan_command'] ?? null;
+                $separator = strrpos($node->canonicalName, '::$');
+                if (is_string($name) && $separator !== false) {
+                    $commands[$name] ??= substr($node->canonicalName, 0, $separator);
+                }
+            }
+        }
+
+        return $commands;
+    }
+
+    /**
+     * The Eloquent local scope a PHP call by its short name reaches.
+     *
+     * `Order::open()` is forwarded by the model's magic `__callStatic` to
+     * `scopeOpen`, so no declaration carries the name the call spells. The
+     * scope is looked up on the type and, like any member, on what it inherits.
+     */
+    private function localScopeTarget(string $reference): ?string
+    {
+        $parts = explode(':', $reference, 3);
+        if (count($parts) !== 3 || $parts[0] !== 'php' || $parts[1] !== 'method') {
+            return null;
+        }
+        $separator = strrpos($parts[2], '::');
+        if ($separator === false || $separator === 0) {
+            return null;
+        }
+        $member = substr($parts[2], $separator + 2);
+        if ($member === '' || str_starts_with($member, 'scope')) {
+            return null;
+        }
+        $scope = 'php:method:' . substr($parts[2], 0, $separator) . '::scope' . ucfirst($member);
+
+        return $this->nodeMap[$scope] ?? $this->inheritedMemberTarget($scope);
     }
 
     /**
@@ -365,7 +448,8 @@ final class EdgeTargetResolver
             return null;
         }
         $returned = $this->returnTypes[$language . ':method:' . $callee]
-            ?? $this->inheritedReturnType($language, $callee);
+            ?? $this->inheritedReturnType($language, $callee)
+            ?? $this->modelFactoryType($language, $callee);
         if ($returned === null) {
             return null;
         }
@@ -404,6 +488,36 @@ final class EdgeTargetResolver
         $separator = strrpos($canonical, '\\');
 
         return $language . ':function:' . ($separator === false ? $canonical : substr($canonical, $separator + 1));
+    }
+
+    /**
+     * The factory class an Eloquent model's `factory()` returns.
+     *
+     * `factory()` comes from the vendor `HasFactory` trait, so no declaration
+     * in the graph gives it a return type and every state called on its result
+     * is dropped. Laravel builds the factory from the model's `newFactory()`
+     * when it declares one, and otherwise by convention: the model's name
+     * after `Models\`, or its short name, under `Database\Factories`, with a
+     * `Factory` suffix. The convention only counts when that class exists.
+     */
+    private function modelFactoryType(string $language, string $callee): ?string
+    {
+        if ($language !== 'php' || !str_ends_with($callee, '::factory')) {
+            return null;
+        }
+        $model = substr($callee, 0, -strlen('::factory'));
+        if ($model === '') {
+            return null;
+        }
+        $declared = $this->returnTypes['php:method:' . $model . '::newFactory'] ?? $this->inheritedReturnType('php', $model . '::newFactory');
+        if ($declared !== null) {
+            return $declared;
+        }
+        $modelsAt = strpos($model, '\\Models\\');
+        $relative = $modelsAt === false ? substr($model, (int) strrpos('\\' . $model, '\\')) : substr($model, $modelsAt + strlen('\\Models\\'));
+        $factory = 'php:class:Database\\Factories\\' . $relative . 'Factory';
+
+        return isset($this->nodeMap[$factory]) ? $factory : null;
     }
 
     /**

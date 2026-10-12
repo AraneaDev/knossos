@@ -64,7 +64,7 @@ final class InheritanceGraph
         $parents = self::ancestorEdges($pdo, $projectId, array_values(array_unique([...$classIds, ...$subtypeIds])));
         $ancestorIds = array_values(array_unique(array_merge(...array_values($parents) ?: [[]])));
         $meta = [];
-        foreach (ChunkedInQuery::rows($pdo, 'SELECT id, kind, display_name, origin FROM nodes WHERE project_id = ? AND id IN (%s)', $ancestorIds, [$projectId]) as $row) {
+        foreach (ChunkedInQuery::rows($pdo, 'SELECT id, kind, canonical_name, display_name, origin FROM nodes WHERE project_id = ? AND id IN (%s)', $ancestorIds, [$projectId]) as $row) {
             $meta[$row['id']] = $row;
         }
         $internalAncestors = array_values(array_filter($ancestorIds, static fn(string $id): bool => !self::externalMeta($meta[$id] ?? null)));

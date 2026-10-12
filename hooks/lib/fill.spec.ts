@@ -112,9 +112,11 @@ describe('the stat tiles', () => {
   it('press to the list a figure counts, where it has something to list', () => {
     const list = stats({ cycles: { count: 3, truncated: false, truncation_reasons: [], largest: [] }, dead_code_candidates: 7 }, '2', 5)
     expect(press(list, 'cycles')).toBe('stat:cycles')
-    expect(press(list, 'dead')).toBe('stat:dead')
-    expect(press(list, 'policy')).toBe('stat:policy')
-    expect(press(list, 'diagnostics')).toBe('stat:diagnostics')
+    // The dead code, the policy and the diagnostics are one issues figure, pressing to the Issues tab.
+    expect(press(list, 'issues')).toBe('stat:issues')
+    // Two policy violations among them: the error mark goes with the figure.
+    expect(list.find(s => s.key === 'issues')?.value).toBe('✗ 14')
+    for (const gone of ['dead', 'policy', 'diagnostics']) expect(list.find(s => s.key === gone)).toBeUndefined()
     expect(press(list, 'components')).toBe('stat:components')
     expect(press(list, 'boundaries')).toBe('stat:boundaries')
     // A figure, not a set: nothing to list.

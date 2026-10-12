@@ -24,6 +24,19 @@ final class FactCollector extends NodeVisitorAbstract
     use ResolvesClassName;
     use ResolvesDeclarationName;
 
+    /** Eloquent query and model methods whose string arguments name relations, lower-cased. */
+    private const RELATION_NAMING_METHODS = [
+        'with', 'without', 'withonly', 'load', 'loadmissing', 'loadcount', 'withcount', 'withexists',
+        'has', 'orhas', 'doesnthave', 'ordoesnthave', 'wherehas', 'orwherehas', 'wheredoesnthave',
+        'orwheredoesnthave', 'withwherehas', 'whererelation', 'orwhererelation',
+    ];
+
+    /** Factory methods that build and return one model, lower-cased. */
+    private const FACTORY_BUILDERS = ['create', 'make', 'createone', 'makeone', 'createquietly', 'createonequietly'];
+
+    /** The members of {@see self::RELATION_NAMING_METHODS} where every argument may name relations. */
+    private const VARIADIC_RELATION_METHODS = ['with', 'without', 'withonly', 'load', 'loadmissing', 'loadcount', 'withcount', 'withexists'];
+
     /** @var list<array<string, mixed>> */
     private array $nodes = [];
 
@@ -45,6 +58,14 @@ final class FactCollector extends NodeVisitorAbstract
      * @var array<string, array<string, true>>
      */
     private array $untypedCalls = [];
+
+    /**
+     * Per enclosing function, the variables holding a query begun with a
+     * static call on a class: `$query = Order::where(...)`, keyed by name.
+     *
+     * @var list<array<string, string>>
+     */
+    private array $builders = [];
 
     /** The namespace block the traversal is in: its node id, 0 for a file without one. */
     private int $namespaceScope = 0;
@@ -107,6 +128,7 @@ final class FactCollector extends NodeVisitorAbstract
     {
         if ($node instanceof Node\FunctionLike) {
             $this->variables->enter($node);
+            $this->builders[] = [];
         }
         if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction) {
             $this->closureSignature($node);
@@ -127,6 +149,7 @@ final class FactCollector extends NodeVisitorAbstract
             $this->property($node);
         } elseif ($node instanceof Expr\Assign) {
             $this->receivers->assignment($node, $this->currentClass());
+            $this->builderAssignment($node);
         } elseif ($node instanceof Expr\AssignOp\Coalesce) {
             $this->receivers->coalescingAssignment($node, $this->currentClass());
         } elseif ($node instanceof Stmt\Foreach_) {
@@ -147,6 +170,8 @@ final class FactCollector extends NodeVisitorAbstract
             $this->methodCall($node);
         } elseif ($node instanceof Expr\FuncCall) {
             $this->functionCall($node);
+        } elseif ($node instanceof Expr\PropertyFetch || $node instanceof Expr\NullsafePropertyFetch) {
+            $this->propertyRead($node);
         }
         if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Property || $node instanceof Stmt\ClassMethod) {
             $this->annotationReferences($node);
@@ -199,6 +224,7 @@ final class FactCollector extends NodeVisitorAbstract
     {
         if ($node instanceof Node\FunctionLike) {
             $this->variables->leave();
+            array_pop($this->builders);
         }
         if ($node instanceof Stmt\ClassMethod || $node instanceof Stmt\Function_) {
             array_pop($this->callables);
@@ -509,7 +535,7 @@ final class FactCollector extends NodeVisitorAbstract
         foreach ($node->props as $property) {
             $name = $class['name'] . '::$' . $property->name->toString();
             $id = self::reference('property', $name);
-            $this->addNode($id, 'property', $name, '$' . $property->name->toString(), $property);
+            $this->addNode($id, 'property', $name, '$' . $property->name->toString(), $property, self::artisanCommand($property));
             $this->addEdge('contains', $class['id'], $id, $property);
             foreach ($types as $type) {
                 $this->addEdge('references', $id, self::reference('class', $type), $node->type ?? $node);
@@ -518,6 +544,23 @@ final class FactCollector extends NodeVisitorAbstract
                 $this->setPropertyType($property->name->toString(), $types[0]);
             }
         }
+    }
+
+    /**
+     * The Artisan command a console command's `$signature` or `$name` declares,
+     * as an attribute of that property: `'orders:poll {--dry-run}'` is `orders:poll`.
+     * The core reads it to resolve `artisan('orders:poll')` to the command.
+     *
+     * @return array<string, string>
+     */
+    private static function artisanCommand(Node\PropertyItem $property): array
+    {
+        if (!in_array($property->name->toString(), ['signature', 'name'], true) || !$property->default instanceof Node\Scalar\String_) {
+            return [];
+        }
+        $command = preg_split('/[\s{]/', trim($property->default->value), 2)[0] ?? '';
+
+        return $command === '' ? [] : ['artisan_command' => $command];
     }
 
     /** Emit an `instantiates` edge for a `new` whose class is statically known. */
@@ -577,6 +620,150 @@ final class FactCollector extends NodeVisitorAbstract
         $class = $this->resolvedClassName($node->class);
         $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node);
         $this->classReference($node->class, $node);
+        $this->eagerLoads($node, $class);
+    }
+
+    /**
+     * Eloquent relations a query or a model names in a string: `with('lines')`,
+     * `load(['creator:id,name'])`, `whereHas('lines.product', ...)`.
+     *
+     * The relation is a method on the receiver's class that nothing calls by
+     * name. Only a path's first segment is the receiver's own relation; the
+     * rest belong to whatever that relation returns, which this file cannot
+     * see. The edge is speculative: if the class declares no method of that
+     * name, the reconciler drops it.
+     */
+    private function eagerLoads(Expr\MethodCall|Expr\NullsafeMethodCall|Expr\StaticCall $node, ?string $class): void
+    {
+        // `$order->load(...)` is a first-class callable: it has no arguments to read.
+        if ($class === null || $node->isFirstClassCallable() || !$node->name instanceof Identifier
+            || !in_array(strtolower($node->name->toString()), self::RELATION_NAMING_METHODS, true)) {
+            return;
+        }
+        $names = [];
+        $arguments = $node->getArgs();
+        // `whereRelation('lines', 'status', 'open')` and `has('lines', '>', 2)`
+        // name one relation and then columns and values; the eager loads take
+        // any number of relations.
+        if (!in_array(strtolower($node->name->toString()), self::VARIADIC_RELATION_METHODS, true)) {
+            $arguments = array_slice($arguments, 0, 1);
+        }
+        foreach ($arguments as $argument) {
+            $value = $argument->value;
+            if ($value instanceof Node\Scalar\String_) {
+                $names[] = $value->value;
+            } elseif ($value instanceof Expr\Array_) {
+                foreach ($value->items as $item) {
+                    $key = $item?->key instanceof Node\Scalar\String_ ? $item->key->value : null;
+                    $names[] = $key ?? ($item?->value instanceof Node\Scalar\String_ ? $item->value->value : null);
+                }
+            }
+        }
+        foreach (array_unique(array_filter($names, 'is_string')) as $path) {
+            $relation = explode('.', explode(':', $path, 2)[0], 2)[0];
+            if ($relation !== '') {
+                $this->addEdge('references', $this->currentSource(), self::reference('method', $class . '::' . $relation), $node, 'probable', ['speculative' => true]);
+            }
+        }
+    }
+
+    /**
+     * A property read on a typed receiver, which may be an Eloquent relation:
+     * `$line->product` runs `Line::product()` through the model's magic
+     * accessor. Speculative, so a plain property, which declares no method of
+     * its name, leaves no edge once the reconciler finds none.
+     */
+    private function propertyRead(Expr\PropertyFetch|Expr\NullsafePropertyFetch $node): void
+    {
+        if (!$node->name instanceof Identifier) {
+            return;
+        }
+        $class = $this->factoryModel($node->var);
+        if ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
+            $class = $node->var->name === 'this'
+                ? $this->currentClass()['name'] ?? null
+                : $this->variables->type($node->var->name);
+        }
+        if ($class !== null) {
+            $this->addEdge('references', $this->currentSource(), self::reference('method', $class . '::' . $node->name->toString()), $node, 'probable', ['speculative' => true]);
+
+            return;
+        }
+        // Nothing types the receiver, and a relation read this way runs a
+        // method of the name, so it counts like an untyped call does.
+        $this->untypedCalls[$this->currentSource()][$node->name->toString()] = true;
+    }
+
+    /**
+     * Remember a variable assigned a query that starts with a static call on a
+     * class, and type one assigned the model a factory builds.
+     */
+    private function builderAssignment(Expr\Assign $node): void
+    {
+        if (!$node->var instanceof Expr\Variable || !is_string($node->var->name) || $this->builders === []) {
+            return;
+        }
+        $model = $this->factoryModel($node->expr);
+        if ($model !== null) {
+            // Inferred from local flow, like `$x = new Y()`, so only probable.
+            $this->variables->set($node->var->name, $model, 'probable');
+        }
+        $root = $this->builderRoot($node->expr);
+        $scope = array_key_last($this->builders);
+        if ($root === null) {
+            unset($this->builders[$scope][$node->var->name]);
+
+            return;
+        }
+        $this->builders[$scope][$node->var->name] = $root;
+    }
+
+    /**
+     * The model an Eloquent factory chain builds: `Product::factory()->bundle()->create()`
+     * or `->make()`. The factory is vendor code, so nothing in the graph says
+     * what `create()` returns. A chain that asks for several, through
+     * `count()`, `times()` or `factory(3)`, builds a collection instead, and
+     * gives null like any other expression.
+     */
+    private function factoryModel(Expr $expression): ?string
+    {
+        if (!$expression instanceof Expr\MethodCall || !$expression->name instanceof Identifier
+            || !in_array(strtolower($expression->name->toString()), self::FACTORY_BUILDERS, true)) {
+            return null;
+        }
+        do {
+            $expression = $expression->var;
+            if ($expression instanceof Expr\MethodCall && $expression->name instanceof Identifier
+                && in_array(strtolower($expression->name->toString()), ['count', 'times'], true)) {
+                return null;
+            }
+        } while ($expression instanceof Expr\MethodCall);
+        if (!$expression instanceof Expr\StaticCall || $expression->isFirstClassCallable() || !$expression->class instanceof Name
+            || !$expression->name instanceof Identifier || strtolower($expression->name->toString()) !== 'factory') {
+            return null;
+        }
+        $first = $expression->getArgs()[0]->value ?? null;
+
+        return $first instanceof Node\Scalar\Int_ ? null : $this->resolvedClassName($expression->class);
+    }
+
+    /**
+     * The class a chain of calls starts from with a static call, `Order::where()->where()`,
+     * or that a variable holding such a chain was assigned; null for any other receiver.
+     */
+    private function builderRoot(Expr $expression): ?string
+    {
+        while ($expression instanceof Expr\MethodCall || $expression instanceof Expr\NullsafeMethodCall) {
+            $expression = $expression->var;
+        }
+        if ($expression instanceof Expr\StaticCall && $expression->class instanceof Name) {
+            return $this->resolvedClassName($expression->class);
+        }
+        if ($expression instanceof Expr\Variable && is_string($expression->name) && $this->builders !== []) {
+            return $this->builders[array_key_last($this->builders)][$expression->name] ?? null;
+        }
+
+        return null;
     }
 
     /**
@@ -646,6 +833,7 @@ final class FactCollector extends NodeVisitorAbstract
             // could have reassigned it.
             $class = $this->receivers->returnedType($node->var, $this->currentClass());
         }
+        $this->eagerLoads($node, $class ?? $this->builderRoot($node->var));
 
         if ($class !== null) {
             $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node, $confidence);

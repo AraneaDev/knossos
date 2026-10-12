@@ -277,6 +277,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         // ones to fill the limit on their own.
         $testOnlyCandidates = $found['test_only'];
         $candidatesTotal = $found['total'];
+        $probableCandidates = $found['probable'];
         // The candidate list reports its own truncation: `truncation_reasons`
         // describe the hub ranking, and a full page of candidates said the
         // hubs had been cut when they had not.
@@ -293,11 +294,14 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         return new ResultEnvelope(
             $project['id'],
             $project['active_scan_id'],
-            self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $truncationReasons, $candidateTruncationReasons),
+            self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $probableCandidates, $truncationReasons, $candidateTruncationReasons),
             [
                 'hubs' => $hubs, 'static_hotspots' => $hotspots, 'dead_code_candidates' => $deadCandidates, 'in_degree_histogram' => $ranked['in_degree'],
                 'bounds' => $bounds + [
                     'candidates_total' => $candidatesTotal,
+                    'candidates_probable' => $probableCandidates,
+                    'candidates_possible' => $candidatesTotal - $probableCandidates,
+                    'candidates_test_only' => $testOnlyCandidates,
                     'candidates_truncated' => $candidateTruncationReasons !== [],
                     'candidate_truncation_reasons' => $candidateTruncationReasons,
                     'nodes_examined' => count($slice['ids']), 'edges_examined' => $result['walk']['edges_examined'],
@@ -719,10 +723,14 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * of 1 once read "1 unreferenced-code candidates, 87 of them reached only
      * by tests".
      *
+     * The confidence split is named too, counted over the whole list like the
+     * test-only tally: a bare count read as that much dead code, when most of
+     * a framework project's candidates are only possibly dead.
+     *
      * @param list<string> $truncationReasons
      * @param list<string> $candidateTruncationReasons
      */
-    private static function healthSummary(int $hubs, int $hotspots, int $candidatesTotal, int $candidatesOnPage, int $testOnlyCandidates, array $truncationReasons, array $candidateTruncationReasons): string
+    private static function healthSummary(int $hubs, int $hotspots, int $candidatesTotal, int $candidatesOnPage, int $testOnlyCandidates, int $probableCandidates, array $truncationReasons, array $candidateTruncationReasons): string
     {
         $summary = sprintf(
             'Ranked %d hubs, %d static hotspots, and %d unreferenced-code candidates, %d of them reached only by tests.',
@@ -731,6 +739,13 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             $candidatesTotal,
             $testOnlyCandidates,
         );
+        if ($candidatesTotal > 0) {
+            $possible = $candidatesTotal - $probableCandidates;
+            $summary .= sprintf(' By confidence: %d probable, %d possible.', $probableCandidates, $possible);
+            if ($possible > 0) {
+                $summary .= ' A possible one may be reached in a way no scan sees, such as a framework, a callback or a call on an untyped receiver.';
+            }
+        }
         if ($candidatesOnPage !== $candidatesTotal) {
             $summary .= sprintf(' This page lists %d of them.', $candidatesOnPage);
         }

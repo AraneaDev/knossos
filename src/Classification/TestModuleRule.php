@@ -72,6 +72,7 @@ final readonly class TestModuleRule implements ClassificationRule
         $segments = explode('/', $path);
         $file = array_pop($segments) ?? '';
         $underSourceRoot = false;
+        $previous = null;
         foreach ($segments as $segment) {
             $lower = strtolower($segment);
             if (in_array($lower, self::UNAMBIGUOUS_SEGMENTS, true)) {
@@ -80,9 +81,21 @@ final readonly class TestModuleRule implements ClassificationRule
             if (in_array($lower, self::AMBIGUOUS_SEGMENTS, true) && !$underSourceRoot) {
                 return true;
             }
+            // Maven and Gradle keep tests in `src/test/`, and Vitest and Jest
+            // setups their helpers: the one place under a source root where
+            // an ambiguous name is still the test convention.
+            if ($lower === 'test' && $previous === 'src') {
+                return true;
+            }
+            // Laravel's model factories build fixtures for tests, so what they
+            // declare is test support, not product code only tests reach.
+            if ($lower === 'factories' && $previous === 'database') {
+                return true;
+            }
             if (in_array($lower, self::SOURCE_ROOTS, true)) {
                 $underSourceRoot = true;
             }
+            $previous = $lower;
         }
 
         // Filename conventions: foo.test.ts, foo.spec.js, test_foo.py, foo_test.py, FooTest.php.

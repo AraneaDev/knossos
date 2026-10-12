@@ -120,6 +120,10 @@ export type Dashboard = {
   hubs_truncation_reasons: string[]
   hotspots: (Ranked & { score: number })[]
   dead_code_candidates: number
+  /** How many of `dead_code_candidates` are probably dead; the rest only possibly. Absent from an older knossos. */
+  dead_code_probable?: number
+  /** How many of `dead_code_candidates` only tests reach. Absent from an older knossos. */
+  dead_code_test_only?: number
   dead_code_truncated: boolean
   cycles: {
     count: number

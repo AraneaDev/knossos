@@ -32,7 +32,8 @@ describe('the canvas', () => {
     edgeLabel(c, 3, 0, '12')
     line(c, [[0, 0], [11, 0]], undefined, true)
     expect(text(toRows(c, 't'))).toBe('─── 12 ────►')
-    expect(Object.values(ARROWS)).toEqual(['►', '◄', '▲', '▼'])
+    // Up and down are small triangles: ▲ is the pane's warning mark.
+    expect(Object.values(ARROWS)).toEqual(['►', '◄', '▴', '▾'])
   })
   it('counts text written over a line, and a line run through text, as overlaps; a loose end as a join error', () => {
     const c = canvas(6, 1)
@@ -66,7 +67,7 @@ describe('the cycle diagram', () => {
         '╭─►│ n0 ├────────►│ n1 ├────────►│ n2 │',
         '│  ╰────╯         ╰────╯         ╰──┬─╯',
         '│                                   │',
-        '│                                   ▼',
+        '│                                   ▾',
         '│                 ╭────╮         ╭────╮',
         '│                 │ n4 │◄────────┤ n3 │',
         '│                 ╰──┬─╯         ╰────╯',
@@ -149,7 +150,7 @@ describe('the neighbourhood', () => {
     const t = text(narrow.rows)
     expect(t.indexOf('u0')).toBeLessThan(t.indexOf('Centre'))
     expect(t.indexOf('Centre')).toBeLessThan(t.indexOf('d0'))
-    expect(t).toContain('▼')
+    expect(t).toContain('▾')
   })
   it('says what a side holds when it holds nothing', () => {
     expect(text(neighbourhood({ key: 'c', label: 'Leaf' }, [], [], 120, empty).rows)).toMatch(/nothing uses it .*│ Leaf │ +uses nothing/)

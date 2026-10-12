@@ -214,11 +214,15 @@ describe('changesRows', () => {
   it('draws files with their marks, each pressable to its detail, the tests, and the command', () => {
     const rows = changesRows(changesInput(session(), ROOT), 1, 90)
     const text = textOf(rows)
-    expect(text).toMatch(/Changes this session +2 turns/)
+    // The note names the file marks the card shows, counted.
+    expect(text).toMatch(/Changes this session +2 turns · ~ 1 changed · \+ 1 added · − 1 removed/)
     expect(text).toContain('3 files → 45 dependents reaching ■ Core ■ Http')
-    expect(text).toContain('▲ 1 policy violation introduced')
+    // A violation is an error, on Changes as on Issues.
+    expect(text).toContain('✗ 1 policy violation introduced')
     expect(plainText(row(rows, 'change-1')!)).toMatch(/^›\+ src\/Core\/Kernel\.php +■ Core +━/)
     expect(plainText(row(rows, 'change-2')!)).toMatch(/^ − src\/Helper\.php/)
+    // A changed file is marked ~, beside + for added and − for removed.
+    expect(plainText(row(rows, 'change-0')!)).toMatch(/^ ~ src\/Router\.php/)
     // A file opens as its detail, by the same index the marker walks; `e` opens it in the editor.
     expect(row(rows, 'change-0')!.segments.find(s => s.press)?.press).toEqual({ id: 'row:0', label: 'src/Router.php' })
     expect(row(rows, 'change-2')!.segments.find(s => s.press)?.press?.id).toBe('row:2')
@@ -470,15 +474,15 @@ describe("the session's scans as a timeline", () => {
 
   it('draws a dot a scan, oldest first, this session in the accent and outside dim, then the counts', () => {
     const r = timelineRow({ timeline: timeline('ssoss'), earlier: false }, 60)!
-    expect(plainText(r)).toBe('   scans ●●●●●  4 this session · 1 outside')
-    const dots = r.segments.filter(s => s.text.includes('●'))
+    expect(plainText(r)).toBe('   scans •••••  4 this session · 1 outside')
+    const dots = r.segments.filter(s => s.text.includes('•'))
     expect(dots.map(s => [s.text, s.color ?? (s.dim ? 'dim' : '')])).toEqual([
-      ['●●', 'suggestion'],
-      ['●', 'dim'],
-      ['●●', 'suggestion'],
+      ['••', 'suggestion'],
+      ['•', 'dim'],
+      ['••', 'suggestion'],
     ])
     // Only the session's own: no outside count.
-    expect(plainText(timelineRow({ timeline: timeline('sss'), earlier: false }, 60)!)).toBe('   scans ●●●  3 this session')
+    expect(plainText(timelineRow({ timeline: timeline('sss'), earlier: false }, 60)!)).toBe('   scans •••  3 this session')
     expect(timelineRow({ timeline: [], earlier: false }, 60)).toBeNull()
   })
 
@@ -486,10 +490,10 @@ describe("the session's scans as a timeline", () => {
     for (const columns of WIDTHS) {
       const r = timelineRow({ timeline: timeline('s'.repeat(120)), earlier: false }, columns)!
       expect(rowWidth(r), `${columns}`).toBeLessThanOrEqual(columns)
-      if (columns < 160) expect(plainText(r), `${columns}`).toContain('…●')
-      else expect(plainText(r), `${columns}`).toContain(`scans ${'●'.repeat(120)}  120 this session`)
+      if (columns < 160) expect(plainText(r), `${columns}`).toContain('…•')
+      else expect(plainText(r), `${columns}`).toContain(`scans ${'•'.repeat(120)}  120 this session`)
     }
-    expect(plainText(timelineRow({ timeline: timeline('so'), earlier: true }, 80)!)).toBe('   scans …●●  1 this session · 1 outside')
+    expect(plainText(timelineRow({ timeline: timeline('so'), earlier: true }, 80)!)).toBe('   scans …••  1 this session · 1 outside')
   })
 
   it('stands above the file list, from the ledger with each scan by whose changes it took in, else from the session\'s own', () => {

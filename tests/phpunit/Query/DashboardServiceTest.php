@@ -344,6 +344,10 @@ final class DashboardServiceTest extends KnossosTestCase
             assertSame($health['static_hotspots'][0]['component']['display_name'], $d['hotspots'][0]['name']);
             assertSame($health['static_hotspots'][0]['component']['kind'], $d['hotspots'][0]['kind']);
             assertSame($health['bounds']['candidates_total'], $d['dead_code_candidates']);
+            // The probable share of that total, so the pane can say how sure the count is.
+            assertSame($health['bounds']['candidates_probable'], $d['dead_code_probable']);
+            self::assertArrayHasKey('dead_code_test_only', $d);
+            assertSame($health['bounds']['candidates_test_only'], $d['dead_code_test_only']);
             assertGreaterThan(0, $d['dead_code_candidates']);
         } finally {
             $this->removeTempTree($root);

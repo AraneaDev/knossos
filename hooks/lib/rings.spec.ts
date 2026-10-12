@@ -56,19 +56,35 @@ describe('the blast radius in a component detail', () => {
     expect(text(state(radius(), 'App\\Other'))).toContain('Reading what depends on it')
   })
 
+  it('gives a ring its legend: how many are tested and how many are not', () => {
+    expect(text(state(radius()))).toMatch(/✓ 3 tested · ▲ 1 untested/)
+  })
+
+  it('marks each ring member with its kind before its name', () => {
+    expect(text(state(radius()))).toMatch(/C Near0/)
+  })
+
+  it('says a ring no test file reaches is a warning, not an error', () => {
+    const untested = radius()
+    Object.assign(untested.rings[0]!, { tests: { count: 0, items: [] } })
+    const shown = text(state(untested))
+    expect(shown).toContain('▲ no test file reaches it')
+    expect(shown).not.toContain('✗')
+  })
+
   it('draws the rings as nested frames, the furthest outermost and the component in the middle', () => {
     const rows = ringRows(ringsInput(state(radius()), 'App\\Store\\StableId', ROOT), 80, -1, 0)
     const raw = rows.map(rawText)
     expect(raw[0]).toMatch(/^╭─ 3\+ hops · 0 ─+ none ─╮$/)
     expect(raw.find(r => r.includes('2 hops'))).toMatch(/^│ ╭─ 2 hops · 30 ─+ ✓ all tested ─╮ │$/)
-    expect(raw.find(r => r.includes('1 hop '))).toMatch(/^│ │ ╭─ 1 hop · 4 ─+ ▲ 1 untested ─╮ │ │$/)
+    expect(raw.find(r => r.includes('1 hop '))).toMatch(/^│ │ ╭─ 1 hop · 4 ─+ ✓ 3 tested · ▲ 1 untested ─╮ │ │$/)
     expect(raw.find(r => r.includes('◉'))).toMatch(/^│ │ │ +◉ StableId ■ core +│ │ │$/)
     expect(raw.at(-1)).toMatch(/^╰─+╯$/)
     expect(raw.at(-2)).toMatch(/^│ ╰─+╯ │$/)
     for (const r of rows) expect(rowWidth(r), rawText(r)).toBe(80)
     // The untested first, marked; a boundary named only where it is not the component's own.
     const near = raw.find(r => r.includes('Near0'))!
-    expect(near).toMatch(/▲Near0 {3}Near1/)
+    expect(near).toMatch(/▲ C Near0 {3}C Near1/)
     expect(near).toContain('Near1 ■ edge')
     expect(near).not.toContain('Near2 ■')
     // The tests that reach a ring, by file name, then how many more.
@@ -96,7 +112,7 @@ describe('the blast radius in a component detail', () => {
         }
       }
     }
-    expect(text(state(radius()), 40)).toMatch(/1 hop · 4 +▲ 1 untested/)
+    expect(text(state(radius()), 40)).toMatch(/1 hop · 4 +✓ 3 tested · ▲ 1 untested/)
     expect(text(state(radius()), 40)).not.toContain('╭─ 1 hop')
     expect(RINGS_MIN).toBeLessThanOrEqual(60)
   })

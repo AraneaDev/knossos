@@ -9,7 +9,7 @@
  */
 import { diffBlock } from './diff'
 import type { DiffView } from './diff'
-import { moreRows, noteOf, windowOf } from './cards'
+import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { ComponentDetail, Counterpart, Dashboard, Diagnostic, DetailState, Inspected, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
@@ -35,7 +35,6 @@ import {
   MARK,
   numberWidth,
   placeOf,
-  plural,
   shortName,
   segmentsWidth,
   spaces,
@@ -47,6 +46,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
+import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -78,7 +78,8 @@ export type Openable = {
 export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null }; selected?: number; target?: string }
 
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
-export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean }
+/** `certainty` is the candidate's confidence, `probable` or `possible`: how sure the scan is that nothing reaches it. */
+export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean; certainty: string; kind: string }
 /** A diagnostic as Issues lists it; `path` null for one about no file (the project's own setup). */
 /** `place` names it in the walk (file and line); `where` is what its row says: the project path, then its source. */
 export type DiagnosticLine = { severity: string; text: string; path: string | null; place: string; where: string; loc: Loc | null }
@@ -87,7 +88,8 @@ export type IssuesInput = {
   /** Null when the knossos that answered sends no policy section. */
   policy: { evaluated: boolean; total: string; count: number; items: ViolationLine[] } | null
   diagnostics: { errors: number; warnings: number; infos: number; items: DiagnosticLine[] } | null
-  deadCode: { total: string; items: DeadLine[] }
+  /** `probable` is how many of `total` are probably dead and `testOnly` how many only tests reach, each null from a knossos that does not say. */
+  deadCode: { total: string; probable: number | null; testOnly: number | null; items: DeadLine[] }
   /** The files a change is riskiest in: lines times dependents, the highest first. */
   hotspots: { path: string; lines: number; dependents: number; score: number; loc: Loc | null }[]
   /** The files over the project's function-length budget; null without a budget, undefined when the knossos that answered does not say. */
@@ -193,6 +195,8 @@ export function issuesInput(d: Dashboard): IssuesInput {
           },
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
+      probable: d.dead_code_probable ?? null,
+      testOnly: d.dead_code_test_only ?? null,
       items: (d.dead_code ?? []).map(c => ({
         name: displayName(c),
         canonical: c.canonical_name,
@@ -200,6 +204,8 @@ export function issuesInput(d: Dashboard): IssuesInput {
         place: placeOf(c.path, c.line),
         loc: locIn(root, c.path, c.line),
         testOnly: c.reachability === 'test_only',
+        certainty: c.confidence,
+        kind: c.kind,
       })),
     },
     hotspots: (d.complexity_hotspots ?? []).map(f => ({ path: f.path, lines: f.lines, dependents: f.dependent_files, score: f.score, loc: locIn(root, f.path) })),
@@ -360,7 +366,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const violations = policy?.items ?? []
   const violationEntries: Entry[] = violations.map((v, i) => ({
     selected: i === selected,
-    mark: { text: '▲', color: STATUS_COLOURS.alert },
+    mark: mark(SEVERITY.error),
     boundary: v.source.boundary,
     place: v.place,
     loc: v.source.loc ?? null,
@@ -377,7 +383,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const diagOffset = violations.length
   const diagEntries: Entry[] = (d?.items ?? []).map((x, i) => ({
     selected: diagOffset + i === selected,
-    mark: x.severity === 'error' ? { text: '✗', color: STATUS_COLOURS.alert } : { text: '▲', color: STATUS_COLOURS.warn },
+    mark: mark(x.severity === 'error' ? SEVERITY.error : x.severity === 'warning' ? SEVERITY.warn : SEVERITY.note),
     place: x.where,
     loc: x.loc,
     need: cells(x.text),
@@ -385,14 +391,25 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   }))
   const dead = issues.deadCode
   const offset = diagOffset + diagEntries.length
+  // Two marks before the name, the card's note their legend: how sure the scan is, ● probable or a dim ○ possible
+  // (something no scan sees may reach it), then what reaches it, ◆ tests only in the warning colour (finished work
+  // no product path runs) or a dim ∅ nothing at all. Where even the marks would squeeze the names below
+  // {@link MAIN_MIN} they go from every row at once, so they never show on some rows and not others.
+  const MARKS = 6
+  const longestName = Math.max(1, ...dead.items.map(c => cells(c.name)))
   const deadEntries: Entry[] = dead.items.map((c, i) => ({
     selected: offset + i === selected,
-    mark: c.testOnly ? { text: '◇', dim: true } : undefined,
     boundary: c.boundary,
     place: c.place,
     loc: c.loc ?? null,
-    need: cells(c.name),
-    main: width => [button(`row:${offset + i}`, fit(c.name, width))],
+    need: cells(c.name) + MARKS,
+    main: width => {
+      // Too narrow only when the names would be squeezed below their least, or below the longest when all are short.
+      if (width - MARKS < Math.min(MAIN_MIN, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
+      const certainty = mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible, ' ')
+      const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
+      return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
+    },
   }))
   /**
    * A list of entries `limit` long around the marker (`local`: its index in this list), with what is above and below;
@@ -414,8 +431,8 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
           : !policy.evaluated
             ? [{ text: 'no policies declared', dim: true }]
             : policy.count === 0
-              ? [{ text: '✓ 0', color: STATUS_COLOURS.ok }]
-              : [{ text: `▲ ${policy.total}`, color: STATUS_COLOURS.alert }]
+              ? [mark(SEVERITY.ok, ' 0')]
+              : [mark(SEVERITY.error, ` ${policy.total}`)]
       const body = listed('pol', violationEntries, columns, limit, selected < diagOffset ? selected : -1, 0)
       if (policy !== null && policy.evaluated && policy.count > violations.length) body.push(dimRow('pol-more', `   +${policy.count - violations.length} not listed`, columns))
       return { key: 'policy', title: 'Policy violations', note: verdict, body, empty: 'none' }
@@ -428,7 +445,9 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       const counts =
         d === null
           ? 'not reported'
-          : [plural(d.errors, 'error', 'errors'), plural(d.warnings, 'warning', 'warnings'), ...(d.infos > 0 ? [plural(d.infos, 'note', 'notes')] : [])].join(' · ')
+          : d.errors + d.warnings + d.infos === 0
+            ? `${SEVERITY.ok.glyph} 0`
+            : legend([[SEVERITY.error, d.errors], [SEVERITY.warn, d.warnings], [SEVERITY.note, d.infos]])
       const local = selected - diagOffset
       const body = listed('diag', diagEntries, columns, limit, local >= 0 && local < diagEntries.length ? local : -1, diagOffset)
       // Only the first errors and warnings come listed; notes are counted, never listed.
@@ -440,9 +459,16 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     key: 'dead',
     grow: { length: deadEntries.length, min: ISSUES_MIN },
     make: (columns, limit) => {
-      const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total} · first ${dead.items.length}` : dead.total
+      // The probable and test-only counts beside the total, so the card does not read as that much dead code.
+      const sure =
+        dead.total === '0' ? '' : ((key: string) => (key === '' ? '' : ` · ${key}`))(legend([[CERTAINTY.probable, dead.probable ?? 0], [REACH.testsOnly, dead.testOnly ?? 0]]))
+      const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
       const body = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset)
-      return { key: 'dead', title: 'Dead code', note: noteOf(deadNote), body, empty: 'none' }
+      // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
+      const kinds = kindLegend(dead.items.map(c => c.kind))
+      const keyed = kinds === '' ? deadNote : `${deadNote} · ${kinds}`
+      const told = cells('Dead code') + cells(keyed) + NOTE_ROOM <= columns ? keyed : deadNote
+      return { key: 'dead', title: 'Dead code', note: noteOf(told), body, empty: 'none' }
     },
   }
   const spotOffset = offset + dead.items.length
@@ -476,7 +502,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       if (budget === undefined) return { key: 'budget', title, note: noteOf('not reported'), body: [], empty: 'not reported' }
       if (budget === null) return { key: 'budget', title, note: [{ text: 'no maintainability-budgets.json', dim: true }], body: [], empty: 'none' }
       const rule = `functions over ${budget.max} lines`
-      if (budget.files.length === 0) return { key: 'budget', title, note: [{ text: '✓ 0', color: STATUS_COLOURS.ok }, { text: ` ${rule}`, dim: true }], body: [], empty: 'none' }
+      if (budget.files.length === 0) return { key: 'budget', title, note: [mark(SEVERITY.ok, ' 0'), { text: ` ${rule}`, dim: true }], body: [], empty: 'none' }
       const local = selected - overOffset
       const window = windowOf(budget.files.length, limit, local >= 0 && local < budget.files.length ? local : -1)
       const shown = budget.files.slice(window.start, window.end)
@@ -484,11 +510,11 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       const body: Row[] = [tableHead('budget-cols', spec, { name: 'file', boundary: '', numbers: ['over', 'longest'] })]
       shown.forEach((f, n) => {
         const i = window.start + n
-        body.push(tableRow(`budget-${i}`, { name: f.path, boundary: null, values: [f.functions, f.longest], max: 0, path: true, press: `row:${overOffset + i}`, selected: overOffset + i === selected, mark: { text: '▲', color: STATUS_COLOURS.warn } }, spec, hues))
+        body.push(tableRow(`budget-${i}`, { name: f.path, boundary: null, values: [f.functions, f.longest], max: 0, path: true, press: `row:${overOffset + i}`, selected: overOffset + i === selected, mark: mark(SEVERITY.warn) }, spec, hues))
       })
       body.push(...moreRows('budget-window', window, budget.files.length, columns, overOffset))
       if (budget.total > budget.files.length) body.push(dimRow('budget-more', `   +${budget.total - budget.files.length} not listed`, columns))
-      return { key: 'budget', title, note: [{ text: `▲ ${grouped(budget.total)}`, color: STATUS_COLOURS.warn }, { text: ` ${rule}`, dim: true }], body, empty: 'none' }
+      return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none' }
     },
   }
   return { left: [policyBlock, diagBlock, budgetBlock], right: [deadBlock, hotBlock], rows: issueGrid([policyBlock, diagBlock, deadBlock, hotBlock, budgetBlock]) }
@@ -599,7 +625,7 @@ function notesBlock(name: string, annotations: { kind: string; value: string }[]
       const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - MARK)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(MARK) }, { text: line, ...style }] }))
       const keys = note?.keys !== false
       if (note === null || note.phase === 'failed') {
-        if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `✗ knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
+        if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
         const own = annotations.some(a => a.kind === 'note')
         body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note', own ? 'change the note' : 'add a note', 'm', { dim: true })] })
       } else if (note.phase === 'editing') {

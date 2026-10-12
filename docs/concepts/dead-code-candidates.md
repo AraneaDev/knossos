@@ -13,6 +13,13 @@ without leaving a statically visible edge. The tool says so in its own
 `warnings`, and every candidate carries a `reachability`, a `confidence` and a
 `reason`.
 
+The summary splits the whole list by confidence, so a count of candidates does
+not read as that much dead code: `By confidence: 14 probable, 29 possible.` The
+same split is in `bounds.candidates_probable` and `bounds.candidates_possible`, the test-only count in `bounds.candidates_test_only`,
+counted before `limit` slices the list. `knossos dead-code` prints each
+candidate's confidence beside its reachability, ends with the same split, and
+returns it as `by_confidence` with `--json`.
+
 ## Reachability
 
 Two components can both be unreachable from anything a user can open and still
@@ -33,6 +40,11 @@ may be waiting on a caller nobody has written yet; one whose own test is its
 only caller is finished work that no product path reaches, and it still costs
 review, refactors, and CI time. In a codebase with a thorough test suite, `test_only` is often the larger half of the list.
 
+Test code is recognised by path: test directories at a package root, `__tests__`
+anywhere, `src/test/`, Laravel's `database/factories/`, and the usual test file
+names. A helper there is test support, so it is never reported, even when
+nothing calls it.
+
 Passing `include_tests` asks for test code to count as part of the architecture,
 which collapses the distinction: nothing is reported as `test_only`, and a
 component its test reaches is simply referenced.
@@ -44,10 +56,18 @@ their own. They are counted in `bounds.excluded_convention_discovered`; see
 
 ## Confidence
 
-| Confidence | Meaning                                                                                                                                                                                                                                                                                                                                              |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `probable` | No inbound reference, and nothing about the component suggests dynamic dispatch.                                                                                                                                                                                                                                                                     |
-| `possible` | No inbound reference, but the component is reached in ways a scan cannot see: a non-`ast` origin, a framework role, a member of a type extending an external ancestor, a method of an object literal handed to other code with no type naming its methods, or a method or function sharing its name with a call on a receiver no scanner could type. |
+| Confidence | Meaning                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `probable` | No inbound reference, and nothing about the component suggests dynamic dispatch.                                                                                                                                                                                                                                                                                                       |
+| `possible` | No inbound reference, but the component is reached in ways a scan cannot see: a non-`ast` origin, a framework role, a member of a type extending an external ancestor whose hooks Knossos does not know, a method of an object literal handed to other code with no type naming its methods, or a method or function sharing its name with a call on a receiver no scanner could type. |
+
+A framework base Knossos knows, such as a Laravel `FormRequest`, `Model`,
+`JsonResource`, migration, factory, seeder, service provider or command, calls
+a known set of methods on its subclasses by name: `rules`, `toArray`, `up`,
+`definition`, `handle` and the like. Those are excluded as inherited members
+(counted in `bounds.excluded_inherited_methods`), and the base hides nothing
+else, so any other unused method of its subclass is `probable`. A base not on
+that list still makes every member of its subtypes `possible`.
 
 The untyped-call ground is a name match. A JavaScript function taking an
 untyped parameter, a closure argument in Rust, or a PHP parameter without a

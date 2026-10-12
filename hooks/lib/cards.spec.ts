@@ -197,13 +197,14 @@ describe('bars', () => {
     const kinds = names.map((_, i) => (i % 2 === 0 ? 'class' : 'method'))
     const spec = tableSpec(115, names, [], [3, 3, 5, 5], undefined, { tier: 'wide', places, kinds })
     expect(spec.place).toBeGreaterThan(0)
-    expect(spec.kind).toBe(6)
-    // The longest name is cut; the typical one (the 90th percentile) is whole.
-    expect(spec.name).toBeLessThan(44)
+    // The kind is a two-cell mark before the name.
+    expect(spec.kind).toBe(2)
+    // Two cells for the kind leave the names whole, the longest too.
+    expect(spec.name).toBe(44)
     expect(spec.name).toBeGreaterThanOrEqual(percentile(names.map(n => n.length), 0.9))
-    // Narrower, the kind goes before the file.
+    // Narrower, the kind, two cells, stays beside the file column.
     const narrower = tableSpec(80, names, [], [3, 3, 5, 5], undefined, { tier: 'wide', places, kinds })
-    expect(narrower.kind).toBeUndefined()
+    expect(narrower.kind).toBe(2)
     expect(percentile([], 0.9)).toBe(1)
     expect(percentile([5, 1, 3], 1)).toBe(5)
   })
@@ -319,7 +320,7 @@ describe('notes', () => {
 describe('card glyphs', () => {
   it('mark each kind of card with one dim, one-cell glyph before its title, the same on every tab', () => {
     for (const glyph of Object.values(GLYPHS)) expect([...glyph]).toHaveLength(1)
-    expect(GLYPHS).toMatchObject({ look: '◆', turn: '▤', map: '▦', bounds: '▦', cycles: '↻', policy: '!', diag: '!', dead: '!', hotspots: '!', budget: '!', changes: '±' })
+    expect(GLYPHS).toMatchObject({ look: '◬', turn: '▤', map: '▦', bounds: '▦', cycles: '↻', policy: '!', diag: '!', dead: '!', hotspots: '!', budget: '!', changes: '±' })
     for (const tier of ['narrow', 'medium', 'wide'] as const) {
       const head = topRow({ key: 'cycles', title: 'Cycles', note: [{ text: '2' }], body: [] }, 60, tier)
       expect(head.segments.find(s => s.text === '↻ ')).toMatchObject({ dim: true })
@@ -405,5 +406,12 @@ describe('the line under a cut list', () => {
 
   it('fits its width', () => {
     for (const width of [8, 12, 20, 40]) for (const r of moreRows('x', { start: 300, end: 320 }, 9000, width, 0)) expect(r.segments.reduce((n, s) => n + [...s.text].length, 0), `${width}`).toBeLessThanOrEqual(width)
+  })
+})
+
+describe('the card icons', () => {
+  it('give every card the pane renders an icon, the Cross-boundary flows card among them', () => {
+    for (const key of ['look', 'hubs', 'files', 'flows', 'concentration', 'composition', 'cycles', 'dead', 'rings', 'route', 'changes', 'tests', 'notes']) expect(GLYPHS[key], key).toBeDefined()
+    expect(GLYPHS.flows).toBe('⇄')
   })
 })
