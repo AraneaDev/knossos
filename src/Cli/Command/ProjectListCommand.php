@@ -181,13 +181,19 @@ final class ProjectListCommand implements CliCommand
             'convention_discovered' => (int) $bounds['excluded_convention_discovered'],
         ];
         $lines = array_map(
-            static fn(array $c): string => sprintf('%-12s %-9s %s', $c['reachability'], $c['component']['kind'], $c['component']['canonical_name']),
+            static fn(array $c): string => sprintf('%-12s %-8s %-9s %s', $c['reachability'], $c['confidence'], $c['component']['kind'], $c['component']['canonical_name']),
             $candidates,
         );
+        // Split by confidence so the total does not read as that much dead
+        // code: a possible candidate may be reached in a way no scan sees.
+        $probable = count(array_filter($candidates, static fn(array $c): bool => $c['confidence'] === 'probable'));
+        $byConfidence = ['probable' => $probable, 'possible' => count($candidates) - $probable];
         $lines[] = sprintf(
-            '%d candidate%s; left out: %d annotated false positive%s, %d annotated intentional, %d suppressed, %d reached by convention.',
+            '%d candidate%s (%d probable, %d possible); left out: %d annotated false positive%s, %d annotated intentional, %d suppressed, %d reached by convention.',
             count($candidates),
             count($candidates) === 1 ? '' : 's',
+            $byConfidence['probable'],
+            $byConfidence['possible'],
             $excluded['annotated_false_positives'],
             $excluded['annotated_false_positives'] === 1 ? '' : 's',
             $excluded['annotated_intentional'],
@@ -198,7 +204,7 @@ final class ProjectListCommand implements CliCommand
             $lines[] = sprintf('Incomplete: the search ran out of its %d ms before it saw every component; raise --candidate-timeout.', $budget);
         }
         $context->output(
-            ['project_id' => $projectId, 'total' => count($candidates), 'truncated' => $incomplete, 'candidates' => $candidates, 'excluded' => $excluded],
+            ['project_id' => $projectId, 'total' => count($candidates), 'by_confidence' => $byConfidence, 'truncated' => $incomplete, 'candidates' => $candidates, 'excluded' => $excluded],
             $context->options->flag($options, 'json'),
             implode("\n", $lines),
         );

@@ -231,7 +231,7 @@ final class HealthTest extends KnossosTestCase
         // cycle scan marks the ranking truncated.
         assertSame(true, str_contains($bounded->summary, 'The ranking was truncated (time_limit, cycle_scan)'));
         assertSame(false, $whole->truncated);
-        assertSame('Ranked 2 hubs, 2 static hotspots, and 1 unreferenced-code candidates, 0 of them reached only by tests.', $whole->summary);
+        assertSame('Ranked 2 hubs, 2 static hotspots, and 1 unreferenced-code candidates, 0 of them reached only by tests. By confidence: 1 probable, 0 possible.', $whole->summary);
     }
 
     /**

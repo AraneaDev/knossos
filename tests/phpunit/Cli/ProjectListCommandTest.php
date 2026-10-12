@@ -55,6 +55,13 @@ final class ProjectListCommandTest extends KnossosTestCase
         $text = $this->runList('dead-code', [$ids['project']], [], json: false);
         self::assertStringContainsString('App\\Orphan129', $text);
         self::assertStringContainsString('1 annotated intentional', $text);
+
+        // Each line and the total say how sure each finding is, so the list
+        // does not read as that much dead code.
+        $confidence = $out['by_confidence'];
+        self::assertSame($out['total'], $confidence['probable'] + $confidence['possible']);
+        self::assertMatchesRegularExpression('/^unreferenced +(probable|possible) +class +App\\\\Orphan129$/m', $text);
+        self::assertStringContainsString(sprintf('%d candidates (%d probable, %d possible);', $out['total'], $confidence['probable'], $confidence['possible']), $text);
     }
 
     /**
