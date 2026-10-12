@@ -87,6 +87,11 @@ final readonly class TestModuleRule implements ClassificationRule
             if ($lower === 'test' && $previous === 'src') {
                 return true;
             }
+            // Laravel's model factories build fixtures for tests, so what they
+            // declare is test support, not product code only tests reach.
+            if ($lower === 'factories' && $previous === 'database') {
+                return true;
+            }
             if (in_array($lower, self::SOURCE_ROOTS, true)) {
                 $underSourceRoot = true;
             }

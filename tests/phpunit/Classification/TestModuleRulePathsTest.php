@@ -84,6 +84,20 @@ final class TestModuleRulePathsTest extends KnossosTestCase
         assertSame(false, self::isTestCode('src/tests/Foo.php'), 'Only the singular is the Maven layout.');
     }
 
+    /**
+     * Laravel's model factories build fixtures for tests: `database/factories/`
+     * is test support, wherever the Laravel application sits. A `factories`
+     * directory anywhere else is ordinary source.
+     */
+    #[Group('classification')]
+    public function testLaravelModelFactoriesAreTestSupport(): void
+    {
+        assertSame(true, self::isTestCode('database/factories/UserFactory.php'));
+        assertSame(true, self::isTestCode('api/database/factories/Account/UserFactory.php'));
+        assertSame(false, self::isTestCode('app/Factories/ReportFactory.php'), 'Only under database/.');
+        assertSame(false, self::isTestCode('database/seeders/UserSeeder.php'));
+    }
+
     /** The filename convention is recognised whatever case it is written in. */
     #[Group('classification')]
     public function testTheFilenameConventionIsRecognisedInAnyCase(): void
