@@ -14,12 +14,14 @@ use PHPUnit\Framework\Attributes\Group;
  * return type is not in the graph and a state called on it,
  * `Product::factory()->bundle()`, reached nothing. The factory is the one the
  * model's `newFactory()` declares it returns, or else the one Laravel's naming
- * convention finds under `Database\Factories`.
+ * convention finds under `Database\Factories`. What the factory's `create()`
+ * or `make()` returns is the model, so a relation read on it reaches the
+ * relation.
  */
 #[Group('query')]
 final class EloquentFactoryStatesTest extends KnossosTestCase
 {
-    public function testAStateCalledOnAModelsFactoryIsReachedByItsCaller(): void
+    public function testAFactoryStateAndTheModelAFactoryBuildsAreReachedByTheirCallers(): void
     {
         $root = sys_get_temp_dir() . '/knossos-stale-factories-' . bin2hex(random_bytes(6));
         $files = [
@@ -33,6 +35,9 @@ final class EloquentFactoryStatesTest extends KnossosTestCase
                 {
                     use HasFactory;
                     protected static function newFactory(): CatalogueItemFactory { return CatalogueItemFactory::new(); }
+                    public function parent() { return $this->belongsTo(Product::class); }
+                    public function owner() { return $this->belongsTo(Product::class); }
+                    public function siblings() { return $this->hasMany(Product::class); }
                 }
                 PHP,
             'app/Models/Account/User.php' => <<<'PHP'
@@ -79,6 +84,11 @@ final class EloquentFactoryStatesTest extends KnossosTestCase
                     {
                         Product::factory()->bundle()->create();
                         User::factory()->admin()->create();
+                        $child = Product::factory()->create(['name' => 'child']);
+                        $child->parent;
+                        Product::factory()->bundle()->make()->owner;
+                        $many = Product::factory()->count(2)->create();
+                        $many->siblings;
                     }
                 }
                 PHP,
@@ -93,18 +103,18 @@ final class EloquentFactoryStatesTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
-            $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 100)->data;
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $usages = static fn(string $symbol): int => count($queries->listUsages($projectId, $symbol)->data['usages'] ?? []);
+            self::assertSame(2, $usages('Database\\Factories\\CatalogueItemFactory::bundle'), 'bundle, through newFactory()');
+            self::assertSame(1, $usages('Database\\Factories\\Account\\UserFactory::admin'), 'admin, through the naming convention');
+            self::assertSame(0, $usages('Database\\Factories\\CatalogueItemFactory::retired'));
+            // What create() and make() build is the model, held in a variable or read inline;
+            // count() makes a collection, which is no model.
+            self::assertSame(1, $usages('App\\Modules\\Shop\\Models\\Product::parent'), 'parent, on a created model');
+            self::assertSame(1, $usages('App\\Modules\\Shop\\Models\\Product::owner'), 'owner, on a made model');
+            self::assertSame(0, $usages('App\\Modules\\Shop\\Models\\Product::siblings'), 'siblings, on a collection');
         } finally {
             $this->removeTempTree($root);
         }
-
-        $reachability = [];
-        foreach ($data['dead_code_candidates'] as $candidate) {
-            $reachability[$candidate['component']['display_name']] = $candidate['reachability'];
-        }
-        self::assertSame('test_only', $reachability['bundle'] ?? null, 'bundle, through newFactory()');
-        self::assertSame('test_only', $reachability['admin'] ?? null, 'admin, through the naming convention');
-        self::assertSame('unreferenced', $reachability['retired'] ?? null);
-        self::assertSame('unreferenced', $reachability['unverified'] ?? null);
     }
 }

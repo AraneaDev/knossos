@@ -31,6 +31,9 @@ final class FactCollector extends NodeVisitorAbstract
         'orwheredoesnthave', 'withwherehas', 'whererelation', 'orwhererelation',
     ];
 
+    /** Factory methods that build and return one model, lower-cased. */
+    private const FACTORY_BUILDERS = ['create', 'make', 'createone', 'makeone', 'createquietly', 'createonequietly'];
+
     /** The members of {@see self::RELATION_NAMING_METHODS} where every argument may name relations. */
     private const VARIADIC_RELATION_METHODS = ['with', 'without', 'withonly', 'load', 'loadmissing', 'loadcount', 'withcount', 'withexists'];
 
@@ -657,7 +660,7 @@ final class FactCollector extends NodeVisitorAbstract
         if (!$node->name instanceof Identifier) {
             return;
         }
-        $class = null;
+        $class = $this->factoryModel($node->var);
         if ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
             $class = $node->var->name === 'this'
                 ? $this->currentClass()['name'] ?? null
@@ -673,11 +676,19 @@ final class FactCollector extends NodeVisitorAbstract
         $this->untypedCalls[$this->currentSource()][$node->name->toString()] = true;
     }
 
-    /** Remember a variable assigned a query that starts with a static call on a class. */
+    /**
+     * Remember a variable assigned a query that starts with a static call on a
+     * class, and type one assigned the model a factory builds.
+     */
     private function builderAssignment(Expr\Assign $node): void
     {
         if (!$node->var instanceof Expr\Variable || !is_string($node->var->name) || $this->builders === []) {
             return;
+        }
+        $model = $this->factoryModel($node->expr);
+        if ($model !== null) {
+            // Inferred from local flow, like `$x = new Y()`, so only probable.
+            $this->variables->set($node->var->name, $model, 'probable');
         }
         $root = $this->builderRoot($node->expr);
         $scope = array_key_last($this->builders);
@@ -687,6 +698,35 @@ final class FactCollector extends NodeVisitorAbstract
             return;
         }
         $this->builders[$scope][$node->var->name] = $root;
+    }
+
+    /**
+     * The model an Eloquent factory chain builds: `Product::factory()->bundle()->create()`
+     * or `->make()`. The factory is vendor code, so nothing in the graph says
+     * what `create()` returns. A chain that asks for several, through
+     * `count()`, `times()` or `factory(3)`, builds a collection instead, and
+     * gives null like any other expression.
+     */
+    private function factoryModel(Expr $expression): ?string
+    {
+        if (!$expression instanceof Expr\MethodCall || !$expression->name instanceof Identifier
+            || !in_array(strtolower($expression->name->toString()), self::FACTORY_BUILDERS, true)) {
+            return null;
+        }
+        do {
+            $expression = $expression->var;
+            if ($expression instanceof Expr\MethodCall && $expression->name instanceof Identifier
+                && in_array(strtolower($expression->name->toString()), ['count', 'times'], true)) {
+                return null;
+            }
+        } while ($expression instanceof Expr\MethodCall);
+        if (!$expression instanceof Expr\StaticCall || !$expression->class instanceof Name
+            || !$expression->name instanceof Identifier || strtolower($expression->name->toString()) !== 'factory') {
+            return null;
+        }
+        $first = $expression->getArgs()[0]->value ?? null;
+
+        return $first instanceof Node\Scalar\Int_ ? null : $this->resolvedClassName($expression->class);
     }
 
     /**
