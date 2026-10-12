@@ -7,9 +7,13 @@ namespace Knossos\Store;
 /**
  * The node kinds every importing or calling file declares for itself.
  *
- * A `package`, an `endpoint` and an `external_*` stand-in are not owned by
- * any one file: the node is filed under whichever file named it first, so its
- * file says nothing about where it lives. Anything that lets a node's file
+ * An `endpoint` and an `external_*` stand-in are not owned by any one file,
+ * and neither is a TypeScript npm `package`: each importing file declares it,
+ * so the node is filed under whichever file named it first and that file says
+ * nothing about where it lives. A Python (`__init__.py`) or Rust (crate root)
+ * `package` is different: it belongs to its own file. It is listed here only
+ * so it drops out of file-ownership counts, and it keeps its boundary
+ * membership. Anything that lets a node's file
  * stand for ownership (a file's fan-in, the components a changed file holds,
  * the files a boundary spans) leaves these out, or two unrelated callers of
  * one URL end up depending on each other through the first caller's file.
