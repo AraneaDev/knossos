@@ -125,6 +125,8 @@ help text and schemas they come from, never the Markdown.
   large may a scan and a query be?
 - [How the mod is built](contribute/mod-internals.md): how is the Claude Code
   mod put together, and how is it tested?
+- [Agent evals](contribute/agent-evals.md): which parts of Knossos change an
+  agent's answers, and how do I run an eval?
 
 ## Decisions and examples
 
