@@ -341,6 +341,10 @@ async function readDefects(dir) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    if (!process.argv[2]) {
+        console.error("usage: node tools/eval/report.mjs <run-id>");
+        process.exit(2);
+    }
     const s = settings();
     const run = await openRun(process.argv[2], s);
     const md = buildReport({

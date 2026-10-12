@@ -5,7 +5,7 @@
  * disagrees with it. Knossos never writes the key.
  */
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -22,16 +22,16 @@ export function knossosAnswer(category, unit, json) {
         const usages = (json.data?.usages ?? []).filter((u) =>
             CALL_KINDS.has(u.kind),
         );
-        return usages.map((u) =>
-            unit === "file" ? u.path : u.source.canonical_name,
-        );
+        return usages
+            .map((u) => (unit === "file" ? u.path : u.source?.canonical_name))
+            .filter(Boolean);
     }
     if (category === "impact" || category === "dependents") {
         return (json.data?.dependants ?? [])
             .map((d) =>
                 unit === "file"
-                    ? d.node.via?.evidence?.path
-                    : d.node.canonical_name,
+                    ? d.node?.via?.evidence?.path
+                    : d.node?.canonical_name,
             )
             .filter(Boolean);
     }
@@ -45,6 +45,42 @@ export function diffAnswers(expected, knossos, options) {
         missing: [...want].filter((w) => !got.has(w)).sort(),
         extra: [...got].filter((g) => !want.has(g)).sort(),
     };
+}
+
+/**
+ * Lines of `rg -w word` in `cwd`. Only rg's exit code 1 (no match) is an
+ * empty answer; a missing rg or workspace, or any other failure, throws.
+ */
+export async function rgLines(word, cwd) {
+    try {
+        const { stdout } = await exec(
+            "rg",
+            ["-n", "--no-heading", "-w", word, "."],
+            { cwd, maxBuffer: 1 << 26 },
+        );
+        return stdout.split("\n").filter(Boolean);
+    } catch (error) {
+        if (error.code === 1) return [];
+        throw new Error(
+            `rg failed in ${cwd} (${error.code ?? "no exit code"}): ${String(error.stderr ?? "").trim() || error.message}`,
+            { cause: error },
+        );
+    }
+}
+
+/** Writes the disagreement to `defects/<task>.json`, or deletes a stale one when Knossos agrees now. Returns whether it disagrees. */
+export async function recordDefect(paths, task, command, diff) {
+    const file = path.join(paths.defects, `${task}.json`);
+    await mkdir(paths.defects, { recursive: true });
+    if (diff.missing.length === 0 && diff.extra.length === 0) {
+        await rm(file, { force: true });
+        return false;
+    }
+    await writeFile(
+        file,
+        JSON.stringify({ task, tool: command, ...diff }, null, 2),
+    );
+    return true;
 }
 
 async function main(args) {
@@ -68,13 +104,7 @@ async function main(args) {
         .split(/[^A-Za-z0-9_]+/)
         .filter(Boolean)
         .at(-1);
-    const rg = await exec("rg", ["-n", "--no-heading", "-w", word, "."], {
-        cwd: workspace,
-        maxBuffer: 1 << 26,
-    }).catch((e) => e);
-    const lines = String(rg.stdout ?? "")
-        .split("\n")
-        .filter(Boolean);
+    const lines = await rgLines(word, workspace);
     console.log(
         `# rg -w ${word}: ${lines.length} lines${lines.length > 200 ? ", first 200 shown" : ""}`,
     );
@@ -101,10 +131,7 @@ async function main(args) {
             "--limit=500",
             "--json",
         ],
-        {
-            env: await evalEnv(paths, { base: s.env }),
-            maxBuffer: 1 << 26,
-        },
+        { env: await evalEnv(paths, { base: s.env }), maxBuffer: 1 << 26 },
     );
     const diff = diffAnswers(
         task.answer.expected,
@@ -115,15 +142,10 @@ async function main(args) {
             workspace,
         },
     );
-    await mkdir(paths.defects, { recursive: true });
-    if (diff.missing.length === 0 && diff.extra.length === 0) {
+    if (!(await recordDefect(paths, task.id, command, diff))) {
         console.log("# Knossos agrees with the key");
         return;
     }
-    await writeFile(
-        path.join(paths.defects, `${task.id}.json`),
-        JSON.stringify({ task: task.id, tool: command, ...diff }, null, 2),
-    );
     console.log(
         `# Knossos disagrees: missing ${diff.missing.join(", ") || "none"}; extra ${diff.extra.join(", ") || "none"}`,
     );

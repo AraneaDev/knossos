@@ -1,3 +1,6 @@
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { buildReport } from "./report.mjs";
 
@@ -146,6 +149,19 @@ describe("buildReport with an arm missing", () => {
         });
         expect(md).toMatch(
             /\| tools vs baseline \| F1 \| 0 \| - \| - \| no data \|/,
+        );
+    });
+});
+
+describe("report CLI", () => {
+    it("prints a usage line and exits 2 without a run id", async () => {
+        const file = fileURLToPath(new URL("./report.mjs", import.meta.url));
+        const result = await promisify(execFile)("node", [file]).catch(
+            (e) => e,
+        );
+        expect(result.code).toBe(2);
+        expect(result.stderr).toContain(
+            "usage: node tools/eval/report.mjs <run-id>",
         );
     });
 });

@@ -1,5 +1,13 @@
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { diffAnswers, knossosAnswer } from "./keygen.mjs";
+import {
+    diffAnswers,
+    knossosAnswer,
+    recordDefect,
+    rgLines,
+} from "./keygen.mjs";
 
 const usages = {
     data: {
@@ -69,5 +77,73 @@ describe("diffAnswers", () => {
             missing: ["x::y"],
             extra: ["z::w"],
         });
+    });
+});
+
+describe("knossosAnswer with partial data", () => {
+    it("skips usages without a source or a canonical name", () => {
+        const json = {
+            data: {
+                usages: [
+                    { kind: "calls", path: "a.php" },
+                    { kind: "calls", source: {}, path: "b.php" },
+                    { kind: "calls", source: { canonical_name: "A::b" } },
+                ],
+            },
+        };
+        expect(knossosAnswer("callers", "symbol", json)).toEqual(["A::b"]);
+        expect(
+            knossosAnswer("impact", "symbol", {
+                data: { dependants: [{ node: {} }, {}] },
+            }),
+        ).toEqual([]);
+    });
+});
+
+describe("rgLines", () => {
+    it("returns matches, an empty list for no match, and throws on any other failure", async () => {
+        const dir = await mkdtemp(path.join(os.tmpdir(), "eval-rg-"));
+        await writeFile(
+            path.join(dir, "a.php"),
+            "<?php\nfunction total() {}\n",
+        );
+        expect(await rgLines("total", dir)).toEqual([
+            "./a.php:2:function total() {}",
+        ]);
+        expect(await rgLines("absent", dir)).toEqual([]);
+        await expect(
+            rgLines("total", path.join(dir, "missing")),
+        ).rejects.toThrow(/rg failed in/);
+    });
+});
+
+describe("recordDefect", () => {
+    it("writes a disagreement and deletes it once Knossos agrees", async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "eval-defects-"));
+        const paths = { defects: path.join(root, "defects") };
+        const file = path.join(paths.defects, "t1.json");
+        expect(
+            await recordDefect(paths, "t1", "list-usages", {
+                missing: ["a"],
+                extra: [],
+            }),
+        ).toBe(true);
+        expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
+            task: "t1",
+            missing: ["a"],
+        });
+        expect(
+            await recordDefect(paths, "t1", "list-usages", {
+                missing: [],
+                extra: [],
+            }),
+        ).toBe(false);
+        await expect(access(file)).rejects.toThrow();
+        expect(
+            await recordDefect(paths, "never", "list-usages", {
+                missing: [],
+                extra: [],
+            }),
+        ).toBe(false);
     });
 });
