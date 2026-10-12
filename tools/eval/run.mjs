@@ -296,6 +296,7 @@ async function executeEntry(entry, ctx) {
         workspace,
         record: parseTranscript(outcome.lines),
         timedOut: outcome.timedOut,
+        wallMs: outcome.wallMs,
         exitCode: outcome.exitCode,
         stderr: outcome.stderr,
         maxUtilization,

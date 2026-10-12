@@ -138,3 +138,30 @@ describe("contamination", () => {
         ]);
     });
 });
+
+describe("contamination of an ablation arm", () => {
+    const arm = ablationArm("list_usages");
+    const plugin = ["knossos"];
+    it("passes when the ablated tool was neither offered nor called", () => {
+        const r = record(knossos, plugin, [
+            { name: "mcp__knossos__impact_analysis", input: {} },
+        ]);
+        r.init.tools = ["Read", "mcp__knossos__impact_analysis"];
+        expect(contamination(r, arm)).toEqual([]);
+    });
+    it("flags the ablated tool when the session was offered it", () => {
+        const r = record(knossos, plugin);
+        r.init.tools = ["Read", "mcp__knossos__list_usages"];
+        expect(contamination(r, arm)).toEqual([
+            "ablated tool mcp__knossos__list_usages was offered",
+        ]);
+    });
+    it("flags the ablated tool when the session called it", () => {
+        const r = record(knossos, plugin, [
+            { name: "mcp__knossos__list_usages", input: {} },
+        ]);
+        expect(contamination(r, arm)).toEqual([
+            "ablated tool mcp__knossos__list_usages was called",
+        ]);
+    });
+});

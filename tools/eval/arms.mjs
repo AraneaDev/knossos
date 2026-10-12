@@ -62,7 +62,7 @@ const same = (a, b) => [...a].sort().join(",") === [...b].sort().join(",");
 
 export function contamination(record, arm) {
     if (record.init === null) return ["no init event"];
-    const { base } = parseArm(arm);
+    const { base, minus } = parseArm(arm);
     const reasons = [];
     const servers = record.init.mcpServers.map((s) => s.name);
     const wantServers = base === "baseline" ? [] : ["knossos"];
@@ -83,6 +83,13 @@ export function contamination(record, arm) {
         reasons.push(
             `plugins ${JSON.stringify(record.init.plugins)}, expected ${JSON.stringify(wantPlugins)}`,
         );
+    }
+    if (minus !== null) {
+        const ablated = `mcp__knossos__${minus}`;
+        if (record.init.tools.includes(ablated))
+            reasons.push(`ablated tool ${ablated} was offered`);
+        if (record.toolCalls.some((c) => c.name === ablated))
+            reasons.push(`ablated tool ${ablated} was called`);
     }
     if (base === "baseline") {
         for (const c of record.toolCalls) {

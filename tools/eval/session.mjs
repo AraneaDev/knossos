@@ -44,6 +44,7 @@ export function runSession({
     onClose = () => {},
 }) {
     return new Promise((resolve, reject) => {
+        const started = Date.now();
         const child = spawn(claudeBin, argv, {
             cwd,
             env,
@@ -97,29 +98,37 @@ export function runSession({
             clearTimeout(killTimer);
             onClose(child.pid);
             if (buffer.trim() !== "") lines.push(buffer);
-            out.end(() => resolve({ lines, timedOut, exitCode, stderr }));
+            const wallMs = Date.now() - started;
+            out.end(() =>
+                resolve({ lines, timedOut, exitCode, stderr, wallMs }),
+            );
         });
         child.stdin.on("error", () => {});
         child.stdin.end(prompt);
     });
 }
 
+const BUDGET = /budget/;
+
 function statusOf({ record, timedOut, limit, reasons, score, priorErrors }) {
     // A usage cut-off outranks a hang after it: the session must be rerun, not scored.
     if (limit === "limited") return "limited";
+    // A session that saw what its arm must not see is excluded however it ended.
+    // Without an init event nothing was seen yet, so a hang or a crash keeps its own status.
+    if (reasons.length > 0 && record.init !== null) return "contaminated";
     if (timedOut) return "timeout";
-    if (record.result === null || record.result.isError) {
-        if (
-            /budget/.test(
-                `${record.result?.subtype} ${record.result?.terminalReason}`,
-            )
-        )
-            return "budget";
-        return priorErrors >= 1 ? "failed" : "error";
-    }
+    const r = record.result;
+    // A budget stop, whatever is_error says.
+    if (r !== null && BUDGET.test(`${r.subtype} ${r.terminalReason}`))
+        return "budget";
+    if (r === null || r.isError) return priorErrors >= 1 ? "failed" : "error";
     if (reasons.length > 0) return "contaminated";
     return score.status;
 }
+
+/** A field of the result event, or null when the session never produced one. */
+const fromResult = (record, key) =>
+    record.result === null ? null : (record.result[key] ?? 0);
 
 export function buildRow({
     entry,
@@ -132,6 +141,8 @@ export function buildRow({
     priorErrors,
     transcript,
     model,
+    knossosCommit = null,
+    wallMs = null,
     exitCode = null,
     stderr = "",
     now = new Date(),
@@ -144,8 +155,13 @@ export function buildRow({
         language,
         workspace,
     });
-    const r = record.result ?? {};
     const { calls, errors } = knossosCounts(record);
+    const input = fromResult(record, "inputTokens");
+    const output = fromResult(record, "outputTokens");
+    const cacheRead = fromResult(record, "cacheReadTokens");
+    const cacheCreation = fromResult(record, "cacheCreationTokens");
+    const tokenTotal = (...parts) =>
+        record.result === null ? null : parts.reduce((s, x) => s + x, 0);
     return {
         task: entry.task,
         repo: entry.repo,
@@ -166,19 +182,23 @@ export function buildRow({
         precision: score.precision,
         recall: score.recall,
         f1: score.f1,
-        costUsd: r.costUsd ?? 0,
-        turns: r.turns ?? 0,
-        durationMs: r.durationMs ?? 0,
-        tokens:
-            (r.inputTokens ?? 0) +
-            (r.outputTokens ?? 0) +
-            (r.cacheReadTokens ?? 0) +
-            (r.cacheCreationTokens ?? 0),
+        costUsd: fromResult(record, "costUsd"),
+        turns: fromResult(record, "turns"),
+        // A timed-out session has no result event, yet its time was spent.
+        durationMs: record.result?.durationMs ?? wallMs,
+        tokens: tokenTotal(input, output, cacheRead, cacheCreation),
+        // Leaves out cache writes: the first session of an arm pays them for the ones after it.
+        workTokens: tokenTotal(input, output, cacheRead),
+        inputTokens: input,
+        outputTokens: output,
+        cacheReadTokens: cacheRead,
+        cacheCreationTokens: cacheCreation,
         knossosCalls: calls,
         knossosErrors: errors,
         grepAfter: grepAfterGraph(record, task.subject),
         fiveHourUtilization: record.rateLimit?.fiveHourUtilization ?? null,
         transcript,
+        knossosCommit,
         exitCode,
         stderr: stderr.slice(-2000),
         finishedAt: now.toISOString(),

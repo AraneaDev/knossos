@@ -32,7 +32,7 @@ function readResult(event) {
         apiErrorStatus: event.api_error_status ?? null,
         costUsd: event.total_cost_usd ?? 0,
         turns: event.num_turns ?? 0,
-        durationMs: event.duration_ms ?? 0,
+        durationMs: event.duration_ms ?? null,
         inputTokens: u.input_tokens ?? 0,
         outputTokens: u.output_tokens ?? 0,
         cacheReadTokens: u.cache_read_input_tokens ?? 0,

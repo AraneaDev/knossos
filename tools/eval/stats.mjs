@@ -11,6 +11,11 @@ export const METRICS = [
     { key: "costUsd", label: "cost (USD)", higherIsBetter: false },
     { key: "turns", label: "turns", higherIsBetter: false },
     { key: "durationMs", label: "time (ms)", higherIsBetter: false },
+    {
+        key: "workTokens",
+        label: "tokens excl. cache writes",
+        higherIsBetter: false,
+    },
 ];
 
 /** Fewer paired tasks than this cannot carry a verdict. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     bootstrapCi,
     median,
+    METRICS,
     MIN_PAIRED_TASKS,
     pairedDeltas,
     selectAblations,
@@ -135,5 +136,22 @@ describe("selectAblations", () => {
         expect(selectAblations(rows, tasks, { threshold: 0.4 })).toEqual([
             { category: "impact", tool: "impact_analysis", taskIds: ["i1"] },
         ]);
+    });
+});
+
+describe("METRICS", () => {
+    it("has tokens excluding cache writes, lower is better", () => {
+        expect(METRICS.find((m) => m.key === "workTokens")).toEqual({
+            key: "workTokens",
+            label: "tokens excl. cache writes",
+            higherIsBetter: false,
+        });
+    });
+    it("skips a session whose cost is unknown rather than counting it free", () => {
+        const rows = [
+            { task: "a", arm: "full", status: "timeout", costUsd: null },
+            { task: "a", arm: "full", status: "scored", costUsd: 0.4 },
+        ];
+        expect(taskMedians(rows, "costUsd").get("full").get("a")).toBe(0.4);
     });
 });

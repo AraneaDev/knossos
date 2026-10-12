@@ -156,6 +156,159 @@ describe("status order and diagnostics", () => {
     });
 });
 
+/** A transcript built line by line, for outcomes the fake cannot produce. */
+const lines = ({ servers = [], result = null } = {}) =>
+    [
+        {
+            type: "system",
+            subtype: "init",
+            tools: ["Read"],
+            mcp_servers: servers,
+            plugins: [],
+        },
+        ...(result ? [{ type: "result", ...result }] : []),
+    ].map((e) => JSON.stringify(e));
+const knossosServer = [{ name: "knossos", status: "connected" }];
+
+describe("contamination comes before how the session ended", () => {
+    it("excludes a contaminated session that then timed out", () => {
+        const r = row(
+            { lines: lines({ servers: knossosServer }), timedOut: true },
+            "baseline",
+        );
+        expect(r.status).toBe("contaminated");
+    });
+    it("excludes a contaminated session that ended in an error or a budget stop", () => {
+        for (const subtype of [
+            "error_during_execution",
+            "error_max_budget_usd",
+        ]) {
+            const r = row(
+                {
+                    lines: lines({
+                        servers: knossosServer,
+                        result: { subtype, is_error: true },
+                    }),
+                    timedOut: false,
+                },
+                "baseline",
+            );
+            expect(r.status).toBe("contaminated");
+        }
+    });
+    it("keeps a hang before the init event a timeout", () => {
+        expect(row({ lines: [], timedOut: true }, "baseline").status).toBe(
+            "timeout",
+        );
+    });
+});
+
+describe("budget stops", () => {
+    it("detects a budget stop from the subtype when is_error is false", () => {
+        const r = row(
+            {
+                lines: lines({
+                    result: {
+                        subtype: "error_max_budget_usd",
+                        is_error: false,
+                    },
+                }),
+                timedOut: false,
+            },
+            "baseline",
+        );
+        expect(r.status).toBe("budget");
+    });
+    it("detects a budget stop from the terminal reason alone", () => {
+        const r = row(
+            {
+                lines: lines({
+                    result: {
+                        subtype: "success",
+                        is_error: false,
+                        terminal_reason: "max_budget_reached",
+                    },
+                }),
+                timedOut: false,
+            },
+            "baseline",
+        );
+        expect(r.status).toBe("budget");
+    });
+});
+
+describe("cost and time of a session without a result", () => {
+    it("measures wall time and leaves cost, turns and tokens unknown", async () => {
+        const { outcome } = await session(
+            "full",
+            { FAKE_SLEEP_MS: "5000" },
+            300,
+        );
+        expect(outcome.wallMs).toBeGreaterThanOrEqual(300);
+        const r = row(outcome, "full", { wallMs: outcome.wallMs });
+        expect(r.status).toBe("timeout");
+        expect(r.durationMs).toBe(outcome.wallMs);
+        for (const key of [
+            "costUsd",
+            "turns",
+            "tokens",
+            "workTokens",
+            "inputTokens",
+            "outputTokens",
+            "cacheReadTokens",
+            "cacheCreationTokens",
+        ])
+            expect(r[key]).toBeNull();
+    });
+    it("prefers the result's duration over the wall time", async () => {
+        const { outcome } = await session("full");
+        expect(row(outcome, "full", { wallMs: 99999 }).durationMs).toBe(1234);
+    });
+    it("falls back to the wall time when the result has no duration", () => {
+        const r = row(
+            {
+                lines: lines({ result: { subtype: "success" } }),
+                timedOut: false,
+            },
+            "baseline",
+            { wallMs: 4321 },
+        );
+        expect(r.durationMs).toBe(4321);
+    });
+});
+
+describe("token fields", () => {
+    it("keeps each token count and a total that leaves out cache writes", () => {
+        const r = row(
+            {
+                lines: lines({
+                    result: {
+                        subtype: "success",
+                        usage: {
+                            input_tokens: 10,
+                            output_tokens: 20,
+                            cache_read_input_tokens: 300,
+                            cache_creation_input_tokens: 4000,
+                        },
+                    },
+                }),
+                timedOut: false,
+            },
+            "baseline",
+            { knossosCommit: "abc123" },
+        );
+        expect(r).toMatchObject({
+            inputTokens: 10,
+            outputTokens: 20,
+            cacheReadTokens: 300,
+            cacheCreationTokens: 4000,
+            tokens: 4330,
+            workTokens: 330,
+            knossosCommit: "abc123",
+        });
+    });
+});
+
 describe("runSession failures", () => {
     it("kills the group and rejects when the transcript cannot be written", async () => {
         await expect(
