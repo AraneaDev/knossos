@@ -216,7 +216,8 @@ describe('changesRows', () => {
     const text = textOf(rows)
     expect(text).toMatch(/Changes this session +2 turns/)
     expect(text).toContain('3 files → 45 dependents reaching ■ Core ■ Http')
-    expect(text).toContain('▲ 1 policy violation introduced')
+    // A violation is an error, on Changes as on Issues.
+    expect(text).toContain('✗ 1 policy violation introduced')
     expect(plainText(row(rows, 'change-1')!)).toMatch(/^›\+ src\/Core\/Kernel\.php +■ Core +━/)
     expect(plainText(row(rows, 'change-2')!)).toMatch(/^ − src\/Helper\.php/)
     // A file opens as its detail, by the same index the marker walks; `e` opens it in the editor.

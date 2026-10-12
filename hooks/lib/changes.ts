@@ -39,6 +39,7 @@ import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
+import { REACH, SEVERITY, mark } from './marks'
 
 /** The most files, tests and violations a session keeps; past them `truncated` is set. */
 export const FILE_CAP = 500
@@ -512,11 +513,11 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   rows.push(...reachRows('changes-reach', `${plural(input.files.length, 'file', 'files')} → ${grouped(deps)} dependents`, input.boundaries, columns, hues))
   if (input.violations > 0) {
     // The violations are listed on Issues: the press opens it on the first.
-    rows.push({ key: 'changes-policy', segments: [{ text: '   ' }, button('stat:policy', `▲ ${plural(input.violations, 'policy violation', 'policy violations')} introduced`, undefined, { color: STATUS_COLOURS.alert })] })
+    rows.push({ key: 'changes-policy', segments: [{ text: '   ' }, button('stat:policy', `${SEVERITY.error.glyph} ${plural(input.violations, 'policy violation', 'policy violations')} introduced`, undefined, { color: STATUS_COLOURS.alert })] })
   }
   // The count is a press that lists only those files; while it does, it says so, and a row offers every file back.
   if (input.untested > 0) {
-    const count: Segment[] = [button('untested-row', `▲ ${untestedText(input.untested)}`, undefined, { color: STATUS_COLOURS.warn })]
+    const count: Segment[] = [button('untested-row', `${REACH.untested.glyph} ${untestedText(input.untested)}`, undefined, { color: STATUS_COLOURS.warn })]
     rows.push(...wrapGroups('changes-untested', input.untestedOnly ? [count, [{ text: '· showing only these', dim: true }]] : [count], columns, 1, 3))
     if (input.untestedOnly) rows.push({ key: 'changes-all', segments: [{ text: '   ' }, button('untested-all', 'show all files', undefined, { dim: true })] })
   }
@@ -548,7 +549,7 @@ export const untestedText = (n: number): string => `${plural(n, 'file', 'files')
 /** A changed file's tests cell: `▲ none` in the warning tone, the count dim (`20+` at the cap), blank when not known. */
 function testsCell(tests: number | null): Segment {
   if (tests === null) return { text: spaces(TESTS_WIDTH) }
-  if (tests === 0) return { text: padStart('▲ none', TESTS_WIDTH), color: STATUS_COLOURS.warn }
+  if (tests === 0) return { ...mark(REACH.untested), text: padStart(`${REACH.untested.glyph} none`, TESTS_WIDTH) }
   return { text: padStart(tests >= TESTS_COUNTED ? `${TESTS_COUNTED}+` : String(tests), TESTS_WIDTH), dim: true }
 }
 
@@ -562,7 +563,7 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
   const title = 'Tests that reach these changes'
   if (input.tests.length === 0) {
     // With some file's reach known, the files none reaches are listed on their own by the press.
-    const said = '▲ no test reaches these changes'
+    const said = `${REACH.untested.glyph} no test reaches these changes`
     const warn: Segment = input.untested > 0 ? button('untested-none', said, undefined, { color: STATUS_COLOURS.warn }) : { text: said, color: STATUS_COLOURS.warn }
     return { key: 'tests', title, body: [{ key: 'tests-none', segments: [{ text: '   ' }, warn] }] }
   }

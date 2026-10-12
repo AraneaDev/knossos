@@ -69,6 +69,7 @@ import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInp
 import { arrange, besideRows, cardInner, DEFAULT_ROWS, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
+import { SEVERITY } from './marks'
 
 // Everything the specs and the render hook draw with, from one module.
 export { bar, button, cells, displayName, fileHref, fit, linkMarkdown, locOf, locText, rowWidth, tableSpec, tierOf, wrapWords } from './rows'
@@ -396,7 +397,10 @@ function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | n
   const violations = policy === null ? 0 : Number(policy.replace(/\D/g, '')) || 0
   const errors = diagnostics ?? 0
   const total = d.dead_code_candidates + errors + violations + (d.over_budget?.total ?? 0)
-  const value = d.dead_code_truncated ? `${grouped(total)}+` : grouped(total)
+  const figure = d.dead_code_truncated ? `${grouped(total)}+` : grouped(total)
+  // The worst finding's mark beside the figure, so the tile says how bad as well as how many.
+  const worst = violations > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
+  const value = worst === null ? figure : `${worst.glyph} ${figure}`
   const tone = violations > 0 ? { tone: 'alert' as const } : errors > 0 ? { tone: 'warn' as const } : {}
   return { key: 'issues', label: total === 1 && !d.dead_code_truncated ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
 }

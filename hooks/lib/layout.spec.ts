@@ -332,7 +332,7 @@ describe('paneRows', () => {
   it('names a policy violation in the error colour', () => {
     const rows = paneRows(input({}, dash(), brief({ policy: { status: 'evaluated', total: 3, violations: [], truncated: false } })), 60)
     // The violations join the dead code in the issues figure, 55 and 3, which takes the error colour.
-    const seg = rows.filter(r => r.key.startsWith('tiles-line')).flatMap(r => r.segments).find(s => s.text === '58')
+    const seg = rows.filter(r => r.key.startsWith('tiles-line')).flatMap(r => r.segments).find(s => s.text === '✗ 58')
     expect(seg?.color).toBe('error')
   })
 
@@ -651,12 +651,17 @@ describe('the issues tab', () => {
       widthsFit(paneRows(fullInput({ tab: 'issues', showKeys: true, terminal: false }), columns), columns)
     })
   }
+  it('marks an info diagnostic with a note mark and names all three in the card note', () => {
+    const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
+    expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
+  })
+
   it('lists violations, diagnostics, dead code, the complexity hotspots and the files over budget, each with its place', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
-    expect(text).toMatch(/Policy violations +▲ 7/)
+    expect(text).toMatch(/Policy violations +✗ 7/)
     expect(text).toMatch(/ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core +ArchitectureQueryService\.php:191/)
     expect(text).toContain('+6 not listed')
-    expect(text).toMatch(/Diagnostics +1 error · 1 warning · 1 note/)
+    expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
     // The note is the legend for the two marks before each name.
@@ -746,7 +751,7 @@ describe('the issues tab', () => {
 
   it('reads a policy total cut short as a floor', () => {
     const cut = full({ policy: { status: 'evaluated', total: 100, truncated: true, truncation_reasons: ['time_limit'], items: [] } })
-    expect(textOf(paneRows(fullInput({ tab: 'issues' }, cut), 60))).toContain('▲ 100+')
+    expect(textOf(paneRows(fullInput({ tab: 'issues' }, cut), 60))).toContain('✗ 100+')
     expect(issueCount(issuesInput(cut)).plus).toBe(true)
   })
 })
@@ -1109,17 +1114,24 @@ describe('colour', () => {
 })
 
 describe('the overview stat tiles', () => {
+  it('puts the worst finding\'s severity mark on the issues tile', () => {
+    const figures = plainText(row(paneRows(fullInput(), 140), 'tiles-0-value')!)
+    expect(figures).toMatch(/│ ✗ 67 +│/)
+    // Only dead code: no severity, the figure alone.
+    expect(plainText(row(paneRows(input(), 140), 'tiles-0-value')!)).toMatch(/│ 55 +│/)
+  })
+
   it('count what Issues lists in one tile, coloured by the worst of it, and press to that tab', () => {
     const rows = paneRows(fullInput(), 140)
     const figures = plainText(row(rows, 'tiles-0-value')!)
     const labels = plainText(row(rows, 'tiles-0-label')!)
     expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ issues +│ drifted$/)
     // 55 dead code, an error and a warning, 7 policy violations and 3 functions over budget.
-    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ 67 +│ 41$/)
+    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ ✗ 67 +│ 41$/)
     const colour = (text: string) => row(rows, 'tiles-0-value')!.segments.find(s => s.text === text)?.color
     expect(colour('7,878')).toBe('text')
     // A policy violation among them is the worst there is.
-    expect(colour('67')).toBe('error')
+    expect(colour('✗ 67')).toBe('error')
     expect(colour('41')).toBe('suggestion')
     expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning'])
     const issues = row(rows, 'tiles-0-label')!.segments.find(s => s.text.startsWith('issues'))

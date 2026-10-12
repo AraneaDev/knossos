@@ -35,7 +35,6 @@ import {
   MARK,
   numberWidth,
   placeOf,
-  plural,
   shortName,
   segmentsWidth,
   spaces,
@@ -47,6 +46,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
+import { SEVERITY, legend, mark } from './marks'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -365,7 +365,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const violations = policy?.items ?? []
   const violationEntries: Entry[] = violations.map((v, i) => ({
     selected: i === selected,
-    mark: { text: '▲', color: STATUS_COLOURS.alert },
+    mark: mark(SEVERITY.error),
     boundary: v.source.boundary,
     place: v.place,
     loc: v.source.loc ?? null,
@@ -382,7 +382,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const diagOffset = violations.length
   const diagEntries: Entry[] = (d?.items ?? []).map((x, i) => ({
     selected: diagOffset + i === selected,
-    mark: x.severity === 'error' ? { text: '✗', color: STATUS_COLOURS.alert } : { text: '▲', color: STATUS_COLOURS.warn },
+    mark: mark(x.severity === 'error' ? SEVERITY.error : x.severity === 'warning' ? SEVERITY.warn : SEVERITY.note),
     place: x.where,
     loc: x.loc,
     need: cells(x.text),
@@ -428,8 +428,8 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
           : !policy.evaluated
             ? [{ text: 'no policies declared', dim: true }]
             : policy.count === 0
-              ? [{ text: '✓ 0', color: STATUS_COLOURS.ok }]
-              : [{ text: `▲ ${policy.total}`, color: STATUS_COLOURS.alert }]
+              ? [mark(SEVERITY.ok, ' 0')]
+              : [mark(SEVERITY.error, ` ${policy.total}`)]
       const body = listed('pol', violationEntries, columns, limit, selected < diagOffset ? selected : -1, 0)
       if (policy !== null && policy.evaluated && policy.count > violations.length) body.push(dimRow('pol-more', `   +${policy.count - violations.length} not listed`, columns))
       return { key: 'policy', title: 'Policy violations', note: verdict, body, empty: 'none' }
@@ -442,7 +442,9 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       const counts =
         d === null
           ? 'not reported'
-          : [plural(d.errors, 'error', 'errors'), plural(d.warnings, 'warning', 'warnings'), ...(d.infos > 0 ? [plural(d.infos, 'note', 'notes')] : [])].join(' · ')
+          : d.errors + d.warnings + d.infos === 0
+            ? `${SEVERITY.ok.glyph} 0`
+            : legend([[SEVERITY.error, d.errors], [SEVERITY.warn, d.warnings], [SEVERITY.note, d.infos]])
       const local = selected - diagOffset
       const body = listed('diag', diagEntries, columns, limit, local >= 0 && local < diagEntries.length ? local : -1, diagOffset)
       // Only the first errors and warnings come listed; notes are counted, never listed.
@@ -493,7 +495,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       if (budget === undefined) return { key: 'budget', title, note: noteOf('not reported'), body: [], empty: 'not reported' }
       if (budget === null) return { key: 'budget', title, note: [{ text: 'no maintainability-budgets.json', dim: true }], body: [], empty: 'none' }
       const rule = `functions over ${budget.max} lines`
-      if (budget.files.length === 0) return { key: 'budget', title, note: [{ text: '✓ 0', color: STATUS_COLOURS.ok }, { text: ` ${rule}`, dim: true }], body: [], empty: 'none' }
+      if (budget.files.length === 0) return { key: 'budget', title, note: [mark(SEVERITY.ok, ' 0'), { text: ` ${rule}`, dim: true }], body: [], empty: 'none' }
       const local = selected - overOffset
       const window = windowOf(budget.files.length, limit, local >= 0 && local < budget.files.length ? local : -1)
       const shown = budget.files.slice(window.start, window.end)
@@ -505,7 +507,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       })
       body.push(...moreRows('budget-window', window, budget.files.length, columns, overOffset))
       if (budget.total > budget.files.length) body.push(dimRow('budget-more', `   +${budget.total - budget.files.length} not listed`, columns))
-      return { key: 'budget', title, note: [{ text: `▲ ${grouped(budget.total)}`, color: STATUS_COLOURS.warn }, { text: ` ${rule}`, dim: true }], body, empty: 'none' }
+      return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none' }
     },
   }
   return { left: [policyBlock, diagBlock, budgetBlock], right: [deadBlock, hotBlock], rows: issueGrid([policyBlock, diagBlock, deadBlock, hotBlock, budgetBlock]) }
@@ -616,7 +618,7 @@ function notesBlock(name: string, annotations: { kind: string; value: string }[]
       const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - MARK)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(MARK) }, { text: line, ...style }] }))
       const keys = note?.keys !== false
       if (note === null || note.phase === 'failed') {
-        if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `✗ knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
+        if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
         const own = annotations.some(a => a.kind === 'note')
         body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note', own ? 'change the note' : 'add a note', 'm', { dim: true })] })
       } else if (note.phase === 'editing') {

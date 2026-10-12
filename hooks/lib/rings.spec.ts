@@ -56,6 +56,14 @@ describe('the blast radius in a component detail', () => {
     expect(text(state(radius(), 'App\\Other'))).toContain('Reading what depends on it')
   })
 
+  it('says a ring no test file reaches is a warning, not an error', () => {
+    const untested = radius()
+    Object.assign(untested.rings[0]!, { tests: { count: 0, items: [] } })
+    const shown = text(state(untested))
+    expect(shown).toContain('▲ no test file reaches it')
+    expect(shown).not.toContain('✗')
+  })
+
   it('draws the rings as nested frames, the furthest outermost and the component in the middle', () => {
     const rows = ringRows(ringsInput(state(radius()), 'App\\Store\\StableId', ROOT), 80, -1, 0)
     const raw = rows.map(rawText)

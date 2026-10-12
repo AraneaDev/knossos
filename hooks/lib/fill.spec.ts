@@ -114,7 +114,8 @@ describe('the stat tiles', () => {
     expect(press(list, 'cycles')).toBe('stat:cycles')
     // The dead code, the policy and the diagnostics are one issues figure, pressing to the Issues tab.
     expect(press(list, 'issues')).toBe('stat:issues')
-    expect(list.find(s => s.key === 'issues')?.value).toBe('14')
+    // Two policy violations among them: the error mark goes with the figure.
+    expect(list.find(s => s.key === 'issues')?.value).toBe('✗ 14')
     for (const gone of ['dead', 'policy', 'diagnostics']) expect(list.find(s => s.key === gone)).toBeUndefined()
     expect(press(list, 'components')).toBe('stat:components')
     expect(press(list, 'boundaries')).toBe('stat:boundaries')

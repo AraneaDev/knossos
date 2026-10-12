@@ -21,6 +21,7 @@ import { button, cells, chip, clip, dimRow, displayName, fit, grouped, placeOf, 
 import type { Loc, Row, Segment } from './rows'
 import { issueGrid, locIn } from './views'
 import type { Openable } from './views'
+import { SEVERITY, mark } from './marks'
 
 /** One component the Branch tab lists: what it shows, what it opens, where it is. */
 export type BranchLine = { name: string; canonical: string; boundary: string | null; place: string; loc: Loc | null }
@@ -155,7 +156,7 @@ function listBlock<T>(key: string, title: string, list: { count: number; items: 
       body.push(...moreRows(`${key}-window`, window, list.items.length, columns, offset))
       if (list.count > list.items.length) body.push(dimRow(`${key}-more`, `   +${grouped(list.count - list.items.length)} not listed`, columns))
       const note: Segment[] =
-        counted !== undefined ? (list.count === 0 ? [] : noteOf(counted(list.count))) : list.count === 0 ? [{ text: '✓ 0', color: STATUS_COLOURS.ok }] : [{ text: `▲ ${grouped(list.count)}`, color: STATUS_COLOURS.warn }, ...extra]
+        counted !== undefined ? (list.count === 0 ? [] : noteOf(counted(list.count))) : list.count === 0 ? [mark(SEVERITY.ok, ' 0')] : [mark(SEVERITY.warn, ` ${grouped(list.count)}`), ...extra]
       const section: Section = { key, title, note, body, empty: 'none' }
       return section
     },
@@ -183,7 +184,7 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
       title: 'Against the merge base',
       ...(input.loading ? { note: noteOf('comparing…') } : {}),
       body: input.said.flatMap((text, i) =>
-        wrapWords(text, Math.max(1, columns - 3)).map((line, j): Row => ({ key: `branch-said-${i}-${j}`, segments: [{ text: `${i === input.said.length - 1 && input.warn && j === 0 ? '▲' : ' '}  `, color: STATUS_COLOURS.warn }, { text: line, ...(input.warn && i === input.said.length - 1 ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
+        wrapWords(text, Math.max(1, columns - 3)).map((line, j): Row => ({ key: `branch-said-${i}-${j}`, segments: [{ text: `${i === input.said.length - 1 && input.warn && j === 0 ? SEVERITY.warn.glyph : ' '}  `, color: STATUS_COLOURS.warn }, { text: line, ...(input.warn && i === input.said.length - 1 ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
       ),
     }),
   }
@@ -239,7 +240,7 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
     selected,
     (v, n, columns) => {
       const half = Math.max(8, Math.floor((columns - 7) / 2))
-      return itemRow(`branch-policy-${n}`, offsets[4]! + n === selected, { text: '▲', color: STATUS_COLOURS.alert }, [button(`row:${offsets[4]! + n}`, fit(v.source.name, half)), { text: ' → ', dim: true }, { text: fit(v.target, Math.max(1, columns - half - 7)) }], columns)
+      return itemRow(`branch-policy-${n}`, offsets[4]! + n === selected, mark(SEVERITY.error), [button(`row:${offsets[4]! + n}`, fit(v.source.name, half)), { text: ' → ', dim: true }, { text: fit(v.target, Math.max(1, columns - half - 7)) }], columns)
     },
     input.violations?.truncated === true ? [{ text: ' · check cut short', dim: true }] : [],
   )

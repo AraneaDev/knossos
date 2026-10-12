@@ -17,10 +17,11 @@
 import type { BlastRadius, RingsState } from '../../types'
 import { noteOf } from './cards'
 import type { Block } from './cards'
-import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
 import { absolute, baseName, button, cells, chip, dimRow, displayName, fit, grouped, plural, segmentsWidth, spaces, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
+import { REACH, mark } from './marks'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
 export type RingMember = { name: string; canonical: string; boundary: string | null; tested: boolean; loc: Loc | null }
@@ -71,7 +72,7 @@ const frameColour = (index: number): string => (index === 0 ? SECONDARY : FAINT)
 function standing(ring: Ring): Segment[] {
   if (ring.count === 0) return [{ text: 'none', dim: true }]
   const untested = ring.count - ring.tested
-  return untested === 0 ? [{ text: '✓ all tested', color: STATUS_COLOURS.ok }] : [{ text: `▲ ${grouped(untested)} untested`, color: STATUS_COLOURS.warn }]
+  return untested === 0 ? [mark(REACH.tested, ' all tested')] : [mark(REACH.untested, ` ${grouped(untested)} untested`)]
 }
 
 /**
@@ -85,11 +86,11 @@ function memberLines(ring: Ring, offset: number, width: number, selected: number
   let used = 0
   for (const [i, m] of ring.members.entries()) {
     const index = offset + i
-    const mark: Segment[] = m.tested ? [] : [{ text: '▲', color: STATUS_COLOURS.warn }]
+    const flag: Segment[] = m.tested ? [] : [mark(REACH.untested)]
     // A boundary is named only where it is not the component's own: what crosses stands out.
     const own = m.boundary === home ? [] : chip(m.boundary, hues)
     const name: Segment = { ...button(`rel:${index}`, fit(m.name, Math.max(4, width - 6))), ...(index === selected ? { bg: SELECTED_BG, bold: true } : {}) }
-    const piece: Segment[] = [...mark, name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
+    const piece: Segment[] = [...flag, name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
     const need = segmentsWidth(piece) + (used === 0 ? 0 : 3)
     if (used > 0 && used + need > width) {
       if (lines.length === NAME_LINES) break
@@ -113,8 +114,8 @@ function memberLines(ring: Ring, offset: number, width: number, selected: number
 /** The test files that reach a ring, by file name, as many as fit one line `width` wide, then how many more. */
 function testsLine(ring: Ring, width: number): Segment[] {
   if (ring.count === 0) return []
-  if (ring.tests.count === 0) return [{ text: '✗ no test file reaches it', color: STATUS_COLOURS.warn }]
-  const lead = `✓ ${plural(ring.tests.count, 'test file', 'test files')}`
+  if (ring.tests.count === 0) return [mark(REACH.untested, ' no test file reaches it')]
+  const lead = `${REACH.tested.glyph} ${plural(ring.tests.count, 'test file', 'test files')}`
   const said = (shown: string[]): string => {
     const rest = ring.tests.count - shown.length
     return shown.length === 0 ? lead : `${lead}: ${shown.join(', ')}${rest > 0 ? ` +${rest}` : ''}`
