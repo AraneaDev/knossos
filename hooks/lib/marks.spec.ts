@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CARD_ICON, CERTAINTY, CHANGE, KIND, PLACE, RANKING, REACH, SEVERITY, SHARED, kindMark, legend, mark, signed } from './marks'
+import { CARD_ICON, CERTAINTY, CHANGE, KIND, PLACE, RANKING, REACH, SEVERITY, SHARED, kindLegend, kindMark, legend, mark, signed } from './marks'
 import { ACCENT, STATUS_COLOURS } from './palette'
 
 const families = { SEVERITY, CERTAINTY, REACH, CHANGE, PLACE, RANKING }
@@ -38,6 +38,11 @@ describe('the mark registry', () => {
     expect(legend([[CERTAINTY.probable, 0]])).toBe('')
     expect(legend([[RANKING.hotspotOnly, '']])).toBe('✦ hotspot only')
     expect(legend([[SEVERITY.error, 1], [SEVERITY.warn, 2]])).toBe('✗ 1 error · ▲ 2 warnings')
+  })
+
+  it('names the kinds shown, in the registry\'s order, each once, unknown ones left out', () => {
+    expect(kindLegend(['method', 'class', 'method', 'type_alias', 'enum'])).toBe('C class · N enum · m method')
+    expect(kindLegend(['type_alias'])).toBe('')
   })
 
   it('writes a delta as a signed number', () => {

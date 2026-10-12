@@ -3075,7 +3075,7 @@ describe('knossos mod', () => {
       expect((await ui.find({ key: 'sort' }))?.text).toBe('sort: in')
       await ui.press({ key: 'sort' })
       expect((await ui.find({ key: 'sort' }))?.text).toBe('sort: out')
-      expect(titled((await ui.find({ key: 'hubs-head' }))?.text)).toMatch(/by out$/)
+      expect(titled((await ui.find({ key: 'hubs-head' }))?.text)).toMatch(/by out( |$)/)
       expect(await order()).toEqual(['Kernel', 'Request', 'Router'])
       await ui.press({ key: 'sort' })
       expect(await order()).toEqual(['Kernel', 'Router', 'Request'])

@@ -284,6 +284,10 @@ describe('paneRows', () => {
     expect(plainText(row(past, `hub-${last}`)!).startsWith('›')).toBe(true)
   })
 
+  it('names the kinds its rows show in the Hubs note, where the note has room', () => {
+    expect(textOf(paneRows(input({ tab: 'hubs' }), 140))).toMatch(/C class · m method/)
+  })
+
   it('marks a hotspot that is no hub with ✦ and names it in the card note', () => {
     const text = textOf(paneRows(input({ tab: 'hubs' }), 100))
     expect(text).toMatch(/✦ hotspot only/)
@@ -674,6 +678,11 @@ describe('the issues tab', () => {
       widthsFit(paneRows(fullInput({ tab: 'issues', showKeys: true, terminal: false }), columns), columns)
     })
   }
+  it('names the kinds its rows show in the Dead code note, where the note has room', () => {
+    const head = textOf(paneRows(fullInput({ tab: 'issues' }), 200)).split('\n').find(l => l.includes('Dead code'))
+    expect(head).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2 · m method · f function/)
+  })
+
   it('marks each dead-code candidate with its kind, and leaves an unknown kind blank', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse/)
@@ -977,7 +986,7 @@ describe('tables packed to the left', () => {
   it("sets the title, the sort and the note into the card's top edge, which spans the card like its rows", () => {
     const rows = paneRows(fullInput({ tab: 'hubs' }), 100)
     const head = row(rows, 'hubs-head')!
-    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +✦ hotspot only$/)
+    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +✦ hotspot only( · .+)?$/)
     expect(rowWidth(head)).toBe(100)
     expect(rowWidth(row(rows, 'hub-0')!)).toBe(100)
   })
@@ -1116,7 +1125,7 @@ describe('the hubs filter and sort', () => {
   })
   it('names the sort, draws its bar, and offers n, s and x as keys, and f to find', () => {
     const rows = paneRows(input({ tab: 'hubs', sort: 'out', filter: 'a' }), 90)
-    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +✦ hotspot only$/)
+    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +✦ hotspot only( · .+)?$/)
     expect(plainText(row(rows, 'hub-0')!)).toMatch(/ProjectScanService::scan +■ core +[━╸]+·* +119 +58 +0$/)
     const keys = rows.filter(r => r.key.startsWith('keys')).flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.hotkey] : [])))
     expect(keys).toEqual(['j', 'k', 'o', 'c', 'q', 'n', 's', 'x', 'f', 'h'])

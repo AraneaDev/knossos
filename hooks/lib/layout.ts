@@ -66,10 +66,10 @@ import type { Flash } from './flash'
 import { cycleCount, cycleSteps, cyclesArrangement, cyclesInput, cyclesList, unfoldPress } from './cycles'
 import type { CyclesInput } from './cycles'
 import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInput, issuesList, locIn, superscript } from './views'
-import { arrange, besideRows, cardInner, DEFAULT_ROWS, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
+import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, cardInner, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
-import { RANKING, SEVERITY, legend } from './marks'
+import { RANKING, SEVERITY, kindLegend, legend } from './marks'
 
 // Everything the specs and the render hook draw with, from one module.
 export { bar, button, cells, displayName, fileHref, fit, linkMarkdown, locOf, locText, rowWidth, tableSpec, tierOf, wrapWords } from './rows'
@@ -1014,7 +1014,11 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
         const counted = range.components === null ? '' : ` of ${grouped(range.components)}`
         rows.push(dimRow('degree-row', `   in-degree ${range.to === null ? `${range.from}+` : range.from === range.to ? `${range.from}` : `${range.from}–${range.to}`} · ${list.length} listed${counted}`, columns))
       }
-      const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(note), body })
+      // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
+      const kinds = kindLegend(list.map(i => i.kind))
+      const keyed = [note, kinds].filter(s => s !== '').join(' · ')
+      const told = cells(`Hubs and hotspots sorted by ${input.sort}`) + cells(keyed) + NOTE_ROOM <= columns ? keyed : note
+      const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(told), body })
       if (list.length === 0) return section([...rows, dimRow('hubs-none', input.filter === '' ? (range === null ? '   none' : '   none of the listed hubs is in this range') : `   no hub matches "${input.filter}"`, columns)])
       const spec = componentSpec(list, columns, true, input.hues, tier)
       const local = selected < list.length ? selected : -1

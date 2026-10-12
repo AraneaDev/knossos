@@ -35,7 +35,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
-import { moreRows, noteOf, windowOf } from './cards'
+import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -418,9 +418,6 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
 
 /** One scan on the timeline. */
 const TIMELINE_DOT = CHANGE.scan.glyph
-
-/** The cells a card's top edge spends on its frame, glyph and gaps beside the title and the note. */
-const NOTE_ROOM = 12
 
 /** The files the Changes tab walks: each opens as a file's detail (who depends on it), and `e` opens it in the editor. */
 export function changesList(input: ChangesInput): Openable[] {

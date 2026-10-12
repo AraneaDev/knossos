@@ -9,7 +9,7 @@
  */
 import { diffBlock } from './diff'
 import type { DiffView } from './diff'
-import { moreRows, noteOf, windowOf } from './cards'
+import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { ComponentDetail, Counterpart, Dashboard, Diagnostic, DetailState, Inspected, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
@@ -46,7 +46,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
-import { CERTAINTY, REACH, SEVERITY, kindMark, legend, mark } from './marks'
+import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -462,7 +462,11 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
         dead.total === '0' ? '' : ((key: string) => (key === '' ? '' : ` · ${key}`))(legend([[CERTAINTY.probable, dead.probable ?? 0], [REACH.testsOnly, dead.testOnly ?? 0]]))
       const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
       const body = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset)
-      return { key: 'dead', title: 'Dead code', note: noteOf(deadNote), body, empty: 'none' }
+      // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
+      const kinds = kindLegend(dead.items.map(c => c.kind))
+      const keyed = kinds === '' ? deadNote : `${deadNote} · ${kinds}`
+      const told = cells('Dead code') + cells(keyed) + NOTE_ROOM <= columns ? keyed : deadNote
+      return { key: 'dead', title: 'Dead code', note: noteOf(told), body, empty: 'none' }
     },
   }
   const spotOffset = offset + dead.items.length

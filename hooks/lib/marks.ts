@@ -120,6 +120,15 @@ export function legend(entries: ReadonlyArray<readonly [Mark, number | string]>)
     .join(' · ')
 }
 
+/** The legend of the kind marks a card shows: each known kind once, in the registry's order (`C class · m method`). */
+export function kindLegend(kinds: ReadonlyArray<string>): string {
+  const shown = new Set(kinds)
+  return Object.entries(KIND)
+    .filter(([kind]) => shown.has(kind))
+    .map(([, entry]) => `${entry.glyph} ${entry.legend}`)
+    .join(' · ')
+}
+
 /** A delta as a signed number: `+3`, `−2`, `±0`. */
 export function signed(n: number): string {
   return n === 0 ? '±0' : `${n > 0 ? '+' : '−'}${grouped(Math.abs(n))}`
