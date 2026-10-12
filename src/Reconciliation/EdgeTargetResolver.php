@@ -185,7 +185,34 @@ final class EdgeTargetResolver
         return [$reference, $reference === null ? null : (self::implementationTarget($reference, $this->nodeMap)
             ?? $this->nodeMap[$reference]
             ?? $this->aliasedTypeTarget($reference)
-            ?? $this->inheritedMemberTarget($reference))];
+            ?? $this->inheritedMemberTarget($reference)
+            ?? $this->localScopeTarget($reference))];
+    }
+
+    /**
+     * The Eloquent local scope a PHP call by its short name reaches.
+     *
+     * `Order::open()` is forwarded by the model's magic `__callStatic` to
+     * `scopeOpen`, so no declaration carries the name the call spells. The
+     * scope is looked up on the type and, like any member, on what it inherits.
+     */
+    private function localScopeTarget(string $reference): ?string
+    {
+        $parts = explode(':', $reference, 3);
+        if (count($parts) !== 3 || $parts[0] !== 'php' || $parts[1] !== 'method') {
+            return null;
+        }
+        $separator = strrpos($parts[2], '::');
+        if ($separator === false || $separator === 0) {
+            return null;
+        }
+        $member = substr($parts[2], $separator + 2);
+        if ($member === '' || str_starts_with($member, 'scope')) {
+            return null;
+        }
+        $scope = 'php:method:' . substr($parts[2], 0, $separator) . '::scope' . ucfirst($member);
+
+        return $this->nodeMap[$scope] ?? $this->inheritedMemberTarget($scope);
     }
 
     /**
