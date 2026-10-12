@@ -37,6 +37,20 @@ export default [
         },
     },
     {
+        files: ["tools/eval/**/*.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: {
+                console: "readonly",
+                process: "readonly",
+                setTimeout: "readonly",
+                clearTimeout: "readonly",
+                URL: "readonly",
+            },
+        },
+    },
+    {
         files: ["workers/typescript/**/*.js"],
         languageOptions: {
             ecmaVersion: 2024,
