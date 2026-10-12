@@ -15,7 +15,7 @@ without leaving a statically visible edge. The tool says so in its own
 
 The summary splits the whole list by confidence, so a count of candidates does
 not read as that much dead code: `By confidence: 14 probable, 29 possible.` The
-same split is in `bounds.candidates_probable` and `bounds.candidates_possible`,
+same split is in `bounds.candidates_probable` and `bounds.candidates_possible`, the test-only count in `bounds.candidates_test_only`,
 counted before `limit` slices the list. `knossos dead-code` prints each
 candidate's confidence beside its reachability, ends with the same split, and
 returns it as `by_confidence` with `--json`.

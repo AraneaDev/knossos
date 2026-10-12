@@ -18,6 +18,14 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('query')]
 final class CandidateConfidenceSummaryTest extends KnossosTestCase
 {
+    /** How many of the whole list nothing references, tests included. */
+    private function unreferencedCount(\PDO $pdo, string $projectId): int
+    {
+        $all = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 100)->data['dead_code_candidates'];
+
+        return count(array_filter($all, static fn(array $c): bool => $c['reachability'] === 'unreferenced'));
+    }
+
     public function testTheSummaryAndBoundsSplitTheCandidatesByConfidence(): void
     {
         $root = sys_get_temp_dir() . '/knossos-stale-confidence-' . bin2hex(random_bytes(6));
@@ -41,6 +49,9 @@ final class CandidateConfidenceSummaryTest extends KnossosTestCase
         // Counted over the whole list, not the page of one.
         self::assertSame($confidences['probable'] ?? 0, $bounds['candidates_probable']);
         self::assertSame($confidences['possible'] ?? 0, $bounds['candidates_possible']);
+        // The test-only share too, over the whole list, so a reader can tell it from what nothing uses.
+        self::assertArrayHasKey('candidates_test_only', $bounds);
+        self::assertSame($result->data['bounds']['candidates_total'] - $bounds['candidates_test_only'], $this->unreferencedCount($pdo, $projectId));
         self::assertGreaterThanOrEqual(2, $bounds['candidates_probable'], 'unused and retired');
         self::assertGreaterThanOrEqual(1, $bounds['candidates_possible'], 'label, named by an untyped call');
         self::assertStringContainsString(

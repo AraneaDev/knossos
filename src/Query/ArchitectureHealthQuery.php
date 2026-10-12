@@ -301,6 +301,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                     'candidates_total' => $candidatesTotal,
                     'candidates_probable' => $probableCandidates,
                     'candidates_possible' => $candidatesTotal - $probableCandidates,
+                    'candidates_test_only' => $testOnlyCandidates,
                     'candidates_truncated' => $candidateTruncationReasons !== [],
                     'candidate_truncation_reasons' => $candidateTruncationReasons,
                     'nodes_examined' => count($slice['ids']), 'edges_examined' => $result['walk']['edges_examined'],
