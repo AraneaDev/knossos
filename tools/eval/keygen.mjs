@@ -60,14 +60,18 @@ export function knossosAnswer(category, unit, json) {
             .filter(Boolean);
     }
     if (category === "impact" || category === "dependents") {
-        return (json.data?.dependants ?? [])
-            .filter((d) => !isTestPath(d.node?.via?.evidence?.path))
-            .map((d) =>
-                unit === "file"
-                    ? d.node?.via?.evidence?.path
-                    : d.node?.canonical_name,
-            )
-            .filter(Boolean);
+        return (
+            (json.data?.dependants ?? [])
+                // The keys for "dependents" list direct dependents only; "impact" keeps every distance.
+                .filter((d) => category !== "dependents" || d.distance === 1)
+                .filter((d) => !isTestPath(d.via?.evidence?.path))
+                .map((d) =>
+                    unit === "file"
+                        ? d.via?.evidence?.path
+                        : d.node?.canonical_name,
+                )
+                .filter(Boolean)
+        );
     }
     return null;
 }

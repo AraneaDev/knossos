@@ -38,10 +38,9 @@ const impact = {
     data: {
         dependants: [
             {
-                node: {
-                    canonical_name: "App\\Http\\Show::__invoke",
-                    via: { evidence: { path: "app/Http/Show.php" } },
-                },
+                node: { canonical_name: "App\\Http\\Show::__invoke" },
+                distance: 1,
+                via: { evidence: { path: "app/Http/Show.php" } },
             },
         ],
     },
@@ -197,16 +196,14 @@ describe("isTestPath", () => {
             data: {
                 dependants: [
                     {
-                        node: {
-                            canonical_name: "A",
-                            via: { evidence: { path: "src/A.php" } },
-                        },
+                        node: { canonical_name: "A" },
+                        distance: 1,
+                        via: { evidence: { path: "src/A.php" } },
                     },
                     {
-                        node: {
-                            canonical_name: "T",
-                            via: { evidence: { path: "src/x.spec.ts" } },
-                        },
+                        node: { canonical_name: "T" },
+                        distance: 1,
+                        via: { evidence: { path: "src/x.spec.ts" } },
                     },
                 ],
             },
@@ -290,5 +287,38 @@ describe("clearDefect", () => {
             access(path.join(paths.defects, "t2.json")),
         ).rejects.toThrow();
         await expect(clearDefect(paths, "t2")).resolves.toBeUndefined();
+    });
+});
+
+describe("dependants distance", () => {
+    const deps = {
+        data: {
+            dependants: [
+                {
+                    node: { canonical_name: "Near" },
+                    distance: 1,
+                    via: { evidence: { path: "src/near.php" } },
+                },
+                {
+                    node: { canonical_name: "Far" },
+                    distance: 2,
+                    via: { evidence: { path: "src/far.php" } },
+                },
+            ],
+        },
+    };
+    it("keeps only direct dependants for dependents, every distance for impact", () => {
+        expect(knossosAnswer("dependents", "symbol", deps)).toEqual(["Near"]);
+        expect(knossosAnswer("dependents", "file", deps)).toEqual([
+            "src/near.php",
+        ]);
+        expect(knossosAnswer("impact", "symbol", deps)).toEqual([
+            "Near",
+            "Far",
+        ]);
+        expect(knossosAnswer("impact", "file", deps)).toEqual([
+            "src/near.php",
+            "src/far.php",
+        ]);
     });
 });
