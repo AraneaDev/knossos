@@ -147,7 +147,9 @@ class RouterMounts:
         router = self.router_reference(owner)
         if router is not None:
             return {"router": router}
-        if owner in self.framework_objects and owner not in self.apps:
+        if owner not in self.apps:
+            # Neither the app nor a module-level router: a router built in a
+            # function, handed in as a parameter, or an owner of unknown type.
             return {"prefix": "unknown"}
         return {}
 

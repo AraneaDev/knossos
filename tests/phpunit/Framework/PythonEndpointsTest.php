@@ -203,6 +203,31 @@ final class PythonEndpointsTest extends KnossosTestCase
         assertArrayNotHasKey('prefix', $routes['GET /direct']);
     }
 
+    public function testAnAddUrlRuleOnAnUntypedOwnerHasAnUnknownPrefix(): void
+    {
+        [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/web.py' => <<<'PY'
+            from flask import Flask
+
+            app = Flask(__name__)
+
+
+            def view() -> str:
+                return "ok"
+
+
+            def init(thing) -> None:
+                thing.add_url_rule("/x", view_func=view)
+
+
+            app.add_url_rule("/direct", view_func=view)
+            PY]);
+        $routes = $this->routes($nodes);
+
+        assertSame('unknown', $routes['GET /x']['prefix']);
+        assertArrayNotHasKey('router', $routes['GET /x']);
+        assertArrayNotHasKey('prefix', $routes['GET /direct']);
+    }
+
     public function testAnAppRebuiltAsARouterIsNoLongerAnApp(): void
     {
         [$nodes] = $this->scanSource(['app/__init__.py' => '', 'app/api.py' => <<<'PY'
