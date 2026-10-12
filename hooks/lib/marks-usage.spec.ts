@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { CARD_ICON, CERTAINTY, CHANGE, PLACE, RANKING, REACH, SEVERITY } from './marks'
 
@@ -17,7 +18,7 @@ const glyphs = [SEVERITY, CERTAINTY, REACH, CHANGE, PLACE, RANKING]
   .concat(Object.values(CARD_ICON))
   .filter(g => [...g].some(ch => ch.codePointAt(0)! > 0x7f) && !DRAWING.includes(g))
 
-const HERE = new URL('.', import.meta.url).pathname
+const HERE = fileURLToPath(new URL('.', import.meta.url))
 const sources = [...readdirSync(HERE).filter(f => f.endsWith('.ts') && !f.endsWith('.spec.ts') && f !== 'marks.ts').map(f => join(HERE, f)), join(HERE, '..', 'register.tsx')]
 
 describe('mark usage', () => {

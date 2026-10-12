@@ -390,21 +390,22 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
 /**
  * The issues tile: the dead-code candidates, the diagnostics' errors and
  * warnings, the policy violations and the functions over budget, as one
- * figure that presses to the Issues tab. A dead-code list the search cut short
+ * figure that presses to the Issues tab. A dead-code or policy list the search cut short
  * makes it a floor, `+`. Its tone is the worst among them.
  */
 function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | null, listing: (key: string, value: string) => Pick<Stat, 'press'>): Stat {
   const violations = policy === null ? 0 : Number(policy.replace(/\D/g, '')) || 0
   const errors = diagnostics ?? 0
   const total = d.dead_code_candidates + errors + violations + (d.over_budget?.total ?? 0)
-  const figure = d.dead_code_truncated ? `${grouped(total)}+` : grouped(total)
+  const floor = d.dead_code_truncated || (policy?.endsWith('+') ?? false)
+  const figure = floor ? `${grouped(total)}+` : grouped(total)
   // The worst finding's mark beside the figure, so the tile says how bad as well as how many: a violation or a
   // diagnostic error is an error, a warning alone a warning, as the Issues cards mark them.
   const diagnosticErrors = d.diagnostics?.errors ?? 0
   const worst = violations > 0 || diagnosticErrors > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
   const value = worst === null ? figure : `${worst.glyph} ${figure}`
   const tone = worst === SEVERITY.error ? { tone: 'alert' as const } : worst === SEVERITY.warn ? { tone: 'warn' as const } : {}
-  return { key: 'issues', label: total === 1 && !d.dead_code_truncated ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
+  return { key: 'issues', label: total === 1 && !floor ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
 }
 
 /**

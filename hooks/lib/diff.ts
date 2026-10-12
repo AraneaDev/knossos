@@ -278,7 +278,7 @@ const TEXT_LINES = 12
  * removed colour, the rest dim, each cut to `columns`.
  */
 function hunkRows(key: string, hunk: Hunk, shown: string[], columns: number): Row[] {
-  const head = `@@ ${CHANGE.removed.glyph}${hunk.oldStart} +${hunk.newStart} @@${hunk.heading === '' ? '' : ` ${hunk.heading}`}`
+  const head = `@@ -${hunk.oldStart} +${hunk.newStart} @@${hunk.heading === '' ? '' : ` ${hunk.heading}`}`
   const line = (text: string, i: number): Row => {
     const mark = text.charAt(0)
     const style: Omit<Segment, 'text'> = mark === '+' ? { color: 'diffAddedWord' } : mark === '-' ? { color: 'diffRemovedWord' } : { dim: true }

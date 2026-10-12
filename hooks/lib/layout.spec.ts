@@ -1159,6 +1159,20 @@ describe('colour', () => {
 })
 
 describe('the overview stat tiles', () => {
+  it('keeps the Issues total a floor when policy or dead-code counts are truncated', () => {
+    const tile = (policyTruncated: boolean, deadTruncated: boolean) => {
+      const dashboard = full({
+        policy: { status: 'evaluated', total: 7, truncated: policyTruncated, truncation_reasons: policyTruncated ? ['time_limit'] : [], items: [] },
+        dead_code_truncated: deadTruncated,
+      })
+      return plainText(row(paneRows(fullInput({}, dashboard), 140), 'tiles-0-value')!)
+    }
+    expect(tile(false, false)).toMatch(/│ ✗ 67 +│/)
+    expect(tile(true, false)).toMatch(/│ ✗ 67\+ +│/)
+    expect(tile(false, true)).toMatch(/│ ✗ 67\+ +│/)
+    expect(tile(true, true)).toMatch(/│ ✗ 67\+ +│/)
+  })
+
   it('marks the issues tile ✗ for a diagnostic error and ▲ for a warning alone, as the Diagnostics card does', () => {
     const tile = (diagnostics: { errors: number; warnings: number }) =>
       plainText(row(paneRows(fullInput({}, full({ policy: { status: 'evaluated', total: 0, truncated: false, truncation_reasons: [], items: [] }, diagnostics: { ...full().diagnostics!, ...diagnostics, infos: 0, items: [] } })), 140), 'tiles-0-value')!)

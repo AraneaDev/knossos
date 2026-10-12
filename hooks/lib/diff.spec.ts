@@ -189,7 +189,7 @@ describe('a change drawn in a panel', () => {
     for (const r of section.body) expect(r.segments.reduce((n, s) => n + [...s.text].length, 0)).toBeLessThanOrEqual(40)
     expect(section.body.find(r => r.key === 'diff-hunk-0-1')?.segments[0]).toMatchObject({ text: '− gone', color: 'diffRemovedWord' })
     expect(section.body.find(r => r.key === 'diff-hunk-0-2')?.segments[0]?.color).toBe('diffAddedWord')
-    expect(section.body.find(r => r.key === 'diff-hunk-0-head')?.segments[0]?.text).toBe('@@ −1 +1 @@ function f()')
+    expect(section.body.find(r => r.key === 'diff-hunk-0-head')?.segments[0]?.text).toBe('@@ -1 +1 @@ function f()')
     expect(section.body.map(r => r.key)).toContain('diff-more-0')
     expect(section.body.map(r => r.key)).toContain('diff-hunks-more')
   })
