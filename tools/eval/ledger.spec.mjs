@@ -83,6 +83,29 @@ describe("ledger", () => {
         await appendFile(file, '{"task":"t2","arm":"fu');
         expect(await readLedger(file)).toHaveLength(1);
     });
+    it("starts a new row on its own line after a cut-off fragment", async () => {
+        const file = path.join(
+            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
+            "ledger.jsonl",
+        );
+        await appendRow(file, {
+            task: "t1",
+            arm: "full",
+            repeat: 1,
+            status: "scored",
+        });
+        await appendFile(file, '{"task":"t2","arm":"fu');
+        await appendRow(file, {
+            task: "t3",
+            arm: "full",
+            repeat: 1,
+            status: "scored",
+        });
+        expect((await readLedger(file)).map((r) => r.task)).toEqual([
+            "t1",
+            "t3",
+        ]);
+    });
 });
 
 describe("pending", () => {
