@@ -136,3 +136,16 @@ describe("buildReport with enough paired tasks", () => {
         expect(other).toMatch(/\| x \| 0 \|.*\| no data \|/);
     });
 });
+
+describe("buildReport with an arm missing", () => {
+    it("prints a no data row for a comparison without pairs", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: rows.filter((r) => r.arm !== "tools"),
+            tasks,
+        });
+        expect(md).toMatch(
+            /\| tools vs baseline \| F1 \| 0 \| - \| - \| no data \|/,
+        );
+    });
+});

@@ -74,6 +74,10 @@ export function bootstrapCi(
 }
 
 export function verdict(ci, { higherIsBetter }, n) {
+    if (!Number.isFinite(n))
+        throw new TypeError(
+            `verdict needs the number of paired tasks, got ${n}`,
+        );
     if (ci === null) return "no data";
     if (n < MIN_PAIRED_TASKS) return "too few tasks";
     if (ci.low > 0) return higherIsBetter ? "helps" : "hurts";

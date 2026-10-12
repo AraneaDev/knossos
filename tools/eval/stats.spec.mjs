@@ -90,6 +90,13 @@ describe("bootstrapCi and verdict", () => {
             "no detectable effect",
         );
     });
+    it("throws when the number of paired tasks is missing", () => {
+        const ci = bootstrapCi(Array(20).fill(0.3), { seed: 1 });
+        expect(() => verdict(ci, { higherIsBetter: true })).toThrow(TypeError);
+        expect(() =>
+            verdict(null, { higherIsBetter: true }, undefined),
+        ).toThrow(TypeError);
+    });
     it("returns null without data", () => {
         expect(bootstrapCi([], {})).toBeNull();
         expect(verdict(null, { higherIsBetter: true }, 0)).toBe("no data");

@@ -82,15 +82,19 @@ function comparisons(rows, seed) {
         for (const m of METRICS) {
             const deltas = pairedDeltas(taskMedians(rows, m.key), a, b);
             const ci = bootstrapCi(deltas, { seed });
-            if (ci === null) continue;
-            if (a === "full" && b === "baseline" && m.key === "f1")
+            if (
+                ci !== null &&
+                a === "full" &&
+                b === "baseline" &&
+                m.key === "f1"
+            )
                 detect = { n: deltas.length, half: (ci.high - ci.low) / 2 };
             body.push([
                 `${a} vs ${b}`,
                 m.label,
                 String(deltas.length),
-                signed(ci.mean, 3),
-                `[${signed(ci.low, 3)}, ${signed(ci.high, 3)}]`,
+                ci ? signed(ci.mean, 3) : "-",
+                ci ? `[${signed(ci.low, 3)}, ${signed(ci.high, 3)}]` : "-",
                 verdict(ci, m, deltas.length),
             ]);
         }
