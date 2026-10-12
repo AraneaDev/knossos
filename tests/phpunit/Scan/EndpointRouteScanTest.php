@@ -118,6 +118,47 @@ final class EndpointRouteScanTest extends KnossosTestCase
         }
     }
 
+    public function testASharedEndpointBelongsToNoPathBoundary(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanFiles([
+            'package.json' => '{"name":"x","dependencies":{}}',
+            'shop/a.ts' => "export function loadA() { return fetch('/api/orders'); }\n",
+            'admin/b.ts' => "export function loadB() { return fetch('/api/orders'); }\n",
+        ]);
+        try {
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $result = $queries->checkArchitecture($projectId, [
+                ['id' => 'admin-not-shop', 'from_boundary' => 'module:admin', 'deny_targets' => ['module:shop']],
+            ]);
+            assertSame([], $result->data['violations'], json_encode($result->data['violations']));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A policy judges one edge at a time, and the shared endpoint sits in no boundary, so the hop through it is no violation. */
+    public function testAPolicyChecksDirectEdgesSoACallerIsNotFlaggedForTheRouteBehindAnEndpoint(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanFiles([
+            'pyproject.toml' => "[project]\nname = \"api\"\ndependencies = [\"fastapi\"]\n",
+            'backend/__init__.py' => '',
+            'backend/api.py' => "from fastapi import FastAPI\n\napp = FastAPI()\n\n\n@app.get('/api/orders')\ndef orders() -> list:\n    return []\n",
+            'package.json' => '{"name":"web","dependencies":{}}',
+            'shop/a.ts' => "export function loadA() { return fetch('/api/orders'); }\n",
+            'admin/b.ts' => "export function loadB() { return fetch('/api/orders'); }\n",
+        ]);
+        try {
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $result = $queries->checkArchitecture($projectId, [
+                ['id' => 'admin-not-backend', 'from_boundary' => 'module:admin', 'deny_targets' => ['python-package:backend']],
+            ]);
+            $sources = array_map(static fn(array $v): string => $v['source']['canonical_name'] . ' -> ' . $v['target']['canonical_name'], $result->data['violations']);
+            assertSame([], $sources);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     public function testARouterBuiltInAFunctionGivesNoCertainLink(): void
     {
         [$pdo, , $root] = $this->scanFiles([
