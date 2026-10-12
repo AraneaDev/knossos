@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/AraneaDev/knossos/compare/v0.26.0...v0.27.0) (2026-10-12)
+
+
+### Features
+
+* improve Laravel analysis and clarify candidate confidence in the pane ([#244](https://github.com/AraneaDev/knossos/issues/244)) ([854af84](https://github.com/AraneaDev/knossos/commit/854af842e8f5f1382cb46543e02e90fef5134ab3))
+
 ## [0.26.0](https://github.com/AraneaDev/knossos/compare/v0.25.0...v0.26.0) (2026-10-12)
 
 
