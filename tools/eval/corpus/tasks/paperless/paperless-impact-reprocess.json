@@ -1,0 +1,16 @@
+{
+  "id": "paperless-impact-reprocess",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "impact",
+  "subject": "bulk_edit.reprocess",
+  "prompt": "If documents.bulk_edit.reprocess changes behaviour, which API view methods (HTTP entry points) would behave differently, directly or through helpers? Name them as dotted paths from src/, for example documents.views.SomeView.post.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.views.BulkEditView.post",
+      "documents.views.ReprocessDocumentsView.post"
+    ]
+  },
+  "verified": "2026-10-12"
+}

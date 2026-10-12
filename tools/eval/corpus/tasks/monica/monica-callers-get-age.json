@@ -1,0 +1,18 @@
+{
+  "id": "monica-callers-get-age",
+  "repo": "monica",
+  "kind": "question",
+  "category": "callers",
+  "subject": "ImportantDateHelper::getAge",
+  "prompt": "Which methods in the application code (app/, not tests) call App\\Helpers\\ImportantDateHelper::getAge()? List each calling method once.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Web\\ViewHelpers\\ContactImportantDatesViewHelper::dto",
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Web\\ViewHelpers\\ModuleImportantDatesViewHelper::data",
+      "App\\Domains\\Vault\\ManageReports\\Web\\ViewHelpers\\ReportImportantDateSummaryIndexViewHelper::data",
+      "App\\Models\\Contact::age"
+    ]
+  },
+  "verified": "2026-10-12"
+}

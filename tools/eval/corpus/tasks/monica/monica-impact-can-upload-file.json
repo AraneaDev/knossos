@@ -1,0 +1,19 @@
+{
+  "id": "monica-impact-can-upload-file",
+  "repo": "monica",
+  "kind": "question",
+  "category": "impact",
+  "subject": "StorageHelper::canUploadFile",
+  "prompt": "If App\\Helpers\\StorageHelper::canUploadFile() starts returning a different value, which controller actions (HTTP entry points) would send different data to the page, directly or through view helpers? List the controller methods.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactController::show",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactPageController::show",
+      "App\\Domains\\Contact\\ManagePhotos\\Web\\Controllers\\ContactPhotoController::index",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeController::show",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\PostController::edit"
+    ]
+  },
+  "verified": "2026-10-12"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ripgrep-impact-matcher-trait",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "impact",
+  "subject": "Matcher",
+  "prompt": "If a new required method (one without a default body) were added to the grep_matcher::Matcher trait, which Rust source files outside tests and test-only helper modules would have to change because they implement the trait? Answer with file paths.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "crates/regex/src/matcher.rs",
+      "crates/pcre2/src/matcher.rs",
+      "crates/matcher/src/lib.rs"
+    ]
+  },
+  "verified": "2026-10-12"
+}

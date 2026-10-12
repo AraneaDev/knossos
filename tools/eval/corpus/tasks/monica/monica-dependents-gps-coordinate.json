@@ -1,0 +1,16 @@
+{
+  "id": "monica-dependents-gps-coordinate",
+  "repo": "monica",
+  "kind": "question",
+  "category": "dependents",
+  "subject": "GetGPSCoordinate",
+  "prompt": "Which files in the application code (app/, routes/ and config/, not tests) depend directly on App\\Domains\\Vault\\ManageAddresses\\Services\\GetGPSCoordinate? Leave out the file that defines it.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "app/Domains/Vault/ManageAddresses/Services/CreateAddress.php",
+      "app/Domains/Vault/ManageAddresses/Services/UpdateAddress.php"
+    ]
+  },
+  "verified": "2026-10-12"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "paperless-flow-mail-to-consume",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "flow",
+  "subject": "consume_file",
+  "prompt": "Trace how the scheduled mail task paperless_mail.tasks.process_mail_accounts ends up queueing documents.tasks.consume_file for an email attachment. List every function or method on that path, including both ends, as dotted paths from src/.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "paperless_mail.tasks.process_mail_accounts",
+      "paperless_mail.mail.MailAccountHandler.handle_mail_account",
+      "paperless_mail.mail.MailAccountHandler._handle_mail_rule",
+      "paperless_mail.mail.MailAccountHandler._handle_message",
+      "paperless_mail.mail.MailAccountHandler._process_attachments",
+      "documents.tasks.consume_file"
+    ]
+  },
+  "verified": "2026-10-12"
+}

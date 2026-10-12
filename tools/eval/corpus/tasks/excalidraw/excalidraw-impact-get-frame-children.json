@@ -1,0 +1,21 @@
+{
+  "id": "excalidraw-impact-get-frame-children",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "impact",
+  "subject": "getFrameChildren",
+  "prompt": "If the parameters of getFrameChildren() (packages/element/src/frame.ts) change, which other source files (not tests) must be updated because they call it, directly or through the @excalidraw/element package entry point? Answer with file paths, leaving out frame.ts itself.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "packages/excalidraw/lasso/index.ts",
+      "packages/element/src/selection.ts",
+      "packages/element/src/duplicate.ts",
+      "packages/excalidraw/actions/actionFrame.ts",
+      "packages/excalidraw/actions/actionDeleteSelected.tsx",
+      "packages/excalidraw/components/App.selectionTool.ts",
+      "packages/excalidraw/components/Stats/utils.ts"
+    ]
+  },
+  "verified": "2026-10-12"
+}

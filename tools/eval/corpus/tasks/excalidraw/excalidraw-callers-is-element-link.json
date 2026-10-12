@@ -1,0 +1,18 @@
+{
+  "id": "excalidraw-callers-is-element-link",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "callers",
+  "subject": "isElementLink",
+  "prompt": "Outside tests, which functions or methods call isElementLink()? Name class methods as Class.method and module-level functions by their bare name.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App.initializeScene",
+      "resolveViewportTarget",
+      "renderTooltip",
+      "renderLinkIcon"
+    ]
+  },
+  "verified": "2026-10-12"
+}

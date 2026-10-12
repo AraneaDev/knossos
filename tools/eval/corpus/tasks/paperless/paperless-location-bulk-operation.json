@@ -1,0 +1,13 @@
+{
+  "id": "paperless-location-bulk-operation",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "location",
+  "subject": "bulk_edit",
+  "prompt": "I want to add a new bulk operation that users can apply to a selection of documents, next to the existing ones such as rotate and merge. Which file should the operation's function go in? Answer with the file path.",
+  "answer": {
+    "unit": "file",
+    "expected": ["src/documents/bulk_edit.py"]
+  },
+  "verified": "2026-10-12"
+}

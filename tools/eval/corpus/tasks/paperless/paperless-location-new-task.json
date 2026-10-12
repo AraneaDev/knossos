@@ -1,0 +1,13 @@
+{
+  "id": "paperless-location-new-task",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "location",
+  "subject": "tasks",
+  "prompt": "I want to add a new Celery background task that recalculates something for documents. Following this codebase's conventions, which file should the new task function go in? Answer with the file path.",
+  "answer": {
+    "unit": "file",
+    "expected": ["src/documents/tasks.py"]
+  },
+  "verified": "2026-10-12"
+}

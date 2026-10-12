@@ -1,0 +1,20 @@
+{
+  "id": "monica-dependents-storage-helper",
+  "repo": "monica",
+  "kind": "question",
+  "category": "dependents",
+  "subject": "StorageHelper",
+  "prompt": "Which files in the application code (app/, routes/ and config/, not tests) depend directly on App\\Helpers\\StorageHelper? Leave out the file that defines it.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "app/Domains/Contact/ManageContact/Web/ViewHelpers/ContactShowViewHelper.php",
+      "app/Domains/Contact/ManageDocuments/Web/ViewHelpers/ModuleDocumentsViewHelper.php",
+      "app/Domains/Contact/ManagePhotos/Web/ViewHelpers/ContactPhotosIndexViewHelper.php",
+      "app/Domains/Contact/ManagePhotos/Web/ViewHelpers/ModulePhotosViewHelper.php",
+      "app/Domains/Vault/ManageJournals/Web/ViewHelpers/PostEditViewHelper.php",
+      "app/Domains/Vault/ManageJournals/Web/ViewHelpers/SliceOfLifeShowViewHelper.php"
+    ]
+  },
+  "verified": "2026-10-12"
+}

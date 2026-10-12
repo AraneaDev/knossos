@@ -1,0 +1,23 @@
+{
+  "id": "excalidraw-impact-wrap-text",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "impact",
+  "subject": "wrapText",
+  "prompt": "If the signature of wrapText() (packages/element/src/textWrapping.ts) changes, which other source files (not tests) must be updated because they use it, directly or through the @excalidraw/element package entry point? Answer with file paths, leaving out textWrapping.ts itself.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "packages/element/src/textElement.ts",
+      "packages/element/src/resizeElements.ts",
+      "packages/element/src/newElement.ts",
+      "packages/element/src/embeddable.ts",
+      "packages/element/src/stickyNote.ts",
+      "packages/excalidraw/charts/charts.helpers.ts",
+      "packages/excalidraw/wysiwyg/textWysiwyg.tsx",
+      "packages/excalidraw/components/App.clipboard.ts",
+      "packages/excalidraw/components/ConvertElementTypePopup.tsx"
+    ]
+  },
+  "verified": "2026-10-12"
+}

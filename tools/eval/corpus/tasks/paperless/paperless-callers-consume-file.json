@@ -1,0 +1,26 @@
+{
+  "id": "paperless-callers-consume-file",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "callers",
+  "subject": "consume_file",
+  "prompt": "Outside tests, which functions or methods queue or call the Celery task documents.tasks.consume_file (directly, with .delay/.apply_async, or by building a signature with .s())? Name them as dotted paths from src/, for example documents.views.SomeView.post.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.barcodes.BarcodePlugin.run",
+      "documents.bulk_edit.delete_pages",
+      "documents.bulk_edit.edit_pdf",
+      "documents.bulk_edit.merge",
+      "documents.bulk_edit.remove_password",
+      "documents.bulk_edit.rotate",
+      "documents.bulk_edit.split",
+      "documents.management.commands.document_consumer._consume_file",
+      "documents.views.DocumentViewSet.update_version",
+      "documents.views.PostDocumentView.post",
+      "paperless_mail.mail.MailAccountHandler._process_attachments",
+      "paperless_mail.mail.MailAccountHandler._process_eml"
+    ]
+  },
+  "verified": "2026-10-12"
+}
