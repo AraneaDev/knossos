@@ -126,6 +126,21 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
                     $edges[] = $edge['confidence'] === 'certain' ? ['confidence' => 'probable'] + $edge : $edge;
                 }
             }
+            // Nothing points at a property: its class's methods read it, so what uses the class may use it.
+            // Which use touches the property is a guess, so such an edge is probable at best.
+            foreach (PropertyOwners::of($this->pdo, $projectId, [$current['id']]) as $class) {
+                foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated) as $edge) {
+                    $edges[] = $edge['confidence'] === 'certain' ? ['confidence' => 'probable'] + $edge : $edge;
+                }
+            }
+            // Constructing a class runs its constructor, and the graph records that against the class: what
+            // constructs it is this constructor's dependant, at the construction's own confidence. Only that edge:
+            // a type in a signature constructs nothing. The class itself is never listed for it.
+            if (in_array(ConstructedClasses::EDGE_KIND, $edgeKinds, true)) {
+                foreach (ConstructedClasses::of($this->pdo, $projectId, [$current['id']])[$current['id']] ?? [] as $class) {
+                    array_push($edges, ...$this->impactEdges($projectId, $class, [ConstructedClasses::EDGE_KIND], $minimumRank, $edgesTruncated));
+                }
+            }
             foreach ($edges as $edge) {
                 $edgeConfidence = self::CONFIDENCE_RANK[$edge['confidence']];
                 if (isset($seen[$edge['source_id']])) {
