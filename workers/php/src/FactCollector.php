@@ -452,10 +452,24 @@ final class FactCollector extends NodeVisitorAbstract
         }
         $class = $this->currentClass()['name'] ?? null;
         foreach (DocblockTypes::documentedParameters($node->getDocComment()?->getText() ?? '') as $name => $type) {
-            $element = isset($parameters[$name]) ? DocblockTypes::elementType($type) : null;
+            if (!isset($parameters[$name])) {
+                continue;
+            }
+            $element = DocblockTypes::elementType($type);
             $resolved = $element === null ? null : $this->docblocks->documentedClass($element, $this->namespaceScope, $this->namespaceName, $class);
             if ($resolved !== null) {
                 $this->variables->setElement($name, $resolved);
+            }
+            // `@param array{template: X} $candidate`: what `$candidate['template']` holds.
+            $keys = [];
+            foreach (DocblockTypes::shapeTypes($type) as $key => $keyType) {
+                $keyClass = $this->docblocks->documentedClass($keyType, $this->namespaceScope, $this->namespaceName, $class);
+                if ($keyClass !== null) {
+                    $keys[$key] = $keyClass;
+                }
+            }
+            if ($keys !== []) {
+                $this->variables->setShape($name, $keys);
             }
         }
     }

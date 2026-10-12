@@ -143,6 +143,63 @@ final class DocblockTypes
         return null;
     }
 
+    /**
+     * Each key's type in an array shape as a docblock writes it,
+     * `array{template: X, 'owner'?: ?Y}`, keyed by the key without its quotes.
+     * Empty for any other type.
+     *
+     * @return array<string, string>
+     */
+    public static function shapeTypes(string $type): array
+    {
+        if (preg_match('/^(?:non-empty-)?array\{(.*)\}$/is', trim($type), $matches) !== 1) {
+            return [];
+        }
+        $types = [];
+        foreach (self::topLevelItems($matches[1]) as $item) {
+            if (preg_match('/^([\'"]?)([A-Za-z0-9_-]+)\1\??\s*:\s*(.+)$/s', $item, $entry) === 1) {
+                $types[$entry[2]] = trim($entry[3]);
+            }
+        }
+
+        return $types;
+    }
+
+    /** What a docblock's `@return` tag declares, as written. */
+    public static function documentedReturn(string $docComment): ?string
+    {
+        return preg_match('/@(?:phpstan-|psalm-)?return\s+(' . self::DOC_TYPE . ')/', $docComment, $matches) === 1 ? $matches[1] : null;
+    }
+
+    /**
+     * The comma-separated items of a shape's body, splitting only where no
+     * generic, shape or signature is open.
+     *
+     * @return list<string>
+     */
+    private static function topLevelItems(string $body): array
+    {
+        $items = [];
+        $depth = 0;
+        $current = '';
+        foreach (str_split($body) as $character) {
+            $depth += match ($character) {
+                '<', '{', '(' => 1,
+                '>', '}', ')' => -1,
+                default => 0,
+            };
+            if ($character === ',' && $depth === 0) {
+                $items[] = trim($current);
+                $current = '';
+                continue;
+            }
+            $current .= $character;
+        }
+        $items[] = trim($current);
+
+        return array_values(array_filter($items, static fn(string $item): bool => $item !== ''));
+    }
+
     /** What a docblock's `@return \Closure(): X` (or `callable(): X`) says calling the returned closure yields. */
     public static function documentedClosureResult(string $docComment): ?string
     {
