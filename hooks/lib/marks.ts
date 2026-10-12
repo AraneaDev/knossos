@@ -87,8 +87,8 @@ export const CARD_ICON: Readonly<Record<string, string>> = {
   notes: '✎', diff: '±', drift: 'Δ', session: '±', composition: '▥', concentration: '◎', health: '∿',
 }
 
-/** Glyphs in two families on purpose, because there they say the same thing. */
-export const SHARED: ReadonlyArray<string> = ['✓', '▲', '±']
+/** Glyphs in two families on purpose, because there they say the same thing: ok and tested, a warning and untested, a change, a cycle. */
+export const SHARED: ReadonlyArray<string> = ['✓', '▲', '±', '↻']
 
 const toned = (tone: MarkTone): Omit<Segment, 'text'> =>
   tone === 'dim' ? { dim: true } : tone === 'text' ? {} : tone === 'accent' ? { color: ACCENT } : { color: STATUS_COLOURS[tone] }

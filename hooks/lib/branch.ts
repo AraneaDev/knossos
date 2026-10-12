@@ -21,7 +21,7 @@ import { button, cells, chip, clip, dimRow, displayName, fit, grouped, placeOf, 
 import type { Loc, Row, Segment } from './rows'
 import { issueGrid, locIn } from './views'
 import type { Openable } from './views'
-import { SEVERITY, mark } from './marks'
+import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
 
 /** One component the Branch tab lists: what it shows, what it opens, where it is. */
 export type BranchLine = { name: string; canonical: string; boundary: string | null; place: string; loc: Loc | null }
@@ -200,7 +200,7 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
     offsets[5]!,
     selected,
     (f, n, columns) => {
-      const lines: Segment[] = [{ text: `+${grouped(f.added)}`, color: STATUS_COLOURS.ok }, { text: ' ' }, { text: `−${grouped(f.deleted)}`, color: STATUS_COLOURS.alert }]
+      const lines: Segment[] = [{ text: `+${grouped(f.added)}`, color: STATUS_COLOURS.ok }, { text: ' ' }, { text: `${CHANGE.removed.glyph}${grouped(f.deleted)}`, color: STATUS_COLOURS.alert }]
       const deps = `${grouped(f.dependents)} deps`
       const room = Math.max(8, columns - 3 - segmentsWidth(lines) - cells(deps) - 4)
       const path = fit(f.path, room)
@@ -219,7 +219,7 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
     const first = c.members[0]
     const rest = c.members.slice(1).map(m => m.name).join(' → ')
     const head: Segment[] = first === undefined ? [] : [button(`row:${offsets[1]! + n}`, fit(first.name, Math.max(1, Math.floor(columns / 2))))]
-    return itemRow(`branch-cycle-${n}`, offsets[1]! + n === selected, { text: '↻', color: ACCENT }, [{ text: `${c.size} `, dim: true }, ...head, ...(rest === '' ? [] : [{ text: ` → ${rest}${c.size > c.members.length ? ' → …' : ''}`, dim: true }])], columns)
+    return itemRow(`branch-cycle-${n}`, offsets[1]! + n === selected, { text: CARD_ICON.cycles, color: ACCENT }, [{ text: `${c.size} `, dim: true }, ...head, ...(rest === '' ? [] : [{ text: ` → ${rest}${c.size > c.members.length ? ' → …' : ''}`, dim: true }])], columns)
   })
   const hubs = listBlock('grown', 'Hubs that grew', input.hubs, offsets[2]!, selected, (h, n, columns) => {
     const figures = `${grouped(h.before)} → ${grouped(h.after)}`

@@ -620,7 +620,7 @@ export const askPrompt = (canonical: string): string =>
  */
 export function allowRows(allow: AllowInput, columns: number): Row[] {
   const lines = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] =>
-    wrapWords(text, Math.max(1, columns - 3)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: i === 0 ? '▲  ' : '   ', ...style }, { text: line, ...style }] }))
+    wrapWords(text, Math.max(1, columns - 3)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', ...style }, { text: line, ...style }] }))
   const answers = (groups: Segment[][]) => wrapGroups('allow-keys', groups, columns, 2, 3)
   if (allow.phase === 'confirming') {
     const where = allow.rootsFile === null ? 'the roots file knossos reads' : allow.rootsFile
@@ -631,7 +631,7 @@ export function allowRows(allow: AllowInput, columns: number): Row[] {
   }
   if (allow.phase === 'running') return [dimRow('allow-running', `   allowing ${allow.root}…`, columns)]
   if (allow.phase === 'done') {
-    return wrapWords(`✓ ${allow.root} allowed · the next turn scans it`, columns).map((line, i) => ({
+    return wrapWords(`${SEVERITY.ok.glyph} ${allow.root} allowed · the next turn scans it`, columns).map((line, i) => ({
       key: `allow-done-${i}`,
       segments: [{ text: line, color: STATUS_COLOURS.ok }],
     }))

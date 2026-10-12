@@ -404,7 +404,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     need: cells(c.name) + MARKS,
     main: width => {
       if (width - MARKS < MAIN_MIN) return [button(`row:${offset + i}`, fit(c.name, width))]
-      const certainty: Segment = c.certainty === 'probable' ? { text: '● ' } : { text: '○ ', dim: true }
+      const certainty = mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible, ' ')
       const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
       return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },

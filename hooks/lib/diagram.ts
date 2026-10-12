@@ -59,7 +59,7 @@ const GLYPH: Record<number, string> = {
 }
 
 /** The arrowheads, by the way they point, and the direction each is entered from. */
-export const ARROWS = { right: '►', left: '◄', up: '▲', down: '▼' } as const
+export const ARROWS = { right: '►', left: '◄', up: '▴', down: '▾' } as const
 type Way = keyof typeof ARROWS
 const ENTERED: Record<Way, number> = { right: LEFT, left: RIGHT, up: DOWN, down: UP }
 

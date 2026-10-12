@@ -925,7 +925,7 @@ describe('the detail view', () => {
     const raw = paneRows(detailPane(), 60).map(rawText).join('\n')
     expect(raw.indexOf('DashboardServiceTest::')).toBeLessThan(raw.indexOf('│ DashboardService '))
     expect(raw.indexOf('│ DashboardService ')).toBeLessThan(raw.indexOf('BoundaryLabels'))
-    expect(raw).toContain('▼')
+    expect(raw).toContain('▾')
     const text = textOf(paneRows(detailPane(), 40))
     expect(text.indexOf('Used by · 19')).toBeLessThan(text.indexOf('Uses · 2'))
     expect(text).toMatch(/BoundaryLabels +■ core +[━╸·]+ +4/)

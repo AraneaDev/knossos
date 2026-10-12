@@ -173,7 +173,7 @@ export function diffSection(view: DiffView, columns: number, asText = false): Se
   const counts: Segment[] = [
     ...(view.added > 0 ? [{ text: `+${view.added}`, color: 'diffAddedWord' }] : []),
     ...(view.added > 0 && view.removed > 0 ? [{ text: ' ' }] : []),
-    ...(view.removed > 0 ? [{ text: `−${view.removed}`, color: 'diffRemovedWord' }] : []),
+    ...(view.removed > 0 ? [{ text: `${CHANGE.removed.glyph}${view.removed}`, color: 'diffRemovedWord' }] : []),
   ]
   const rows: Row[] = []
   if (view.renamed !== null) rows.push(dimRow('diff-renamed', `   ${pathText(view.renamed, Math.max(1, columns - 3))}`, columns))
@@ -278,7 +278,7 @@ const TEXT_LINES = 12
  * removed colour, the rest dim, each cut to `columns`.
  */
 function hunkRows(key: string, hunk: Hunk, shown: string[], columns: number): Row[] {
-  const head = `@@ −${hunk.oldStart} +${hunk.newStart} @@${hunk.heading === '' ? '' : ` ${hunk.heading}`}`
+  const head = `@@ ${CHANGE.removed.glyph}${hunk.oldStart} +${hunk.newStart} @@${hunk.heading === '' ? '' : ` ${hunk.heading}`}`
   const line = (text: string, i: number): Row => {
     const mark = text.charAt(0)
     const style: Omit<Segment, 'text'> = mark === '+' ? { color: 'diffAddedWord' } : mark === '-' ? { color: 'diffRemovedWord' } : { dim: true }
