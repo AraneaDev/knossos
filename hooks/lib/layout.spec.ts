@@ -1297,6 +1297,12 @@ describe('the live watcher in the header', () => {
     expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'scanning' }).canRescan).toBe(false)
     expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }).canRescan).toBe(true)
   })
+  it('says scanning, and who, while another process holds the scan lock, and offers no rescan then', () => {
+    expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'live', external: { pid: 1234 } })).toEqual({ tone: 'warn', text: 'scanning…', note: 'another process is scanning (pid 1234)' })
+    expect(paneStatus(dash(), FETCHED, IDLE, 0, { phase: 'following', external: { pid: null } })).toEqual({ tone: 'warn', text: 'scanning… · stale 11h', note: 'another process is scanning' })
+    const drifted = dash({ freshness: { state: 'stale', age_seconds: 5, drift_files: 3 } })
+    expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live', external: { pid: 1234 } }).canRescan).toBe(false)
+  })
   it('keeps the old states when the graph is not fresh, when starting, or off', () => {
     expect(paneStatus(dash(), FETCHED, IDLE, 0, { phase: 'live' }).text).toBe('stale 11h')
     expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'starting' }).text).toBe('fresh 11s')

@@ -39,16 +39,21 @@ final readonly class LedgeredScanner implements ProjectScanner
     /** Files whose violations are read before a scan; past it, that scan records none. */
     public const MAX_CHECKED = 20;
 
+    /** How long a scan waits for another writer's lease before it reports the project busy, in milliseconds. */
+    public const LEASE_WAIT_MS = 30_000;
+
     /**
      * @param PDO $pdo the graph database the scan writes
      * @param ProjectScanService $service the scan itself
      * @param list<array<string, mixed>>|null $policies the policies to check; null reads the project's knossos.json
+     * @param ProjectWriterLock|null $lock the project's write lease; the database's own unless a test gives one
      */
     public function __construct(
         private PDO $pdo,
         private ProjectScanService $service,
         private AllowedRoots $roots,
         private ?array $policies = null,
+        private ?ProjectWriterLock $lock = null,
     ) {}
 
     /**
@@ -75,7 +80,8 @@ final readonly class LedgeredScanner implements ProjectScanner
             return $this->service->scan($root, ...$options);
         }
         $projectId = (string) $project['id'];
-        $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
+        // Another writer's scan is mostly about to end: wait for it, and scan what it left.
+        $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS);
         try {
             $ledger = new ScanLedger($this->pdo);
             $from = $ledger->activeSnapshot($projectId);

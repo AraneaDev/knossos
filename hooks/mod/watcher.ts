@@ -12,7 +12,7 @@ import type { TurnBrief } from '../lib/envelopes'
 import { ledgerFlashKeys } from '../lib/flash'
 import { changesInput } from '../lib/changes'
 import { accumulate, cdFor } from '../lib/layout'
-import { isWatching, LIVE_OFF, liveAfter, snapshotOf, watchLines } from '../lib/live'
+import { isWatching, LIVE_OFF, liveAfter, liveChanged, snapshotOf, watchLines } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
 import { deliverNote, turnEndNote } from './agent'
 import { refreshDashboard } from './loaders'
@@ -297,7 +297,7 @@ async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
   if (typeof event.pid === 'number' && Number.isInteger(event.pid) && event.pid > 1) mod.watcherPid = event.pid
   const before = await io.state.live.read()
   const after = liveAfter(event, before)
-  if (after.phase !== before.phase || after.stale !== before.stale) await io.state.live.update(() => after)
+  if (liveChanged(before, after)) await io.state.live.update(() => after)
   const snapshot = snapshotOf(event)
   const moved = snapshot !== null && snapshot !== mod.snapshot
   await attributeEvent(io, event, snapshot, moved)

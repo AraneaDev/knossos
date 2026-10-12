@@ -345,4 +345,53 @@ final class SharedWatchTest extends KnossosTestCase
         assertSame(SharedWatch::DEFAULT_SCAN_TIMEOUT_MS, SharedWatch::scanTimeoutMs($root, $allowed));
         assertSame(300_000, SharedWatch::DEFAULT_SCAN_TIMEOUT_MS);
     }
+
+    /**
+     * A scan another process runs (the model's `scan_project`, `knossos scan`
+     * from a shell) holds the project's write lease: the leader says so when
+     * it first sees it, with who holds it, and again when it is let go.
+     */
+    #[Group('watch')]
+    public function testTheLeaderSaysWhenAnotherProcessScans(): void
+    {
+        [$pdo, $database, $root, $projectId] = $this->project();
+        $events = $this->watch($pdo, $database, $root, 5, self::leaseDuringPolls($pdo, $projectId, [1, 2]));
+        $external = array_values(array_filter($events, static fn(array $e): bool => str_starts_with((string) $e['event'], 'external_scan')));
+        assertSame(['external_scan', 'external_scan_ended'], self::names($external));
+        assertSame(getmypid(), $external[0]['holder_pid']);
+        assertSame(true, is_int($external[0]['held_seconds']));
+    }
+
+    /** A follower sees another process's lease the same way the leader does. */
+    #[Group('watch')]
+    public function testAFollowerSaysWhenAnotherProcessScans(): void
+    {
+        [$pdo, $database, $root, $projectId] = $this->project();
+        $held = WatchLock::acquire(dirname($database) . '/watch', $projectId);
+        assertNotNull($held);
+        file_put_contents(self::statePath($database, $projectId), (string) json_encode(['pid' => 7, 'parent_pid' => 1, 'heartbeat' => time(), 'phase' => 'idle']));
+        $events = $this->watch($pdo, $database, $root, 5, self::leaseDuringPolls($pdo, $projectId, [1, 2]));
+        assertSame(['following', 'external_scan', 'external_scan_ended', 'stopped'], self::names($events));
+        $held->release();
+    }
+
+    /**
+     * An `$alive` hook that holds the project's write lease, as this process
+     * on this host, during the given polls (counted from 0) and not otherwise.
+     *
+     * @param list<int> $polls
+     */
+    private static function leaseDuringPolls(PDO $pdo, string $projectId, array $polls): \Closure
+    {
+        $poll = 0;
+        return static function () use (&$poll, $polls, $pdo, $projectId): bool {
+            $pdo->prepare('DELETE FROM scan_locks WHERE project_id = ?')->execute([$projectId]);
+            if (in_array($poll, $polls, true)) {
+                $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')
+                    ->execute([$projectId, getmypid() . '@' . gethostname() . ':' . str_repeat('e', 32), time()]);
+            }
+            ++$poll;
+            return true;
+        };
+    }
 }

@@ -26,10 +26,14 @@ final readonly class WatchFollower
     /** How often a follower says on stdout that it is still there. */
     private const HEARTBEAT_SECONDS = 15;
 
+    /**
+     * @param (Closure(): ?array{pid: ?int, held_seconds: int})|null $scanHolder who holds the project's write lease, if anyone
+     */
     public function __construct(
         private ScanLedger $ledger,
         private string $lockDir,
         private string $projectId,
+        private ?Closure $scanHolder = null,
     ) {}
 
     /**
@@ -46,6 +50,7 @@ final readonly class WatchFollower
         $stale = self::isStale($owner);
         $scanning = self::isScanning($owner);
         $emit($this->following($snapshot, $stale));
+        $external = new ExternalScanProbe($this->scanHolder);
         $polls = 0;
         $beat = hrtime(true);
         while (!$cancellation->isCancelled() && ($maxPolls === null || $polls < $maxPolls)) {
@@ -59,6 +64,7 @@ final readonly class WatchFollower
                 $snapshot = $active;
                 $emit(['event' => 'snapshot', 'snapshot_id' => $active]);
             }
+            $external->poll($emit);
             $lock = WatchLock::acquire($this->lockDir, $this->projectId);
             if ($lock !== null) {
                 return $lock;

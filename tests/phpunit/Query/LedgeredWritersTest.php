@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Mcp\McpServerAssembly;
+use Knossos\Query\LedgeredScanner;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
@@ -103,6 +104,36 @@ final class LedgeredWritersTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'incremental', lease: $lease);
             assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM scan_locks')->fetchColumn());
             assertSame(1, $lease->release());
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A scan that finds another one running waits for it rather than failing:
+     * the one it found is mostly about to end, and this one then scans what
+     * is left.
+     */
+    #[Group('query')]
+    public function testAScanWaitsForAnotherWritersLease(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
+        try {
+            self::touch($root);
+            $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')
+                ->execute([$projectId, getmypid() . '@' . gethostname() . ':' . str_repeat('a', 32), time()]);
+            $waits = 0;
+            $lock = new ProjectWriterLock($pdo, sleep: static function () use (&$waits, $pdo): void {
+                ++$waits;
+                $pdo->exec('DELETE FROM scan_locks');
+            });
+            $scanner = new LedgeredScanner($pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), AllowedRoots::of([(string) realpath($root)]), lock: $lock);
+
+            $scanner->scan($root, mode: 'incremental');
+
+            assertSame(1, $waits);
+            assertSame(1, count(self::entries($pdo)));
+            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM scan_locks')->fetchColumn());
         } finally {
             $this->removeTempTree($root);
         }

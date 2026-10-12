@@ -86,6 +86,7 @@ final readonly class WatchService
             }
         };
         $gate = new StatGate($root, clock: $this->clock);
+        $external = new ExternalScanProbe($hooks->scanHolder);
 
         // Snapshot the fingerprint BEFORE the initial scan (matching the poll
         // loop's pre-snapshot ordering). Capturing it afterwards would silently
@@ -112,6 +113,7 @@ final readonly class WatchService
                 break;
             }
             $this->beat($state, $hooks, $emit);
+            $external->poll($emit);
             // A failed initial scan is retried with nothing changed: the graph is what waits.
             $waiting = $this->poll($root, $state, $gate, $maxQueue, $emit) || $state->initialPending;
             if (!$waiting || !$this->due($state, $debounceMs)) {

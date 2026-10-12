@@ -618,12 +618,31 @@ export type RescanState = { phase: 'idle' | 'scanning' | 'failed'; reason: strin
  * following a leader whose heartbeat stopped (its watcher is stuck or gone
  * quiet).
  */
-export type LiveState = { phase: 'off' | 'starting' | 'live' | 'scanning' | 'following'; stale?: true }
+/** `external`: another process (the model's `scan_project`, `knossos scan`) holds the scan lock; its pid, when its lease names one. */
+export type LiveState = { phase: 'off' | 'starting' | 'live' | 'scanning' | 'following'; stale?: true; external?: { pid: number | null } }
 
 /** One event of the live watcher, one JSON object per line on its stdout; `no-binary` comes from the wrapper. */
 export type WatchEvent = {
-  /** `leader_scanning`: while following, the leading session's watcher began a scan. */
-  event?: 'ready' | 'refused' | 'following' | 'leading' | 'changes' | 'scan_started' | 'scan_completed' | 'absorbed' | 'snapshot' | 'leader_scanning' | 'overflow' | 'error' | 'stopped'
+  /**
+   * `leader_scanning`: while following, the leading session's watcher began a scan.
+   * `external_scan` / `external_scan_ended`: another process took / let go of the project's scan lock.
+   */
+  event?:
+    | 'ready'
+    | 'refused'
+    | 'following'
+    | 'leading'
+    | 'changes'
+    | 'scan_started'
+    | 'scan_completed'
+    | 'absorbed'
+    | 'snapshot'
+    | 'leader_scanning'
+    | 'external_scan'
+    | 'external_scan_ended'
+    | 'overflow'
+    | 'error'
+    | 'stopped'
   status?: string
   snapshot_id?: string | null
   retryable?: boolean
@@ -635,6 +654,9 @@ export type WatchEvent = {
   /** On `following`: whether the leader's heartbeat stopped, and whether the leader was started by this same process. */
   stale?: boolean
   same_process?: boolean
+  /** On `external_scan`: the process holding the scan lock (null for a lease that names none), and how long it has held it. */
+  holder_pid?: number | null
+  held_seconds?: number
 }
 
 /** The `allow-root` subcommand's answer: the root granted and the roots file it now stands in. */

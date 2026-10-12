@@ -126,7 +126,8 @@ final class ProjectWriterLockTest extends TestCase
         );
 
         assertSame(true, $error instanceof ScanBusyException);
-        assertSame('A scan is already running for project proj_3.', $error->getMessage());
+        // Who holds it and for how long, so the caller can tell a scan from a stuck one.
+        assertSame(sprintf('A scan is already running for project proj_3 (pid %d, held 0s).', getmypid()), $error->getMessage());
         assertSame(true, $error->getPrevious() instanceof PDOException);
         $lease->release();
     }
@@ -503,6 +504,66 @@ final class ProjectWriterLockTest extends TestCase
         );
 
         assertSame(true, $error instanceof ScanBusyException);
-        assertSame('A scan is already running for project proj_recent.', $error->getMessage());
+        // A lease an older knossos took names no process: only its age is known.
+        assertSame('A scan is already running for project proj_recent (held 1s).', $error->getMessage());
+    }
+
+    public function testHolderNamesTheProcessAndHowLongItHasHeldTheLease(): void
+    {
+        $pdo = $this->createSchema();
+        $lock = new ProjectWriterLock($pdo, clock: static fn(): int => 1_000_040);
+        $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')->execute(['proj_held', '4242@host-a:' . str_repeat('a', 32), 1_000_000]);
+        $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')->execute(['proj_old', str_repeat('d', 32), 1_000_030]);
+
+        assertSame(['pid' => 4242, 'host' => 'host-a', 'held_seconds' => 40], $lock->holder('proj_held'));
+        assertSame(['pid' => null, 'host' => null, 'held_seconds' => 10], $lock->holder('proj_old'));
+        assertSame(null, $lock->holder('proj_free'));
+    }
+
+    /** A lease whose process on this host is gone holds nothing: the next acquire takes it over, so nobody is scanning. */
+    public function testHolderIgnoresALeaseWhoseProcessIsGone(): void
+    {
+        $pdo = $this->createSchema();
+        $this->holdLease($pdo, 'proj_dead', '4242@' . gethostname() . ':' . str_repeat('a', 32));
+
+        assertSame(null, (new ProjectWriterLock($pdo, alive: static fn(int $pid): bool => false))->holder('proj_dead'));
+        assertSame(4242, (new ProjectWriterLock($pdo, alive: static fn(int $pid): bool => true))->holder('proj_dead')['pid'] ?? null);
+    }
+
+    /** A caller that may wait polls the lease until its holder lets go. */
+    public function testAcquireWaitsForAHolderThatLetsGo(): void
+    {
+        $pdo = $this->createSchema();
+        $this->holdLease($pdo, 'proj_wait', '4242@' . gethostname() . ':' . str_repeat('a', 32));
+        $slept = [];
+        $sleep = function (int $ms) use (&$slept, $pdo): void {
+            $slept[] = $ms;
+            if (count($slept) === 3) {
+                $pdo->exec("DELETE FROM scan_locks WHERE project_id = 'proj_wait'");
+            }
+        };
+        $lock = new ProjectWriterLock($pdo, alive: static fn(int $pid): bool => true, sleep: $sleep);
+
+        $lease = $lock->acquire('proj_wait', waitMs: 30_000);
+
+        assertSame([250, 250, 250], $slept);
+        assertSame(1, preg_match('/^' . getmypid() . '@/', $this->fetchRow($pdo, 'proj_wait')['owner_token']));
+        $lease->release();
+    }
+
+    /** A holder that keeps the lease past the wait is reported busy, after exactly the wait, and a caller that may not wait never sleeps. */
+    public function testAcquireGivesUpAfterTheWait(): void
+    {
+        $pdo = $this->createSchema();
+        $this->holdLease($pdo, 'proj_stuck', '4242@' . gethostname() . ':' . str_repeat('a', 32));
+        $slept = 0;
+        $lock = new ProjectWriterLock($pdo, alive: static fn(int $pid): bool => true, sleep: static function (int $ms) use (&$slept): void {
+            $slept += $ms;
+        });
+
+        captureThrows(static fn(): ProjectWriterLease => $lock->acquire('proj_stuck', waitMs: 1_000), ScanBusyException::class);
+        assertSame(1_000, $slept);
+        captureThrows(static fn(): ProjectWriterLease => $lock->acquire('proj_stuck'), ScanBusyException::class);
+        assertSame(1_000, $slept);
     }
 }

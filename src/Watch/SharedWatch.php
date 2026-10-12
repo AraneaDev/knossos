@@ -78,8 +78,9 @@ final readonly class SharedWatch
         $ledger = new ScanLedger($this->pdo);
         $dir = dirname($this->databasePath) . '/watch';
         $lock = WatchLock::acquire($dir, $projectId);
+        $scanHolder = ExternalScanProbe::holderIn($this->pdo, $projectId);
         if ($lock === null) {
-            $lock = (new WatchFollower($ledger, $dir, $projectId))->follow($pollMs, $cancellation, $emit, $alive, $maxPolls);
+            $lock = (new WatchFollower($ledger, $dir, $projectId, $scanHolder))->follow($pollMs, $cancellation, $emit, $alive, $maxPolls);
             if ($lock === null) {
                 $orphaned = $alive !== null && !$cancellation->isCancelled() && !$alive();
                 $emit(['event' => 'stopped', 'reason' => $cancellation->isCancelled() ? 'cancelled' : ($orphaned ? 'orphaned' : 'poll_limit')]);
@@ -88,7 +89,7 @@ final readonly class SharedWatch
             $emit(['event' => 'leading', 'snapshot_id' => $ledger->activeSnapshot($projectId)]);
         }
         try {
-            $this->lead($lock, $root, $projectId, $ledger, $allowed, $pollMs, $debounceMs, $cancellation, $emit, $alive, $maxPolls);
+            $this->lead($lock, $root, $projectId, $ledger, $allowed, $pollMs, $debounceMs, $cancellation, $emit, $alive, $maxPolls, $scanHolder);
         } finally {
             $lock->release();
         }
@@ -99,8 +100,9 @@ final readonly class SharedWatch
      *
      * @param callable(array<string, mixed>): void $emit
      * @param (Closure(): bool)|null $alive
+     * @param Closure(): ?array{pid: ?int, held_seconds: int} $scanHolder who holds the project's write lease, if anyone
      */
-    private function lead(WatchLock $lock, string $root, string $projectId, ScanLedger $ledger, AllowedRoots $allowed, int $pollMs, int $debounceMs, CancellationToken $cancellation, callable $emit, ?Closure $alive, ?int $maxPolls): void
+    private function lead(WatchLock $lock, string $root, string $projectId, ScanLedger $ledger, AllowedRoots $allowed, int $pollMs, int $debounceMs, CancellationToken $cancellation, callable $emit, ?Closure $alive, ?int $maxPolls, Closure $scanHolder): void
     {
         $known = $ledger->activeSnapshot($projectId);
         $say = static function (?string $snapshot, string $phase) use ($lock, $projectId, $root, &$known): void {
@@ -130,7 +132,7 @@ final readonly class SharedWatch
             $say($snapshot, $phase);
             $emit(['event' => 'heartbeat']);
         };
-        $hooks = new WatchHooks($projectId, $current, static fn(): ?string => $ledger->activeSnapshot($projectId), $alive, $beat, self::HEARTBEAT_MS);
+        $hooks = new WatchHooks($projectId, $current, static fn(): ?string => $ledger->activeSnapshot($projectId), $alive, $beat, self::HEARTBEAT_MS, $scanHolder);
         // Each scan in a process of its own: the watcher idles for hours, and a scan's memory goes with its process.
         // That process (`knossos scan`) records the scan in the ledger itself, under the scan's own write lease.
         // Bounded in time, stopped with the watcher, and still beating while it runs: a follower sees a leader that

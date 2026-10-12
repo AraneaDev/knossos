@@ -75,14 +75,26 @@ export function phaseAfter(event: WatchEvent, current: LiveState['phase']): Live
 }
 
 /**
- * The watcher's state after an event: its phase, and while it follows,
- * whether the leader stopped answering (a `following` event says so each
- * time that changes).
+ * The watcher's state after an event: its phase, while it follows whether
+ * the leader stopped answering (a `following` event says so each time that
+ * changes), and whether another process scans (from `external_scan` until
+ * `external_scan_ended`, or until the watcher stops).
  */
 export function liveAfter(event: WatchEvent, current: LiveState): LiveState {
   const phase = phaseAfter(event, current.phase)
   const stale = phase === 'following' && (event.event === 'following' ? event.stale === true : current.stale === true)
-  return stale ? { phase, stale: true } : { phase }
+  const external =
+    phase === 'off' || event.event === 'external_scan_ended'
+      ? undefined
+      : event.event === 'external_scan'
+        ? { pid: typeof event.holder_pid === 'number' ? event.holder_pid : null }
+        : current.external
+  return { phase, ...(stale ? { stale: true as const } : {}), ...(external === undefined ? {} : { external }) }
+}
+
+/** Whether the header has anything new to show: the phase, a stuck leader, or who else scans changed. */
+export function liveChanged(before: LiveState, after: LiveState): boolean {
+  return after.phase !== before.phase || after.stale !== before.stale || after.external?.pid !== before.external?.pid || (after.external === undefined) !== (before.external === undefined)
 }
 
 /** The snapshot an event says the graph is at, or null when it says none. */

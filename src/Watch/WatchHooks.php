@@ -19,6 +19,8 @@ use Closure;
  *   stops it, so a watcher outliving its session never keeps polling.
  * - `heartbeat` runs every `heartbeatMs` while the watcher polls (a lock's
  *   heartbeat, say), with the snapshot the watcher knows.
+ * - `scanHolder` says who holds the project's write lease, if anyone: a
+ *   scan another process runs, which the watcher announces.
  */
 final readonly class WatchHooks
 {
@@ -28,6 +30,7 @@ final readonly class WatchHooks
      * @param (Closure(): ?string)|null $activeSnapshot
      * @param (Closure(): bool)|null $alive
      * @param (Closure(?string, string): void)|null $heartbeat called with the snapshot id and the watcher's phase
+     * @param (Closure(): ?array{pid: ?int, held_seconds: int})|null $scanHolder
      */
     public function __construct(
         public ?string $projectId = null,
@@ -36,5 +39,6 @@ final readonly class WatchHooks
         public ?Closure $alive = null,
         public ?Closure $heartbeat = null,
         public int $heartbeatMs = 15_000,
+        public ?Closure $scanHolder = null,
     ) {}
 }
