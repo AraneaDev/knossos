@@ -398,10 +398,12 @@ function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | n
   const errors = diagnostics ?? 0
   const total = d.dead_code_candidates + errors + violations + (d.over_budget?.total ?? 0)
   const figure = d.dead_code_truncated ? `${grouped(total)}+` : grouped(total)
-  // The worst finding's mark beside the figure, so the tile says how bad as well as how many.
-  const worst = violations > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
+  // The worst finding's mark beside the figure, so the tile says how bad as well as how many: a violation or a
+  // diagnostic error is an error, a warning alone a warning, as the Issues cards mark them.
+  const diagnosticErrors = d.diagnostics?.errors ?? 0
+  const worst = violations > 0 || diagnosticErrors > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
   const value = worst === null ? figure : `${worst.glyph} ${figure}`
-  const tone = violations > 0 ? { tone: 'alert' as const } : errors > 0 ? { tone: 'warn' as const } : {}
+  const tone = worst === SEVERITY.error ? { tone: 'alert' as const } : worst === SEVERITY.warn ? { tone: 'warn' as const } : {}
   return { key: 'issues', label: total === 1 && !d.dead_code_truncated ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
 }
 

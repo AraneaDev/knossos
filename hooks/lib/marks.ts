@@ -63,6 +63,12 @@ export const KIND: Readonly<Record<string, Mark>> = {
   module: m('M', 'module', 'dim'),
   route: m('R', 'route', 'dim'),
   endpoint: m('E', 'endpoint', 'dim'),
+  middleware: m('W', 'middleware', 'dim'),
+  variable: m('v', 'variable', 'dim'),
+  object: m('o', 'object', 'dim'),
+  type_alias: m('A', 'type alias', 'dim'),
+  package: m('P', 'package', 'dim'),
+  namespace: m('S', 'namespace', 'dim'),
 }
 
 /** Where something is. */
@@ -83,7 +89,7 @@ export const CARD_ICON: Readonly<Record<string, string>> = {
   coupling: '⇄', cycles: '↻', 'cycle-members': '↻', 'cycle-diagram': '↻', hood: '⇄', policy: '!', diag: '!', dead: '!',
   hotspots: '!', branch: '⎇', crossing: '⇄', 'branch-cycles': '↻', grown: '◎', 'branch-dead': '!', 'branch-policy': '!',
   'branch-files': '≡', find: '⌕', budget: '!', churn: '≡', 'churn-plot': '∴', 'churn-list': '≡', rings: '◎', route: '⇢',
-  'route-others': '⇢', changes: '±', tests: '✓', trend: '∿', detail: '◇', used: '←', uses: '→', deps: '←', comps: '→',
+  'route-others': '⇢', flows: '⇄', changes: '±', tests: '✓', trend: '∿', detail: '◇', used: '←', uses: '→', deps: '←', comps: '→',
   notes: '✎', diff: '±', drift: 'Δ', session: '±', composition: '▥', concentration: '◎', health: '∿',
 }
 
@@ -100,7 +106,8 @@ export function mark(entry: Mark, trailing = ''): Segment {
 
 /** A component's kind as a two-cell column: its glyph and a space, or two spaces for a kind the registry does not know. */
 export function kindMark(kind: string | null | undefined): Segment {
-  const entry = kind === null || kind === undefined ? undefined : KIND[kind]
+  // Own keys only: a kind named like an Object.prototype member (`constructor`) is no kind the registry holds.
+  const entry = typeof kind === 'string' && Object.hasOwn(KIND, kind) ? KIND[kind] : undefined
   return entry === undefined ? { text: '  ' } : mark(entry, ' ')
 }
 

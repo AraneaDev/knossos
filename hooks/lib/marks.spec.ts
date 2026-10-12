@@ -27,8 +27,12 @@ describe('the mark registry', () => {
   it('marks a known kind in two cells and leaves an unknown one blank in the same two', () => {
     expect(kindMark('class')).toEqual({ text: 'C ', dim: true })
     expect(kindMark('method')).toEqual({ text: 'm ', dim: true })
-    expect(kindMark('type_alias')).toEqual({ text: '  ' })
+    expect(kindMark('mystery')).toEqual({ text: '  ' })
     expect(kindMark(undefined)).toEqual({ text: '  ' })
+    // A kind named like an Object.prototype member is no kind the registry holds.
+    for (const odd of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(kindMark(odd), odd).toEqual({ text: '  ' })
+    // Every kind the graph holds has a letter.
+    for (const kind of ['variable', 'object', 'package', 'type_alias', 'middleware', 'namespace']) expect(kindMark(kind).text.trim(), kind).not.toBe('')
     expect(KIND.route?.glyph).toBe('R')
   })
 
@@ -41,8 +45,8 @@ describe('the mark registry', () => {
   })
 
   it('names the kinds shown, in the registry\'s order, each once, unknown ones left out', () => {
-    expect(kindLegend(['method', 'class', 'method', 'type_alias', 'enum'])).toBe('C class · N enum · m method')
-    expect(kindLegend(['type_alias'])).toBe('')
+    expect(kindLegend(['method', 'class', 'method', 'mystery', 'enum'])).toBe('C class · N enum · m method')
+    expect(kindLegend(['mystery', 'constructor'])).toBe('')
   })
 
   it('writes a delta as a signed number', () => {

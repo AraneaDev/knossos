@@ -264,7 +264,7 @@ describe('paneRows', () => {
   it('leaves the kind column blank for a kind the pane does not know, the names still aligned', () => {
     const hubs = [
       { name: 'Known', canonical_name: 'App\\Known', kind: 'class', boundary: 'core', in_degree: 9, out_degree: 1, cross_boundary_degree: 0 },
-      { name: 'Alias', canonical_name: 'App\\Alias', kind: 'type_alias', boundary: 'core', in_degree: 8, out_degree: 1, cross_boundary_degree: 0 },
+      { name: 'Alias', canonical_name: 'App\\Alias', kind: 'mystery', boundary: 'core', in_degree: 8, out_degree: 1, cross_boundary_degree: 0 },
     ]
     const rows = paneRows(input({ tab: 'hubs' }, dash({ hubs, hotspots: [] })), 60)
     const known = plainText(row(rows, 'hub-0')!)
@@ -681,6 +681,13 @@ describe('the issues tab', () => {
   it('names the kinds its rows show in the Dead code note, where the note has room', () => {
     const head = textOf(paneRows(fullInput({ tab: 'issues' }), 200)).split('\n').find(l => l.includes('Dead code'))
     expect(head).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2 · m method · f function/)
+  })
+
+  it('keeps the marks on dead-code rows whose names are all short', () => {
+    const short = (name: string, confidence: string) => ({ name, canonical_name: `App\\${name}`, kind: 'method', boundary: 'core', reachability: 'unreferenced', confidence, path: 'a.php', line: 1 })
+    const rows = paneRows(fullInput({ tab: 'issues' }, full({ dead_code: [short('oldOne', 'probable'), short('otherOne', 'possible')] })), 140)
+    expect(plainText(row(rows, 'dead-0')!)).toMatch(/● ∅ m oldOne/)
+    expect(plainText(row(rows, 'dead-1')!)).toMatch(/○ ∅ m otherOne/)
   })
 
   it('marks each dead-code candidate with its kind, and leaves an unknown kind blank', () => {
@@ -1152,6 +1159,13 @@ describe('colour', () => {
 })
 
 describe('the overview stat tiles', () => {
+  it('marks the issues tile ✗ for a diagnostic error and ▲ for a warning alone, as the Diagnostics card does', () => {
+    const tile = (diagnostics: { errors: number; warnings: number }) =>
+      plainText(row(paneRows(fullInput({}, full({ policy: { status: 'evaluated', total: 0, truncated: false, truncation_reasons: [], items: [] }, diagnostics: { ...full().diagnostics!, ...diagnostics, infos: 0, items: [] } })), 140), 'tiles-0-value')!)
+    expect(tile({ errors: 1, warnings: 0 })).toMatch(/│ ✗ \d+ +│/)
+    expect(tile({ errors: 0, warnings: 2 })).toMatch(/│ ▲ \d+ +│/)
+  })
+
   it('puts the worst finding\'s severity mark on the issues tile', () => {
     const figures = plainText(row(paneRows(fullInput(), 140), 'tiles-0-value')!)
     expect(figures).toMatch(/│ ✗ 67 +│/)

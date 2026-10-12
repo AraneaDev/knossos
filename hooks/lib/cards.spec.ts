@@ -408,3 +408,10 @@ describe('the line under a cut list', () => {
     for (const width of [8, 12, 20, 40]) for (const r of moreRows('x', { start: 300, end: 320 }, 9000, width, 0)) expect(r.segments.reduce((n, s) => n + [...s.text].length, 0), `${width}`).toBeLessThanOrEqual(width)
   })
 })
+
+describe('the card icons', () => {
+  it('give every card the pane renders an icon, the Cross-boundary flows card among them', () => {
+    for (const key of ['look', 'hubs', 'files', 'flows', 'concentration', 'composition', 'cycles', 'dead', 'rings', 'route', 'changes', 'tests', 'notes']) expect(GLYPHS[key], key).toBeDefined()
+    expect(GLYPHS.flows).toBe('⇄')
+  })
+})

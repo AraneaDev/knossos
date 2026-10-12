@@ -396,6 +396,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   // no product path runs) or a dim ∅ nothing at all. Where even the marks would squeeze the names below
   // {@link MAIN_MIN} they go from every row at once, so they never show on some rows and not others.
   const MARKS = 6
+  const longestName = Math.max(1, ...dead.items.map(c => cells(c.name)))
   const deadEntries: Entry[] = dead.items.map((c, i) => ({
     selected: offset + i === selected,
     boundary: c.boundary,
@@ -403,7 +404,8 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     loc: c.loc ?? null,
     need: cells(c.name) + MARKS,
     main: width => {
-      if (width - MARKS < MAIN_MIN) return [button(`row:${offset + i}`, fit(c.name, width))]
+      // Too narrow only when the names would be squeezed below their least, or below the longest when all are short.
+      if (width - MARKS < Math.min(MAIN_MIN, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
       const certainty = mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible, ' ')
       const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
       return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
