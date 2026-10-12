@@ -14,7 +14,13 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { readLedger } from "./ledger.mjs";
-import { acquireLock, main } from "./run.mjs";
+import { stopWatchers } from "../capture/session.mjs";
+import { acquireLock, drain, main } from "./run.mjs";
+
+vi.mock("../capture/session.mjs", async (importOriginal) => {
+    const actual = await importOriginal();
+    return { ...actual, stopWatchers: vi.fn(actual.stopWatchers) };
+});
 
 const git = promisify(execFile);
 const FAKE = fileURLToPath(
@@ -364,3 +370,58 @@ async function release2(file) {
     expect(await readFile(file, "utf8")).toBe(String(process.pid));
     await release();
 }
+
+describe("drain", () => {
+    it("starts no further entry once a signal has set stop", async () => {
+        const queue = [
+            { repo: "a", id: 1 },
+            { repo: "b", id: 2 },
+            { repo: "a", id: 3 },
+        ];
+        const state = { stop: null, firstError: null };
+        const started = [];
+        await drain(
+            queue,
+            1,
+            async (entry) => {
+                started.push(entry.id);
+                state.stop = "signal"; // what the signal handler does first
+            },
+            state,
+        );
+        expect(started).toEqual([1]);
+        expect(queue).toHaveLength(2);
+    });
+    it("records the first error and stops the others", async () => {
+        const state = { stop: null, firstError: null };
+        await drain(
+            [{ repo: "a" }, { repo: "a" }],
+            2,
+            async () => {
+                throw new Error("boom");
+            },
+            state,
+        );
+        expect(state.firstError.message).toBe("boom");
+        expect(state.stop).toBe("error");
+    });
+});
+
+describe("continue cleanup", () => {
+    it("releases the lock and the handlers even when stopWatchers throws", async () => {
+        const { env, runId } = await started(["--arms", "baseline"]);
+        const before = process.listenerCount("SIGINT");
+        stopWatchers.mockImplementationOnce(async () => {
+            throw new Error("watchers stuck");
+        });
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await expect(
+            main(["continue", runId, "--batch", "1"], env),
+        ).rejects.toThrow(/watchers stuck/);
+        log.mockRestore();
+        await expect(
+            access(path.join(env.KNOSSOS_EVAL_ROOT, "continue.lock")),
+        ).rejects.toThrow();
+        expect(process.listenerCount("SIGINT")).toBe(before);
+    });
+});

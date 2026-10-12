@@ -293,6 +293,35 @@ async function executeEntry(entry, ctx) {
     });
 }
 
+/**
+ * Runs `queue` with `concurrency` workers, one session per repo at a time.
+ * `state.stop` (set by a limit, an error or a signal) keeps the workers from
+ * starting another entry; sessions already running finish.
+ */
+export async function drain(queue, concurrency, execute, state) {
+    const busy = new Set();
+    const worker = async () => {
+        while (state.stop === null && queue.length > 0) {
+            const at = queue.findIndex((e) => !busy.has(e.repo));
+            if (at === -1) {
+                await sleep(100);
+                continue;
+            }
+            const [entry] = queue.splice(at, 1);
+            busy.add(entry.repo);
+            try {
+                await execute(entry);
+            } catch (error) {
+                state.firstError ??= error;
+                state.stop ??= "error";
+            } finally {
+                busy.delete(entry.repo);
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
+}
+
 /** Throws unless `prepare` left what the queued arms need. */
 async function assertPrepared(queue, paths, s) {
     const bases = queue.map((e) => parseArm(e.arm).base);
@@ -342,10 +371,10 @@ async function continueRun(args, s) {
     await assertPrepared(queue, paths, s);
     const release = await acquireLock(path.join(paths.root, "continue.lock"));
     const live = new Set();
-    let signalled = false;
+    const state = { stop: null, firstError: null };
     const onSignal = (code) => async () => {
-        if (signalled) return;
-        signalled = true;
+        // First, so no worker starts a session the snapshot below does not know.
+        state.stop = "signal";
         await terminateGroups([...live], 5000);
         await stopWatchers(paths.data);
         await release();
@@ -354,8 +383,6 @@ async function continueRun(args, s) {
     const handlers = { SIGINT: onSignal(130), SIGTERM: onSignal(143) };
     for (const [name, handler] of Object.entries(handlers))
         process.on(name, handler);
-    let stop = null;
-    let firstError = null;
     try {
         const workspaces = [
             ...new Set(run.plan.map((e) => path.join(paths.repos, e.repo))),
@@ -368,42 +395,34 @@ async function continueRun(args, s) {
             env,
             rows,
             maxUtilization,
-            onSpawn: (pid) => live.add(pid),
+            onSpawn: (pid) => {
+                if (pid !== undefined) live.add(pid);
+            },
             onClose: (pid) => live.delete(pid),
         };
-        const busy = new Set();
-        const worker = async () => {
-            while (stop === null && queue.length > 0) {
-                const at = queue.findIndex((e) => !busy.has(e.repo));
-                if (at === -1) {
-                    await sleep(100);
-                    continue;
-                }
-                const [entry] = queue.splice(at, 1);
-                busy.add(entry.repo);
-                try {
-                    const row = await executeEntry(entry, ctx);
-                    await appendRow(run.ledger, row);
-                    console.log(
-                        `${row.status.padEnd(12)} ${entry.task} ${entry.arm} #${entry.repeat}`,
-                    );
-                    if (row.limit !== "ok") stop = row.limit;
-                } catch (error) {
-                    // The other workers finish the session they are in, and start no more.
-                    firstError ??= error;
-                    stop = "error";
-                } finally {
-                    busy.delete(entry.repo);
-                }
-            }
-        };
-        await Promise.all(Array.from({ length: concurrency }, worker));
+        await drain(
+            queue,
+            concurrency,
+            async (entry) => {
+                const row = await executeEntry(entry, ctx);
+                await appendRow(run.ledger, row);
+                console.log(
+                    `${row.status.padEnd(12)} ${entry.task} ${entry.arm} #${entry.repeat}`,
+                );
+                if (row.limit !== "ok") state.stop ??= row.limit;
+            },
+            state,
+        );
     } finally {
-        await stopWatchers(paths.data);
-        for (const [name, handler] of Object.entries(handlers))
-            process.off(name, handler);
-        await release();
+        try {
+            await stopWatchers(paths.data);
+        } finally {
+            for (const [name, handler] of Object.entries(handlers))
+                process.off(name, handler);
+            await release();
+        }
     }
+    const { stop, firstError } = state;
     if (firstError !== null) throw firstError;
     const left = pending(run.plan, await readLedger(run.ledger)).length;
     if (stop !== null) {
