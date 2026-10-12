@@ -120,8 +120,10 @@ that.
   files a boundary spans) leave it out, as they do an `external_*` component.
   Two callers of one URL therefore do not depend on each other. They meet only
   at the endpoint, and a change to the route reaches both.
-- Boundary and policy checks can report frontend-to-backend dependencies that
-  they did not see before.
+- Boundary policies do not see a request link (caller, endpoint, route). The
+  endpoint belongs to no boundary and a policy judges single edges between
+  components in boundaries, so a request from one boundary to a route in
+  another is not reported. Flow, impact and usage follow it.
 - Quality-gate deltas against a snapshot from before this change move once, by
   the edges that were not there. Compare against a fresh baseline.
 
