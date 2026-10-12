@@ -259,10 +259,24 @@ describe('paneRows', () => {
     expect(title).not.toContain('rescan')
   })
 
+  it('leaves the kind column blank for a kind the pane does not know, the names still aligned', () => {
+    const hubs = [
+      { name: 'Known', canonical_name: 'App\\Known', kind: 'class', boundary: 'core', in_degree: 9, out_degree: 1, cross_boundary_degree: 0 },
+      { name: 'Alias', canonical_name: 'App\\Alias', kind: 'type_alias', boundary: 'core', in_degree: 8, out_degree: 1, cross_boundary_degree: 0 },
+    ]
+    const rows = paneRows(input({ tab: 'hubs' }, dash({ hubs, hotspots: [] })), 60)
+    const known = plainText(row(rows, 'hub-0')!)
+    const alias = plainText(row(rows, 'hub-1')!)
+    expect(known).toMatch(/^.{3}C Known/)
+    expect(alias).toMatch(/^ {5}Alias/)
+    expect(alias.indexOf('Alias')).toBe(known.indexOf('Known'))
+  })
+
   it('marks the selected row and keeps the marker inside the list', () => {
     const rows = paneRows(input({ tab: 'hubs', selected: 1 }), 60)
-    expect(plainText(row(rows, 'hub-1')!)).toMatch(/^› {2}ArchitectureQueryService/)
-    expect(plainText(row(rows, 'hub-0')!)).toMatch(/^ {3}StableId/)
+    // Each hub's kind before its name: C for a class.
+    expect(plainText(row(rows, 'hub-1')!)).toMatch(/^› {2}C ArchitectureQueryService/)
+    expect(plainText(row(rows, 'hub-0')!)).toMatch(/^ {3}C StableId/)
     const past = paneRows(input({ tab: 'hubs', selected: 99 }), 60)
     const last = input().items.length - 1
     expect(plainText(row(past, `hub-${last}`)!).startsWith('›')).toBe(true)
@@ -271,7 +285,7 @@ describe('paneRows', () => {
   it('makes each listed name pressable by its row', () => {
     const rows = paneRows(input({ tab: 'hubs' }), 60)
     expect(row(rows, 'hub-3')!.segments.find(s => s.press)?.press).toEqual({ id: 'row:3', label: 'ProjectScanService::scan' })
-    expect(plainText(row(rows, 'hub-3')!)).toMatch(/^ ◆ ProjectScanService::scan/)
+    expect(plainText(row(rows, 'hub-3')!)).toMatch(/^ ◆ m ProjectScanService::scan/)
   })
 
   it('colours a boundary and its bar alike, its track faint, and draws no boundary neutral', () => {
@@ -651,6 +665,12 @@ describe('the issues tab', () => {
       widthsFit(paneRows(fullInput({ tab: 'issues', showKeys: true, terminal: false }), columns), columns)
     })
   }
+  it('marks each dead-code candidate with its kind, and leaves an unknown kind blank', () => {
+    const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
+    expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse/)
+    expect(text).toMatch(/● ◐ f helper/)
+  })
+
   it('marks an info diagnostic with a note mark and names all three in the card note', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
@@ -667,8 +687,8 @@ describe('the issues tab', () => {
     // The note is the legend for the two marks before each name.
     expect(text).toMatch(/Dead code +55 · ● 12 probable · ◆ 9 tests only · first 2/)
     // How sure the scan is (● probable, ○ possible) and what reaches it (◆ tests only, ∅ nothing), before the name.
-    expect(text).toMatch(/○ ∅ FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
-    expect(text).toMatch(/● ◆ helper/)
+    expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
+    expect(text).toMatch(/● ◐ f helper/)
     expect(text).not.toContain('◇')
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
     expect(text).toMatch(/workers\/typescript\/src\/scanner\.js .*━+ +4,986 +20/)
@@ -680,7 +700,7 @@ describe('the issues tab', () => {
     for (const columns of [30, 40, 50, 60, 90, 100, 140]) {
       const rows = [0, 1].map(i => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), `dead-${i}`)!))
       const certain = /[●○]/
-      const reach = /[◆∅]/
+      const reach = /[◐∅]/
       const shown = rows.map(r => certain.test(r) && reach.test(r))
       expect(rows.every(r => certain.test(r) === reach.test(r)), `${columns} columns: ${rows.join(' | ')}`).toBe(true)
       expect(new Set(shown).size, `${columns} columns: ${rows.join(' | ')}`).toBe(1)
@@ -688,10 +708,10 @@ describe('the issues tab', () => {
   })
   it('gives way in order: names are cut, then the boundary goes, then the place', () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    expect(dead(90)).toMatch(/○ ∅ FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
-    expect(dead(70)).toMatch(/^ +○ ∅ FactCollector::/)
+    expect(dead(90)).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
+    expect(dead(70)).toMatch(/^ +○ ∅ m FactCollector::/)
     // Two marks cost four cells, so they stay even where the boundary and the place have gone.
-    expect(dead(30)).toMatch(/^ +○ ∅ FactCollector::/)
+    expect(dead(30)).toMatch(/^ +○ ∅ m FactCollector::/)
     expect(dead(50)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)

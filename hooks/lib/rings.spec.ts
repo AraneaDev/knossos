@@ -56,6 +56,10 @@ describe('the blast radius in a component detail', () => {
     expect(text(state(radius(), 'App\\Other'))).toContain('Reading what depends on it')
   })
 
+  it('marks each ring member with its kind before its name', () => {
+    expect(text(state(radius()))).toMatch(/C Near0/)
+  })
+
   it('says a ring no test file reaches is a warning, not an error', () => {
     const untested = radius()
     Object.assign(untested.rings[0]!, { tests: { count: 0, items: [] } })
@@ -76,7 +80,7 @@ describe('the blast radius in a component detail', () => {
     for (const r of rows) expect(rowWidth(r), rawText(r)).toBe(80)
     // The untested first, marked; a boundary named only where it is not the component's own.
     const near = raw.find(r => r.includes('Near0'))!
-    expect(near).toMatch(/▲Near0 {3}Near1/)
+    expect(near).toMatch(/▲ C Near0 {3}C Near1/)
     expect(near).toContain('Near1 ■ edge')
     expect(near).not.toContain('Near2 ■')
     // The tests that reach a ring, by file name, then how many more.

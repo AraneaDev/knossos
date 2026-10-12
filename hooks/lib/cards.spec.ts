@@ -197,13 +197,14 @@ describe('bars', () => {
     const kinds = names.map((_, i) => (i % 2 === 0 ? 'class' : 'method'))
     const spec = tableSpec(115, names, [], [3, 3, 5, 5], undefined, { tier: 'wide', places, kinds })
     expect(spec.place).toBeGreaterThan(0)
-    expect(spec.kind).toBe(6)
-    // The longest name is cut; the typical one (the 90th percentile) is whole.
-    expect(spec.name).toBeLessThan(44)
+    // The kind is a two-cell mark before the name.
+    expect(spec.kind).toBe(2)
+    // Two cells for the kind leave the names whole, the longest too.
+    expect(spec.name).toBe(44)
     expect(spec.name).toBeGreaterThanOrEqual(percentile(names.map(n => n.length), 0.9))
-    // Narrower, the kind goes before the file.
+    // Narrower, the kind, two cells, stays beside the file column.
     const narrower = tableSpec(80, names, [], [3, 3, 5, 5], undefined, { tier: 'wide', places, kinds })
-    expect(narrower.kind).toBeUndefined()
+    expect(narrower.kind).toBe(2)
     expect(percentile([], 0.9)).toBe(1)
     expect(percentile([5, 1, 3], 1)).toBe(5)
   })

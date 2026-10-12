@@ -21,10 +21,10 @@ import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palet
 import type { Hues } from './palette'
 import { absolute, baseName, button, cells, chip, dimRow, displayName, fit, grouped, plural, segmentsWidth, spaces, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
-import { REACH, mark } from './marks'
+import { REACH, kindMark, mark } from './marks'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
-export type RingMember = { name: string; canonical: string; boundary: string | null; tested: boolean; loc: Loc | null }
+export type RingMember = { name: string; canonical: string; kind: string; boundary: string | null; tested: boolean; loc: Loc | null }
 
 /** One ring as the detail draws it. */
 export type Ring = { label: string; count: number; tested: number; members: RingMember[]; tests: { count: number; paths: string[] } }
@@ -55,7 +55,7 @@ export function ringsInput(state: RingsState | null, name: string, root: string 
       label: ringLabel(r.hop),
       count: r.count,
       tested: r.tested,
-      members: r.items.map(i => ({ name: displayName(i), canonical: i.canonical_name, boundary: i.boundary, tested: i.tested, loc: root === null || i.path === null || i.path === undefined ? null : { path: absolute(root, i.path), line: i.line ?? null } })),
+      members: r.items.map(i => ({ name: displayName(i), canonical: i.canonical_name, kind: i.kind, boundary: i.boundary, tested: i.tested, loc: root === null || i.path === null || i.path === undefined ? null : { path: absolute(root, i.path), line: i.line ?? null } })),
       tests: { count: r.tests.count, paths: r.tests.items.map(t => t.path) },
     })),
     truncated: answer.truncated,
@@ -86,11 +86,11 @@ function memberLines(ring: Ring, offset: number, width: number, selected: number
   let used = 0
   for (const [i, m] of ring.members.entries()) {
     const index = offset + i
-    const flag: Segment[] = m.tested ? [] : [mark(REACH.untested)]
+    const flag: Segment[] = m.tested ? [] : [mark(REACH.untested, ' ')]
     // A boundary is named only where it is not the component's own: what crosses stands out.
     const own = m.boundary === home ? [] : chip(m.boundary, hues)
     const name: Segment = { ...button(`rel:${index}`, fit(m.name, Math.max(4, width - 6))), ...(index === selected ? { bg: SELECTED_BG, bold: true } : {}) }
-    const piece: Segment[] = [...flag, name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
+    const piece: Segment[] = [...flag, kindMark(m.kind), name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
     const need = segmentsWidth(piece) + (used === 0 ? 0 : 3)
     if (used > 0 && used + need > width) {
       if (lines.length === NAME_LINES) break

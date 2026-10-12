@@ -46,7 +46,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
-import { SEVERITY, legend, mark } from './marks'
+import { REACH, SEVERITY, kindMark, legend, mark } from './marks'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -79,7 +79,7 @@ export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null };
 
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
 /** `certainty` is the candidate's confidence, `probable` or `possible`: how sure the scan is that nothing reaches it. */
-export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean; certainty: string }
+export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean; certainty: string; kind: string }
 /** A diagnostic as Issues lists it; `path` null for one about no file (the project's own setup). */
 /** `place` names it in the walk (file and line); `where` is what its row says: the project path, then its source. */
 export type DiagnosticLine = { severity: string; text: string; path: string | null; place: string; where: string; loc: Loc | null }
@@ -205,6 +205,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
         loc: locIn(root, c.path, c.line),
         testOnly: c.reachability === 'test_only',
         certainty: c.confidence,
+        kind: c.kind,
       })),
     },
     hotspots: (d.complexity_hotspots ?? []).map(f => ({ path: f.path, lines: f.lines, dependents: f.dependent_files, score: f.score, loc: locIn(root, f.path) })),
@@ -394,7 +395,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   // (something no scan sees may reach it), then what reaches it, ◆ tests only in the warning colour (finished work
   // no product path runs) or a dim ∅ nothing at all. Where even the marks would squeeze the names below
   // {@link MAIN_MIN} they go from every row at once, so they never show on some rows and not others.
-  const MARKS = 4
+  const MARKS = 6
   const deadEntries: Entry[] = dead.items.map((c, i) => ({
     selected: offset + i === selected,
     boundary: c.boundary,
@@ -404,8 +405,8 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     main: width => {
       if (width - MARKS < MAIN_MIN) return [button(`row:${offset + i}`, fit(c.name, width))]
       const certainty: Segment = c.certainty === 'probable' ? { text: '● ' } : { text: '○ ', dim: true }
-      const reach: Segment = c.testOnly ? { text: '◆ ', color: STATUS_COLOURS.warn } : { text: '∅ ', dim: true }
-      return [certainty, reach, button(`row:${offset + i}`, fit(c.name, width - MARKS))]
+      const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
+      return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },
   }))
   /**
@@ -503,7 +504,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       const body: Row[] = [tableHead('budget-cols', spec, { name: 'file', boundary: '', numbers: ['over', 'longest'] })]
       shown.forEach((f, n) => {
         const i = window.start + n
-        body.push(tableRow(`budget-${i}`, { name: f.path, boundary: null, values: [f.functions, f.longest], max: 0, path: true, press: `row:${overOffset + i}`, selected: overOffset + i === selected, mark: { text: '▲', color: STATUS_COLOURS.warn } }, spec, hues))
+        body.push(tableRow(`budget-${i}`, { name: f.path, boundary: null, values: [f.functions, f.longest], max: 0, path: true, press: `row:${overOffset + i}`, selected: overOffset + i === selected, mark: mark(SEVERITY.warn) }, spec, hues))
       })
       body.push(...moreRows('budget-window', window, budget.files.length, columns, overOffset))
       if (budget.total > budget.files.length) body.push(dimRow('budget-more', `   +${budget.total - budget.files.length} not listed`, columns))

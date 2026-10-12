@@ -1574,9 +1574,9 @@ describe('knossos mod', () => {
       expect(titled((await ui.find({ key: 'session-head' }))?.text)).toMatch(/^This session +nothing changed yet$/)
       await ui.press({ key: 'tab:hubs' })
       // The marked row is tinted to the card's edge: the spaces that carry the tint end it.
-      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +Router .*41/)
+      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41/)
       // A hotspot that is not a hub is listed once, marked.
-      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ Kernel/)
+      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ C Kernel/)
       await ui.press({ key: 'tab:overview' })
       await ui.unmount()
     }
@@ -1673,8 +1673,8 @@ describe('knossos mod', () => {
       await ui.press({ key: 'tab:hubs' })
       expect((await ui.find({ key: 'tab:hubs' }))?.props.dimColor).toBeUndefined()
       expect((await ui.find({ key: 'hub-head' }))?.text).toMatch(/name +in out cross$/)
-      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +Router .*41 +3 +2 *$/)
-      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ Kernel/)
+      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41 +3 +2 *$/)
+      expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/◆ C Kernel/)
       await ui.press({ key: 'tab:boundaries' })
       expect((await ui.find({ key: 'pane' }))?.text).toContain('sends no boundary map')
       expect(await ui.find({ key: 'hub-0' })).toBeUndefined()
@@ -3067,7 +3067,7 @@ describe('knossos mod', () => {
       await ui.press({ key: 'tab:hubs' })
       const order = async () => {
         const names: (string | undefined)[] = []
-        for (const i of [0, 1, 2]) names.push((await ui.find({ key: `hub-${i}` }))?.text.replace(/^[›◆\s]+/, '').split(/\s+/)[0])
+        for (const i of [0, 1, 2]) names.push((await ui.find({ key: `hub-${i}` }))?.text.replace(/^[›◆✦\s]+/, '').split(/\s+/)[1])
         return names
       }
       expect(await order()).toEqual(['Router', 'Request', 'Kernel'])
@@ -4941,7 +4941,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
       const ui = await mountPane($, surface, 100)
       const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
       expect(text).toMatch(/1 hop · 2 +─+ ▲ 1 untested/)
-      expect(text).toMatch(/▲Caller {3}Router/)
+      expect(text).toMatch(/▲ C Caller {3}C Router/)
       expect(text).toContain('✓ 1 test file: RouterTest.php')
       expect(text).toContain('◉ Greeter')
       await ui.unmount()

@@ -790,7 +790,7 @@ function componentSpec(items: Item[], columns: number, withDegrees: boolean, hue
   const widths = degreeTitles(withDegrees, withFiles).map((t, i) => numberWidth(t, items.map(item => degreesOf(item, withDegrees, withFiles)[i] ?? 0), tier))
   const labels = sharedBoundary(items) === null ? items.map(i => boundaryLabel(i.boundary, hues)) : []
   const places = tier === 'narrow' ? [] : items.map(placeIn)
-  const kinds = tier === 'wide' ? items.map(i => i.kind) : []
+  const kinds = items.map(i => i.kind)
   return tableSpec(columns, items.map(i => i.name), labels, widths, undefined, { tier, places, kinds })
 }
 
