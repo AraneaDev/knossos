@@ -25,16 +25,23 @@ const TEST_FILE =
 export const isTestPath = (file) =>
     typeof file === "string" && (TEST_DIR.test(file) || TEST_FILE.test(file));
 
-/** Set when Knossos could not resolve the query: `{query, candidates}`, else null. */
-export function unresolved(category, json) {
-    const key = category === "callers" ? "usages" : "dependants";
+/**
+ * Set when Knossos did not resolve the query: `{query, candidates, summary}`,
+ * else null. A resolved answer from either command carries `data.target`; the
+ * no-match shapes may still carry empty `usages` or `dependants`, and an error
+ * shape has no `data` at all.
+ */
+export function unresolved(json) {
     const data = json.data;
-    if (data === undefined || data === null || data[key] !== undefined)
-        return null;
-    const candidates = (data.candidates ?? [])
+    if (data !== undefined && data !== null && data.target) return null;
+    const candidates = (data?.candidates ?? [])
         .map((c) => (typeof c === "string" ? c : c?.canonical_name))
         .filter(Boolean);
-    return { query: data.query ?? null, candidates: candidates.slice(0, 5) };
+    return {
+        query: data?.query ?? null,
+        candidates: candidates.slice(0, 5),
+        summary: json.summary ?? null,
+    };
 }
 
 /** Whether Knossos cut its answer off at the result limit. */
@@ -167,11 +174,12 @@ async function main(args) {
         { env: await evalEnv(paths, { base: s.env }), maxBuffer: 1 << 26 },
     );
     const json = JSON.parse(stdout);
-    const miss = unresolved(task.category, json);
+    const miss = unresolved(json);
     if (miss !== null) {
         console.log(
             `# Knossos did not resolve ${miss.query ?? values.query ?? task.subject}${miss.candidates.length > 0 ? `; candidates: ${miss.candidates.join(", ")}` : ""}`,
         );
+        if (miss.summary !== null) console.log(`# ${miss.summary}`);
         await clearDefect(paths, task.id);
         return;
     }

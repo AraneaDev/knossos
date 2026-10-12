@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { readLedger } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
-import { acquireLock, drain, main, signalHandler } from "./run.mjs";
+import { acquireLock, checkScan, drain, main, signalHandler } from "./run.mjs";
 
 vi.mock("../capture/session.mjs", async (importOriginal) => {
     const actual = await importOriginal();
@@ -453,5 +453,30 @@ describe("signalHandler", () => {
             "release",
             "exit:130",
         ]);
+    });
+});
+
+describe("checkScan", () => {
+    it("refuses a partial graph and an empty one, and passes a healthy scan", () => {
+        const partial = {
+            summary:
+                "Scanned 710 files into 0 nodes and 0 relationships. PARTIAL GRAPH: knossos.typescript failed, so nothing it scans is represented. Re-run before trusting this graph.",
+            data: { nodes: 0 },
+        };
+        expect(() => checkScan("web", partial)).toThrow(
+            /scan of web is not usable.*PARTIAL GRAPH: knossos\.typescript failed/,
+        );
+        expect(() =>
+            checkScan("web", {
+                summary: "Scanned 3 files into 0 nodes and 0 relationships.",
+                data: { nodes: 0 },
+            }),
+        ).toThrow(/web/);
+        expect(() =>
+            checkScan("web", {
+                summary: "Scanned 1 files into 1 nodes and 0 relationships.",
+                data: { nodes: 1 },
+            }),
+        ).not.toThrow();
     });
 });

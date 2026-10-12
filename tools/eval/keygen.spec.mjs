@@ -218,6 +218,7 @@ describe("isTestPath", () => {
 describe("unresolved and isTruncated", () => {
     it("detects a query Knossos could not resolve, with up to five candidates", () => {
         const json = {
+            summary: 'No component matched "X::y".',
             data: {
                 query: "X::y",
                 ambiguous: false,
@@ -232,17 +233,40 @@ describe("unresolved and isTruncated", () => {
                 ],
             },
         };
-        expect(unresolved("callers", json)).toEqual({
+        expect(unresolved(json)).toEqual({
             query: "X::y",
             candidates: ["A", "B", "C", "D", "E"],
+            summary: 'No component matched "X::y".',
         });
-        expect(unresolved("impact", json)).toEqual({
-            query: "X::y",
-            candidates: ["A", "B", "C", "D", "E"],
+    });
+    it("treats impact-analysis's empty no-match shape and an error shape as unresolved", () => {
+        const noMatch = {
+            summary: "No component matched.",
+            data: {
+                query: "Z",
+                candidates: [],
+                dependants: [],
+                counts: {},
+                entry_points: [],
+            },
+        };
+        expect(unresolved(noMatch)).toMatchObject({
+            query: "Z",
+            candidates: [],
         });
-        expect(unresolved("callers", { data: { usages: [] } })).toBeNull();
-        expect(unresolved("impact", { data: { dependants: [] } })).toBeNull();
-        expect(unresolved("impact", { data: { usages: [] } })).not.toBeNull();
+        expect(unresolved({ summary: "boom" })).toEqual({
+            query: null,
+            candidates: [],
+            summary: "boom",
+        });
+    });
+    it("passes a resolved answer from either command", () => {
+        expect(
+            unresolved({ data: { target: { id: 1 }, usages: [] } }),
+        ).toBeNull();
+        expect(
+            unresolved({ data: { target: { id: 1 }, dependants: [] } }),
+        ).toBeNull();
     });
     it("reads the result_limit truncation reason", () => {
         expect(

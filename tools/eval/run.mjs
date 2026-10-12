@@ -208,6 +208,19 @@ async function start(args, s) {
     return 0;
 }
 
+/**
+ * Throws when a scan produced a graph that must not be trusted: its summary
+ * says PARTIAL GRAPH (a language worker failed, yet the scan exits 0) or it
+ * holds no nodes. `json` is the parsed `knossos scan --json` output.
+ */
+export function checkScan(name, json) {
+    const summary = String(json?.summary ?? "");
+    if (summary.includes("PARTIAL GRAPH") || json?.data?.nodes === 0)
+        throw new Error(
+            `the scan of ${name} is not usable: ${summary || "no summary"}`,
+        );
+}
+
 async function prepare(args, s) {
     const { values, positionals } = parseArgs({
         args,
@@ -234,7 +247,7 @@ async function prepare(args, s) {
     });
     for (const [i, name] of names.entries()) {
         console.log(`scanning ${name}`);
-        await exec(
+        const { stdout } = await exec(
             "php",
             [
                 path.join(REPO_ROOT, "bin", "knossos"),
@@ -245,6 +258,7 @@ async function prepare(args, s) {
             ],
             { env, maxBuffer: 1 << 26 },
         );
+        checkScan(name, JSON.parse(stdout));
     }
     return 0;
 }
