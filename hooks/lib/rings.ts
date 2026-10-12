@@ -68,11 +68,13 @@ export const ringsList = (input: RingsInput | null | undefined): { name: string;
 /** A ring's frame colour: the nearest in a text tone, the further ones faint. */
 const frameColour = (index: number): string => (index === 0 ? SECONDARY : FAINT)
 
-/** How a ring stands: all tested, how many are not, or empty. */
+/** How a ring stands, as the legend of its marks: all tested, or how many are tested and how many are not; or empty. */
 function standing(ring: Ring): Segment[] {
   if (ring.count === 0) return [{ text: 'none', dim: true }]
   const untested = ring.count - ring.tested
-  return untested === 0 ? [mark(REACH.tested, ' all tested')] : [mark(REACH.untested, ` ${grouped(untested)} untested`)]
+  if (untested === 0) return [mark(REACH.tested, ' all tested')]
+  const untestedPart = mark(REACH.untested, ` ${grouped(untested)} ${REACH.untested.legend}`)
+  return ring.tested === 0 ? [untestedPart] : [mark(REACH.tested, ` ${grouped(ring.tested)} ${REACH.tested.legend}`), { text: ' · ', dim: true }, untestedPart]
 }
 
 /**

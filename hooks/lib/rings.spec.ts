@@ -56,6 +56,10 @@ describe('the blast radius in a component detail', () => {
     expect(text(state(radius(), 'App\\Other'))).toContain('Reading what depends on it')
   })
 
+  it('gives a ring its legend: how many are tested and how many are not', () => {
+    expect(text(state(radius()))).toMatch(/✓ 3 tested · ▲ 1 untested/)
+  })
+
   it('marks each ring member with its kind before its name', () => {
     expect(text(state(radius()))).toMatch(/C Near0/)
   })
@@ -73,7 +77,7 @@ describe('the blast radius in a component detail', () => {
     const raw = rows.map(rawText)
     expect(raw[0]).toMatch(/^╭─ 3\+ hops · 0 ─+ none ─╮$/)
     expect(raw.find(r => r.includes('2 hops'))).toMatch(/^│ ╭─ 2 hops · 30 ─+ ✓ all tested ─╮ │$/)
-    expect(raw.find(r => r.includes('1 hop '))).toMatch(/^│ │ ╭─ 1 hop · 4 ─+ ▲ 1 untested ─╮ │ │$/)
+    expect(raw.find(r => r.includes('1 hop '))).toMatch(/^│ │ ╭─ 1 hop · 4 ─+ ✓ 3 tested · ▲ 1 untested ─╮ │ │$/)
     expect(raw.find(r => r.includes('◉'))).toMatch(/^│ │ │ +◉ StableId ■ core +│ │ │$/)
     expect(raw.at(-1)).toMatch(/^╰─+╯$/)
     expect(raw.at(-2)).toMatch(/^│ ╰─+╯ │$/)
@@ -108,7 +112,7 @@ describe('the blast radius in a component detail', () => {
         }
       }
     }
-    expect(text(state(radius()), 40)).toMatch(/1 hop · 4 +▲ 1 untested/)
+    expect(text(state(radius()), 40)).toMatch(/1 hop · 4 +✓ 3 tested · ▲ 1 untested/)
     expect(text(state(radius()), 40)).not.toContain('╭─ 1 hop')
     expect(RINGS_MIN).toBeLessThanOrEqual(60)
   })

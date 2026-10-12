@@ -46,7 +46,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
-import { REACH, SEVERITY, kindMark, legend, mark } from './marks'
+import { CERTAINTY, REACH, SEVERITY, kindMark, legend, mark } from './marks'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -459,7 +459,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     make: (columns, limit) => {
       // The probable and test-only counts beside the total, so the card does not read as that much dead code.
       const sure =
-        dead.total === '0' ? '' : `${dead.probable === null ? '' : ` · ● ${dead.probable} probable`}${dead.testOnly === null ? '' : ` · ◆ ${dead.testOnly} tests only`}`
+        dead.total === '0' ? '' : ((key: string) => (key === '' ? '' : ` · ${key}`))(legend([[CERTAINTY.probable, dead.probable ?? 0], [REACH.testsOnly, dead.testOnly ?? 0]]))
       const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
       const body = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset)
       return { key: 'dead', title: 'Dead code', note: noteOf(deadNote), body, empty: 'none' }

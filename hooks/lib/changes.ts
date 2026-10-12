@@ -39,7 +39,7 @@ import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
-import { CHANGE, REACH, SEVERITY, mark } from './marks'
+import { CHANGE, REACH, SEVERITY, legend, mark } from './marks'
 
 /** The most files, tests and violations a session keeps; past them `truncated` is set. */
 export const FILE_CAP = 500
@@ -419,6 +419,9 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
 /** One scan on the timeline. */
 const TIMELINE_DOT = CHANGE.scan.glyph
 
+/** The cells a card's top edge spends on its frame, glyph and gaps beside the title and the note. */
+const NOTE_ROOM = 12
+
 /** The files the Changes tab walks: each opens as a file's detail (who depends on it), and `e` opens it in the editor. */
 export function changesList(input: ChangesInput): Openable[] {
   return listedFiles(input).map(f => ({ name: f.path, canonical: f.path, loc: f.loc, file: true, changed: true }))
@@ -507,7 +510,13 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   const tested = input.files.some(f => f.tests !== null) && columns - origin > TESTS_WIDTH + 24 ? TESTS_WIDTH + 1 : 0
   const spec = tableSpec(columns - origin - tested, input.files.map(f => f.path), input.files.map(f => boundaryLabel(f.boundary)), [numberWidth('deps', input.files.map(f => f.dependents), tier)], PATH_MAX, { tier })
   const max = Math.max(0, ...input.files.map(f => f.dependents))
-  const note = `${input.sinceStart ? (input.since ?? 'since it began') : plural(input.turns, 'turn', 'turns')}${input.truncated ? ' · partial' : ''}`
+  // The file marks the card shows, counted: the note is their legend, where it fits beside the title. A note too
+  // long for the top edge is dropped whole, so the legend gives way first and what the note says otherwise stays.
+  const counted = (status: TouchStatus) => input.files.filter(f => f.status === status).length
+  const key = legend([[CHANGE.changed, counted('changed')], [CHANGE.added, counted('added')], [CHANGE.removed, counted('deleted')]])
+  const told = `${input.sinceStart ? (input.since ?? 'since it began') : plural(input.turns, 'turn', 'turns')}${input.truncated ? ' · partial' : ''}`
+  const keyed = key === '' ? told : `${told} · ${key}`
+  const note = cells(title) + cells(keyed) + NOTE_ROOM <= columns ? keyed : told
   if (input.fallback !== null) said('changes-fallback', input.fallback)
   // What the changes reach: the dependents, and every boundary they are in, each in its colour.
   rows.push(...reachRows('changes-reach', `${plural(input.files.length, 'file', 'files')} → ${grouped(deps)} dependents`, input.boundaries, columns, hues))

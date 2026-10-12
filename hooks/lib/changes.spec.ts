@@ -214,7 +214,8 @@ describe('changesRows', () => {
   it('draws files with their marks, each pressable to its detail, the tests, and the command', () => {
     const rows = changesRows(changesInput(session(), ROOT), 1, 90)
     const text = textOf(rows)
-    expect(text).toMatch(/Changes this session +2 turns/)
+    // The note names the file marks the card shows, counted.
+    expect(text).toMatch(/Changes this session +2 turns · ~ 1 changed · \+ 1 added · − 1 removed/)
     expect(text).toContain('3 files → 45 dependents reaching ■ Core ■ Http')
     // A violation is an error, on Changes as on Issues.
     expect(text).toContain('✗ 1 policy violation introduced')

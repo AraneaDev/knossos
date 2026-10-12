@@ -4940,7 +4940,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await mountPane($, surface, 100)
       const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
-      expect(text).toMatch(/1 hop · 2 +─+ ▲ 1 untested/)
+      expect(text).toMatch(/1 hop · 2 +─+ ✓ 1 tested · ▲ 1 untested/)
       expect(text).toMatch(/▲ C Caller {3}C Router/)
       expect(text).toContain('✓ 1 test file: RouterTest.php')
       expect(text).toContain('◉ Greeter')

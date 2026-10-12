@@ -694,7 +694,7 @@ describe('the issues tab', () => {
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
     // The note is the legend for the two marks before each name.
-    expect(text).toMatch(/Dead code +55 · ● 12 probable · ◆ 9 tests only · first 2/)
+    expect(text).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2/)
     // How sure the scan is (● probable, ○ possible) and what reaches it (◐ tests only, ∅ nothing), before the name.
     expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
     expect(text).toMatch(/● ◐ f helper/)
