@@ -55,8 +55,10 @@ export function settings(env = process.env) {
                 "Knossos-MCP",
                 "evals",
             ),
-        evalRoot:
-            env.KNOSSOS_EVAL_ROOT ?? path.join(os.homedir(), ".knossos-eval"),
+        // Outside the home directory: Claude Code loads memory from every ancestor of its cwd.
+        evalRoot: env.KNOSSOS_EVAL_ROOT ?? "/var/tmp/knossos-eval",
+        pluginDir:
+            env.KNOSSOS_EVAL_PLUGIN_DIR ?? path.join(REPO_ROOT, ".plugin"),
         claudeBin: env.KNOSSOS_EVAL_CLAUDE ?? "claude",
         // Where the real credentials are copied from; tests point it at an empty dir.
         realHome: env.KNOSSOS_EVAL_REAL_HOME ?? os.homedir(),
@@ -145,6 +147,8 @@ async function prepare(args, s) {
     });
     const { corpus } = await openRun(positionals[0], s);
     const paths = evalPaths(s.evalRoot);
+    // Guard first: nothing is written before the isolation is proven.
+    const env = await evalEnv(paths, { base: s.env });
     const names = [...new Set(corpus.tasks.map((t) => t.repo))].sort();
     const workspaces = [];
     for (const name of names)
@@ -152,19 +156,13 @@ async function prepare(args, s) {
     await seedConfig(paths, workspaces, { realHome: s.realHome });
     await writeMcpConfig(paths, REPO_ROOT);
     if (values["no-scan"]) return 0;
-    const plugin = path.join(
-        REPO_ROOT,
-        ".plugin",
-        ".claude-plugin",
-        "plugin.json",
-    );
+    const plugin = path.join(s.pluginDir, ".claude-plugin", "plugin.json");
     await access(plugin).catch((error) => {
         throw new Error(
             `no materialised plugin at ${plugin}; run tools/install from this checkout first`,
             { cause: error },
         );
     });
-    const env = evalEnv(paths, { base: s.env, realHome: s.realHome });
     for (const [i, name] of names.entries()) {
         console.log(`scanning ${name}`);
         await exec(
@@ -198,7 +196,7 @@ async function executeEntry(entry, ctx) {
             model: run.meta.model,
             budgetUsd: run.meta.budgetUsd,
             mcpConfigPath: paths.mcpConfig,
-            pluginDir: path.join(REPO_ROOT, ".plugin"),
+            pluginDir: s.pluginDir,
         }),
         prompt: `${task.prompt}${ANSWER_INSTRUCTION}`,
         cwd: workspace,
@@ -242,6 +240,7 @@ async function continueRun(args, s) {
         return 0;
     }
     const paths = evalPaths(s.evalRoot);
+    const env = await evalEnv(paths, { base: s.env });
     const workspaces = [
         ...new Set(run.plan.map((e) => path.join(paths.repos, e.repo))),
     ];
@@ -250,7 +249,7 @@ async function continueRun(args, s) {
         run,
         s,
         paths,
-        env: evalEnv(paths, { base: s.env, realHome: s.realHome }),
+        env,
         rows,
         maxUtilization: Number(values["max-utilization"]),
     };

@@ -102,7 +102,7 @@ async function main(args) {
             "--json",
         ],
         {
-            env: evalEnv(paths, { base: s.env, realHome: s.realHome }),
+            env: await evalEnv(paths, { base: s.env }),
             maxBuffer: 1 << 26,
         },
     );

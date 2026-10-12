@@ -23,8 +23,12 @@ again by the next `continue`. Change the batch with `--batch` and the
 threshold with `--max-utilization`.
 
 Sessions run with their own `CLAUDE_CONFIG_DIR` and `HOME` under
-`~/.knossos-eval`, so no user rules, plugins, MCP servers or memory reach
-them, and each transcript's `init` event is checked for leaks. Runs, ledgers,
+`/var/tmp/knossos-eval` (change it with `KNOSSOS_EVAL_ROOT`), so no user rules,
+plugins, MCP servers or memory reach them, and each transcript's `init` event is
+checked for leaks. The root stays outside your home directory, because Claude
+Code loads `CLAUDE.md` files and `.claude` directories from every ancestor of
+its working directory; the run refuses a root whose ancestors carry either, and
+drops every inherited `CLAUDE*` and `ANTHROPIC*` variable. Runs, ledgers,
 transcripts and reports go to `~/.claude/superpowers/Knossos-MCP/evals/`.
 
 ## Writing a task

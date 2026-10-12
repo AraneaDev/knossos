@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
+    assertCleanAncestors,
     ensureClone,
     evalEnv,
     evalPaths,
@@ -46,13 +47,15 @@ async function originRepo() {
 }
 
 describe("evalEnv", () => {
-    it("isolates config, home and data, and drops inherited CLAUDE variables", async () => {
+    it("isolates config, home and data, and drops inherited CLAUDE and ANTHROPIC variables", async () => {
         const paths = evalPaths(await tmp("eval-root-"));
-        const env = evalEnv(paths, {
+        const env = await evalEnv(paths, {
             base: {
                 PATH: "/bin",
                 CLAUDECODE: "1",
                 CLAUDE_CODE_ENTRYPOINT: "cli",
+                ANTHROPIC_API_KEY: "k",
+                ANTHROPIC_BASE_URL: "u",
             },
         });
         expect(env.CLAUDE_CONFIG_DIR).toBe(paths.config);
@@ -60,11 +63,28 @@ describe("evalEnv", () => {
         expect(env.KNOSSOS_DATA_DIR).toBe(paths.data);
         expect(env.CLAUDECODE).toBeUndefined();
         expect(env.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+        expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+        expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
         expect(env.PATH).toBe("/bin");
     });
-    it("refuses a root inside the real ~/.knossos", () => {
+    it("refuses a root inside the real ~/.knossos", async () => {
         const paths = evalPaths(path.join(os.homedir(), ".knossos", "eval"));
-        expect(() => evalEnv(paths)).toThrow(/refusing/);
+        await expect(evalEnv(paths)).rejects.toThrow(/refusing/);
+    });
+    it("refuses a root under a directory that carries Claude memory", async () => {
+        const dirty = await tmp("eval-dirty-");
+        await mkdir(path.join(dirty, ".claude"));
+        await expect(
+            evalEnv(evalPaths(path.join(dirty, "root"))),
+        ).rejects.toThrow(/ancestors carry/);
+        const notes = await tmp("eval-notes-");
+        await writeFile(path.join(notes, "CLAUDE.md"), "x");
+        await expect(
+            assertCleanAncestors(evalPaths(path.join(notes, "a", "b"))),
+        ).rejects.toThrow(/CLAUDE\.md/);
+        await expect(
+            assertCleanAncestors(evalPaths(await tmp("eval-clean-"))),
+        ).resolves.toBeUndefined();
     });
 });
 

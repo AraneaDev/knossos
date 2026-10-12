@@ -4,7 +4,7 @@
  * Knossos data dir, and one clean checkout per pinned repo.
  */
 import { execFile } from "node:child_process";
-import { access, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -24,12 +24,40 @@ export function evalPaths(root) {
     };
 }
 
-export function evalEnv(
-    paths,
-    { base = process.env, realHome = os.homedir() } = {},
-) {
+/**
+ * Claude Code loads `CLAUDE.md` files and `.claude` directories from every
+ * ancestor of its working directory, so a workspace under a directory that
+ * holds one would read that memory. Throws when any ancestor of the repos
+ * directory, up to `/`, has either.
+ */
+export async function assertCleanAncestors(paths) {
+    const present = (p) =>
+        stat(p).then(
+            () => true,
+            () => false,
+        );
+    for (let dir = paths.repos; ; dir = path.dirname(dir)) {
+        for (const name of ["CLAUDE.md", ".claude"]) {
+            if (await present(path.join(dir, name))) {
+                throw new Error(
+                    `refusing an eval root whose ancestors carry ${path.join(dir, name)}; it would load into the sessions`,
+                );
+            }
+        }
+        if (path.dirname(dir) === dir) return;
+    }
+}
+
+/**
+ * The environment of an eval session. Always guarded against the real home of
+ * this machine, whatever the credentials source is, and checked for ancestor
+ * memory, so call it before anything is written.
+ */
+export async function evalEnv(paths, { base = process.env } = {}) {
     const inherited = Object.fromEntries(
-        Object.entries(base).filter(([k]) => !k.startsWith("CLAUDE")),
+        Object.entries(base).filter(
+            ([k]) => !k.startsWith("CLAUDE") && !k.startsWith("ANTHROPIC"),
+        ),
     );
     const env = {
         ...inherited,
@@ -42,10 +70,11 @@ export function evalEnv(
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     };
     guardEnv(env, {
-        realDataDir: path.join(realHome, ".knossos"),
-        realConfigDir: path.join(realHome, ".claude"),
+        realDataDir: path.join(os.homedir(), ".knossos"),
+        realConfigDir: path.join(os.homedir(), ".claude"),
         tempBase: paths.root,
     });
+    await assertCleanAncestors(paths);
     return env;
 }
 

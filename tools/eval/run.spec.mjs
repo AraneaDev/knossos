@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { readLedger } from "./ledger.mjs";
 import { main } from "./run.mjs";
@@ -169,5 +170,26 @@ describe("run CLI", () => {
         expect(
             plan.filter((e) => e.arm === "full-minus-list_usages"),
         ).toHaveLength(2);
+    });
+    it("proves the isolation before it writes anything, whatever the credentials source", async () => {
+        const { env, runId } = await started();
+        // A fresh unique name under the real ~/.knossos: it must never be created.
+        const root = path.join(
+            os.homedir(),
+            ".knossos",
+            `eval-guard-${randomUUID()}`,
+        );
+        const bad = {
+            ...env,
+            KNOSSOS_EVAL_ROOT: root,
+            KNOSSOS_EVAL_REAL_HOME: path.join(root, "home"),
+        };
+        await expect(
+            main(["prepare", runId, "--no-scan"], bad),
+        ).rejects.toThrow(/refusing/);
+        await expect(main(["continue", runId], bad)).rejects.toThrow(
+            /refusing/,
+        );
+        await expect(access(root)).rejects.toThrow();
     });
 });
