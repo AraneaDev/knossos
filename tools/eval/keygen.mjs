@@ -9,7 +9,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
-import { normalise } from "./answer.mjs";
+import { matchEntries } from "./answer.mjs";
 import { loadCorpus } from "./corpus.mjs";
 import { evalEnv, evalPaths } from "./env.mjs";
 import { REPO_ROOT, settings } from "./run.mjs";
@@ -76,13 +76,10 @@ export function knossosAnswer(category, unit, json) {
     return null;
 }
 
+/** The key entries Knossos did not name and the ones it added, matched the way a session's answer is scored. */
 export function diffAnswers(expected, knossos, options) {
-    const want = new Set(expected.map((e) => normalise(e, options)));
-    const got = new Set(knossos.map((k) => normalise(k, options)));
-    return {
-        missing: [...want].filter((w) => !got.has(w)).sort(),
-        extra: [...got].filter((g) => !want.has(g)).sort(),
-    };
+    const { missing, extra } = matchEntries(expected, knossos, options);
+    return { missing: missing.sort(), extra: extra.sort() };
 }
 
 /**

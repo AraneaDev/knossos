@@ -68,7 +68,7 @@ describe("knossosAnswer", () => {
 });
 
 describe("diffAnswers", () => {
-    it("lists what Knossos missed and what it added, normalised", () => {
+    it("lists what Knossos missed and what it added, matched as answers are", () => {
         const opts = { unit: "symbol", language: "php" };
         expect(
             diffAnswers(
@@ -77,8 +77,8 @@ describe("diffAnswers", () => {
                 opts,
             ),
         ).toEqual({
-            missing: ["x::y"],
-            extra: ["z::w"],
+            missing: ["App\\X::y"],
+            extra: ["App\\Z::w"],
         });
     });
 });
