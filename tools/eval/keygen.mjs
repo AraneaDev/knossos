@@ -17,10 +17,36 @@ import { REPO_ROOT, settings } from "./run.mjs";
 const exec = promisify(execFile);
 const CALL_KINDS = new Set(["calls", "dispatches"]);
 
+const TEST_DIR = /(^|\/)(tests?|__tests__)\//;
+const TEST_FILE =
+    /(\.test\.tsx?|\.spec\.ts|(^|\/)(testutil\.rs|conftest\.py))$/;
+
+/** Whether a file is test code; the answer keys never list test callers. */
+export const isTestPath = (file) =>
+    typeof file === "string" && (TEST_DIR.test(file) || TEST_FILE.test(file));
+
+/** Set when Knossos could not resolve the query: `{query, candidates}`, else null. */
+export function unresolved(category, json) {
+    const key = category === "callers" ? "usages" : "dependants";
+    const data = json.data;
+    if (data === undefined || data === null || data[key] !== undefined)
+        return null;
+    const candidates = (data.candidates ?? [])
+        .map((c) => (typeof c === "string" ? c : c?.canonical_name))
+        .filter(Boolean);
+    return { query: data.query ?? null, candidates: candidates.slice(0, 5) };
+}
+
+/** Whether Knossos cut its answer off at the result limit. */
+export const isTruncated = (json) =>
+    (json.bounds ?? json.data?.bounds)?.truncation_reasons?.includes(
+        "result_limit",
+    ) === true;
+
 export function knossosAnswer(category, unit, json) {
     if (category === "callers") {
-        const usages = (json.data?.usages ?? []).filter((u) =>
-            CALL_KINDS.has(u.kind),
+        const usages = (json.data?.usages ?? []).filter(
+            (u) => CALL_KINDS.has(u.kind) && !isTestPath(u.path),
         );
         return usages
             .map((u) => (unit === "file" ? u.path : u.source?.canonical_name))
@@ -28,6 +54,7 @@ export function knossosAnswer(category, unit, json) {
     }
     if (category === "impact" || category === "dependents") {
         return (json.data?.dependants ?? [])
+            .filter((d) => !isTestPath(d.node?.via?.evidence?.path))
             .map((d) =>
                 unit === "file"
                     ? d.node?.via?.evidence?.path
@@ -68,12 +95,16 @@ export async function rgLines(word, cwd) {
     }
 }
 
+/** Deletes a stale `defects/<task>.json`. */
+export const clearDefect = (paths, task) =>
+    rm(path.join(paths.defects, `${task}.json`), { force: true });
+
 /** Writes the disagreement to `defects/<task>.json`, or deletes a stale one when Knossos agrees now. Returns whether it disagrees. */
 export async function recordDefect(paths, task, command, diff) {
     const file = path.join(paths.defects, `${task}.json`);
     await mkdir(paths.defects, { recursive: true });
     if (diff.missing.length === 0 && diff.extra.length === 0) {
-        await rm(file, { force: true });
+        await clearDefect(paths, task);
         return false;
     }
     await writeFile(
@@ -93,6 +124,8 @@ async function main(args) {
                 type: "string",
                 default: path.join(REPO_ROOT, "tools", "eval", "corpus"),
             },
+            // Overrides the subject as the Knossos query when the CLI only resolves another spelling.
+            query: { type: "string" },
         },
     });
     const corpus = await loadCorpus(path.resolve(values.corpus));
@@ -127,15 +160,28 @@ async function main(args) {
             path.join(REPO_ROOT, "bin", "knossos"),
             command,
             workspace,
-            task.subject,
-            "--limit=500",
+            values.query ?? task.subject,
+            "--limit=100",
             "--json",
         ],
         { env: await evalEnv(paths, { base: s.env }), maxBuffer: 1 << 26 },
     );
+    const json = JSON.parse(stdout);
+    const miss = unresolved(task.category, json);
+    if (miss !== null) {
+        console.log(
+            `# Knossos did not resolve ${miss.query ?? values.query ?? task.subject}${miss.candidates.length > 0 ? `; candidates: ${miss.candidates.join(", ")}` : ""}`,
+        );
+        await clearDefect(paths, task.id);
+        return;
+    }
+    if (isTruncated(json))
+        console.log(
+            "# warning: Knossos cut its answer off at the result limit (100)",
+        );
     const diff = diffAnswers(
         task.answer.expected,
-        knossosAnswer(task.category, task.answer.unit, JSON.parse(stdout)),
+        knossosAnswer(task.category, task.answer.unit, json),
         {
             unit: task.answer.unit,
             language: corpus.repos[task.repo].language,

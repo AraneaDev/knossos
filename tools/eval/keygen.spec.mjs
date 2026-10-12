@@ -3,10 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+    clearDefect,
     diffAnswers,
+    isTestPath,
+    isTruncated,
     knossosAnswer,
     recordDefect,
     rgLines,
+    unresolved,
 } from "./keygen.mjs";
 
 const usages = {
@@ -145,5 +149,122 @@ describe("recordDefect", () => {
                 extra: [],
             }),
         ).toBe(false);
+    });
+});
+
+describe("isTestPath", () => {
+    it("recognises test directories and files, and nothing else", () => {
+        for (const f of [
+            "tests/Foo.php",
+            "app/tests/Foo.php",
+            "pkg/test/a.go",
+            "src/__tests__/a.ts",
+            "src/a.test.ts",
+            "src/a.test.tsx",
+            "src/a.spec.ts",
+            "src/testutil.rs",
+            "py/conftest.py",
+        ])
+            expect(isTestPath(f), f).toBe(true);
+        for (const f of [
+            "src/contest/a.php",
+            "src/latest.ts",
+            "src/mytestutil.rs",
+            "app/Billing.php",
+            undefined,
+        ])
+            expect(isTestPath(f), String(f)).toBe(false);
+    });
+    it("drops test callers and test dependants from the Knossos answer", () => {
+        const usages = {
+            data: {
+                usages: [
+                    {
+                        kind: "calls",
+                        source: { canonical_name: "A::a" },
+                        path: "src/A.php",
+                    },
+                    {
+                        kind: "calls",
+                        source: { canonical_name: "T::t" },
+                        path: "tests/T.php",
+                    },
+                ],
+            },
+        };
+        expect(knossosAnswer("callers", "symbol", usages)).toEqual(["A::a"]);
+        const impact = {
+            data: {
+                dependants: [
+                    {
+                        node: {
+                            canonical_name: "A",
+                            via: { evidence: { path: "src/A.php" } },
+                        },
+                    },
+                    {
+                        node: {
+                            canonical_name: "T",
+                            via: { evidence: { path: "src/x.spec.ts" } },
+                        },
+                    },
+                ],
+            },
+        };
+        expect(knossosAnswer("impact", "symbol", impact)).toEqual(["A"]);
+    });
+});
+
+describe("unresolved and isTruncated", () => {
+    it("detects a query Knossos could not resolve, with up to five candidates", () => {
+        const json = {
+            data: {
+                query: "X::y",
+                ambiguous: false,
+                candidates: [
+                    "A",
+                    { canonical_name: "B" },
+                    {},
+                    "C",
+                    "D",
+                    "E",
+                    "F",
+                ],
+            },
+        };
+        expect(unresolved("callers", json)).toEqual({
+            query: "X::y",
+            candidates: ["A", "B", "C", "D", "E"],
+        });
+        expect(unresolved("impact", json)).toEqual({
+            query: "X::y",
+            candidates: ["A", "B", "C", "D", "E"],
+        });
+        expect(unresolved("callers", { data: { usages: [] } })).toBeNull();
+        expect(unresolved("impact", { data: { dependants: [] } })).toBeNull();
+        expect(unresolved("impact", { data: { usages: [] } })).not.toBeNull();
+    });
+    it("reads the result_limit truncation reason", () => {
+        expect(
+            isTruncated({ bounds: { truncation_reasons: ["result_limit"] } }),
+        ).toBe(true);
+        expect(isTruncated({ bounds: { truncation_reasons: [] } })).toBe(false);
+        expect(isTruncated({})).toBe(false);
+    });
+});
+
+describe("clearDefect", () => {
+    it("deletes a stale defect and tolerates a missing one", async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "eval-defects-"));
+        const paths = { defects: path.join(root, "defects") };
+        await recordDefect(paths, "t2", "list-usages", {
+            missing: ["a"],
+            extra: [],
+        });
+        await clearDefect(paths, "t2");
+        await expect(
+            access(path.join(paths.defects, "t2.json")),
+        ).rejects.toThrow();
+        await expect(clearDefect(paths, "t2")).resolves.toBeUndefined();
     });
 });
