@@ -383,10 +383,25 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
     { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
     ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), ...series(t => t.max_degree), ...moved('max_degree') }]),
     // The candidates Issues lists; the trend's `dead_code` is the gate's wider count, drawn on the health card under its own name.
-    { key: 'dead', label: 'dead code', value: dead, ...listing('dead', dead) },
+    // Split by confidence when knossos says, so the count does not read as that much dead code: both press to the same list.
+    ...(d.dead_code_probable === undefined
+      ? [{ key: 'dead', label: 'dead code', value: dead, ...listing('dead', dead) }]
+      : deadSplit(d.dead_code_candidates, d.dead_code_probable, d.dead_code_truncated).map(([key, label, value]) => ({ key, label, value, ...listing('dead', value) }))),
     ...(diagnostics === null ? [] : [{ key: 'diagnostics', label: 'diagnostics', value: grouped(diagnostics), ...series(t => t.diagnostics), ...moved('diagnostics', true), ...(diagnostics > 0 ? { tone: 'warn' as const } : {}), ...listing('diagnostics', grouped(diagnostics)) }]),
     ...(policy === null ? [] : [{ key: 'policy', label: 'policy', value: policy, ...(above(policy) ? { tone: 'alert' as const } : {}), ...listing('policy', policy) }]),
     { key: 'drifted', label: 'drifted', value: grouped(drifted), ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
+  ]
+}
+
+/**
+ * The dead-code tiles when knossos splits the count by confidence: the probably
+ * dead, then the only possibly dead. A list the search cut short is a floor,
+ * and only the possible share can grow past what was counted, so it carries the `+`.
+ */
+function deadSplit(total: number, probable: number, truncated: boolean): [string, string, string][] {
+  return [
+    ['dead-probable', 'probably dead', grouped(probable)],
+    ['dead-possible', 'possibly dead', countLabel(total - probable, truncated)],
   ]
 }
 
@@ -401,7 +416,7 @@ export function summaryParts(d: Dashboard, hubs: number): string[] {
     return [
       plural(hubs, 'hub', 'hubs'),
       `${cycleCount(d.cycles)} ${d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles'}`,
-      `${countLabel(d.dead_code_candidates, d.dead_code_truncated)} dead code`,
+      `${countLabel(d.dead_code_candidates, d.dead_code_truncated)} dead code${d.dead_code_probable === undefined ? '' : ` (${d.dead_code_probable} probable)`}`,
       drift,
     ]
   }

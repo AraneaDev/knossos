@@ -78,7 +78,8 @@ export type Openable = {
 export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null }; selected?: number; target?: string }
 
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
-export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean }
+/** `certainty` is the candidate's confidence, `probable` or `possible`: how sure the scan is that nothing reaches it. */
+export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean; certainty: string }
 /** A diagnostic as Issues lists it; `path` null for one about no file (the project's own setup). */
 /** `place` names it in the walk (file and line); `where` is what its row says: the project path, then its source. */
 export type DiagnosticLine = { severity: string; text: string; path: string | null; place: string; where: string; loc: Loc | null }
@@ -87,7 +88,8 @@ export type IssuesInput = {
   /** Null when the knossos that answered sends no policy section. */
   policy: { evaluated: boolean; total: string; count: number; items: ViolationLine[] } | null
   diagnostics: { errors: number; warnings: number; infos: number; items: DiagnosticLine[] } | null
-  deadCode: { total: string; items: DeadLine[] }
+  /** `probable` is how many of `total` are probably dead, null from a knossos that does not say. */
+  deadCode: { total: string; probable: number | null; items: DeadLine[] }
   /** The files a change is riskiest in: lines times dependents, the highest first. */
   hotspots: { path: string; lines: number; dependents: number; score: number; loc: Loc | null }[]
   /** The files over the project's function-length budget; null without a budget, undefined when the knossos that answered does not say. */
@@ -193,6 +195,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
           },
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
+      probable: d.dead_code_probable ?? null,
       items: (d.dead_code ?? []).map(c => ({
         name: displayName(c),
         canonical: c.canonical_name,
@@ -200,6 +203,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
         place: placeOf(c.path, c.line),
         loc: locIn(root, c.path, c.line),
         testOnly: c.reachability === 'test_only',
+        certainty: c.confidence,
       })),
     },
     hotspots: (d.complexity_hotspots ?? []).map(f => ({ path: f.path, lines: f.lines, dependents: f.dependent_files, score: f.score, loc: locIn(root, f.path) })),
@@ -385,14 +389,22 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   }))
   const dead = issues.deadCode
   const offset = diagOffset + diagEntries.length
+  // How sure the scan is, a column before the name: a possible one is dimmed, since something no scan sees may reach it.
+  // Too narrow to keep {@link MAIN_MIN} for the names beside it, the column goes from every row at once,
+  // so it never shows on some rows and not others; the names keep their room.
+  const certaintyWidth = Math.max(0, ...dead.items.map(c => cells(c.certainty)))
   const deadEntries: Entry[] = dead.items.map((c, i) => ({
     selected: offset + i === selected,
     mark: c.testOnly ? { text: '◇', dim: true } : undefined,
     boundary: c.boundary,
     place: c.place,
     loc: c.loc ?? null,
-    need: cells(c.name),
-    main: width => [button(`row:${offset + i}`, fit(c.name, width))],
+    need: cells(c.name) + (certaintyWidth === 0 ? 0 : certaintyWidth + 2),
+    main: width => {
+      if (certaintyWidth === 0 || width - certaintyWidth - 2 < MAIN_MIN) return [button(`row:${offset + i}`, fit(c.name, width))]
+      const certainty: Segment = { text: c.certainty.padEnd(certaintyWidth + 2), ...(c.certainty === 'probable' ? {} : { dim: true }) }
+      return [certainty, button(`row:${offset + i}`, fit(c.name, width - certaintyWidth - 2))]
+    },
   }))
   /**
    * A list of entries `limit` long around the marker (`local`: its index in this list), with what is above and below;
@@ -440,7 +452,9 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
     key: 'dead',
     grow: { length: deadEntries.length, min: ISSUES_MIN },
     make: (columns, limit) => {
-      const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total} · first ${dead.items.length}` : dead.total
+      // The probable count beside the total, so the card does not read as that much dead code.
+      const sure = dead.probable === null || dead.total === '0' ? '' : ` · ${dead.probable} probable`
+      const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
       const body = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset)
       return { key: 'dead', title: 'Dead code', note: noteOf(deadNote), body, empty: 'none' }
     },

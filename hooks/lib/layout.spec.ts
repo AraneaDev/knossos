@@ -64,6 +64,7 @@ const dash = (over: Partial<Dashboard> = {}): Dashboard => ({
     { ...hub('scan', 'Knossos\\Scan\\ProjectScanService::scan', 'method', 'core', 119, 58, 0), score: 177 },
   ],
   dead_code_candidates: 55,
+  dead_code_probable: 12,
   dead_code_truncated: false,
   cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [] },
   trend: [2, 2, 2, 2, 2, 2].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 161 })),
@@ -296,12 +297,12 @@ describe('paneRows', () => {
     const text = textOf(paneRows(input(), 60))
     // Narrow, the stat tiles collapse to a line of every figure, deltas beside them when the dashboard sends them.
     const line = (rows: Row[]) => rows.filter(r => r.key.startsWith('tiles-line')).map(plainText).join(' / ')
-    expect(line(paneRows(input(), 60))).toBe('2 cycles   161 max degree   55 dead code   0 policy / 41 drifted')
+    expect(line(paneRows(input(), 60))).toMatch(/^2 cycles {3}161 max degree {3}12 probably dead +(\/ )?43 possibly dead {3}0 policy( \/)? +41 drifted$/)
     const moved = dash({ deltas: { against: 's4', components: 0, cycles: 1, max_degree: -3, dead_code: 0, diagnostics: 0 } })
-    expect(line(paneRows(input({}, moved), 60))).toBe('2 cycles ▲1   161 max degree ▼3   55 dead code   0 policy / 41 drifted')
+    expect(line(paneRows(input({}, moved), 60))).toMatch(/^2 cycles ▲1 {3}161 max degree ▼3 {3}12 probably dead +(\/ )?43 possibly dead/)
     // Dead code counts the listed candidates; the trend carries the gate's wider count, so the tile takes neither its delta nor its trend.
     const gate = dash({ deltas: { against: 's4', components: 0, cycles: 0, max_degree: 0, dead_code: 25, diagnostics: 0 } })
-    expect(line(paneRows(input({}, gate), 60))).toContain('55 dead code   0 policy')
+    expect(line(paneRows(input({}, gate), 60))).toMatch(/43 possibly dead +0 policy/)
     for (const gone of ['Most depended on', 'Last turn', 'Files most depended on', 'Look at now']) expect(text).not.toContain(gone)
     // Nothing changed this session and no chart sent: nothing to walk, and the session card is one line.
     expect(listFor(input())).toEqual([])
@@ -518,7 +519,7 @@ const full = (over: Partial<Dashboard> = {}): Dashboard =>
         kind: 'function',
         boundary: 'core',
         reachability: 'test_only',
-        confidence: 'possible',
+        confidence: 'probable',
         path: 'src/Support/helper.php',
         line: 4,
       },
@@ -605,7 +606,9 @@ describe('the header summary', () => {
     expect(row(paneRows(fullInput(), 60), 'title')!.segments.some(s => s.text === ' PHP ')).toBe(false)
   })
   it('falls back to hubs, cycles and dead code from an older knossos', () => {
-    expect(summaryParts(dash(), 6)).toEqual(['6 hubs', '2 cycles', '55 dead code', '41 drifted'])
+    expect(summaryParts(dash(), 6)).toEqual(['6 hubs', '2 cycles', '55 dead code (12 probable)', '41 drifted'])
+    // An older knossos says nothing about confidence.
+    expect(summaryParts(dash({ dead_code_probable: undefined }), 6)).toEqual(['6 hubs', '2 cycles', '55 dead code', '41 drifted'])
   })
   it('counts every boundary, as a floor when cut, where none is declared', () => {
     const inferred = full({ boundaries: { items: [{ name: 'namespace:App', source: 'inferred', members: 3 }], truncated: true } })
@@ -653,18 +656,26 @@ describe('the issues tab', () => {
     expect(text).toMatch(/Diagnostics +1 error · 1 warning · 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
-    expect(text).toMatch(/Dead code +55 · first 2/)
-    expect(text).toMatch(/FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
-    expect(text).toMatch(/◇ helper/)
+    expect(text).toMatch(/Dead code +55 · 12 probable · first 2/)
+    // Each candidate says how sure it is, in a column of its own before the name.
+    expect(text).toMatch(/possible +FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
+    expect(text).toMatch(/◇ probable +helper/)
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
     expect(text).toMatch(/workers\/typescript\/src\/scanner\.js .*━+ +4,986 +20/)
     expect(text).toMatch(/Over budget +▲ 3 functions over 205 lines/)
     expect(text).toMatch(/▲ src\/Scan\/ProjectScanService\.php +2 +260/)
     expect(text).toContain('+2 not listed')
   })
+  it('shows the certainty column on every dead-code row or on none', () => {
+    for (const columns of [30, 40, 50, 60, 90]) {
+      const rows = [0, 1].map(i => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), `dead-${i}`)!))
+      const shown = rows.map(r => /\b(probable|possible)\b/.test(r))
+      expect(new Set(shown).size, `${columns} columns: ${rows.join(' | ')}`).toBe(1)
+    }
+  })
   it('gives way in order: names are cut, then the boundary goes, then the place', () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    expect(dead(90)).toMatch(/FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
+    expect(dead(90)).toMatch(/possible +FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
     expect(dead(50)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
@@ -1091,11 +1102,12 @@ describe('the overview stat tiles', () => {
     const rows = paneRows(fullInput(), 140)
     const figures = plainText(row(rows, 'tiles-0-value')!)
     const labels = plainText(row(rows, 'tiles-0-label')!)
-    expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ dead code +│ diagnostics +│ policy +│ drifted$/)
-    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ 55 +│ 2 +│ 7 +│ 41$/)
+    expect(labels).toMatch(/^components +│ boundaries +│ cycles +│ max degree +│ probably dead +│ possibly dead +│ diagnostics +│ policy +│ drifted$/)
+    expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ 12 +│ 43 +│ 2 +│ 7 +│ 41$/)
     const colour = (text: string) => row(rows, 'tiles-0-value')!.segments.find(s => s.text === text)?.color
     expect(colour('7,878')).toBe('text')
-    expect(colour('55')).toBe('text')
+    expect(colour('12')).toBe('text')
+    expect(colour('43')).toBe('text')
     expect(colour('41')).toBe('suggestion')
     expect(colour('7')).toBe('error')
     expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning', 'warning'])
