@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Store\GraphRepository;
+use Knossos\Store\SharedNodeKinds;
 use Knossos\Store\StableId;
 
 /**
@@ -87,11 +88,16 @@ final readonly class GraphReconciler
         }
 
         [$nodeMap, $nodes, $nodeWarnings] = $this->collectNodes($projectId, $request->contributions);
+        $evidencePaths = array_map(static fn(array $node): string => $node['evidence_path'], $nodes);
         $this->attachNodeFiles($nodes, $fileIds);
         [$externalNodes, $edges, $edgeWarnings, $unconfirmedCalls] = $this->resolveEdges($projectId, $request->contributions, $nodeMap, $fileIds);
         self::recordUnconfirmedCalls($nodes, $unconfirmedCalls);
         foreach ($externalNodes as $id => $node) {
             $nodes[$id] = $node;
+        }
+        $binding = (new EndpointRouteBinder($projectId))->bind($nodes, $edges, $evidencePaths);
+        foreach ($binding->edges as $id => $edge) {
+            $edges[$id] = $edge;
         }
 
         return new PreparedGraph(
@@ -104,7 +110,7 @@ final readonly class GraphReconciler
             $edges,
             $this->resolveClassifications($projectId, $request->classifications, $nodeMap, $fileIds),
             $this->resolveBoundaries($projectId, $request->boundaries, $nodeMap),
-            [...$nodeWarnings, ...$edgeWarnings],
+            [...$nodeWarnings, ...$edgeWarnings, ...$binding->warnings],
             count($externalNodes),
         );
     }
@@ -331,7 +337,7 @@ final readonly class GraphReconciler
      * Assign stable ids to the reported nodes and index them for edge resolution.
      *
      * @param list<ScanContribution> $contributions
-     * @return array{0: array<string, string>, 1: array<string, array<string, mixed>>, 2: list<array<string, string>>}
+     * @return array{0: array<string, string>, 1: array<string, array<string, mixed>>, 2: list<array<string, string|int>>}
      */
     private function collectNodes(string $projectId, array $contributions): array
     {
@@ -356,12 +362,13 @@ final readonly class GraphReconciler
                     // genuine collision is a re-declaration from a different
                     // evidence file; keep the first and surface a warning rather
                     // than silently discarding the divergent provenance.
-                    // `package`/`external_*` kinds are exempt: they are shared
-                    // across every importing file by design, so a re-declaration
-                    // there is not suspicious. For kinds that are suspicious, warn
+                    // `package`/`endpoint`/`external_*` kinds are exempt: they are
+                    // shared across every importing file by design (an endpoint is
+                    // a URL, which every file calling it declares), so a
+                    // re-declaration there is not suspicious. For kinds that are suspicious, warn
                     // once per stable id rather than once per re-declaring file.
                     $existingPath = $nodes[$id]['evidence_path'];
-                    $sharedByDesign = $node->kind === 'package' || str_starts_with($node->kind, 'external_');
+                    $sharedByDesign = SharedNodeKinds::isSharedByDesign($node->kind);
                     if ($existingPath !== $node->evidence->relativePath && !$sharedByDesign && !isset($warnedIds[$id])) {
                         $warnedIds[$id] = true;
                         $warnings[] = [
@@ -393,7 +400,7 @@ final readonly class GraphReconciler
      * @param list<ScanContribution> $contributions
      * @param array<string, string> $nodeMap
      * @param array<string, string> $fileIds
-     * @return array{0: array<string, array<string, mixed>>, 1: array<string, array<string, mixed>>, 2: list<array<string, string>>, 3: array<string, array<string, true>>}
+     * @return array{0: array<string, array<string, mixed>>, 1: array<string, array<string, mixed>>, 2: list<array<string, string|int>>, 3: array<string, array<string, true>>}
      */
     private function resolveEdges(string $projectId, array $contributions, array $nodeMap, array $fileIds): array
     {

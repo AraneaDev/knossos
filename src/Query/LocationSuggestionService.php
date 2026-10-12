@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\SharedNodeKinds;
 use PDO;
 use Throwable;
 
@@ -139,7 +140,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
     {
         $memberStatement = $this->pdo->prepare(
             'SELECT bm.boundary_id, n.id, n.kind, n.canonical_name, n.display_name, n.start_line, n.end_line, f.relative_path ' .
-            'FROM boundary_memberships bm JOIN nodes n ON n.id = bm.node_id LEFT JOIN files f ON f.id = n.file_id ' .
+            'FROM boundary_memberships bm JOIN nodes n ON n.id = bm.node_id LEFT JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' ' .
             'WHERE bm.project_id = :project ORDER BY bm.boundary_id, n.canonical_name, n.id LIMIT :limit',
         );
         $memberStatement->bindValue(':project', $projectId);

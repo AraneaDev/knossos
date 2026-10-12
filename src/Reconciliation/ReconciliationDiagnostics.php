@@ -25,7 +25,7 @@ final readonly class ReconciliationDiagnostics
      * Persist the scan's diagnostics alongside the graph.
      *
      * @param array<string, string> $fileIds
-     * @param list<array<string, string>> $nodeWarnings
+     * @param list<array<string, string|int>> $nodeWarnings
      */
     public function save(
         FullScanRequest $request,
@@ -73,11 +73,11 @@ final readonly class ReconciliationDiagnostics
                 $projectId,
                 $scanId,
                 $fileIds[$warning['path']] ?? null,
-                'warning',
+                $warning['severity'] ?? 'warning',
                 $warning['code'],
                 $warning['message'],
-                null,
-                null,
+                $warning['start_line'] ?? null,
+                $warning['end_line'] ?? null,
                 $warning['owner'],
             );
             ++$count;

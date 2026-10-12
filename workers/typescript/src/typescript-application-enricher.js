@@ -1,5 +1,6 @@
 import path from "node:path";
 import ts from "typescript";
+import { objectField } from "./syntax-predicates.js";
 import {
     addFrameworkRoute,
     callName,
@@ -129,8 +130,21 @@ export class TypeScriptApplicationEnricher {
     }
 
     call(node, source, calledName) {
+        if (source === null) return;
+        if (ts.isPropertyAccessExpression(node.expression)) {
+            const name = node.expression.name.text;
+            if (INSTANCE_METHODS.has(name) || name === "request") {
+                const instance = axiosInstanceBase(
+                    this.context.checker,
+                    node.expression.expression,
+                );
+                if (instance !== null) {
+                    this.instanceCall(node, source, instance);
+                    return;
+                }
+            }
+        }
         if (
-            source === null ||
             ![
                 "fetch",
                 "axios.get",
@@ -138,25 +152,71 @@ export class TypeScriptApplicationEnricher {
                 "axios.put",
                 "axios.patch",
                 "axios.delete",
+                "axios.head",
+                "axios.request",
             ].includes(calledName) ||
-            !node.arguments[0] ||
-            (!ts.isStringLiteral(node.arguments[0]) &&
-                !ts.isNoSubstitutionTemplateLiteral(node.arguments[0]))
+            !node.arguments[0]
         )
             return;
+        if (calledName === "axios.request") {
+            this.instanceCall(node, source, null);
+            return;
+        }
+        const url = requestUrl(node.arguments[0]);
+        if (url === null) return;
         const method =
             calledName === "fetch"
                 ? fetchMethod(node)
                 : calledName.split(".").at(-1).toUpperCase();
-        const uri = node.arguments[0].text;
-        const endpointId = reference("endpoint", `${method} ${uri}`);
+        this.addEndpoint(node, source, method, url);
+    }
+
+    /**
+     * A request through an axios instance, or through the direct import when
+     * `instance` is null: then the URL stands as written.
+     */
+    instanceCall(node, source, instance) {
+        const name = node.expression.name.text;
+        const first = node.arguments[0];
+        let method;
+        let argument;
+        if (INSTANCE_METHODS.has(name)) {
+            method = name.toUpperCase();
+            argument = first;
+        } else if (first && ts.isObjectLiteralExpression(first)) {
+            method = optionMethod(first) ?? "GET";
+            argument = objectField(first, "url");
+        }
+        const url = argument === undefined ? null : requestUrl(argument);
+        if (url === null) return;
+        this.addEndpoint(
+            node,
+            source,
+            method,
+            instance === null ? url : joinBase(instance, url),
+        );
+    }
+
+    addEndpoint(node, source, method, url) {
+        const attributes = {
+            framework: "web",
+            method,
+            uri: url.uri,
+            template: urlTemplate(
+                url.uri,
+                url.dropLeading ?? url.prefixUnknown,
+            ),
+            prefix: url.prefixUnknown ? "unknown" : "known",
+            external: ABSOLUTE_URL.test(url.uri),
+        };
+        const endpointId = reference("endpoint", `${method} ${url.uri}`);
         this.context.addNode(
             endpointId,
             "endpoint",
-            `${method} ${uri}`,
-            `${method} ${uri}`,
+            `${method} ${url.uri}`,
+            `${method} ${url.uri}`,
             node,
-            { framework: "web", method, uri },
+            attributes,
             "framework_convention",
         );
         this.context.addEdge(
@@ -170,20 +230,136 @@ export class TypeScriptApplicationEnricher {
     }
 }
 
+const ABSOLUTE_URL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
+
+/**
+ * A request URL as written, each substitution shown as `{}`, and whether
+ * anything before its path is unknown: a leading substitution names a base
+ * the worker cannot read. Null for anything but a string or template literal.
+ */
+function requestUrl(argument) {
+    if (
+        ts.isStringLiteral(argument) ||
+        ts.isNoSubstitutionTemplateLiteral(argument)
+    )
+        return { uri: argument.text, prefixUnknown: false };
+    if (!ts.isTemplateExpression(argument)) return null;
+    const uri =
+        argument.head.text +
+        argument.templateSpans.map((span) => `{}${span.literal.text}`).join("");
+    if (uri.replaceAll("{}", "") === "") return null;
+    return { uri, prefixUnknown: argument.head.text === "" };
+}
+
+const INSTANCE_METHODS = new Set([
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "head",
+]);
+
+/**
+ * The `baseURL` of an axios instance a receiver resolves to through the
+ * checker, as `{ base, known }`, or null when the receiver is no
+ * `axios.create(...)` result. A relative literal base is known; a missing,
+ * absolute or computed one is not.
+ */
+function axiosInstanceBase(checker, receiver) {
+    let symbol = checker.getSymbolAtLocation(receiver);
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias)
+        symbol = checker.getAliasedSymbol(symbol);
+    const declaration = symbol?.valueDeclaration;
+    // `export default axios.create({ ... })` is an export assignment, not a variable.
+    let initializer;
+    if (declaration && ts.isVariableDeclaration(declaration))
+        initializer = declaration.initializer;
+    else if (declaration && ts.isExportAssignment(declaration))
+        initializer = declaration.expression;
+    if (!initializer || !isAxiosCreate(checker, initializer)) return null;
+    const options = initializer.arguments[0];
+    const base = options ? objectField(options, "baseURL") : undefined;
+    if (
+        base !== undefined &&
+        ts.isStringLiteralLike(base) &&
+        !ABSOLUTE_URL.test(base.text)
+    )
+        return { base: base.text.replace(/\/+$/, ""), known: true };
+    return { base: "", known: false };
+}
+
+/** A `<name>.create(...)` call whose receiver is an import of `axios`. */
+function isAxiosCreate(checker, call) {
+    if (
+        !ts.isCallExpression(call) ||
+        !ts.isPropertyAccessExpression(call.expression) ||
+        call.expression.name.text !== "create"
+    )
+        return false;
+    const symbol = checker.getSymbolAtLocation(call.expression.expression);
+    return (symbol?.declarations ?? []).some((declaration) => {
+        const statement = ts.findAncestor(declaration, ts.isImportDeclaration);
+        return (
+            statement !== undefined &&
+            ts.isStringLiteral(statement.moduleSpecifier) &&
+            statement.moduleSpecifier.text === "axios"
+        );
+    });
+}
+
+/**
+ * The URL an instance call requests: axios ignores `baseURL` for an absolute
+ * URL, and otherwise joins the two with exactly one slash. An unknown base
+ * leads the uri as a `{}` segment, as a leading substitution does, so the
+ * endpoint is never confused with a direct request to the same path.
+ */
+function joinBase(instance, url) {
+    if (ABSOLUTE_URL.test(url.uri)) return url;
+    const path = url.uri.replace(/^\/+/, "");
+    if (instance.known)
+        return {
+            uri: `${instance.base}/${path}`,
+            prefixUnknown: false,
+            dropLeading: false,
+        };
+    return { uri: `{}/${path}`, prefixUnknown: true, dropLeading: true };
+}
+
+/** The path template a URL stands for, as the core normalises it. */
+function urlTemplate(uri, prefixUnknown) {
+    const path = uri.replace(/[?#].*$/s, "");
+    const segments = path
+        .split("/")
+        .filter((segment) => segment !== "")
+        .map((segment) => (segment.includes("{}") ? "{}" : segment));
+    const kept = prefixUnknown ? segments.slice(1) : segments;
+    return `/${kept.join("/")}`;
+}
+
 function fetchMethod(call) {
     const options = call.arguments[1];
     if (!options || !ts.isObjectLiteralExpression(options)) return "GET";
+    return optionMethod(options) ?? "GET";
+}
+
+/**
+ * The method an options object names: undefined when it names none, the
+ * upper-cased text of a literal, and `ANY` for one read from a variable,
+ * since any method may be sent.
+ */
+function optionMethod(options) {
     const property = options.properties.find(
         (item) =>
-            ts.isPropertyAssignment(item) &&
+            (ts.isPropertyAssignment(item) ||
+                ts.isShorthandPropertyAssignment(item)) &&
             propertyNameText(item.name) === "method",
     );
-    return property &&
-        ts.isPropertyAssignment(property) &&
-        (ts.isStringLiteral(property.initializer) ||
-            ts.isNoSubstitutionTemplateLiteral(property.initializer))
+    if (!property) return undefined;
+    return ts.isPropertyAssignment(property) &&
+        ts.isStringLiteralLike(property.initializer)
         ? property.initializer.text.toUpperCase()
-        : "GET";
+        : "ANY";
 }
 
 function hasModifier(node, kind) {

@@ -379,7 +379,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     private function path(array $nodes, array $edges): array
     {
         $rank = self::CONFIDENCE_RANK;
-        $semantic = ['routes_to', 'dispatches', 'handles', 'listens_to', 'binds', 'observes', 'uses_middleware'];
+        $semantic = ['routes_to', 'dispatches', 'handles', 'listens_to', 'binds', 'observes', 'uses_middleware', 'calls_endpoint', 'resolves_to'];
         $hops = [];
         $minimum = 3;
         $semanticCount = 0;

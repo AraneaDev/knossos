@@ -1,6 +1,7 @@
 """The AST visitor that collects one Python file's facts."""
 
 import ast
+import re
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -19,6 +20,40 @@ from .ast_helpers import (
 )
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
 from .module_index import ProjectModuleIndex
+
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+ABSOLUTE_URL = re.compile(r"^([a-z][a-z0-9+.-]*:|//)", re.IGNORECASE)
+
+
+def keyword_value(node: ast.Call, name: str) -> ast.expr | None:
+    return next((item.value for item in node.keywords if item.arg == name), None)
+
+
+def static_method(node: ast.AST) -> str:
+    """An HTTP method written as a string literal, upper-cased; ``ANY`` when it is computed."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value.strip().upper()
+    return "ANY"
+
+
+def request_url(node: ast.AST | None) -> str | None:
+    """A URL as written, each f-string substitution as ``{}``; None for anything else or only substitutions."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        uri = "".join(
+            part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else "{}"
+            for part in node.values
+        )
+        return uri if uri.replace("{}", "") else None
+    return None
+
+
+def url_template(uri: str, prefix_unknown: bool) -> str:
+    """The path template a URL stands for, as the core normalises it."""
+    path = re.sub(r"[?#].*$", "", uri, flags=re.DOTALL)
+    segments = ["{}" if "{}" in segment else segment for segment in path.split("/") if segment]
+    return "/" + "/".join(segments[1:] if prefix_unknown else segments)
 
 
 class PythonAstFactCollector(ast.NodeVisitor):
@@ -353,6 +388,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.local_variable_types.append({})
         self.parameter_types.append(self.annotated_parameters(node))
         self.bound_names.append(bound_names(node))
+        self.fastapi.enter_scope()
+        self.flask.enter_scope()
         restore_fastapi = self.fastapi.register_parameters(node)
         # An import inside the function binds its names in the function only.
         # Restored in place: the framework enrichers hold this same mapping.
@@ -361,6 +398,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.aliases.clear()
         self.aliases.update(outer_aliases)
         self.fastapi.restore_parameters(restore_fastapi)
+        self.fastapi.leave_scope()
+        self.flask.leave_scope()
         self.parameter_types.pop()
         self.bound_names.pop()
         self.local_variable_types.pop()
@@ -719,9 +758,58 @@ class PythonAstFactCollector(ast.NodeVisitor):
         target = self.resolve_name(receiver, "function")
         return target if target is not None and target.startswith("py:function:") else None
 
+    def request_endpoint(self, node: ast.Call, name: str | None) -> None:
+        """Record the URL an HTTP client call or an App Engine task names as an endpoint."""
+        if not name or name.count(".") != 1:
+            return
+        head, member = name.split(".")
+        bound = (self.aliases.get(head) or "").split(":", 2)[-1]
+        if bound in {"requests", "httpx"}:
+            if member in HTTP_METHODS:
+                url, method = node.args[0] if node.args else keyword_value(node, "url"), member.upper()
+            elif member == "request":
+                given = node.args[0] if node.args else keyword_value(node, "method")
+                if given is None:
+                    return
+                url = node.args[1] if len(node.args) > 1 else keyword_value(node, "url")
+                method = static_method(given)
+            else:
+                return
+            uri = request_url(url)
+            if uri is not None:
+                self.add_endpoint("calls_endpoint", bound, method, uri, node)
+        elif bound == "google.appengine.api.taskqueue" and member in {"add", "Task"}:
+            uri = request_url(keyword_value(node, "url"))
+            method_node = keyword_value(node, "method")
+            method = "POST" if method_node is None else static_method(method_node)
+            if uri is not None:
+                self.add_endpoint("dispatches", "appengine", method, uri, node)
+
+    def add_endpoint(self, edge_kind: str, framework: str, method: str, uri: str, node: ast.Call) -> None:
+        unknown = uri.startswith("{}")
+        endpoint = ref("endpoint", f"{method} {uri}")
+        self.facts.add_node(
+            endpoint,
+            "endpoint",
+            f"{method} {uri}",
+            f"{method} {uri}",
+            node,
+            {
+                "framework": framework,
+                "method": method,
+                "uri": uri,
+                "template": url_template(uri, unknown),
+                "prefix": "unknown" if unknown else "known",
+                "external": bool(ABSOLUTE_URL.match(uri)),
+            },
+            "framework_convention",
+        )
+        self.facts.add_edge(edge_kind, self.current(), endpoint, node, None, "framework_convention")
+
     def visit_Call(self, node: ast.Call) -> None:
         self.called_attributes.add(id(node.func))
         name = dotted(node.func)
+        self.request_endpoint(node, name)
         target = None
         submitted = self.submitted_task(name)
         if submitted is not None:

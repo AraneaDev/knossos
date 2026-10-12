@@ -33,6 +33,16 @@ guessed fact: `SYMFONY_DYNAMIC_ROUTE_PATH`, `SYMFONY_DYNAMIC_COMMAND_NAME` or
 `SYMFONY_DYNAMIC_EVENT`. Evidence always points at the attribute, declaration,
 parameter or subscriber entry that produced the fact.
 
+## Route names
+
+A literal route name passed to `generateUrl()` or `redirectToRoute()` in a
+controller, or to `generate()` on a receiver typed as `UrlGeneratorInterface`
+or `RouterInterface`, becomes an `endpoint` node that carries the name, with a
+`calls_endpoint` edge from the enclosing method. The core joins it to the route
+with that name, and only to a Symfony route. A name built at run time gives
+nothing, and Twig templates are not read. See
+[from request to handler](../concepts/request-to-handler.md).
+
 ## Limits
 
 - YAML and XML service and route imports are not interpreted. The one exception

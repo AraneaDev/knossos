@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
@@ -146,7 +147,7 @@ final readonly class PolicyScope
         }
         $statement = $this->pdo->prepare(
             'SELECT DISTINCT f.relative_path, b.name FROM boundaries b JOIN boundary_memberships bm ON bm.boundary_id = b.id '
-            . 'JOIN nodes n ON n.id = bm.node_id JOIN files f ON f.id = n.file_id '
+            . 'JOIN nodes n ON n.id = bm.node_id JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' '
             . 'WHERE b.project_id = ? AND b.id IN (' . implode(',', array_fill(0, count($boundaries), '?')) . ') '
             . 'ORDER BY f.relative_path, b.name',
         );

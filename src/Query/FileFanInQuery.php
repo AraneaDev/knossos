@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\SharedNodeKinds;
 
 /**
  * How many other files depend on each file, over the impact edge kinds.
  *
  * Counts distinct dependent files, not edges: a file calling forty methods
  * of another is one dependent. Edges inside one file never count, so a
- * class calling its own helpers does not look like a hub. Nor do edges to an
- * `external_*` node: one stands for a symbol declared outside the project
- * (`sprintf`, a vendor class) and is filed under whichever file first named
- * it, so counting it would make that file look depended on by every caller
- * of the built-in.
+ * class calling its own helpers does not look like a hub. Nor do edges to or
+ * from a node every file declares for itself ({@see SharedNodeKinds}): an
+ * `external_*` node stands for a symbol declared outside the project
+ * (`sprintf`, a vendor class), and an `endpoint` for a URL. Each is filed
+ * under whichever file first named it, so counting it would make that file
+ * look depended on by every other caller of the same built-in or URL.
  *
  * Each row carries two boundary answers that are easy to confuse:
  * `boundaries` lists the boundaries the file's dependents sit in (where a
@@ -116,7 +118,8 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN nodes sn ON sn.id = e.source_id
              WHERE e.project_id = ? AND e.kind IN ($kinds)
                AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id
-               AND tn.kind NOT LIKE 'external\_%' ESCAPE '\'
+               AND {$this->owned('sn')}
+               AND {$this->owned('tn')}
                $pathFilter
              GROUP BY tf.id
             HAVING COUNT(DISTINCT sn.file_id) >= ?
@@ -159,8 +162,8 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN boundary_memberships bm ON bm.node_id = s2.id
               JOIN boundaries b ON b.id = bm.boundary_id
              WHERE tf.project_id = ? AND tf.relative_path IN (%s)
-               AND e2.project_id = tf.project_id AND s2.file_id <> tf.id
-               AND e2.kind IN ($kinds) AND t2.kind NOT LIKE 'external\_%' ESCAPE '\'
+               AND e2.project_id = tf.project_id AND s2.file_id <> tf.id AND {$this->owned('s2')}
+               AND e2.kind IN ($kinds) AND {$this->owned('t2')}
              GROUP BY tf.relative_path, b.name
              ORDER BY tf.relative_path, b.name
             SQL;
@@ -188,7 +191,8 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN nodes sn ON sn.id = e.source_id
               JOIN files sf ON sf.id = sn.file_id
              WHERE e.project_id = ? AND e.kind IN ($kinds) AND tf.relative_path = ? AND sf.id <> tf.id
-               AND tn.kind NOT LIKE 'external\_%' ESCAPE '\'
+               AND {$this->owned('sn')}
+               AND {$this->owned('tn')}
              ORDER BY sf.relative_path
              LIMIT ?
             SQL);
@@ -223,7 +227,7 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
                   JOIN nodes sn ON sn.id = e.source_id
                   JOIN files sf ON sf.id = sn.file_id
                  WHERE e.project_id = ? AND e.kind IN ($kinds) AND tf.project_id = ? AND tf.relative_path IN ($listed) AND sf.id <> tf.id
-                   AND tn.kind NOT LIKE 'external\_%' ESCAPE '\'
+                   AND {$this->owned('sn')} AND {$this->owned('tn')}
                  GROUP BY tf.id, sf.id
             ) WHERE nth <= ? ORDER BY target, nth
             SQL);
@@ -234,6 +238,12 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
             $top[(string) $row['target']][] = (string) $row['source'];
         }
         return $top;
+    }
+
+    /** The condition that a node's file stands for its owner; see {@see SharedNodeKinds}. */
+    private function owned(string $alias): string
+    {
+        return SharedNodeKinds::ownedByFileSql($alias . '.kind');
     }
 
     /**

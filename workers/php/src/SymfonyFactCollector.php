@@ -21,6 +21,8 @@ use PhpParser\NodeVisitorAbstract;
  */
 final class SymfonyFactCollector extends NodeVisitorAbstract
 {
+    use ResolvesDeclarationName;
+
     /** @var array<string, array<string, mixed>> */
     private array $nodes = [];
     /** @var array<string, array<string, mixed>> */
@@ -29,6 +31,12 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     private array $diagnostics = [];
     /** @var list<array{name: string, route_prefix: string, route_methods: list<string>, route_name: string, message_handler: bool}> */
     private array $classes = [];
+    /** @var list<array{id: string, generators: array<string, true>}> the methods being walked, with the variables typed as a URL generator */
+    private array $methods = [];
+    /** @var list<array<string, true>> per class, the properties typed as a URL generator */
+    private array $generatorProperties = [];
+
+    private const GENERATOR_TYPES = ['urlgeneratorinterface', 'routerinterface'];
 
     /**
      * @param string $relativePath the file being analysed, carried onto every fact as evidence
@@ -43,6 +51,8 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
             $this->enterClass($node);
         } elseif ($node instanceof Stmt\ClassMethod) {
             $this->enterMethod($node);
+        } elseif ($node instanceof Expr\MethodCall) {
+            $this->routeNameReference($node);
         }
         return null;
     }
@@ -53,6 +63,9 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     {
         if ($node instanceof Stmt\ClassLike) {
             array_pop($this->classes);
+            array_pop($this->generatorProperties);
+        } elseif ($node instanceof Stmt\ClassMethod) {
+            array_pop($this->methods);
         }
         return null;
     }
@@ -90,7 +103,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     /** Emit the class node plus the facts its attributes imply (routes, services, subscribers). */
     private function enterClass(Stmt\ClassLike $node): void
     {
-        $name = isset($node->namespacedName) ? $node->namespacedName->toString() : ($node->name?->toString() ?? '{anonymous}');
+        $name = $this->declarationName($node, $this->relativePath);
         $route = $this->attribute($node->attrGroups, 'Route');
         $prefix = $route === null ? '' : ($this->stringArgument($route, 'path', 0) ?? '');
         if ($route !== null && $prefix === '' && $this->argument($route, 'path', 0) !== null) {
@@ -103,6 +116,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
             'route_name' => $route === null ? '' : ($this->stringArgument($route, 'name') ?? ''),
             'message_handler' => $this->attribute($node->attrGroups, 'AsMessageHandler') !== null,
         ];
+        $this->generatorProperties[] = $this->generatorProperties($node);
         $classId = $this->classReference($name);
         if ($route !== null && $this->isInvokableRoute($node)) {
             $this->invokableRoutes($node, $name);
@@ -144,10 +158,17 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     private function enterMethod(Stmt\ClassMethod $node): void
     {
         $class = $this->currentClass();
+        $methodId = 'php:method:' . ($class['name'] ?? '') . '::' . $node->name->toString();
+        $generators = [];
+        foreach ($node->params as $parameter) {
+            if ($parameter->var instanceof Expr\Variable && is_string($parameter->var->name) && $this->isGeneratorType($parameter->type)) {
+                $generators[$parameter->var->name] = true;
+            }
+        }
+        $this->methods[] = ['id' => $methodId, 'generators' => $generators];
         if ($class === null) {
             return;
         }
-        $methodId = 'php:method:' . $class['name'] . '::' . $node->name->toString();
         foreach ($this->attributes($node->attrGroups, 'Route') as $route) {
             $path = $this->stringArgument($route, 'path', 0);
             if ($path === null) {
@@ -206,6 +227,81 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
                 }
             }
         }
+    }
+
+    /**
+     * Record a reference to a route by its name: `generateUrl()` and
+     * `redirectToRoute()` on the controller, and `generate()` on a URL
+     * generator or router. The core joins the endpoint to the route of that
+     * name. A name built at runtime names nothing.
+     */
+    private function routeNameReference(Expr\MethodCall $call): void
+    {
+        $method = $this->methods === [] ? null : $this->methods[array_key_last($this->methods)];
+        if ($method === null || !$call->name instanceof Identifier || $call->isFirstClassCallable()) {
+            return;
+        }
+        $first = $call->getArgs()[0]->value ?? null;
+        if (!$first instanceof Scalar\String_ || $first->value === '') {
+            return;
+        }
+        $called = strtolower($call->name->toString());
+        $receiver = $call->var;
+        $isThis = $receiver instanceof Expr\Variable && $receiver->name === 'this';
+        $matches = match (true) {
+            $isThis => $called === 'generateurl' || $called === 'redirecttoroute',
+            $called !== 'generate' => false,
+            $receiver instanceof Expr\Variable => is_string($receiver->name) && isset($method['generators'][$receiver->name]),
+            $receiver instanceof Expr\PropertyFetch => $receiver->var instanceof Expr\Variable && $receiver->var->name === 'this'
+                && $receiver->name instanceof Identifier
+                && isset($this->generatorProperties[array_key_last($this->generatorProperties)][$receiver->name->toString()]),
+            default => false,
+        };
+        if (!$matches) {
+            return;
+        }
+        $name = $first->value;
+        $id = 'php:endpoint:route symfony:' . $name;
+        $this->nodes[$id] = $this->node($id, 'endpoint', 'route symfony:' . $name, "route('{$name}')", $call, [
+            'framework' => 'symfony',
+            'route_name' => $name,
+        ]);
+        $this->edge('calls_endpoint', $method['id'], $id, $call);
+    }
+
+    /**
+     * The properties of a class typed as a URL generator: promoted
+     * constructor parameters and declared properties.
+     *
+     * @return array<string, true>
+     */
+    private function generatorProperties(Stmt\ClassLike $node): array
+    {
+        $properties = [];
+        foreach ($node->getProperties() as $property) {
+            if ($this->isGeneratorType($property->type)) {
+                foreach ($property->props as $item) {
+                    $properties[$item->name->toString()] = true;
+                }
+            }
+        }
+        foreach ($node->getMethod('__construct') === null ? [] : $node->getMethod('__construct')->params as $parameter) {
+            if ($parameter->flags !== 0 && $parameter->var instanceof Expr\Variable && is_string($parameter->var->name) && $this->isGeneratorType($parameter->type)) {
+                $properties[$parameter->var->name] = true;
+            }
+        }
+
+        return $properties;
+    }
+
+    /** Whether a declared type is Symfony's URL generator or router, nullable or not. */
+    private function isGeneratorType(?Node $type): bool
+    {
+        if ($type instanceof Node\NullableType) {
+            $type = $type->type;
+        }
+
+        return $type instanceof Name && in_array(strtolower($type->getLast()), self::GENERATOR_TYPES, true);
     }
 
     /**

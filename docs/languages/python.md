@@ -113,11 +113,32 @@ or `Blueprint` assigned to a name at module level is a `router` node,
 `py:router:<module>.<name>`, and a `mounts` edge from `include_router` or
 `register_blueprint` reaches the router node it names, in the same file or
 imported from another module. A router built inside a function belongs to each
-call of it, so it has no node, though routes declared on it keep its prefix. A
+call of it, so it has no node, and routes declared on it read an unknown prefix,
+as does an `add_url_rule` on an object whose type the scan cannot see. A
 router handed in as a parameter has no node of its own either, so its mount is
 kept only when its target resolves. One module mounting one router twice keeps
 one `mounts` edge, with the prefix of the first mount: edges are unique by kind,
 source and target.
+
+## HTTP clients and routes
+
+A call to `requests.get`, `post`, `put`, `patch`, `delete`, `head` or
+`options`, to `requests.request(method, url)` (also with `method=` and `url=`
+keywords) and to the same functions of `httpx` becomes an
+`endpoint` node and a `calls_endpoint` edge from the enclosing function, when
+the URL is a literal or an f-string and the name resolves to the imported
+module. `taskqueue.add(url=...)` and `taskqueue.Task(url=...)` from
+`google.appengine.api` give an endpoint and a `dispatches` edge, since the
+request happens later. The method is `POST` when `method=` is absent, and `ANY` when it is not a
+literal, as it is for `requests.request` with a method read from a variable.
+`requests.Session()` and `httpx.Client()` receivers are not read.
+
+To let the core join these to the routes above, a `route` node says which
+`router` it hangs under, a `mounts` edge says which router it is mounted
+`onto`, and a Django `route` node carries the `module` that holds its
+`urlpatterns`. A Django route has a known prefix only in the module
+`ROOT_URLCONF` names. [From request to handler](../concepts/request-to-handler.md)
+describes the join.
 
 ## Limits
 

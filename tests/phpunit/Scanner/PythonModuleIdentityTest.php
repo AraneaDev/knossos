@@ -369,11 +369,11 @@ final class PythonModuleIdentityTest extends KnossosTestCase
         foreach ($mounts as $edge) {
             $targets[$edge->targetReference] = $edge->attributes;
         }
-        self::assertSame(['prefix' => '/v1'], $targets['py:router:main.local'] ?? null);
-        self::assertSame(['prefix' => ''], $targets['py:router:api.users.router'] ?? null);
-        self::assertSame(['prefix' => ''], $targets['py:router:main.bp'] ?? null);
+        self::assertSame(['prefix' => '/v1', 'onto' => 'app'], $targets['py:router:main.local'] ?? null);
+        self::assertSame(['prefix' => '', 'onto' => 'app'], $targets['py:router:api.users.router'] ?? null);
+        self::assertSame(['prefix' => '', 'onto' => 'app'], $targets['py:router:main.bp'] ?? null);
         // A router handed in as a parameter was built elsewhere: the mount is a guess the graph keeps only if it resolves.
-        self::assertSame(['prefix' => '', 'speculative' => true], $targets['py:router:main.extra'] ?? null);
+        self::assertSame(['prefix' => '', 'onto' => 'app', 'speculative' => true], $targets['py:router:main.extra'] ?? null);
         self::assertNotContains('py:router:main.users_router', array_keys($targets));
         self::assertNotContains('py:router:main.users.router', array_keys($targets));
 

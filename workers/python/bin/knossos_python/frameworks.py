@@ -86,6 +86,11 @@ class RouterMounts:
         self.framework_objects: dict[str, tuple[str, str]] = {}
         # The variables this file assigned a router to, each a node it emits.
         self.routers: set[str] = set()
+        # The variables bound to an application object (``FastAPI()``, ``Flask()``) rather than a router.
+        self.apps: set[str] = set()
+        # Names a function binds to a router of its own, which hide a module-level router of the same name.
+        self.shadowed: set[str] = set()
+        self.shadow_scopes: list[tuple[set[str], dict[str, tuple[str, str]], set[str]]] = []
 
     def emit_router(self, variable: str, value: ast.Call, framework: str, prefix: str) -> None:
         """Declare the router node a module-level ``variable = APIRouter(...)`` or ``Blueprint(...)`` builds."""
@@ -101,6 +106,52 @@ class RouterMounts:
         self.facts.add_edge("contains", self.module_id, router_id, value)
         self.routers.add(variable)
 
+    def router_reference(self, variable: str | None) -> str | None:
+        """The ``py:router:`` reference a router variable stands for, None for anything else."""
+        if variable is None or variable in self.apps or variable in self.shadowed:
+            return None
+        if variable in self.routers:
+            return ref("router", f"{self.module}.{variable}")
+        resolved = self.resolve_name(variable, "router") or ""
+        return resolved if resolved.startswith("py:router:") else None
+
+    def bind(self, variable: str, is_app: bool, module_level: bool) -> None:
+        """Record what a name is bound to: an app, or a router that is not one."""
+        if is_app:
+            self.apps.add(variable)
+        else:
+            # An app variable bound again to a router is a router from here on.
+            self.apps.discard(variable)
+        if not module_level:
+            self.shadowed.add(variable)
+
+    def enter_scope(self) -> None:
+        """Start a function body, in which a router it builds hides a module-level one of the same name."""
+        self.shadow_scopes.append((set(self.shadowed), dict(self.framework_objects), set(self.apps)))
+
+    def leave_scope(self) -> None:
+        """End a function body: what it bound to an app or router goes out of scope with it."""
+        self.shadowed, self.framework_objects, self.apps = self.shadow_scopes.pop()
+
+    def owner_attributes(self, decorator: ast.AST) -> dict[str, Any]:
+        """Where a route hangs: the ``router`` its decorator is called on, or an unknown prefix.
+
+        A route on an app is declared as written. One on a router object no
+        module-level node names (built inside a function, or handed in as a
+        parameter) gets its prefix from a mount the scan cannot see, so its
+        prefix is unknown.
+        """
+        func = decorator.func if isinstance(decorator, ast.Call) else None
+        owner = dotted(func.value) if isinstance(func, ast.Attribute) else None
+        router = self.router_reference(owner)
+        if router is not None:
+            return {"router": router}
+        if owner not in self.apps:
+            # Neither the app nor a module-level router: a router built in a
+            # function, handed in as a parameter, or an owner of unknown type.
+            return {"prefix": "unknown"}
+        return {}
+
     def mount(self, node: ast.Call, prefix_keyword: str) -> None:
         """Emit the ``mounts`` edge of ``include_router(router)`` or ``register_blueprint(bp)``.
 
@@ -113,6 +164,11 @@ class RouterMounts:
         if router is None:
             return
         attributes: dict[str, Any] = {"prefix": keyword_string(node, prefix_keyword) or ""}
+        receiver = dotted(node.func.value) if isinstance(node.func, ast.Attribute) else None
+        if receiver in self.apps:
+            attributes["onto"] = "app"
+        elif (onto := self.router_reference(receiver)) is not None:
+            attributes["onto"] = onto
         target = ref("router", f"{self.module}.{router}")
         if router not in self.routers:
             resolved = self.resolve_name(router, "router") or ""
@@ -143,6 +199,7 @@ class FastApiFactEnricher(RouterMounts):
         if resolved.endswith(("fastapi.FastAPI", "fastapi.APIRouter")):
             prefix = keyword_string(value, "prefix") or ""
             self.framework_objects[variable] = ("fastapi", prefix)
+            self.bind(variable, resolved.endswith("fastapi.FastAPI"), module_level)
         # A router built inside a function is that call's own, one per call:
         # no module-level node names it, though its routes keep its prefix.
         if module_level and resolved.endswith("fastapi.APIRouter"):
@@ -181,12 +238,14 @@ class FastApiFactEnricher(RouterMounts):
             # No prefix: a router built elsewhere carries its own, and this
             # function cannot see it.
             self.framework_objects[argument.arg] = ("fastapi", "")
+            self.bind(argument.arg, resolved.endswith("fastapi.FastAPI"), False)
         return restore
 
     def restore_parameters(self, restore: list[tuple[str, tuple[str, str] | None]]) -> None:
         for variable, previous in reversed(restore):
             if previous is None:
                 self.framework_objects.pop(variable, None)
+                self.apps.discard(variable)
             else:
                 self.framework_objects[variable] = previous
 
@@ -225,7 +284,7 @@ class FastApiFactEnricher(RouterMounts):
                 route_canonical,
                 f"{method} {path}",
                 decorator,
-                {"framework": "fastapi", "methods": [method], "path": path},
+                {"framework": "fastapi", "methods": [method], "path": path, **self.owner_attributes(decorator)},
             )
             self.facts.add_edge("routes_to", route_id, local_id, decorator)
         self.decorator_dependencies(node, local_id)
@@ -325,7 +384,14 @@ class DjangoFactEnricher:
             canonical,
             f"ANY /{path.lstrip('/')}",
             expression,
-            {"framework": "django", "path": path, "name": keyword_string(expression, "name")},
+            {
+                "framework": "django",
+                "path": path,
+                "name": keyword_string(expression, "name"),
+                "module": self.module,
+                # A pattern, not a path: its text read as segments would invent a route.
+                **({"regex": True} if resolved.endswith("django.urls.re_path") else {}),
+            },
         )
         if target:
             self.facts.add_edge("routes_to", route_id, target, expression)
@@ -358,6 +424,7 @@ class FlaskFactEnricher(RouterMounts):
         if resolved.endswith(("flask.Flask", "flask.Blueprint")):
             prefix = keyword_string(value, "url_prefix") or ""
             self.framework_objects[variable] = ("flask", prefix)
+            self.bind(variable, resolved.endswith("flask.Flask"), module_level)
         if module_level and resolved.endswith("flask.Blueprint"):
             self.emit_router(variable, value, "flask", keyword_string(value, "url_prefix") or "")
 
@@ -415,7 +482,7 @@ class FlaskFactEnricher(RouterMounts):
                 route_canonical,
                 f"{method} {path}",
                 decorator,
-                {"framework": "flask", "methods": [method], "path": path},
+                {"framework": "flask", "methods": [method], "path": path, **self.owner_attributes(decorator)},
             )
             self.facts.add_edge("routes_to", route_id, local_id, decorator)
 
@@ -457,6 +524,6 @@ class FlaskFactEnricher(RouterMounts):
                     canonical,
                     f"{method.upper()} {path}",
                     node,
-                    {"framework": "flask", "methods": [method.upper()], "path": path},
+                    {"framework": "flask", "methods": [method.upper()], "path": path, **self.owner_attributes(node)},
                 )
                 self.facts.add_edge("routes_to", route_id, target, node)

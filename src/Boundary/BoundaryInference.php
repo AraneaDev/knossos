@@ -241,7 +241,14 @@ final class BoundaryInference
             // importer's boundary — and every other boundary importing fs would then
             // read as depending on it. Namespace prefixes still apply: an external
             // class genuinely is in the namespace its name declares.
+            //
+            // An endpoint is the same: any file calling one URL names the one node,
+            // so the first caller's path would put it in that caller's boundary and
+            // make every other boundary calling the URL depend on it. Decided by
+            // kind and not by the shared-node list: a Python or Rust package is
+            // owned by its file and keeps its membership.
             return ($node->attributes['external'] ?? false) !== true
+                && $node->kind !== 'endpoint'
                 && str_starts_with($node->evidence->relativePath, $matcher['value']);
         }
 

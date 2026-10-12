@@ -18,7 +18,7 @@ final readonly class PreparedGraph
      * @param array<string, array<string, mixed>> $edges edge id to edge record
      * @param list<array<string, mixed>> $classifications
      * @param list<array<string, mixed>> $boundaries
-     * @param list<array<string, string>> $warnings the reconciler's own diagnostics
+     * @param list<array<string, string|int>> $warnings the reconciler's own diagnostics
      */
     public function __construct(
         public FullScanRequest $request,

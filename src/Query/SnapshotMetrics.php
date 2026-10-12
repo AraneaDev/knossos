@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Store\SharedNodeKinds;
+
 /**
  * The figures a snapshot's graph yields for the quality gate, the branch
  * comparison and the trends: reportable components, degree, cycles,
@@ -380,7 +382,7 @@ final readonly class SnapshotMetrics extends AbstractArchitectureQueryService
         foreach ($facts['nodes'] ?? [] as $node) {
             $nodes[(string) $node['id']] = [
                 'name' => (string) $node['display_name'], 'canonical_name' => (string) $node['canonical_name'], 'kind' => (string) $node['kind'],
-                'path' => $paths[(string) ($node['file_id'] ?? '')] ?? null, 'line' => isset($node['start_line']) ? (int) $node['start_line'] : null,
+                'path' => SharedNodeKinds::isSharedByDesign((string) $node['kind']) ? null : ($paths[(string) ($node['file_id'] ?? '')] ?? null), 'line' => isset($node['start_line']) ? (int) $node['start_line'] : null,
             ];
         }
         return $nodes;

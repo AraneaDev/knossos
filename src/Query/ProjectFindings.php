@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
+use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
@@ -151,7 +152,7 @@ final readonly class ProjectFindings
             'SELECT tf.relative_path, tf.language, tf.line_count, COUNT(DISTINCT sn.file_id) AS dependents FROM edges e '
             . 'JOIN nodes tn ON tn.id = e.target_id JOIN files tf ON tf.id = tn.file_id JOIN nodes sn ON sn.id = e.source_id '
             . "WHERE e.project_id = ? AND e.kind IN ({$kinds}) AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id "
-            . "AND tn.kind NOT LIKE 'external\\_%' ESCAPE '\\' AND tf.line_count > 0 "
+            . 'AND ' . SharedNodeKinds::ownedByFileSql('tn.kind') . ' AND ' . SharedNodeKinds::ownedByFileSql('sn.kind') . ' AND tf.line_count > 0 '
             . 'GROUP BY tf.id ORDER BY tf.line_count * COUNT(DISTINCT sn.file_id) DESC, tf.relative_path LIMIT ?',
         );
         $position = 1;

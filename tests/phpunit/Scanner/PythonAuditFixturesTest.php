@@ -168,9 +168,9 @@ final class PythonAuditFixturesTest extends KnossosTestCase
         $pairs = array_map(static fn(array $e): string => $e['source'] . ' -> ' . $e['target'] . ' [' . $e['target_kind'] . '] ' . $e['attributes_json'], $mounts);
         sort($pairs);
         self::assertSame([
-            'alt -> api.users.router [router] {"prefix":""}',
-            'main -> api.users.router [router] {"prefix":"/v1"}',
-            'web -> web.bp [router] {"prefix":""}',
+            'alt -> api.users.router [router] {"prefix":"","onto":"app"}',
+            'main -> api.users.router [router] {"prefix":"/v1","onto":"app"}',
+            'web -> web.bp [router] {"prefix":"","onto":"app"}',
         ], $pairs);
         self::assertNotContains('alt.users', $names);
     }
