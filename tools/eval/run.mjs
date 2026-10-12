@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { stopWatchers } from "../capture/session.mjs";
 import { ANSWER_INSTRUCTION } from "./answer.mjs";
-import { ablationArm, armArgv, parseArm } from "./arms.mjs";
+import { ablationArm, armArgv, BASE_ARMS, parseArm } from "./arms.mjs";
 import { corpusHash, loadCorpus } from "./corpus.mjs";
 import {
     ensureClone,
@@ -62,6 +62,8 @@ export function settings(env = process.env) {
         claudeBin: env.KNOSSOS_EVAL_CLAUDE ?? "claude",
         // Where the real credentials are copied from; tests point it at an empty dir.
         realHome: env.KNOSSOS_EVAL_REAL_HOME ?? os.homedir(),
+        // The Knossos checkout whose commit a run records; tests point it at a throwaway repository.
+        sourceRoot: env.KNOSSOS_EVAL_SOURCE_ROOT ?? REPO_ROOT,
         env,
     };
 }
@@ -69,6 +71,77 @@ export function settings(env = process.env) {
 const readJson = async (file) => JSON.parse(await readFile(file, "utf8"));
 const writeJson = (file, value) =>
     writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
+
+// Run output and hand-edited answer keys: neither changes the code under test.
+const NOT_DIRTY = [".superpowers/", "tools/eval/corpus/"];
+
+/** The paths `git status --porcelain` lists that make a checkout dirty, rename targets included. */
+export function dirtyPaths(porcelain) {
+    return porcelain
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .map((line) => line.slice(3).split(" -> ").at(-1).replace(/^"|"$/g, ""))
+        .filter((p) => !NOT_DIRTY.some((prefix) => p.startsWith(prefix)));
+}
+
+/** The `version` in the materialised plugin's manifest, or null. */
+export async function pluginVersion(pluginDir) {
+    try {
+        const { version } = await readJson(
+            path.join(pluginDir, ".claude-plugin", "plugin.json"),
+        );
+        return typeof version === "string" ? version : null;
+    } catch {
+        return null;
+    }
+}
+
+/** What a run measures: the Knossos commit, whether it had local changes, and the plugin version. */
+export async function provenance(s) {
+    const git = async (...args) =>
+        (await exec("git", ["-C", s.sourceRoot, ...args])).stdout;
+    let knossosCommit = null;
+    let knossosDirty = null;
+    try {
+        knossosCommit = (await git("rev-parse", "HEAD")).trim();
+        knossosDirty =
+            dirtyPaths(await git("status", "--porcelain")).length > 0;
+    } catch {
+        // Not a git checkout: the commit is unknown, and recorded as such.
+    }
+    return {
+        knossosCommit,
+        knossosDirty,
+        pluginVersion: await pluginVersion(s.pluginDir),
+    };
+}
+
+/**
+ * Throws when this checkout or its plugin differs from what the run started
+ * with, since rows from two builds must not be pooled. A run started before
+ * provenance was recorded only gets a warning.
+ */
+export function checkProvenance(meta, current) {
+    if (!("knossosCommit" in meta)) {
+        console.warn(
+            `warning: run ${meta.runId} recorded no provenance, so a change of Knossos commit or plugin version cannot be detected`,
+        );
+        return;
+    }
+    const changed = [];
+    if (meta.knossosCommit !== current.knossosCommit)
+        changed.push(
+            `knossos commit ${meta.knossosCommit} -> ${current.knossosCommit}`,
+        );
+    if (meta.pluginVersion !== current.pluginVersion)
+        changed.push(
+            `plugin version ${meta.pluginVersion} -> ${current.pluginVersion}`,
+        );
+    if (changed.length > 0)
+        throw new Error(
+            `run ${meta.runId} started on a different build (${changed.join("; ")}); start a new run, or pass --force-provenance to pool the sessions anyway`,
+        );
+}
 
 /** A positive finite number from a flag, or a clear error naming the flag. */
 export function positive(
@@ -191,6 +264,7 @@ async function start(args, s) {
         seed,
         budgetUsd,
         timeoutMs: timeoutSeconds * 1000,
+        ...(await provenance(s)),
     };
     const dir = path.join(s.runsDir, runId);
     await mkdir(path.join(dir, "transcripts"), { recursive: true });
@@ -227,7 +301,7 @@ async function prepare(args, s) {
         allowPositionals: true,
         options: { "no-scan": { type: "boolean", default: false } },
     });
-    const { corpus } = await openRun(positionals[0], s);
+    const { corpus, dir } = await openRun(positionals[0], s);
     const paths = evalPaths(s.evalRoot);
     // Guard first: nothing is written before the isolation is proven.
     const env = await evalEnv(paths, { base: s.env });
@@ -237,6 +311,7 @@ async function prepare(args, s) {
         workspaces.push(await ensureClone(name, corpus.repos[name], paths));
     await seedConfig(paths, workspaces, { realHome: s.realHome });
     await writeMcpConfig(paths, REPO_ROOT);
+    await warnPluginVersion(s);
     if (values["no-scan"]) return 0;
     const plugin = path.join(s.pluginDir, ".claude-plugin", "plugin.json");
     await access(plugin).catch((error) => {
@@ -245,8 +320,10 @@ async function prepare(args, s) {
             { cause: error },
         );
     });
+    const scanMs = {};
     for (const [i, name] of names.entries()) {
         console.log(`scanning ${name}`);
+        const started = Date.now();
         const { stdout } = await exec(
             "php",
             [
@@ -259,8 +336,25 @@ async function prepare(args, s) {
             { env, maxBuffer: 1 << 26 },
         );
         checkScan(name, JSON.parse(stdout));
+        scanMs[name] = Date.now() - started;
     }
+    await writeJson(path.join(dir, "prepare.json"), scanMs);
     return 0;
+}
+
+/** Warns when the materialised plugin is not the version of this checkout: the full arm runs the installed one. */
+async function warnPluginVersion(s) {
+    const installed = await pluginVersion(s.pluginDir);
+    const checkout = await readFile(
+        path.join(s.sourceRoot, "version.txt"),
+        "utf8",
+    )
+        .then((text) => text.trim())
+        .catch(() => null);
+    if (installed !== null && checkout !== null && installed !== checkout)
+        console.warn(
+            `warning: the plugin in ${s.pluginDir} is version ${installed}, but this checkout is ${checkout}; the full arm runs the installed plugin, so run tools/install first to measure this checkout`,
+        );
 }
 
 async function executeEntry(entry, ctx) {
@@ -305,6 +399,7 @@ async function executeEntry(entry, ctx) {
         ).length,
         transcript,
         model: run.meta.model,
+        knossosCommit: ctx.knossosCommit,
     });
 }
 
@@ -377,6 +472,7 @@ async function continueRun(args, s) {
             batch: { type: "string", default: "4" },
             concurrency: { type: "string", default: "2" },
             "max-utilization": { type: "string", default: "0.85" },
+            "force-provenance": { type: "boolean", default: false },
         },
     });
     const batch = positive("batch", values.batch, { integer: true });
@@ -397,6 +493,8 @@ async function continueRun(args, s) {
         );
         return 0;
     }
+    const current = await provenance(s);
+    if (!values["force-provenance"]) checkProvenance(run.meta, current);
     const paths = evalPaths(s.evalRoot);
     const env = await evalEnv(paths, { base: s.env });
     await assertPrepared(queue, paths, s);
@@ -425,6 +523,7 @@ async function continueRun(args, s) {
             env,
             rows,
             maxUtilization,
+            knossosCommit: current.knossosCommit,
             onSpawn: (pid) => {
                 if (pid !== undefined) live.add(pid);
             },
@@ -474,6 +573,14 @@ async function ablate(args, s) {
     const threshold = positive("threshold", values.threshold);
     const run = await openRun(positionals[0], s);
     const rows = await readLedger(run.ledger);
+    // Ablation picks its tools from the full arm, and compares against it: both must be finished.
+    const waiting = pending(run.plan, rows).filter((e) =>
+        BASE_ARMS.includes(e.arm),
+    ).length;
+    if (waiting > 0)
+        throw new Error(
+            `${waiting} baseline, tools or full sessions are still pending; finish them with continue before ablate`,
+        );
     const have = new Set(run.plan.map(sessionKey));
     const added = [];
     for (const { tool, taskIds } of selectAblations(rows, run.corpus.tasks, {

@@ -15,7 +15,15 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { readLedger } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
-import { acquireLock, checkScan, drain, main, signalHandler } from "./run.mjs";
+import {
+    acquireLock,
+    checkProvenance,
+    checkScan,
+    dirtyPaths,
+    drain,
+    main,
+    signalHandler,
+} from "./run.mjs";
 
 vi.mock("../capture/session.mjs", async (importOriginal) => {
     const actual = await importOriginal();
@@ -119,8 +127,10 @@ async function fixture({ second = false } = {}) {
         KNOSSOS_EVAL_CLAUDE: FAKE,
         KNOSSOS_EVAL_REAL_HOME: await tmp("eval-nohome-"),
         KNOSSOS_EVAL_PLUGIN_DIR: pluginDir,
+        // The demo origin stands in for the Knossos checkout, so provenance never reads this repository.
+        KNOSSOS_EVAL_SOURCE_ROOT: origin,
     };
-    return { corpus, env };
+    return { corpus, env, origin, pluginDir };
 }
 
 async function started(extra = [], options = {}) {
@@ -144,7 +154,14 @@ async function started(extra = [], options = {}) {
     const runId = log.mock.calls.at(-1)[0];
     expect(await main(["prepare", runId, "--no-scan"], env)).toBe(0);
     log.mockRestore();
-    return { corpus, env, runId, dir: path.join(env.KNOSSOS_EVAL_RUNS, runId) };
+    return {
+        corpus,
+        env,
+        runId,
+        dir: path.join(env.KNOSSOS_EVAL_RUNS, runId),
+        origin: env.KNOSSOS_EVAL_SOURCE_ROOT,
+        pluginDir: env.KNOSSOS_EVAL_PLUGIN_DIR,
+    };
 }
 
 describe("run CLI", () => {
@@ -478,5 +495,149 @@ describe("checkScan", () => {
                 data: { nodes: 1 },
             }),
         ).not.toThrow();
+    });
+});
+
+const commitAll = async (dir, message) => {
+    const id = ["-c", "user.name=t", "-c", "user.email=t@t"];
+    await git("git", ["-C", dir, ...id, "add", "."]);
+    await git("git", ["-C", dir, ...id, "commit", "-qm", message]);
+};
+const setPluginVersion = (pluginDir, version) =>
+    writeFile(
+        path.join(pluginDir, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ version }),
+    );
+const readMeta = async (dir) =>
+    JSON.parse(await readFile(path.join(dir, "meta.json"), "utf8"));
+
+describe("provenance", () => {
+    it("records the commit, the dirty flag and the plugin version at start", async () => {
+        const { corpus, env, origin, pluginDir } = await fixture();
+        await setPluginVersion(pluginDir, "1.2.3");
+        await writeFile(path.join(origin, "local.txt"), "change\n");
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await main(["start", "--corpus", corpus, "--repeats", "1"], env);
+        const runId = log.mock.calls.at(-1)[0];
+        log.mockRestore();
+        const head = (
+            await git("git", ["-C", origin, "rev-parse", "HEAD"])
+        ).stdout.trim();
+        expect(
+            await readMeta(path.join(env.KNOSSOS_EVAL_RUNS, runId)),
+        ).toMatchObject({
+            knossosCommit: head,
+            knossosDirty: true,
+            pluginVersion: "1.2.3",
+        });
+    });
+    it("records unknown provenance outside a git checkout", async () => {
+        const { corpus, env } = await fixture();
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        const bare = {
+            ...env,
+            KNOSSOS_EVAL_SOURCE_ROOT: await tmp("eval-nogit-"),
+        };
+        await main(["start", "--corpus", corpus, "--repeats", "1"], bare);
+        const runId = log.mock.calls.at(-1)[0];
+        log.mockRestore();
+        expect(
+            await readMeta(path.join(env.KNOSSOS_EVAL_RUNS, runId)),
+        ).toMatchObject({
+            knossosCommit: null,
+            knossosDirty: null,
+            pluginVersion: null,
+        });
+    });
+    it("records the commit on every row", async () => {
+        const { env, runId, dir, origin } = await started([
+            "--arms",
+            "baseline",
+        ]);
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await main(["continue", runId, "--batch", "1"], env);
+        log.mockRestore();
+        const head = (
+            await git("git", ["-C", origin, "rev-parse", "HEAD"])
+        ).stdout.trim();
+        const [row] = await readLedger(path.join(dir, "ledger.jsonl"));
+        expect(row.knossosCommit).toBe(head);
+    });
+    it("refuses to continue on another commit or plugin version unless forced", async () => {
+        const { env, runId, origin, pluginDir } = await started([
+            "--arms",
+            "baseline",
+        ]);
+        await writeFile(path.join(origin, "b.php"), "<?php\n");
+        await commitAll(origin, "two");
+        await expect(main(["continue", runId], env)).rejects.toThrow(
+            /different build \(knossos commit \w+ -> \w+\).*--force-provenance/,
+        );
+        await setPluginVersion(pluginDir, "9.9.9");
+        await expect(main(["continue", runId], env)).rejects.toThrow(
+            /plugin version null -> 9\.9\.9/,
+        );
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        const code = await main(
+            ["continue", runId, "--batch", "1", "--force-provenance"],
+            env,
+        );
+        log.mockRestore();
+        expect(code).toBe(0);
+    });
+    it("warns from prepare when the plugin is not this checkout's version", async () => {
+        const { env, runId, origin, pluginDir } = await started();
+        await writeFile(path.join(origin, "version.txt"), "0.27.1\n");
+        await setPluginVersion(pluginDir, "0.27.0");
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        expect(await main(["prepare", runId, "--no-scan"], env)).toBe(0);
+        const said = warn.mock.calls.map((c) => c[0]).join("\n");
+        warn.mockRestore();
+        expect(said).toMatch(/version 0\.27\.0, but this checkout is 0\.27\.1/);
+    });
+});
+
+describe("checkProvenance", () => {
+    const meta = { runId: "r", knossosCommit: "a", pluginVersion: "1" };
+    it("passes the same build and only warns for a run without provenance", () => {
+        expect(() =>
+            checkProvenance(meta, { knossosCommit: "a", pluginVersion: "1" }),
+        ).not.toThrow();
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        checkProvenance(
+            { runId: "old" },
+            { knossosCommit: "a", pluginVersion: "1" },
+        );
+        expect(warn.mock.calls[0][0]).toMatch(/run old recorded no provenance/);
+        warn.mockRestore();
+    });
+});
+
+describe("dirtyPaths", () => {
+    it("ignores run output and the answer keys, and reads rename targets", () => {
+        expect(
+            dirtyPaths(
+                [
+                    "?? .superpowers/",
+                    " M tools/eval/corpus/tasks/demo/a.json",
+                    " M src/Core.php",
+                    "R  old.php -> tools/eval/corpus/x.json",
+                    'R  a.php -> "b c.php"',
+                    "",
+                ].join("\n"),
+            ),
+        ).toEqual(["src/Core.php", "b c.php"]);
+    });
+});
+
+describe("ablate", () => {
+    it("refuses while a base-arm session is still pending", async () => {
+        const { env, runId } = await started();
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await main(["continue", runId, "--batch", "5"], env);
+        log.mockRestore();
+        await expect(main(["ablate", runId], env)).rejects.toThrow(
+            /1 baseline, tools or full sessions are still pending/,
+        );
     });
 });
