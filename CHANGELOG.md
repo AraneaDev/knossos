@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/AraneaDev/knossos/compare/v0.25.0...v0.26.0) (2026-10-12)
+
+
+### Features
+
+* follow a request from its caller through the route it resolves to ([#242](https://github.com/AraneaDev/knossos/issues/242)) ([78001dd](https://github.com/AraneaDev/knossos/commit/78001dde4090837bd50740f828be49af68f8e9ba))
+
 ## [0.25.0](https://github.com/AraneaDev/knossos/compare/v0.24.1...v0.25.0) (2026-10-11)
 
 
