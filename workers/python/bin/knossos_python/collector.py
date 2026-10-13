@@ -22,6 +22,9 @@ from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnrich
 from .module_index import ProjectModuleIndex
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+# The Celery task methods that queue the task, and those that build a signature of it.
+CELERY_SUBMISSIONS = {"delay", "apply_async"}
+CELERY_SIGNATURES = {"s", "si", "signature"}
 ABSOLUTE_URL = re.compile(r"^([a-z][a-z0-9+.-]*:|//)", re.IGNORECASE)
 
 
@@ -103,6 +106,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # reassignment to anything untracked drops the entry rather than
         # letting a stale type attribute a call to the wrong class.
         self.attribute_types: dict[str, dict[str, str]] = {}
+        # The serializer class a Django REST framework view declares, by view.
+        self.serializer_classes: dict[str, str] = {}
         self.local_variable_types: list[dict[str, str]] = []
         self.parameter_types: list[dict[str, str]] = []
         # The names each function being walked binds itself (parameters and
@@ -344,9 +349,67 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.class_methods[canonical] = frozenset(
             item.name for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
         )
+        serializer = self.declared_serializer(node)
+        if serializer is not None:
+            self.serializer_classes[canonical] = serializer
         self.containers.append((local_id, canonical, "class"))
         self.generic_visit(node)
         self.containers.pop()
+
+    def declared_serializer(self, node: ast.ClassDef) -> str | None:
+        """The project class a view's ``serializer_class = X`` names, wherever in the body it stands."""
+        for item in node.body:
+            if (
+                isinstance(item, ast.Assign)
+                and len(item.targets) == 1
+                and isinstance(item.targets[0], ast.Name)
+                and item.targets[0].id == "serializer_class"
+            ):
+                name = dotted(item.value)
+                resolved = self.resolve_name(name, "class") if name else None
+                if resolved and resolved.startswith("py:class:"):
+                    return resolved.removeprefix("py:class:")
+        return None
+
+    def validated_field(self, node: ast.AST) -> None:
+        """A field read off a serializer's ``validated_data``: what its ``validate_<field>`` returned.
+
+        Django REST framework stores the return of ``validate_<field>`` as the
+        field's validated value, so ``serializer.validated_data["method"]``
+        hands the view whatever ``validate_method`` chose, a function to call
+        among them. The view depends on that method as it would on a call.
+        Only a serializer whose class is known counts, and the edge is kept
+        only when the class declares the method.
+        """
+        receiver: ast.AST | None = None
+        field: ast.AST | None = None
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            receiver, field = node.func.value, node.args[0] if node.args else None
+        elif isinstance(node, ast.Subscript):
+            receiver, field = node.value, node.slice
+        if not (
+            isinstance(receiver, ast.Attribute)
+            and receiver.attr == "validated_data"
+            and isinstance(field, ast.Constant)
+            and isinstance(field.value, str)
+            and field.value.isidentifier()
+        ):
+            return
+        serializer = dotted(receiver.value)
+        member = self.receiver_member(serializer, f"validate_{field.value}") if serializer else None
+        if member is not None:
+            self.facts.add_edge(
+                "references",
+                self.current(),
+                member,
+                node,
+                {"speculative": True, "drf": "validated_field"},
+                confidence="probable",
+            )
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        self.validated_field(node)
+        self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.function(node, async_function=False)
@@ -615,6 +678,11 @@ class PythonAstFactCollector(ast.NodeVisitor):
     def held_class(self, value: ast.AST | None, annotation: ast.AST | None = None) -> str | None:
         """The class reference an assigned value or annotation names, if any."""
 
+        if isinstance(value, ast.Call) and dotted(value.func) == "self.get_serializer":
+            # A REST framework view builds the serializer its class declares.
+            view = next((item for item in reversed(self.containers) if item[2] == "class"), None)
+            if view is not None and view[1] in self.serializer_classes:
+                return self.serializer_classes[view[1]]
         if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
             # `injected or Default()`: the attribute holds one class when every
             # side that can be truthy names the same one.
@@ -744,19 +812,25 @@ class PythonAstFactCollector(ast.NodeVisitor):
                     self.facts.add_edge("references", self.current(), named, node)
         self.generic_visit(node)
 
-    def submitted_task(self, name: str | None) -> str | None:
-        """The function a Celery submission queues: ``<task>.delay(...)`` or ``<task>.apply_async(...)``.
+    def submitted_task(self, name: str | None) -> tuple[str, bool] | None:
+        """The function a Celery submission queues, and whether it is only a signature.
 
-        Only a receiver that resolves to a function of the project counts. A
-        signature (``<task>.s(...)``) queues nothing until something applies it.
+        ``<task>.delay(...)`` and ``<task>.apply_async(...)`` queue the task.
+        A signature, ``<task>.s(...)``, ``.si(...)`` or ``.signature(...)``,
+        queues it once something applies it: a chain, a chord, a group, or
+        the caller it is returned to. Nearly every signature is built to be
+        applied, so it counts too, as a probable dispatch. Only a receiver
+        that resolves to a function of the project counts.
         """
         if not name or "." not in name:
             return None
         receiver, method = name.rsplit(".", 1)
-        if method not in {"delay", "apply_async"}:
+        if method not in CELERY_SUBMISSIONS and method not in CELERY_SIGNATURES:
             return None
         target = self.resolve_name(receiver, "function")
-        return target if target is not None and target.startswith("py:function:") else None
+        if target is None or not target.startswith("py:function:"):
+            return None
+        return target, method in CELERY_SIGNATURES
 
     def request_endpoint(self, node: ast.Call, name: str | None) -> None:
         """Record the URL an HTTP client call or an App Engine task names as an endpoint."""
@@ -806,17 +880,30 @@ class PythonAstFactCollector(ast.NodeVisitor):
         )
         self.facts.add_edge(edge_kind, self.current(), endpoint, node, None, "framework_convention")
 
+    def record_submission(self, node: ast.Call, name: str | None) -> bool:
+        """Record a Celery submission or signature as a dispatch; whether the call was one.
+
+        `deliver.delay(order_id)` queues `deliver` to run later: a dispatch,
+        not a call, and `delay` is no function of the project.
+        """
+        submitted = self.submitted_task(name)
+        if submitted is None:
+            return False
+        task, signature = submitted
+        if signature:
+            attributes = {"celery": "signature"}
+            self.facts.add_edge("dispatches", self.current(), task, node, attributes, confidence="probable")
+        else:
+            self.facts.add_edge("dispatches", self.current(), task, node)
+        return True
+
     def visit_Call(self, node: ast.Call) -> None:
         self.called_attributes.add(id(node.func))
         name = dotted(node.func)
+        self.validated_field(node)
         self.request_endpoint(node, name)
         target = None
-        submitted = self.submitted_task(name)
-        if submitted is not None:
-            # `deliver.delay(order_id)` queues `deliver` to run later: a
-            # dispatch, not a call, and `delay` is no function of the project.
-            self.facts.add_edge("dispatches", self.current(), submitted, node)
-        elif name:
+        if not self.record_submission(node, name) and name:
             member = name.rsplit(".", 1)
             if len(member) == 2:
                 target = self.receiver_member(member[0], member[1])

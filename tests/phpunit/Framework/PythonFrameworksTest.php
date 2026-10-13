@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Framework;
 
+use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
@@ -18,7 +19,9 @@ final class PythonFrameworksTest extends KnossosTestCase
     /**
      * `task.delay()` and `task.apply_async()` schedule the task rather than run
      * it: a `dispatches` edge, which flow follows, where a call to the task
-     * itself stays `calls`. A signature (`task.s()`) schedules nothing.
+     * itself stays `calls`. A signature (`task.s()`, `.si()`, `.signature()`)
+     * schedules it once a chain, a chord or its caller applies it: a probable
+     * dispatch, made certain by a submission of the same task beside it.
      */
     #[Group('python-frameworks')]
     public function testCelerySubmissionsDispatchTheTaskTheyQueue(): void
@@ -38,11 +41,53 @@ final class PythonFrameworksTest extends KnossosTestCase
         assertArrayContains(['calls', 'py:function:app.submissions.place', 'py:function:app.submissions.deliver'], $tuples);
         assertArrayContains(['dispatches', 'py:function:app.submissions.place', 'py:function:app.submissions.deliver'], $tuples);
         assertArrayContains(['dispatches', 'py:function:app.submissions.nightly', 'py:function:app.billing.reconcile_orders'], $tuples);
-        $fromPrepare = array_values(array_filter($tuples, fn(array $tuple): bool => $tuple[1] === 'py:function:app.submissions.prepare'));
-        assertSame([], array_values(array_filter($fromPrepare, fn(array $tuple): bool => $tuple[0] === 'dispatches')));
+        $dispatch = function (string $source, string $target) use ($edges): EdgeFact {
+            $found = array_values(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'dispatches' && $edge->sourceReference === $source && $edge->targetReference === $target));
+            assertSame(1, count($found), "{$source} -> {$target}");
+            return $found[0];
+        };
+        assertSame('certain', $dispatch('py:function:app.submissions.place', 'py:function:app.submissions.deliver')->confidence->value);
+        // A signature, returned or handed to a chain, is a probable dispatch.
+        $prepared = $dispatch('py:function:app.submissions.prepare', 'py:function:app.submissions.deliver');
+        assertSame('probable', $prepared->confidence->value);
+        assertSame(['celery' => 'signature'], $prepared->attributes);
+        assertSame('probable', $dispatch('py:function:app.submissions.batch', 'py:function:app.submissions.deliver')->confidence->value);
+        assertSame('probable', $dispatch('py:function:app.submissions.batch', 'py:function:app.billing.reconcile_orders')->confidence->value);
+        // A submission beside the signature makes the dispatch certain, whichever came first.
+        $retried = $dispatch('py:function:app.submissions.retry', 'py:function:app.submissions.deliver');
+        assertSame('certain', $retried->confidence->value);
+        assertSame([], $retried->attributes);
         // The submission method is no function of the project.
         foreach ($tuples as [, , $target]) {
-            assertSame(false, (bool) preg_match('/\.(delay|apply_async)$/', $target), $target);
+            assertSame(false, (bool) preg_match('/\.(delay|apply_async|s|si|signature)$/', $target), $target);
+        }
+    }
+
+    /**
+     * A REST framework view that reads `validated_data["method"]` gets what the
+     * serializer's `validate_method` returned, a function it then calls, so it
+     * depends on what that method returns. The serializer comes from the view's
+     * `serializer_class` through `self.get_serializer()`, or from building it.
+     */
+    #[Group('python-frameworks')]
+    public function testAViewReadingAValidatedFieldDependsOnTheValidatorThatChoseIt(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('python-drf');
+        try {
+            $dependants = ArchitectureQueryService::forDatabase($pdo)->impactAnalysis($projectId, 'app.actions.archive')->data['dependants'];
+            $names = array_map(static fn(array $row): string => $row['node']['canonical_name'], $dependants);
+
+            assertArrayContains('app.serializers.BulkSerializer::validate_method', $names);
+            assertArrayContains('app.views.BulkView::post', $names);
+            assertArrayContains('app.views.DirectView::post', $names);
+            // A field with no validator of its own, and a view with no serializer class, name nothing.
+            assertSame(false, in_array('app.views.DirectView::put', $names, true));
+            assertSame(false, in_array('app.views.Untyped::post', $names, true));
+            $edge = $pdo->query("SELECT e.confidence, e.attributes_json FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id WHERE s.canonical_name = 'app.views.BulkView::post' AND t.canonical_name = 'app.serializers.BulkSerializer::validate_method'")->fetch();
+            assertSame('probable', $edge['confidence']);
+            assertSame('validated_field', json_decode($edge['attributes_json'], true)['drf']);
+        } finally {
+            $this->removeTempTree($root);
         }
     }
 

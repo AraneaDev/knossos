@@ -52,6 +52,7 @@ class PythonFactAccumulator:
         node: ast.AST,
         attributes: dict[str, Any] | None = None,
         origin: str = "ast",
+        confidence: str = "certain",
     ) -> None:
         added: dict[str, Any] = attributes or {}
         item: dict[str, Any] = {
@@ -59,7 +60,7 @@ class PythonFactAccumulator:
             "source": source,
             "target": target,
             "origin": origin,
-            "confidence": "certain",
+            "confidence": confidence,
             "evidence": evidence(self.relative, node),
             "attributes": added,
         }
@@ -67,6 +68,13 @@ class PythonFactAccumulator:
         existing = self.edges.get(key)
         if existing is None:
             self.edges[key] = item
+            return
+        # A certain statement makes the pair's edge certain, whichever came
+        # first: a `delay()` after a signature of the same task is no guess.
+        if confidence == "certain" and existing["confidence"] != "certain":
+            existing["confidence"] = "certain"
+            existing["evidence"] = item["evidence"]
+            existing["attributes"] = added
             return
         # Two statements between the same pair are one edge, and the first
         # one's attributes stand. When either is type-only, which kinds were
