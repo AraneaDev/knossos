@@ -352,6 +352,50 @@ pub fn is_standard_type(name: &str) -> bool {
     is_primitive(name) || matches!(name, "Box" | "Option" | "Result" | "String" | "Vec")
 }
 
+/// Whether a bare name is what the standard prelude or the language brings
+/// into every module: a primitive or standard type, an `Option` or `Result`
+/// variant, or a prelude trait. A file that neither declares nor imports such
+/// a name means the standard one.
+#[must_use]
+pub fn is_prelude_name(name: &str) -> bool {
+    is_standard_type(name)
+        || matches!(
+            name,
+            "Some"
+                | "None"
+                | "Ok"
+                | "Err"
+                | "AsMut"
+                | "AsRef"
+                | "Clone"
+                | "Copy"
+                | "Default"
+                | "DoubleEndedIterator"
+                | "Drop"
+                | "Eq"
+                | "ExactSizeIterator"
+                | "Extend"
+                | "Fn"
+                | "FnMut"
+                | "FnOnce"
+                | "From"
+                | "Into"
+                | "IntoIterator"
+                | "Iterator"
+                | "Ord"
+                | "PartialEq"
+                | "PartialOrd"
+                | "Send"
+                | "Sized"
+                | "Sync"
+                | "ToOwned"
+                | "ToString"
+                | "TryFrom"
+                | "TryInto"
+                | "Unpin"
+        )
+}
+
 /// Whether a bare name is one of Rust's primitive types.
 #[must_use]
 pub fn is_primitive(name: &str) -> bool {

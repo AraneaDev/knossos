@@ -2341,6 +2341,143 @@ fn a_workspace_members_modules_are_rooted_at_its_crate_name() {
 }
 
 #[test]
+fn a_type_named_through_a_facade_crates_extern_crate_re_export_is_the_defining_type() {
+    // `pub extern crate grep_searcher as searcher;` is how a facade crate
+    // exposes its parts. A parameter typed `&mut grep::searcher::Searcher`
+    // named nothing, so a method call on it left no edge.
+    let files = [
+        ("Cargo.toml", "[workspace]\nmembers = [\"crates/*\"]\n"),
+        ("crates/searcher/Cargo.toml", "[package]\nname = \"grep-searcher\"\n"),
+        (
+            "crates/searcher/src/lib.rs",
+            "pub struct Searcher;\nimpl Searcher {\n    pub fn search_path(&mut self) {}\n}\n",
+        ),
+        ("crates/grep/Cargo.toml", "[package]\nname = \"grep\"\n"),
+        (
+            "crates/grep/src/lib.rs",
+            "pub extern crate grep_searcher as searcher;\nextern crate self as facade;\n",
+        ),
+        ("crates/core/Cargo.toml", "[package]\nname = \"core\"\n"),
+        (
+            "crates/core/src/main.rs",
+            "fn run(searcher: &mut grep::searcher::Searcher) {\n    searcher.search_path();\n}\nfn main() {}\n",
+        ),
+    ];
+    let contributions = scan_fixture_with(
+        "facade-extern-crate",
+        &files,
+        &serde_json::json!({
+            "config_files": [
+                "Cargo.toml",
+                "crates/core/Cargo.toml",
+                "crates/grep/Cargo.toml",
+                "crates/searcher/Cargo.toml",
+            ],
+        }),
+    );
+    let calls = edges_of(&contributions, "calls");
+
+    assert!(
+        calls.contains(&(
+            "rust:function:core::run".to_owned(),
+            "rust:method:grep_searcher::Searcher::search_path".to_owned()
+        )),
+        "{calls:?}"
+    );
+}
+
+#[test]
+fn a_blanket_trait_impl_over_a_type_parameter_is_a_node_that_implements_the_trait() {
+    // `impl<'a, M: Matcher> Matcher for &'a M` names no type to attach its
+    // methods to, so the whole block was dropped: the trait read as having
+    // fewer implementations, and adding a required method missed this file.
+    let source = r#"
+pub trait Matcher { fn find(&self) -> bool; }
+pub struct Plain;
+impl Matcher for Plain { fn find(&self) -> bool { true } }
+impl<'a, M: Matcher> Matcher for &'a M {
+    fn find(&self) -> bool { (**self).find() }
+}
+impl<M: Matcher> Matcher for (M, Plain) {
+    fn find(&self) -> bool { self.0.find() }
+}
+"#;
+    let contributions = scan_fixture("blanket-trait-impl", &[("src/lib.rs", source)]);
+    let names: Vec<String> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().clone())
+        .map(|node| node["canonical_name"].as_str().unwrap().to_owned())
+        .collect();
+    let implements = edges_of(&contributions, "implements");
+
+    for block in [
+        "crate::<impl Matcher for &M>",
+        "crate::<impl Matcher for (M, Plain)>",
+    ] {
+        assert!(
+            names.contains(&block.to_owned()),
+            "{block} missing from {names:?}"
+        );
+        assert!(
+            names.contains(&format!("{block}::find")),
+            "{block}::find missing from {names:?}"
+        );
+        assert!(
+            implements.contains(&(
+                format!("rust:class:{block}"),
+                "rust:interface:crate::Matcher".to_owned()
+            )),
+            "{implements:?}"
+        );
+    }
+}
+
+#[test]
+fn a_bare_prelude_name_nothing_here_declares_is_not_referenced_as_a_local_item() {
+    // `Option`, `str`, `Some` written bare were guessed as items of the
+    // module writing them: two speculative edges per mention to names that
+    // never resolve, enough to push a large file's answer past its size
+    // limit. A type this file declares under such a name still counts.
+    let files = [
+        ("src/lib.rs", "pub mod plain;\npub mod shadow;\n"),
+        (
+            "src/plain.rs",
+            "pub struct Thing;\npub fn f(x: Option<&str>) -> Result<bool, String> {\n    let _t: Thing = Thing;\n    Ok(Some(x).is_some())\n}\n",
+        ),
+        (
+            "src/shadow.rs",
+            "pub struct Option;\npub fn g(_o: Option) {}\n",
+        ),
+    ];
+    let contributions = scan_fixture("prelude-names", &files);
+    let references = edges_of(&contributions, "references");
+
+    for name in ["Option", "str", "Result", "String", "Some", "Ok", "bool"] {
+        assert!(
+            !references
+                .iter()
+                .any(|(source, target)| source.contains("plain::f")
+                    && target.ends_with(&format!("plain::{name}"))),
+            "{name}: {references:?}"
+        );
+    }
+    assert!(
+        references.contains(&(
+            "rust:function:crate::plain::f".to_owned(),
+            "rust:class:crate::plain::Thing".to_owned()
+        )),
+        "{references:?}"
+    );
+    assert!(
+        references.contains(&(
+            "rust:function:crate::shadow::g".to_owned(),
+            "rust:class:crate::shadow::Option".to_owned()
+        )),
+        "{references:?}"
+    );
+}
+
+#[test]
 fn a_trait_impl_for_a_foreign_type_is_a_node_of_the_module_declaring_it() {
     // `impl<T: GitSource> GitSource for Arc<T>` attached its methods to
     // `std::sync::Arc`, a name the project does not own, with nothing tying

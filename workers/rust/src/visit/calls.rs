@@ -14,7 +14,7 @@ use syn::visit::Visit;
 use super::paths::{pointee_of, POINTER_MARK};
 use super::state::Calls;
 use crate::facts::reference;
-use crate::resolve::ident_name;
+use crate::resolve::{ident_name, is_prelude_name};
 
 impl Calls<'_, '_> {
     /// Resolve and emit a call, deferring the ones that need confirming.
@@ -111,9 +111,20 @@ impl Calls<'_, '_> {
     /// or enum and as a trait: which one it is, and whether it is declared
     /// here at all rather than being `Vec` or `String`, only the graph knows.
     fn type_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        let Some((target, _)) = self.walk.resolve_path(&self.container, path) else {
+        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
             return;
         };
+        // `str`, `Some`, `Option` written bare and neither declared nor
+        // imported here are the standard ones, not items of this module. The
+        // guess named nothing, and in a large file those edges alone could
+        // outgrow the size limit on its answer.
+        if unconfirmed
+            && path.segments.len() == 1
+            && is_prelude_name(&ident_name(&path.segments[0].ident))
+            && !self.walk.own_declarations.contains(&target)
+        {
+            return;
+        }
         for kind in ["class", "interface"] {
             let endpoint = reference(kind, &target);
             if endpoint != self.enclosing {
