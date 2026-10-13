@@ -67,9 +67,48 @@ describe("armArgv", () => {
             expect.arrayContaining([
                 "Bash(git log *--ou*)",
                 "Bash(git show *--ou*)",
+                "Bash(git log *--ext*)",
+                "Bash(git show *--ext*)",
+                "Bash(git grep *-O*)",
+                "Bash(git grep *--op*)",
                 "Bash(rg *--pre*)",
+                "Bash(rg *--hostname-bin*)",
             ]),
         );
+    });
+    it("denies nothing the allowlist's commands need for an ordinary search", () => {
+        const ordinary = [
+            "rg -n --no-heading -w total .",
+            "rg -o -i total src",
+            "git grep -n -w total",
+            "git grep --only-matching total",
+            "git grep -o total",
+            "git log --oneline -n 5",
+            "git log -S total --stat",
+            "git show HEAD:a.php",
+        ];
+        // The rule syntax is `*` for any run of characters; match the way it does.
+        const matches = (rule, command) => {
+            const body = rule.slice("Bash(".length, -1);
+            const re = new RegExp(
+                `^${body
+                    .split("*")
+                    .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+                    .join(".*")}$`,
+            );
+            return re.test(command);
+        };
+        for (const command of ordinary)
+            expect(DENIED_BASH.filter((r) => matches(r, command))).toEqual([]);
+        for (const command of [
+            "git grep -Oless total",
+            "git grep --open-files-in-pager=less total",
+            "git log --output=/tmp/x",
+            "git show --ext-diff HEAD",
+            "rg --pre=sh total",
+            "rg --hostname-bin=sh --hyperlink-format=default total",
+        ])
+            expect(DENIED_BASH.some((r) => matches(r, command))).toBe(true);
     });
     it("runs headless, without prompts and with a fixed read-only tool set in every arm", () => {
         const allowed = (argv) =>

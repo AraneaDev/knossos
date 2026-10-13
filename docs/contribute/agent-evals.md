@@ -23,10 +23,12 @@ Sessions run read-only `Bash` commands (`rg`, `grep`, `ls`, `cat`, `head`,
 under the eval root. The allowlist keeps them on task; it is not a sandbox.
 Every arm also denies the options that would turn those commands into writers
 or launchers: `git log` and `git show` with `--output` (or an abbreviation of
-it, which git accepts) and `rg` with `--pre`. The deny rules are wildcard
-patterns on the command line, so they cannot see through quoting or a shell
-construct that assembles the option at run time. Treat the allowlist as a
-guard against wandering, not as a boundary.
+it, which git accepts) or `--ext-diff`, `git grep` with `-O` or
+`--open-files-in-pager`, and `rg` with `--pre` or `--hostname-bin`. The deny
+rules are wildcard patterns on the command line, so they cannot see through
+quoting or a shell construct that assembles the option at run time, and a
+bundled short option such as `git grep -nOless` is not matched by `-O`.
+Treat the allowlist as a guard against wandering, not as a boundary.
 
 ## Running one
 

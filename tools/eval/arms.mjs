@@ -17,12 +17,22 @@ const READ_ONLY_BASH = [
     "git grep",
     "git show",
 ].map((c) => `Bash(${c} *)`);
-// Residual writers inside otherwise read-only commands. `--output` is matched by its prefix because
-// git accepts unambiguous abbreviations; `rg --pre <cmd>` runs a program on every file. Deny rules win over allow rules.
+// Options of the read-only commands that write a file or launch a program. Deny rules win over allow rules.
+//   git log/show --output=<file> writes a file (matched by prefix: git accepts abbreviations);
+//   git log/show --ext-diff runs an external diff driver;
+//   git grep -O<cmd> / --open-files-in-pager=<cmd> runs a pager command;
+//   rg --pre=<cmd> and --hostname-bin=<cmd> run a program.
+// `-O` is case-sensitive, so `-o` and `--only-matching` stay usable. `rg -z` runs only the
+// decompressors it names itself, and `--textconv` only drivers from a config the eval does not have.
 export const DENIED_BASH = [
     "git log *--ou*",
     "git show *--ou*",
+    "git log *--ext*",
+    "git show *--ext*",
+    "git grep *-O*",
+    "git grep *--op*",
     "rg *--pre*",
+    "rg *--hostname-bin*",
 ].map((c) => `Bash(${c})`);
 const KNOSSOS_CLI = /(^|[\s;&|(/])knossos(\s|$)/;
 
