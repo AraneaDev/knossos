@@ -18,6 +18,7 @@ import {
     link,
     mkdir,
     readFile,
+    rename,
     rm,
     stat,
     writeFile,
@@ -192,32 +193,64 @@ const TAKEOVER_STALE_MS = 5000;
  * Holds `${file}.takeover` (an atomic mkdir) while `fn` runs; null when another
  * process holds it. `fn` gets `stillOwner()`: a peer may break the mutex of a
  * process that was suspended for longer than `staleMs`, and that process must
- * notice before it removes anything. A mutex dated more than `staleMs` in the future is stale too.
+ * notice before it removes anything. A mutex dated more than `staleMs` in the
+ * future is stale too. A stale mutex is broken by renaming it to a name of its
+ * own, so of several peers only one rename succeeds, and the mover checks that
+ * what it moved really was stale and puts a fresh one back.
  */
-async function withTakeover(file, staleMs, fn) {
+async function withTakeover(file, staleMs, hooks, fn) {
     const mutex = `${file}.takeover`;
     const token = randomUUID();
     try {
         await mkdir(mutex);
     } catch (error) {
         if (error.code !== "EEXIST") throw error;
-        const age = await stat(mutex)
-            .then((st) => Date.now() - st.mtimeMs)
-            .catch(() => 0);
+        const ageOf = () =>
+            stat(mutex)
+                .then((st) => Date.now() - st.mtimeMs)
+                .catch(() => 0);
         // A little clock skew between the file system and Date.now() is normal; only a clearly future date is stale.
-        if (Math.abs(age) > staleMs)
-            await rm(mutex, { recursive: true, force: true });
-        else await sleep(10);
+        if (Math.abs(await ageOf()) <= staleMs) {
+            await sleep(10);
+            return null;
+        }
+        await hooks.beforeBreak?.();
+        const moved = `${mutex}.broken-${process.pid}-${randomUUID()}`;
+        try {
+            await rename(mutex, moved);
+        } catch (error) {
+            // Another peer broke it first, or its owner released it.
+            if (error.code === "ENOENT") return null;
+            throw error;
+        }
+        const movedAge = await stat(moved)
+            .then((st) => Date.now() - st.mtimeMs)
+            .catch(() => Infinity);
+        // What was moved was a fresh mutex after all: give it back to its owner, who checks it still owns it.
+        if (Math.abs(movedAge) <= staleMs)
+            await rename(moved, mutex).catch(() =>
+                rm(moved, { recursive: true, force: true }),
+            );
+        else await rm(moved, { recursive: true, force: true });
         return null;
     }
-    await writeFile(path.join(mutex, "owner"), token);
+    const mine = (await stat(mutex)).ino;
+    let wrote = false;
     const stillOwner = async () =>
         (await readFile(path.join(mutex, "owner"), "utf8").catch(() => "")) ===
         token;
+    // Before the owner file exists the directory is only recognisable by its inode.
+    const sameDir = () =>
+        stat(mutex).then(
+            (st) => st.ino === mine,
+            () => false,
+        );
     try {
+        await (hooks.write ?? writeFile)(path.join(mutex, "owner"), token);
+        wrote = true;
         return await fn(stillOwner);
     } finally {
-        if (await stillOwner())
+        if (wrote ? await stillOwner() : await sameDir())
             await rm(mutex, { recursive: true, force: true });
     }
 }
@@ -229,7 +262,7 @@ async function withTakeover(file, staleMs, fn) {
  * runs under a mutex and re-reads the holder inside it, so two processes that
  * both saw a stale lock cannot each remove the other's fresh one. Returns a
  * release that removes the lock only while it still holds this pid.
- * `hooks.beforeRemove` and `hooks.staleMs` exist for the tests.
+ * `hooks.beforeRemove`, `hooks.beforeBreak`, `hooks.write` and `hooks.staleMs` exist for the tests.
  */
 export async function acquireLock(file, hooks = {}) {
     await mkdir(path.dirname(file), { recursive: true });
@@ -259,6 +292,7 @@ export async function acquireLock(file, hooks = {}) {
         const won = await withTakeover(
             file,
             hooks.staleMs ?? TAKEOVER_STALE_MS,
+            hooks,
             async (stillOwner) => {
                 const current = await holder();
                 if (current > 0 && alive(current))

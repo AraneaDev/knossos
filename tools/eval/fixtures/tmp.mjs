@@ -13,6 +13,13 @@ export async function tmp(prefix) {
 
 export async function removeTemp() {
     await Promise.all(
-        made.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+        made.splice(0).map((dir) =>
+            rm(dir, {
+                recursive: true,
+                force: true,
+                maxRetries: 5,
+                retryDelay: 50,
+            }),
+        ),
     );
 }

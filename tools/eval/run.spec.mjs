@@ -529,6 +529,78 @@ describe("acquireLock", () => {
         expect((await stat(file)).ino).toBe(before);
         await release();
     });
+    it("does not let a slow breaker remove a fresh mutex that replaced the stale one it judged", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        await writeFile(file, String(await deadPid()));
+        const mutex = `${file}.takeover`;
+        await mkdir(mutex);
+        const old = new Date(Date.now() - 3600_000);
+        await utimes(mutex, old, old);
+        const pause = () => {
+            let release;
+            const gate = new Promise((resolve) => (release = resolve));
+            return { gate, release, reached: false };
+        };
+        const breakA = pause();
+        const breakB = pause();
+        const removeA = pause();
+        let removals = 0;
+        const hooksA = {
+            beforeBreak: async () => {
+                breakA.reached = true;
+                await breakA.gate;
+            },
+            beforeRemove: async () => {
+                removals += 1;
+                removeA.reached = true;
+                await removeA.gate;
+            },
+        };
+        const hooksB = {
+            beforeBreak: async () => {
+                breakB.reached = true;
+                await breakB.gate;
+            },
+            beforeRemove: async () => {
+                removals += 1;
+            },
+        };
+        const until = async (test) => {
+            for (let i = 0; i < 100 && !test(); i += 1) await wait(10);
+        };
+        const a = acquireLock(file, hooksA);
+        const b = acquireLock(file, hooksB);
+        const outcomes = Promise.allSettled([a, b]);
+        // Both judge the old mutex stale. A breaks it, takes a fresh one and stops before removing the lock.
+        await until(() => breakA.reached && breakB.reached);
+        breakA.release();
+        await until(() => removeA.reached);
+        // B's judgement is out of date now: what stands at that path is A's fresh mutex.
+        breakB.release();
+        await wait(100);
+        removeA.release();
+        const [first, second] = await outcomes;
+        expect(first.status).toBe("fulfilled");
+        expect(second.status).toBe("rejected");
+        // B never got as far as removing the lock, because A's mutex survived B's attempt.
+        expect(removals).toBe(1);
+        await first.value();
+        expect((await readdir(path.dirname(file))).sort()).toEqual([]);
+    });
+    it("removes the mutex again when the owner file cannot be written", async () => {
+        const dir = await tmp("eval-lock-");
+        const file = path.join(dir, "continue.lock");
+        await writeFile(file, String(await deadPid()));
+        const failing = {
+            write: async () => {
+                throw Object.assign(new Error("ENOSPC: no space left"), {
+                    code: "ENOSPC",
+                });
+            },
+        };
+        await expect(acquireLock(file, failing)).rejects.toThrow(/ENOSPC/);
+        expect(await readdir(dir)).toEqual([path.basename(file)]);
+    });
     it("treats a takeover mutex dated in the future as stale", async () => {
         const file = path.join(await tmp("eval-lock-"), "continue.lock");
         await writeFile(file, String(await deadPid()));
