@@ -714,6 +714,7 @@ final readonly class ToolCatalog
                     'component' => ['type' => 'string', 'minLength' => 1],
                     'kind' => ['type' => 'string', 'enum' => ['intended_boundary', 'confirmed_dead', 'false_positive', 'intentional', 'note']],
                     'value' => ['type' => 'string', 'maxLength' => 2000, 'default' => ''],
+                    'evidence_paths' => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'string', 'minLength' => 1], 'description' => 'Files your note rests on besides the component\'s own; it is marked stale when one changes.'],
                     'remove' => ['type' => 'boolean', 'default' => false],
                     'execute' => ['type' => 'boolean', 'default' => false],
                 ], 'required' => ['project_id', 'component', 'kind'], 'additionalProperties' => false],

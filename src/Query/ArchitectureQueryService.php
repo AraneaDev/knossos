@@ -438,10 +438,14 @@ final readonly class ArchitectureQueryService
         return $this->services->componentQueries->searchArchitecture($projectId, $query, $kinds, $roles, $boundaryIds, $confidences, $limit, $offset);
     }
 
-    /** {@see AnnotationService::upsertAnnotation()} */
-    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
+    /**
+     * {@see AnnotationService::upsertAnnotation()}
+     *
+     * @param list<string> $evidencePaths
+     */
+    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = []): ResultEnvelope
     {
-        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author);
+        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author, $evidencePaths);
     }
 
     /** {@see AnnotationService::removeAnnotation()} */

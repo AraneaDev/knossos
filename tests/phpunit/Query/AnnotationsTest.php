@@ -342,4 +342,25 @@ final class AnnotationsTest extends KnossosTestCase
 
         assertSame(['kind' => 'confirmed_dead', 'value' => 'nothing calls it'], $facts->componentAnnotations()['App\\Checkout']);
     }
+
+    #[Group('query')]
+    public function testAModelNoteKeepsTheFilesItRestsOn(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $hash = (string) $pdo->query("SELECT content_hash FROM files WHERE relative_path = 'src/Checkout.php'")->fetchColumn();
+
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true, evidencePaths: ['src/Checkout.php']);
+        $basis = json_decode((string) $pdo->query("SELECT basis_json FROM annotations WHERE author = 'model'")->fetchColumn(), true);
+        // The component's own file first; an evidence path it already names is not repeated.
+        assertSame([['path' => 'src/Checkout.php', 'hash' => $hash]], $basis);
+
+        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: ['src/Nowhere.php']), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: array_fill(0, 6, 'src/Checkout.php')), InvalidArgumentException::class);
+
+        // A person's note rests on nothing: it is never stale.
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'mine', execute: true, author: 'user');
+        assertSame('[]', (string) $pdo->query("SELECT basis_json FROM annotations WHERE author = 'user'")->fetchColumn());
+    }
 }

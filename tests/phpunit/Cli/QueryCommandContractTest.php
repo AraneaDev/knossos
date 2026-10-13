@@ -247,7 +247,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     public function testAnnotateComponentAllowsMutationFlags(): void
     {
         assertSame(
-            ['db', 'json', 'remove', 'execute'],
+            ['db', 'json', 'remove', 'execute', 'evidence'],
             (new QueryCommand())->allowedOptions('annotate-component'),
         );
     }
@@ -321,6 +321,13 @@ final class QueryCommandContractTest extends KnossosTestCase
             assertSame(['second'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'value'));
             // An agent can run the CLI as well as a person can: what it writes is the model's.
             assertSame(['model'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'author'));
+            // --evidence, repeated, names the files the note rests on; an unscanned one is refused.
+            try {
+                $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'third'], ['execute' => [''], 'evidence' => ['nowhere.php']]);
+                self::fail('An unscanned evidence path must be refused.');
+            } catch (InvalidArgumentException $error) {
+                assertSame('evidence path nowhere.php is not a scanned file of this project.', $error->getMessage());
+            }
         });
     }
 

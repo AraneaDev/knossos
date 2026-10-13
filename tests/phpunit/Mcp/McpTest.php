@@ -234,6 +234,12 @@ final class McpTest extends KnossosTestCase
         assertSame('core flow', $list->data['annotations'][0]['value']);
         // The tool is how an agent writes: its notes are the model's, never the person's.
         assertSame('model', $list->data['annotations'][0]['author']);
+        // The files a note rests on reach its basis.
+        $tools->call('annotate_component', [
+            'project_id' => $ids['project'], 'component' => 'App\\Checkout', 'kind' => 'note', 'value' => 'core flow', 'evidence_paths' => ['src/Checkout.php'], 'execute' => true,
+        ]);
+        assertSame('src/Checkout.php', json_decode((string) $pdo->query('SELECT basis_json FROM annotations')->fetchColumn(), true)[0]['path']);
+        assertThrows(fn() => $tools->call('annotate_component', ['project_id' => $ids['project'], 'component' => 'App\\Checkout', 'kind' => 'note', 'evidence_paths' => 'src/Checkout.php']), InvalidArgumentException::class);
 
         assertThrows(fn() => $tools->call('annotate_component', ['project_id' => $ids['project'], 'component' => 'App\\Checkout', 'kind' => 'bogus_kind']), InvalidArgumentException::class);
         assertThrows(fn() => $tools->call('list_annotations', ['project_id' => $ids['project'], 'extra' => true]), InvalidArgumentException::class);

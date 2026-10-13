@@ -545,6 +545,7 @@ Record, extend or remove your own (model) annotation on a component; it survives
 | `component` | string | yes | minLength=1 |
 | `kind` | string | yes | enum=intended_boundary, confirmed_dead, false_positive, intentional, note |
 | `value` | string | no | maxLength=2000; default="" |
+| `evidence_paths` | array | no | maxItems=5 |
 | `remove` | boolean | no | default=false |
 | `execute` | boolean | no | default=false |
 

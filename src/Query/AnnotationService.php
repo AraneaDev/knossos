@@ -22,19 +22,25 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * never changes or removes what a person recorded.
      */
     public const AUTHORS = ['user', 'model'];
-    /** Record or replace a durable annotation, previewing unless executing. */
-    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
+    /**
+     * Record or replace a durable annotation, previewing unless executing.
+     *
+     * @param list<string> $evidencePaths files besides the component's own that a model note rests on
+     */
+    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = []): ResultEnvelope
     {
         $target = $this->target($projectId, $component, $kind, $value, $author);
+        $basis = $author === 'model' ? $this->basis($projectId, $target['canonical'], $evidencePaths) : [];
         if (!$execute) {
             return $this->preview($projectId, $target, $kind, 'upsert', ['value' => $value]);
         }
         $statement = $this->pdo->prepare(
-            'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
-            'VALUES (:project, :name, :kind, :value, :author, :now, :now) ' .
-            'ON CONFLICT(project_id, canonical_name, kind, author) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+            'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
+            'VALUES (:project, :name, :kind, :value, :author, :basis, :now, :now) ' .
+            // Re-recording refreshes the basis: it is how a stale note is confirmed.
+            'ON CONFLICT(project_id, canonical_name, kind, author) DO UPDATE SET value = excluded.value, basis_json = excluded.basis_json, updated_at = excluded.updated_at',
         );
-        $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'author' => $author, 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
+        $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'author' => $author, 'basis' => json_encode($basis, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
 
         return $this->executed($projectId, $target, $kind, 'upsert', 'Recorded', $this->fetch($projectId, $target['canonical'], $kind, $author));
     }
@@ -69,6 +75,51 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'author' => $author]);
 
         return $this->executed($projectId, $target, $kind, 'remove', 'Removed', null, $nothing === null ? null : 'Nothing removed: ' . $nothing);
+    }
+
+    /** How many files a model note may cite besides its component's own. */
+    public const MAX_EVIDENCE_PATHS = 5;
+
+    /**
+     * The files a model note rests on, with the content hash each has now:
+     * the component's own file first, then each cited path, once each. A
+     * cited path the project's scan does not hold is refused, so a note never
+     * rests on a file no reader can check.
+     *
+     * @param list<string> $evidencePaths
+     * @return list<array{path: string, hash: string}>
+     */
+    private function basis(string $projectId, string $canonical, array $evidencePaths): array
+    {
+        if (count($evidencePaths) > self::MAX_EVIDENCE_PATHS) {
+            throw new InvalidArgumentException(sprintf('evidence_paths takes at most %d paths.', self::MAX_EVIDENCE_PATHS));
+        }
+        $own = $this->pdo->prepare(
+            'SELECT f.relative_path, f.content_hash FROM nodes n JOIN files f ON f.id = n.file_id ' .
+            'WHERE n.project_id = :project AND n.canonical_name = :name ORDER BY f.relative_path LIMIT 1',
+        );
+        $own->execute(['project' => $projectId, 'name' => $canonical]);
+        $basis = [];
+        $row = $own->fetch();
+        if ($row !== false) {
+            $basis[(string) $row['relative_path']] = (string) $row['content_hash'];
+        }
+        $cited = $this->pdo->prepare('SELECT content_hash FROM files WHERE project_id = :project AND relative_path = :path');
+        foreach ($evidencePaths as $path) {
+            // `./src/x.php` and `src\x.php` name the scanned `src/x.php`; a dotfile keeps its dot.
+            $path = (string) preg_replace('#^(\./)+#', '', str_replace('\\', '/', $path));
+            if (isset($basis[$path])) {
+                continue;
+            }
+            $cited->execute(['project' => $projectId, 'path' => $path]);
+            $hash = $cited->fetchColumn();
+            if (!is_string($hash)) {
+                throw new InvalidArgumentException(sprintf('evidence path %s is not a scanned file of this project.', $path));
+            }
+            $basis[$path] = $hash;
+        }
+
+        return array_map(static fn(string $path, string $hash): array => ['path' => $path, 'hash' => $hash], array_keys($basis), array_values($basis));
     }
 
     /**
