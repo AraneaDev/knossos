@@ -138,8 +138,10 @@ describe("buildReport with enough paired tasks", () => {
             /\| full vs baseline \| cost \(USD\) \| 6 \|.*\| hurts \|/,
         );
     });
-    it("says so when no task scored lower with Knossos", () => {
-        expect(md).toContain("No task scored lower with Knossos than without.");
+    it("says so when no task trailed baseline by more than the tolerance", () => {
+        expect(md).toContain(
+            `No task's median F1 was more than ${BELOW_BASELINE_TOLERANCE} lower with full than with baseline.`,
+        );
     });
     it("prints no data for a category without paired tasks", () => {
         const other = buildReport({
@@ -372,6 +374,57 @@ describe("below baseline tolerance", () => {
         });
         expect(section(md)).not.toContain("- w1:");
         expect(section(md)).toContain("- w2:");
+    });
+});
+
+describe("below baseline wording and links", () => {
+    const two = [{ id: "w1", category: "callers" }];
+    const section = (md) =>
+        md
+            .split("## Below baseline and key disagreements")[1]
+            .split("\n## ")[0];
+    it("does not claim nothing trailed when a task trails within the tolerance", () => {
+        const md = buildReport({
+            meta,
+            tasks: two,
+            rows: [
+                row("w1", "baseline", 0.5),
+                row("w1", "full", 0.5 - BELOW_BASELINE_TOLERANCE / 2),
+            ],
+        });
+        expect(section(md)).toContain(
+            `more than ${BELOW_BASELINE_TOLERANCE} lower`,
+        );
+        expect(section(md)).not.toMatch(
+            /scored lower with Knossos than without/,
+        );
+    });
+    it("links only repeats that have a transcript and were not excluded", () => {
+        const md = buildReport({
+            meta,
+            tasks: two,
+            rows: [
+                row("w1", "baseline", 0.9),
+                row("w1", "full", 0.1),
+                row("w1", "full", 0, {
+                    repeat: 2,
+                    status: "failed",
+                    transcript: null,
+                }),
+                row("w1", "full", 0, {
+                    repeat: 3,
+                    status: "contaminated",
+                    transcript: "transcripts/w1--full--3.jsonl",
+                }),
+            ],
+        });
+        const line = section(md)
+            .split("\n")
+            .find((l) => l.startsWith("- w1:"));
+        expect(line).toContain("transcripts/w1--full--1.jsonl");
+        expect(line).toContain("transcripts/w1--baseline--1.jsonl");
+        expect(line).not.toContain("null");
+        expect(line).not.toContain("--3.jsonl");
     });
 });
 

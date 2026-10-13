@@ -246,13 +246,18 @@ function belowBaseline(rows, defects) {
     );
     const lines = ["## Below baseline and key disagreements", ""];
     if (worse.length === 0)
-        lines.push("No task scored lower with Knossos than without.");
+        lines.push(
+            `No task's median F1 was more than ${BELOW_BASELINE_TOLERANCE} lower with full than with baseline.`,
+        );
     for (const [task, value] of worse) {
         const links = rows
             .filter(
                 (r) =>
                     r.task === task &&
-                    (r.arm === "full" || r.arm === "baseline"),
+                    (r.arm === "full" || r.arm === "baseline") &&
+                    !EXCLUDED.includes(r.status) &&
+                    typeof r.transcript === "string" &&
+                    r.transcript !== "",
             )
             .map((r) => r.transcript);
         lines.push(
