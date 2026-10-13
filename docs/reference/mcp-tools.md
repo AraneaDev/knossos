@@ -102,7 +102,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `architecture_trends`
 
-See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each retained snapshot's figures in the graph database, so a repeat call skips decoding its archive. A snapshot past the 200,000 rows per table a snapshot is read whole within is a `partial` point: its counts and diagnostics from COUNT(*), `cycles`, `max_degree` and `unreferenced_candidates` null, and a `reason` (for the live graph: the table, its rows and the limit).
+See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot's figures in the graph database; a very large snapshot is a `partial` point with a `reason`.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -226,7 +226,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `list_diagnostics`
 
-The scan diagnostics of the active graph (compiler and worker errors, warnings and notes), by file and line, each with the scanner or enricher that recorded it (`source`, null when unknown). Use to see what the dashboard counts as diagnostics, filtered by severity or path prefix.
+The scan diagnostics of the active graph (compiler and worker errors, warnings, notes) by file and line, with the scanner that recorded each. Filter by severity or path prefix.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -401,7 +401,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `changed_files_impact`
 
-Map a set of changed files (explicit or from a Git diff) to the components they affect. Use to scope review or tests to what a change actually touches. Provide exactly one source: either files (an explicit list) or working_tree: true (let Git supply the changes). base_ref only applies with working_tree: true. It diffs the working tree against that ref; it cannot be combined with files.
+Map changed files to the components they affect, to scope review or tests to what a change touches. Pass either files, or working_tree: true (optionally with base_ref) to let Git supply them.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -537,7 +537,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `annotate_component`
 
-Record a durable annotation on a component (intended_boundary, confirmed_dead, false_positive, intentional, note) that survives rescans. false_positive (flagged wrongly) and intentional (true, and meant: a parked route, a test-only helper) remove the component from dead-code candidates. Preview by default; pass execute to apply.
+Record a durable annotation on a component that survives rescans. false_positive and intentional (a parked route, a test-only helper) remove it from dead-code candidates. Preview by default; pass execute to apply.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -575,7 +575,7 @@ Annotations: read-only `no`; destructive `yes`; idempotent `yes`; open-world `no
 
 ## `maintain_database`
 
-Check integrity, or run a checkpoint, optimize, vacuum, or backup of the graph store. Use for routine upkeep or before an upgrade; vacuum rebuilds the file to return space that deleted projects and aged-out snapshots left behind.
+Check integrity, or run a checkpoint, optimize, vacuum or backup of the graph store. Use for routine upkeep or before an upgrade.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
