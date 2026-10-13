@@ -104,6 +104,60 @@ describe("knossosAnswer with partial data", () => {
     });
 });
 
+describe("knossosAnswer without the subject's own file", () => {
+    const dependant = (file) => ({
+        distance: 1,
+        node: { canonical_name: `${file}#x` },
+        via: { evidence: { path: file } },
+    });
+    const dependants = [dependant("src/collision.ts"), dependant("src/b.ts")];
+    it("drops the file named before # in the target's canonical name", () => {
+        const json = {
+            data: {
+                target: {
+                    canonical_name: "src/collision.ts#hit",
+                    kind: "function",
+                },
+                dependants,
+            },
+        };
+        expect(knossosAnswer("dependents", "file", json)).toEqual(["src/b.ts"]);
+        expect(knossosAnswer("impact", "file", json)).toEqual(["src/b.ts"]);
+    });
+    it("prefers target.path and treats a module target as its own file", () => {
+        expect(
+            knossosAnswer("impact", "file", {
+                data: { target: { path: "src/b.ts" }, dependants },
+            }),
+        ).toEqual(["src/collision.ts"]);
+        expect(
+            knossosAnswer("impact", "file", {
+                data: {
+                    target: { canonical_name: "src/b.ts", kind: "module" },
+                    dependants,
+                },
+            }),
+        ).toEqual(["src/collision.ts"]);
+    });
+    it("keeps everything when the target has no file, and for symbol answers", () => {
+        const noFile = {
+            data: {
+                target: { canonical_name: "App\\X::y", kind: "method" },
+                dependants,
+            },
+        };
+        expect(knossosAnswer("impact", "file", noFile)).toHaveLength(2);
+        expect(
+            knossosAnswer("impact", "symbol", {
+                data: {
+                    target: { canonical_name: "src/collision.ts#hit" },
+                    dependants,
+                },
+            }),
+        ).toHaveLength(2);
+    });
+});
+
 describe("rgLines", () => {
     it("returns matches, an empty list for no match, and throws on any other failure", async () => {
         const dir = await mkdtemp(path.join(os.tmpdir(), "eval-rg-"));

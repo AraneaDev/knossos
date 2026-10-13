@@ -50,6 +50,17 @@ export const isTruncated = (json) =>
         "result_limit",
     ) === true;
 
+/** The file that defines the analysed subject: `target.path`, else the part of the canonical name before `#`. */
+function definingFile(target) {
+    if (typeof target?.path === "string") return target.path;
+    const name = target?.canonical_name;
+    if (typeof name !== "string") return undefined;
+    if (name.includes("#")) return name.slice(0, name.indexOf("#"));
+    return target.kind === "module" || target.kind === "file"
+        ? name
+        : undefined;
+}
+
 export function knossosAnswer(category, unit, json) {
     if (category === "callers") {
         const usages = (json.data?.usages ?? []).filter(
@@ -60,6 +71,9 @@ export function knossosAnswer(category, unit, json) {
             .filter(Boolean);
     }
     if (category === "impact" || category === "dependents") {
+        // Every prompt asks to leave the subject's own file out of a file answer.
+        const own =
+            unit === "file" ? definingFile(json.data?.target) : undefined;
         return (
             (json.data?.dependants ?? [])
                 // The keys for "dependents" list direct dependents only; "impact" keeps every distance.
@@ -71,6 +85,7 @@ export function knossosAnswer(category, unit, json) {
                         : d.node?.canonical_name,
                 )
                 .filter(Boolean)
+                .filter((entry) => entry !== own)
         );
     }
     return null;
