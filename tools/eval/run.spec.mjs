@@ -504,6 +504,50 @@ describe("corpus hash versions", () => {
 
 describe("continue with the fake claude", () => {
     const rowsOf = async (dir) => readLedger(path.join(dir, "ledger.jsonl"));
+    it("runs a second pass after its first, with the notes the first left, and resumes between passes", async () => {
+        const { env, runId, dir } = await started([
+            "--arms",
+            "baseline",
+            "--passes",
+            "2",
+        ]);
+        const meta = JSON.parse(
+            await readFile(path.join(dir, "meta.json"), "utf8"),
+        );
+        expect(meta.passes).toBe(2);
+        const notesLog = path.join(await tmp("eval-notes-"), "log.jsonl");
+        const withNotes = {
+            ...env,
+            FAKE_NOTES_LOG: notesLog,
+            FAKE_NOTES_WRITTEN: "2",
+        };
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        // Two first passes; their second passes wait for them, so a batch of 2 runs only the first passes.
+        await main(["continue", runId, "--batch", "2"], withNotes);
+        let rows = await rowsOf(dir);
+        expect(rows.map((r) => r.pass)).toEqual([1, 1]);
+        expect(rows.map((r) => r.notesWritten)).toEqual([2, 2]);
+        // Interrupted here: the next continue starts each second pass from its first pass's file.
+        await main(["continue", runId, "--batch", "2"], withNotes);
+        log.mockRestore();
+        rows = await rowsOf(dir);
+        expect(rows.map((r) => r.pass)).toEqual([1, 1, 2, 2]);
+        const calls = (await readFile(notesLog, "utf8"))
+            .trim()
+            .split("\n")
+            .map((l) => JSON.parse(l));
+        const imports = calls.filter((c) => c.command === "import");
+        expect(imports).toHaveLength(2);
+        expect(imports[0].file).toMatch(
+            /notes\/demo-callers-[ab]--baseline--1\.json$/,
+        );
+        expect(calls.filter((c) => c.command === "export")).toHaveLength(4);
+        expect(
+            rows
+                .filter((r) => r.pass === 2)
+                .every((r) => r.transcript.endsWith("--p2.jsonl")),
+        ).toBe(true);
+    });
     it("starts every session without another session's annotations", async () => {
         const { env, runId } = await started(["--arms", "baseline"]);
         const notesLog = path.join(await tmp("eval-notes-"), "log.jsonl");
@@ -517,7 +561,13 @@ describe("continue with the fake claude", () => {
             .trim()
             .split("\n")
             .map((l) => JSON.parse(l));
-        expect(calls.map((c) => c.command)).toEqual(["clear", "clear"]);
+        // Each session clears before it runs and counts what it left after.
+        expect(calls.map((c) => c.command)).toEqual([
+            "clear",
+            "export",
+            "clear",
+            "export",
+        ]);
         expect(calls[0].db).toBe(
             path.join(env.KNOSSOS_EVAL_ROOT, "data", "knossos.sqlite"),
         );

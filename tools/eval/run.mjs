@@ -52,6 +52,7 @@ import {
     appendRow,
     makePlan,
     pending,
+    runnable,
     readLedger,
     sessionKey,
 } from "./ledger.mjs";
@@ -373,8 +374,12 @@ async function start(args, s) {
             budget: { type: "string", default: "1" },
             timeout: { type: "string", default: "600" },
             tier: { type: "string" },
+            passes: { type: "string", default: "1" },
         },
     });
+    if (values.passes !== "1" && values.passes !== "2")
+        throw new Error(`--passes must be 1 or 2, got "${values.passes}"`);
+    const passes = Number(values.passes);
     if (values.tier !== undefined && !TIERS.includes(values.tier))
         throw new Error(`--tier must be one of ${TIERS.join(", ")}`);
     const repeats = positive("repeats", values.repeats, { integer: true });
@@ -428,6 +433,7 @@ async function start(args, s) {
         budgetUsd,
         timeoutMs: timeoutSeconds * 1000,
         ...(values.tier === undefined ? {} : { tier: values.tier }),
+        ...(passes === 2 ? { passes } : {}),
         ...(await provenance(s)),
     };
     const dir = path.join(s.runsDir, runId);
@@ -440,6 +446,7 @@ async function start(args, s) {
             arms: meta.arms,
             repeats: meta.repeats,
             seed: meta.seed,
+            passes,
         }),
     );
     console.log(runId);
@@ -546,11 +553,18 @@ async function executeEntry(entry, ctx) {
     const workspace = path.join(paths.repos, entry.repo);
     await resetWorkspace(workspace, repo.commit);
     // Annotations live in the shared graph database: a note one session wrote
-    // would answer the next. Every session starts without any.
-    await notes(s, paths, "clear", workspace);
+    // would answer the next. Every session starts without any, except a
+    // second pass, which starts with exactly what its first pass left.
+    const kept = path.join(
+        run.dir,
+        "notes",
+        `${entry.task}--${entry.arm}--${entry.repeat}.json`,
+    );
+    if (entry.pass === 2) await notes(s, paths, "import", workspace, kept);
+    else await notes(s, paths, "clear", workspace);
     const transcript = path.join(
         "transcripts",
-        `${entry.task}--${entry.arm}--${entry.repeat}.jsonl`,
+        `${entry.task}--${entry.arm}--${entry.repeat}${entry.pass === 2 ? "--p2" : ""}.jsonl`,
     );
     const outcome = await runSession({
         claudeBin: s.claudeBin,
@@ -568,7 +582,22 @@ async function executeEntry(entry, ctx) {
         onSpawn: ctx.onSpawn,
         onClose: ctx.onClose,
     });
-    return buildRow({
+    // What the session left: a first pass keeps it for its second; every
+    // session counts the model notes it ends with.
+    await mkdir(path.dirname(kept), { recursive: true });
+    const written = await notes(
+        s,
+        paths,
+        "export",
+        workspace,
+        entry.pass === 2
+            ? path.join(
+                  path.dirname(kept),
+                  `${path.basename(kept, ".json")}--p2.json`,
+              )
+            : kept,
+    );
+    const row = buildRow({
         entry,
         task,
         language: repo.language,
@@ -586,6 +615,7 @@ async function executeEntry(entry, ctx) {
         model: run.meta.model,
         knossosCommit: ctx.knossosCommit,
     });
+    return { ...row, pass: entry.pass ?? 1, notesWritten: written };
 }
 
 /**
@@ -685,8 +715,9 @@ async function continueRun(args, s) {
     );
     const run = await openRun(positionals[0], s);
     const rows = await readLedger(run.ledger);
-    const queue = pending(run.plan, rows).slice(0, batch);
-    if (queue.length === 0) {
+    // A second pass waits for its first; when nothing can start yet, the first passes still running say so.
+    const queue = runnable(run.plan, rows).slice(0, batch);
+    if (queue.length === 0 && pending(run.plan, rows).length === 0) {
         console.log(
             `run ${run.meta.runId} is complete; write the report with: node tools/eval/report.mjs ${run.meta.runId}`,
         );
