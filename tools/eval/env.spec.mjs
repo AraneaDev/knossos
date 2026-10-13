@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     assertCleanAncestors,
     ensureClone,
@@ -14,8 +15,9 @@ import {
     writeMcpConfig,
 } from "./env.mjs";
 
+afterAll(removeTemp);
+
 const git = promisify(execFile);
-const tmp = (p) => mkdtemp(path.join(os.tmpdir(), p));
 
 async function originRepo() {
     const dir = await tmp("eval-origin-");

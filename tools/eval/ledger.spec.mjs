@@ -1,7 +1,7 @@
-import { appendFile, mkdtemp } from "node:fs/promises";
-import os from "node:os";
+import { appendFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     appendRow,
     limitState,
@@ -11,6 +11,8 @@ import {
     sessionKey,
 } from "./ledger.mjs";
 import { rng } from "./rng.mjs";
+
+afterAll(removeTemp);
 
 const tasks = [
     { id: "t1", repo: "a" },
@@ -102,10 +104,7 @@ describe("makePlan order", () => {
 
 describe("ledger", () => {
     it("skips lines that are JSON but not a row", async () => {
-        const file = path.join(
-            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
-            "ledger.jsonl",
-        );
+        const file = path.join(await tmp("ledger-"), "ledger.jsonl");
         await appendFile(
             file,
             ["1", '"x"', "null", "[1]", '{"task":"a"}', "{broken"].join("\n") +
@@ -114,10 +113,7 @@ describe("ledger", () => {
         expect(await readLedger(file)).toEqual([{ task: "a" }]);
     });
     it("appends to a large ledger without reading it back", async () => {
-        const file = path.join(
-            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
-            "ledger.jsonl",
-        );
+        const file = path.join(await tmp("ledger-"), "ledger.jsonl");
         await appendFile(
             file,
             `${JSON.stringify({ task: "big", pad: "x".repeat(2e6) })}\n{"task":"cut"`,
@@ -129,10 +125,7 @@ describe("ledger", () => {
         ]);
     });
     it("appends rows and reads them back", async () => {
-        const file = path.join(
-            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
-            "ledger.jsonl",
-        );
+        const file = path.join(await tmp("ledger-"), "ledger.jsonl");
         expect(await readLedger(file)).toEqual([]);
         await appendRow(file, {
             task: "t1",
@@ -143,10 +136,7 @@ describe("ledger", () => {
         expect(await readLedger(file)).toHaveLength(1);
     });
     it("skips a line cut off by a kill mid-write", async () => {
-        const file = path.join(
-            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
-            "ledger.jsonl",
-        );
+        const file = path.join(await tmp("ledger-"), "ledger.jsonl");
         await appendRow(file, {
             task: "t1",
             arm: "full",
@@ -157,10 +147,7 @@ describe("ledger", () => {
         expect(await readLedger(file)).toHaveLength(1);
     });
     it("starts a new row on its own line after a cut-off fragment", async () => {
-        const file = path.join(
-            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
-            "ledger.jsonl",
-        );
+        const file = path.join(await tmp("ledger-"), "ledger.jsonl");
         await appendRow(file, {
             task: "t1",
             arm: "full",

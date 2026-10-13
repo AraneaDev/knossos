@@ -1,13 +1,15 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     corpusHash,
     loadCorpus,
     validateRepo,
     validateTask,
 } from "./corpus.mjs";
+
+afterAll(removeTemp);
 
 const SHA = "a".repeat(40);
 const repos = {
@@ -29,7 +31,7 @@ const task = {
 };
 
 async function corpusDir(tasks, repoMap = repos) {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "eval-corpus-"));
+    const dir = await tmp("eval-corpus-");
     await writeFile(
         path.join(dir, "repos.json"),
         JSON.stringify({ repos: repoMap }),
@@ -98,7 +100,7 @@ describe("loadCorpus", () => {
         expect(message).toMatch(/task Bad Id: verified must be a real/);
     });
     it("collects a missing repos.json and tasks dir under one error", async () => {
-        const dir = await mkdtemp(path.join(os.tmpdir(), "eval-corpus-"));
+        const dir = await tmp("eval-corpus-");
         const message = await loadCorpus(dir).then(
             () => "",
             (e) => e.message,

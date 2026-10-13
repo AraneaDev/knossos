@@ -1,18 +1,12 @@
 import { execFile, spawn } from "node:child_process";
-import {
-    access,
-    mkdir,
-    mkdtemp,
-    readFile,
-    rm,
-    writeFile,
-} from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import { readLedger } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
 import {
@@ -25,6 +19,8 @@ import {
     signalHandler,
 } from "./run.mjs";
 
+afterAll(removeTemp);
+
 vi.mock("../capture/session.mjs", async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, stopWatchers: vi.fn(actual.stopWatchers) };
@@ -34,7 +30,6 @@ const git = promisify(execFile);
 const FAKE = fileURLToPath(
     new URL("./fixtures/fake-claude.mjs", import.meta.url),
 );
-const tmp = (p) => mkdtemp(path.join(os.tmpdir(), p));
 
 async function fixture({ second = false } = {}) {
     const origin = await tmp("eval-origin-");

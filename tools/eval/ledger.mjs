@@ -3,6 +3,7 @@
  * once, so a run stopped by a usage limit or a kill loses only the sessions
  * still in flight.
  */
+import { Buffer } from "node:buffer";
 import { appendFile, open, readFile } from "node:fs/promises";
 import { rng } from "./rng.mjs";
 

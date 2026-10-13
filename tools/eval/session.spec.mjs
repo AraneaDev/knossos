@@ -1,12 +1,15 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import { armArgv } from "./arms.mjs";
 import { buildRow, runSession, terminateGroups } from "./session.mjs";
 import { parseTranscript } from "./transcript.mjs";
+
+afterAll(removeTemp);
 
 const FAKE = fileURLToPath(
     new URL("./fixtures/fake-claude.mjs", import.meta.url),
@@ -25,7 +28,7 @@ const task = {
 const entry = { task: "t1", repo: "demo", arm: "full", repeat: 1 };
 
 async function session(arm, env = {}, timeoutMs = 10000) {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "eval-session-"));
+    const dir = await tmp("eval-session-");
     const transcriptPath = path.join(dir, "t.jsonl");
     const outcome = await runSession({
         claudeBin: FAKE,
@@ -325,7 +328,7 @@ describe("runSession failures", () => {
     });
     it("reports the pid it spawned and the pid that closed", async () => {
         const seen = [];
-        const dir = await mkdtemp(path.join(os.tmpdir(), "eval-session-"));
+        const dir = await tmp("eval-session-");
         await runSession({
             claudeBin: FAKE,
             argv: [],

@@ -1,7 +1,7 @@
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     clearDefect,
     diffAnswers,
@@ -13,6 +13,8 @@ import {
     rgLines,
     unresolved,
 } from "./keygen.mjs";
+
+afterAll(removeTemp);
 
 const usages = {
     data: {
@@ -160,7 +162,7 @@ describe("knossosAnswer without the subject's own file", () => {
 
 describe("rgLines", () => {
     it("returns matches, an empty list for no match, and throws on any other failure", async () => {
-        const dir = await mkdtemp(path.join(os.tmpdir(), "eval-rg-"));
+        const dir = await tmp("eval-rg-");
         await writeFile(
             path.join(dir, "a.php"),
             "<?php\nfunction total() {}\n",
@@ -177,7 +179,7 @@ describe("rgLines", () => {
 
 describe("recordDefect", () => {
     it("writes a disagreement and deletes it once Knossos agrees", async () => {
-        const root = await mkdtemp(path.join(os.tmpdir(), "eval-defects-"));
+        const root = await tmp("eval-defects-");
         const paths = { defects: path.join(root, "defects") };
         const file = path.join(paths.defects, "t1.json");
         expect(
@@ -332,7 +334,7 @@ describe("unresolved and isTruncated", () => {
 
 describe("clearDefect", () => {
     it("deletes a stale defect and tolerates a missing one", async () => {
-        const root = await mkdtemp(path.join(os.tmpdir(), "eval-defects-"));
+        const root = await tmp("eval-defects-");
         const paths = { defects: path.join(root, "defects") };
         await recordDefect(paths, "t2", "list-usages", {
             missing: ["a"],
@@ -381,7 +383,7 @@ describe("dependants distance", () => {
 
 describe("recordUnresolved", () => {
     it("writes an unresolved defect in place of any earlier one", async () => {
-        const root = await mkdtemp(path.join(os.tmpdir(), "eval-defects-"));
+        const root = await tmp("eval-defects-");
         const paths = { defects: path.join(root, "defects") };
         await recordDefect(paths, "t3", "list-usages", {
             missing: ["a"],
