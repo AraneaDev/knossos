@@ -372,6 +372,34 @@ describe("acquireLock", () => {
         await release();
         await release2(file);
     });
+    it("lets only one of two racing processes take over a stale lock", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        const child = spawn("true");
+        await new Promise((resolve) => child.once("exit", resolve));
+        for (let round = 0; round < 20; round += 1) {
+            await writeFile(file, String(child.pid));
+            const results = await Promise.allSettled([
+                acquireLock(file),
+                acquireLock(file),
+                acquireLock(file),
+            ]);
+            expect(
+                results.filter((r) => r.status === "fulfilled"),
+            ).toHaveLength(1);
+            for (const r of results.filter((r) => r.status === "rejected"))
+                expect(r.reason.message).toMatch(/another continue is running/);
+            await results.find((r) => r.status === "fulfilled").value();
+            await expect(readFile(`${file}.takeover`)).rejects.toThrow();
+        }
+    });
+    it("waits for a lock file that is created but not yet written", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        await writeFile(file, "");
+        setTimeout(() => writeFile(file, String(process.pid)), 50);
+        await expect(acquireLock(file)).rejects.toThrow(
+            new RegExp(`pid ${process.pid}`),
+        );
+    });
     it("takes over a lock whose process is gone", async () => {
         const file = path.join(await tmp("eval-lock-"), "continue.lock");
         const child = spawn("true");
@@ -444,7 +472,7 @@ describe("continue cleanup", () => {
 });
 
 describe("signalHandler", () => {
-    it("sets stop first and runs its cleanup once, however many signals arrive", async () => {
+    it("sets stop first, runs its cleanup once and forces exit 130 on a second signal", async () => {
         const state = { stop: null, firstError: null };
         const calls = [];
         let finishTerminate;
@@ -461,15 +489,54 @@ describe("signalHandler", () => {
         const handler = signalHandler(130, state, ops);
         const first = handler();
         await handler(); // a second Ctrl-C while the first is still terminating
-        expect(calls).toEqual(["terminate:signal"]);
+        expect(calls).toEqual(["terminate:signal", "exit:130"]);
         finishTerminate();
         await first;
         expect(calls).toEqual([
             "terminate:signal",
+            "exit:130",
             "watchers",
             "release",
             "exit:130",
         ]);
+    });
+    it("releases and exits with the signal's code when cleanup rejects", async () => {
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        for (const failing of ["terminate", "stopWatchers"]) {
+            const calls = [];
+            const ops = {
+                terminate: async () => {
+                    if (failing === "terminate") throw new Error("kill failed");
+                },
+                stopWatchers: async () => {
+                    if (failing === "stopWatchers")
+                        throw new Error("stop failed");
+                },
+                release: async () => calls.push("release"),
+                exit: (code) => calls.push(`exit:${code}`),
+            };
+            await signalHandler(143, { stop: null }, ops)();
+            expect(calls).toEqual(["release", "exit:143"]);
+        }
+        err.mockRestore();
+    });
+    it("still exits when release itself rejects", async () => {
+        const err = vi.spyOn(console, "error").mockImplementation(() => {});
+        const calls = [];
+        await signalHandler(
+            130,
+            { stop: null },
+            {
+                terminate: async () => {},
+                stopWatchers: async () => {},
+                release: async () => {
+                    throw new Error("rm failed");
+                },
+                exit: (code) => calls.push(code),
+            },
+        )();
+        expect(calls).toEqual([130]);
+        err.mockRestore();
     });
 });
 

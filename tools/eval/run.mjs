@@ -12,7 +12,7 @@
  *   node tools/eval/report.mjs <run-id>               write report.md
  */
 import { execFile } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -171,25 +171,75 @@ const alive = (pid) => {
     }
 };
 
+/** A takeover mutex older than this belonged to a process that died holding it. */
+const TAKEOVER_STALE_MS = 5000;
+
+const young = (file) =>
+    stat(file).then(
+        (st) => Date.now() - st.mtimeMs < 1000,
+        () => false,
+    );
+
+/** Holds `${file}.takeover` (an atomic mkdir) while `fn` runs; null when another process holds it. */
+async function withTakeover(file, fn) {
+    const mutex = `${file}.takeover`;
+    try {
+        await mkdir(mutex);
+    } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        const age = await stat(mutex)
+            .then((st) => Date.now() - st.mtimeMs)
+            .catch(() => 0);
+        if (age > TAKEOVER_STALE_MS)
+            await rm(mutex, { recursive: true, force: true });
+        else await sleep(10);
+        return null;
+    }
+    try {
+        return await fn();
+    } finally {
+        await rm(mutex, { recursive: true, force: true });
+    }
+}
+
 /**
  * Takes `file` with the pid of this process; throws while another live
- * process holds it, takes it over when the holder is gone. Returns a release.
+ * process holds it, takes it over when the holder is gone. The takeover runs
+ * under a mutex and re-reads the holder inside it, so two processes that both
+ * saw a stale lock cannot each remove the other's fresh one. Returns a release.
  */
 export async function acquireLock(file) {
     await mkdir(path.dirname(file), { recursive: true });
-    for (;;) {
+    const release = () => rm(file, { force: true });
+    const holder = async () =>
+        Number((await readFile(file, "utf8").catch(() => "")).trim());
+    const create = async () => {
         try {
             await writeFile(file, String(process.pid), { flag: "wx" });
-            return () => rm(file, { force: true });
+            return true;
         } catch (error) {
             if (error.code !== "EEXIST") throw error;
+            return false;
         }
-        const pid = Number(
-            (await readFile(file, "utf8").catch(() => "")).trim(),
-        );
+    };
+    for (;;) {
+        if (await create()) return release;
+        const pid = await holder();
+        // Created but not yet written by its owner: wait for the pid instead of calling it stale.
+        if (!(pid > 0) && (await young(file))) {
+            await sleep(10);
+            continue;
+        }
         if (pid > 0 && alive(pid))
             throw new Error(`another continue is running (pid ${pid})`);
-        await rm(file, { force: true });
+        const won = await withTakeover(file, async () => {
+            const current = await holder();
+            if (current > 0 && alive(current))
+                throw new Error(`another continue is running (pid ${current})`);
+            await rm(file, { force: true });
+            return create();
+        });
+        if (won) return release;
     }
 }
 
@@ -433,18 +483,32 @@ export async function drain(queue, concurrency, execute, state) {
 }
 
 /**
- * The SIGINT/SIGTERM handler. It runs once: a second signal while the first
- * is still cleaning up must not run it again and exit before it finishes.
+ * The SIGINT/SIGTERM handler. The first signal cleans up: it always releases
+ * the lock and exits, even when terminating the sessions or stopping the
+ * watchers rejects. A second signal while that is still running does not wait
+ * for it and forces exit 130.
  */
 export function signalHandler(code, state, ops) {
     return async () => {
-        if (state.stop === "signal") return;
+        if (state.stop === "signal") {
+            ops.exit(130);
+            return;
+        }
         // Before anything else, so no worker starts a session the live snapshot misses.
         state.stop = "signal";
-        await ops.terminate();
-        await ops.stopWatchers();
-        await ops.release();
-        ops.exit(code);
+        try {
+            await ops.terminate();
+            await ops.stopWatchers();
+        } catch (error) {
+            console.error(`cleanup after the signal failed: ${error.message}`);
+        } finally {
+            try {
+                await ops.release();
+            } catch (error) {
+                console.error(`releasing the lock failed: ${error.message}`);
+            }
+            ops.exit(code);
+        }
     };
 }
 
