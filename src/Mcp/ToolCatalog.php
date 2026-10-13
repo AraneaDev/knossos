@@ -207,7 +207,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'architecture_trends',
                 'title' => 'Architecture trends',
-                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each retained snapshot\'s figures in the graph database, so a repeat call skips decoding its archive. A snapshot past the 200,000 rows per table a snapshot is read whole within is a `partial` point: its counts and diagnostics from COUNT(*), `cycles`, `max_degree` and `unreferenced_candidates` null, and a `reason` (for the live graph: the table, its rows and the limit).',
+                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -339,7 +339,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'list_diagnostics',
                 'title' => 'List diagnostics',
-                'description' => 'The scan diagnostics of the active graph (compiler and worker errors, warnings and notes), by file and line, each with the scanner or enricher that recorded it (`source`, null when unknown). Use to see what the dashboard counts as diagnostics, filtered by severity or path prefix.',
+                'description' => 'The scan diagnostics of the active graph (compiler and worker errors, warnings, notes) by file and line, with the scanner that recorded each. Filter by severity or path prefix.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -546,7 +546,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'changed_files_impact',
                 'title' => 'Changed files impact',
-                'description' => 'Map a set of changed files (explicit or from a Git diff) to the components they affect. Use to scope review or tests to what a change actually touches. Provide exactly one source: either files (an explicit list) or working_tree: true (let Git supply the changes). base_ref only applies with working_tree: true. It diffs the working tree against that ref; it cannot be combined with files.',
+                'description' => 'Map changed files to the components they affect, to scope review or tests to what a change touches. Pass either files, or working_tree: true (optionally with base_ref) to let Git supply them.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -708,7 +708,7 @@ final readonly class ToolCatalog
         return [
             [
                 'name' => 'annotate_component', 'title' => 'Annotate component',
-                'description' => 'Record a durable annotation on a component (intended_boundary, confirmed_dead, false_positive, intentional, note) that survives rescans. false_positive (flagged wrongly) and intentional (true, and meant: a parked route, a test-only helper) remove the component from dead-code candidates. Preview by default; pass execute to apply.',
+                'description' => 'Record a durable annotation on a component that survives rescans. false_positive and intentional (a parked route, a test-only helper) remove it from dead-code candidates. Preview by default; pass execute to apply.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'project_id' => ['type' => 'string', 'minLength' => 1],
                     'component' => ['type' => 'string', 'minLength' => 1],
@@ -740,7 +740,7 @@ final readonly class ToolCatalog
             ],
             [
                 'name' => 'maintain_database', 'title' => 'Maintain database',
-                'description' => 'Check integrity, or run a checkpoint, optimize, vacuum, or backup of the graph store. Use for routine upkeep or before an upgrade; vacuum rebuilds the file to return space that deleted projects and aged-out snapshots left behind.',
+                'description' => 'Check integrity, or run a checkpoint, optimize, vacuum or backup of the graph store. Use for routine upkeep or before an upgrade.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'action' => ['type' => 'string', 'enum' => ['integrity', 'checkpoint', 'optimize', 'vacuum', 'backup']],
                     'execute' => ['type' => 'boolean', 'default' => false],
@@ -778,11 +778,15 @@ final readonly class ToolCatalog
     private static function commonReadProperties(bool $withRefresh = true): array
     {
         $properties = [
-            'verbosity' => ['type' => 'string', 'enum' => ['compact', 'full'], 'default' => 'compact', 'description' => 'compact (default) trims evidence to a preview; full returns all evidence.'],
-            'max_chars' => ['type' => 'integer', 'minimum' => 4000, 'maximum' => 100000, 'default' => 30000, 'description' => 'Byte budget for the serialized result; supporting material (legends, evidence) is trimmed before findings, tail-first, and reported in meta.dropped_items. Defaults to 30000 so a large result cannot exceed the host\'s response cap; raise it to trade context window for detail.'],
+            // These three ride on every read tool, so each word here is paid
+            // for on every turn of every session: one clause each. The full
+            // behaviour is in docs/reference/mcp-tools.md and in the result's
+            // own meta (dropped_items, the staleness warning).
+            'verbosity' => ['type' => 'string', 'enum' => ['compact', 'full'], 'default' => 'compact', 'description' => 'full returns all evidence; compact a preview.'],
+            'max_chars' => ['type' => 'integer', 'minimum' => 4000, 'maximum' => 100000, 'default' => 30000, 'description' => 'Result size budget; evidence is trimmed first.'],
         ];
         if ($withRefresh) {
-            $properties['refresh_if_stale'] = ['type' => 'boolean', 'default' => true, 'description' => 'If the graph is stale and the rescan fits the latency budget, run an incremental rescan (of Knossos\'s own derived database only) before answering; over budget, or on failure, the last complete graph is served with a warning saying why. A missing graph still requires scan_project. Set false to answer from the stored graph regardless.'];
+            $properties['refresh_if_stale'] = ['type' => 'boolean', 'default' => true, 'description' => 'Rescan a stale graph first when it fits the latency budget.'];
         }
 
         return $properties;
