@@ -244,6 +244,10 @@ final class PaneQueriesTest extends KnossosTestCase
 
             $ask(['component' => 'App\\Greeter', 'remove' => '1', 'author' => 'model', 'execute' => '1']);
             assertSame([['user', 'mine']], $pdo->query('SELECT author, value FROM annotations')->fetchAll(PDO::FETCH_NUM));
+            // A note written in the pane is the person's: naming another author is refused.
+            $refused = $ask(['component' => 'App\\Greeter', 'value' => 'x', 'author' => 'model', 'execute' => '1']);
+            assertSame('refused', $refused['status']);
+            assertStringContainsString('only a remove names an author', (string) $refused['reason']);
             // Without an author, the pane removes the person's own note.
             $ask(['component' => 'App\\Greeter', 'remove' => '1', 'execute' => '1']);
             assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());

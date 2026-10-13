@@ -298,6 +298,11 @@ final class AnnotationsTest extends KnossosTestCase
         $nothing = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
         assertSame(null, $nothing->data['previous']);
         assertSame('Nothing removed: App\\Checkout has no note annotation by the model.', $nothing->summary);
+        // It says the person's note is still there, and who may remove it.
+        assertArrayContains('A note annotation by the user remains; only the pane removes it.', $nothing->warnings);
+        // The preview says so too, rather than promising a removal.
+        $previewed = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', author: 'model');
+        assertSame('Preview: nothing to remove: App\\Checkout has no note annotation by the model.', $previewed->summary);
         assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
 
         // The preview a model sees is its own note, the one it would extend.
@@ -322,5 +327,19 @@ final class AnnotationsTest extends KnossosTestCase
         assertSame([['user', 'the team says so'], ['model', 'an agent found this']], array_map(static fn(array $a): array => [$a['author'], $a['value']], $listed));
         $inspected = $queries->inspectComponent($ids['project'], 'App\\Checkout')->data['component']['annotations'];
         assertSame(['user', 'model'], array_column($inspected, 'author'));
+    }
+
+    #[Group('query')]
+    public function testAPersonsJudgementOnDeadCodeOutranksAModelsWhateverTheKind(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'confirmed_dead', 'nothing calls it', execute: true, author: 'user');
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'false_positive', 'reached by the container', execute: true);
+
+        $facts = new \Knossos\Query\CandidateGraphFacts($pdo, $ids['project'], ['calls'], 0);
+
+        assertSame(['kind' => 'confirmed_dead', 'value' => 'nothing calls it'], $facts->componentAnnotations()['App\\Checkout']);
     }
 }

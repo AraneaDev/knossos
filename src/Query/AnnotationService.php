@@ -49,22 +49,26 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
     public function removeAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
     {
         $target = $this->target($projectId, $component, $kind, $value, $author);
+        // Nothing of this author's to remove: say so, in the preview as well,
+        // and name the other author's note left standing, so the caller does
+        // not take it for gone or try again.
+        $nothing = null;
+        if ($target['existing'] === null) {
+            $nothing = sprintf('%s has no %s annotation by the %s.', $target['canonical'], $kind, $author);
+            $other = $author === 'model' ? 'user' : 'model';
+            if ($this->fetch($projectId, $target['canonical'], $kind, $other) !== null) {
+                $target['warnings'][] = $other === 'user'
+                    ? sprintf('A %s annotation by the user remains; only the pane removes it.', $kind)
+                    : sprintf('A %s annotation by the model remains.', $kind);
+            }
+        }
         if (!$execute) {
-            return $this->preview($projectId, $target, $kind, 'remove', null);
+            return $this->preview($projectId, $target, $kind, 'remove', null, $nothing === null ? null : 'Preview: nothing to remove: ' . $nothing);
         }
         $statement = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
         $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'author' => $author]);
 
-        return $this->executed(
-            $projectId,
-            $target,
-            $kind,
-            'remove',
-            'Removed',
-            null,
-            // A person's note under the same name is not the caller's to remove.
-            $target['existing'] === null ? sprintf('Nothing removed: %s has no %s annotation by the %s.', $target['canonical'], $kind, $author) : null,
-        );
+        return $this->executed($projectId, $target, $kind, 'remove', 'Removed', null, $nothing === null ? null : 'Nothing removed: ' . $nothing);
     }
 
     /**
@@ -114,12 +118,12 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * @param array{project: array<string, mixed>, canonical: string, warnings: list<string>, existing: ?array<string, mixed>} $target
      * @param array<string, mixed>|null $annotation the annotation the write would leave
      */
-    private function preview(string $projectId, array $target, string $kind, string $action, ?array $annotation): ResultEnvelope
+    private function preview(string $projectId, array $target, string $kind, string $action, ?array $annotation, ?string $summary = null): ResultEnvelope
     {
         return new ResultEnvelope(
             $projectId,
             $target['project']['active_scan_id'],
-            sprintf('Preview: would %s %s annotation on %s.', $action, $kind, $target['canonical']),
+            $summary ?? sprintf('Preview: would %s %s annotation on %s.', $action, $kind, $target['canonical']),
             ['component' => $target['canonical'], 'kind' => $kind, 'action' => $action, 'executed' => false, 'previous' => $target['existing'], 'annotation' => $annotation],
             [],
             [...$target['warnings'], 'Set execute=true to apply the change.'],

@@ -86,6 +86,9 @@ final readonly class PaneQueries
         $id = (string) $project['id'];
         $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
         try {
+            if (!$remove && $author !== 'user') {
+                throw new InvalidArgumentException('A note written here is the person\'s: only a remove names an author.');
+            }
             $queries = ArchitectureQueryService::forDatabase($this->pdo);
             // The pane is where a person writes: what they record is theirs.
             // Only a remove names another author, to take away a model's note.
