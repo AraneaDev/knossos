@@ -402,6 +402,9 @@ final readonly class ResultEnricher
         if ($components !== []) {
             $data['component_legend'] = $components;
         }
+        if (isset($data['usages']) && is_array($data['usages']) && array_is_list($data['usages'])) {
+            $data['usages'] = array_map(self::slimUsage(...), $data['usages']);
+        }
         $evidence = array_slice($envelope->evidence, 0, self::COMPACT_EVIDENCE);
         if ($idToName !== []) {
             $evidence = self::rewriteEvidenceIds($evidence, $idToName);
@@ -418,6 +421,29 @@ final readonly class ResultEnricher
             $envelope->nextSteps,
             $envelope->meta,
         );
+    }
+
+    /**
+     * A usage row as a compact answer needs it: where, what kind, how sure,
+     * and whether it is test code. The edge id, the origin and an empty
+     * attribute list are bookkeeping a reader of the list rarely uses, and on
+     * a symbol used a hundred times they are most of the answer. `full`
+     * keeps them, and the evidence entries keep each edge id.
+     *
+     * @param mixed $usage
+     * @return mixed
+     */
+    private static function slimUsage(mixed $usage): mixed
+    {
+        if (!is_array($usage)) {
+            return $usage;
+        }
+        unset($usage['edge_id'], $usage['origin']);
+        if (($usage['attributes'] ?? null) === []) {
+            unset($usage['attributes']);
+        }
+
+        return $usage;
     }
 
     /**

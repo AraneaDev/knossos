@@ -110,6 +110,13 @@ Each row carries the edge's stored `attributes`, so a qualification an enricher
 recorded on the relationship (a profile, a condition) stays attached to the
 usage instead of reading as unconditional.
 
+Each row also says whether its source is test code (`test`), and the summary
+and `bounds.outside_tests` count the sites outside tests. The summary states
+what the list covers: every static reference the graph resolved, and no call
+made through a string, reflection or dynamic dispatch. In `compact` verbosity a
+row leaves out its `edge_id`, `origin` and an empty `attributes`; `full` keeps
+them, and the evidence entries keep each edge id.
+
 ```json
 {
     "project_id": "project_...",

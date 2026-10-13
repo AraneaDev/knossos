@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\ReportableComponent;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -126,6 +127,30 @@ final class ListUsagesTest extends KnossosTestCase
     }
 
     #[Group('query')]
+    public function testEachUsageSaysWhetherItIsTestCodeAndTheSummarySaysWhatTheListCovers(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $test = StableId::symbol($ids['project'], 'php', 'method', 'Tests\\InvoiceTest::testTotal');
+        $repository->saveNode($test, $ids['project'], 'php', 'method', 'Tests\\InvoiceTest::testTotal', 'testTotal', null, $ids['file'], 40, 44, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->saveClassification('classification_test', $ids['project'], $test, ReportableComponent::TEST_ROLE, 'rule', 'certain', 'php.test', $ids['file'], 40, 44, [], $ids['scan']);
+        $call = StableId::edge($ids['project'], 'calls', $test, $ids['invoice'], 'src/Checkout.php:42');
+        $repository->saveEdge($call, $ids['project'], 'calls', $test, $ids['invoice'], $ids['file'], 42, 42, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $result = $queries->listUsages($ids['project'], 'App\\InvoiceService');
+        assertSame([false, true], array_column($result->data['usages'], 'test'));
+        assertSame(1, $result->data['bounds']['outside_tests']);
+        assertContains('Found 2 usage sites of App\\InvoiceService, 1 outside tests.', $result->summary);
+        assertContains('calls through strings, reflection or dynamic dispatch are not', $result->summary);
+
+        // Cut by the limit, the counts still cover every match.
+        $limited = $queries->listUsages($ids['project'], 'App\\InvoiceService', limit: 1);
+        assertSame(1, $limited->data['bounds']['outside_tests']);
+        assertContains('Found 2 usage sites of App\\InvoiceService, 1 outside tests; showing 1.', $limited->summary);
+    }
+
+    #[Group('query')]
     public function testDispatchThroughToolService(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
@@ -138,6 +163,12 @@ final class ListUsagesTest extends KnossosTestCase
         );
         $result = $tools->call('list_usages', ['project_id' => $ids['project'], 'symbol' => 'App\\InvoiceService']);
         assertSame(1, count($result->data['usages']));
+        // Compact rows keep what a reader of the list uses; full keeps the bookkeeping too.
+        $row = $result->data['usages'][0];
+        assertSame(['kind', 'confidence', 'source', 'path', 'start_line', 'end_line', 'test'], array_keys($row));
+        $full = $tools->call('list_usages', ['project_id' => $ids['project'], 'symbol' => 'App\\InvoiceService', 'verbosity' => 'full'])->data['usages'][0];
+        assertSame(true, isset($full['edge_id'], $full['origin']));
+        assertSame([], $full['attributes']);
         assertThrows(fn() => $tools->call('list_usages', ['project_id' => $ids['project'], 'symbol' => 'X', 'limit' => 0]), InvalidArgumentException::class);
     }
 }
