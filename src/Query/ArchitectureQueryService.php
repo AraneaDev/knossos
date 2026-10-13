@@ -141,7 +141,7 @@ final readonly class ArchitectureQueryService
     /** {@see ComponentQueryService::findComponent()} */
     public function findComponent(string $projectId, string $name, int $limit = 20): ResultEnvelope
     {
-        return $this->services->componentQueries->findComponent($projectId, $name, $limit);
+        return $this->withNotes($this->services->componentQueries->findComponent($projectId, $name, $limit));
     }
 
     /** {@see ComponentQueryService::inspectComponent()} */
@@ -152,7 +152,7 @@ final readonly class ArchitectureQueryService
         int $maxChildren = 25,
         string $minConfidence = 'possible',
     ): ResultEnvelope {
-        return $this->services->componentQueries->inspectComponent($projectId, $component, $maxRelationships, $maxChildren, $minConfidence);
+        return $this->withNotes($this->services->componentQueries->inspectComponent($projectId, $component, $maxRelationships, $maxChildren, $minConfidence));
     }
 
     /**
@@ -162,7 +162,7 @@ final readonly class ArchitectureQueryService
      */
     public function listUsages(string $projectId, string $symbol, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 100): ResultEnvelope
     {
-        return $this->services->componentQueries->listUsages($projectId, $symbol, $edgeKinds, $minConfidence, $limit);
+        return $this->withNotes($this->services->componentQueries->listUsages($projectId, $symbol, $edgeKinds, $minConfidence, $limit));
     }
 
     /** {@see GraphSummaryQuery::architectureSummary()} */
@@ -385,7 +385,7 @@ final readonly class ArchitectureQueryService
         string $minConfidence = 'possible',
         int $timeoutMs = 1000,
     ): ResultEnvelope {
-        return $this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs);
+        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs));
     }
 
     /**
@@ -402,7 +402,7 @@ final readonly class ArchitectureQueryService
         string $minConfidence = 'possible',
         int $timeoutMs = 1000,
     ): ResultEnvelope {
-        return $this->services->impactQueries->impactAnalysis($projectId, $symbol, $maxDepth, $limit, $edgeKinds, $minConfidence, $timeoutMs);
+        return $this->withNotes($this->services->impactQueries->impactAnalysis($projectId, $symbol, $maxDepth, $limit, $edgeKinds, $minConfidence, $timeoutMs));
     }
 
     /** {@see GraphSummaryQuery::listBoundaries()} */
@@ -438,10 +438,14 @@ final readonly class ArchitectureQueryService
         return $this->services->componentQueries->searchArchitecture($projectId, $query, $kinds, $roles, $boundaryIds, $confidences, $limit, $offset);
     }
 
-    /** {@see AnnotationService::upsertAnnotation()} */
-    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
+    /**
+     * {@see AnnotationService::upsertAnnotation()}
+     *
+     * @param list<string> $evidencePaths
+     */
+    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = []): ResultEnvelope
     {
-        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author);
+        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author, $evidencePaths);
     }
 
     /** {@see AnnotationService::removeAnnotation()} */
@@ -453,7 +457,16 @@ final readonly class ArchitectureQueryService
     /** {@see FileContextQueryService::fileContext()} */
     public function fileContext(string $projectId, string $path): ResultEnvelope
     {
-        return $this->services->fileContextQueries->fileContext($projectId, $path);
+        $result = $this->services->fileContextQueries->fileContext($projectId, $path);
+        // A file's context counts its components without naming them: the
+        // notes are those of the components the file declares, looked up by
+        // the path the result normalised, however the caller wrote it.
+        $declared = $this->services->pdo->prepare(
+            'SELECT n.canonical_name FROM nodes n JOIN files f ON f.id = n.file_id WHERE f.project_id = ? AND f.relative_path = ? LIMIT ' . self::NOTE_LOOKUP_NAMES,
+        );
+        $declared->execute([$projectId, (string) ($result->data['path'] ?? $path)]);
+
+        return $this->withNotes($result, $declared->fetchAll(PDO::FETCH_COLUMN));
     }
 
     /** {@see DiagnosticsQueryService::listDiagnostics()} */
@@ -477,5 +490,38 @@ final readonly class ArchitectureQueryService
     public function sessionBrief(string $path, ?string $databasePath = null): string
     {
         return $this->services->sessionBrief($databasePath)->brief($path);
+    }
+
+    /** How many component names a result's notes are looked up for; a long listing's first ones are enough. */
+    private const NOTE_LOOKUP_NAMES = 300;
+
+    /**
+     * The result with the notes of the components it names, as `data.notes`:
+     * every `canonical_name` its data holds (a target, usage sources,
+     * dependants, flow hops, candidates, a file's components), looked up in
+     * {@see AnnotationNotes}. A result naming no annotated component is
+     * returned unchanged, so it pays nothing.
+     *
+     * @param list<string> $alsoNamed components the result bears on without naming them in its data
+     */
+    private function withNotes(ResultEnvelope $result, array $alsoNamed = []): ResultEnvelope
+    {
+        $names = array_fill_keys($alsoNamed, true);
+        $collect = static function (mixed $value) use (&$collect, &$names): void {
+            if (!is_array($value) || count($names) >= self::NOTE_LOOKUP_NAMES) {
+                return;
+            }
+            foreach ($value as $key => $item) {
+                if ($key === 'canonical_name' && is_string($item)) {
+                    $names[$item] = true;
+                } elseif (is_array($item)) {
+                    $collect($item);
+                }
+            }
+        };
+        $collect($result->data);
+        $notes = (new AnnotationNotes($this->services->pdo))->forComponents($result->projectId, array_keys($names));
+
+        return $notes === [] ? $result : $result->withData([...$result->data, 'notes' => $notes]);
     }
 }

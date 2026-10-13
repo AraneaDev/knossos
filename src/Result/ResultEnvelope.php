@@ -61,6 +61,27 @@ final readonly class ResultEnvelope implements JsonSerializable
     }
 
     /**
+     * A copy carrying other data.
+     *
+     * @param array<string, mixed> $data
+     */
+    public function withData(array $data): self
+    {
+        return new self(
+            $this->projectId,
+            $this->snapshotId,
+            $this->summary,
+            $data,
+            $this->evidence,
+            $this->warnings,
+            $this->truncated,
+            $this->staleness,
+            $this->nextSteps,
+            $this->meta,
+        );
+    }
+
+    /**
      * A copy with warnings appended, never replaced, so earlier qualifications survive.
      *
      * @param list<string> $warnings

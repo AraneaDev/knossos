@@ -184,7 +184,27 @@ person's (`user`); one written through `annotate_component` or the
 `annotate-component` command is the model's (`model`), since an agent can run
 either. Both can annotate the same component with the same kind without
 overwriting each other. A model writes, extends and removes only its own
-notes, and never changes a person's. Readers list a person's notes first. They sit in their own table,
+notes, and never changes a person's. Readers list a person's notes first.
+
+Notes come to the agent with the answers they bear on. `list_usages`,
+`impact_analysis`, `explain_flow`, `find_component`, `file_context` and
+`inspect_component` add `data.notes` when the components their result names
+carry any: each with its component, kind, author, the date it was written,
+and at most 300 characters of its text (`list_annotations` has the rest). At
+most 10 come with one result: a person's first, then in the order the result
+names the components, so the one asked about leads. A result naming no
+annotated component has no `notes` key. Under `max_chars`, notes are trimmed
+before the findings they annotate.
+
+A model's note is an observation of code that can change under it. Writing
+it records the content hash of the component's own file and of up to 5 more
+files the agent names in `evidence_paths`. When one of them has changed or is
+gone, the note is `stale`, with a `stale_reason` such as `written before
+documents/views.py changed`; a note no scanned file backs at all reads `rests
+on no scanned file`. Re-recording the note confirms it against the code as it
+is now; removing it is the other way out. A person's note is never stale.
+`evidence_paths` reads a path as `file_context` does: project-relative,
+`./`-led, or absolute under the project root. They sit in their own table,
 keyed by canonical name and not by node id. `component` must match exactly: a
 stable id, a canonical name or a display name. A name that only starts like a
 component's is recorded as given, with a warning that names the components it

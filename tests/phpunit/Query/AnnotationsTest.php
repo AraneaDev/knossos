@@ -342,4 +342,47 @@ final class AnnotationsTest extends KnossosTestCase
 
         assertSame(['kind' => 'confirmed_dead', 'value' => 'nothing calls it'], $facts->componentAnnotations()['App\\Checkout']);
     }
+
+    #[Group('query')]
+    public function testAModelNoteKeepsTheFilesItRestsOn(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $hash = (string) $pdo->query("SELECT content_hash FROM files WHERE relative_path = 'src/Checkout.php'")->fetchColumn();
+
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true, evidencePaths: ['src/Checkout.php']);
+        $basis = json_decode((string) $pdo->query("SELECT basis_json FROM annotations WHERE author = 'model'")->fetchColumn(), true);
+        // The component's own file first; an evidence path it already names is not repeated.
+        assertSame([['path' => 'src/Checkout.php', 'hash' => $hash]], $basis);
+
+        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: ['src/Nowhere.php']), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: array_fill(0, 6, 'src/Checkout.php')), InvalidArgumentException::class);
+
+        // A person's note rests on nothing: it is never stale.
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'mine', execute: true, author: 'user');
+        assertSame('[]', (string) $pdo->query("SELECT basis_json FROM annotations WHERE author = 'user'")->fetchColumn());
+    }
+
+    #[Group('query')]
+    public function testABasisCoversEveryFileTheComponentIsDeclaredInAndTakesAnAbsoluteEvidencePath(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $other = \Knossos\Store\StableId::file($ids['project'], 'src/CheckoutPartial.php');
+        $repository->saveFile($other, $ids['project'], 'src/CheckoutPartial.php', 'partialhash', 10, 1, 'php', '0.1.0', $ids['scan']);
+        // One name, two declarations: a class here and an interface of the same name there.
+        $twin = \Knossos\Store\StableId::symbol($ids['project'], 'php', 'interface', 'App\\Checkout');
+        $repository->saveNode($twin, $ids['project'], 'php', 'interface', 'App\\Checkout', 'Checkout', null, $other, 1, 2, 'ast', 'certain', [], 'php:file:src/CheckoutPartial.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $queries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'x', execute: true, evidencePaths: ['/workspace/fixture-shop/src/Checkout.php']);
+        assertSame(['src/Checkout.php'], array_column(json_decode((string) $pdo->query("SELECT basis_json FROM annotations WHERE canonical_name = 'App\\InvoiceService'")->fetchColumn(), true), 'path'));
+
+        $pdo->exec("DELETE FROM annotations");
+        // A name two nodes share is written by stable id; the basis still covers both declarations.
+        $queries->upsertAnnotation($ids['project'], $ids['checkout'], 'note', 'split across two files', execute: true);
+        $paths = array_column(json_decode((string) $pdo->query('SELECT basis_json FROM annotations')->fetchColumn(), true), 'path');
+        assertSame(['src/Checkout.php', 'src/CheckoutPartial.php'], $paths);
+    }
 }

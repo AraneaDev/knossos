@@ -65,7 +65,7 @@ final class QueryCommand implements CliCommand
             'export-diagram' => ['db', 'json', 'format', 'boundary', 'edge-kind', 'min-confidence', 'direction', 'max-nodes', 'max-edges'],
             'export-agent-brief' => ['db', 'json', 'max-chars', 'out'],
             'list-boundaries' => ['db', 'json', 'source', 'limit', 'offset'],
-            'annotate-component' => ['db', 'json', 'remove', 'execute'],
+            'annotate-component' => ['db', 'json', 'remove', 'execute', 'evidence'],
             'search-architecture' => ['db', 'json', 'kind', 'role', 'boundary', 'confidence', 'limit', 'offset'],
             'list-annotations' => ['db', 'json', 'component', 'kind', 'limit', 'offset'],
             // Unreachable through the router, which asks only for supported
@@ -490,14 +490,14 @@ final class QueryCommand implements CliCommand
      */
     private function annotateComponent(array $p, array $o, CliCommandContext $c): int
     {
-        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--remove] [--execute] [--json]'), $c);
+        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--execute] [--json]'), $c);
         $component = $p[1] ?? throw new InvalidArgumentException('A component is required.');
         $kind = $p[2] ?? throw new InvalidArgumentException('A kind is required.');
         $value = $p[3] ?? '';
         $execute = $c->options->flag($o, 'execute');
         $result = $c->options->flag($o, 'remove')
             ? $this->queries($c)->removeAnnotation($project, $component, $kind, $value, $execute)
-            : $this->queries($c)->upsertAnnotation($project, $component, $kind, $value, $execute);
+            : $this->queries($c)->upsertAnnotation($project, $component, $kind, $value, $execute, 'model', array_values(array_map('trim', $o['evidence'] ?? [])));
         return $this->result($result, $o, $c);
     }
 

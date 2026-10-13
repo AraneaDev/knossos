@@ -322,10 +322,13 @@ final readonly class ResultEnricher
         return $victim;
     }
 
-    /** Whether a key names material that only annotates the payload. */
+    /**
+     * Whether a key names material that only annotates the payload: evidence,
+     * legends, and the notes earlier sessions left on the components named.
+     */
     private static function isSupportingKey(string $key): bool
     {
-        return $key === self::EVIDENCE_KEY || str_ends_with($key, '_legend');
+        return $key === self::EVIDENCE_KEY || $key === 'notes' || str_ends_with($key, '_legend');
     }
 
     /**

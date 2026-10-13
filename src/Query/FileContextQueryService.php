@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 
 /**
@@ -23,7 +22,7 @@ final readonly class FileContextQueryService extends AbstractArchitectureQuerySe
     {
         $project = $this->project($projectId);
         $root = rtrim((string) $project['root_realpath'], '/');
-        $relative = self::relative($root, $path);
+        $relative = ProjectRelativePath::of($root, $path);
         $context = (new FileContextService($this->pdo))->context($root . '/' . $relative);
         $file = $context['file'];
         // A link to another project's file resolves to that project: it is not this one's to answer.
@@ -51,19 +50,5 @@ final readonly class FileContextQueryService extends AbstractArchitectureQuerySe
             [],
             $file['tests']['more'],
         );
-    }
-
-    /** `$path` relative to `$root`; refused when it is empty or leaves the root. */
-    private static function relative(string $root, string $path): string
-    {
-        $trimmed = trim($path);
-        $relative = str_starts_with($trimmed, '/')
-            ? (str_starts_with($trimmed, $root . '/') ? substr($trimmed, strlen($root) + 1) : null)
-            : preg_replace('#^(\./)+#', '', $trimmed);
-        if ($relative === null || $relative === '' || in_array('..', explode('/', $relative), true)) {
-            throw new InvalidArgumentException(sprintf('%s is outside the project (%s).', $path, $root));
-        }
-
-        return $relative;
     }
 }

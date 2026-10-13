@@ -152,6 +152,22 @@ final class MaxCharsTest extends KnossosTestCase
         assertSame(true, ($result->meta['dropped_items']['component_legend'] ?? 0) > 0);
     }
 
+    /** Notes annotate the answer they ride on: under a budget they pay before the findings do. */
+    #[Group('mcp')]
+    public function testNotesAreTrimmedBeforeTheFindingsTheyAnnotate(): void
+    {
+        $pdo = $this->freshTestDatabase();
+        $enricher = new ResultEnricher(new StalenessProbe($pdo), new NextStepPlanner());
+        $usages = array_map(static fn(int $i): array => ['path' => 'src/A' . $i . '.php', 'start_line' => $i], range(1, 30));
+        $notes = array_map(static fn(int $i): array => ['component' => 'App\\N' . $i, 'kind' => 'note', 'author' => 'model', 'text' => str_repeat('x', 290), 'written' => '2026-10-13', 'stale' => false, 'stale_reason' => null], range(1, 10));
+        $envelope = new ResultEnvelope('project_x', 'scan_x', 'Found 30 usage sites.', ['usages' => $usages, 'notes' => $notes, 'bounds' => ['limit' => 100]]);
+
+        $result = $enricher->enrich($envelope, 'list_usages', 'compact', 4000);
+
+        assertSame(30, count($result->data['usages']));
+        assertSame(true, ($result->meta['dropped_items']['notes'] ?? 0) > 0);
+    }
+
     /**
      * A caller who names no budget still gets a bounded result.
      *
