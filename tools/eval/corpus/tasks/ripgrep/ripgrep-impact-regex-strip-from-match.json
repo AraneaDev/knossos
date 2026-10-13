@@ -1,0 +1,24 @@
+{
+  "id": "ripgrep-impact-regex-strip-from-match",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "strip::strip_from_match",
+  "prompt": "In the grep_regex crate (crates/regex), the crate-private function strip::strip_from_match removes the line terminator from a parsed regex. If it changed behaviour, which of the following would behave differently through any chain of calls: (a) public methods of grep_regex's exported types, and (b) functions defined in crates/core/main.rs? Production code only: leave out tests, examples and doc comments. Note that the grep_pcre2 crate has types with the same names; they do not count unless the chain really reaches them. List only entries from (a) and (b), not the intermediate private helpers. Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "RegexMatcherBuilder::build",
+      "RegexMatcherBuilder::build_many",
+      "RegexMatcherBuilder::build_literals",
+      "RegexMatcher::new",
+      "RegexMatcher::new_line_matcher",
+      "main::search",
+      "main::search_parallel",
+      "main::run",
+      "main::main"
+    ]
+  },
+  "verified": "2026-10-13"
+}

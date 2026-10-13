@@ -1,0 +1,28 @@
+{
+  "id": "monica-flow-address-book-sync-jobs",
+  "repo": "monica",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "UpdateAddressBooks",
+  "prompt": "The scheduler runs the job App\\Domains\\Contact\\DavClient\\Jobs\\UpdateAddressBooks hourly. Following everything that job's work can lead to (job dispatches, batches, jobs added to a running batch, and the services those jobs call), which job classes can be pushed onto the queue as a result, whatever the runtime conditions? Count a class only when an instance of it is dispatched or added to a batch, not when it is just called directly. Leave out UpdateAddressBooks itself. Production code in app/ only, not tests. List the fully qualified class names.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\DavClient\\Jobs\\SynchronizeAddressBooks",
+      "App\\Domains\\Contact\\DavClient\\Jobs\\GetMultipleVCard",
+      "App\\Domains\\Contact\\DavClient\\Jobs\\DeleteMultipleVCard",
+      "App\\Domains\\Contact\\DavClient\\Jobs\\GetVCard",
+      "App\\Domains\\Contact\\DavClient\\Jobs\\DeleteLocalVCard",
+      "App\\Domains\\Contact\\DavClient\\Jobs\\PushVCard",
+      "App\\Domains\\Contact\\DavClient\\Jobs\\DeleteVCard",
+      "App\\Domains\\Contact\\Dav\\Jobs\\UpdateVCard",
+      "App\\Domains\\Vault\\ManageAddresses\\Services\\GetGPSCoordinate",
+      "App\\Domains\\Contact\\ManageGroups\\Services\\AddContactToGroup",
+      "App\\Domains\\Contact\\ManageGroups\\Services\\RemoveContactFromGroup",
+      "App\\Domains\\Contact\\ManageContact\\Services\\DestroyContact",
+      "App\\Domains\\Contact\\ManageGroups\\Services\\DestroyGroup"
+    ]
+  },
+  "verified": "2026-10-13"
+}

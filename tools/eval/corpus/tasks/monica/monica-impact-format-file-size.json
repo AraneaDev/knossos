@@ -1,0 +1,28 @@
+{
+  "id": "monica-impact-format-file-size",
+  "repo": "monica",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "FileHelper::formatFileSize",
+  "prompt": "If App\\Helpers\\FileHelper::formatFileSize() starts formatting sizes differently, which controller actions (HTTP entry points) would send different data to the page, directly or through any chain of view helper calls? Production code in app/ only, not tests. List the controller methods as Class::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Settings\\ManageStorage\\Web\\Controllers\\AccountStorageController::index",
+      "App\\Domains\\Contact\\ManagePhotos\\Web\\Controllers\\ContactModulePhotoController::store",
+      "App\\Domains\\Contact\\ManagePhotos\\Web\\Controllers\\ContactPhotoController::index",
+      "App\\Domains\\Contact\\ManagePhotos\\Web\\Controllers\\ContactPhotoController::show",
+      "App\\Domains\\Contact\\ManageDocuments\\Web\\Controllers\\ContactModuleDocumentController::store",
+      "App\\Domains\\Vault\\ManageFiles\\Web\\Controllers\\VaultFileController::index",
+      "App\\Domains\\Vault\\ManageFiles\\Web\\Controllers\\VaultFileController::photos",
+      "App\\Domains\\Vault\\ManageFiles\\Web\\Controllers\\VaultFileController::documents",
+      "App\\Domains\\Vault\\ManageFiles\\Web\\Controllers\\VaultFileController::avatars",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\PostPhotoController::store",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\PostController::edit",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactController::show",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactPageController::show"
+    ]
+  },
+  "verified": "2026-10-13"
+}

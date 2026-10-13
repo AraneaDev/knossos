@@ -1,0 +1,20 @@
+{
+  "id": "paperless-flow-mail-chord-actions",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "apply_mail_action",
+  "prompt": "paperless_mail.mail.queue_consumption_tasks queues a Celery chord for the consume tasks of one email. When all of them succeed, which post_consume methods can then be run against the mailbox? Leave out abstract methods that only raise NotImplementedError. Name them as dotted paths from src/, for example paperless_mail.mail.SomeAction.post_consume.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "paperless_mail.mail.DeleteMailAction.post_consume",
+      "paperless_mail.mail.MarkReadMailAction.post_consume",
+      "paperless_mail.mail.MoveMailAction.post_consume",
+      "paperless_mail.mail.FlagMailAction.post_consume",
+      "paperless_mail.mail.TagMailAction.post_consume"
+    ]
+  },
+  "verified": "2026-10-13"
+}

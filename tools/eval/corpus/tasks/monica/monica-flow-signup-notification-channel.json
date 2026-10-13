@@ -1,0 +1,23 @@
+{
+  "id": "monica-flow-signup-notification-channel",
+  "repo": "monica",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "CreateUserNotificationChannel",
+  "prompt": "When someone signs up, Fortify calls App\\Actions\\Fortify\\CreateNewUser::create(). Trace how that reaches App\\Domains\\Settings\\ManageNotificationChannels\\Services\\CreateUserNotificationChannel::create(), the private method that writes the user's first notification channel. List every method defined in app/ on that call path, including both ends, as Class::method. Name an inherited method by the class that defines it. Leave out framework (Laravel/Fortify) methods.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Actions\\Fortify\\CreateNewUser::create",
+      "App\\Domains\\Settings\\CreateAccount\\Services\\CreateAccount::execute",
+      "App\\Domains\\Settings\\CreateAccount\\Services\\CreateAccount::setupAccount",
+      "App\\Services\\QueuableService::handle",
+      "App\\Domains\\Settings\\CreateAccount\\Jobs\\SetupAccount::execute",
+      "App\\Domains\\Settings\\CreateAccount\\Jobs\\SetupAccount::addNotificationChannel",
+      "App\\Domains\\Settings\\ManageNotificationChannels\\Services\\CreateUserNotificationChannel::execute",
+      "App\\Domains\\Settings\\ManageNotificationChannels\\Services\\CreateUserNotificationChannel::create"
+    ]
+  },
+  "verified": "2026-10-13"
+}

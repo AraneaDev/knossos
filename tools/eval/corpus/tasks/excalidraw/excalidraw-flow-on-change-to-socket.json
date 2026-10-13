@@ -1,0 +1,21 @@
+{
+  "id": "excalidraw-flow-on-change-to-socket",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "Portal._broadcastSocketData",
+  "prompt": "In the excalidraw-app, when a collaborator edits the scene, the change is sent to the other participants over the socket. Trace it from the method of the editor's App class (packages/excalidraw/components/App.tsx) that invokes the host's onChange prop, to the Portal method that calls socket.emit. Follow the immediate path, not the throttled full-scene resync. List every function or method that calls the next one on that path, including both ends. Name class methods as Class.method, and name a handler defined inside a React function component by that component's name.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App.componentDidUpdate",
+      "ExcalidrawWrapper",
+      "Collab.syncElements",
+      "Collab.broadcastElements",
+      "Portal.broadcastScene",
+      "Portal._broadcastSocketData"
+    ]
+  },
+  "verified": "2026-10-13"
+}

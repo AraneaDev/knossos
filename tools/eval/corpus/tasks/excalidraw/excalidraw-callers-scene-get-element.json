@@ -1,0 +1,31 @@
+{
+  "id": "excalidraw-callers-scene-get-element",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "Scene.getElement",
+  "prompt": "Outside tests, which functions or methods call the getElement() method of the Scene class (packages/element/src/Scene.ts)? Count only calls on a Scene instance (for example scene.getElement, this.scene.getElement, app.scene.getElement, with or without a type argument), not LinearElementEditor.getElement, the getElement of the element store in transform.ts, or other getElement functions. Name class methods as Class.method, module-level functions and React components by their bare name, and code inside a registered action object (export const actionX = register({...})) by the action's constant name. Calls inside nested callbacks count for the enclosing named function or method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App.componentDidUpdate",
+      "App.eraseElements",
+      "App.getLatestInitializedImageElement",
+      "App.onPointerUpFromPointerDownHandler",
+      "App.renderFrameNames",
+      "AppDuplicate.hitEditedElement",
+      "AppSelectionTool.handleSelectionOnPointerUp",
+      "AppText.handleTextWysiwyg",
+      "Scene.getContainerElement",
+      "Scene.getNonDeletedElement",
+      "UnlockPopup",
+      "actionChangeFontFamily",
+      "actionToggleLinearEditor",
+      "getTargetIndexAccountingForBinding",
+      "rotateSingleElement",
+      "textWysiwyg"
+    ]
+  },
+  "verified": "2026-10-13"
+}

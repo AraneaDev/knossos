@@ -1,0 +1,21 @@
+{
+  "id": "paperless-flow-upload-to-index",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "add_to_index",
+  "prompt": "Trace how a document uploaded through the API (documents.views.PostDocumentView.post) ends up written to the full-text search index once it has been consumed. The path crosses a Celery task, the consume plugins and a Django signal. List every function or method on that path, including both ends, where each one calls, queues or signals the next; end at the search-index batch method that writes the document, and leave out helpers that only return an object, such as get_backend. Name them as dotted paths from src/.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.views.PostDocumentView.post",
+      "documents.tasks.consume_file",
+      "documents.consumer.ConsumerPlugin.run",
+      "documents.signals.handlers.add_to_index",
+      "documents.search._backend.TantivyBackend.add_or_update",
+      "documents.search._backend.WriteBatch.add_or_update"
+    ]
+  },
+  "verified": "2026-10-13"
+}

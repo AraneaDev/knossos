@@ -1,0 +1,26 @@
+{
+  "id": "paperless-callers-document-save",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "Document.save",
+  "prompt": "Outside tests and migrations, which functions or methods call save() on an instance of the documents.models.Document model (the Django model's own save, not save on other models, serializers, PDFs, images or the classifier)? Count only direct .save(...) calls whose receiver is a Document. Name them as dotted paths from src/, for example documents.views.SomeView.post.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.consumer.ConsumerPlugin.run",
+      "documents.consumer.ConsumerPlugin._store",
+      "documents.serialisers.DocumentUpdateFieldsModelSerializer.update",
+      "documents.views.DocumentViewSet.update",
+      "documents.views.DocumentViewSet.notes",
+      "documents.views.DocumentViewSet.update_version_label",
+      "documents.workflows.ai.apply_ai_suggestions_to_document",
+      "documents.signals.handlers.set_correspondent",
+      "documents.signals.handlers.set_document_type",
+      "documents.signals.handlers.set_storage_path",
+      "documents.signals.handlers.run_workflows"
+    ]
+  },
+  "verified": "2026-10-13"
+}

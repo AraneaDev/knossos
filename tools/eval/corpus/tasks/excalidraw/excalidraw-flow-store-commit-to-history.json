@@ -1,0 +1,21 @@
+{
+  "id": "excalidraw-flow-store-commit-to-history",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "History.record",
+  "prompt": "When Store.commit() (packages/element/src/store.ts) processes the scheduled macro action with CaptureUpdateAction.IMMEDIATELY, the change ends up on the undo stack through History.record() (packages/excalidraw/history.ts). Trace that path, not the queued micro actions. List every method on it from Store.commit to History.record, including both ends, the generic emitter method that invokes the listener, and the App method in which that listener is registered. Name methods as Class.method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "Store.commit",
+      "Store.processAction",
+      "Store.emitDurableIncrement",
+      "Emitter.trigger",
+      "App.componentDidMount",
+      "History.record"
+    ]
+  },
+  "verified": "2026-10-13"
+}

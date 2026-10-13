@@ -1,0 +1,26 @@
+{
+  "id": "ripgrep-callers-searcher-line-terminator",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "Searcher::line_terminator",
+  "prompt": "Outside tests and examples, which functions or methods call the line_terminator getter of grep_searcher::Searcher (the searcher crate's Searcher type, crates/searcher/src/searcher/mod.rs)? Other line_terminator methods do not count: not the grep_matcher::Matcher trait method, not the SearcherBuilder or RegexMatcherBuilder setters, and not grep_regex's internal ConfiguredHIR::line_terminator. Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "util::trim_line_terminator",
+      "SummarySink::write_line_term",
+      "StandardImpl::sink_fast_multi_line",
+      "StandardImpl::sink_slow_multi_line",
+      "StandardImpl::sink_slow_multi_line_only_matching",
+      "StandardImpl::sink_slow_multi_per_match",
+      "StandardImpl::write_line",
+      "StandardImpl::write_line_term",
+      "StandardImpl::has_line_terminator",
+      "StandardImpl::trim_ascii_prefix",
+      "Searcher::multi_line_with_matcher"
+    ]
+  },
+  "verified": "2026-10-13"
+}

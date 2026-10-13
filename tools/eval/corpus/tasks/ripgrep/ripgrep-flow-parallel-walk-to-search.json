@@ -1,0 +1,22 @@
+{
+  "id": "ripgrep-flow-parallel-walk-to-search",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "SearchWorker::search",
+  "prompt": "In rg's multi-threaded search, a file found while walking a directory (not a path given on the command line) is eventually searched by SearchWorker::search on a worker thread. Trace the call path from main::search_parallel to SearchWorker::search. Count a closure as part of the function that defines it. List every function or method on that call path, including both ends, and only those on the path (not constructors or builders that run beforehand). Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "main::search_parallel",
+      "WalkParallel::run",
+      "WalkParallel::visit",
+      "Worker::run",
+      "Worker::run_one",
+      "FnVisitorImp::visit",
+      "SearchWorker::search"
+    ]
+  },
+  "verified": "2026-10-13"
+}

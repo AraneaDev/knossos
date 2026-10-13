@@ -1,0 +1,22 @@
+{
+  "id": "paperless-flow-update-workflow-actions",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "run_workflows",
+  "prompt": "A PUT or PATCH to /api/documents/<id>/ ends up, through a Django signal, running the workflows that have a 'document updated' trigger. For such a matching workflow, which functions carry out its actions, that is, the function each action type is handed to, directly or by queueing a Celery task? Production code only. Name them as dotted paths from src/, for example documents.workflows.module.function.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.workflows.mutations.apply_assignment_to_document",
+      "documents.workflows.mutations.apply_removal_to_document",
+      "documents.workflows.actions.execute_email_action",
+      "documents.workflows.actions.execute_webhook_action",
+      "documents.workflows.actions.execute_password_removal_action",
+      "documents.workflows.actions.execute_move_to_trash_action",
+      "documents.tasks.apply_ai_suggestions"
+    ]
+  },
+  "verified": "2026-10-13"
+}

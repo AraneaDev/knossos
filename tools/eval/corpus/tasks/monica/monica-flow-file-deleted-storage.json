@@ -1,0 +1,23 @@
+{
+  "id": "monica-flow-file-deleted-storage",
+  "repo": "monica",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "DeleteFileInStorage::handle",
+  "prompt": "Uploaded files are removed from Uploadcare by the listener App\\Domains\\Contact\\ManageDocuments\\Listeners\\DeleteFileInStorage::handle(). Which methods in the application code (app/, not tests) delete an App\\Models\\File model in a way that makes that listener run? Name the method that contains the delete call (for a call inside a closure, the named method that holds the closure), as Class::method. Leave out framework (Eloquent/Laravel) methods.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\ManageDocuments\\Services\\DestroyFile::execute",
+      "App\\Domains\\Contact\\ManageContact\\Services\\DestroyContact::destroyFiles",
+      "App\\Domains\\Contact\\ManageAvatar\\Services\\DestroyAvatar::deleteCurrentAvatar",
+      "App\\Domains\\Contact\\ManageAvatar\\Services\\UpdatePhotoAsAvatar::deleteCurrentAvatar",
+      "App\\Domains\\Vault\\ManageJournals\\Services\\DestroyPost::destroyFiles",
+      "App\\Domains\\Vault\\ManageJournals\\Services\\RemoveSliceOfLifeCoverImage::execute",
+      "App\\Domains\\Vault\\ManageVault\\Services\\DestroyVault::execute",
+      "App\\Domains\\Settings\\CancelAccount\\Services\\CancelAccount::destroyAllFiles"
+    ]
+  },
+  "verified": "2026-10-13"
+}

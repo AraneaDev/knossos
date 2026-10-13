@@ -1,0 +1,27 @@
+{
+  "id": "paperless-impact-search-ids",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "TantivyBackend.search_ids",
+  "prompt": "If documents.search._backend.TantivyBackend.search_ids changes behaviour, which API view methods (the HTTP handler methods of view classes, such as get, post or list) would behave differently, directly or through any chain of helper and mixin methods? Production code only, leave out tests. Name each as a dotted path from src/ using the class that defines the method, for example documents.views.SomeView.post.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.views.UnifiedSearchViewSet.list",
+      "documents.views.GlobalSearchView.get",
+      "documents.views.SelectionDataView.post",
+      "documents.views.BulkDownloadView.post",
+      "documents.views.BulkEditView.post",
+      "documents.views.RotateDocumentsView.post",
+      "documents.views.MergeDocumentsView.post",
+      "documents.views.MergeDocumentsAsVersionsView.post",
+      "documents.views.DeleteDocumentsView.post",
+      "documents.views.ReprocessDocumentsView.post",
+      "documents.views.EditPdfDocumentsView.post",
+      "documents.views.RemovePasswordDocumentsView.post"
+    ]
+  },
+  "verified": "2026-10-13"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "monica-impact-map-address-string",
+  "repo": "monica",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "MapHelper::getAddressAsString",
+  "prompt": "If App\\Helpers\\MapHelper::getAddressAsString() changes behaviour, which controller actions (HTTP entry points) would return or store different data, through any chain of synchronous calls (view helpers, other helper methods, services)? Do not follow work that is queued to run later. Production code in app/ only, not tests. List the controller methods as Class::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\ManageContactAddresses\\Web\\Controllers\\ContactModuleAddressController::store",
+      "App\\Domains\\Contact\\ManageContactAddresses\\Web\\Controllers\\ContactModuleAddressController::update",
+      "App\\Domains\\Contact\\ManageContactAddresses\\Web\\Controllers\\ContactModuleAddressController::destroy",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactController::show",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactPageController::show",
+      "App\\Domains\\Contact\\ManageContactFeed\\Web\\Controllers\\ContactFeedController::show",
+      "App\\Domains\\Vault\\ManageVault\\Web\\Controllers\\VaultFeedController::show",
+      "App\\Domains\\Vault\\ManageReports\\Web\\Controllers\\ReportAddressesCitiesController::show",
+      "App\\Domains\\Vault\\ManageReports\\Web\\Controllers\\ReportAddressesCountriesController::show"
+    ]
+  },
+  "verified": "2026-10-13"
+}
