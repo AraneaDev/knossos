@@ -21,6 +21,12 @@ out. Log in again if that happens.
 Sessions run read-only `Bash` commands (`rg`, `grep`, `ls`, `cat`, `head`,
 `tail`, `wc`, `git log`, `git grep`, `git show`) as your own user, in a clone
 under the eval root. The allowlist keeps them on task; it is not a sandbox.
+Every arm also denies the options that would turn those commands into writers
+or launchers: `git log` and `git show` with `--output` (or an abbreviation of
+it, which git accepts) and `rg` with `--pre`. The deny rules are wildcard
+patterns on the command line, so they cannot see through quoting or a shell
+construct that assembles the option at run time. Treat the allowlist as a
+guard against wandering, not as a boundary.
 
 ## Running one
 
