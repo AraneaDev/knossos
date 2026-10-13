@@ -3,7 +3,7 @@
  * once, so a run stopped by a usage limit or a kill loses only the sessions
  * still in flight.
  */
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, open, readFile } from "node:fs/promises";
 import { rng } from "./rng.mjs";
 
 export const TERMINAL = new Set([
@@ -47,22 +47,42 @@ export async function readLedger(file) {
         .filter((l) => l.trim() !== "")
         .flatMap((l) => {
             try {
-                return [JSON.parse(l)];
+                const row = JSON.parse(l);
+                // A line that parses to a number, string, array or null is not a row.
+                return typeof row === "object" &&
+                    row !== null &&
+                    !Array.isArray(row)
+                    ? [row]
+                    : [];
             } catch {
                 return [];
             }
         });
 }
 
+/** True when the file is not empty and its last byte is not a newline. Reads that one byte only. */
+async function endsMidLine(file) {
+    let handle;
+    try {
+        handle = await open(file, "r");
+    } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+    }
+    try {
+        const { size } = await handle.stat();
+        if (size === 0) return false;
+        const last = Buffer.alloc(1);
+        await handle.read(last, 0, 1, size - 1);
+        return last[0] !== 0x0a;
+    } finally {
+        await handle.close();
+    }
+}
+
 /** One write per row, newline first if needed, so a cut-off line never merges with the next row. */
 export async function appendRow(file, row) {
-    let prefix = "";
-    try {
-        const text = await readFile(file, "utf8");
-        if (text !== "" && !text.endsWith("\n")) prefix = "\n";
-    } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-    }
+    const prefix = (await endsMidLine(file)) ? "\n" : "";
     await appendFile(file, `${prefix}${JSON.stringify(row)}\n`);
 }
 

@@ -139,6 +139,18 @@ describe("selectAblations", () => {
     });
 });
 
+describe("selectAblations edge cases", () => {
+    const tasks = [{ id: "c1", category: "callers" }];
+    it("ignores a session of a task that is not in the corpus", () => {
+        const rows = [row("gone", "full", 1, "scored", { list_usages: 1 })];
+        expect(selectAblations(rows, tasks)).toEqual([]);
+    });
+    it("does not count a tool with zero calls as used", () => {
+        const rows = [row("c1", "full", 1, "scored", { list_usages: 0 })];
+        expect(selectAblations(rows, tasks)).toEqual([]);
+    });
+});
+
 describe("METRICS", () => {
     it("has tokens excluding cache writes, lower is better", () => {
         expect(METRICS.find((m) => m.key === "workTokens")).toEqual({

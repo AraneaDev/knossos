@@ -97,7 +97,10 @@ export function selectAblations(rows, tasks, { threshold = 0.2 } = {}) {
         (r) => r.arm === "full" && SCORABLE.has(r.status),
     )) {
         const cat = category.get(r.task);
-        for (const tool of Object.keys(r.knossosCalls ?? {})) {
+        if (cat === undefined) continue;
+        for (const [tool, count] of Object.entries(r.knossosCalls ?? {})) {
+            // A recorded zero is a tool that was offered, not one that was used.
+            if (!(count > 0)) continue;
             const key = `${cat}|${tool}`;
             if (!used.has(key)) used.set(key, new Set());
             used.get(key).add(r.task);
@@ -109,12 +112,12 @@ export function selectAblations(rows, tasks, { threshold = 0.2 } = {}) {
         const taskIds = tasks
             .filter((t) => t.category === cat)
             .map((t) => t.id);
-        if (taskSet.size / taskIds.length >= threshold)
+        if (taskIds.length > 0 && taskSet.size / taskIds.length >= threshold)
             picked.push({ category: cat, tool, taskIds });
     }
     return picked.sort(
         (a, b) =>
-            a.category.localeCompare(b.category) ||
-            a.tool.localeCompare(b.tool),
+            (a.category < b.category ? -1 : a.category > b.category ? 1 : 0) ||
+            (a.tool < b.tool ? -1 : a.tool > b.tool ? 1 : 0),
     );
 }

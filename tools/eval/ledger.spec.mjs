@@ -23,6 +23,16 @@ describe("rng", () => {
         const b = rng(7);
         expect([a(), a(), a()]).toEqual([b(), b(), b()]);
     });
+    it("stays in [0, 1) and spreads over the range", () => {
+        const next = rng(42);
+        const draws = Array.from({ length: 2000 }, next);
+        expect(draws.every((x) => x >= 0 && x < 1)).toBe(true);
+        expect(Math.min(...draws)).toBeLessThan(0.05);
+        expect(Math.max(...draws)).toBeGreaterThan(0.95);
+        const mean = draws.reduce((sum, x) => sum + x, 0) / draws.length;
+        expect(mean).toBeGreaterThan(0.45);
+        expect(mean).toBeLessThan(0.55);
+    });
 });
 
 describe("makePlan", () => {
@@ -54,7 +64,70 @@ describe("makePlan", () => {
     });
 });
 
+describe("makePlan order", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+        id: `t${i}`,
+        repo: "r",
+    }));
+    const unshuffled = many.flatMap((t) =>
+        ["baseline", "full"].map((arm) =>
+            sessionKey({ task: t.id, arm, repeat: 1 }),
+        ),
+    );
+    it("does not leave the plan in task, arm, repeat order", () => {
+        for (const seed of [1, 2, 3]) {
+            const plan = makePlan({
+                tasks: many,
+                arms: ["baseline", "full"],
+                repeats: 1,
+                seed,
+            });
+            expect(plan.map(sessionKey)).not.toEqual(unshuffled);
+            expect([...plan.map(sessionKey)].sort()).toEqual(
+                [...unshuffled].sort(),
+            );
+        }
+    });
+    it("moves most sessions away from where they started", () => {
+        const plan = makePlan({
+            tasks: many,
+            arms: ["baseline", "full"],
+            repeats: 1,
+            seed: 5,
+        }).map(sessionKey);
+        const stayed = plan.filter((k, i) => unshuffled[i] === k).length;
+        expect(stayed).toBeLessThan(unshuffled.length / 2);
+    });
+});
+
 describe("ledger", () => {
+    it("skips lines that are JSON but not a row", async () => {
+        const file = path.join(
+            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
+            "ledger.jsonl",
+        );
+        await appendFile(
+            file,
+            ["1", '"x"', "null", "[1]", '{"task":"a"}', "{broken"].join("\n") +
+                "\n",
+        );
+        expect(await readLedger(file)).toEqual([{ task: "a" }]);
+    });
+    it("appends to a large ledger without reading it back", async () => {
+        const file = path.join(
+            await mkdtemp(path.join(os.tmpdir(), "ledger-")),
+            "ledger.jsonl",
+        );
+        await appendFile(
+            file,
+            `${JSON.stringify({ task: "big", pad: "x".repeat(2e6) })}\n{"task":"cut"`,
+        );
+        await appendRow(file, { task: "next" });
+        expect((await readLedger(file)).map((r) => r.task)).toEqual([
+            "big",
+            "next",
+        ]);
+    });
     it("appends rows and reads them back", async () => {
         const file = path.join(
             await mkdtemp(path.join(os.tmpdir(), "ledger-")),
