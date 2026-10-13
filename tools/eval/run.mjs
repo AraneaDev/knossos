@@ -35,6 +35,7 @@ import {
     CORPUS_HASH_VERSION,
     corpusHash,
     corpusHashFor,
+    plannedCorpus,
     loadCorpus,
 } from "./corpus.mjs";
 import {
@@ -330,7 +331,12 @@ export async function openRun(runId, s) {
     const dir = path.join(s.runsDir, runId);
     const meta = await readJson(path.join(dir, "meta.json"));
     const corpus = await loadCorpus(meta.corpusDir);
-    if (corpusHashFor(corpus, meta) !== meta.corpusHash)
+    const plan = await readJson(path.join(dir, "plan.json"));
+    const planned = plannedCorpus(
+        corpus,
+        plan.map((e) => e.task),
+    );
+    if (corpusHashFor(planned, meta) !== meta.corpusHash)
         throw new Error(
             `the corpus changed since run ${runId} started; start a new run`,
         );
@@ -338,7 +344,7 @@ export async function openRun(runId, s) {
         dir,
         meta,
         corpus,
-        plan: await readJson(path.join(dir, "plan.json")),
+        plan,
         ledger: path.join(dir, "ledger.jsonl"),
     };
 }
@@ -369,6 +375,7 @@ async function start(args, s) {
     for (const arm of arms) parseArm(arm);
     const corpusDir = path.resolve(values.corpus);
     const corpus = await loadCorpus(corpusDir);
+    const tasks = corpus.tasks;
     const stamp = new Date()
         .toISOString()
         .replace(/[-:]/g, "")
@@ -390,7 +397,12 @@ async function start(args, s) {
         runId,
         createdAt: new Date().toISOString(),
         corpusDir,
-        corpusHash: corpusHash(corpus),
+        corpusHash: corpusHash(
+            plannedCorpus(
+                corpus,
+                tasks.map((t) => t.id),
+            ),
+        ),
         corpusHashVersion: CORPUS_HASH_VERSION,
         model: values.model,
         arms,
@@ -406,7 +418,7 @@ async function start(args, s) {
     await writeJson(
         path.join(dir, "plan.json"),
         makePlan({
-            tasks: corpus.tasks,
+            tasks,
             arms: meta.arms,
             repeats: meta.repeats,
             seed: meta.seed,

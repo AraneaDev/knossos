@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCORABLE, readLedger } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
-import { corpusHashFor } from "./corpus.mjs";
+import { corpusHashFor, plannedCorpus } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
 import { openRun, settings } from "./run.mjs";
 import {
@@ -419,9 +419,21 @@ export async function previousRun(run, s) {
             const meta = JSON.parse(
                 await readFile(path.join(s.runsDir, id, "meta.json"), "utf8"),
             );
+            // The tasks the other run planned, as this corpus has them now; a
+            // run without a readable plan is held to the whole corpus.
+            const otherPlan = await readFile(
+                path.join(s.runsDir, id, "plan.json"),
+                "utf8",
+            ).then(JSON.parse, () => null);
+            const theirs = Array.isArray(otherPlan)
+                ? plannedCorpus(
+                      run.corpus,
+                      otherPlan.map((e) => e.task),
+                  )
+                : run.corpus;
             if (
-                // Like with like: hash this run's corpus the way the other run's meta was written.
-                meta.corpusHash === corpusHashFor(run.corpus, meta) &&
+                // Like with like: hash those tasks the way the other run's meta was written.
+                meta.corpusHash === corpusHashFor(theirs, meta) &&
                 meta.model === run.meta.model
             ) {
                 return {

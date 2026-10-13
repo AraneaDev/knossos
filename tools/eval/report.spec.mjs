@@ -510,6 +510,38 @@ describe("previousRun", () => {
         );
         expect(found).toEqual({ runId: "r1", rows: [{ task: "legacy" }] });
     });
+    it("matches a run on the tasks it planned, so a grown corpus still finds it", async () => {
+        const grown = {
+            ...corpus,
+            tasks: [...corpus.tasks, { id: "b", answer: { unit: "file" } }],
+        };
+        const runsDir = await runs([
+            ["r1", meta("r1"), '{"task":"a"}\n'],
+            ["r2", meta("r2"), '{"task":"no plan"}\n'],
+        ]);
+        await writeFile(
+            path.join(runsDir, "r1", "plan.json"),
+            JSON.stringify([
+                { task: "a", repo: "demo", arm: "full", repeat: 1 },
+            ]),
+        );
+        const found = await previousRun(
+            { meta: meta("r3"), corpus: grown },
+            { runsDir },
+        );
+        // r2 has no plan, so it is held to the whole corpus as before, which grew.
+        expect(found).toEqual({ runId: "r1", rows: [{ task: "a" }] });
+        const changed = {
+            ...grown,
+            tasks: [{ id: "a", answer: { unit: "symbol" } }, grown.tasks[1]],
+        };
+        expect(
+            await previousRun(
+                { meta: meta("r3"), corpus: changed },
+                { runsDir },
+            ),
+        ).toBeNull();
+    });
     it("skips directories that are not runs and returns null without a match", async () => {
         const runsDir = await runs([
             ["r0", null, null],

@@ -222,6 +222,17 @@ export function legacyCorpusHash({ repos, tasks }) {
         .digest("hex");
 }
 
+/**
+ * The part of a corpus a run planned: its repos and the tasks it named, in
+ * corpus order. A run is checked against this, not the whole corpus, so a
+ * task added later leaves every earlier run open. A run that planned every
+ * task, as all runs before tiers did, hashes exactly as it did then.
+ */
+export function plannedCorpus({ repos, tasks }, taskIds) {
+    const ids = new Set(taskIds);
+    return { repos, tasks: tasks.filter((t) => ids.has(t.id)) };
+}
+
 /** The corpus hash in the scheme a run's meta was written with. */
 export function corpusHashFor(corpus, meta) {
     return (meta.corpusHashVersion ?? 1) >= 2

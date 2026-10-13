@@ -218,6 +218,16 @@ describe("run CLI", () => {
         );
         expect(call.argv).not.toContain("--mcp-config");
     });
+    it("keeps a run open after a task it did not plan is added", async () => {
+        const { corpus, env, runId } = await started();
+        const file = path.join(corpus, "tasks", "demo", "demo-callers-a.json");
+        const task = JSON.parse(await readFile(file, "utf8"));
+        await writeFile(
+            path.join(corpus, "tasks", "demo", "demo-callers-c.json"),
+            JSON.stringify({ ...task, id: "demo-callers-c", tier: "hard" }),
+        );
+        await expect(main(["status", runId], env)).resolves.toBe(0);
+    });
     it("refuses to continue after the corpus changed", async () => {
         const { corpus, env, runId } = await started();
         const file = path.join(corpus, "tasks", "demo", "demo-callers-a.json");
