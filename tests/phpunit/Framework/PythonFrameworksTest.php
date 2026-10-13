@@ -91,6 +91,39 @@ final class PythonFrameworksTest extends KnossosTestCase
         }
     }
 
+    /**
+     * The facts behind the test above, read off the worker itself: each read of
+     * a validated field names the serializer's `validate_<field>`, marked
+     * speculative so the graph keeps it only where the serializer declares it.
+     */
+    #[Group('python-frameworks')]
+    public function testTheWorkerNamesTheValidatorBehindAValidatedFieldRead(): void
+    {
+        $client = $this->pythonWorkerClient();
+        $contributions = iterator_to_array($client->scan([
+            'root' => self::repositoryRoot() . '/tests/Fixtures/python-drf',
+            'files' => ['app/__init__.py', 'app/actions.py', 'app/serializers.py', 'app/views.py'],
+        ]));
+        $client->shutdown();
+        $edges = array_values(array_filter(
+            array_merge(...array_map(fn(ScanContribution $item): array => $item->edges, $contributions)),
+            fn(EdgeFact $edge): bool => ($edge->attributes['drf'] ?? null) === 'validated_field',
+        ));
+        $tuples = array_map(fn(EdgeFact $edge): array => [$edge->sourceReference, $edge->targetReference], $edges);
+        $validator = 'py:method:app.serializers.BulkSerializer::validate_method';
+
+        assertSame([
+            ['py:method:app.views.BulkView::post', $validator],
+            ['py:method:app.views.DirectView::post', $validator],
+            ['py:method:app.views.DirectView::put', 'py:method:app.serializers.BulkSerializer::validate_ids'],
+        ], $tuples);
+        foreach ($edges as $edge) {
+            assertSame('references', $edge->kind);
+            assertSame('probable', $edge->confidence->value);
+            assertSame(true, $edge->attributes['speculative']);
+        }
+    }
+
     #[Group('python-frameworks')]
     public function testPythonFrameworkEnrichmentExtractsFastapiDjangoDependenciesSettingsAndTasks(): void
     {
