@@ -143,3 +143,25 @@ task is gone, that run no longer opens.
 
 A run is checked against the tasks it planned, so adding hard tasks leaves
 every earlier run open for `continue`, `status` and `report`.
+
+## Two passes: does a note save the next agent work?
+
+Agents record what they had to dig for as annotations, and later results carry
+them. A two-pass run measures whether that pays off:
+
+```sh
+node tools/eval/run.mjs start --tier hard --arms baseline,full --repeats 1 --passes 2
+```
+
+Every session runs twice. The first pass starts with no annotations, as every
+session of any run does: the eval clears the project's annotations before each
+session, so no session sees another's. The second pass starts with exactly the
+notes its first pass left, kept in the run directory under `notes/`, so a run
+interrupted between the passes resumes with them. A second pass waits until its
+first is done.
+
+The report reads every section from the first passes, so the arms compare as
+in any run, and adds a **Learning** section: per arm, how often a first pass
+left a note, and the second pass against the first on turns, time, cost and F1,
+paired by task. `baseline` has no Knossos and so no notes: its second pass
+shows what repeating a task alone does, the control.
