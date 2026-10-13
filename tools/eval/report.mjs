@@ -86,14 +86,25 @@ function summary(meta, rows) {
                 `- ${arm}: excluded: ${tally(rows, arm, EXCLUDED)}; counted, scored as 0 or partial: ${tally(rows, arm, COUNTED)}`,
         ),
     );
-    lines.push("", ...comparisons(rows, meta.seed));
+    lines.push("", ...comparisons(rows, meta.seed, meta.arms));
     return lines;
 }
 
-function comparisons(rows, seed) {
+/**
+ * The comparisons whose two arms the run planned: a run without `tools` has
+ * nothing to say about it. A planned arm with no scored pairs still gets its
+ * `no data` row, so an arm that failed throughout stays visible.
+ */
+const plannedPairs = (pairs, arms) =>
+    pairs.filter(([a, b]) => arms.includes(a) && arms.includes(b));
+
+/** A metric's value in the unit its label names: durations are kept in ms and shown in seconds. */
+const shown = (m, x) => x * (m.scale ?? 1);
+
+function comparisons(rows, seed, arms) {
     const body = [];
     let detect = null;
-    for (const [a, b] of COMPARISONS) {
+    for (const [a, b] of plannedPairs(COMPARISONS, arms)) {
         for (const m of METRICS) {
             const deltas = pairedDeltas(taskMedians(rows, m.key), a, b);
             const ci = bootstrapCi(deltas, {
@@ -110,8 +121,10 @@ function comparisons(rows, seed) {
                 `${a} vs ${b}`,
                 m.label,
                 String(deltas.length),
-                ci ? signed(ci.mean, 3) : "-",
-                ci ? `[${signed(ci.low, 3)}, ${signed(ci.high, 3)}]` : "-",
+                ci ? signed(shown(m, ci.mean), 3) : "-",
+                ci
+                    ? `[${signed(shown(m, ci.low), 3)}, ${signed(shown(m, ci.high), 3)}]`
+                    : "-",
                 verdict(ci, m, deltas.length),
             ]);
         }
@@ -137,19 +150,21 @@ function comparisons(rows, seed) {
             (detect.n < MIN_PAIRED_TASKS
                 ? `Too few paired tasks (${detect.n}) to call an effect.`
                 : `With ${detect.n} paired tasks the F1 interval for full vs baseline is about +/-${fmt(detect.half)} wide: smaller effects stay invisible in this run.`) +
-                ` Notes and the band fire mostly on edits, so full vs tools on question tasks undersells the plugin layer.`,
+                (arms.includes("tools")
+                    ? ` Notes and the band fire mostly on edits, so full vs tools on question tasks undersells the plugin layer.`
+                    : ""),
         );
     return lines;
 }
 
-function byCategory(rows, tasks, seed) {
+function byCategory(rows, tasks, seed, arms) {
     const body = [];
     for (const cat of [...new Set(tasks.map((t) => t.category))].sort()) {
         const ids = new Set(
             tasks.filter((t) => t.category === cat).map((t) => t.id),
         );
         const subset = rows.filter((r) => ids.has(r.task));
-        for (const [a, b, m] of CATEGORY_COMPARISONS) {
+        for (const [a, b, m] of plannedPairs(CATEGORY_COMPARISONS, arms)) {
             const deltas = pairedDeltas(taskMedians(subset, m.key), a, b);
             const ci = bootstrapCi(deltas, {
                 seed: comparisonSeed(seed, "category", cat, a, b, m.key),
@@ -383,7 +398,7 @@ export function buildReport({
         "",
         ...summary(meta, rows),
         "",
-        ...byCategory(rows, tasks, meta.seed),
+        ...byCategory(rows, tasks, meta.seed, meta.arms),
         "",
         ...perTool(rows, meta.seed),
         "",
