@@ -118,7 +118,15 @@ types share.
 plans every task. A report for a run holding both tiers prints the summary and
 the comparisons once per tier.
 
-A hard candidate earns its place in a calibration run:
+The hard tier measures effort, not correctness. Its calibration run
+(`baseline` and `full`, once each) scored F1 0.98 in both arms: Sonnet answers
+multi-hop questions with grep alone. What the hard questions show is how much
+work an answer takes. With the full plugin, Sonnet needed about 23% fewer
+turns at the same cost, so the tier keeps every question and its runs are read
+for turns, time and cost.
+
+`calibrate.mjs` remains for a tier meant to measure correctness, where a task
+only belongs if it is hard to get right:
 
 ```sh
 node tools/eval/run.mjs start --tier hard --arms baseline,full --repeats 1
@@ -127,14 +135,11 @@ node tools/eval/run.mjs continue <run-id> --batch 2 --concurrency 1
 node tools/eval/calibrate.mjs <run-id>
 ```
 
-`calibrate.mjs` keeps a task when the average of its `baseline` and `full`
-median F1 is at most 0.85. The rule reads both arms so a task one arm fumbled
-by chance does not bias the next run toward the other. Save its output and the
-calibration run's report first, then delete each dropped task's file and record
-why: once a planned task is gone, that run no longer opens. Before a main run, the hard tier needs at least 15
-tasks and at least 5 in each category it uses; write another round for the
-thin shapes and calibrate those first. Calibration sessions are never reused
-in the main run.
+It marks a task `keep` when the average of its `baseline` and `full` median F1
+is at most 0.85. The rule reads both arms, so a task that one arm fumbled by
+chance does not bias the next run toward the other. Save its output and the
+calibration run's report before deleting a dropped task's file: once a planned
+task is gone, that run no longer opens.
 
 A run is checked against the tasks it planned, so adding hard tasks leaves
 every earlier run open for `continue`, `status` and `report`.
