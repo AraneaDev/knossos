@@ -17,8 +17,9 @@ function readInit(event) {
                 : { name: s.name, status: s.status ?? null },
         ),
         plugins: (event.plugins ?? [])
-            .filter((p) => p.path !== "builtin")
-            .map((p) => p.name),
+            .filter((p) => typeof p === "string" || p?.path !== "builtin")
+            .map((p) => (typeof p === "string" ? p : p?.name))
+            .filter((name) => typeof name === "string"),
         model: event.model ?? null,
     };
 }
@@ -97,9 +98,9 @@ export function parseTranscript(lines) {
     return record;
 }
 
-/** Every text the agent wrote, the final result last, so extractAnswer's last-block rule picks the final answer. */
+/** The session's final answer: the result text only, else the last assistant text, never an earlier one. */
 export const finalText = (record) =>
-    [...record.texts, record.result?.text ?? ""].join("\n");
+    record.result?.text || (record.texts.at(-1) ?? "");
 
 export function knossosCounts(record) {
     const calls = {};

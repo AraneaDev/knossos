@@ -83,6 +83,11 @@ describe("normalise", () => {
         expect(normalise("./app/Billing.php:42", file)).toBe("app/Billing.php");
         expect(normalise("app/Http/", file)).toBe("app/Http");
     });
+    it("keeps a workspace directory that merely starts with two dots", () => {
+        const file = { unit: "file", language: "php", workspace: "/eval/w" };
+        expect(normalise("/eval/w/..foo/a.php", file)).toBe("..foo/a.php");
+        expect(normalise("/eval/other/a.php", file)).toBe("eval/other/a.php");
+    });
 });
 
 /** Which of `answers` the matcher credits against `expected`, one call per answer. */

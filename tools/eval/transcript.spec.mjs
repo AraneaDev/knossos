@@ -105,6 +105,15 @@ describe("parseTranscript", () => {
             fiveHourUtilization: 0.4,
         });
     });
+    it("reads plugins given as plain strings", () => {
+        const r = parseTranscript([
+            line({
+                ...init,
+                plugins: ["knossos", { name: "x", path: "/p" }, 7],
+            }),
+        ]);
+        expect(r.init.plugins).toEqual(["knossos", "x"]);
+    });
     it("counts lines it could not parse instead of failing", () => {
         expect(record.unparsed).toBe(1);
     });
@@ -125,10 +134,32 @@ describe("parseTranscript", () => {
 });
 
 describe("finalText", () => {
-    it("puts the result text last so its answer block wins", () => {
-        expect(finalText(parseTranscript(lines)).endsWith(result.result)).toBe(
-            true,
-        );
+    it("is the result text", () => {
+        expect(finalText(parseTranscript(lines))).toBe(result.result);
+    });
+    it("never lets an earlier assistant answer block stand in for the result", () => {
+        const said = (text) => ({
+            type: "assistant",
+            message: { content: [{ type: "text", text }] },
+        });
+        const record = parseTranscript([
+            line(said('<answer>["early"]</answer>')),
+            line(said("working on it")),
+            line({ ...result, result: "no block here" }),
+        ]);
+        expect(finalText(record)).toBe("no block here");
+        expect(finalText(record)).not.toContain("early");
+    });
+    it("falls back to the last assistant text only when there is no result text", () => {
+        const said = (text) => ({
+            type: "assistant",
+            message: { content: [{ type: "text", text }] },
+        });
+        const record = parseTranscript([
+            line(said("first")),
+            line(said("last")),
+        ]);
+        expect(finalText(record)).toBe("last");
     });
 });
 

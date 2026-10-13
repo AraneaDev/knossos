@@ -71,12 +71,9 @@ export function contamination(record, arm) {
             `mcp servers ${JSON.stringify(servers)}, expected ${JSON.stringify(wantServers)}`,
         );
     for (const s of record.init.mcpServers) {
-        if (
-            s.name === "knossos" &&
-            s.status !== null &&
-            s.status !== "connected"
-        )
-            reasons.push(`knossos server ${s.status}`);
+        // Only the server's own report counts: a missing status is not a connection.
+        if (s.name === "knossos" && s.status !== "connected")
+            reasons.push(`knossos server ${s.status ?? "has no status"}`);
     }
     const wantPlugins = base === "full" ? ["knossos"] : [];
     if (!same(record.init.plugins, wantPlugins)) {

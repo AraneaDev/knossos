@@ -49,7 +49,8 @@ function normaliseFile(entry, workspace) {
     let s = entry.trim().replaceAll("\\", "/");
     if (workspace && path.isAbsolute(s)) {
         const rel = path.relative(workspace, s);
-        if (!rel.startsWith("..")) s = rel;
+        if (rel !== ".." && !rel.startsWith("../") && !path.isAbsolute(rel))
+            s = rel;
     }
     return s
         .replace(/:\d+(:\d+)?$/, "")

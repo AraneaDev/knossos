@@ -106,6 +106,17 @@ describe("contamination", () => {
             ),
         ).toHaveLength(1);
     });
+    it("flags a knossos server that reports no status", () => {
+        expect(
+            contamination(record([{ name: "knossos" }], []), "tools")[0],
+        ).toMatch(/no status/);
+        expect(
+            contamination(
+                record([{ name: "knossos", status: null }], []),
+                "full",
+            ).join(),
+        ).toMatch(/no status/);
+    });
     it("flags a knossos server that did not connect", () => {
         expect(
             contamination(
