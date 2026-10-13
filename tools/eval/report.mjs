@@ -12,6 +12,7 @@ import { evalPaths } from "./env.mjs";
 import { openRun, settings } from "./run.mjs";
 import {
     bootstrapCi,
+    comparisonSeed,
     METRICS,
     MIN_PAIRED_TASKS,
     pairedDeltas,
@@ -30,6 +31,8 @@ const CATEGORY_COMPARISONS = [
     ...COMPARISONS.map(([a, b]) => [a, b, metric("f1")]),
     ["full", "baseline", metric("costUsd")],
 ];
+/** A task counts as below baseline only when full's median F1 trails baseline's by more than this. */
+export const BELOW_BASELINE_TOLERANCE = 0.01;
 const EXCLUDED = ["contaminated", "failed"];
 const COUNTED = ["no-answer", "timeout", "budget"];
 
@@ -92,7 +95,9 @@ function comparisons(rows, seed) {
     for (const [a, b] of COMPARISONS) {
         for (const m of METRICS) {
             const deltas = pairedDeltas(taskMedians(rows, m.key), a, b);
-            const ci = bootstrapCi(deltas, { seed });
+            const ci = bootstrapCi(deltas, {
+                seed: comparisonSeed(seed, "overall", a, b, m.key),
+            });
             if (
                 ci !== null &&
                 a === "full" &&
@@ -145,7 +150,9 @@ function byCategory(rows, tasks, seed) {
         const subset = rows.filter((r) => ids.has(r.task));
         for (const [a, b, m] of CATEGORY_COMPARISONS) {
             const deltas = pairedDeltas(taskMedians(subset, m.key), a, b);
-            const ci = bootstrapCi(deltas, { seed });
+            const ci = bootstrapCi(deltas, {
+                seed: comparisonSeed(seed, "category", cat, a, b, m.key),
+            });
             const digits = m.key === "costUsd" ? 3 : 2;
             body.push([
                 cat,
@@ -200,7 +207,9 @@ function perTool(rows, seed) {
             "full",
             `full-minus-${tool}`,
         );
-        const ci = bootstrapCi(deltas, { seed });
+        const ci = bootstrapCi(deltas, {
+            seed: comparisonSeed(seed, "tool", tool),
+        });
         return [
             tool,
             pct(using.length / full.length),
@@ -231,7 +240,9 @@ function belowBaseline(rows, defects) {
     const f1 = taskMedians(rows, "f1");
     const full = f1.get("full") ?? new Map();
     const base = f1.get("baseline") ?? new Map();
-    const worse = [...full].filter(([t, v]) => base.has(t) && v < base.get(t));
+    const worse = [...full].filter(
+        ([t, v]) => base.has(t) && v < base.get(t) - BELOW_BASELINE_TOLERANCE,
+    );
     const lines = ["## Below baseline and key disagreements", ""];
     if (worse.length === 0)
         lines.push("No task scored lower with Knossos than without.");

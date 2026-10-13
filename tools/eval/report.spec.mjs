@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { buildReport } from "./report.mjs";
+import { BELOW_BASELINE_TOLERANCE, buildReport } from "./report.mjs";
 
 const tasks = [
     { id: "c1", category: "callers" },
@@ -335,5 +335,31 @@ describe("key disagreements and unresolved subjects", () => {
             "No disagreements between answer keys and Knossos were recorded.",
         );
         expect(md).toMatch(/- c2 \(list-usages\): query Foo; candidates none/);
+    });
+});
+
+describe("below baseline tolerance", () => {
+    const two = [
+        { id: "w1", category: "callers" },
+        { id: "w2", category: "callers" },
+    ];
+    const section = (md) =>
+        md
+            .split("## Below baseline and key disagreements")[1]
+            .split("\n## ")[0];
+    it("ignores a shortfall within the tolerance and lists a larger one", () => {
+        const tiny = BELOW_BASELINE_TOLERANCE / 2;
+        const md = buildReport({
+            meta,
+            tasks: two,
+            rows: [
+                row("w1", "baseline", 0.5),
+                row("w1", "full", 0.5 - tiny),
+                row("w2", "baseline", 0.5),
+                row("w2", "full", 0.5 - BELOW_BASELINE_TOLERANCE * 3),
+            ],
+        });
+        expect(section(md)).not.toContain("- w1:");
+        expect(section(md)).toContain("- w2:");
     });
 });

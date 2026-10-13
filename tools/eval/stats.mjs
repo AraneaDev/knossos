@@ -3,6 +3,7 @@
  * repeats, the per-task difference between two arms, and a seeded bootstrap
  * interval that decides whether that difference is visible at all.
  */
+import { createHash } from "node:crypto";
 import { SCORABLE } from "./ledger.mjs";
 import { rng } from "./rng.mjs";
 
@@ -52,6 +53,14 @@ export function pairedDeltas(medians, a, b) {
     return [...left]
         .filter(([task]) => right.has(task))
         .map(([task, value]) => value - right.get(task));
+}
+
+/** A bootstrap seed of its own for each comparison, so the intervals of different comparisons are not driven by the same draws. */
+export function comparisonSeed(seed, ...parts) {
+    const digest = createHash("sha256")
+        .update(JSON.stringify([seed, ...parts]))
+        .digest();
+    return digest.readUInt32BE(0);
 }
 
 const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;

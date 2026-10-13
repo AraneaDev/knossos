@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     bootstrapCi,
+    comparisonSeed,
     median,
     METRICS,
     MIN_PAIRED_TASKS,
@@ -165,5 +166,27 @@ describe("METRICS", () => {
             { task: "a", arm: "full", status: "scored", costUsd: 0.4 },
         ];
         expect(taskMedians(rows, "costUsd").get("full").get("a")).toBe(0.4);
+    });
+});
+
+describe("comparisonSeed", () => {
+    it("is repeatable and differs per comparison and per run seed", () => {
+        const a = comparisonSeed(1, "overall", "full", "baseline", "f1");
+        expect(comparisonSeed(1, "overall", "full", "baseline", "f1")).toBe(a);
+        expect(
+            comparisonSeed(1, "overall", "full", "baseline", "costUsd"),
+        ).not.toBe(a);
+        expect(
+            comparisonSeed(1, "overall", "tools", "baseline", "f1"),
+        ).not.toBe(a);
+        expect(comparisonSeed(2, "overall", "full", "baseline", "f1")).not.toBe(
+            a,
+        );
+        expect(Number.isInteger(a) && a >= 0 && a < 2 ** 32).toBe(true);
+    });
+    it("does not confuse part boundaries", () => {
+        expect(comparisonSeed(1, "ab", "c")).not.toBe(
+            comparisonSeed(1, "a", "bc"),
+        );
     });
 });
