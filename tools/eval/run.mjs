@@ -4,7 +4,7 @@
  * Code without Knossos, with its tools, and with its whole plugin, run in
  * small batches that stop before the five-hour usage window runs out.
  *
- *   node tools/eval/run.mjs start [--repeats 3] ...   plan a run, print its id
+ *   node tools/eval/run.mjs start [--tier easy|hard] [--repeats 3] ...   plan a run, print its id
  *   node tools/eval/run.mjs prepare <run-id>          clone, scan, seed config
  *   node tools/eval/run.mjs continue <run-id>         run one batch (exit 3: stopped at the limit)
  *   node tools/eval/run.mjs ablate <run-id>           add full-minus-<tool> arms
@@ -35,6 +35,9 @@ import {
     CORPUS_HASH_VERSION,
     corpusHash,
     corpusHashFor,
+    plannedCorpus,
+    TIERS,
+    tierOf,
     loadCorpus,
 } from "./corpus.mjs";
 import {
@@ -330,7 +333,12 @@ export async function openRun(runId, s) {
     const dir = path.join(s.runsDir, runId);
     const meta = await readJson(path.join(dir, "meta.json"));
     const corpus = await loadCorpus(meta.corpusDir);
-    if (corpusHashFor(corpus, meta) !== meta.corpusHash)
+    const plan = await readJson(path.join(dir, "plan.json"));
+    const planned = plannedCorpus(
+        corpus,
+        plan.map((e) => e.task),
+    );
+    if (corpusHashFor(planned, meta) !== meta.corpusHash)
         throw new Error(
             `the corpus changed since run ${runId} started; start a new run`,
         );
@@ -338,7 +346,10 @@ export async function openRun(runId, s) {
         dir,
         meta,
         corpus,
-        plan: await readJson(path.join(dir, "plan.json")),
+        // The tasks this run planned: what ablate, calibrate and the report
+        // read, never the whole corpus, which may have grown since.
+        tasks: planned.tasks,
+        plan,
         ledger: path.join(dir, "ledger.jsonl"),
     };
 }
@@ -357,8 +368,11 @@ async function start(args, s) {
             seed: { type: "string", default: String(Date.now() % 2 ** 31) },
             budget: { type: "string", default: "1" },
             timeout: { type: "string", default: "600" },
+            tier: { type: "string" },
         },
     });
+    if (values.tier !== undefined && !TIERS.includes(values.tier))
+        throw new Error(`--tier must be one of ${TIERS.join(", ")}`);
     const repeats = positive("repeats", values.repeats, { integer: true });
     const budgetUsd = positive("budget", values.budget);
     const timeoutSeconds = positive("timeout", values.timeout);
@@ -369,6 +383,12 @@ async function start(args, s) {
     for (const arm of arms) parseArm(arm);
     const corpusDir = path.resolve(values.corpus);
     const corpus = await loadCorpus(corpusDir);
+    const tasks =
+        values.tier === undefined
+            ? corpus.tasks
+            : corpus.tasks.filter((t) => tierOf(t) === values.tier);
+    if (tasks.length === 0)
+        throw new Error(`no ${values.tier} tasks in the corpus`);
     const stamp = new Date()
         .toISOString()
         .replace(/[-:]/g, "")
@@ -390,7 +410,12 @@ async function start(args, s) {
         runId,
         createdAt: new Date().toISOString(),
         corpusDir,
-        corpusHash: corpusHash(corpus),
+        corpusHash: corpusHash(
+            plannedCorpus(
+                corpus,
+                tasks.map((t) => t.id),
+            ),
+        ),
         corpusHashVersion: CORPUS_HASH_VERSION,
         model: values.model,
         arms,
@@ -398,6 +423,7 @@ async function start(args, s) {
         seed,
         budgetUsd,
         timeoutMs: timeoutSeconds * 1000,
+        ...(values.tier === undefined ? {} : { tier: values.tier }),
         ...(await provenance(s)),
     };
     const dir = path.join(s.runsDir, runId);
@@ -406,7 +432,7 @@ async function start(args, s) {
     await writeJson(
         path.join(dir, "plan.json"),
         makePlan({
-            tasks: corpus.tasks,
+            tasks,
             arms: meta.arms,
             repeats: meta.repeats,
             seed: meta.seed,
@@ -493,7 +519,7 @@ async function warnPluginVersion(s) {
 
 async function executeEntry(entry, ctx) {
     const { run, s, paths, env, rows, maxUtilization } = ctx;
-    const task = run.corpus.tasks.find((t) => t.id === entry.task);
+    const task = run.tasks.find((t) => t.id === entry.task);
     const repo = run.corpus.repos[entry.repo];
     const workspace = path.join(paths.repos, entry.repo);
     await resetWorkspace(workspace, repo.commit);
@@ -731,11 +757,11 @@ async function ablate(args, s) {
         );
     const have = new Set(run.plan.map(sessionKey));
     const added = [];
-    for (const { tool, taskIds } of selectAblations(rows, run.corpus.tasks, {
+    for (const { tool, taskIds } of selectAblations(rows, run.tasks, {
         threshold,
     })) {
         for (const id of taskIds) {
-            const task = run.corpus.tasks.find((t) => t.id === id);
+            const task = run.tasks.find((t) => t.id === id);
             for (let repeat = 1; repeat <= run.meta.repeats; repeat += 1) {
                 const entry = {
                     task: id,

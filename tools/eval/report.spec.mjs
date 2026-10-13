@@ -510,6 +510,54 @@ describe("previousRun", () => {
         );
         expect(found).toEqual({ runId: "r1", rows: [{ task: "legacy" }] });
     });
+    it("matches a run on the tasks it planned, so a grown corpus still finds it", async () => {
+        const grown = {
+            ...corpus,
+            tasks: [...corpus.tasks, { id: "b", answer: { unit: "file" } }],
+        };
+        const runsDir = await runs([
+            ["r1", meta("r1"), '{"task":"a"}\n'],
+            ["r2", meta("r2"), '{"task":"no plan"}\n'],
+        ]);
+        await writeFile(
+            path.join(runsDir, "r1", "plan.json"),
+            JSON.stringify([
+                { task: "a", repo: "demo", arm: "full", repeat: 1 },
+            ]),
+        );
+        const found = await previousRun(
+            { meta: meta("r3"), corpus: grown },
+            { runsDir },
+        );
+        // r2 has no plan, so it is held to the whole corpus as before, which grew.
+        expect(found).toEqual({ runId: "r1", rows: [{ task: "a" }] });
+        const changed = {
+            ...grown,
+            tasks: [{ id: "a", answer: { unit: "symbol" } }, grown.tasks[1]],
+        };
+        expect(
+            await previousRun(
+                { meta: meta("r3"), corpus: changed },
+                { runsDir },
+            ),
+        ).toBeNull();
+    });
+    it("pairs only runs of the same tier", async () => {
+        const runsDir = await runs([
+            ["r1", meta("r1", { tier: "hard" }), '{"task":"hard"}\n'],
+            ["r2", meta("r2"), '{"task":"all"}\n'],
+        ]);
+        const hard = await previousRun(
+            { meta: meta("r3", { tier: "hard" }), corpus },
+            { runsDir },
+        );
+        expect(hard).toEqual({ runId: "r1", rows: [{ task: "hard" }] });
+        const all = await previousRun(
+            { meta: meta("r3"), corpus },
+            { runsDir },
+        );
+        expect(all).toEqual({ runId: "r2", rows: [{ task: "all" }] });
+    });
     it("skips directories that are not runs and returns null without a match", async () => {
         const runsDir = await runs([
             ["r0", null, null],
@@ -536,5 +584,58 @@ describe("readDefects", () => {
         await writeFile(path.join(dir, "a.json"), '{"task":"a"}');
         await writeFile(path.join(dir, "bad.json"), "{");
         await expect(readDefects(dir)).rejects.toThrow(/bad\.json/);
+    });
+});
+
+describe("report by tier", () => {
+    const tiered = [
+        { id: "c1", category: "callers" },
+        { id: "c2", category: "callers" },
+        { id: "h1", category: "impact", tier: "hard" },
+    ];
+    const both = [
+        row("c1", "baseline", 1),
+        row("c1", "full", 1),
+        row("c2", "baseline", 1),
+        row("c2", "full", 1),
+        row("h1", "baseline", 0.2),
+        row("h1", "full", 0.8),
+    ];
+
+    it("prints a summary and comparisons per tier when a run holds both", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: both,
+            tasks: tiered,
+        });
+        expect(md).toContain("## Summary, easy tier");
+        expect(md).toContain("## Summary, hard tier");
+        expect(md).not.toMatch(/^## Summary$/m);
+        const hard = md.slice(md.indexOf("## Summary, hard tier"));
+        expect(hard).toMatch(/\| full vs baseline \| F1 \| 1 \| \+0\.600 \|/);
+        const easy = md.slice(
+            md.indexOf("## Summary, easy tier"),
+            md.indexOf("## Summary, hard tier"),
+        );
+        expect(easy).toMatch(/\| full vs baseline \| F1 \| 2 \| \+0\.000 \|/);
+    });
+
+    it("prints one plain summary for a run of one tier", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: both.filter((r) => r.task !== "h1"),
+            tasks: tiered,
+        });
+        expect(md).toMatch(/^## Summary$/m);
+        expect(md).not.toContain("tier");
+    });
+
+    it("counts the tasks it is given, which the CLI passes as the run's planned tasks", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: both.filter((r) => r.task === "h1"),
+            tasks: tiered.filter((t) => t.id === "h1"),
+        });
+        expect(md).toMatch(/, 1 tasks\./);
     });
 });

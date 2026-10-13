@@ -10,6 +10,8 @@ import {
     corpusHashFor,
     legacyCorpusHash,
     loadCorpus,
+    TIERS,
+    tierOf,
     validateRepo,
     validateTask,
 } from "./corpus.mjs";
@@ -305,5 +307,20 @@ describe("loadCorpus with an unreadable task directory", () => {
         } finally {
             fsp.readdir.mockImplementation(real);
         }
+    });
+});
+
+describe("task tier", () => {
+    it("defaults to easy and accepts easy or hard", () => {
+        expect(tierOf({})).toBe("easy");
+        expect(tierOf({ tier: "hard" })).toBe("hard");
+        for (const tier of TIERS)
+            expect(validateTask({ ...task, tier }, repos)).toEqual([]);
+    });
+
+    it("rejects any other value", () => {
+        expect(validateTask({ ...task, tier: "medium" }, repos)).toEqual([
+            `task ${task.id}: tier must be one of easy, hard`,
+        ]);
     });
 });

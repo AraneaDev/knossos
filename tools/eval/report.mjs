@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCORABLE, readLedger } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
-import { corpusHashFor } from "./corpus.mjs";
+import { corpusHashFor, plannedCorpus, tierOf } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
 import { openRun, settings } from "./run.mjs";
 import {
@@ -61,11 +61,11 @@ function armMeans(rows, arm, metric) {
     return avg([...(taskMedians(rows, metric).get(arm) ?? new Map()).values()]);
 }
 
-function summary(meta, rows) {
+function summary(meta, rows, heading = "## Summary") {
     const arms = [...new Set(rows.map((r) => r.arm))].filter(
         (a) => parseArm(a).minus === null,
     );
-    const lines = ["## Summary", ""];
+    const lines = [heading, ""];
     lines.push(
         ...table(
             ["arm", "tasks", "F1", "cost (USD)", "turns", "time (s)"],
@@ -390,13 +390,29 @@ export function buildReport({
     defects = [],
     prepare = null,
 }) {
+    // A run that holds both tiers gets a summary per tier: pooled, an easy
+    // tier at F1 1.0 would hide what the hard one shows.
+    const tierOfTask = new Map(tasks.map((t) => [t.id, tierOf(t)]));
+    const tierOfRow = (r) => tierOfTask.get(r.task) ?? "easy";
+    const tiers = [...new Set(rows.map(tierOfRow))].sort();
+    const summaries =
+        tiers.length > 1
+            ? tiers.flatMap((tier, i) => [
+                  ...(i > 0 ? [""] : []),
+                  ...summary(
+                      meta,
+                      rows.filter((r) => tierOfRow(r) === tier),
+                      `## Summary, ${tier} tier`,
+                  ),
+              ])
+            : summary(meta, rows);
     return [
         `# Eval run ${meta.runId}`,
         "",
         `Model ${meta.model}, arms ${meta.arms.join(", ")}, ${meta.repeats} repeats, seed ${meta.seed}, ${tasks.length} tasks.`,
         ...provenanceLines(meta, prepare),
         "",
-        ...summary(meta, rows),
+        ...summaries,
         "",
         ...byCategory(rows, tasks, meta.seed, meta.arms),
         "",
@@ -419,10 +435,24 @@ export async function previousRun(run, s) {
             const meta = JSON.parse(
                 await readFile(path.join(s.runsDir, id, "meta.json"), "utf8"),
             );
+            // The tasks the other run planned, as this corpus has them now; a
+            // run without a readable plan is held to the whole corpus.
+            const otherPlan = await readFile(
+                path.join(s.runsDir, id, "plan.json"),
+                "utf8",
+            ).then(JSON.parse, () => null);
+            const theirs = Array.isArray(otherPlan)
+                ? plannedCorpus(
+                      run.corpus,
+                      otherPlan.map((e) => e.task),
+                  )
+                : run.corpus;
             if (
-                // Like with like: hash this run's corpus the way the other run's meta was written.
-                meta.corpusHash === corpusHashFor(run.corpus, meta) &&
-                meta.model === run.meta.model
+                // Like with like: hash those tasks the way the other run's meta was written.
+                meta.corpusHash === corpusHashFor(theirs, meta) &&
+                meta.model === run.meta.model &&
+                // A run of another tier shares no tasks to pair with.
+                (meta.tier ?? null) === (run.meta.tier ?? null)
             ) {
                 return {
                     runId: id,
@@ -480,7 +510,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const md = buildReport({
         meta: run.meta,
         rows: await readLedger(run.ledger),
-        tasks: run.corpus.tasks,
+        tasks: run.tasks,
         previous: await previousRun(run, s),
         defects: await readDefects(evalPaths(s.evalRoot).defects),
         prepare: await readPrepare(run.dir),

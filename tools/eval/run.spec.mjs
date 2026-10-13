@@ -218,6 +218,16 @@ describe("run CLI", () => {
         );
         expect(call.argv).not.toContain("--mcp-config");
     });
+    it("keeps a run open after a task it did not plan is added", async () => {
+        const { corpus, env, runId } = await started();
+        const file = path.join(corpus, "tasks", "demo", "demo-callers-a.json");
+        const task = JSON.parse(await readFile(file, "utf8"));
+        await writeFile(
+            path.join(corpus, "tasks", "demo", "demo-callers-c.json"),
+            JSON.stringify({ ...task, id: "demo-callers-c", tier: "hard" }),
+        );
+        await expect(main(["status", runId], env)).resolves.toBe(0);
+    });
     it("refuses to continue after the corpus changed", async () => {
         const { corpus, env, runId } = await started();
         const file = path.join(corpus, "tasks", "demo", "demo-callers-a.json");
@@ -237,6 +247,22 @@ describe("run CLI", () => {
         expect(
             plan.filter((e) => e.arm === "full-minus-list_usages"),
         ).toHaveLength(2);
+    });
+    it("ablates only the tasks the run planned, so it still opens after a task is added", async () => {
+        const { corpus, env, runId, dir } = await started();
+        await main(["continue", runId, "--batch", "10"], env);
+        const file = path.join(corpus, "tasks", "demo", "demo-callers-a.json");
+        const task = JSON.parse(await readFile(file, "utf8"));
+        await writeFile(
+            path.join(corpus, "tasks", "demo", "demo-callers-c.json"),
+            JSON.stringify({ ...task, id: "demo-callers-c", tier: "hard" }),
+        );
+        expect(await main(["ablate", runId], env)).toBe(0);
+        const plan = JSON.parse(
+            await readFile(path.join(dir, "plan.json"), "utf8"),
+        );
+        expect(plan.some((e) => e.task === "demo-callers-c")).toBe(false);
+        await expect(main(["status", runId], env)).resolves.toBe(0);
     });
     it("proves the isolation before it writes anything, whatever the credentials source", async () => {
         const { env, runId } = await started();
@@ -365,6 +391,83 @@ describe("run CLI", () => {
             new RegExp(`another continue is running \\(pid ${process.pid}\\)`),
         );
         await release();
+    });
+});
+
+describe("start --tier", () => {
+    async function withHardTask() {
+        const made = await fixture();
+        const file = path.join(
+            made.corpus,
+            "tasks",
+            "demo",
+            "demo-callers-a.json",
+        );
+        const task = JSON.parse(await readFile(file, "utf8"));
+        await writeFile(file, JSON.stringify({ ...task, tier: "hard" }));
+        return made;
+    }
+    async function startWith(made, extra) {
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        try {
+            const code = await main(
+                [
+                    "start",
+                    "--corpus",
+                    made.corpus,
+                    "--repeats",
+                    "1",
+                    "--arms",
+                    "baseline",
+                    ...extra,
+                ],
+                made.env,
+            );
+            const runId = log.mock.calls.at(-1)?.[0];
+            return {
+                code,
+                runId,
+                dir: path.join(made.env.KNOSSOS_EVAL_RUNS, String(runId)),
+            };
+        } finally {
+            log.mockRestore();
+        }
+    }
+    const readPlan = async (dir) =>
+        JSON.parse(await readFile(path.join(dir, "plan.json"), "utf8"));
+    const readMeta = async (dir) =>
+        JSON.parse(await readFile(path.join(dir, "meta.json"), "utf8"));
+
+    it("plans only the tasks of the tier it names", async () => {
+        const made = await withHardTask();
+        const { dir } = await startWith(made, ["--tier", "hard"]);
+        expect([...new Set((await readPlan(dir)).map((e) => e.task))]).toEqual([
+            "demo-callers-a",
+        ]);
+        expect((await readMeta(dir)).tier).toBe("hard");
+        const easy = await startWith(made, ["--tier", "easy"]);
+        expect([
+            ...new Set((await readPlan(easy.dir)).map((e) => e.task)),
+        ]).toEqual(["demo-callers-b"]);
+    });
+
+    it("plans every task without --tier and records no tier", async () => {
+        const made = await withHardTask();
+        const { dir } = await startWith(made, []);
+        expect(new Set((await readPlan(dir)).map((e) => e.task))).toEqual(
+            new Set(["demo-callers-a", "demo-callers-b"]),
+        );
+        expect("tier" in (await readMeta(dir))).toBe(false);
+    });
+
+    it("refuses a tier with no tasks and a tier that does not exist", async () => {
+        const made = await fixture();
+        await expect(startWith(made, ["--tier", "hard"])).rejects.toThrow(
+            "no hard tasks in the corpus",
+        );
+        await expect(startWith(made, ["--tier", "medium"])).rejects.toThrow(
+            "--tier must be one of easy, hard",
+        );
     });
 });
 
