@@ -486,13 +486,16 @@ describe("acquireLock", () => {
                     ? new Promise((resolve) => waiting.push(resolve))
                     : undefined,
         };
-        const first = acquireLock(file, hooks);
-        const second = acquireLock(file, hooks);
         const settled = (p) =>
             p.then(
                 () => {},
                 () => {},
             );
+        const first = acquireLock(file, hooks);
+        const second = acquireLock(file, hooks);
+        // Handle a rejection at once: the second may fail while the test is still awaiting the first.
+        settled(first);
+        settled(second);
         for (let i = 0; i < 30 && waiting.length < 2; i += 1) await wait(10);
         waiting[0]();
         await settled(first);

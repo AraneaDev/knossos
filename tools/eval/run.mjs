@@ -192,7 +192,7 @@ const TAKEOVER_STALE_MS = 5000;
  * Holds `${file}.takeover` (an atomic mkdir) while `fn` runs; null when another
  * process holds it. `fn` gets `stillOwner()`: a peer may break the mutex of a
  * process that was suspended for longer than `staleMs`, and that process must
- * notice before it removes anything. A mutex dated in the future is stale too.
+ * notice before it removes anything. A mutex dated more than `staleMs` in the future is stale too.
  */
 async function withTakeover(file, staleMs, fn) {
     const mutex = `${file}.takeover`;
@@ -204,7 +204,8 @@ async function withTakeover(file, staleMs, fn) {
         const age = await stat(mutex)
             .then((st) => Date.now() - st.mtimeMs)
             .catch(() => 0);
-        if (age > staleMs || age < 0)
+        // A little clock skew between the file system and Date.now() is normal; only a clearly future date is stale.
+        if (Math.abs(age) > staleMs)
             await rm(mutex, { recursive: true, force: true });
         else await sleep(10);
         return null;
