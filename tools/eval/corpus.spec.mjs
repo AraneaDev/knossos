@@ -84,8 +84,48 @@ describe("loadCorpus", () => {
         expect(corpus.tasks.map((t) => t.id)).toEqual(["demo-callers-total"]);
     });
     it("reports every problem at once, with the file name", async () => {
-        const dir = await corpusDir([task, { ...task, id: "Bad Id" }]);
-        await expect(loadCorpus(dir)).rejects.toThrow(/Bad Id/);
+        const dir = await corpusDir([
+            task,
+            { ...task, id: "Bad Id", verified: "2026-02-30", kind: "edit" },
+        ]);
+        const message = await loadCorpus(dir).then(
+            () => "",
+            (e) => e.message,
+        );
+        expect(message).toContain(`invalid corpus ${dir}:`);
+        expect(message).toMatch(/task Bad Id: id must be lower-case/);
+        expect(message).toMatch(/task Bad Id: kind edit is not supported/);
+        expect(message).toMatch(/task Bad Id: verified must be a real/);
+    });
+    it("collects a missing repos.json and tasks dir under one error", async () => {
+        const dir = await mkdtemp(path.join(os.tmpdir(), "eval-corpus-"));
+        const message = await loadCorpus(dir).then(
+            () => "",
+            (e) => e.message,
+        );
+        expect(message).toContain(`invalid corpus ${dir}:`);
+        expect(message).toContain(path.join(dir, "repos.json"));
+        expect(message).toContain(path.join(dir, "tasks"));
+    });
+    it("names a malformed file and a non-object task", async () => {
+        const dir = await corpusDir([task]);
+        await writeFile(path.join(dir, "tasks", "demo", "broken.json"), "{");
+        await writeFile(path.join(dir, "tasks", "demo", "list.json"), "[1]");
+        await writeFile(path.join(dir, "tasks", "demo", "null.json"), "null");
+        const message = await loadCorpus(dir).then(
+            () => "",
+            (e) => e.message,
+        );
+        expect(message).toContain(
+            path.join(dir, "tasks", "demo", "broken.json"),
+        );
+        expect(message).toMatch(/list\.json: a task must be a JSON object/);
+        expect(message).toMatch(/null\.json: a task must be a JSON object/);
+    });
+    it("rejects a repos.json without a repos object", async () => {
+        const dir = await corpusDir([]);
+        await writeFile(path.join(dir, "repos.json"), "{}");
+        await expect(loadCorpus(dir)).rejects.toThrow(/must hold a "repos"/);
     });
     it("rejects a task filed under another repo's directory", async () => {
         const dir = await corpusDir([task]);
@@ -100,7 +140,39 @@ describe("loadCorpus", () => {
     });
 });
 
+describe("validateTask verified date", () => {
+    const check = (verified) =>
+        validateTask(
+            { ...task, verified },
+            repos,
+            new Date("2026-10-13T12:00:00Z"),
+        ).join("\n");
+    it("rejects a date that does not exist", () => {
+        expect(check("2026-02-30")).toMatch(/real calendar date/);
+        expect(check("2026-13-01")).toMatch(/real calendar date/);
+    });
+    it("rejects a date in the future but not today", () => {
+        expect(check("2026-10-13")).toBe("");
+        expect(check("2026-10-14")).toBe("");
+        expect(check("2026-10-15")).toMatch(/in the future/);
+    });
+});
+
 describe("corpusHash", () => {
+    it("ignores object key order and compares ids by code point", () => {
+        const reordered = {
+            ...task,
+            answer: { expected: task.answer.expected, unit: "symbol" },
+        };
+        const one = { ...task, id: "B" };
+        const two = { ...task, id: "a" };
+        expect(corpusHash({ repos, tasks: [task] })).toBe(
+            corpusHash({ repos, tasks: [reordered] }),
+        );
+        expect(corpusHash({ repos, tasks: [one, two] })).toBe(
+            corpusHash({ repos, tasks: [two, one] }),
+        );
+    });
     it("changes when a task changes and ignores task order", () => {
         const a = corpusHash({ repos, tasks: [task, { ...task, id: "b" }] });
         const b = corpusHash({ repos, tasks: [{ ...task, id: "b" }, task] });

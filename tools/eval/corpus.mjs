@@ -31,7 +31,18 @@ export function validateRepo(name, repo) {
     return errors;
 }
 
-export function validateTask(task, repos) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** True when `value` is a real calendar date written YYYY-MM-DD. */
+function isCalendarDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00Z`);
+    return (
+        !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+    );
+}
+
+export function validateTask(task, repos, now = new Date()) {
     const errors = [];
     const fail = (m) => errors.push(`task ${task.id ?? "(no id)"}: ${m}`);
     if (!NAME.test(task.id ?? ""))
@@ -56,36 +67,67 @@ export function validateTask(task, repos) {
     ) {
         fail("answer.expected must be a non-empty list of strings");
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(task.verified ?? ""))
-        fail("verified must be a YYYY-MM-DD date");
+    if (typeof task.verified !== "string" || !isCalendarDate(task.verified)) {
+        fail("verified must be a real calendar date written YYYY-MM-DD");
+    } else if (
+        // One day of slack so a verifier ahead of UTC is not rejected.
+        Date.parse(`${task.verified}T00:00:00Z`) >
+        now.getTime() + DAY_MS
+    ) {
+        fail("verified must not be in the future");
+    }
     return errors;
 }
 
-async function readJson(file) {
+const isObject = (value) =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Reads one JSON file, recording a problem in `errors` instead of throwing. */
+async function readJson(file, errors) {
     try {
         return JSON.parse(await readFile(file, "utf8"));
     } catch (error) {
-        throw new Error(`${file}: ${error.message}`, { cause: error });
+        errors.push(`${file}: ${error.message}`);
+        return undefined;
     }
 }
 
 export async function loadCorpus(dir) {
-    const { repos } = await readJson(path.join(dir, "repos.json"));
-    const errors = Object.entries(repos).flatMap(([name, repo]) =>
-        validateRepo(name, repo),
-    );
+    const errors = [];
+    const reposFile = path.join(dir, "repos.json");
+    const parsed = await readJson(reposFile, errors);
+    let repos = {};
+    if (parsed !== undefined) {
+        if (isObject(parsed?.repos)) repos = parsed.repos;
+        else errors.push(`${reposFile}: must hold a "repos" object`);
+    }
+    for (const [name, repo] of Object.entries(repos)) {
+        if (isObject(repo)) errors.push(...validateRepo(name, repo));
+        else errors.push(`repo ${name}: must be an object`);
+    }
     const tasks = [];
     const tasksDir = path.join(dir, "tasks");
-    const repoDirs = (await readdir(tasksDir, { withFileTypes: true }))
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name)
-        .sort();
+    let repoDirs = [];
+    try {
+        repoDirs = (await readdir(tasksDir, { withFileTypes: true }))
+            .filter((e) => e.isDirectory())
+            .map((e) => e.name)
+            .sort();
+    } catch (error) {
+        errors.push(`${tasksDir}: ${error.message}`);
+    }
     for (const repoDir of repoDirs) {
         const files = (await readdir(path.join(tasksDir, repoDir)))
             .filter((f) => f.endsWith(".json"))
             .sort();
         for (const file of files) {
-            const task = await readJson(path.join(tasksDir, repoDir, file));
+            const where = path.join(tasksDir, repoDir, file);
+            const task = await readJson(where, errors);
+            if (task === undefined) continue;
+            if (!isObject(task)) {
+                errors.push(`${where}: a task must be a JSON object`);
+                continue;
+            }
             errors.push(...validateTask(task, repos));
             if (task.repo !== repoDir)
                 errors.push(
@@ -108,10 +150,28 @@ export async function loadCorpus(dir) {
     return { repos, tasks };
 }
 
+/** JSON with object keys sorted recursively, so key order never changes a hash. */
+export function canonicalJson(value) {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+    if (isObject(value)) {
+        const keys = Object.keys(value).sort(compareCodePoints);
+        return `{${keys
+            .filter((k) => value[k] !== undefined)
+            .map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`)
+            .join(",")}}`;
+    }
+    return JSON.stringify(value) ?? "null";
+}
+
+/** Locale-independent string order. */
+function compareCodePoints(a, b) {
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** A fingerprint of everything a run's results depend on: the repos and every task, order-independent. */
 export function corpusHash({ repos, tasks }) {
-    const sorted = [...tasks].sort((a, b) => a.id.localeCompare(b.id));
+    const sorted = [...tasks].sort((a, b) => compareCodePoints(a.id, b.id));
     return createHash("sha256")
-        .update(JSON.stringify({ repos, tasks: sorted }))
+        .update(canonicalJson({ repos, tasks: sorted }))
         .digest("hex");
 }
