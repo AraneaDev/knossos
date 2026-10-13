@@ -79,6 +79,10 @@ export function settings(env = process.env) {
         pluginDir:
             env.KNOSSOS_EVAL_PLUGIN_DIR ?? path.join(REPO_ROOT, ".plugin"),
         claudeBin: env.KNOSSOS_EVAL_CLAUDE ?? "claude",
+        // Clears, keeps and restores a project's annotations between sessions; tests use a fake.
+        notesBin:
+            env.KNOSSOS_EVAL_NOTES ??
+            path.join(REPO_ROOT, "tools", "eval", "annotations.php"),
         // Where the real credentials are copied from; tests point it at an empty dir.
         realHome: env.KNOSSOS_EVAL_REAL_HOME ?? os.homedir(),
         // The Knossos checkout whose commit a run records; tests point it at a throwaway repository.
@@ -517,12 +521,33 @@ async function warnPluginVersion(s) {
         );
 }
 
+/**
+ * Runs the annotations helper for one project: `clear`, or `export`/`import`
+ * with `file`. Prints, and so returns, how many notes a model wrote (export).
+ */
+export async function notes(s, paths, command, workspace, file) {
+    const { stdout } = await promisify(execFile)(
+        s.notesBin,
+        [
+            command,
+            path.join(paths.data, "knossos.sqlite"),
+            workspace,
+            ...(file === undefined ? [] : [file]),
+        ],
+        { env: s.env },
+    );
+    return Number.parseInt(stdout.trim(), 10) || 0;
+}
+
 async function executeEntry(entry, ctx) {
     const { run, s, paths, env, rows, maxUtilization } = ctx;
     const task = run.tasks.find((t) => t.id === entry.task);
     const repo = run.corpus.repos[entry.repo];
     const workspace = path.join(paths.repos, entry.repo);
     await resetWorkspace(workspace, repo.commit);
+    // Annotations live in the shared graph database: a note one session wrote
+    // would answer the next. Every session starts without any.
+    await notes(s, paths, "clear", workspace);
     const transcript = path.join(
         "transcripts",
         `${entry.task}--${entry.arm}--${entry.repeat}.jsonl`,

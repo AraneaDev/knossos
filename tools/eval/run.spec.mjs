@@ -41,6 +41,9 @@ const git = promisify(execFile);
 const FAKE = fileURLToPath(
     new URL("./fixtures/fake-claude.mjs", import.meta.url),
 );
+const FAKE_NOTES = fileURLToPath(
+    new URL("./fixtures/fake-notes.mjs", import.meta.url),
+);
 
 async function fixture({ second = false } = {}) {
     const origin = await tmp("eval-origin-");
@@ -131,6 +134,7 @@ async function fixture({ second = false } = {}) {
         KNOSSOS_EVAL_RUNS: await tmp("eval-runs-"),
         KNOSSOS_EVAL_ROOT: await tmp("eval-root-"),
         KNOSSOS_EVAL_CLAUDE: FAKE,
+        KNOSSOS_EVAL_NOTES: FAKE_NOTES,
         KNOSSOS_EVAL_REAL_HOME: await tmp("eval-nohome-"),
         KNOSSOS_EVAL_PLUGIN_DIR: pluginDir,
         // The demo origin stands in for the Knossos checkout, so provenance never reads this repository.
@@ -500,6 +504,27 @@ describe("corpus hash versions", () => {
 
 describe("continue with the fake claude", () => {
     const rowsOf = async (dir) => readLedger(path.join(dir, "ledger.jsonl"));
+    it("starts every session without another session's annotations", async () => {
+        const { env, runId } = await started(["--arms", "baseline"]);
+        const notesLog = path.join(await tmp("eval-notes-"), "log.jsonl");
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await main(["continue", runId, "--batch", "2"], {
+            ...env,
+            FAKE_NOTES_LOG: notesLog,
+        });
+        log.mockRestore();
+        const calls = (await readFile(notesLog, "utf8"))
+            .trim()
+            .split("\n")
+            .map((l) => JSON.parse(l));
+        expect(calls.map((c) => c.command)).toEqual(["clear", "clear"]);
+        expect(calls[0].db).toBe(
+            path.join(env.KNOSSOS_EVAL_ROOT, "data", "knossos.sqlite"),
+        );
+        expect(calls[0].root).toBe(
+            path.join(env.KNOSSOS_EVAL_ROOT, "repos", "demo"),
+        );
+    });
     it("reruns a limited session on the next continue", async () => {
         const { env, runId, dir } = await started(["--arms", "baseline"]);
         const log = vi.spyOn(console, "log").mockImplementation(() => {});
