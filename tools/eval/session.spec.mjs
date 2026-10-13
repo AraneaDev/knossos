@@ -67,6 +67,27 @@ describe("runSession", () => {
             (await readFile(transcriptPath, "utf8")).trim().split("\n"),
         ).toEqual(outcome.lines);
     });
+    it("kills the whole process group of a session that times out", async () => {
+        const pidFile = path.join(await tmp("eval-pid-"), "grandchild.pid");
+        const { outcome } = await session(
+            "full",
+            { FAKE_SLEEP_MS: "5000", FAKE_SPAWN_PID_FILE: pidFile },
+            500,
+        );
+        expect(outcome.timedOut).toBe(true);
+        const pid = Number(await readFile(pidFile, "utf8"));
+        const alive = () => {
+            try {
+                process.kill(pid, 0);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        for (let i = 0; i < 40 && alive(); i += 1)
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(alive()).toBe(false);
+    });
     it("kills a session that runs past its timeout", async () => {
         const { outcome } = await session(
             "full",

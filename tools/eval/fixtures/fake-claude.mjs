@@ -2,9 +2,11 @@
 /**
  * Dev-only test double for `claude -p --output-format stream-json`: reads the
  * prompt from stdin and prints a plausible transcript shaped by its flags and
- * the FAKE_* variables. FAKE_LOG appends what it was started with.
+ * the FAKE_* variables. FAKE_LOG appends what it was started with; FAKE_SPAWN_PID_FILE
+ * starts a grandchild and writes its pid there.
  */
-import { appendFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 const argv = process.argv.slice(2);
 let prompt = "";
@@ -12,8 +14,13 @@ for await (const chunk of process.stdin) prompt += chunk;
 if (process.env.FAKE_LOG) {
     appendFileSync(
         process.env.FAKE_LOG,
-        `${JSON.stringify({ argv, cwd: process.cwd(), home: process.env.HOME, prompt })}\n`,
+        `${JSON.stringify({ argv, cwd: process.cwd(), home: process.env.HOME, configDir: process.env.CLAUDE_CONFIG_DIR, prompt })}\n`,
     );
+}
+if (process.env.FAKE_SPAWN_PID_FILE) {
+    // A grandchild in the same process group, to prove a kill reaches the whole group.
+    const grandchild = spawn("sleep", ["30"], { stdio: "ignore" });
+    writeFileSync(process.env.FAKE_SPAWN_PID_FILE, String(grandchild.pid));
 }
 if (process.env.FAKE_SLEEP_MS)
     await new Promise((resolve) =>

@@ -388,7 +388,7 @@ export function buildReport({
     ].join("\n");
 }
 
-async function previousRun(run, s) {
+export async function previousRun(run, s) {
     const ids = (await readdir(s.runsDir))
         .filter((id) => id < run.meta.runId)
         .sort()
@@ -426,19 +426,26 @@ async function readPrepare(dir) {
     }
 }
 
-async function readDefects(dir) {
+export async function readDefects(dir) {
+    let files;
     try {
-        const files = (await readdir(dir))
-            .filter((f) => f.endsWith(".json"))
-            .sort();
-        return Promise.all(
-            files.map(async (f) =>
-                JSON.parse(await readFile(path.join(dir, f), "utf8")),
-            ),
-        );
-    } catch {
-        return [];
+        files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+    } catch (error) {
+        if (error.code === "ENOENT") return [];
+        throw error;
     }
+    return Promise.all(
+        files.map(async (f) => {
+            try {
+                return JSON.parse(await readFile(path.join(dir, f), "utf8"));
+            } catch (error) {
+                // One unreadable key disagreement must not make the others vanish silently.
+                throw new Error(`${path.join(dir, f)}: ${error.message}`, {
+                    cause: error,
+                });
+            }
+        }),
+    );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

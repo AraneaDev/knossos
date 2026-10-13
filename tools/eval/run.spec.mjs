@@ -7,7 +7,8 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
-import { readLedger } from "./ledger.mjs";
+import { evalPaths } from "./env.mjs";
+import { readLedger, sessionKey } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
 import {
     acquireLock,
@@ -354,6 +355,68 @@ describe("run CLI", () => {
             new RegExp(`another continue is running \\(pid ${process.pid}\\)`),
         );
         await release();
+    });
+});
+
+describe("continue with the fake claude", () => {
+    const rowsOf = async (dir) => readLedger(path.join(dir, "ledger.jsonl"));
+    it("reruns a limited session on the next continue", async () => {
+        const { env, runId, dir } = await started(["--arms", "baseline"]);
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        const code = await main(["continue", runId, "--batch", "1"], {
+            ...env,
+            FAKE_LIMIT_STATUS: "rejected",
+        });
+        expect(code).toBe(3);
+        const [limited] = await rowsOf(dir);
+        expect(limited.status).toBe("limited");
+        expect(await main(["continue", runId, "--batch", "1"], env)).toBe(0);
+        log.mockRestore();
+        const rows = await rowsOf(dir);
+        expect(rows.map((r) => r.status)).toEqual(["limited", "scored"]);
+        expect(sessionKey(rows[1])).toBe(sessionKey(rows[0]));
+    });
+    it("retries an error once and then marks the session failed", async () => {
+        const { env, runId, dir } = await started(["--arms", "baseline"]);
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        const failing = {
+            ...env,
+            FAKE_RESULT_SUBTYPE: "error_during_execution",
+        };
+        await main(["continue", runId, "--batch", "1"], failing);
+        await main(["continue", runId, "--batch", "1"], failing);
+        log.mockRestore();
+        const rows = await rowsOf(dir);
+        expect(rows.map((r) => r.status)).toEqual(["error", "failed"]);
+        expect(sessionKey(rows[1])).toBe(sessionKey(rows[0]));
+    });
+    it("gives the child CLAUDE_CONFIG_DIR inside the eval root", async () => {
+        const { env, runId } = await started(["--arms", "baseline"]);
+        const fakeLog = path.join(await tmp("eval-log-"), "fake.jsonl");
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await main(["continue", runId, "--batch", "1"], {
+            ...env,
+            FAKE_LOG: fakeLog,
+        });
+        log.mockRestore();
+        const [call] = (await readFile(fakeLog, "utf8"))
+            .trim()
+            .split("\n")
+            .map((l) => JSON.parse(l));
+        expect(call.configDir).toBe(evalPaths(env.KNOSSOS_EVAL_ROOT).config);
+    });
+    it("starts no session while a live process holds the lock", async () => {
+        const { env, runId, dir } = await started(["--arms", "baseline"]);
+        const fakeLog = path.join(await tmp("eval-log-"), "fake.jsonl");
+        const release = await acquireLock(
+            path.join(env.KNOSSOS_EVAL_ROOT, "continue.lock"),
+        );
+        await expect(
+            main(["continue", runId], { ...env, FAKE_LOG: fakeLog }),
+        ).rejects.toThrow(/another continue is running/);
+        await release();
+        expect(await readFile(fakeLog, "utf8").catch(() => "")).toBe("");
+        expect(await rowsOf(dir)).toEqual([]);
     });
 });
 

@@ -1,8 +1,18 @@
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
-import { BELOW_BASELINE_TOLERANCE, buildReport } from "./report.mjs";
+import { afterAll, describe, expect, it } from "vitest";
+
+afterAll(removeTemp);
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { removeTemp, tmp } from "./fixtures/tmp.mjs";
+import {
+    BELOW_BASELINE_TOLERANCE,
+    buildReport,
+    previousRun,
+    readDefects,
+} from "./report.mjs";
 
 const tasks = [
     { id: "c1", category: "callers" },
@@ -361,5 +371,65 @@ describe("below baseline tolerance", () => {
         });
         expect(section(md)).not.toContain("- w1:");
         expect(section(md)).toContain("- w2:");
+    });
+});
+
+describe("previousRun", () => {
+    const meta = (runId, over = {}) => ({
+        runId,
+        corpusHash: "h",
+        model: "sonnet",
+        ...over,
+    });
+    async function runs(entries) {
+        const dir = await tmp("eval-prev-");
+        for (const [id, m, ledger] of entries) {
+            await mkdir(path.join(dir, id), { recursive: true });
+            if (m !== null)
+                await writeFile(
+                    path.join(dir, id, "meta.json"),
+                    JSON.stringify(m),
+                );
+            if (ledger)
+                await writeFile(path.join(dir, id, "ledger.jsonl"), ledger);
+        }
+        return dir;
+    }
+    it("picks the latest earlier run with the same corpus and model", async () => {
+        const runsDir = await runs([
+            ["r1", meta("r1"), '{"task":"old"}\n'],
+            ["r2", meta("r2"), '{"task":"new"}\n'],
+            ["r3", meta("r3", { model: "opus" }), '{"task":"other"}\n'],
+            ["r4", meta("r4", { corpusHash: "x" }), '{"task":"other"}\n'],
+            ["r5", meta("r5"), '{"task":"self"}\n'],
+            ["r6", meta("r6"), '{"task":"later"}\n'],
+        ]);
+        const found = await previousRun({ meta: meta("r5") }, { runsDir });
+        expect(found).toEqual({ runId: "r2", rows: [{ task: "new" }] });
+    });
+    it("skips directories that are not runs and returns null without a match", async () => {
+        const runsDir = await runs([
+            ["r0", null, null],
+            ["r1", meta("r1", { model: "opus" }), ""],
+        ]);
+        await writeFile(path.join(runsDir, "r0", "meta.json"), "{broken");
+        expect(await previousRun({ meta: meta("r2") }, { runsDir })).toBeNull();
+    });
+});
+
+describe("readDefects", () => {
+    it("reads every defect file in name order and treats a missing directory as none", async () => {
+        const dir = await tmp("eval-defects-");
+        await writeFile(path.join(dir, "b.json"), '{"task":"b"}');
+        await writeFile(path.join(dir, "a.json"), '{"task":"a"}');
+        await writeFile(path.join(dir, "notes.txt"), "ignored");
+        expect((await readDefects(dir)).map((d) => d.task)).toEqual(["a", "b"]);
+        expect(await readDefects(path.join(dir, "absent"))).toEqual([]);
+    });
+    it("names a defect file it cannot parse instead of dropping them all", async () => {
+        const dir = await tmp("eval-defects-");
+        await writeFile(path.join(dir, "a.json"), '{"task":"a"}');
+        await writeFile(path.join(dir, "bad.json"), "{");
+        await expect(readDefects(dir)).rejects.toThrow(/bad\.json/);
     });
 });
