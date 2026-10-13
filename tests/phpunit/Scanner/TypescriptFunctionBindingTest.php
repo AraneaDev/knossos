@@ -50,6 +50,28 @@ final class TypescriptFunctionBindingTest extends KnossosTestCase
         }
     }
 
+    /**
+     * `private load = async () => {}` is a method written as a property, the
+     * way a class component binds one to its instance: a method node, the
+     * source of the calls in its body, and the target of `this.load()`.
+     */
+    public function testAClassPropertyHoldingAFunctionIsAMethod(): void
+    {
+        $scan = $this->scan();
+        $arrow = 'ts:function:src/bindings.ts#exportedArrow';
+
+        foreach (['load', 'handle'] as $name) {
+            $method = $scan->node('src/panel.ts#Panel::' . $name);
+            self::assertNotNull($method, $name);
+            self::assertSame('method', $method->kind, $name);
+            self::assertTrue($scan->hasEdge('calls', 'ts:method:src/panel.ts#Panel::' . $name, $arrow), $name);
+        }
+        self::assertFalse($scan->hasEdge('calls', 'ts:class:src/panel.ts#Panel', $arrow));
+        self::assertTrue($scan->hasEdge('calls', 'ts:method:src/panel.ts#Panel::render', 'ts:method:src/panel.ts#Panel::load'));
+        // A property holding a value is still a property.
+        self::assertSame('property', $scan->node('src/panel.ts#Panel::label')?->kind);
+    }
+
     public function testAnExportedObjectBindingIsExported(): void
     {
         $api = $this->scan()->node('src/bindings.ts#api');
@@ -152,7 +174,7 @@ final class TypescriptFunctionBindingTest extends KnossosTestCase
         try {
             $contributions = iterator_to_array($client->scan([
                 'root' => $root,
-                'files' => ['app/api/items/route.ts', 'src/Card.tsx', 'src/bindings.ts', 'src/handler.ts', 'src/level.ts', 'src/load-named.ts', 'src/load.ts', 'src/user.ts'],
+                'files' => ['app/api/items/route.ts', 'src/Card.tsx', 'src/bindings.ts', 'src/handler.ts', 'src/level.ts', 'src/load-named.ts', 'src/load.ts', 'src/panel.ts', 'src/user.ts'],
                 'config_files' => ['tsconfig.json'],
             ]), false);
         } finally {

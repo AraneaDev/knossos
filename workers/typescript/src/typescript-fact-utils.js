@@ -102,6 +102,21 @@ export function isFunctionBinding(node) {
     );
 }
 
+/**
+ * `private initializeScene = async () => { ... }`: a class property that holds
+ * a function, the way a React class component writes a method bound to its
+ * instance. It is a method in all but syntax, and the calls in its body are
+ * its own rather than the class's.
+ */
+export function isFunctionProperty(node) {
+    if (!ts.isPropertyDeclaration(node)) return false;
+    const value = unwrapExpression(node.initializer);
+    return (
+        value !== undefined &&
+        (ts.isArrowFunction(value) || ts.isFunctionExpression(value))
+    );
+}
+
 /** The function binding an arrow or function expression initialises, or null. */
 export function functionBindingOf(node) {
     if (

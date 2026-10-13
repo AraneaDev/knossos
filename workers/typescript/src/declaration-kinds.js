@@ -16,6 +16,7 @@ import {
     holderOf,
     isExpressionWrapper,
     isFunctionBinding,
+    isFunctionProperty,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
 
@@ -59,7 +60,8 @@ export function declarationKind(node, fallback) {
     if (
         ts.isMethodDeclaration(node) ||
         ts.isMethodSignature(node) ||
-        ts.isConstructorDeclaration(node)
+        ts.isConstructorDeclaration(node) ||
+        isFunctionProperty(node)
     )
         return "method";
     if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node))
@@ -227,6 +229,7 @@ export function isTypeOnlyDeclaration(node) {
 export function containerDeclaration(node) {
     return (
         isFunctionBinding(node) ||
+        isFunctionProperty(node) ||
         isObjectLiteralBinding(node) ||
         isContextualObjectLiteral(node) ||
         ts.isClassDeclaration(node) ||
@@ -301,6 +304,7 @@ export function referenceableDeclaration(node) {
         ts.isEnumDeclaration(node) ||
         ts.isTypeAliasDeclaration(node) ||
         isFunctionBinding(node) ||
+        isFunctionProperty(node) ||
         isObjectLiteralBinding(node)
     );
 }
