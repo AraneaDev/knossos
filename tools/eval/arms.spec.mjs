@@ -69,20 +69,19 @@ describe("armArgv", () => {
                 "Bash(git show *--ou*)",
                 "Bash(git log *--ext*)",
                 "Bash(git show *--ext*)",
-                "Bash(git grep *-O*)",
-                "Bash(git grep *--op*)",
                 "Bash(rg *--pre*)",
                 "Bash(rg *--hostname-bin*)",
             ]),
         );
     });
+    it("does not allow git grep, whose -O launches a program and can be bundled", () => {
+        for (const arm of ["baseline", "tools", "full"])
+            expect(armArgv(arm, opts).join(" ")).not.toMatch(/git grep/);
+    });
     it("denies nothing the allowlist's commands need for an ordinary search", () => {
         const ordinary = [
             "rg -n --no-heading -w total .",
             "rg -o -i total src",
-            "git grep -n -w total",
-            "git grep --only-matching total",
-            "git grep -o total",
             "git log --oneline -n 5",
             "git log -S total --stat",
             "git show HEAD:a.php",
@@ -101,8 +100,6 @@ describe("armArgv", () => {
         for (const command of ordinary)
             expect(DENIED_BASH.filter((r) => matches(r, command))).toEqual([]);
         for (const command of [
-            "git grep -Oless total",
-            "git grep --open-files-in-pager=less total",
             "git log --output=/tmp/x",
             "git show --ext-diff HEAD",
             "rg --pre=sh total",
@@ -125,7 +122,6 @@ describe("armArgv", () => {
                 "tail",
                 "wc",
                 "git log",
-                "git grep",
                 "git show",
             ].map((c) => `Bash(${c} *)`),
         ];

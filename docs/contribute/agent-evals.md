@@ -19,15 +19,16 @@ copy, and a refresh can rotate the token, which can leave the original logged
 out. Log in again if that happens.
 
 Sessions run read-only `Bash` commands (`rg`, `grep`, `ls`, `cat`, `head`,
-`tail`, `wc`, `git log`, `git grep`, `git show`) as your own user, in a clone
+`tail`, `wc`, `git log`, `git show`) as your own user, in a clone
 under the eval root. The allowlist keeps them on task; it is not a sandbox.
 Every arm also denies the options that would turn those commands into writers
 or launchers: `git log` and `git show` with `--output` (or an abbreviation of
-it, which git accepts) or `--ext-diff`, `git grep` with `-O` or
-`--open-files-in-pager`, and `rg` with `--pre` or `--hostname-bin`. The deny
+it, which git accepts) or `--ext-diff`, and `rg` with `--pre` or `--hostname-bin`. The deny
 rules are wildcard patterns on the command line, so they cannot see through
-quoting or a shell construct that assembles the option at run time, and a
-bundled short option such as `git grep -nOless` is not matched by `-O`.
+quoting or a shell construct that assembles the option at run time. None of
+the denied options has a short alias, so bundling flags does not get around
+them. `git grep` is not allowed, because its `-O` launches a pager and can be
+bundled; `rg` does the same searches.
 Treat the allowlist as a guard against wandering, not as a boundary.
 
 ## Running one
