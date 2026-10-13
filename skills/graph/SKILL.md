@@ -21,6 +21,11 @@ the same structure by reading the same files.
 | work out what a class is and what it touches | `find_component`, then `inspect_component`                 |
 | read a file's callers before editing it      | `file_context`, boundary, rules, dependents, tests         |
 
+A `certain` row from `list_usages` is a fact, not a lead: the list holds every
+static call the graph resolved, each marked `test` or not, and the summary says
+what it cannot see (calls through a string or dynamic dispatch). Grepping for
+the same symbol afterwards repeats work the graph already did.
+
 Every project-scoped tool needs a `project_id`. The session brief puts it in
 context already. If it is not there, `list_projects` returns it.
 

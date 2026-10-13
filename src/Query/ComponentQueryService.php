@@ -179,6 +179,9 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         );
     }
 
+    /** Whether a usage's source is test code: 1 or 0, bound to the test role as its one parameter. */
+    private const IN_TEST_SQL = 'EXISTS (SELECT 1 FROM classifications c WHERE c.project_id = e.project_id AND c.node_id = s.id AND c.role = ?)';
+
     /**
      * Every inbound usage occurrence of one symbol, one row per call/reference
      * site. Edges are occurrence-level facts (their stable id includes the
@@ -215,13 +218,14 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $confidencePlaceholders = implode(',', array_fill(0, count($allowedConfidence), '?'));
         $statement = $this->pdo->prepare(
             'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, f.relative_path, ' .
-            's.id AS source_id, s.kind AS source_kind, s.canonical_name AS source_canonical, s.display_name AS source_display ' .
+            's.id AS source_id, s.kind AS source_kind, s.canonical_name AS source_canonical, s.display_name AS source_display, ' .
+            self::IN_TEST_SQL . ' AS in_test ' .
             'FROM edges e JOIN nodes s ON s.id = e.source_id LEFT JOIN files f ON f.id = e.file_id ' .
             'WHERE e.project_id = ? AND e.target_id = ? AND e.kind IN (' . $kindPlaceholders . ') ' .
             'AND e.confidence IN (' . $confidencePlaceholders . ') ' .
             'ORDER BY f.relative_path, e.start_line, e.id LIMIT ?',
         );
-        $statement->execute([$projectId, $target['id'], ...$edgeKinds, ...$allowedConfidence, $limit + 1]);
+        $statement->execute([ReportableComponent::TEST_ROLE, $projectId, $target['id'], ...$edgeKinds, ...$allowedConfidence, $limit + 1]);
         $rows = $statement->fetchAll();
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
@@ -230,13 +234,15 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         // thing the caller asked for. Count only when the page did not already
         // hold every match.
         $totalMatched = count($rows);
+        $outsideTests = count(array_filter($rows, static fn(array $row): bool => (int) $row['in_test'] === 0));
         if ($truncated) {
             $countStatement = $this->pdo->prepare(
-                'SELECT COUNT(*) FROM edges e WHERE e.project_id = ? AND e.target_id = ? ' .
+                'SELECT COUNT(*), COALESCE(SUM(CASE WHEN ' . self::IN_TEST_SQL . ' THEN 0 ELSE 1 END), 0) ' .
+                'FROM edges e JOIN nodes s ON s.id = e.source_id WHERE e.project_id = ? AND e.target_id = ? ' .
                 'AND e.kind IN (' . $kindPlaceholders . ') AND e.confidence IN (' . $confidencePlaceholders . ')',
             );
-            $countStatement->execute([$projectId, $target['id'], ...$edgeKinds, ...$allowedConfidence]);
-            $totalMatched = (int) $countStatement->fetchColumn();
+            $countStatement->execute([ReportableComponent::TEST_ROLE, $projectId, $target['id'], ...$edgeKinds, ...$allowedConfidence]);
+            [$totalMatched, $outsideTests] = array_map('intval', $countStatement->fetch(PDO::FETCH_NUM));
         }
         $usages = [];
         $evidence = [];
@@ -246,6 +252,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'attributes' => self::decode($row['attributes_json']),
                 'source' => ['id' => $row['source_id'], 'kind' => $row['source_kind'], 'canonical_name' => $row['source_canonical'], 'display_name' => $row['source_display']],
                 'path' => $row['relative_path'], 'start_line' => $row['start_line'], 'end_line' => $row['end_line'],
+                'test' => (int) $row['in_test'] === 1,
             ];
             if ($row['relative_path'] !== null && count($evidence) < 100) {
                 $evidence[] = ['edge_id' => $row['edge_id'], 'path' => $row['relative_path'], 'start_line' => $row['start_line'], 'end_line' => $row['end_line']];
@@ -255,18 +262,23 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
+            // The summary says what the list covers, so a reader can take it
+            // as the answer: agents that were not told grepped for the symbol
+            // afterwards to find out, in most sessions of the agent eval.
             sprintf(
-                'Found %d usage site%s of %s%s.',
+                'Found %d usage site%s of %s, %d outside tests%s. Every static reference the graph resolved is listed; '
+                . 'calls through strings, reflection or dynamic dispatch are not.',
                 $totalMatched,
                 $totalMatched === 1 ? '' : 's',
                 $target['canonical_name'],
-                $truncated ? sprintf(', showing %d', count($usages)) : '',
+                $outsideTests,
+                $truncated ? sprintf('; showing %d', count($usages)) : '',
             ),
             [
                 'target' => ['id' => $target['id'], 'kind' => $target['kind'], 'canonical_name' => $target['canonical_name'], 'display_name' => $target['display_name']],
                 'usages' => $usages,
                 'bounds' => [
-                    'limit' => $limit, 'total_matched' => $totalMatched, 'total_shown' => count($usages),
+                    'limit' => $limit, 'total_matched' => $totalMatched, 'outside_tests' => $outsideTests, 'total_shown' => count($usages),
                     'edge_kinds' => $edgeKinds, 'truncation_reasons' => $truncated ? ['result_limit'] : [],
                 ],
             ],
