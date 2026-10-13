@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.27.2](https://github.com/AraneaDev/knossos/compare/v0.27.1...v0.27.2) (2026-10-13)
+
+
+### Fixes
+
+* count a Celery signature as a probable dispatch, and follow a REST framework view to the validator that chose its field ([#251](https://github.com/AraneaDev/knossos/issues/251)) ([98caca9](https://github.com/AraneaDev/knossos/commit/98caca9e61e2e3420de88f533d2518c244adaf2a))
+* find a component by its last segments, so a class and method without the namespace resolve ([#249](https://github.com/AraneaDev/knossos/issues/249)) ([182b3c0](https://github.com/AraneaDev/knossos/commit/182b3c07b685cb9a34c2792cb56342747ec17218))
+* follow facade extern crate re-exports and inline paths, keep blanket impls, and stop guessing prelude names in Rust ([#253](https://github.com/AraneaDev/knossos/issues/253)) ([56f6d9d](https://github.com/AraneaDev/knossos/commit/56f6d9d9dbd1b1346fd0d8dcfbda6c91b2dc71fa))
+* read a class property holding a function as a method, so the calls in its body are its own ([#252](https://github.com/AraneaDev/knossos/issues/252)) ([0ae8f71](https://github.com/AraneaDev/knossos/commit/0ae8f718c1126c57bce9f5e5a4433ff104941da3))
+
 ## [0.27.1](https://github.com/AraneaDev/knossos/compare/v0.27.0...v0.27.1) (2026-10-12)
 
 
