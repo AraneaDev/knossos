@@ -15,7 +15,8 @@
       "packages/excalidraw/actions/actionDeleteSelected.tsx",
       "packages/excalidraw/components/App.selectionTool.ts",
       "packages/excalidraw/components/Stats/utils.ts"
-    ]
+    ],
+    "excludesSubjectFile": true
   },
   "verified": "2026-10-12"
 }

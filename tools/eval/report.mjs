@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCORABLE, readLedger } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
+import { corpusHashFor } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
 import { openRun, settings } from "./run.mjs";
 import {
@@ -399,7 +400,8 @@ export async function previousRun(run, s) {
                 await readFile(path.join(s.runsDir, id, "meta.json"), "utf8"),
             );
             if (
-                meta.corpusHash === run.meta.corpusHash &&
+                // Like with like: hash this run's corpus the way the other run's meta was written.
+                meta.corpusHash === corpusHashFor(run.corpus, meta) &&
                 meta.model === run.meta.model
             ) {
                 return {

@@ -14,7 +14,8 @@
       "packages/element/src/binding.ts",
       "packages/excalidraw/components/App.tsx",
       "packages/element/src/arrows/focus.ts"
-    ]
+    ],
+    "excludesSubjectFile": true
   },
   "verified": "2026-10-12"
 }

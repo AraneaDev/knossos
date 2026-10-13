@@ -1,6 +1,7 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import * as fsp from "node:fs/promises";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     clearDefect,
@@ -13,6 +14,15 @@ import {
     rgLines,
     unresolved,
 } from "./keygen.mjs";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        rename: vi.fn(actual.rename),
+        writeFile: vi.fn(actual.writeFile),
+    };
+});
 
 afterAll(removeTemp);
 
@@ -113,6 +123,7 @@ describe("knossosAnswer without the subject's own file", () => {
         via: { evidence: { path: file } },
     });
     const dependants = [dependant("src/collision.ts"), dependant("src/b.ts")];
+    const own = { excludesSubjectFile: true };
     it("drops the file named before # in the target's canonical name", () => {
         const json = {
             data: {
@@ -123,23 +134,54 @@ describe("knossosAnswer without the subject's own file", () => {
                 dependants,
             },
         };
-        expect(knossosAnswer("dependents", "file", json)).toEqual(["src/b.ts"]);
-        expect(knossosAnswer("impact", "file", json)).toEqual(["src/b.ts"]);
+        expect(knossosAnswer("dependents", "file", json, own)).toEqual([
+            "src/b.ts",
+        ]);
+        expect(knossosAnswer("impact", "file", json, own)).toEqual([
+            "src/b.ts",
+        ]);
     });
     it("prefers target.path and treats a module target as its own file", () => {
         expect(
-            knossosAnswer("impact", "file", {
-                data: { target: { path: "src/b.ts" }, dependants },
-            }),
+            knossosAnswer(
+                "impact",
+                "file",
+                {
+                    data: { target: { path: "src/b.ts" }, dependants },
+                },
+                own,
+            ),
         ).toEqual(["src/collision.ts"]);
         expect(
-            knossosAnswer("impact", "file", {
-                data: {
-                    target: { canonical_name: "src/b.ts", kind: "module" },
-                    dependants,
+            knossosAnswer(
+                "impact",
+                "file",
+                {
+                    data: {
+                        target: { canonical_name: "src/b.ts", kind: "module" },
+                        dependants,
+                    },
                 },
-            }),
+                own,
+            ),
         ).toEqual(["src/collision.ts"]);
+    });
+    it("keeps the defining file unless the task says to leave it out", () => {
+        const json = {
+            data: {
+                target: { canonical_name: "src/collision.ts#hit" },
+                dependants,
+            },
+        };
+        expect(knossosAnswer("impact", "file", json)).toEqual([
+            "src/collision.ts",
+            "src/b.ts",
+        ]);
+        expect(
+            knossosAnswer("impact", "file", json, {
+                excludesSubjectFile: false,
+            }),
+        ).toHaveLength(2);
     });
     it("keeps everything when the target has no file, and for symbol answers", () => {
         const noFile = {
@@ -148,7 +190,7 @@ describe("knossosAnswer without the subject's own file", () => {
                 dependants,
             },
         };
-        expect(knossosAnswer("impact", "file", noFile)).toHaveLength(2);
+        expect(knossosAnswer("impact", "file", noFile, own)).toHaveLength(2);
         expect(
             knossosAnswer("impact", "symbol", {
                 data: {
@@ -174,6 +216,59 @@ describe("rgLines", () => {
         await expect(
             rgLines("total", path.join(dir, "missing")),
         ).rejects.toThrow(/rg failed in/);
+    });
+});
+
+describe("defect files are written atomically", () => {
+    it("renames a finished temp file into place and leaves no temp file behind", async () => {
+        const root = await tmp("eval-defects-");
+        const paths = { defects: path.join(root, "defects") };
+        fsp.rename.mockClear();
+        await recordDefect(paths, "t9", "list-usages", {
+            missing: ["a"],
+            extra: [],
+        });
+        await recordUnresolved(paths, "t8", "list-usages", {
+            query: "q",
+            candidates: [],
+        });
+        const renames = fsp.rename.mock.calls;
+        expect(renames).toHaveLength(2);
+        for (const [from, to] of renames) {
+            expect(from).not.toBe(to);
+            expect(to).toMatch(/\.json$/);
+        }
+        expect((await readdir(paths.defects)).sort()).toEqual([
+            "t8.json",
+            "t9.json",
+        ]);
+    });
+    it("keeps the earlier file intact and cleans up when the write fails", async () => {
+        const root = await tmp("eval-defects-");
+        const paths = { defects: path.join(root, "defects") };
+        await recordDefect(paths, "t9", "list-usages", {
+            missing: ["a"],
+            extra: [],
+        });
+        const before = await readFile(
+            path.join(paths.defects, "t9.json"),
+            "utf8",
+        );
+        const real = fsp.writeFile.getMockImplementation();
+        fsp.writeFile.mockImplementationOnce(async (file, data, ...rest) => {
+            await real(file, String(data).slice(0, 5), ...rest); // a torn write
+            throw new Error("disk full");
+        });
+        await expect(
+            recordDefect(paths, "t9", "list-usages", {
+                missing: ["b"],
+                extra: [],
+            }),
+        ).rejects.toThrow(/disk full/);
+        expect(
+            await readFile(path.join(paths.defects, "t9.json"), "utf8"),
+        ).toBe(before);
+        expect(await readdir(paths.defects)).toEqual(["t9.json"]);
     });
 });
 

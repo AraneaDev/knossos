@@ -17,7 +17,8 @@
       "packages/excalidraw/wysiwyg/textWysiwyg.tsx",
       "packages/excalidraw/components/App.clipboard.ts",
       "packages/excalidraw/components/ConvertElementTypePopup.tsx"
-    ]
+    ],
+    "excludesSubjectFile": true
   },
   "verified": "2026-10-12"
 }

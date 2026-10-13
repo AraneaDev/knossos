@@ -20,7 +20,12 @@ import { parseArgs, promisify } from "node:util";
 import { stopWatchers } from "../capture/session.mjs";
 import { ANSWER_INSTRUCTION } from "./answer.mjs";
 import { ablationArm, armArgv, BASE_ARMS, parseArm } from "./arms.mjs";
-import { corpusHash, loadCorpus } from "./corpus.mjs";
+import {
+    CORPUS_HASH_VERSION,
+    corpusHash,
+    corpusHashFor,
+    loadCorpus,
+} from "./corpus.mjs";
 import {
     ensureClone,
     evalEnv,
@@ -247,7 +252,7 @@ export async function openRun(runId, s) {
     const dir = path.join(s.runsDir, runId);
     const meta = await readJson(path.join(dir, "meta.json"));
     const corpus = await loadCorpus(meta.corpusDir);
-    if (corpusHash(corpus) !== meta.corpusHash)
+    if (corpusHashFor(corpus, meta) !== meta.corpusHash)
         throw new Error(
             `the corpus changed since run ${runId} started; start a new run`,
         );
@@ -308,6 +313,7 @@ async function start(args, s) {
         createdAt: new Date().toISOString(),
         corpusDir,
         corpusHash: corpusHash(corpus),
+        corpusHashVersion: CORPUS_HASH_VERSION,
         model: values.model,
         arms,
         repeats,

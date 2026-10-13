@@ -1,13 +1,23 @@
+import * as fsp from "node:fs/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
+    compareCodePoints,
     corpusHash,
+    corpusHashFor,
+    legacyCorpusHash,
     loadCorpus,
     validateRepo,
     validateTask,
 } from "./corpus.mjs";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal();
+    return { ...actual, readdir: vi.fn(actual.readdir) };
+});
 
 afterAll(removeTemp);
 
@@ -187,5 +197,113 @@ describe("corpusHash", () => {
         });
         expect(a).toBe(b);
         expect(a).not.toBe(c);
+    });
+});
+
+describe("compareCodePoints", () => {
+    it("orders by code point, not by UTF-16 code unit", () => {
+        // U+1F600 is the surrogate pair D83D DE00, which sorts before U+FFFF by code unit.
+        expect(compareCodePoints("\u{1F600}", "\uFFFF")).toBe(1);
+        expect(compareCodePoints("\uFFFF", "\u{1F600}")).toBe(-1);
+        expect(compareCodePoints("a", "a")).toBe(0);
+        expect(compareCodePoints("a", "ab")).toBeLessThan(0);
+        expect(compareCodePoints("B", "a")).toBeLessThan(0);
+    });
+    it("makes the hash independent of task order for astral ids", () => {
+        const a = { ...task, id: "\u{1F600}" };
+        const b = { ...task, id: "\uFFFF" };
+        expect(corpusHash({ repos, tasks: [a, b] })).toBe(
+            corpusHash({ repos, tasks: [b, a] }),
+        );
+    });
+});
+
+describe("hash versions", () => {
+    const LEGACY =
+        "e35c159bb0972450f10a9157cd49e9db16a094c02c6bbcd5baec8db7712f555d";
+    const loadLegacy = () =>
+        loadCorpus(
+            fileURLToPath(new URL("./fixtures/legacy-corpus", import.meta.url)),
+        );
+    it("reproduces the hash a pre-version run stored", async () => {
+        // The meta.json of the pilot run 20261012-231441-sonnet stored LEGACY for exactly this corpus.
+        const corpus = await loadLegacy();
+        expect(legacyCorpusHash(corpus)).toBe(LEGACY);
+        expect(corpusHashFor(corpus, { corpusHash: LEGACY })).toBe(LEGACY);
+        expect(corpusHash(corpus)).not.toBe(LEGACY);
+    });
+    it("uses the current scheme once the meta says version 2", async () => {
+        const corpus = await loadLegacy();
+        expect(corpusHashFor(corpus, { corpusHashVersion: 2 })).toBe(
+            corpusHash(corpus),
+        );
+    });
+    it("ignores excludesSubjectFile in the legacy hash only", () => {
+        const flagged = {
+            repos,
+            tasks: [
+                {
+                    ...task,
+                    answer: { ...task.answer, excludesSubjectFile: true },
+                },
+            ],
+        };
+        expect(legacyCorpusHash(flagged)).toBe(
+            legacyCorpusHash({ repos, tasks: [task] }),
+        );
+        expect(corpusHash(flagged)).not.toBe(
+            corpusHash({ repos, tasks: [task] }),
+        );
+    });
+});
+
+describe("excludesSubjectFile", () => {
+    const file = { ...task, answer: { unit: "file", expected: ["a.php"] } };
+    it("accepts a boolean on a file answer", () => {
+        expect(
+            validateTask(
+                {
+                    ...file,
+                    answer: { ...file.answer, excludesSubjectFile: true },
+                },
+                repos,
+            ),
+        ).toEqual([]);
+    });
+    it("rejects a non-boolean and a flag on a symbol answer", () => {
+        const bad = validateTask(
+            { ...file, answer: { ...file.answer, excludesSubjectFile: "yes" } },
+            repos,
+        );
+        expect(bad.join()).toMatch(/must be true or false/);
+        const symbol = validateTask(
+            { ...task, answer: { ...task.answer, excludesSubjectFile: true } },
+            repos,
+        );
+        expect(symbol.join()).toMatch(/only applies to file answers/);
+    });
+});
+
+describe("loadCorpus with an unreadable task directory", () => {
+    it("collects the failure instead of throwing a raw error", async () => {
+        const dir = await corpusDir([task]);
+        await mkdir(path.join(dir, "tasks", "bad"), { recursive: true });
+        const real = fsp.readdir.getMockImplementation();
+        fsp.readdir.mockImplementation((p, ...rest) =>
+            String(p).endsWith(path.join("tasks", "bad"))
+                ? Promise.reject(new Error("EACCES: permission denied"))
+                : real(p, ...rest),
+        );
+        try {
+            const message = await loadCorpus(dir).then(
+                () => "",
+                (e) => e.message,
+            );
+            expect(message).toContain(`invalid corpus ${dir}:`);
+            expect(message).toContain(path.join(dir, "tasks", "bad"));
+            expect(message).toContain("EACCES");
+        } finally {
+            fsp.readdir.mockImplementation(real);
+        }
     });
 });

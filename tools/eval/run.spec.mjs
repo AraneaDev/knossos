@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
+import { corpusHash, legacyCorpusHash, loadCorpus } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
 import { readLedger, sessionKey } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
@@ -355,6 +356,33 @@ describe("run CLI", () => {
             new RegExp(`another continue is running \\(pid ${process.pid}\\)`),
         );
         await release();
+    });
+});
+
+describe("corpus hash versions", () => {
+    it("writes the hash version into meta and still opens a run stored with the legacy hash", async () => {
+        const { env, runId, dir } = await started();
+        const file = path.join(dir, "meta.json");
+        const meta = JSON.parse(await readFile(file, "utf8"));
+        expect(meta.corpusHashVersion).toBe(2);
+        const corpus = await loadCorpus(meta.corpusDir);
+        expect(meta.corpusHash).toBe(corpusHash(corpus));
+        const old = { ...meta };
+        delete old.corpusHashVersion;
+        await writeFile(
+            file,
+            JSON.stringify({ ...old, corpusHash: legacyCorpusHash(corpus) }),
+        );
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        expect(await main(["status", runId], env)).toBe(0);
+        log.mockRestore();
+        await writeFile(
+            file,
+            JSON.stringify({ ...old, corpusHash: "0".repeat(64) }),
+        );
+        await expect(main(["status", runId], env)).rejects.toThrow(
+            /corpus changed/,
+        );
     });
 });
 

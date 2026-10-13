@@ -10,7 +10,8 @@
     "expected": [
       "app/Domains/Vault/ManageAddresses/Services/CreateAddress.php",
       "app/Domains/Vault/ManageAddresses/Services/UpdateAddress.php"
-    ]
+    ],
+    "excludesSubjectFile": true
   },
   "verified": "2026-10-12"
 }

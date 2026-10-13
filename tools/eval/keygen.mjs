@@ -5,7 +5,7 @@
  * disagrees with it. Knossos never writes the key.
  */
 import { execFile } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -61,7 +61,12 @@ function definingFile(target) {
         : undefined;
 }
 
-export function knossosAnswer(category, unit, json) {
+export function knossosAnswer(
+    category,
+    unit,
+    json,
+    { excludesSubjectFile = false } = {},
+) {
     if (category === "callers") {
         const usages = (json.data?.usages ?? []).filter(
             (u) => CALL_KINDS.has(u.kind) && !isTestPath(u.path),
@@ -71,9 +76,12 @@ export function knossosAnswer(category, unit, json) {
             .filter(Boolean);
     }
     if (category === "impact" || category === "dependents") {
-        // Every prompt asks to leave the subject's own file out of a file answer.
+        // Only a task whose prompt says to leave the subject's file out (answer.excludesSubjectFile)
+        // loses it; other keys, such as trait implementors, legitimately include the defining file.
         const own =
-            unit === "file" ? definingFile(json.data?.target) : undefined;
+            unit === "file" && excludesSubjectFile
+                ? definingFile(json.data?.target)
+                : undefined;
         return (
             (json.data?.dependants ?? [])
                 // The keys for "dependents" list direct dependents only; "impact" keeps every distance.
@@ -130,34 +138,37 @@ export async function recordDefect(paths, task, command, diff) {
         await clearDefect(paths, task);
         return false;
     }
-    await writeFile(
-        file,
-        JSON.stringify(
-            { task, tool: command, kind: "disagreement", ...diff },
-            null,
-            2,
-        ),
-    );
+    await writeJsonAtomic(file, {
+        task,
+        tool: command,
+        kind: "disagreement",
+        ...diff,
+    });
     return true;
+}
+
+/** Writes JSON to a temp name and renames it into place, so a reader never sees half a file. */
+async function writeJsonAtomic(file, value) {
+    const temp = `${file}.${process.pid}.tmp`;
+    try {
+        await writeFile(temp, JSON.stringify(value, null, 2));
+        await rename(temp, file);
+    } catch (error) {
+        await rm(temp, { force: true });
+        throw error;
+    }
 }
 
 /** Writes `defects/<task>.json` for a subject Knossos did not resolve, so the report lists it instead of dropping it. */
 export async function recordUnresolved(paths, task, command, miss) {
     await mkdir(paths.defects, { recursive: true });
-    await writeFile(
-        path.join(paths.defects, `${task}.json`),
-        JSON.stringify(
-            {
-                task,
-                tool: command,
-                kind: "unresolved",
-                query: miss.query,
-                candidates: miss.candidates,
-            },
-            null,
-            2,
-        ),
-    );
+    await writeJsonAtomic(path.join(paths.defects, `${task}.json`), {
+        task,
+        tool: command,
+        kind: "unresolved",
+        query: miss.query,
+        candidates: miss.candidates,
+    });
 }
 
 async function main(args) {
@@ -231,7 +242,9 @@ async function main(args) {
         );
     const diff = diffAnswers(
         task.answer.expected,
-        knossosAnswer(task.category, task.answer.unit, json),
+        knossosAnswer(task.category, task.answer.unit, json, {
+            excludesSubjectFile: task.answer.excludesSubjectFile === true,
+        }),
         {
             unit: task.answer.unit,
             language: corpus.repos[task.repo].language,

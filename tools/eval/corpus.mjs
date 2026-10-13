@@ -59,6 +59,11 @@ export function validateTask(task, repos, now = new Date()) {
     }
     if (!UNITS.includes(task.answer?.unit))
         fail("answer.unit must be symbol or file");
+    const excludes = task.answer?.excludesSubjectFile;
+    if (excludes !== undefined && typeof excludes !== "boolean")
+        fail("answer.excludesSubjectFile must be true or false");
+    if (excludes === true && task.answer?.unit !== "file")
+        fail("answer.excludesSubjectFile only applies to file answers");
     const expected = task.answer?.expected;
     if (
         !Array.isArray(expected) ||
@@ -117,9 +122,14 @@ export async function loadCorpus(dir) {
         errors.push(`${tasksDir}: ${error.message}`);
     }
     for (const repoDir of repoDirs) {
-        const files = (await readdir(path.join(tasksDir, repoDir)))
-            .filter((f) => f.endsWith(".json"))
-            .sort();
+        let files = [];
+        try {
+            files = (await readdir(path.join(tasksDir, repoDir)))
+                .filter((f) => f.endsWith(".json"))
+                .sort();
+        } catch (error) {
+            errors.push(`${path.join(tasksDir, repoDir)}: ${error.message}`);
+        }
         for (const file of files) {
             const where = path.join(tasksDir, repoDir, file);
             const task = await readJson(where, errors);
@@ -163,10 +173,19 @@ export function canonicalJson(value) {
     return JSON.stringify(value) ?? "null";
 }
 
-/** Locale-independent string order. */
-function compareCodePoints(a, b) {
-    return a < b ? -1 : a > b ? 1 : 0;
+/** Locale-independent string order by Unicode code point (not by UTF-16 code unit). */
+export function compareCodePoints(a, b) {
+    const left = Array.from(a, (c) => c.codePointAt(0));
+    const right = Array.from(b, (c) => c.codePointAt(0));
+    const n = Math.min(left.length, right.length);
+    for (let i = 0; i < n; i += 1) {
+        if (left[i] !== right[i]) return left[i] < right[i] ? -1 : 1;
+    }
+    return left.length - right.length;
 }
+
+/** The hash scheme `start` writes into meta as `corpusHashVersion`. */
+export const CORPUS_HASH_VERSION = 2;
 
 /** A fingerprint of everything a run's results depend on: the repos and every task, order-independent. */
 export function corpusHash({ repos, tasks }) {
@@ -174,4 +193,30 @@ export function corpusHash({ repos, tasks }) {
     return createHash("sha256")
         .update(canonicalJson({ repos, tasks: sorted }))
         .digest("hex");
+}
+
+/**
+ * The scheme runs used before `corpusHashVersion` existed: locale order and
+ * insertion-order JSON. Tasks are hashed without `answer.excludesSubjectFile`,
+ * which those runs never saw, so they still verify against their corpus.
+ */
+export function legacyCorpusHash({ repos, tasks }) {
+    const strip = (t) => {
+        if (!isObject(t.answer) || !("excludesSubjectFile" in t.answer))
+            return t;
+        const answer = { ...t.answer };
+        delete answer.excludesSubjectFile;
+        return { ...t, answer };
+    };
+    const sorted = tasks.map(strip).sort((a, b) => a.id.localeCompare(b.id));
+    return createHash("sha256")
+        .update(JSON.stringify({ repos, tasks: sorted }))
+        .digest("hex");
+}
+
+/** The corpus hash in the scheme a run's meta was written with. */
+export function corpusHashFor(corpus, meta) {
+    return (meta.corpusHashVersion ?? 1) >= 2
+        ? corpusHash(corpus)
+        : legacyCorpusHash(corpus);
 }

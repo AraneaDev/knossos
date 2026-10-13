@@ -11,7 +11,8 @@
       "src/documents/serialisers.py",
       "src/documents/views.py",
       "src/documents/workflows/actions.py"
-    ]
+    ],
+    "excludesSubjectFile": true
   },
   "verified": "2026-10-13"
 }

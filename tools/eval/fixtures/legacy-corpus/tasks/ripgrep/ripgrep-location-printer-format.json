@@ -1,0 +1,13 @@
+{
+  "id": "ripgrep-location-printer-format",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "location",
+  "subject": "printer",
+  "prompt": "I want to add a new output format, alongside the existing standard, summary and JSON output. Following how this codebase is organised, in which directory should the new implementation go? Answer with the directory path.",
+  "answer": {
+    "unit": "file",
+    "expected": ["crates/printer/src"]
+  },
+  "verified": "2026-10-12"
+}

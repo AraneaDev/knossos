@@ -2,10 +2,9 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
-
-afterAll(removeTemp);
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { corpusHash, legacyCorpusHash } from "./corpus.mjs";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     BELOW_BASELINE_TOLERANCE,
@@ -13,6 +12,8 @@ import {
     previousRun,
     readDefects,
 } from "./report.mjs";
+
+afterAll(removeTemp);
 
 const tasks = [
     { id: "c1", category: "callers" },
@@ -375,12 +376,28 @@ describe("below baseline tolerance", () => {
 });
 
 describe("previousRun", () => {
+    const corpus = {
+        repos: { demo: { url: "u", commit: "c", language: "php" } },
+        tasks: [
+            { id: "a", answer: { unit: "file", excludesSubjectFile: true } },
+        ],
+    };
     const meta = (runId, over = {}) => ({
         runId,
-        corpusHash: "h",
+        corpusHash: corpusHash(corpus),
+        corpusHashVersion: 2,
         model: "sonnet",
         ...over,
     });
+    const legacy = (runId, over = {}) => {
+        const old = {
+            ...meta(runId, over),
+            corpusHash: legacyCorpusHash(corpus),
+            ...over,
+        };
+        delete old.corpusHashVersion;
+        return old;
+    };
     async function runs(entries) {
         const dir = await tmp("eval-prev-");
         for (const [id, m, ledger] of entries) {
@@ -404,8 +421,22 @@ describe("previousRun", () => {
             ["r5", meta("r5"), '{"task":"self"}\n'],
             ["r6", meta("r6"), '{"task":"later"}\n'],
         ]);
-        const found = await previousRun({ meta: meta("r5") }, { runsDir });
+        const found = await previousRun(
+            { meta: meta("r5"), corpus },
+            { runsDir },
+        );
         expect(found).toEqual({ runId: "r2", rows: [{ task: "new" }] });
+    });
+    it("compares like with like: a run written with the legacy hash still matches", async () => {
+        const runsDir = await runs([
+            ["r1", legacy("r1"), '{"task":"legacy"}\n'],
+            ["r2", legacy("r2", { corpusHash: "stale" }), '{"task":"no"}\n'],
+        ]);
+        const found = await previousRun(
+            { meta: meta("r3"), corpus },
+            { runsDir },
+        );
+        expect(found).toEqual({ runId: "r1", rows: [{ task: "legacy" }] });
     });
     it("skips directories that are not runs and returns null without a match", async () => {
         const runsDir = await runs([
@@ -413,7 +444,9 @@ describe("previousRun", () => {
             ["r1", meta("r1", { model: "opus" }), ""],
         ]);
         await writeFile(path.join(runsDir, "r0", "meta.json"), "{broken");
-        expect(await previousRun({ meta: meta("r2") }, { runsDir })).toBeNull();
+        expect(
+            await previousRun({ meta: meta("r2"), corpus }, { runsDir }),
+        ).toBeNull();
     });
 });
 
