@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 
 /**
