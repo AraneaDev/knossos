@@ -1,0 +1,25 @@
+{
+  "id": "excalidraw-impact-repair-binding",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "repairBinding",
+  "prompt": "If the private helper repairBinding() in packages/excalidraw/data/restore.ts changes behaviour, which functions exported from the @excalidraw/excalidraw package entry point (packages/excalidraw/index.tsx) behave differently, through any chain of calls in production code (not tests)? Count only plain functions; leave out React components, hooks (use*), classes and constants. Name each by the name it is exported under.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "restoreElement",
+      "restoreElements",
+      "restoreLibraryItems",
+      "loadFromBlob",
+      "loadSceneOrLibraryFromBlob",
+      "loadLibraryFromBlob",
+      "exportToCanvas",
+      "exportToBlob",
+      "exportToSvg",
+      "exportToClipboard"
+    ]
+  },
+  "verified": "2026-10-13"
+}

@@ -1,0 +1,36 @@
+{
+  "id": "monica-callers-importer-vault",
+  "repo": "monica",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "Importer::vault",
+  "prompt": "Which methods in the application code (app/, not tests) call App\\Domains\\Contact\\Dav\\Importer::vault(), the vCard importer base class's own vault() method? Calls to App\\Domains\\Contact\\Dav\\VCalendarImporter::vault(), to any model's vault() relationship, or to any other vault() method do not count. List each calling method once, as Class::method, named by the class that defines the calling method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Dav\\ImportImportantDates::getBirthdateType",
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Dav\\ImportImportantDates::createContactImportantDate",
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Dav\\ImportImportantDates::updateContactImportantDate",
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Dav\\ImportImportantDates::removeContactImportantDate",
+      "App\\Domains\\Contact\\ManageGroups\\Dav\\ImportMembers::getExistingGroup",
+      "App\\Domains\\Contact\\ManageGroups\\Dav\\ImportMembers::updateGroupMembers",
+      "App\\Domains\\Contact\\ManageGroups\\Dav\\ImportGroup::getExistingGroup",
+      "App\\Domains\\Contact\\ManageGroups\\Dav\\ImportGroup::getGroupData",
+      "App\\Domains\\Contact\\Dav\\Importer::account",
+      "App\\Domains\\Contact\\ManageContactInformation\\Dav\\ImportContactInformation::createContactInformation",
+      "App\\Domains\\Contact\\ManageContactInformation\\Dav\\ImportContactInformation::removeContactInformation",
+      "App\\Domains\\Contact\\ManageContactInformation\\Dav\\ImportContactInformation::updateContactInformation",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportLabels::addLabel",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportLabels::removeLabel",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportLabels::getLabel",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportLabels::createLabel",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportAddress::updateAddress",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportAddress::createAddress",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportAddress::removeAddress",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportContact::getExistingContact",
+      "App\\Domains\\Contact\\ManageContact\\Dav\\ImportContact::getContactData"
+    ]
+  },
+  "verified": "2026-10-13"
+}

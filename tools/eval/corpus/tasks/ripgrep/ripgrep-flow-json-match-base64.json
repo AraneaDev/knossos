@@ -1,0 +1,22 @@
+{
+  "id": "ripgrep-flow-json-match-base64",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "jsont::base64_standard",
+  "prompt": "With `rg --json`, a matching line that is not valid UTF-8 is emitted base64-encoded. Trace the call path from grep_searcher's Core::sink_matched (crates/searcher/src/searcher/core.rs) to the function that base64-encodes the line bytes. List every function or method in ripgrep's own code on that call path, including both ends; skip serde and serde_json internals and the blanket Sink impls for &mut S and Box<S>, and list only functions on the path (not helpers that return before it). Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "Core::sink_matched",
+      "JSONSink::matched",
+      "JSON::write_message",
+      "Message::serialize",
+      "Match::serialize",
+      "Data::serialize",
+      "jsont::base64_standard"
+    ]
+  },
+  "verified": "2026-10-13"
+}

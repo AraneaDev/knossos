@@ -1,0 +1,26 @@
+{
+  "id": "ripgrep-impact-ignore-matched",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "Ignore::matched",
+  "prompt": "In the ignore crate, the crate-private method Ignore::matched (crates/ignore/src/dir.rs) decides whether a path is ignored. If it changed behaviour, which of the following would behave differently through any chain of calls: (a) public methods of the ignore crate's exported types, including trait methods those types implement (such as Iterator::next), and (b) functions defined in crates/core/main.rs? Production code only: leave out tests, examples and benchmarks. List only entries from (a) and (b), not the intermediate private helpers. Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "Walk::next",
+      "WalkParallel::run",
+      "WalkParallel::visit",
+      "IncrementalIgnore::matched",
+      "IncrementalIgnore::matched_with_errors",
+      "main::search",
+      "main::search_parallel",
+      "main::files",
+      "main::files_parallel",
+      "main::run",
+      "main::main"
+    ]
+  },
+  "verified": "2026-10-13"
+}

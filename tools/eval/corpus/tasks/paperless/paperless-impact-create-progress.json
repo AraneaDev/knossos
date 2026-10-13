@@ -1,0 +1,25 @@
+{
+  "id": "paperless-impact-create-progress",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "PaperlessCommand._create_progress",
+  "prompt": "If documents.management.commands.base.PaperlessCommand._create_progress changes behaviour, which Django management commands would behave differently, through any chain of calls (including inherited helper methods and callbacks a command passes on)? Production code only, leave out tests. Name each command by its handle method as a dotted path from src/, for example documents.management.commands.some_command.Command.handle.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.management.commands.document_archiver.Command.handle",
+      "documents.management.commands.document_exporter.Command.handle",
+      "documents.management.commands.document_fuzzy_match.Command.handle",
+      "documents.management.commands.document_importer.Command.handle",
+      "documents.management.commands.document_index.Command.handle",
+      "documents.management.commands.document_llmindex.Command.handle",
+      "documents.management.commands.document_renamer.Command.handle",
+      "documents.management.commands.document_sanity_checker.Command.handle",
+      "documents.management.commands.document_thumbnails.Command.handle",
+      "documents.management.commands.prune_audit_logs.Command.handle"
+    ]
+  },
+  "verified": "2026-10-13"
+}

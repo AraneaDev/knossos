@@ -1,0 +1,22 @@
+{
+  "id": "excalidraw-flow-keyboard-bring-to-front",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "syncMovedIndices",
+  "prompt": "Pressing Ctrl+Shift+] (Cmd+Alt+] on macOS) in the editor brings the selected elements to the front. Trace the call path from App.onKeyDown (packages/excalidraw/components/App.tsx) to syncMovedIndices() (packages/element/src/fractionalIndex.ts), which writes the new fractional indices. List every function or method on that path, including both ends. Name class methods as Class.method, module-level functions by their bare name, and the registered action whose perform runs by its exported constant name.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App.onKeyDown",
+      "ActionManager.handleKeyDown",
+      "actionBringToFront",
+      "moveAllRight",
+      "shiftElementsAccountingForFrames",
+      "shiftElementsToEnd",
+      "syncMovedIndices"
+    ]
+  },
+  "verified": "2026-10-13"
+}

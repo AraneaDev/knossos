@@ -1,0 +1,38 @@
+{
+  "id": "ripgrep-callers-matcher-match-new",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "Match::new",
+  "prompt": "Outside tests, examples and doc comments, which functions or methods call the new constructor of grep_matcher::Match (the matcher crate's Match type, crates/matcher/src/lib.rs), under any name it is imported or aliased as? Other types' new functions do not count, including the ignore crate's Match and regex-automata's types. When methods in different crates share the same Type::method name, list that name once. Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "JSONSink::record_matches",
+      "Replacer::replace_all",
+      "util::find_iter_at_in_context",
+      "StandardSink::record_matches",
+      "StandardImpl::sink_slow",
+      "StandardImpl::sink_slow_multi_line",
+      "StandardImpl::sink_slow_multi_line_only_matching",
+      "StandardImpl::sink_slow_multi_per_match",
+      "StandardImpl::write_line",
+      "StandardImpl::write_colored_line",
+      "RegexMatcher::find_at",
+      "RegexMatcher::try_find_iter",
+      "RegexCaptures::get",
+      "LineStep::next_match",
+      "lines::locate",
+      "SliceByLine::run",
+      "MultiLine::run",
+      "MultiLine::sink_matched_inverted",
+      "Core::before_context_by_line",
+      "Core::after_context_by_line",
+      "Core::other_context_by_line",
+      "Core::match_by_line_slow",
+      "Core::match_by_line_fast_invert"
+    ]
+  },
+  "verified": "2026-10-13"
+}

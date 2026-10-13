@@ -1,0 +1,26 @@
+{
+  "id": "excalidraw-impact-select-groups-for-selected-elements",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "selectGroupsForSelectedElements",
+  "prompt": "If selectGroupsForSelectedElements() (packages/excalidraw/components/App.selection.ts) changes behaviour, which editor actions behave differently, through any chain of calls in production code (not tests)? Count only actions registered with register() in packages/excalidraw/actions, and name each by its exported constant (for example actionSelectAll).",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "actionBindText",
+      "actionCut",
+      "actionDeleteSelected",
+      "actionDeselect",
+      "actionDuplicateSelection",
+      "actionPaste",
+      "actionSelectAll",
+      "actionToggleWrap",
+      "actionUnbindText",
+      "actionUngroup",
+      "actionWrapSelectionInFrame"
+    ]
+  },
+  "verified": "2026-10-13"
+}

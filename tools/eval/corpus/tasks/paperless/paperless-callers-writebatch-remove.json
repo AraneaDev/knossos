@@ -1,0 +1,22 @@
+{
+  "id": "paperless-callers-writebatch-remove",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "WriteBatch.remove",
+  "prompt": "Outside tests, which functions or methods call documents.search._backend.WriteBatch.remove (the search-index batch's remove, not TantivyBackend.remove and not remove on lists, sets or related managers)? Include calls through self inside WriteBatch. Name them as dotted paths from src/, for example documents.views.SomeView.post.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.admin.DocumentAdmin.delete_queryset",
+      "documents.bulk_edit.delete",
+      "documents.bulk_edit.merge_as_versions",
+      "documents.tasks.remove_document_from_index",
+      "documents.search._backend.WriteBatch.add_or_update",
+      "documents.search._backend.WriteBatch.add_or_update_ids",
+      "documents.search._backend.TantivyBackend.remove"
+    ]
+  },
+  "verified": "2026-10-13"
+}

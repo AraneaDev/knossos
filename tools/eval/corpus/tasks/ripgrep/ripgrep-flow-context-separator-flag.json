@@ -1,0 +1,21 @@
+{
+  "id": "ripgrep-flow-context-separator-flag",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "ContextSeparator::update",
+  "prompt": "When rg is run as `rg --context-separator=XX pattern`, the flag value is parsed into the low-level argument struct. Trace the call path from the rg binary's main function to the constructor that turns the raw value into the lowargs ContextSeparator value (crates/core/flags/lowargs.rs). List every function or method on that call path, including both ends, and only those on the path (not helpers that return before it, such as flag lookup). Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "main::main",
+      "parse::parse",
+      "parse::parse_low",
+      "Parser::parse",
+      "ContextSeparator::update",
+      "ContextSeparator::new"
+    ]
+  },
+  "verified": "2026-10-13"
+}

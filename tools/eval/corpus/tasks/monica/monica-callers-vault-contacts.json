@@ -1,0 +1,31 @@
+{
+  "id": "monica-callers-vault-contacts",
+  "repo": "monica",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "Vault::contacts",
+  "prompt": "Which methods in the application code (app/, not tests) call the relationship method App\\Models\\Vault::contacts() as a method call (->contacts(...)), on a Vault instance? Many other models (User, Group, Post, Address, Company, Label...) define their own contacts() method; those calls do not count, and neither does property access (->contacts without parentheses). For a call inside a closure, name the method that holds the closure. List each calling method once, as Class::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\Dav\\Web\\Backend\\CardDAV\\CardDAVBackend::getObjects",
+      "App\\Domains\\Contact\\Dav\\Web\\Backend\\CardDAV\\CardDAVBackend::getDeletedObjects",
+      "App\\Domains\\Contact\\ManageLoans\\Services\\CreateLoan::validate",
+      "App\\Domains\\Contact\\ManageLoans\\Services\\UpdateLoan::validate",
+      "App\\Domains\\Contact\\ManageLifeEvents\\Services\\CreateLifeEvent::validate",
+      "App\\Domains\\Contact\\ManageLifeEvents\\Services\\UpdateLifeEvent::validate",
+      "App\\Domains\\Contact\\ManageRelationships\\Services\\SetRelationship::execute",
+      "App\\Domains\\Contact\\ManageRelationships\\Services\\UnsetRelationship::execute",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactController::index",
+      "App\\Models\\Vault::boot",
+      "App\\Services\\BaseService::validateContactBelongsToVault",
+      "App\\Domains\\Vault\\ManageCalendar\\Web\\ViewHelpers\\VaultCalendarIndexViewHelper::buildMonth",
+      "App\\Domains\\Vault\\ManageCalendar\\Web\\ViewHelpers\\VaultCalendarIndexViewHelper::getDayInformation",
+      "App\\Domains\\Vault\\ManageVault\\Web\\ViewHelpers\\VaultShowViewHelper::lastUpdatedContacts",
+      "App\\Domains\\Vault\\ManageVault\\Web\\ViewHelpers\\VaultShowViewHelper::dueTasks",
+      "App\\Domains\\Vault\\ManageTasks\\Web\\ViewHelpers\\VaultTasksIndexViewHelper::data"
+    ]
+  },
+  "verified": "2026-10-13"
+}

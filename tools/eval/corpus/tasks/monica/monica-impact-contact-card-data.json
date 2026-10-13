@@ -1,0 +1,34 @@
+{
+  "id": "monica-impact-contact-card-data",
+  "repo": "monica",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "ContactCardHelper::data",
+  "prompt": "If the array returned by App\\Helpers\\ContactCardHelper::data() changes, which controller actions (HTTP entry points) would send different data to the page, directly or through any chain of view helper calls? Production code in app/ only, not tests. List the controller methods as Class::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\PostController::show",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeController::show",
+      "App\\Domains\\Vault\\ManageReports\\Web\\Controllers\\ReportImportantDateSummaryController::index",
+      "App\\Domains\\Vault\\ManageReports\\Web\\Controllers\\ReportAddressesCitiesController::show",
+      "App\\Domains\\Vault\\ManageReports\\Web\\Controllers\\ReportAddressesCountriesController::show",
+      "App\\Domains\\Vault\\ManageVault\\Web\\Controllers\\VaultController::show",
+      "App\\Domains\\Vault\\ManageVault\\Web\\Controllers\\VaultLifeEventController::show",
+      "App\\Domains\\Vault\\ManageCalendar\\Web\\Controllers\\VaultCalendarController::index",
+      "App\\Domains\\Vault\\ManageCalendar\\Web\\Controllers\\VaultCalendarController::month",
+      "App\\Domains\\Vault\\ManageCalendar\\Web\\Controllers\\VaultCalendarController::day",
+      "App\\Domains\\Contact\\ManageLifeEvents\\Web\\Controllers\\ContactModuleLifeEventController::store",
+      "App\\Domains\\Contact\\ManageLifeEvents\\Web\\Controllers\\ContactModuleLifeEventController::edit",
+      "App\\Domains\\Contact\\ManageLifeEvents\\Web\\Controllers\\ContactModuleTimelineEventController::index",
+      "App\\Domains\\Contact\\ManageLifeEvents\\Web\\Controllers\\ContactModuleTimelineEventController::store",
+      "App\\Domains\\Contact\\ManageLoans\\Web\\Controllers\\ContactModuleLoanController::store",
+      "App\\Domains\\Contact\\ManageLoans\\Web\\Controllers\\ContactModuleLoanController::update",
+      "App\\Domains\\Contact\\ManageLoans\\Web\\Controllers\\ContactModuleToggleLoanController::update",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactController::show",
+      "App\\Domains\\Contact\\ManageContact\\Web\\Controllers\\ContactPageController::show"
+    ]
+  },
+  "verified": "2026-10-13"
+}

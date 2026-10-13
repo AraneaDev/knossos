@@ -1,0 +1,30 @@
+{
+  "id": "excalidraw-impact-remove-elements-from-frame",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "impact",
+  "tier": "hard",
+  "subject": "removeElementsFromFrame",
+  "prompt": "If removeElementsFromFrame() (packages/element/src/frame.ts) changes behaviour, which editor actions behave differently, through any chain of calls in production code (not tests)? Count only actions registered with register() in packages/excalidraw/actions, and name each by its exported constant (for example actionSelectAll).",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "actionAlignBottom",
+      "actionAlignHorizontallyCentered",
+      "actionAlignLeft",
+      "actionAlignRight",
+      "actionAlignTop",
+      "actionAlignVerticallyCentered",
+      "actionFlipHorizontal",
+      "actionFlipVertical",
+      "actionGroup",
+      "actionRemoveAllElementsFromFrame",
+      "actionToggleWrap",
+      "actionUngroup",
+      "actionWrapSelectionInFrame",
+      "distributeHorizontally",
+      "distributeVertically"
+    ]
+  },
+  "verified": "2026-10-13"
+}

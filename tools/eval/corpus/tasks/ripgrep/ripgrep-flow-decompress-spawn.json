@@ -1,0 +1,20 @@
+{
+  "id": "ripgrep-flow-decompress-spawn",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "CommandReaderBuilder::build",
+  "prompt": "In a single-threaded `rg -z pattern` search (no --pre preprocessor) that reaches a .gz file while walking a directory, trace the call path from the rg binary's main::search function to the ripgrep method that actually spawns the external decompression process (the one calling std::process::Command::spawn). List every function or method on that call path, including both ends, and only those on the path (not checks that return before it). Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "main::search",
+      "SearchWorker::search",
+      "SearchWorker::search_decompress",
+      "DecompressionReaderBuilder::build",
+      "CommandReaderBuilder::build"
+    ]
+  },
+  "verified": "2026-10-13"
+}

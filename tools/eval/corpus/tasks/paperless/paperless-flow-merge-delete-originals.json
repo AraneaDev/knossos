@@ -1,0 +1,20 @@
+{
+  "id": "paperless-flow-merge-delete-originals",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "flow",
+  "tier": "hard",
+  "subject": "bulk_edit.delete",
+  "prompt": "Trace how a POST to the merge endpoint (documents.views.MergeDocumentsView.post) with delete_originals set ends up removing the original documents from the full-text search index. Treat a Celery link callback as called by the function that attaches it, and leave out the consume task itself, which only has to succeed first. List every function or method on that path, including both ends, ending at the search-index method that removes a document; leave out helpers that only return an object, such as get_backend. Name them as dotted paths from src/.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.views.MergeDocumentsView.post",
+      "documents.views.DocumentOperationPermissionMixin._execute_document_action",
+      "documents.bulk_edit.merge",
+      "documents.bulk_edit.delete",
+      "documents.search._backend.WriteBatch.remove"
+    ]
+  },
+  "verified": "2026-10-13"
+}

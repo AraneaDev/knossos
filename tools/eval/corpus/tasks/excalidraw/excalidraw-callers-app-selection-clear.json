@@ -1,0 +1,24 @@
+{
+  "id": "excalidraw-callers-app-selection-clear",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "callers",
+  "tier": "hard",
+  "subject": "AppSelection.clear",
+  "prompt": "Outside tests, which methods or functions call the clear() method of the AppSelection class (packages/excalidraw/components/App.selection.ts, reached as app.selection / this.selection)? Do not count clear() on Maps, Sets, emitters, History, Store, the flowchart helpers or any other class. Name class methods as Class.method and module-level functions by their bare name; calls inside nested callbacks count for the enclosing method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App.componentDidUpdate",
+      "App.handleInteractionStateChange",
+      "App.onKeyUp",
+      "App.onTouchStart",
+      "App.terminateActiveInteraction",
+      "AppSelectionTool.clearSelectionIfNotUsingSelection",
+      "AppSelectionTool.handleSelectionOnPointerDown",
+      "AppSelectionTool.handleSelectionOnPointerUp",
+      "AppText.handleTextWysiwyg"
+    ]
+  },
+  "verified": "2026-10-13"
+}
