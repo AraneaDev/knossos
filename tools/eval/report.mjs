@@ -409,7 +409,7 @@ export function buildReport({
     return [
         `# Eval run ${meta.runId}`,
         "",
-        `Model ${meta.model}, arms ${meta.arms.join(", ")}, ${meta.repeats} repeats, seed ${meta.seed}, ${new Set(rows.map((r) => r.task)).size} tasks.`,
+        `Model ${meta.model}, arms ${meta.arms.join(", ")}, ${meta.repeats} repeats, seed ${meta.seed}, ${tasks.length} tasks.`,
         ...provenanceLines(meta, prepare),
         "",
         ...summaries,
@@ -450,7 +450,9 @@ export async function previousRun(run, s) {
             if (
                 // Like with like: hash those tasks the way the other run's meta was written.
                 meta.corpusHash === corpusHashFor(theirs, meta) &&
-                meta.model === run.meta.model
+                meta.model === run.meta.model &&
+                // A run of another tier shares no tasks to pair with.
+                (meta.tier ?? null) === (run.meta.tier ?? null)
             ) {
                 return {
                     runId: id,
@@ -508,7 +510,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const md = buildReport({
         meta: run.meta,
         rows: await readLedger(run.ledger),
-        tasks: run.corpus.tasks,
+        tasks: run.tasks,
         previous: await previousRun(run, s),
         defects: await readDefects(evalPaths(s.evalRoot).defects),
         prepare: await readPrepare(run.dir),

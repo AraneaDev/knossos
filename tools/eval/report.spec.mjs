@@ -542,6 +542,22 @@ describe("previousRun", () => {
             ),
         ).toBeNull();
     });
+    it("pairs only runs of the same tier", async () => {
+        const runsDir = await runs([
+            ["r1", meta("r1", { tier: "hard" }), '{"task":"hard"}\n'],
+            ["r2", meta("r2"), '{"task":"all"}\n'],
+        ]);
+        const hard = await previousRun(
+            { meta: meta("r3", { tier: "hard" }), corpus },
+            { runsDir },
+        );
+        expect(hard).toEqual({ runId: "r1", rows: [{ task: "hard" }] });
+        const all = await previousRun(
+            { meta: meta("r3"), corpus },
+            { runsDir },
+        );
+        expect(all).toEqual({ runId: "r2", rows: [{ task: "all" }] });
+    });
     it("skips directories that are not runs and returns null without a match", async () => {
         const runsDir = await runs([
             ["r0", null, null],
@@ -614,11 +630,11 @@ describe("report by tier", () => {
         expect(md).not.toContain("tier");
     });
 
-    it("counts the tasks the run covers, not the whole corpus", () => {
+    it("counts the tasks it is given, which the CLI passes as the run's planned tasks", () => {
         const md = buildReport({
             meta: { ...meta, arms: ["baseline", "full"] },
             rows: both.filter((r) => r.task === "h1"),
-            tasks: tiered,
+            tasks: tiered.filter((t) => t.id === "h1"),
         });
         expect(md).toMatch(/, 1 tasks\./);
     });

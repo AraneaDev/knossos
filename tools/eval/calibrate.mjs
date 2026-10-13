@@ -36,15 +36,21 @@ export function calibrate(rows, tasks) {
                     full,
                     average: null,
                     verdict:
-                        baseline === null ? "missing baseline" : "missing full",
+                        baseline === null && full === null
+                            ? "missing both"
+                            : baseline === null
+                              ? "missing baseline"
+                              : "missing full",
                 };
-            const average = Math.round(((baseline + full) / 2) * 1000) / 1000;
+            const exact = (baseline + full) / 2;
             return {
                 task,
                 baseline,
                 full,
-                average,
-                verdict: average <= KEEP_AT_MOST ? "keep" : "drop",
+                // Rounded for display only; the rule reads the exact value,
+                // with room for float error such as 0.8500000000000001.
+                average: Math.round(exact * 1000) / 1000,
+                verdict: exact <= KEEP_AT_MOST + 1e-9 ? "keep" : "drop",
             };
         });
 }
@@ -57,10 +63,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         process.exit(2);
     }
     const run = await openRun(process.argv[2], settings());
-    for (const line of calibrate(
-        await readLedger(run.ledger),
-        run.corpus.tasks,
-    )) {
+    const lines = calibrate(await readLedger(run.ledger), run.tasks);
+    if (lines.length === 0)
+        console.log(`no hard tasks in run ${run.meta.runId}`);
+    for (const line of lines) {
         console.log(
             `${line.verdict.padEnd(16)} ${line.task}  baseline ${two(line.baseline)}  full ${two(line.full)}  average ${two(line.average)}`,
         );

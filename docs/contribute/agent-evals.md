@@ -129,8 +129,9 @@ node tools/eval/calibrate.mjs <run-id>
 
 `calibrate.mjs` keeps a task when the average of its `baseline` and `full`
 median F1 is at most 0.85. The rule reads both arms so a task one arm fumbled
-by chance does not bias the next run toward the other. Delete each dropped
-task's file and record why. Before a main run, the hard tier needs at least 15
+by chance does not bias the next run toward the other. Save its output and the
+calibration run's report first, then delete each dropped task's file and record
+why: once a planned task is gone, that run no longer opens. Before a main run, the hard tier needs at least 15
 tasks and at least 5 in each category it uses; write another round for the
 thin shapes and calibrate those first. Calibration sessions are never reused
 in the main run.

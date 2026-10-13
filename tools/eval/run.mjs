@@ -346,6 +346,9 @@ export async function openRun(runId, s) {
         dir,
         meta,
         corpus,
+        // The tasks this run planned: what ablate, calibrate and the report
+        // read, never the whole corpus, which may have grown since.
+        tasks: planned.tasks,
         plan,
         ledger: path.join(dir, "ledger.jsonl"),
     };
@@ -516,7 +519,7 @@ async function warnPluginVersion(s) {
 
 async function executeEntry(entry, ctx) {
     const { run, s, paths, env, rows, maxUtilization } = ctx;
-    const task = run.corpus.tasks.find((t) => t.id === entry.task);
+    const task = run.tasks.find((t) => t.id === entry.task);
     const repo = run.corpus.repos[entry.repo];
     const workspace = path.join(paths.repos, entry.repo);
     await resetWorkspace(workspace, repo.commit);
@@ -754,11 +757,11 @@ async function ablate(args, s) {
         );
     const have = new Set(run.plan.map(sessionKey));
     const added = [];
-    for (const { tool, taskIds } of selectAblations(rows, run.corpus.tasks, {
+    for (const { tool, taskIds } of selectAblations(rows, run.tasks, {
         threshold,
     })) {
         for (const id of taskIds) {
-            const task = run.corpus.tasks.find((t) => t.id === id);
+            const task = run.tasks.find((t) => t.id === id);
             for (let repeat = 1; repeat <= run.meta.repeats; repeat += 1) {
                 const entry = {
                     task: id,

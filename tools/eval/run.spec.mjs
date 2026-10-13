@@ -248,6 +248,22 @@ describe("run CLI", () => {
             plan.filter((e) => e.arm === "full-minus-list_usages"),
         ).toHaveLength(2);
     });
+    it("ablates only the tasks the run planned, so it still opens after a task is added", async () => {
+        const { corpus, env, runId, dir } = await started();
+        await main(["continue", runId, "--batch", "10"], env);
+        const file = path.join(corpus, "tasks", "demo", "demo-callers-a.json");
+        const task = JSON.parse(await readFile(file, "utf8"));
+        await writeFile(
+            path.join(corpus, "tasks", "demo", "demo-callers-c.json"),
+            JSON.stringify({ ...task, id: "demo-callers-c", tier: "hard" }),
+        );
+        expect(await main(["ablate", runId], env)).toBe(0);
+        const plan = JSON.parse(
+            await readFile(path.join(dir, "plan.json"), "utf8"),
+        );
+        expect(plan.some((e) => e.task === "demo-callers-c")).toBe(false);
+        await expect(main(["status", runId], env)).resolves.toBe(0);
+    });
     it("proves the isolation before it writes anything, whatever the credentials source", async () => {
         const { env, runId } = await started();
         // A fresh unique name under the real ~/.knossos: it must never be created.

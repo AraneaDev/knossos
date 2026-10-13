@@ -49,7 +49,7 @@ describe("calibrate", () => {
                 baseline: null,
                 full: null,
                 average: null,
-                verdict: "missing baseline",
+                verdict: "missing both",
             },
         ]);
     });
@@ -63,6 +63,15 @@ describe("calibrate", () => {
         expect(
             calibrate([row("h1", "baseline", 0.2)], [tasks[0]])[0].verdict,
         ).toBe("missing full");
+        expect(calibrate([], [tasks[0]])[0].verdict).toBe("missing both");
+    });
+
+    it("judges the exact average, not the rounded one", () => {
+        // 0.8504 rounds to 0.850 for display but is above the threshold.
+        const rows = [row("h1", "baseline", 0.8008), row("h1", "full", 0.9)];
+        const [line] = calibrate(rows, [tasks[0]]);
+        expect(line.average).toBe(0.85);
+        expect(line.verdict).toBe("drop");
     });
 });
 
