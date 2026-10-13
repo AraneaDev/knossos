@@ -1,6 +1,7 @@
 import { appendFile } from "node:fs/promises";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import * as fsp from "node:fs/promises";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
     appendRow,
@@ -11,6 +12,15 @@ import {
     sessionKey,
 } from "./ledger.mjs";
 import { rng } from "./rng.mjs";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        readFile: vi.fn(actual.readFile),
+        open: vi.fn(actual.open),
+    };
+});
 
 afterAll(removeTemp);
 
@@ -118,7 +128,22 @@ describe("ledger", () => {
             file,
             `${JSON.stringify({ task: "big", pad: "x".repeat(2e6) })}\n{"task":"cut"`,
         );
+        const reads = [];
+        const realOpen = fsp.open.getMockImplementation();
+        fsp.open.mockImplementationOnce(async (...args) => {
+            const handle = await realOpen(...args);
+            const read = handle.read.bind(handle);
+            handle.read = (buffer, ...rest) => {
+                reads.push(buffer.length);
+                return read(buffer, ...rest);
+            };
+            return handle;
+        });
+        fsp.readFile.mockClear();
         await appendRow(file, { task: "next" });
+        // Only the last byte is read, and the file is never read whole.
+        expect(reads).toEqual([1]);
+        expect(fsp.readFile).not.toHaveBeenCalled();
         expect((await readLedger(file)).map((r) => r.task)).toEqual([
             "big",
             "next",
