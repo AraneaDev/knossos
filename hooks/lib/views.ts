@@ -626,7 +626,8 @@ function notesBlock(name: string, annotations: { kind: string; value: string; au
         const lines = [
           ...wrapWords(`${a.kind.replace(/_/g, ' ')}${a.author === 'model' ? ' (agent)' : ''}: ${first}`, width),
           ...rest.flatMap(line => {
-            const kept = line.replace(/\s+$/, '')
+            // A tab would count as one cell and draw as several: spelled as spaces, the line measures as it draws.
+            const kept = line.replace(/\t/g, '    ').replace(/\s+$/, '')
             return kept === '' ? [] : cells(kept) <= width ? [kept] : wrapWords(kept, width)
           }),
         ]

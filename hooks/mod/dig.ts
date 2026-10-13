@@ -18,20 +18,34 @@ export type Dig = { knossos: string | null; lookups: number; annotated: boolean;
 /** A turn before any call. */
 export const freshDig = (): Dig => ({ knossos: null, lookups: 0, annotated: false, reminded: false })
 
-const KNOSSOS = /^mcp__.*knossos.*__(.+)$/
-const SEARCH = /^\s*(rg|grep)\b/
+/** The knossos server's tools, as a user-scope install or the plugin names them: `mcp__knossos__x`, `mcp__plugin_knossos_knossos__x`. */
+const KNOSSOS = /^mcp__(?:plugin_knossos_)?knossos__(.+)$/
+
+/**
+ * The tools that answer a question about the code, which is what a dig starts from and what a further lookup can be.
+ * Scanning, listing projects, server info and housekeeping answer none: a turn that scans and then reads the files
+ * it is about to edit has dug for nothing.
+ */
+const QUESTIONS = new Set([
+  'list_usages', 'impact_analysis', 'explain_flow', 'find_component', 'inspect_component', 'search_architecture',
+  'file_context', 'architecture_context', 'change_impact', 'changed_files_impact', 'test_impact', 'suggest_location',
+  'list_boundaries', 'dependency_cycles', 'list_annotations',
+])
+
+/** A command that searches the code, in any segment of a chained or piped command line. */
+const SEARCH = /^(?:git\s+grep|rg|grep|egrep|ag|find)\b/
 
 /** The Knossos tool a call names, without its server prefix, or null. */
 function knossosTool(tool: string): string | null {
   return KNOSSOS.exec(tool)?.[1] ?? null
 }
 
-/** Whether a call looks something up in the code: a Grep, a Read, or a Bash command that searches. */
+/** Whether a call looks something up in the code: a Grep, a Glob, a Read, or a Bash command that searches. */
 function isLookup(tool: string, input: unknown): boolean {
-  if (tool === 'Grep' || tool === 'Read') return true
+  if (tool === 'Grep' || tool === 'Glob' || tool === 'Read') return true
   if (tool !== 'Bash') return false
   const command = (input as { command?: unknown } | null)?.command
-  return typeof command === 'string' && SEARCH.test(command)
+  return typeof command === 'string' && command.split(/&&|\|\||;|\|/).some(segment => SEARCH.test(segment.trim()))
 }
 
 /**
@@ -41,9 +55,11 @@ function isLookup(tool: string, input: unknown): boolean {
  */
 export function observe(dig: Dig, tool: string, input: unknown): { dig: Dig; remind: string | null } {
   const name = knossosTool(tool)
-  if (name === 'annotate_component') return { dig: { ...dig, annotated: true }, remind: null }
-  if (name !== null && dig.knossos === null) return { dig: { ...dig, knossos: name }, remind: null }
-  if (dig.knossos === null || !(name !== null || isLookup(tool, input))) return { dig, remind: null }
+  // An annotation answers only a dig already under way; one made before any digging leaves the next dig open.
+  if (name === 'annotate_component') return { dig: dig.knossos === null ? dig : { ...dig, annotated: true }, remind: null }
+  const question = name !== null && QUESTIONS.has(name)
+  if (question && dig.knossos === null) return { dig: { ...dig, knossos: name }, remind: null }
+  if (dig.knossos === null || !(question || isLookup(tool, input))) return { dig, remind: null }
   const next = { ...dig, lookups: dig.lookups + 1 }
   if (next.annotated || next.reminded || next.lookups < LOOKUPS_BEFORE_REMINDER) return { dig: next, remind: null }
   return {

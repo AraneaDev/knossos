@@ -71,7 +71,7 @@ shows a note renders them.
 A result marks one of your notes `stale` when a file it rests on changed. Check
 it against the code, then re-record it (that confirms it), correct it, or
 remove it. A note by a person (`author: user`) is theirs: never rewrite or
-remove it, and never write through the pane's own command (`brief annotate`).
+remove it, and never write through the pane's own command (`knossos annotate`).
 
 Worth writing:
 

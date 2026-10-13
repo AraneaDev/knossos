@@ -45,4 +45,24 @@ describe('the dig reminder', () => {
   it('ignores calls that are neither a lookup nor Knossos', () => {
     expect(run([['mcp__knossos__list_usages'], ['Edit'], ['TodoWrite'], ['Grep']]).reminders).toEqual([])
   })
+
+  it('starts only from a question to the graph, never from scanning or housekeeping', () => {
+    expect(run([['mcp__knossos__scan_project'], ['Read'], ['Read']]).reminders).toEqual([])
+    expect(run([['mcp__knossos__list_projects'], ['mcp__knossos__server_info'], ['Read'], ['Read']]).reminders).toEqual([])
+  })
+
+  it('counts searches however the command is chained, and Glob', () => {
+    expect(run([['mcp__knossos__list_usages'], ['Bash', { command: 'cd src && rg -n total' }], ['Glob']]).reminders).toHaveLength(1)
+    expect(run([['mcp__knossos__list_usages'], ['Bash', { command: 'git grep -n total' }], ['Bash', { command: 'cat a.php | grep total' }]]).reminders).toHaveLength(1)
+    expect(run([['mcp__knossos__list_usages'], ['Bash', { command: 'find . -name "*.php"' }], ['Bash', { command: 'ag total' }]]).reminders).toHaveLength(1)
+  })
+
+  it("matches the plugin's knossos server only, not a server merely named like it", () => {
+    expect(run([['mcp__knossos-docs__search'], ['Read'], ['Read']]).reminders).toEqual([])
+    expect(run([['mcp__plugin_knossos_knossos__list_usages'], ['Read'], ['Read']]).reminders).toHaveLength(1)
+  })
+
+  it('does not let an annotation before the digging silence it', () => {
+    expect(run([['mcp__knossos__annotate_component'], ['mcp__knossos__list_usages'], ['Read'], ['Read']]).reminders).toHaveLength(1)
+  })
 })

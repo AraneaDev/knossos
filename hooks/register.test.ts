@@ -976,6 +976,37 @@ describe('knossos mod', () => {
     expect(w.toasts).toHaveLength(1)
   })
 
+  test('digging past a Knossos answer is met once a turn with a reminder, per loop, unless notes are off', async ($, on) => {
+    const w = world(on)
+    await $.session.start(START)
+    await w.clock.settle()
+    const call = (tool: string, extra: object = {}) => $.tool.call({ tool, ...extra } as never)
+    const dig = async (agentId?: string) => {
+      const id = agentId === undefined ? {} : { agentId }
+      await call('mcp__knossos__list_usages', { symbol: 'Router', ...id })
+      await call('Read', { file_path: `${ROOT}/src/Quiet.php`, ...id })
+      return call('Grep', { pattern: 'Router', ...id })
+    }
+    const said = (ran: { context?: string[] }) => (ran.context ?? []).filter(c => c.startsWith('You dug past a Knossos answer'))
+    expect(said(await dig())).toHaveLength(1)
+    // Once a turn: more digging in the same turn is not reminded again, while a subagent's loop has its own.
+    expect(said(await call('Read', { file_path: `${ROOT}/src/Quiet.php` }))).toHaveLength(0)
+    expect(said(await dig('a1'))).toHaveLength(1)
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    expect(said(await dig())).toHaveLength(1)
+  })
+
+  test('the dig reminder stays quiet when agent notes are off', { options: { agentNotes: false } }, async ($, on) => {
+    const w = world(on)
+    await $.session.start(START)
+    await w.clock.settle()
+    await $.tool.call({ tool: 'mcp__knossos__list_usages', symbol: 'Router' } as never)
+    await $.tool.call({ tool: 'Read', file_path: `${ROOT}/src/Quiet.php` } as never)
+    const ran = await $.tool.call({ tool: 'Grep', pattern: 'Router' } as never)
+    expect((ran.context ?? []).some((c: string) => c.startsWith('You dug past'))).toBe(false)
+  })
+
   test('an edit to a quiet file adds nothing', async ($, on) => {
     const w = world(on)
     await $.session.start(START)
