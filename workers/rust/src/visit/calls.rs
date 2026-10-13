@@ -426,6 +426,40 @@ impl Calls<'_, '_> {
         }
     }
 
+    /// The module an inline path reaches, imported as a `use` of it would be:
+    /// `grep::cli::CommandReaderBuilder::new()` written without a `use` line
+    /// depends on `grep_cli` just as `use grep::cli::CommandReaderBuilder;`
+    /// does. The item, and any type its member hangs off, are left off the
+    /// written path, and what remains resolves through the file's aliases and
+    /// re-exports. A path that only guesses at a module, or names the file's
+    /// own module, imports nothing.
+    fn inline_import(&mut self, path: &syn::Path, span: proc_macro2::Span) {
+        if path.segments.len() < 2 {
+            return;
+        }
+        let mut module = path.clone();
+        module.segments.pop();
+        module.segments.pop_punct();
+        while module
+            .segments
+            .last()
+            .is_some_and(|segment| ident_name(&segment.ident).starts_with(char::is_uppercase))
+        {
+            module.segments.pop();
+            module.segments.pop_punct();
+        }
+        if module.segments.is_empty() {
+            return;
+        }
+        let Some((target, false)) = self.walk.resolve_path(&self.container, &module) else {
+            return;
+        };
+        if target != self.walk.module && target != self.container {
+            let source = reference("module", &self.walk.module);
+            self.walk.import(&source, &target, span);
+        }
+    }
+
     /// A speculative `references` edge to the function a path names.
     fn function_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
         if let Some((target, _)) = self.walk.resolve_path(&self.container, path) {
@@ -438,8 +472,14 @@ impl Calls<'_, '_> {
 }
 
 impl syn::visit::Visit<'_> for Calls<'_, '_> {
+    fn visit_path(&mut self, node: &syn::Path) {
+        self.inline_import(node, node.span());
+        syn::visit::visit_path(self, node);
+    }
+
     fn visit_expr_call(&mut self, node: &syn::ExprCall) {
         if let syn::Expr::Path(path) = node.func.as_ref() {
+            self.inline_import(&path.path, node.span());
             self.visit_call(&path.path, node.span());
             // `Action::Deny(x)` builds a variant: the enum is used. The callee
             // itself is not walked as a value path, since it is the call.

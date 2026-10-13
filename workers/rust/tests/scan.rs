@@ -2360,7 +2360,7 @@ fn a_type_named_through_a_facade_crates_extern_crate_re_export_is_the_defining_t
         ("crates/core/Cargo.toml", "[package]\nname = \"core\"\n"),
         (
             "crates/core/src/main.rs",
-            "fn run(searcher: &mut grep::searcher::Searcher) {\n    searcher.search_path();\n}\nfn main() {}\n",
+            "fn run(searcher: &mut grep::searcher::Searcher) {\n    searcher.search_path();\n}\nfn fresh() {\n    let _ = Local::new();\n    let _ = std::mem::size_of::<u8>();\n}\nstruct Local;\nimpl Local {\n    fn new() -> Self {\n        Local\n    }\n}\nfn main() {}\n",
         ),
     ];
     let contributions = scan_fixture_with(
@@ -2376,6 +2376,7 @@ fn a_type_named_through_a_facade_crates_extern_crate_re_export_is_the_defining_t
         }),
     );
     let calls = edges_of(&contributions, "calls");
+    let imports = edges_of(&contributions, "imports");
 
     assert!(
         calls.contains(&(
@@ -2383,6 +2384,22 @@ fn a_type_named_through_a_facade_crates_extern_crate_re_export_is_the_defining_t
             "rust:method:grep_searcher::Searcher::search_path".to_owned()
         )),
         "{calls:?}"
+    );
+    // Written inline, without a `use` line, the path still makes the file
+    // depend on the crate it reaches, as `use grep::searcher::Searcher;`
+    // would. A type of the file's own module imports nothing.
+    assert!(
+        imports.contains(&(
+            "rust:module:core".to_owned(),
+            "rust:module:grep_searcher".to_owned()
+        )),
+        "{imports:?}"
+    );
+    assert!(
+        !imports
+            .iter()
+            .any(|(source, target)| source == "rust:module:core" && target == "rust:module:core"),
+        "{imports:?}"
     );
 }
 

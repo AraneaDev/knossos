@@ -473,7 +473,7 @@ impl Walk<'_> {
     /// associated items of `Error`, so they reference the type (speculative,
     /// struct or trait being unknown) instead of importing a module the graph
     /// would invent.
-    fn import(&mut self, source: &str, scope: &str, span: proc_macro2::Span) {
+    pub(super) fn import(&mut self, source: &str, scope: &str, span: proc_macro2::Span) {
         let last = scope.rsplit("::").next().unwrap_or(scope);
         if scope.contains("::") && last.starts_with(char::is_uppercase) {
             for kind in ["class", "interface"] {
