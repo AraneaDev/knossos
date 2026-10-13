@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCORABLE, readLedger } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
-import { corpusHashFor, plannedCorpus } from "./corpus.mjs";
+import { corpusHashFor, plannedCorpus, tierOf } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
 import { openRun, settings } from "./run.mjs";
 import {
@@ -61,11 +61,11 @@ function armMeans(rows, arm, metric) {
     return avg([...(taskMedians(rows, metric).get(arm) ?? new Map()).values()]);
 }
 
-function summary(meta, rows) {
+function summary(meta, rows, heading = "## Summary") {
     const arms = [...new Set(rows.map((r) => r.arm))].filter(
         (a) => parseArm(a).minus === null,
     );
-    const lines = ["## Summary", ""];
+    const lines = [heading, ""];
     lines.push(
         ...table(
             ["arm", "tasks", "F1", "cost (USD)", "turns", "time (s)"],
@@ -390,13 +390,29 @@ export function buildReport({
     defects = [],
     prepare = null,
 }) {
+    // A run that holds both tiers gets a summary per tier: pooled, an easy
+    // tier at F1 1.0 would hide what the hard one shows.
+    const tierOfTask = new Map(tasks.map((t) => [t.id, tierOf(t)]));
+    const tierOfRow = (r) => tierOfTask.get(r.task) ?? "easy";
+    const tiers = [...new Set(rows.map(tierOfRow))].sort();
+    const summaries =
+        tiers.length > 1
+            ? tiers.flatMap((tier, i) => [
+                  ...(i > 0 ? [""] : []),
+                  ...summary(
+                      meta,
+                      rows.filter((r) => tierOfRow(r) === tier),
+                      `## Summary, ${tier} tier`,
+                  ),
+              ])
+            : summary(meta, rows);
     return [
         `# Eval run ${meta.runId}`,
         "",
-        `Model ${meta.model}, arms ${meta.arms.join(", ")}, ${meta.repeats} repeats, seed ${meta.seed}, ${tasks.length} tasks.`,
+        `Model ${meta.model}, arms ${meta.arms.join(", ")}, ${meta.repeats} repeats, seed ${meta.seed}, ${new Set(rows.map((r) => r.task)).size} tasks.`,
         ...provenanceLines(meta, prepare),
         "",
-        ...summary(meta, rows),
+        ...summaries,
         "",
         ...byCategory(rows, tasks, meta.seed, meta.arms),
         "",

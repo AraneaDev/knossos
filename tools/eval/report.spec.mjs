@@ -570,3 +570,56 @@ describe("readDefects", () => {
         await expect(readDefects(dir)).rejects.toThrow(/bad\.json/);
     });
 });
+
+describe("report by tier", () => {
+    const tiered = [
+        { id: "c1", category: "callers" },
+        { id: "c2", category: "callers" },
+        { id: "h1", category: "impact", tier: "hard" },
+    ];
+    const both = [
+        row("c1", "baseline", 1),
+        row("c1", "full", 1),
+        row("c2", "baseline", 1),
+        row("c2", "full", 1),
+        row("h1", "baseline", 0.2),
+        row("h1", "full", 0.8),
+    ];
+
+    it("prints a summary and comparisons per tier when a run holds both", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: both,
+            tasks: tiered,
+        });
+        expect(md).toContain("## Summary, easy tier");
+        expect(md).toContain("## Summary, hard tier");
+        expect(md).not.toMatch(/^## Summary$/m);
+        const hard = md.slice(md.indexOf("## Summary, hard tier"));
+        expect(hard).toMatch(/\| full vs baseline \| F1 \| 1 \| \+0\.600 \|/);
+        const easy = md.slice(
+            md.indexOf("## Summary, easy tier"),
+            md.indexOf("## Summary, hard tier"),
+        );
+        expect(easy).toMatch(/\| full vs baseline \| F1 \| 2 \| \+0\.000 \|/);
+    });
+
+    it("prints one plain summary for a run of one tier", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: both.filter((r) => r.task !== "h1"),
+            tasks: tiered,
+        });
+        expect(md).toMatch(/^## Summary$/m);
+        expect(md).not.toContain("tier");
+    });
+
+    it("counts the tasks the run covers, not the whole corpus", () => {
+        const md = buildReport({
+            meta: { ...meta, arms: ["baseline", "full"] },
+            rows: both.filter((r) => r.task === "h1"),
+            tasks: tiered,
+        });
+        expect(md).toMatch(/, 1 tasks\./);
+    });
+});
