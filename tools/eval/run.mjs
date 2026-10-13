@@ -4,7 +4,7 @@
  * Code without Knossos, with its tools, and with its whole plugin, run in
  * small batches that stop before the five-hour usage window runs out.
  *
- *   node tools/eval/run.mjs start [--repeats 3] ...   plan a run, print its id
+ *   node tools/eval/run.mjs start [--tier easy|hard] [--repeats 3] ...   plan a run, print its id
  *   node tools/eval/run.mjs prepare <run-id>          clone, scan, seed config
  *   node tools/eval/run.mjs continue <run-id>         run one batch (exit 3: stopped at the limit)
  *   node tools/eval/run.mjs ablate <run-id>           add full-minus-<tool> arms
@@ -36,6 +36,8 @@ import {
     corpusHash,
     corpusHashFor,
     plannedCorpus,
+    TIERS,
+    tierOf,
     loadCorpus,
 } from "./corpus.mjs";
 import {
@@ -363,8 +365,11 @@ async function start(args, s) {
             seed: { type: "string", default: String(Date.now() % 2 ** 31) },
             budget: { type: "string", default: "1" },
             timeout: { type: "string", default: "600" },
+            tier: { type: "string" },
         },
     });
+    if (values.tier !== undefined && !TIERS.includes(values.tier))
+        throw new Error(`--tier must be one of ${TIERS.join(", ")}`);
     const repeats = positive("repeats", values.repeats, { integer: true });
     const budgetUsd = positive("budget", values.budget);
     const timeoutSeconds = positive("timeout", values.timeout);
@@ -375,7 +380,12 @@ async function start(args, s) {
     for (const arm of arms) parseArm(arm);
     const corpusDir = path.resolve(values.corpus);
     const corpus = await loadCorpus(corpusDir);
-    const tasks = corpus.tasks;
+    const tasks =
+        values.tier === undefined
+            ? corpus.tasks
+            : corpus.tasks.filter((t) => tierOf(t) === values.tier);
+    if (tasks.length === 0)
+        throw new Error(`no ${values.tier} tasks in the corpus`);
     const stamp = new Date()
         .toISOString()
         .replace(/[-:]/g, "")
@@ -410,6 +420,7 @@ async function start(args, s) {
         seed,
         budgetUsd,
         timeoutMs: timeoutSeconds * 1000,
+        ...(values.tier === undefined ? {} : { tier: values.tier }),
         ...(await provenance(s)),
     };
     const dir = path.join(s.runsDir, runId);
