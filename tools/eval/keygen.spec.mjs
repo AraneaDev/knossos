@@ -1,6 +1,7 @@
 import * as fsp from "node:fs/promises";
 import { access, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import {
@@ -203,19 +204,30 @@ describe("knossosAnswer without the subject's own file", () => {
 });
 
 describe("rgLines", () => {
+    const fakeRg = fileURLToPath(
+        new URL("./fixtures/fake-rg.mjs", import.meta.url),
+    );
+
     it("returns matches, an empty list for no match, and throws on any other failure", async () => {
         const dir = await tmp("eval-rg-");
         await writeFile(
             path.join(dir, "a.php"),
             "<?php\nfunction total() {}\n",
         );
-        expect(await rgLines("total", dir)).toEqual([
+        expect(await rgLines("total", dir, fakeRg)).toEqual([
             "./a.php:2:function total() {}",
         ]);
-        expect(await rgLines("absent", dir)).toEqual([]);
+        expect(await rgLines("absent", dir, fakeRg)).toEqual([]);
         await expect(
-            rgLines("total", path.join(dir, "missing")),
+            rgLines("total", path.join(dir, "missing"), fakeRg),
         ).rejects.toThrow(/rg failed in/);
+    });
+
+    it("throws when the program is missing", async () => {
+        const dir = await tmp("eval-rg-");
+        await expect(
+            rgLines("total", dir, path.join(dir, "no-such-rg")),
+        ).rejects.toThrow(/rg failed in .*ENOENT/);
     });
 });
 

@@ -108,11 +108,12 @@ export function diffAnswers(expected, knossos, options) {
 /**
  * Lines of `rg -w word` in `cwd`. Only rg's exit code 1 (no match) is an
  * empty answer; a missing rg or workspace, or any other failure, throws.
+ * `bin` is the program to run, so a test can stand in for rg.
  */
-export async function rgLines(word, cwd) {
+export async function rgLines(word, cwd, bin = "rg") {
     try {
         const { stdout } = await exec(
-            "rg",
+            bin,
             ["-n", "--no-heading", "-w", word, "."],
             { cwd, maxBuffer: 1 << 26 },
         );
