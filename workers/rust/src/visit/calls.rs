@@ -14,7 +14,7 @@ use syn::visit::Visit;
 use super::paths::{pointee_of, POINTER_MARK};
 use super::state::Calls;
 use crate::facts::reference;
-use crate::resolve::ident_name;
+use crate::resolve::{ident_name, is_prelude_name};
 
 impl Calls<'_, '_> {
     /// Resolve and emit a call, deferring the ones that need confirming.
@@ -111,9 +111,20 @@ impl Calls<'_, '_> {
     /// or enum and as a trait: which one it is, and whether it is declared
     /// here at all rather than being `Vec` or `String`, only the graph knows.
     fn type_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        let Some((target, _)) = self.walk.resolve_path(&self.container, path) else {
+        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
             return;
         };
+        // `str`, `Some`, `Option` written bare and neither declared nor
+        // imported here are the standard ones, not items of this module. The
+        // guess named nothing, and in a large file those edges alone could
+        // outgrow the size limit on its answer.
+        if unconfirmed
+            && path.segments.len() == 1
+            && is_prelude_name(&ident_name(&path.segments[0].ident))
+            && !self.walk.own_declarations.contains(&target)
+        {
+            return;
+        }
         for kind in ["class", "interface"] {
             let endpoint = reference(kind, &target);
             if endpoint != self.enclosing {
@@ -415,6 +426,40 @@ impl Calls<'_, '_> {
         }
     }
 
+    /// The module an inline path reaches, imported as a `use` of it would be:
+    /// `grep::cli::CommandReaderBuilder::new()` written without a `use` line
+    /// depends on `grep_cli` just as `use grep::cli::CommandReaderBuilder;`
+    /// does. The item, and any type its member hangs off, are left off the
+    /// written path, and what remains resolves through the file's aliases and
+    /// re-exports. A path that only guesses at a module, or names the file's
+    /// own module, imports nothing.
+    fn inline_import(&mut self, path: &syn::Path, span: proc_macro2::Span) {
+        if path.segments.len() < 2 {
+            return;
+        }
+        let mut module = path.clone();
+        module.segments.pop();
+        module.segments.pop_punct();
+        while module
+            .segments
+            .last()
+            .is_some_and(|segment| ident_name(&segment.ident).starts_with(char::is_uppercase))
+        {
+            module.segments.pop();
+            module.segments.pop_punct();
+        }
+        if module.segments.is_empty() {
+            return;
+        }
+        let Some((target, false)) = self.walk.resolve_path(&self.container, &module) else {
+            return;
+        };
+        if target != self.walk.module && target != self.container {
+            let source = reference("module", &self.walk.module);
+            self.walk.import(&source, &target, span);
+        }
+    }
+
     /// A speculative `references` edge to the function a path names.
     fn function_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
         if let Some((target, _)) = self.walk.resolve_path(&self.container, path) {
@@ -427,8 +472,14 @@ impl Calls<'_, '_> {
 }
 
 impl syn::visit::Visit<'_> for Calls<'_, '_> {
+    fn visit_path(&mut self, node: &syn::Path) {
+        self.inline_import(node, node.span());
+        syn::visit::visit_path(self, node);
+    }
+
     fn visit_expr_call(&mut self, node: &syn::ExprCall) {
         if let syn::Expr::Path(path) = node.func.as_ref() {
+            self.inline_import(&path.path, node.span());
             self.visit_call(&path.path, node.span());
             // `Action::Deny(x)` builds a variant: the enum is used. The callee
             // itself is not walked as a value path, since it is the call.

@@ -99,7 +99,26 @@ impl Walk<'_> {
         }
         self.module_children
             .insert(container.to_owned(), children.clone());
+        // `pub extern crate grep_searcher as searcher;` binds and re-exports
+        // the crate as `use ::grep_searcher as searcher;` would, which is how
+        // a facade crate exposes its parts. Each is read as that `use`.
+        let externs: Vec<(syn::ItemUse, proc_macro2::Span)> = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::ExternCrate(node) => {
+                    extern_crate_use(node).map(|use_item| (use_item, item.span()))
+                }
+                _ => None,
+            })
+            .collect();
         let mut written: Vec<((UseLeaf, bool), &syn::ItemUse, proc_macro2::Span)> = Vec::new();
+        for (node, span) in &externs {
+            let mut leaves = Vec::new();
+            flatten_use(&node.tree, "", &mut leaves);
+            for leaf in leaves {
+                written.push(((leaf, false), node, *span));
+            }
+        }
         for item in items {
             match item {
                 Item::Use(node) => {
@@ -454,7 +473,7 @@ impl Walk<'_> {
     /// associated items of `Error`, so they reference the type (speculative,
     /// struct or trait being unknown) instead of importing a module the graph
     /// would invent.
-    fn import(&mut self, source: &str, scope: &str, span: proc_macro2::Span) {
+    pub(super) fn import(&mut self, source: &str, scope: &str, span: proc_macro2::Span) {
         let last = scope.rsplit("::").next().unwrap_or(scope);
         if scope.contains("::") && last.starts_with(char::is_uppercase) {
             for kind in ["class", "interface"] {
@@ -1189,4 +1208,32 @@ fn through_child(
         Some(rest) => format!("{child}::{rest}"),
         None => child.clone(),
     }))
+}
+
+/// The rooted `use` an `extern crate` item is equivalent to:
+/// `extern crate a as b;` is `use ::a as b;`, `extern crate a;` is `use ::a;`.
+/// `extern crate self as name;` names this crate, which no rooted path can,
+/// so it is left out.
+fn extern_crate_use(node: &syn::ItemExternCrate) -> Option<syn::ItemUse> {
+    if node.ident == "self" {
+        return None;
+    }
+    let tree = match &node.rename {
+        Some((as_token, rename)) => syn::UseTree::Rename(syn::UseRename {
+            ident: node.ident.clone(),
+            as_token: *as_token,
+            rename: rename.clone(),
+        }),
+        None => syn::UseTree::Name(syn::UseName {
+            ident: node.ident.clone(),
+        }),
+    };
+    Some(syn::ItemUse {
+        attrs: node.attrs.clone(),
+        vis: node.vis.clone(),
+        use_token: syn::token::Use::default(),
+        leading_colon: Some(syn::token::PathSep::default()),
+        tree,
+        semi_token: node.semi_token,
+    })
 }

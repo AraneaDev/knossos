@@ -333,8 +333,28 @@ impl Walk<'_> {
         // in this file, `Facts::finish` drops the resulting `contains` edge
         // (its source was never emitted as a node here) while the method
         // nodes themselves still stand.
-        let Some(target) = self.type_path(container, &node.self_ty) else {
-            return;
+        let target = match (self.type_path(container, &node.self_ty), &node.trait_) {
+            (Some(target), _) => target,
+            // `impl<M: Matcher> Matcher for &M`: a blanket impl over a type
+            // parameter, or a reference or tuple, names no type to attach to.
+            // The block still implements the trait, so it becomes the
+            // container, as an impl for a foreign type does below.
+            (None, Some((_, trait_path, _))) => {
+                let trait_name = trait_path
+                    .segments
+                    .last()
+                    .map(|segment| ident_name(&segment.ident))
+                    .unwrap_or_default();
+                let type_name = type_label(&node.self_ty);
+                self.declare(
+                    container,
+                    container_kind,
+                    &format!("<impl {trait_name} for {type_name}>"),
+                    "class",
+                    span,
+                )
+            }
+            (None, None) => return,
         };
         // A type from outside this crate can only take a trait impl
         // (the orphan rule), and its path is a name the project does
@@ -755,6 +775,41 @@ impl Walk<'_> {
             }
         }
         receivers
+    }
+}
+
+/// A short label for a type an `impl` block names but no path places:
+/// `&M`, `&mut M`, `[T]`, `(A, B)`; `_` for anything else.
+fn type_label(ty: &Type) -> String {
+    match ty {
+        Type::Reference(reference) => format!(
+            "&{}{}",
+            if reference.mutability.is_some() {
+                "mut "
+            } else {
+                ""
+            },
+            type_label(&reference.elem)
+        ),
+        Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .map(|segment| ident_name(&segment.ident))
+            .unwrap_or_else(|| "_".to_owned()),
+        Type::Slice(slice) => format!("[{}]", type_label(&slice.elem)),
+        Type::Tuple(tuple) => format!(
+            "({})",
+            tuple
+                .elems
+                .iter()
+                .map(type_label)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Type::Paren(paren) => type_label(&paren.elem),
+        Type::Group(group) => type_label(&group.elem),
+        _ => "_".to_owned(),
     }
 }
 
