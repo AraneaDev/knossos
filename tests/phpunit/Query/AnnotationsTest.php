@@ -245,4 +245,36 @@ final class AnnotationsTest extends KnossosTestCase
         self::assertSame('App\\Checkout', $result->data['component']);
         self::assertSame([], $result->warnings);
     }
+
+    #[Group('query')]
+    public function testAnAnnotationRecordsItsAuthorAndAPersonAndAModelCanAnnotateAlike(): void
+    {
+        // A database as it stood before authors: every row says 'agent'.
+        $before = sys_get_temp_dir() . '/knossos-migrations-' . bin2hex(random_bytes(6));
+        mkdir($before);
+        try {
+            foreach (glob(self::repositoryRoot() . '/migrations/*.sql') as $file) {
+                if (strcmp(basename($file), '022') < 0) {
+                    copy($file, $before . '/' . basename($file));
+                }
+            }
+            $pdo = \Knossos\Store\SqliteConnection::open(':memory:');
+            (new \Knossos\Store\MigrationRunner($pdo, $before))->migrate();
+            $pdo->exec("INSERT INTO projects(id, name, root_realpath, created_at, updated_at) VALUES ('p', 'P', '/p', 't', 't')");
+            $pdo->exec("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES ('p', 'App\\A', 'note', 'old', 'agent', 't', 't')");
+
+            (new \Knossos\Store\MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+
+            assertSame([['App\\A', 'model', 'old']], $pdo->query('SELECT canonical_name, author, value FROM annotations')->fetchAll(\PDO::FETCH_NUM));
+            $pdo->exec("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES ('p', 'App\\A', 'note', 'mine', 'user', 't', 't')");
+            assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertThrows(
+                fn() => $pdo->exec("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES ('p', 'App\\B', 'note', 'x', 'agent', 't', 't')"),
+                \PDOException::class,
+            );
+        } finally {
+            array_map('unlink', glob($before . '/*.sql'));
+            rmdir($before);
+        }
+    }
 }

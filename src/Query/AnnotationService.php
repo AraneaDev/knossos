@@ -24,8 +24,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         $statement = $this->pdo->prepare(
             'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
-            "VALUES (:project, :name, :kind, :value, 'agent', :now, :now) " .
-            'ON CONFLICT(project_id, canonical_name, kind) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+            "VALUES (:project, :name, :kind, :value, 'model', :now, :now) " .
+            'ON CONFLICT(project_id, canonical_name, kind, author) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
         );
         $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
 
