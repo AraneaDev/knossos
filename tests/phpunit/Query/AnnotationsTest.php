@@ -277,4 +277,35 @@ final class AnnotationsTest extends KnossosTestCase
             rmdir($before);
         }
     }
+
+    #[Group('query')]
+    public function testAModelNeverChangesOrRemovesAPersonsAnnotation(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true, author: 'model');
+        $rows = $pdo->query('SELECT author, value FROM annotations ORDER BY author')->fetchAll(\PDO::FETCH_NUM);
+        assertSame([['model', 'an agent found this'], ['user', 'the team says so']], $rows);
+
+        // Removing as the model takes only the model's note.
+        $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
+        assertSame([['user', 'the team says so']], $pdo->query('SELECT author, value FROM annotations')->fetchAll(\PDO::FETCH_NUM));
+
+        // With only the person's note left, a model remove changes nothing and says so.
+        $nothing = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
+        assertSame(null, $nothing->data['previous']);
+        assertSame('Nothing removed: App\\Checkout has no note annotation by the model.', $nothing->summary);
+        assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+
+        // The preview a model sees is its own note, the one it would extend.
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact', execute: true);
+        $preview = $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact; second fact');
+        assertSame('first fact', $preview->data['previous']['value']);
+        assertSame('model', $preview->data['previous']['author']);
+
+        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, author: 'agent'), InvalidArgumentException::class);
+    }
 }

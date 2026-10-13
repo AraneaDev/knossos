@@ -319,6 +319,8 @@ final class QueryCommandContractTest extends KnossosTestCase
             $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'second'], ['execute' => [''], 'remove' => ['no']]);
 
             assertSame(['second'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'value'));
+            // An agent can run the CLI as well as a person can: what it writes is the model's.
+            assertSame(['model'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'author'));
         });
     }
 

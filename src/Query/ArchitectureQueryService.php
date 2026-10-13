@@ -439,15 +439,15 @@ final readonly class ArchitectureQueryService
     }
 
     /** {@see AnnotationService::upsertAnnotation()} */
-    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false): ResultEnvelope
+    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
     {
-        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute);
+        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author);
     }
 
     /** {@see AnnotationService::removeAnnotation()} */
-    public function removeAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false): ResultEnvelope
+    public function removeAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
     {
-        return $this->services->annotationQueries->removeAnnotation($projectId, $component, $kind, $value, $execute);
+        return $this->services->annotationQueries->removeAnnotation($projectId, $component, $kind, $value, $execute, $author);
     }
 
     /** {@see FileContextQueryService::fileContext()} */
