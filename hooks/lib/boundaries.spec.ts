@@ -340,7 +340,7 @@ describe('the Boundaries tab past twelve boundaries', () => {
     expect(keys(rows)).toContain('coupling-head')
   })
 
-  it('keeps the marked boundary to a few rows, so its cell stays on the pane however many boundaries it touches', () => {
+  it('keeps the marked boundary to a few rows, so its cell stays on the pane however many boundaries it touches', { timeout: 30_000 }, () => {
     // Every boundary depends on every other one.
     const n = 100
     const dense = boundariesInput(

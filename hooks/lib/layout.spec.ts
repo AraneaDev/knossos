@@ -928,6 +928,18 @@ describe('the detail view', () => {
     })
     expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
   })
+  it("keeps a note's line breaks and spacing, so a short ASCII sketch survives", () => {
+    const answer = detailAnswer({
+      annotations: [{ kind: 'note', value: 'Store::commit\n  |-> History::record\n  `-> emit(change)', author: 'model' }],
+    })
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/note \(agent\): Store::commit\n {5}\|-> History::record\n {5}`-> emit\(change\)/)
+  })
+  it('spells a tab in a note as spaces, so a tab-indented line stays within the pane', () => {
+    const answer = detailAnswer({ annotations: [{ kind: 'note', value: 'Store::commit\n\t|-> History::record', author: 'model' }] })
+    const rows = paneRows(detailPane(answer), 60)
+    widthsFit(rows, 60)
+    expect(textOf(rows)).toMatch(/\n {7}\|-> History::record/)
+  })
   it("presses its '+N more' box onto the nearest neighbour it hides, below the window or above it", () => {
     const items = Array.from({ length: 30 }, (_, i) => ({ name: `user${i}`, canonical_name: `App\\User${i}`, kind: 'class', boundary: 'core', edges: 1 }))
     const answer = detailAnswer({ used_by: { count: 30, truncated: false, names: [], items } })

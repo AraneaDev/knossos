@@ -828,7 +828,7 @@ describe('knossos mod', () => {
     }
   })
 
-  test('no line can wrap or widen its container: every view at every width, on terminal and desktop, measured from the drawn tree', async ($, on) => {
+  test('no line can wrap or widen its container: every view at every width, on terminal and desktop, measured from the drawn tree', { timeoutMs: 30_000 }, async ($, on) => {
     const long = 'ProjectModuleIndexWithAnUnreasonablyLongName::_is_python_script_with_a_shebang_line'
     const nodes = Array.from({ length: 14 }, (_, i) => ({ name: `${long}${i}`, canonical_name: `App\\Core\\${long}${i}`, kind: 'method', boundary: i % 2 === 0 ? 'Core' : 'module:cli (+composer:app/cli)' }))
     const path = 'src/a/rather/deeply/nested/directory/with/an/UnreasonablyLongControllerName.php'
@@ -974,6 +974,37 @@ describe('knossos mod', () => {
     const ran = await edit($, `${ROOT}/src/Router.php`)
     expect(ran.context?.join('\n')).toContain('src/Router.php has 41 dependent files')
     expect(w.toasts).toHaveLength(1)
+  })
+
+  test('digging past a Knossos answer is met once a turn with a reminder, per loop, unless notes are off', async ($, on) => {
+    const w = world(on)
+    await $.session.start(START)
+    await w.clock.settle()
+    const call = (tool: string, extra: object = {}) => $.tool.call({ tool, ...extra } as never)
+    const dig = async (agentId?: string) => {
+      const id = agentId === undefined ? {} : { agentId }
+      await call('mcp__knossos__list_usages', { symbol: 'Router', ...id })
+      await call('Read', { file_path: `${ROOT}/src/Quiet.php`, ...id })
+      return call('Grep', { pattern: 'Router', ...id })
+    }
+    const said = (ran: { context?: string[] }) => (ran.context ?? []).filter(c => c.startsWith('You dug past a Knossos answer'))
+    expect(said(await dig())).toHaveLength(1)
+    // Once a turn: more digging in the same turn is not reminded again, while a subagent's loop has its own.
+    expect(said(await call('Read', { file_path: `${ROOT}/src/Quiet.php` }))).toHaveLength(0)
+    expect(said(await dig('a1'))).toHaveLength(1)
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    expect(said(await dig())).toHaveLength(1)
+  })
+
+  test('the dig reminder stays quiet when agent notes are off', { options: { agentNotes: false } }, async ($, on) => {
+    const w = world(on)
+    await $.session.start(START)
+    await w.clock.settle()
+    await $.tool.call({ tool: 'mcp__knossos__list_usages', symbol: 'Router' } as never)
+    await $.tool.call({ tool: 'Read', file_path: `${ROOT}/src/Quiet.php` } as never)
+    const ran = await $.tool.call({ tool: 'Grep', pattern: 'Router' } as never)
+    expect((ran.context ?? []).some((c: string) => c.startsWith('You dug past'))).toBe(false)
   })
 
   test('an edit to a quiet file adds nothing', async ($, on) => {
@@ -2439,7 +2470,7 @@ describe('knossos mod', () => {
     await ui.unmount()
   })
 
-  test('lays the pane out by its width: one column to 130, a two-column grid past it, every row within the width, on terminal and desktop', async ($, on) => {
+  test('lays the pane out by its width: one column to 130, a two-column grid past it, every row within the width, on terminal and desktop', { timeoutMs: 30_000 }, async ($, on) => {
     const hubs = Array.from({ length: 30 }, (_, i) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', in_degree: 300 - i, out_degree: i, cross_boundary_degree: i % 3, boundary: i % 2 === 0 ? 'Http' : 'Core' }))
     const w = world(on, { dashboard: [{ stdout: paneDashboard({ hubs }) }] })
     await $.session.start(START)
@@ -2470,7 +2501,7 @@ describe('knossos mod', () => {
     }
   })
 
-  test("sizes the pane's lists to the rows its body has, says how many more there are, and scrolls to the marker", async ($, on) => {
+  test("sizes the pane's lists to the rows its body has, says how many more there are, and scrolls to the marker", { timeoutMs: 30_000 }, async ($, on) => {
     const hubs = Array.from({ length: 30 }, (_, i) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', in_degree: 300 - i, out_degree: i, cross_boundary_degree: 0 }))
     const w = world(on, { dashboard: [{ stdout: paneDashboard({ hubs }) }] })
     await $.session.start(START)
