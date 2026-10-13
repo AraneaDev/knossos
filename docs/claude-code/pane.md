@@ -729,7 +729,9 @@ opens it as its detail. Below 44 columns the rings are plain lists.
 `m` on a component's detail adds a note to it, as the `note` kind of the
 `annotate_component` tool does. A note is for a fact the next session should
 know and cannot see by reading the code (see
-[the routing skill](skill.md#writing-a-fact-back)).
+[the routing skill](skill.md#writing-a-fact-back)). A note written here is
+yours: it is recorded with the author `user`, which an agent's note never
+overwrites.
 
 1. A field opens in the **Notes** card, holding the component's note when it
    has one. Nothing is written by typing.

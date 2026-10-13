@@ -358,7 +358,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'list_annotations',
                 'title' => 'List annotations',
-                'description' => 'List durable agent annotations recorded on components, optionally filtered by component or kind. Use to review or audit prior annotate_component calls.',
+                'description' => 'List durable annotations recorded on components, each with its author (user or model), optionally filtered by component or kind.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -708,7 +708,7 @@ final readonly class ToolCatalog
         return [
             [
                 'name' => 'annotate_component', 'title' => 'Annotate component',
-                'description' => 'Record a durable annotation on a component that survives rescans. false_positive and intentional (a parked route, a test-only helper) remove it from dead-code candidates. Preview by default; pass execute to apply.',
+                'description' => 'Record, extend or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'project_id' => ['type' => 'string', 'minLength' => 1],
                     'component' => ['type' => 'string', 'minLength' => 1],

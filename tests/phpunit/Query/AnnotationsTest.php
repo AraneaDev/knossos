@@ -245,4 +245,101 @@ final class AnnotationsTest extends KnossosTestCase
         self::assertSame('App\\Checkout', $result->data['component']);
         self::assertSame([], $result->warnings);
     }
+
+    #[Group('query')]
+    public function testAnAnnotationRecordsItsAuthorAndAPersonAndAModelCanAnnotateAlike(): void
+    {
+        // A database as it stood before authors: every row says 'agent'.
+        $before = sys_get_temp_dir() . '/knossos-migrations-' . bin2hex(random_bytes(6));
+        mkdir($before);
+        try {
+            foreach (glob(self::repositoryRoot() . '/migrations/*.sql') as $file) {
+                if (strcmp(basename($file), '022') < 0) {
+                    copy($file, $before . '/' . basename($file));
+                }
+            }
+            $pdo = \Knossos\Store\SqliteConnection::open(':memory:');
+            (new \Knossos\Store\MigrationRunner($pdo, $before))->migrate();
+            $pdo->exec("INSERT INTO projects(id, name, root_realpath, created_at, updated_at) VALUES ('p', 'P', '/p', 't', 't')");
+            $pdo->exec("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES ('p', 'App\\A', 'note', 'old', 'agent', 't', 't')");
+
+            (new \Knossos\Store\MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+
+            assertSame([['App\\A', 'model', 'old']], $pdo->query('SELECT canonical_name, author, value FROM annotations')->fetchAll(\PDO::FETCH_NUM));
+            $pdo->exec("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES ('p', 'App\\A', 'note', 'mine', 'user', 't', 't')");
+            assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertThrows(
+                fn() => $pdo->exec("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES ('p', 'App\\B', 'note', 'x', 'agent', 't', 't')"),
+                \PDOException::class,
+            );
+        } finally {
+            array_map('unlink', glob($before . '/*.sql'));
+            rmdir($before);
+        }
+    }
+
+    #[Group('query')]
+    public function testAModelNeverChangesOrRemovesAPersonsAnnotation(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true, author: 'model');
+        $rows = $pdo->query('SELECT author, value FROM annotations ORDER BY author')->fetchAll(\PDO::FETCH_NUM);
+        assertSame([['model', 'an agent found this'], ['user', 'the team says so']], $rows);
+
+        // Removing as the model takes only the model's note.
+        $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
+        assertSame([['user', 'the team says so']], $pdo->query('SELECT author, value FROM annotations')->fetchAll(\PDO::FETCH_NUM));
+
+        // With only the person's note left, a model remove changes nothing and says so.
+        $nothing = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
+        assertSame(null, $nothing->data['previous']);
+        assertSame('Nothing removed: App\\Checkout has no note annotation by the model.', $nothing->summary);
+        // It says the person's note is still there, and who may remove it.
+        assertArrayContains('A note annotation by the user remains; only the pane removes it.', $nothing->warnings);
+        // The preview says so too, rather than promising a removal.
+        $previewed = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', author: 'model');
+        assertSame('Preview: nothing to remove: App\\Checkout has no note annotation by the model.', $previewed->summary);
+        assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+
+        // The preview a model sees is its own note, the one it would extend.
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact', execute: true);
+        $preview = $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact; second fact');
+        assertSame('first fact', $preview->data['previous']['value']);
+        assertSame('model', $preview->data['previous']['author']);
+
+        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, author: 'agent'), InvalidArgumentException::class);
+    }
+
+    #[Group('query')]
+    public function testReadersPutAPersonsAnnotationBeforeAModelsAndSayWhoWroteIt(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+
+        $listed = $queries->listAnnotations($ids['project'])->data['annotations'];
+        assertSame([['user', 'the team says so'], ['model', 'an agent found this']], array_map(static fn(array $a): array => [$a['author'], $a['value']], $listed));
+        $inspected = $queries->inspectComponent($ids['project'], 'App\\Checkout')->data['component']['annotations'];
+        assertSame(['user', 'model'], array_column($inspected, 'author'));
+    }
+
+    #[Group('query')]
+    public function testAPersonsJudgementOnDeadCodeOutranksAModelsWhateverTheKind(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'confirmed_dead', 'nothing calls it', execute: true, author: 'user');
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'false_positive', 'reached by the container', execute: true);
+
+        $facts = new \Knossos\Query\CandidateGraphFacts($pdo, $ids['project'], ['calls'], 0);
+
+        assertSame(['kind' => 'confirmed_dead', 'value' => 'nothing calls it'], $facts->componentAnnotations()['App\\Checkout']);
+    }
 }

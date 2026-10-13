@@ -23,8 +23,8 @@ use PDO;
  * relationships run to each and the boundary each is labelled with (the
  * dashboard's label, {@see BoundaryLabels}), the most connected first. When
  * the lookup stopped reading, `truncated` says the counts are floors. The
- * component's own annotations come along; there are at most four, one per
- * annotation kind.
+ * component's own annotations come along, each with its author: at most
+ * one per annotation kind and author, the person's first.
  */
 final readonly class ComponentDetailService
 {
@@ -93,7 +93,7 @@ final readonly class ComponentDetailService
             'used_by' => self::related($component['incoming'], in_array('incoming_relationship_limit', $reasons, true), $others),
             'uses' => self::related($component['outgoing'], in_array('outgoing_relationship_limit', $reasons, true), $others),
             'annotations' => array_map(
-                static fn(array $a): array => ['kind' => (string) $a['kind'], 'value' => (string) $a['value']],
+                static fn(array $a): array => ['kind' => (string) $a['kind'], 'value' => (string) $a['value'], 'author' => (string) $a['author']],
                 $component['annotations'],
             ),
         ];

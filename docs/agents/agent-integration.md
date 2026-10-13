@@ -177,7 +177,14 @@ write access.
 
 Use `annotate_component` to record a durable judgment on a component and
 `list_annotations` to read it back. Annotations are the one part of the graph
-that comes from an agent and not from a scan. They sit in their own table,
+that comes from a person or an agent and not from a scan.
+
+Every annotation records its author. A note written in the pane is the
+person's (`user`); one written through `annotate_component` or the
+`annotate-component` command is the model's (`model`), since an agent can run
+either. Both can annotate the same component with the same kind without
+overwriting each other. A model writes, extends and removes only its own
+notes, and never changes a person's. Readers list a person's notes first. They sit in their own table,
 keyed by canonical name and not by node id. `component` must match exactly: a
 stable id, a canonical name or a display name. A name that only starts like a
 component's is recorded as given, with a warning that names the components it

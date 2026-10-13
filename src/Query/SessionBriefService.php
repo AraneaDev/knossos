@@ -287,13 +287,15 @@ final readonly class SessionBriefService
     private function notes(string $projectId): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT canonical_name, value FROM annotations ' .
+            'SELECT canonical_name, value, author FROM annotations ' .
             "WHERE project_id = :project AND kind = 'note' AND value <> '' " .
-            'ORDER BY updated_at DESC, canonical_name LIMIT ' . self::MAX_NOTES,
+            // A person's notes first, however old: the cap must not let newer
+            // agent notes crowd out what the team wrote down.
+            "ORDER BY CASE author WHEN 'user' THEN 0 ELSE 1 END, updated_at DESC, canonical_name LIMIT " . self::MAX_NOTES,
         );
         $statement->execute(['project' => $projectId]);
         return array_map(
-            static fn(array $row): string => sprintf('%s: %s', $row['canonical_name'], $row['value']),
+            static fn(array $row): string => sprintf('%s (%s): %s', $row['canonical_name'], $row['author'], $row['value']),
             $statement->fetchAll(PDO::FETCH_ASSOC),
         );
     }

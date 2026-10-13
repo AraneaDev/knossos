@@ -232,6 +232,8 @@ final class McpTest extends KnossosTestCase
         assertSame('App\\Checkout', $list->data['annotations'][0]['canonical_name']);
         assertSame('note', $list->data['annotations'][0]['kind']);
         assertSame('core flow', $list->data['annotations'][0]['value']);
+        // The tool is how an agent writes: its notes are the model's, never the person's.
+        assertSame('model', $list->data['annotations'][0]['author']);
 
         assertThrows(fn() => $tools->call('annotate_component', ['project_id' => $ids['project'], 'component' => 'App\\Checkout', 'kind' => 'bogus_kind']), InvalidArgumentException::class);
         assertThrows(fn() => $tools->call('list_annotations', ['project_id' => $ids['project'], 'extra' => true]), InvalidArgumentException::class);

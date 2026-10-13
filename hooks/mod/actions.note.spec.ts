@@ -130,6 +130,18 @@ describe('opening a note', () => {
         expect(port.note()).toEqual(editing())
     })
 
+    it("does not offer an agent's note as the person's own", async () => {
+        const port = fakePort({ detail: { detail: { component: { name: 'App\\Greeter', annotations: [{ kind: 'note', value: 'an agent found this', author: 'model' }] } } } })
+        await port.press('note')
+        expect(port.note()?.value).toBe('')
+    })
+
+    it("starts from the person's own note when an agent's sits beside it", async () => {
+        const port = fakePort({ detail: { detail: { component: { name: 'App\\Greeter', annotations: [{ kind: 'note', value: 'mine', author: 'user' }, { kind: 'note', value: 'an agent found this', author: 'model' }] } } } })
+        await port.press('note')
+        expect(port.note()?.value).toBe('mine')
+    })
+
     it('starts empty when the stored component carries no note among its annotations', async () => {
         const port = fakePort({ detail: { detail: { component: { name: 'App\\Greeter', annotations: [{ kind: 'owner', value: 'team-a' }] } } } })
         await port.press('note')

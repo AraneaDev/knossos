@@ -111,7 +111,8 @@ export type DetailInput = {
     loc: Loc | null
     usedBy: Side
     uses: Side
-    annotations: { kind: string; value: string }[]
+    /** Each with its author: `user` written in the pane, `model` by an agent; absent from an older knossos, read as the person's. */
+    annotations: { kind: string; value: string; author?: string }[]
   } | null
   /** Present (null until it is read) when the detail is a file's, not a component's. */
   file?: FileView | null
@@ -613,12 +614,12 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
  * recorded (`y` records, `n` drops it; what it replaces said), recording,
  * or why knossos refused it. Nothing is written until the person says yes.
  */
-function notesBlock(name: string, annotations: { kind: string; value: string }[], note: NoteInput | null, notable: boolean): Block {
+function notesBlock(name: string, annotations: { kind: string; value: string; author?: string }[], note: NoteInput | null, notable: boolean): Block {
   return {
     key: 'notes',
     make: columns => {
       const body: Row[] = annotations.flatMap((a, i) =>
-        wrapWords(`${a.kind.replace(/_/g, ' ')}: ${a.value}`, Math.max(1, columns - MARK)).map((line, j) => ({ key: `note-${i}-${j}`, segments: [{ text: spaces(MARK) }, { text: line }] })),
+        wrapWords(`${a.kind.replace(/_/g, ' ')}${a.author === 'model' ? ' (agent)' : ''}: ${a.value}`, Math.max(1, columns - MARK)).map((line, j) => ({ key: `note-${i}-${j}`, segments: [{ text: spaces(MARK) }, { text: line }] })),
       )
       if (annotations.length === 0) body.push(dimRow('note-none', `   No notes on ${name} yet.`, columns))
       if (!notable) return { key: 'notes', title: 'Notes', body }
@@ -626,7 +627,8 @@ function notesBlock(name: string, annotations: { kind: string; value: string }[]
       const keys = note?.keys !== false
       if (note === null || note.phase === 'failed') {
         if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
-        const own = annotations.some(a => a.kind === 'note')
+        // The person's own note: an agent's beside it is not theirs to change here.
+        const own = annotations.some(a => a.kind === 'note' && a.author !== 'model')
         body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note', own ? 'change the note' : 'add a note', 'm', { dim: true })] })
       } else if (note.phase === 'editing') {
         body.push(blank('note-gap'), { key: 'note-field', segments: [{ text: '   note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] })

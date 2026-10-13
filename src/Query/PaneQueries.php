@@ -38,7 +38,7 @@ final readonly class PaneQueries
         return match ($command) {
             'blast-radius' => ['component'],
             'path-between' => ['from', 'to'],
-            'annotate' => ['component', 'kind', 'value', 'remove', 'execute'],
+            'annotate' => ['component', 'kind', 'value', 'remove', 'author', 'execute'],
             default => [],
         };
     }
@@ -60,7 +60,7 @@ final readonly class PaneQueries
             'churn' => (new ChurnService($this->pdo))->churn($path),
             'blast-radius' => (new BlastRadiusService($this->pdo))->rings($path, $required('component')),
             'path-between' => (new PathBetweenService($this->pdo))->routes($path, $required('from'), $required('to')),
-            'annotate' => $this->annotate($path, $required('component'), $single('kind') ?? 'note', $single('value') ?? '', $flag('remove'), $flag('execute')),
+            'annotate' => $this->annotate($path, $required('component'), $single('kind') ?? 'note', $single('value') ?? '', $flag('remove'), $flag('execute'), $single('author') ?? 'user'),
             default => throw new InvalidArgumentException(sprintf('Unknown pane command %s.', $command)),
         };
     }
@@ -69,11 +69,13 @@ final readonly class PaneQueries
      * A note on a component, previewed (nothing written) unless `$execute`:
      * what would be recorded or removed and what was there before, or, with
      * `$execute`, what now is. A request knossos refuses (an ambiguous name,
-     * a kind it does not know, a value too long) is `refused` with why.
+     * a kind it does not know, a value too long) is `refused` with why. A
+     * note written here is the person's (`user`); a remove takes `$author`'s
+     * note, the person's unless the pane names the model's.
      *
      * @return array<string, mixed>
      */
-    private function annotate(string $path, string $component, string $kind, string $value, bool $remove, bool $execute): array
+    private function annotate(string $path, string $component, string $kind, string $value, bool $remove, bool $execute, string $author): array
     {
         $absolute = realpath($path) ?: $path;
         $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null];
@@ -84,10 +86,15 @@ final readonly class PaneQueries
         $id = (string) $project['id'];
         $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
         try {
+            if (!$remove && $author !== 'user') {
+                throw new InvalidArgumentException('A note written here is the person\'s: only a remove names an author.');
+            }
             $queries = ArchitectureQueryService::forDatabase($this->pdo);
+            // The pane is where a person writes: what they record is theirs.
+            // Only a remove names another author, to take away a model's note.
             $result = $remove
-                ? $queries->removeAnnotation($id, $component, $kind, $value, $execute)
-                : $queries->upsertAnnotation($id, $component, $kind, $value, $execute);
+                ? $queries->removeAnnotation($id, $component, $kind, $value, $execute, $author)
+                : $queries->upsertAnnotation($id, $component, $kind, $value, $execute, 'user');
         } catch (InvalidArgumentException $refused) {
             return ['status' => 'refused', 'reason' => $refused->getMessage()] + $envelope;
         }

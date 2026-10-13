@@ -217,6 +217,8 @@ final class PaneQueriesTest extends KnossosTestCase
             $done = $ask(['component' => 'App\\Greeter', 'value' => 'the one place greetings are worded', 'execute' => '1']);
             assertSame([true, null], [$done['executed'], $done['previous']]);
             assertSame('the one place greetings are worded', (string) $pdo->query('SELECT value FROM annotations')->fetchColumn());
+            // A note from the pane is the person's.
+            assertSame('user', (string) $pdo->query('SELECT author FROM annotations')->fetchColumn());
             // A second note replaces the first, and says what it replaces.
             assertSame('the one place greetings are worded', $ask(['component' => 'App\\Greeter', 'value' => 'v2'])['previous']);
             $refused = $ask(['component' => 'App\\Greeter', 'kind' => 'opinion', 'value' => 'x']);
@@ -229,11 +231,37 @@ final class PaneQueriesTest extends KnossosTestCase
     }
 
     #[Group('query')]
+    public function testThePaneRemovesAModelNoteWhenItNamesThatAuthor(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $queries = new PaneQueries($pdo);
+            $ask = fn(array $options): array => $queries->answer('annotate', $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
+            $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
+            $ask(['component' => 'App\\Greeter', 'value' => 'mine', 'execute' => '1']);
+            assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+
+            $ask(['component' => 'App\\Greeter', 'remove' => '1', 'author' => 'model', 'execute' => '1']);
+            assertSame([['user', 'mine']], $pdo->query('SELECT author, value FROM annotations')->fetchAll(PDO::FETCH_NUM));
+            // A note written in the pane is the person's: naming another author is refused.
+            $refused = $ask(['component' => 'App\\Greeter', 'value' => 'x', 'author' => 'model', 'execute' => '1']);
+            assertSame('refused', $refused['status']);
+            assertStringContainsString('only a remove names an author', (string) $refused['reason']);
+            // Without an author, the pane removes the person's own note.
+            $ask(['component' => 'App\\Greeter', 'remove' => '1', 'execute' => '1']);
+            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
     public function testEachCommandNamesItsOptions(): void
     {
         assertSame(['component'], PaneQueries::options('blast-radius'));
         assertSame(['from', 'to'], PaneQueries::options('path-between'));
-        assertSame(['component', 'kind', 'value', 'remove', 'execute'], PaneQueries::options('annotate'));
+        assertSame(['component', 'kind', 'value', 'remove', 'author', 'execute'], PaneQueries::options('annotate'));
         assertSame([], PaneQueries::options('churn'));
     }
 }

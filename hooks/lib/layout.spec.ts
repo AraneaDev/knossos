@@ -919,6 +919,15 @@ describe('the detail view', () => {
     expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies · used by 19 · uses 2 +edges$/)
     expect(textOf(rows)).toMatch(/Notes\n {3}note: Read-only: it never scans\./)
   })
+  it("marks an agent's note apart from the person's, the person's first", () => {
+    const answer = detailAnswer({
+      annotations: [
+        { kind: 'note', value: 'Read-only: it never scans.', author: 'user' },
+        { kind: 'note', value: 'Reached from the dashboard tab only.', author: 'model' },
+      ],
+    })
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
+  })
   it("presses its '+N more' box onto the nearest neighbour it hides, below the window or above it", () => {
     const items = Array.from({ length: 30 }, (_, i) => ({ name: `user${i}`, canonical_name: `App\\User${i}`, kind: 'class', boundary: 'core', edges: 1 }))
     const answer = detailAnswer({ used_by: { count: 30, truncated: false, names: [], items } })

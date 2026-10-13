@@ -120,6 +120,29 @@ final class SessionBriefServiceTest extends KnossosTestCase
     }
 
     #[Group('query')]
+    public function testAPersonsNoteLeadsTheBriefAndEachNoteSaysWhoWroteIt(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
+        $insert = $pdo->prepare(
+            'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
+            "VALUES(:p, :n, 'note', :v, :a, :t, :t)",
+        );
+        // The person's note is the oldest; six newer model notes would crowd it out by date alone.
+        $insert->execute(['p' => $ids['project'], 'n' => 'App\\Team', 'v' => 'payments stay synchronous', 'a' => 'user', 't' => '2026-09-01T12:00:00+00:00']);
+        for ($i = 1; $i <= 6; $i++) {
+            $insert->execute(['p' => $ids['project'], 'n' => 'App\\Found' . $i, 'v' => 'found ' . $i, 'a' => 'model', 't' => sprintf('2026-09-%02dT12:00:00+00:00', 10 + $i)]);
+        }
+
+        $notes = (new SessionBriefService($pdo))->gather($root)->notes;
+
+        assertSame('App\\Team (user): payments stay synchronous', $notes[0]);
+        assertSame('App\\Found6 (model): found 6', $notes[1]);
+        assertSame(5, count($notes));
+    }
+
+    #[Group('query')]
     public function testNotesAreCappedNewestFirstAndOnlyOfKindNote(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
@@ -264,7 +287,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
             assertSame('stale', $brief->state); // the state lever actually moved
             assertSame([], $brief->entryPoints); // gated off
             assertSame([], $brief->hubs); // gated off
-            assertSame(true, in_array('App\\Ops: stale graphs still carry their notes', $brief->notes, true));
+            assertSame(true, in_array('App\\Ops (model): stale graphs still carry their notes', $brief->notes, true));
         } finally {
             $this->removeTempTree($root);
         }
