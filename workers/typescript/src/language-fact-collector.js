@@ -58,6 +58,7 @@ import {
     callName,
     functionBindingOf,
     isFunctionBinding,
+    isFunctionProperty,
     reference,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
@@ -589,10 +590,10 @@ export class TypeScriptLanguageFactCollector {
     }
 
     /**
-     * The function binding a call names, or null. A binding typed by an
-     * annotation or a cast is called through that type's signature, whose
-     * declaration is the type rather than the arrow, so the callee's own
-     * symbol is what names the node.
+     * The function binding or function-valued class property a call names,
+     * or null. Its signature's declaration is the arrow, or the type of an
+     * annotation or cast, rather than the binding or property, so the
+     * callee's own symbol is what names the node.
      */
     bindingCallee(node) {
         const callee = ts.isPropertyAccessExpression(node.expression)
@@ -602,11 +603,12 @@ export class TypeScriptLanguageFactCollector {
             this.checker,
             this.checker.getSymbolAtLocation(callee),
         );
-        return symbol?.declarations?.some((declaration) =>
-            isFunctionBinding(declaration),
-        )
-            ? this.symbolReference(symbol, "function", true)
-            : null;
+        const declarations = symbol?.declarations ?? [];
+        if (declarations.some((declaration) => isFunctionBinding(declaration)))
+            return this.symbolReference(symbol, "function", true);
+        if (declarations.some((declaration) => isFunctionProperty(declaration)))
+            return this.symbolReference(symbol, "method", true);
+        return null;
     }
 
     /**
