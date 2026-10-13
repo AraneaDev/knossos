@@ -42,7 +42,7 @@ for classification. If that path is absent, no node is invented.
 | Edge         | Source                                               | Confidence             |
 | ------------ | ---------------------------------------------------- | ---------------------- |
 | `contains`   | nesting, and a `package` containing its crate module | certain                |
-| `imports`    | `use`                                                | certain                |
+| `imports`    | `use`, `extern crate`, and an inline path's module   | certain                |
 | `implements` | `impl Trait for Type`                                | certain                |
 | `extends`    | supertraits                                          | probable               |
 | `calls`      | a resolved call expression                           | probable, see below    |
@@ -150,6 +150,14 @@ item under its own name (`pub use parse::parse;` beside `mod parse;`). A longer
 path through such a name (`parse::helper()`) goes through the module. The
 `imports` edge still names the module the source wrote.
 
+`extern crate a as b;` reads as `use ::a as b;`, so a facade crate's
+`pub extern crate grep_searcher as searcher;` is a re-export like any other:
+`grep::searcher::Searcher` names `grep_searcher::Searcher`. A path written
+inline, without a `use` line (`grep::cli::resolve_binary(..)`), imports the
+module it reaches as a `use` of it would, so the file depends on that module.
+Only a path that resolves to a module of the project counts, not one that
+guesses.
+
 A prelude trait named bare (`impl From<u8> for Str`, `trait Named: Clone`)
 that the module neither declares nor imports is the standard library's
 (`std::convert::From`), never a trait of the enclosing module or the crate
@@ -158,7 +166,11 @@ only through an import, which is how it resolves. Likewise a trait impl for a
 primitive or prelude type named bare (`impl PartialEq<u8> for String`,
 `impl Shout for str`) is a block of its own, `<impl PartialEq for String>`,
 since the crate does not own the type, never a `String` of the enclosing
-module.
+module. A blanket impl, whose type is a parameter or a reference to one
+(`impl<M: Matcher> Matcher for &M`), is a block of its own the same way,
+`<impl Matcher for &M>`, and implements the trait. A prelude or primitive name
+written bare (`Option`, `str`, `Some`) that the module neither declares nor
+imports is the standard one, so it is no `references` target in the module.
 
 ## Frameworks
 
