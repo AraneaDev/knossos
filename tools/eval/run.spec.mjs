@@ -1,5 +1,14 @@
 import { execFile, spawn } from "node:child_process";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+    access,
+    mkdir,
+    readdir,
+    readFile,
+    rm,
+    stat,
+    utimes,
+    writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -458,33 +467,90 @@ describe("acquireLock", () => {
         await release();
         await release2(file);
     });
-    it("lets only one of two racing processes take over a stale lock", async () => {
-        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+    const deadPid = async () => {
         const child = spawn("true");
         await new Promise((resolve) => child.once("exit", resolve));
-        for (let round = 0; round < 20; round += 1) {
-            await writeFile(file, String(child.pid));
-            const results = await Promise.allSettled([
-                acquireLock(file),
-                acquireLock(file),
-                acquireLock(file),
-            ]);
-            expect(
-                results.filter((r) => r.status === "fulfilled"),
-            ).toHaveLength(1);
-            for (const r of results.filter((r) => r.status === "rejected"))
-                expect(r.reason.message).toMatch(/another continue is running/);
-            await results.find((r) => r.status === "fulfilled").value();
-            await expect(readFile(`${file}.takeover`)).rejects.toThrow();
-        }
-    });
-    it("waits for a lock file that is created but not yet written", async () => {
+        return child.pid;
+    };
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    it("lets only one of two acquirers that both saw the lock stale take it over", async () => {
         const file = path.join(await tmp("eval-lock-"), "continue.lock");
-        await writeFile(file, "");
-        setTimeout(() => writeFile(file, String(process.pid)), 50);
-        await expect(acquireLock(file)).rejects.toThrow(
-            new RegExp(`pid ${process.pid}`),
+        await writeFile(file, String(await deadPid()));
+        // Each acquirer pauses between deciding the lock is stale and removing it. When both get
+        // there, the first goes all the way through, then the second removes what the first created.
+        const waiting = [];
+        const hooks = {
+            // Only the first pause of each acquirer is held; any later one passes at once.
+            beforeRemove: () =>
+                waiting.length < 2
+                    ? new Promise((resolve) => waiting.push(resolve))
+                    : undefined,
+        };
+        const first = acquireLock(file, hooks);
+        const second = acquireLock(file, hooks);
+        const settled = (p) =>
+            p.then(
+                () => {},
+                () => {},
+            );
+        for (let i = 0; i < 30 && waiting.length < 2; i += 1) await wait(10);
+        waiting[0]();
+        await settled(first);
+        for (let i = 0; i < 30 && waiting.length < 2; i += 1) await wait(10);
+        waiting[1]?.();
+        const results = await Promise.allSettled([first, second]);
+        expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+        const loser = results.find((r) => r.status === "rejected");
+        expect(loser.reason.message).toMatch(/another continue is running/);
+        await results.find((r) => r.status === "fulfilled").value();
+    });
+    it("lets a process that was suspended inside the mutex notice a peer took over", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        await writeFile(file, String(await deadPid()));
+        let resume;
+        const gate = new Promise((resolve) => (resume = resolve));
+        const suspended = acquireLock(file, {
+            staleMs: 30,
+            beforeRemove: () => gate,
+        });
+        const outcome = suspended.then(
+            () => "acquired",
+            (e) => e.message,
         );
+        await wait(20);
+        // The peer breaks the stale mutex and takes the lock over while the first is suspended.
+        const release = await acquireLock(file, { staleMs: 30 });
+        const before = (await stat(file)).ino;
+        resume();
+        expect(await outcome).toMatch(/another continue is running/);
+        expect((await stat(file)).ino).toBe(before);
+        await release();
+    });
+    it("treats a takeover mutex dated in the future as stale", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        await writeFile(file, String(await deadPid()));
+        await mkdir(`${file}.takeover`);
+        const future = new Date(Date.now() + 3600_000);
+        await utimes(`${file}.takeover`, future, future);
+        const release = await acquireLock(file);
+        expect(await readFile(file, "utf8")).toBe(String(process.pid));
+        await release();
+    });
+    it("only releases a lock that still holds its own pid", async () => {
+        const file = path.join(await tmp("eval-lock-"), "continue.lock");
+        const release = await acquireLock(file);
+        const other = String(await deadPid());
+        await writeFile(file, other);
+        await release();
+        expect(await readFile(file, "utf8")).toBe(other);
+    });
+    it("never leaves a temp file or a mutex behind", async () => {
+        const dir = await tmp("eval-lock-");
+        const file = path.join(dir, "continue.lock");
+        await writeFile(file, String(await deadPid()));
+        const release = await acquireLock(file);
+        await release();
+        expect(await readdir(dir)).toEqual([]);
     });
     it("takes over a lock whose process is gone", async () => {
         const file = path.join(await tmp("eval-lock-"), "continue.lock");

@@ -11,8 +11,17 @@
  *   node tools/eval/run.mjs status <run-id>
  *   node tools/eval/report.mjs <run-id>               write report.md
  */
+import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+    access,
+    link,
+    mkdir,
+    readFile,
+    rm,
+    stat,
+    writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -179,15 +188,15 @@ const alive = (pid) => {
 /** A takeover mutex older than this belonged to a process that died holding it. */
 const TAKEOVER_STALE_MS = 5000;
 
-const young = (file) =>
-    stat(file).then(
-        (st) => Date.now() - st.mtimeMs < 1000,
-        () => false,
-    );
-
-/** Holds `${file}.takeover` (an atomic mkdir) while `fn` runs; null when another process holds it. */
-async function withTakeover(file, fn) {
+/**
+ * Holds `${file}.takeover` (an atomic mkdir) while `fn` runs; null when another
+ * process holds it. `fn` gets `stillOwner()`: a peer may break the mutex of a
+ * process that was suspended for longer than `staleMs`, and that process must
+ * notice before it removes anything. A mutex dated in the future is stale too.
+ */
+async function withTakeover(file, staleMs, fn) {
     const mutex = `${file}.takeover`;
+    const token = randomUUID();
     try {
         await mkdir(mutex);
     } catch (error) {
@@ -195,55 +204,72 @@ async function withTakeover(file, fn) {
         const age = await stat(mutex)
             .then((st) => Date.now() - st.mtimeMs)
             .catch(() => 0);
-        if (age > TAKEOVER_STALE_MS)
+        if (age > staleMs || age < 0)
             await rm(mutex, { recursive: true, force: true });
         else await sleep(10);
         return null;
     }
+    await writeFile(path.join(mutex, "owner"), token);
+    const stillOwner = async () =>
+        (await readFile(path.join(mutex, "owner"), "utf8").catch(() => "")) ===
+        token;
     try {
-        return await fn();
+        return await fn(stillOwner);
     } finally {
-        await rm(mutex, { recursive: true, force: true });
+        if (await stillOwner())
+            await rm(mutex, { recursive: true, force: true });
     }
 }
 
 /**
  * Takes `file` with the pid of this process; throws while another live
- * process holds it, takes it over when the holder is gone. The takeover runs
- * under a mutex and re-reads the holder inside it, so two processes that both
- * saw a stale lock cannot each remove the other's fresh one. Returns a release.
+ * process holds it, takes it over when the holder is gone. The lock appears
+ * atomically with its pid in it (a temp file linked into place), the takeover
+ * runs under a mutex and re-reads the holder inside it, so two processes that
+ * both saw a stale lock cannot each remove the other's fresh one. Returns a
+ * release that removes the lock only while it still holds this pid.
+ * `hooks.beforeRemove` and `hooks.staleMs` exist for the tests.
  */
-export async function acquireLock(file) {
+export async function acquireLock(file, hooks = {}) {
     await mkdir(path.dirname(file), { recursive: true });
-    const release = () => rm(file, { force: true });
     const holder = async () =>
         Number((await readFile(file, "utf8").catch(() => "")).trim());
+    const release = async () => {
+        if ((await holder()) === process.pid) await rm(file, { force: true });
+    };
     const create = async () => {
+        const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+        await writeFile(temp, String(process.pid));
         try {
-            await writeFile(file, String(process.pid), { flag: "wx" });
+            await link(temp, file);
             return true;
         } catch (error) {
             if (error.code !== "EEXIST") throw error;
             return false;
+        } finally {
+            await rm(temp, { force: true });
         }
     };
     for (;;) {
         if (await create()) return release;
         const pid = await holder();
-        // Created but not yet written by its owner: wait for the pid instead of calling it stale.
-        if (!(pid > 0) && (await young(file))) {
-            await sleep(10);
-            continue;
-        }
         if (pid > 0 && alive(pid))
             throw new Error(`another continue is running (pid ${pid})`);
-        const won = await withTakeover(file, async () => {
-            const current = await holder();
-            if (current > 0 && alive(current))
-                throw new Error(`another continue is running (pid ${current})`);
-            await rm(file, { force: true });
-            return create();
-        });
+        const won = await withTakeover(
+            file,
+            hooks.staleMs ?? TAKEOVER_STALE_MS,
+            async (stillOwner) => {
+                const current = await holder();
+                if (current > 0 && alive(current))
+                    throw new Error(
+                        `another continue is running (pid ${current})`,
+                    );
+                await hooks.beforeRemove?.();
+                if (!(await stillOwner())) return false;
+                await rm(file, { force: true });
+                return create();
+            },
+        );
         if (won) return release;
     }
 }
