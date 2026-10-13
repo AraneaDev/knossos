@@ -156,15 +156,34 @@ describe("buildReport with enough paired tasks", () => {
 });
 
 describe("buildReport with an arm missing", () => {
-    it("prints a no data row for a comparison without pairs", () => {
+    it("leaves out the comparisons of an arm the run did not plan", () => {
         const md = buildReport({
             meta: { ...meta, arms: ["baseline", "full"] },
+            rows: rows.filter((r) => r.arm !== "tools"),
+            tasks,
+        });
+        expect(md).not.toMatch(/tools vs baseline/);
+        expect(md).not.toMatch(/full vs tools/);
+        expect(md).toMatch(/\| full vs baseline \| F1 \| /);
+    });
+
+    it("prints a no data row for a planned arm without pairs", () => {
+        const md = buildReport({
+            meta,
             rows: rows.filter((r) => r.arm !== "tools"),
             tasks,
         });
         expect(md).toMatch(
             /\| tools vs baseline \| F1 \| 0 \| - \| - \| no data \|/,
         );
+    });
+});
+
+describe("time in the comparison table", () => {
+    it("is shown in seconds, the unit its label names", () => {
+        const md = buildReport({ meta, rows, tasks });
+        expect(md).toMatch(/\| time \(s\) \|/);
+        expect(md).not.toMatch(/time \(ms\)/);
     });
 });
 
