@@ -579,12 +579,15 @@ describe("acquireLock", () => {
         breakB.release();
         await wait(100);
         removeA.release();
-        const [first, second] = await outcomes;
-        expect(first.status).toBe("fulfilled");
-        expect(second.status).toBe("rejected");
-        // B never got as far as removing the lock, because A's mutex survived B's attempt.
+        const results = await outcomes;
+        // Exactly one acquirer holds the lock. Which one may vary: once A removes the stale lock,
+        // B's own loop can create it before A does, and A then backs off.
+        const won = results.filter((r) => r.status === "fulfilled");
+        expect(won).toHaveLength(1);
+        // B never took a mutex of its own: A's survived B's late break, so B never reached
+        // the removal step (the one removal is A's).
         expect(removals).toBe(1);
-        await first.value();
+        await won[0].value();
         expect((await readdir(path.dirname(file))).sort()).toEqual([]);
     });
     it("removes the mutex again when the owner file cannot be written", async () => {
@@ -600,6 +603,28 @@ describe("acquireLock", () => {
         };
         await expect(acquireLock(file, failing)).rejects.toThrow(/ENOSPC/);
         expect(await readdir(dir)).toEqual([path.basename(file)]);
+    });
+    it("sweeps broken-mutex leftovers older than the stale threshold and nothing else", async () => {
+        const dir = await tmp("eval-lock-");
+        const file = path.join(dir, "continue.lock");
+        const old = new Date(Date.now() - 3600_000);
+        const leftover = `${file}.takeover.broken-123-abc`;
+        const recent = `${file}.takeover.broken-456-def`;
+        const other = path.join(dir, "other.lock.takeover.broken-1-x");
+        for (const d of [leftover, recent, other]) await mkdir(d);
+        await writeFile(path.join(leftover, "owner"), "t");
+        await utimes(leftover, old, old);
+        await utimes(other, old, old);
+        const release = await acquireLock(file);
+        const left = (await readdir(dir)).sort();
+        expect(left).toEqual(
+            [
+                path.basename(file),
+                path.basename(recent),
+                path.basename(other),
+            ].sort(),
+        );
+        await release();
     });
     it("treats a takeover mutex dated in the future as stale", async () => {
         const file = path.join(await tmp("eval-lock-"), "continue.lock");

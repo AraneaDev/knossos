@@ -17,6 +17,7 @@ import {
     access,
     link,
     mkdir,
+    readdir,
     readFile,
     rename,
     rm,
@@ -255,6 +256,21 @@ async function withTakeover(file, staleMs, hooks, fn) {
     }
 }
 
+/** Removes `<lock>.takeover.broken-*` directories a crashed breaker left behind; never the live mutex. */
+async function sweepBroken(file, staleMs) {
+    const dir = path.dirname(file);
+    const prefix = `${path.basename(file)}.takeover.broken-`;
+    const names = await readdir(dir).catch(() => []);
+    for (const name of names.filter((n) => n.startsWith(prefix))) {
+        const full = path.join(dir, name);
+        const age = await stat(full)
+            .then((st) => Date.now() - st.mtimeMs)
+            .catch(() => null);
+        if (age !== null && Math.abs(age) > staleMs)
+            await rm(full, { recursive: true, force: true });
+    }
+}
+
 /**
  * Takes `file` with the pid of this process; throws while another live
  * process holds it, takes it over when the holder is gone. The lock appears
@@ -266,6 +282,7 @@ async function withTakeover(file, staleMs, hooks, fn) {
  */
 export async function acquireLock(file, hooks = {}) {
     await mkdir(path.dirname(file), { recursive: true });
+    await sweepBroken(file, hooks.staleMs ?? TAKEOVER_STALE_MS);
     const holder = async () =>
         Number((await readFile(file, "utf8").catch(() => "")).trim());
     const release = async () => {
