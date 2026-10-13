@@ -103,3 +103,37 @@ Tasks live in `tools/eval/corpus/tasks/<repo>/<id>.json`. The answer key is
 written and checked by hand: `node tools/eval/keygen.mjs <task-id>` lists
 text-search candidates, and after the key is written it records where
 Knossos disagrees. Knossos never writes a key.
+
+## Tiers and calibration
+
+A task may set `"tier": "hard"`; a task without the field is `easy`. The easy
+tier holds one-hop questions, which both Sonnet and Opus answer at F1 near
+1.0 with or without Knossos, so on its own it can show cost and speed but not
+correctness. The hard tier holds questions one grep does not answer:
+transitive impact out to entry points, a flow through a route, a queue, an
+event or a container binding, and callers of a method whose name many other
+types share.
+
+`start --tier hard` (or `easy`) plans only that tier; without the flag a run
+plans every task. A report for a run holding both tiers prints the summary and
+the comparisons once per tier.
+
+A hard candidate earns its place in a calibration run:
+
+```sh
+node tools/eval/run.mjs start --tier hard --arms baseline,full --repeats 1
+node tools/eval/run.mjs prepare <run-id>
+node tools/eval/run.mjs continue <run-id> --batch 2 --concurrency 1
+node tools/eval/calibrate.mjs <run-id>
+```
+
+`calibrate.mjs` keeps a task when the average of its `baseline` and `full`
+median F1 is at most 0.85. The rule reads both arms so a task one arm fumbled
+by chance does not bias the next run toward the other. Delete each dropped
+task's file and record why. Before a main run, the hard tier needs at least 15
+tasks and at least 5 in each category it uses; write another round for the
+thin shapes and calibrate those first. Calibration sessions are never reused
+in the main run.
+
+A run is checked against the tasks it planned, so adding hard tasks leaves
+every earlier run open for `continue`, `status` and `report`.
