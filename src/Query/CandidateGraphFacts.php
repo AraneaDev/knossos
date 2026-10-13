@@ -228,14 +228,14 @@ final class CandidateGraphFacts
     /**
      * Durable agent judgements recorded against a component.
      *
-     * @return array<string, array{kind: string, value: string}> keyed by canonical name; false_positive wins over intentional, which wins over confirmed_dead
+     * @return array<string, array{kind: string, value: string}> keyed by canonical name; false_positive wins over intentional, which wins over confirmed_dead, and within a kind a person's note over a model's
      */
     public function componentAnnotations(): array
     {
         if ($this->annotations === null) {
             $statement = $this->pdo->prepare(
                 "SELECT canonical_name, kind, value FROM annotations WHERE project_id = :project AND kind IN ('false_positive', 'intentional', 'confirmed_dead') " .
-                "ORDER BY canonical_name, CASE kind WHEN 'false_positive' THEN 0 WHEN 'intentional' THEN 1 ELSE 2 END",
+                "ORDER BY canonical_name, CASE kind WHEN 'false_positive' THEN 0 WHEN 'intentional' THEN 1 ELSE 2 END, CASE author WHEN 'user' THEN 0 ELSE 1 END",
             );
             $statement->execute(['project' => $this->projectId]);
             $this->annotations = [];

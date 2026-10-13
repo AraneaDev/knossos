@@ -166,7 +166,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             $sql .= ' AND kind = :kind';
             $parameters['kind'] = $kind;
         }
-        $sql .= ' ORDER BY canonical_name, kind LIMIT :limit OFFSET :offset';
+        // A person's note before a model's on the same component and kind.
+        $sql .= " ORDER BY canonical_name, kind, CASE author WHEN 'user' THEN 0 ELSE 1 END LIMIT :limit OFFSET :offset";
         $statement = $this->pdo->prepare($sql);
         foreach ($parameters as $key => $parameterValue) {
             $statement->bindValue(':' . $key, $parameterValue);

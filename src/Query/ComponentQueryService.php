@@ -390,7 +390,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
     {
         $statement = $this->pdo->prepare(
             'SELECT kind, value, author, created_at, updated_at FROM annotations ' .
-            'WHERE project_id = :project AND canonical_name = :name ORDER BY kind',
+            "WHERE project_id = :project AND canonical_name = :name ORDER BY CASE author WHEN 'user' THEN 0 ELSE 1 END, kind",
         );
         $statement->execute(['project' => $projectId, 'name' => $canonicalName]);
         return $statement->fetchAll();

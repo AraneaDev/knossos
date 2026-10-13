@@ -364,7 +364,8 @@ async function startNote(io: Port): Promise<void> {
   if (v.inspect === null || v.inspect.file === true) return
   const stored = await io.state.detail.read()
   const component = stored?.detail?.component?.name ?? v.inspect.name
-  const existing = stored?.detail?.component?.annotations?.find(a => a.kind === 'note')?.value ?? ''
+  // The person's own note, never an agent's: saving writes the person's.
+  const existing = stored?.detail?.component?.annotations?.find(a => a.kind === 'note' && a.author !== 'model')?.value ?? ''
   await io.state.note.update((): NoteState => ({ component, phase: 'editing', value: existing, previous: null, reason: null }))
   focusField(io, 'note')
 }

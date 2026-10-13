@@ -243,7 +243,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `list_annotations`
 
-List durable agent annotations recorded on components, optionally filtered by component or kind. Use to review or audit prior annotate_component calls.
+List durable annotations recorded on components, each with its author (user or model), optionally filtered by component or kind.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -537,7 +537,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `annotate_component`
 
-Record a durable annotation on a component that survives rescans. false_positive and intentional (a parked route, a test-only helper) remove it from dead-code candidates. Preview by default; pass execute to apply.
+Record, extend or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |

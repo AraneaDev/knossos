@@ -258,7 +258,8 @@ export type ComponentDetail = {
     boundaries: string[]
     used_by: Related
     uses: Related
-    annotations?: { kind: string; value: string }[]
+    /** `author` is `user` (written in the pane) or `model` (by an agent); absent from a knossos older than the mod, read as the person's. */
+    annotations?: { kind: string; value: string; author?: string }[]
   } | null
   candidates: string[]
 }

@@ -308,4 +308,19 @@ final class AnnotationsTest extends KnossosTestCase
 
         assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, author: 'agent'), InvalidArgumentException::class);
     }
+
+    #[Group('query')]
+    public function testReadersPutAPersonsAnnotationBeforeAModelsAndSayWhoWroteIt(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+
+        $listed = $queries->listAnnotations($ids['project'])->data['annotations'];
+        assertSame([['user', 'the team says so'], ['model', 'an agent found this']], array_map(static fn(array $a): array => [$a['author'], $a['value']], $listed));
+        $inspected = $queries->inspectComponent($ids['project'], 'App\\Checkout')->data['component']['annotations'];
+        assertSame(['user', 'model'], array_column($inspected, 'author'));
+    }
 }

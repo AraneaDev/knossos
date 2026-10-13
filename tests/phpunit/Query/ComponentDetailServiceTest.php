@@ -172,10 +172,16 @@ final class ComponentDetailServiceTest extends KnossosTestCase
         [$pdo, $projectId, $root] = $this->scanTempFixture(self::FIXTURE);
         try {
             $insert = $pdo->prepare('INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $insert->execute([$projectId, 'App\Greeter', 'note', 'the one greeting', 'agent', '2026-10-03', '2026-10-03']);
-            $insert->execute([$projectId, 'App\Greeter', 'intended_boundary', 'Core', 'agent', '2026-10-03', '2026-10-03']);
+            $insert->execute([$projectId, 'App\Greeter', 'note', 'the one greeting', 'model', '2026-10-03', '2026-10-03']);
+            $insert->execute([$projectId, 'App\Greeter', 'intended_boundary', 'Core', 'model', '2026-10-03', '2026-10-03']);
+            $insert->execute([$projectId, 'App\Greeter', 'note', 'mine', 'user', '2026-10-03', '2026-10-03']);
             $c = (new ComponentDetailService($pdo))->detail($root, 'Greeter')['component'];
-            assertSame([['kind' => 'intended_boundary', 'value' => 'Core'], ['kind' => 'note', 'value' => 'the one greeting']], $c['annotations']);
+            // The person's note first, then the model's by kind, each saying who wrote it.
+            assertSame([
+                ['kind' => 'note', 'value' => 'mine', 'author' => 'user'],
+                ['kind' => 'intended_boundary', 'value' => 'Core', 'author' => 'model'],
+                ['kind' => 'note', 'value' => 'the one greeting', 'author' => 'model'],
+            ], $c['annotations']);
         } finally {
             $this->removeTempTree($root);
         }
