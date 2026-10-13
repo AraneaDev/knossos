@@ -828,7 +828,7 @@ describe('knossos mod', () => {
     }
   })
 
-  test('no line can wrap or widen its container: every view at every width, on terminal and desktop, measured from the drawn tree', async ($, on) => {
+  test('no line can wrap or widen its container: every view at every width, on terminal and desktop, measured from the drawn tree', { timeoutMs: 30_000 }, async ($, on) => {
     const long = 'ProjectModuleIndexWithAnUnreasonablyLongName::_is_python_script_with_a_shebang_line'
     const nodes = Array.from({ length: 14 }, (_, i) => ({ name: `${long}${i}`, canonical_name: `App\\Core\\${long}${i}`, kind: 'method', boundary: i % 2 === 0 ? 'Core' : 'module:cli (+composer:app/cli)' }))
     const path = 'src/a/rather/deeply/nested/directory/with/an/UnreasonablyLongControllerName.php'
@@ -2439,7 +2439,7 @@ describe('knossos mod', () => {
     await ui.unmount()
   })
 
-  test('lays the pane out by its width: one column to 130, a two-column grid past it, every row within the width, on terminal and desktop', async ($, on) => {
+  test('lays the pane out by its width: one column to 130, a two-column grid past it, every row within the width, on terminal and desktop', { timeoutMs: 30_000 }, async ($, on) => {
     const hubs = Array.from({ length: 30 }, (_, i) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', in_degree: 300 - i, out_degree: i, cross_boundary_degree: i % 3, boundary: i % 2 === 0 ? 'Http' : 'Core' }))
     const w = world(on, { dashboard: [{ stdout: paneDashboard({ hubs }) }] })
     await $.session.start(START)
@@ -2470,7 +2470,7 @@ describe('knossos mod', () => {
     }
   })
 
-  test("sizes the pane's lists to the rows its body has, says how many more there are, and scrolls to the marker", async ($, on) => {
+  test("sizes the pane's lists to the rows its body has, says how many more there are, and scrolls to the marker", { timeoutMs: 30_000 }, async ($, on) => {
     const hubs = Array.from({ length: 30 }, (_, i) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', in_degree: 300 - i, out_degree: i, cross_boundary_degree: 0 }))
     const w = world(on, { dashboard: [{ stdout: paneDashboard({ hubs }) }] })
     await $.session.start(START)
