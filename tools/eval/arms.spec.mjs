@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ablationArm, armArgv, contamination, parseArm } from "./arms.mjs";
+import {
+    DENIED_BASH,
+    ablationArm,
+    armArgv,
+    contamination,
+    parseArm,
+} from "./arms.mjs";
 
 const opts = {
     model: "sonnet",
@@ -47,6 +53,23 @@ describe("armArgv", () => {
                 "--disallowedTools",
             ),
         ).toBe("mcp__knossos__list_usages");
+    });
+    it("denies the file-writing and program-running options of the read-only commands", () => {
+        for (const arm of ["baseline", "tools", "full"]) {
+            const argv = armArgv(arm, opts);
+            const denied = argv.slice(
+                argv.indexOf("--disallowedTools") + 1,
+                argv.indexOf("--allowedTools"),
+            );
+            expect(denied).toEqual(DENIED_BASH);
+        }
+        expect(DENIED_BASH).toEqual(
+            expect.arrayContaining([
+                "Bash(git log *--ou*)",
+                "Bash(git show *--ou*)",
+                "Bash(rg *--pre*)",
+            ]),
+        );
     });
     it("runs headless, without prompts and with a fixed read-only tool set in every arm", () => {
         const allowed = (argv) =>

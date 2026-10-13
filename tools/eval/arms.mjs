@@ -17,6 +17,13 @@ const READ_ONLY_BASH = [
     "git grep",
     "git show",
 ].map((c) => `Bash(${c} *)`);
+// Residual writers inside otherwise read-only commands. `--output` is matched by its prefix because
+// git accepts unambiguous abbreviations; `rg --pre <cmd>` runs a program on every file. Deny rules win over allow rules.
+export const DENIED_BASH = [
+    "git log *--ou*",
+    "git show *--ou*",
+    "rg *--pre*",
+].map((c) => `Bash(${c})`);
 const KNOSSOS_CLI = /(^|[\s;&|(/])knossos(\s|$)/;
 
 export function parseArm(arm) {
@@ -49,7 +56,9 @@ export function armArgv(arm, { model, budgetUsd, mcpConfigPath, pluginDir }) {
         "--strict-mcp-config",
         ...(mcp ? ["--mcp-config", mcpConfigPath] : []),
         ...(base === "full" ? ["--plugin-dir", pluginDir] : []),
-        ...(minus ? ["--disallowedTools", `mcp__knossos__${minus}`] : []),
+        "--disallowedTools",
+        ...(minus ? [`mcp__knossos__${minus}`] : []),
+        ...DENIED_BASH,
         "--allowedTools",
         "Read",
         "Skill",
