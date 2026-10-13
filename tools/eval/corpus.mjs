@@ -13,6 +13,12 @@ export const CATEGORIES = [
     "flow",
     "dependents",
 ];
+/** How hard a task is meant to be; a task without one is `easy`. */
+export const TIERS = ["easy", "hard"];
+
+/** A task's tier, `easy` when the file names none. */
+export const tierOf = (task) => task.tier ?? "easy";
+
 export const LANGUAGES = ["php", "typescript", "python", "rust"];
 const UNITS = ["symbol", "file"];
 const NAME = /^[a-z0-9-]+$/;
@@ -53,6 +59,8 @@ export function validateTask(task, repos, now = new Date()) {
         fail(`kind ${task.kind} is not supported yet, only question`);
     if (!CATEGORIES.includes(task.category))
         fail(`category must be one of ${CATEGORIES.join(", ")}`);
+    if (task.tier !== undefined && !TIERS.includes(task.tier))
+        fail(`tier must be one of ${TIERS.join(", ")}`);
     for (const field of ["subject", "prompt"]) {
         if (typeof task[field] !== "string" || task[field].trim() === "")
             fail(`${field} is required`);
