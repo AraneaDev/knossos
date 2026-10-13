@@ -1,4 +1,4 @@
-from celery import shared_task
+from celery import chain, shared_task
 
 from app import billing
 from app.billing import reconcile_orders
@@ -22,3 +22,12 @@ def nightly() -> None:
 
 def prepare(order_id: int) -> object:
     return deliver.s(order_id)
+
+
+def batch(order_ids: list[int]) -> None:
+    chain(deliver.si(order_ids[0]), billing.reconcile_orders.signature()).delay()
+
+
+def retry(order_id: int) -> None:
+    deliver.s(order_id)
+    deliver.delay(order_id)
