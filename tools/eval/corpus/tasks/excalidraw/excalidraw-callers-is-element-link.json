@@ -11,8 +11,9 @@
       "App.initializeScene",
       "resolveViewportTarget",
       "renderTooltip",
-      "renderLinkIcon"
+      "renderLinkIcon",
+      "ExcalidrawWrapper"
     ]
   },
-  "verified": "2026-10-12"
+  "verified": "2026-10-13"
 }
