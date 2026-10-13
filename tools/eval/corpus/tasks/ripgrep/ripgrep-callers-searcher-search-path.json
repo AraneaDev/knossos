@@ -1,0 +1,13 @@
+{
+  "id": "ripgrep-callers-searcher-search-path",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "callers",
+  "subject": "Searcher::search_path",
+  "prompt": "Outside tests and examples, which functions or methods call the search_path method of grep_searcher::Searcher (the searcher crate's Searcher type)? Name free functions as module::function using the file's module name, and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": ["search::search_path"]
+  },
+  "verified": "2026-10-12"
+}

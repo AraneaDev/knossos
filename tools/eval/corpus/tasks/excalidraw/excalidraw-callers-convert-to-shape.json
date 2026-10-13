@@ -1,0 +1,16 @@
+{
+  "id": "excalidraw-callers-convert-to-shape",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "callers",
+  "subject": "convertToShape",
+  "prompt": "Outside tests, which functions or methods call convertToShape() (the function exported from packages/element/src/convertToShape.ts)? Name class methods as Class.method and module-level functions by their bare name.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "convertToShapeHandlePointerMoveFromPointerDown",
+      "AppDrawShape.finalize"
+    ]
+  },
+  "verified": "2026-10-12"
+}

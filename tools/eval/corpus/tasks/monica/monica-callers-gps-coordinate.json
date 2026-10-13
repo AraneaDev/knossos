@@ -1,0 +1,16 @@
+{
+  "id": "monica-callers-gps-coordinate",
+  "repo": "monica",
+  "kind": "question",
+  "category": "callers",
+  "subject": "GetGPSCoordinate",
+  "prompt": "Which methods in the application code (app/, not tests) queue the GetGPSCoordinate service (App\\Domains\\Vault\\ManageAddresses\\Services\\GetGPSCoordinate) to run?",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Vault\\ManageAddresses\\Services\\CreateAddress::geocodeAddress",
+      "App\\Domains\\Vault\\ManageAddresses\\Services\\UpdateAddress::geocodeAddress"
+    ]
+  },
+  "verified": "2026-10-12"
+}

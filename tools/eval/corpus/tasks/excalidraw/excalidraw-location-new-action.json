@@ -1,0 +1,13 @@
+{
+  "id": "excalidraw-location-new-action",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "location",
+  "subject": "actions",
+  "prompt": "I want to add a new editor action, similar to the existing duplicate-selection action, that the toolbar and keyboard shortcuts can trigger. Following this codebase's structure, in which directory should the new action's file go? Answer with the directory path.",
+  "answer": {
+    "unit": "file",
+    "expected": ["packages/excalidraw/actions"]
+  },
+  "verified": "2026-10-12"
+}

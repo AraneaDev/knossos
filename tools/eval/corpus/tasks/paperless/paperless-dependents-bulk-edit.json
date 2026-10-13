@@ -1,0 +1,18 @@
+{
+  "id": "paperless-dependents-bulk-edit",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "dependents",
+  "subject": "bulk_edit",
+  "prompt": "Which Python files outside tests and migrations import the documents.bulk_edit module or names from it? Leave out bulk_edit.py itself and answer with file paths.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "src/documents/serialisers.py",
+      "src/documents/views.py",
+      "src/documents/workflows/actions.py"
+    ],
+    "excludesSubjectFile": true
+  },
+  "verified": "2026-10-13"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "excalidraw-dependents-hit-element-itself",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "dependents",
+  "subject": "hitElementItself",
+  "prompt": "Which source files (not tests) depend directly on hitElementItself() from packages/element/src/collision.ts? Answer with file paths, leaving out collision.ts itself.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "packages/excalidraw/components/App.text.ts",
+      "packages/excalidraw/renderer/interactiveScene.ts",
+      "packages/element/src/utils.ts",
+      "packages/element/src/binding.ts",
+      "packages/excalidraw/components/App.tsx",
+      "packages/element/src/arrows/focus.ts"
+    ],
+    "excludesSubjectFile": true
+  },
+  "verified": "2026-10-12"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "monica-impact-slice-date-range",
+  "repo": "monica",
+  "kind": "question",
+  "category": "impact",
+  "subject": "SliceOfLifeHelper::getDateRange",
+  "prompt": "If the behaviour of App\\Helpers\\SliceOfLifeHelper::getDateRange() changes, which controller actions (HTTP entry points) would return different data, directly or through view helpers? List the controller methods.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\JournalController::show",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\JournalController::year",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\JournalPhotoController::show",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\PostController::show",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeController::index",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeController::store",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeController::show",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\PostSliceOfLifeController::update",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeCoverImageController::update",
+      "App\\Domains\\Vault\\ManageJournals\\Web\\Controllers\\SliceOfLifeCoverImageController::destroy"
+    ]
+  },
+  "verified": "2026-10-12"
+}

@@ -1,0 +1,19 @@
+{
+  "repos": {
+    "monica": {
+      "url": "https://github.com/monicahq/monica.git",
+      "commit": "6e6ec217457e946e330ba7cd3b28107f4332c7b1",
+      "language": "php"
+    },
+    "paperless": {
+      "url": "https://github.com/paperless-ngx/paperless-ngx.git",
+      "commit": "3e0fa7377187fb987d3141d80b603526cce29dcc",
+      "language": "python"
+    },
+    "ripgrep": {
+      "url": "https://github.com/BurntSushi/ripgrep.git",
+      "commit": "3fce3b5bb0236da2df6d99672afb8a719642eca7",
+      "language": "rust"
+    }
+  }
+}

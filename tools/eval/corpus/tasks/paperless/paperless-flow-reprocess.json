@@ -1,0 +1,18 @@
+{
+  "id": "paperless-flow-reprocess",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "flow",
+  "subject": "update_document_content_maybe_archive_file",
+  "prompt": "Trace how a POST to the reprocess endpoint (documents.views.ReprocessDocumentsView.post) ends up queueing the Celery task documents.tasks.update_document_content_maybe_archive_file. List every function or method on that path, including both ends, as dotted paths from src/.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.views.ReprocessDocumentsView.post",
+      "documents.views.DocumentOperationPermissionMixin._execute_document_action",
+      "documents.bulk_edit.reprocess",
+      "documents.tasks.update_document_content_maybe_archive_file"
+    ]
+  },
+  "verified": "2026-10-12"
+}

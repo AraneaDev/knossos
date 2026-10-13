@@ -1,0 +1,18 @@
+{
+  "id": "monica-flow-important-dates-age",
+  "repo": "monica",
+  "kind": "question",
+  "category": "flow",
+  "subject": "ImportantDateHelper::getAge",
+  "prompt": "Trace how the contact important-dates page request (ContactImportantDatesController::index) reaches App\\Helpers\\ImportantDateHelper::getAge(). List every method on that call path, including both ends.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Web\\Controllers\\ContactImportantDatesController::index",
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Web\\ViewHelpers\\ContactImportantDatesViewHelper::data",
+      "App\\Domains\\Contact\\ManageContactImportantDates\\Web\\ViewHelpers\\ContactImportantDatesViewHelper::dto",
+      "App\\Helpers\\ImportantDateHelper::getAge"
+    ]
+  },
+  "verified": "2026-10-12"
+}

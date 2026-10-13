@@ -1,0 +1,16 @@
+{
+  "id": "paperless-callers-index-document",
+  "repo": "paperless",
+  "kind": "question",
+  "category": "callers",
+  "subject": "index_document",
+  "prompt": "Outside tests, which functions or methods call or queue the Celery task documents.tasks.index_document? Name them as dotted paths from src/, for example documents.views.SomeView.post.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "documents.search._backend.TantivyBackend.add_or_update",
+      "documents.tasks.apply_ai_suggestions"
+    ]
+  },
+  "verified": "2026-10-12"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "ripgrep-flow-main-to-search-path",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "flow",
+  "subject": "Searcher::search_path",
+  "prompt": "For a single-threaded search of a plain file (no decompression, no preprocessor), trace how the rg binary's main function reaches grep_searcher::Searcher::search_path. List every function or method on that call path, including both ends. Name free functions as module::function using the file's module name (for example main::run), and methods as Type::method.",
+  "answer": {
+    "unit": "symbol",
+    "expected": [
+      "main::main",
+      "main::run",
+      "main::search",
+      "SearchWorker::search",
+      "SearchWorker::search_path",
+      "search::search_path",
+      "Searcher::search_path"
+    ]
+  },
+  "verified": "2026-10-12"
+}

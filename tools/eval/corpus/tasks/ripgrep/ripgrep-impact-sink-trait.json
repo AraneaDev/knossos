@@ -1,0 +1,18 @@
+{
+  "id": "ripgrep-impact-sink-trait",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "impact",
+  "subject": "Sink",
+  "prompt": "If a new required method (one without a default body) were added to the grep_searcher::Sink trait, which Rust source files outside tests and test-only helper modules would have to change because they implement the trait? Answer with file paths.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "crates/searcher/src/sink.rs",
+      "crates/printer/src/standard.rs",
+      "crates/printer/src/summary.rs",
+      "crates/printer/src/json.rs"
+    ]
+  },
+  "verified": "2026-10-12"
+}

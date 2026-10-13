@@ -1,0 +1,13 @@
+{
+  "id": "monica-location-journal-service",
+  "repo": "monica",
+  "kind": "question",
+  "category": "location",
+  "subject": "ManageJournals",
+  "prompt": "I want to add a new service class that archives a journal in a vault. Following the conventions this codebase already uses, in which directory should the new class go? Answer with the directory path.",
+  "answer": {
+    "unit": "file",
+    "expected": ["app/Domains/Vault/ManageJournals/Services"]
+  },
+  "verified": "2026-10-12"
+}

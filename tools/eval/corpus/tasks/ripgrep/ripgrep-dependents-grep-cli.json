@@ -1,0 +1,18 @@
+{
+  "id": "ripgrep-dependents-grep-cli",
+  "repo": "ripgrep",
+  "kind": "question",
+  "category": "dependents",
+  "subject": "grep_cli",
+  "prompt": "Which Rust source files outside crates/cli, tests and examples depend directly on the grep_cli crate, either by name or through the grep facade crate's cli re-export? Answer with file paths.",
+  "answer": {
+    "unit": "file",
+    "expected": [
+      "crates/grep/src/lib.rs",
+      "crates/core/flags/defs.rs",
+      "crates/core/flags/hiargs.rs",
+      "crates/core/search.rs"
+    ]
+  },
+  "verified": "2026-10-12"
+}

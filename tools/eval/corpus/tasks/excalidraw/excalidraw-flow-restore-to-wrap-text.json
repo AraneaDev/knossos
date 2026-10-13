@@ -1,0 +1,13 @@
+{
+  "id": "excalidraw-flow-restore-to-wrap-text",
+  "repo": "excalidraw",
+  "kind": "question",
+  "category": "flow",
+  "subject": "wrapText",
+  "prompt": "When a saved scene is loaded, text elements can be re-wrapped. Trace how restoreElements() (packages/excalidraw/data/restore.ts) reaches wrapText(). List every function on that call path, including both ends, by bare function name.",
+  "answer": {
+    "unit": "symbol",
+    "expected": ["restoreElements", "refreshTextDimensions", "wrapText"]
+  },
+  "verified": "2026-10-12"
+}
