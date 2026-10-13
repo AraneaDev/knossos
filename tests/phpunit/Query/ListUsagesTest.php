@@ -86,6 +86,46 @@ final class ListUsagesTest extends KnossosTestCase
     }
 
     #[Group('query')]
+    public function testANameWithoutItsNamespaceResolvesByItsLastSegments(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $node = function (string $language, string $kind, string $canonical, string $display) use ($repository, $ids): string {
+            $id = StableId::symbol($ids['project'], $language, $kind, $canonical);
+            $repository->saveNode($id, $ids['project'], $language, $kind, $canonical, $display, null, $ids['file'], 1, 2, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+            return $id;
+        };
+        $total = $node('php', 'method', 'App\\Billing\\TaxService::total', 'total');
+        $node('python', 'method', 'documents.views.BulkEditView.post', 'post');
+        $node('php', 'class', 'Legacy\\Checkout', 'Checkout');
+        $call = StableId::edge($ids['project'], 'calls', $ids['checkout'], $total, 'src/Checkout.php:14');
+        $repository->saveEdge($call, $ids['project'], 'calls', $ids['checkout'], $total, $ids['file'], 14, 14, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        // The way an agent writes a method: its class, without the namespace.
+        $method = $queries->listUsages($ids['project'], 'TaxService::total');
+        assertSame('App\\Billing\\TaxService::total', $method->data['target']['canonical_name']);
+        assertSame([14], array_column($method->data['usages'], 'start_line'));
+        assertSame('App\\Billing\\TaxService::total', $queries->listUsages($ids['project'], 'Billing\\TaxService::total')->data['target']['canonical_name']);
+        assertSame('documents.views.BulkEditView.post', $queries->listUsages($ids['project'], 'BulkEditView.post')->data['target']['canonical_name']);
+        // A member written with the other language's separator still finds it.
+        assertSame('documents.views.BulkEditView.post', $queries->listUsages($ids['project'], 'BulkEditView::post')->data['target']['canonical_name']);
+        assertSame('App\\Billing\\TaxService::total', $queries->listUsages($ids['project'], 'TaxService.total')->data['target']['canonical_name']);
+
+        // Only whole segments match: a name that merely ends the same way is not the component.
+        $partial = $queries->listUsages($ids['project'], 'axService::total');
+        assertSame(false, array_key_exists('target', $partial->data));
+        assertSame([], $partial->data['candidates']);
+
+        // Two components the short name fits are reported, not guessed between.
+        $ambiguous = $queries->listUsages($ids['project'], 'App\\Checkout');
+        assertSame('App\\Checkout', $ambiguous->data['target']['canonical_name']);
+        $both = $queries->listUsages($ids['project'], '\\Checkout');
+        assertSame(true, $both->data['ambiguous']);
+        assertSame(['App\\Checkout', 'Legacy\\Checkout'], array_column($both->data['candidates'], 'canonical_name'));
+    }
+
+    #[Group('query')]
     public function testDispatchThroughToolService(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();

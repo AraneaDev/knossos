@@ -92,13 +92,19 @@ abstract readonly class AbstractArchitectureQueryService
 
     protected const AMBIGUOUS_ADVICE = 'Use a returned stable component ID to disambiguate the request.';
 
+    /** What may precede a segment in a canonical name: namespace, module and member separators, a path slash, a fragment. */
+    private const SEGMENT_SEPARATORS = ['\\', '.', ':', '/', '#'];
+
     /**
      * Resolve a component reference to one node, reporting ambiguity rather than guessing.
      *
      * Exact matches first ({@see self::resolveExact()}); only when there are
      * none, the components whose canonical or display name starts with the
-     * query. A read answers with candidates either way; a write must use
-     * resolveExact() alone, or a prefix becomes a different component.
+     * query; only when there are none of those either, the components whose
+     * canonical name ends with it at a segment boundary, so `TaxService::total`
+     * finds `App\Billing\TaxService::total` the way a caller writes it. A read
+     * answers with candidates either way; a write must use resolveExact()
+     * alone, or a prefix becomes a different component.
      *
      * @return list<array<string, mixed>>
      */
@@ -114,7 +120,59 @@ abstract readonly class AbstractArchitectureQueryService
             "AND (canonical_name LIKE :prefix ESCAPE '!' OR display_name LIKE :prefix ESCAPE '!') ORDER BY canonical_name LIMIT 21",
         );
         $statement->execute(['project' => $projectId, 'prefix' => self::like($query) . '%']);
+        $rows = $statement->fetchAll();
+        return $rows !== [] ? $rows : $this->resolveSuffix($projectId, $query);
+    }
+
+    /**
+     * The components whose canonical name ends with the query, where the
+     * query starts a segment: after a namespace, module, member, path or
+     * fragment separator. `axService::total` does not find `TaxService::total`.
+     * A member may be written with either separator, since languages differ
+     * in it and a stored name may not follow the source's: `BulkEditView.post`
+     * finds `documents.views.BulkEditView::post`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function resolveSuffix(string $projectId, string $query): array
+    {
+        $separators = self::SEGMENT_SEPARATORS;
+        $patterns = [];
+        foreach (self::memberSpellings($query) as $spelling) {
+            foreach (in_array($spelling[0], $separators, true) ? [''] : $separators as $separator) {
+                $patterns[] = '%' . self::like($separator . $spelling);
+            }
+        }
+        $conditions = implode(' OR ', array_map(static fn(int $i): string => "canonical_name LIKE :suffix{$i} ESCAPE '!'", array_keys($patterns)));
+        $statement = $this->pdo->prepare(
+            "SELECT id, kind, canonical_name, display_name, confidence FROM nodes WHERE project_id = :project AND ({$conditions}) " .
+            'ORDER BY canonical_name LIMIT 21',
+        );
+        $parameters = ['project' => $projectId];
+        foreach ($patterns as $i => $pattern) {
+            $parameters["suffix{$i}"] = $pattern;
+        }
+        $statement->execute($parameters);
         return $statement->fetchAll();
+    }
+
+    /**
+     * The query as written, and with its last member separator swapped
+     * between `.` and `::`.
+     *
+     * @return list<string>
+     */
+    private static function memberSpellings(string $query): array
+    {
+        $dot = strrpos($query, '.');
+        $colons = strrpos($query, '::');
+        if ($colons !== false && ($dot === false || $colons > $dot)) {
+            return [$query, substr_replace($query, '.', $colons, 2)];
+        }
+        if ($dot !== false && $dot > 0) {
+            return [$query, substr_replace($query, '::', $dot, 1)];
+        }
+        return [$query];
     }
 
     /**
