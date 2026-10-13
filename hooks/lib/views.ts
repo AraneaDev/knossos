@@ -618,9 +618,20 @@ function notesBlock(name: string, annotations: { kind: string; value: string; au
   return {
     key: 'notes',
     make: columns => {
-      const body: Row[] = annotations.flatMap((a, i) =>
-        wrapWords(`${a.kind.replace(/_/g, ' ')}${a.author === 'model' ? ' (agent)' : ''}: ${a.value}`, Math.max(1, columns - MARK)).map((line, j) => ({ key: `note-${i}-${j}`, segments: [{ text: spaces(MARK) }, { text: line }] })),
-      )
+      const width = Math.max(1, columns - MARK)
+      const body: Row[] = annotations.flatMap((a, i) => {
+        // Each line of the note on its own, so a short ASCII sketch keeps its shape: a line that fits stays as written,
+        // spacing and all; only a longer one is wrapped.
+        const [first = '', ...rest] = a.value.split('\n')
+        const lines = [
+          ...wrapWords(`${a.kind.replace(/_/g, ' ')}${a.author === 'model' ? ' (agent)' : ''}: ${first}`, width),
+          ...rest.flatMap(line => {
+            const kept = line.replace(/\s+$/, '')
+            return kept === '' ? [] : cells(kept) <= width ? [kept] : wrapWords(kept, width)
+          }),
+        ]
+        return lines.map((line, j) => ({ key: `note-${i}-${j}`, segments: [{ text: spaces(MARK) }, { text: line }] }))
+      })
       if (annotations.length === 0) body.push(dimRow('note-none', `   No notes on ${name} yet.`, columns))
       if (!notable) return { key: 'notes', title: 'Notes', body }
       const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - MARK)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(MARK) }, { text: line, ...style }] }))

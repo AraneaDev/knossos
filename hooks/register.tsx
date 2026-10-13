@@ -17,6 +17,7 @@ import { NO_CHANGES } from './lib/layout'
 import { LIVE_OFF } from './lib/live'
 import { copyCommand, handlersOf, twinTarget } from './mod/actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
+import { freshDig, observe } from './mod/dig'
 import { request } from './mod/loaders'
 import type { Port } from './mod/port'
 import { drawBand, drawPane } from './mod/render'
@@ -265,8 +266,20 @@ export const register: Register = (on, options) => {
     })
   })
 
+  // Past a Knossos answer: once a loop keeps looking things up after one, it is asked, once a turn, to write down
+  // what it found, on the result of the call that completes the pattern.
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    if (mod.disabled || !mod.notesOn || ran.deny !== undefined) return ran
+    const loop = e.agentId ?? ''
+    const seen = observe(mod.digs.get(loop) ?? freshDig(), e.tool, e)
+    mod.digs.set(loop, seen.dig)
+    return seen.remind === null ? ran : { ...ran, context: [...(ran.context ?? []), seen.remind] }
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    mod.digs.delete(e.agentId ?? '')
     await endTurn(portOf($), e.agentId)
     return result
   })
