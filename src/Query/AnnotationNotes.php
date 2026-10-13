@@ -27,6 +27,8 @@ final readonly class AnnotationNotes
     public function __construct(private PDO $pdo) {}
 
     /**
+     * The notes on the named components, the person's first, capped and cut.
+     *
      * @param list<string> $canonicalNames
      * @return list<array{component: string, kind: string, author: string, text: string, written: string, stale: bool, stale_reason: ?string}>
      */
@@ -112,7 +114,12 @@ final readonly class AnnotationNotes
         return null;
     }
 
-    /** @return list<array{path: string, hash: string}> */
+    /**
+     * The files a note's stored basis names, each with the hash it had; an
+     * entry that is not a path and a hash is skipped rather than trusted.
+     *
+     * @return list<array{path: string, hash: string}>
+     */
     private static function basis(string $json): array
     {
         $decoded = json_decode($json, true);
@@ -128,6 +135,7 @@ final readonly class AnnotationNotes
         return $basis;
     }
 
+    /** The text cut to {@see self::MAX_TEXT} characters, an ellipsis saying it was. */
     private static function cut(string $text): string
     {
         return mb_strlen($text) <= self::MAX_TEXT ? $text : mb_substr($text, 0, self::MAX_TEXT - 1) . '…';
