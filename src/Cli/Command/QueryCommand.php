@@ -497,7 +497,7 @@ final class QueryCommand implements CliCommand
         $execute = $c->options->flag($o, 'execute');
         $result = $c->options->flag($o, 'remove')
             ? $this->queries($c)->removeAnnotation($project, $component, $kind, $value, $execute)
-            : $this->queries($c)->upsertAnnotation($project, $component, $kind, $value, $execute, 'model', array_values($o['evidence'] ?? []));
+            : $this->queries($c)->upsertAnnotation($project, $component, $kind, $value, $execute, 'model', array_values(array_map('trim', $o['evidence'] ?? [])));
         return $this->result($result, $o, $c);
     }
 

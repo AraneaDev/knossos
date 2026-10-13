@@ -84,4 +84,36 @@ final class AnnotationNotesTest extends KnossosTestCase
         assertSame(true, str_ends_with($notes[0]['text'], '…'));
         assertSame([], (new AnnotationNotes($pdo))->forComponents($ids['project'], ['App\\Nothing']));
     }
+
+    #[Group('query')]
+    public function testTheNotesOfTheComponentAskedAboutSurviveTheCap(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $names = ['Zz\\Target'];
+        $queries->upsertAnnotation($ids['project'], 'Zz\\Target', 'note', 'the one asked about', execute: true);
+        for ($i = 1; $i <= 11; $i++) {
+            $names[] = 'App\\Dependant' . $i;
+            $queries->upsertAnnotation($ids['project'], 'App\\Dependant' . $i, 'note', 'n' . $i, execute: true);
+        }
+        $queries->upsertAnnotation($ids['project'], 'App\\Dependant9', 'note', 'the team says so', execute: true, author: 'user');
+
+        $notes = (new AnnotationNotes($pdo))->forComponents($ids['project'], $names);
+
+        // A person's note first, then in the order the result named them: the target before its dependants.
+        assertSame(['user App\\Dependant9', 'model Zz\\Target'], array_map(static fn(array $n): string => $n['author'] . ' ' . $n['component'], array_slice($notes, 0, 2)));
+    }
+
+    #[Group('query')]
+    public function testAModelNoteRestingOnNoScannedFileSaysSo(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($ids['project'], 'App\\NotYetWritten', 'note', 'planned seam', execute: true);
+
+        $note = (new AnnotationNotes($pdo))->forComponents($ids['project'], ['App\\NotYetWritten'])[0];
+
+        assertSame([true, 'rests on no scanned file'], [$note['stale'], $note['stale_reason']]);
+    }
 }

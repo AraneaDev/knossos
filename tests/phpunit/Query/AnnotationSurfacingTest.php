@@ -53,6 +53,9 @@ final class AnnotationSurfacingTest extends KnossosTestCase
         // inspect_component keeps its own annotations list beside the notes.
         assertSame('the only way an order is placed', $queries->inspectComponent($project, 'App\\Checkout')->data['component']['annotations'][0]['value']);
         assertSame(true, self::noted($queries->fileContext($project, 'src/Checkout.php')->data) !== []);
+        // However the path is written, the file's notes come with it.
+        assertSame(true, self::noted($queries->fileContext($project, './src/Checkout.php')->data) !== []);
+        assertSame(true, self::noted($queries->fileContext($project, '/workspace/fixture-shop/src/Checkout.php')->data) !== []);
     }
 
     #[Group('query')]

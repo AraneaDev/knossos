@@ -94,20 +94,26 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         if (count($evidencePaths) > self::MAX_EVIDENCE_PATHS) {
             throw new InvalidArgumentException(sprintf('evidence_paths takes at most %d paths.', self::MAX_EVIDENCE_PATHS));
         }
+        // Every file the name is declared in (a class and an interface of the
+        // same name can live apart), so a change to any of them is seen.
         $own = $this->pdo->prepare(
-            'SELECT f.relative_path, f.content_hash FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            'WHERE n.project_id = :project AND n.canonical_name = :name ORDER BY f.relative_path LIMIT 1',
+            'SELECT DISTINCT f.relative_path, f.content_hash FROM nodes n JOIN files f ON f.id = n.file_id ' .
+            'WHERE n.project_id = :project AND n.canonical_name = :name ORDER BY f.relative_path LIMIT ' . self::MAX_EVIDENCE_PATHS,
         );
         $own->execute(['project' => $projectId, 'name' => $canonical]);
         $basis = [];
-        $row = $own->fetch();
-        if ($row !== false) {
+        foreach ($own->fetchAll() as $row) {
             $basis[(string) $row['relative_path']] = (string) $row['content_hash'];
         }
+        $root = (string) $this->project($projectId)['root_realpath'];
         $cited = $this->pdo->prepare('SELECT content_hash FROM files WHERE project_id = :project AND relative_path = :path');
-        foreach ($evidencePaths as $path) {
-            // `./src/x.php` and `src\x.php` name the scanned `src/x.php`; a dotfile keeps its dot.
-            $path = (string) preg_replace('#^(\./)+#', '', str_replace('\\', '/', $path));
+        foreach ($evidencePaths as $written) {
+            // Read as file_context reads a path: relative, `./`-led, or absolute under the root.
+            try {
+                $path = ProjectRelativePath::of($root, $written);
+            } catch (InvalidArgumentException) {
+                throw new InvalidArgumentException(sprintf('evidence path %s is outside the project.', $written));
+            }
             if (isset($basis[$path])) {
                 continue;
             }

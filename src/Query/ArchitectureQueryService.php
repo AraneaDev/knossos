@@ -457,14 +457,16 @@ final readonly class ArchitectureQueryService
     /** {@see FileContextQueryService::fileContext()} */
     public function fileContext(string $projectId, string $path): ResultEnvelope
     {
+        $result = $this->services->fileContextQueries->fileContext($projectId, $path);
         // A file's context counts its components without naming them: the
-        // notes are those of the components the file declares.
+        // notes are those of the components the file declares, looked up by
+        // the path the result normalised, however the caller wrote it.
         $declared = $this->services->pdo->prepare(
             'SELECT n.canonical_name FROM nodes n JOIN files f ON f.id = n.file_id WHERE f.project_id = ? AND f.relative_path = ? LIMIT ' . self::NOTE_LOOKUP_NAMES,
         );
-        $declared->execute([$projectId, $path]);
+        $declared->execute([$projectId, (string) ($result->data['path'] ?? $path)]);
 
-        return $this->withNotes($this->services->fileContextQueries->fileContext($projectId, $path), $declared->fetchAll(PDO::FETCH_COLUMN));
+        return $this->withNotes($result, $declared->fetchAll(PDO::FETCH_COLUMN));
     }
 
     /** {@see DiagnosticsQueryService::listDiagnostics()} */

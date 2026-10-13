@@ -12,9 +12,10 @@ use PDO;
  * Each note says who wrote it and when. A model's note also says whether it
  * still rests on the code it was written against: every file in its basis is
  * compared with the file's current hash, and a changed or missing file makes
- * the note stale, with the first such file named. A person's note rests on
- * nothing and is never stale. Notes come person's first, then by component,
- * capped so they cannot crowd out the answer they ride on.
+ * the note stale, with the first such file named, and a note resting on no
+ * scanned file at all says so. A person's note rests on nothing and is never
+ * stale. Notes come person's first, then in the order the result named the
+ * components, capped so they cannot crowd out the answer they ride on.
  */
 final readonly class AnnotationNotes
 {
@@ -47,7 +48,11 @@ final readonly class AnnotationNotes
             $statement->execute([$projectId, ...$chunk]);
             array_push($rows, ...$statement->fetchAll(PDO::FETCH_ASSOC));
         }
-        usort($rows, static fn(array $a, array $b): int => [$a['author'] === 'user' ? 0 : 1, $a['canonical_name'], $a['kind']] <=> [$b['author'] === 'user' ? 0 : 1, $b['canonical_name'], $b['kind']]);
+        // A person's notes first; then in the order the result named the
+        // components, so the one asked about leads its neighbours and the cap
+        // never cuts it for an alphabetically earlier dependant.
+        $order = array_flip($names);
+        usort($rows, static fn(array $a, array $b): int => [$a['author'] === 'user' ? 0 : 1, $order[$a['canonical_name']], $a['kind']] <=> [$b['author'] === 'user' ? 0 : 1, $order[$b['canonical_name']], $b['kind']]);
         $rows = array_slice($rows, 0, self::MAX_NOTES);
         $current = $this->currentHashes($projectId, $rows);
 
@@ -103,7 +108,13 @@ final readonly class AnnotationNotes
      */
     private function staleReason(string $basisJson, array $current): ?string
     {
-        foreach (self::basis($basisJson) as $entry) {
+        $basis = self::basis($basisJson);
+        // Written about a component no scanned file declares, citing none:
+        // nothing a reader could check it against.
+        if ($basis === []) {
+            return 'rests on no scanned file';
+        }
+        foreach ($basis as $entry) {
             if (!isset($current[$entry['path']])) {
                 return sprintf('written before %s was removed', $entry['path']);
             }
