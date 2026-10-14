@@ -547,9 +547,10 @@ export async function notes(s, paths, command, workspace, file) {
         ));
     } catch (e) {
         // The session is paid for by now when an export fails: say why it stopped.
-        const cause = (e.stderr ?? "").trim() || e.message;
+        const reason = (e.stderr ?? "").trim() || e.message;
         throw new Error(
-            `annotations ${command} for ${workspace} failed: ${cause}`,
+            `annotations ${command} for ${workspace} failed: ${reason}`,
+            { cause: e },
         );
     }
     return Number.parseInt(stdout.trim(), 10) || 0;
