@@ -163,9 +163,12 @@ final readonly class RouteTemplates
             return [[null, 'unknown', []]];
         }
         if ($framework === 'django') {
+            // A path() sits in its urlconf module, a DRF route behind its router.
+            $router = $attributes['router'] ?? null;
             $module = $attributes['module'] ?? null;
+            $start = is_string($router) ? $router : (is_string($module) ? 'py:module:' . $module : null);
 
-            return [[null, is_string($module) && isset($rootUrlconfs[$module]) ? 'declared' : 'unknown', []]];
+            return self::urlconfChains($start, $byLocal, $mountsInto, $rootUrlconfs, []);
         }
         $router = $attributes['router'] ?? null;
         if (!is_string($router)) {
@@ -173,6 +176,40 @@ final readonly class RouteTemplates
         }
 
         return self::mountChains($byLocal[$router] ?? null, $byLocal, $mountsInto, []);
+    }
+
+    /**
+     * The prefixes in front of a Django urlconf module or DRF router, named by its scanner local id
+     * (`py:module:<name>`, `py:router:<name>`), one per chain of include() mounts up to
+     * ROOT_URLCONF: declared when the chain reaches it, unknown when it stops short.
+     *
+     * @param array<string, string> $byLocal
+     * @param array<string, list<array{id: string, prefix: string, onto: mixed}>> $mountsInto
+     * @param array<string, true> $rootUrlconfs
+     * @param array<string, true> $seen urlconfs already on this chain, so an include loop ends it
+     * @return list<array{0: ?UrlTemplate, 1: string, 2: list<string>}>
+     */
+    private static function urlconfChains(?string $local, array $byLocal, array $mountsInto, array $rootUrlconfs, array $seen): array
+    {
+        if ($local !== null && str_starts_with($local, 'py:module:') && isset($rootUrlconfs[substr($local, strlen('py:module:'))])) {
+            return [[null, 'declared', []]];
+        }
+        $id = $local === null ? null : ($byLocal[$local] ?? null);
+        $mounts = $id === null ? [] : ($mountsInto[$id] ?? []);
+        if ($mounts === [] || isset($seen[(string) $local]) || count($seen) >= self::MAX_MOUNT_DEPTH) {
+            return [[null, 'unknown', []]];
+        }
+        $chains = [];
+        foreach ($mounts as $mount) {
+            $here = UrlTemplate::parse($mount['prefix'])[0] ?? null;
+            $parent = is_string($mount['onto']) ? $mount['onto'] : null;
+            foreach (self::urlconfChains($parent, $byLocal, $mountsInto, $rootUrlconfs, $seen + [(string) $local => true]) as [$outer, $status, $through]) {
+                $prefix = $here === null ? $outer : ($outer === null ? $here : $here->prepend($outer));
+                $chains[] = [$prefix, $status, [...$through, $mount['id']]];
+            }
+        }
+
+        return $chains;
     }
 
     /**
