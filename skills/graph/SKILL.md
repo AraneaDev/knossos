@@ -62,7 +62,8 @@ merely confirmed it.
 
 Write the fact on the component it is about, `kind: note`, and pass the files
 you relied on as `evidence_paths`, so the note is marked stale when one of them
-changes. Write the fact, not the question. If you already have a note there,
+changes. A component Knossos did not resolve takes a note too, under its full
+name: that it could not find it is the gap the next session would hit. Write the fact, not the question. If you already have a note there,
 extend it rather than replace it: the preview shows its text.
 
 Keep a note brief: one or two sentences, the evidence in `evidence_paths`, not

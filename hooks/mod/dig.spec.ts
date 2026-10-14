@@ -18,7 +18,7 @@ describe('the dig reminder', () => {
     expect(LOOKUPS_BEFORE_REMINDER).toBe(2)
     const { reminders } = run([['mcp__knossos__list_usages'], ['Grep'], ['Read']])
     expect(reminders).toEqual([
-      'You dug past a Knossos answer this turn (list_usages, then 2 lookups). That is the case the standing instruction in the session brief covers: before you answer, record what the answer left out (a caller, a hop, a dispatch the graph could not see) with annotate_component on the component it is about (kind note, under 1000 characters, evidence_paths, execute true), so a fresh session with the same question starts from your note instead of digging again. Write nothing only if the answer was complete and you merely confirmed it.',
+      'You dug past a Knossos answer this turn (list_usages, then 2 lookups). That is the case the standing instruction in the session brief covers: before you answer, record what the answer left out (a caller, a hop, a dispatch the graph could not see, a name it did not resolve) with annotate_component on the component it is about, by its full name even if Knossos did not find it (kind note, under 1000 characters, evidence_paths, execute true), so a fresh session with the same question starts from your note instead of digging again. Write nothing only if the answer was complete and you merely confirmed it.',
     ])
   })
 
