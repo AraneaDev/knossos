@@ -606,6 +606,18 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
         } else if returning.is_none() {
             self.walk.facts.untyped_call(ident_name(&node.method));
         }
+        self.mount_router(node);
+        // A `nest(...)` or scoped `service(...)` serves the routes its
+        // arguments declare under its prefix; the receiver stays outside it.
+        if let Some(prefix) = self.route_prefix(node) {
+            self.visit_expr(&node.receiver);
+            self.prefixes.push(prefix);
+            for argument in &node.args {
+                self.visit_expr(argument);
+            }
+            self.prefixes.pop();
+            return;
+        }
         syn::visit::visit_expr_method_call(self, node);
     }
 

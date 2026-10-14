@@ -180,11 +180,24 @@ your [project configuration](../get-started/project-configuration.md). Route
 enrichment only runs for the frameworks it is asked for.
 
 - Axum: `Router::route("/path", get(handler))` calls produce `route` nodes and
-  `routes_to` edges.
+  `routes_to` edges. A route inside `nest("/api", Router::new().route(...))`
+  is served under `/api`. A `nest("/api", api())` or `merge(api())` whose
+  router another function builds is a `mounts` edge to that function, with
+  the prefix, and every call route carries the function that builds its
+  router as `router`. The core puts each nest's prefix in front of that
+  router's routes, through any number of levels; a router nothing nests is
+  served as it is.
 - Actix: route attributes such as `#[get("/path")]`, `#[post(...)]` and
-  `#[route("/path", method = "PUT")]`, and the
-  `web::resource(...).route(web::get().to(handler))` shape.
+  `#[route("/path", method = "PUT")]`, the
+  `web::resource(...).route(web::get().to(handler))` shape, and
+  `route("/path", web::get().to(handler))` on an app or scope. A route under
+  `web::scope("/api")`, chained on it or passed to its `service(...)`, is
+  served under `/api`, through nested scopes too.
 - Rocket: verb attributes such as `#[get("/path")]`.
+
+A router held in a variable, an actix `configure(...)` function, and an
+attribute route registered with `service(handler)` inside a scope do not take
+a prefix.
 
 A handler function gets the `rust_framework_roles` attribute with
 `rust.route_handler`. A route path that is not a string literal is skipped

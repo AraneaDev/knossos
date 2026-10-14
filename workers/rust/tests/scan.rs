@@ -1,5 +1,6 @@
 //! Scanning tests driving the worker against real files on disk.
 
+use std::collections::BTreeMap;
 use std::io::Cursor;
 
 use knossos_rust_worker::server::run;
@@ -4034,5 +4035,131 @@ fn a_receiver_typed_by_an_alias_another_file_declares_resolves() {
             .contains(&"rust:method:crate::policy::Policy::check".to_owned()),
         "{:?}",
         targets("rust:function:crate::usage::shared")
+    );
+}
+
+/// The route nodes of one contribution, by canonical name.
+fn routes_of(contribution: &serde_json::Value) -> BTreeMap<String, serde_json::Value> {
+    contribution["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["kind"] == "route")
+        .map(|node| {
+            (
+                node["canonical_name"].as_str().unwrap().to_owned(),
+                node.clone(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn an_axum_route_inside_a_nest_takes_its_prefix() {
+    let source = r#"
+use axum::Router;
+use axum::routing::get;
+
+fn user() {}
+
+fn app() -> Router {
+    Router::new().nest("/api", Router::new().route("/users/:id", get(user)))
+}
+"#;
+    let contributions = scan_fixture_with(
+        "axum-inline-nest",
+        &[("src/lib.rs", source)],
+        &serde_json::json!({ "frameworks": ["axum"] }),
+    );
+    let routes = routes_of(&contributions[0]);
+    assert!(
+        routes.contains_key("GET /api/users/:id => crate::user"),
+        "{routes:?}"
+    );
+    assert_eq!(routes.len(), 1);
+}
+
+#[test]
+fn an_axum_router_built_in_another_function_is_mounted_with_its_prefix() {
+    let source = r#"
+use axum::Router;
+use axum::routing::get;
+
+fn user() {}
+
+fn api() -> Router {
+    Router::new().route("/users/:id", get(user))
+}
+
+fn app() -> Router {
+    Router::new().nest("/api", api()).merge(api())
+}
+"#;
+    let contributions = scan_fixture_with(
+        "axum-function-nest",
+        &[("src/lib.rs", source)],
+        &serde_json::json!({ "frameworks": ["axum"] }),
+    );
+    let routes = routes_of(&contributions[0]);
+    let route = &routes["GET /users/:id => crate::user"];
+    assert_eq!(route["attributes"]["router"], "rust:function:crate::api");
+    let mounts: Vec<&serde_json::Value> = contributions[0]["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|edge| edge["kind"] == "mounts")
+        .collect();
+    let prefixes: Vec<(&str, &str, &str, &str)> = mounts
+        .iter()
+        .map(|edge| {
+            (
+                edge["source"].as_str().unwrap(),
+                edge["target"].as_str().unwrap(),
+                edge["attributes"]["prefix"].as_str().unwrap(),
+                edge["attributes"]["onto"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert!(prefixes.contains(&(
+        "rust:function:crate::app",
+        "rust:function:crate::api",
+        "/api",
+        "rust:function:crate::app"
+    )));
+    assert!(prefixes.contains(&(
+        "rust:function:crate::app",
+        "rust:function:crate::api",
+        "",
+        "rust:function:crate::app"
+    )));
+}
+
+#[test]
+fn actix_routes_under_scopes_take_every_scope_prefix() {
+    let source = r#"
+use actix_web::{web, App};
+
+fn user() {}
+fn health() {}
+
+fn app() {
+    App::new()
+        .service(web::scope("/v1").service(web::scope("/users").route("/{id}", web::get().to(user))))
+        .route("/health", web::get().to(health));
+}
+"#;
+    let contributions = scan_fixture_with(
+        "actix-scopes",
+        &[("src/lib.rs", source)],
+        &serde_json::json!({ "frameworks": ["actix"] }),
+    );
+    let routes = routes_of(&contributions[0]);
+    assert!(
+        routes.contains_key("GET /v1/users/{id} => crate::user"),
+        "{routes:?}"
+    );
+    assert!(
+        routes.contains_key("GET /health => crate::health"),
+        "{routes:?}"
     );
 }
