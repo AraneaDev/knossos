@@ -62,4 +62,48 @@ final class NestJsTest extends KnossosTestCase
             }
         }
     }
+
+    /**
+     * The global prefix main.ts sets goes in front of every route but the
+     * excluded ones, and the controllers may import their decorators any way.
+     */
+    #[Group('nestjs')]
+    public function testACallerReachesAControllerBehindTheGlobalPrefix(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-nest-prefix-' . bin2hex(random_bytes(6));
+        $files = [
+            'package.json' => "{\"name\": \"api\", \"private\": true, \"dependencies\": {\"@nestjs/common\": \"10.0.0\", \"@nestjs/core\": \"10.0.0\"}}\n",
+            'src/main.ts' => "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module';\n"
+                . "async function bootstrap(): Promise<void> {\n    const app = await NestFactory.create(AppModule);\n"
+                . "    app.setGlobalPrefix('api', { exclude: ['health'] });\n}\nvoid bootstrap();\n",
+            'src/app.module.ts' => "export class AppModule {}\n",
+            'src/users.controller.ts' => "import * as nest from '@nestjs/common';\n@nest.Controller('users')\n"
+                . "export class UsersController {\n    @nest.Get(':id') show(): string { return ''; }\n}\n",
+            'src/health.controller.ts' => "import { Controller, Get } from '@nestjs/common';\n@Controller('health')\n"
+                . "export class HealthController {\n    @Get() check(): string { return ''; }\n}\n",
+            'src/client.ts' => 'export const load = (id: string) => fetch(`/api/users/${id}`);' . "\n"
+                . "export const ping = () => fetch('/health');\n",
+        ];
+        foreach ($files as $path => $contents) {
+            if (!is_dir(dirname($root . '/' . $path))) {
+                mkdir(dirname($root . '/' . $path), 0o700, true);
+            }
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        $pdo = $this->freshTestDatabase();
+        try {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $queries = \Knossos\Query\ArchitectureQueryService::forDatabase($pdo);
+            $load = $queries->explainFlow($projectId, 'src/client.ts#load', 'src/users.controller.ts#UsersController::show')->data['paths'][0]['hops'] ?? [];
+            assertSame(['calls_endpoint', 'resolves_to', 'routes_to'], array_column($load, 'kind'));
+            assertSame(['probable', 'parameter'], [$load[1]['confidence'], $load[1]['attributes']['match']]);
+            $ping = $queries->explainFlow($projectId, 'src/client.ts#ping', 'src/health.controller.ts#HealthController::check')->data['paths'][0]['hops'] ?? [];
+            // An excluded path is served without the prefix.
+            assertSame(['certain', 'exact'], [$ping[1]['confidence'] ?? null, $ping[1]['attributes']['match'] ?? null]);
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
 }

@@ -25,7 +25,16 @@ final readonly class RouteTemplates
     {
         $byLocal = [];
         $rootUrlconfs = [];
+        // Each NestJS setGlobalPrefix the scan read: its prefix (null when not a literal) and excluded paths.
+        $nestPrefixes = [];
         foreach ($nodes as $id => $node) {
+            if ($node['kind'] === 'setting' && ($node['attributes']['framework'] ?? null) === 'nestjs') {
+                $exclude = $node['attributes']['exclude'] ?? [];
+                $nestPrefixes[] = [
+                    'prefix' => is_string($node['attributes']['global_prefix'] ?? null) ? $node['attributes']['global_prefix'] : null,
+                    'exclude' => is_array($exclude) ? array_map(static fn(mixed $path): string => trim((string) $path, '/'), $exclude) : [],
+                ];
+            }
             $local = $node['attributes']['scanner_local_id'] ?? null;
             if (is_string($local)) {
                 $byLocal[$local] = $id;
@@ -61,7 +70,10 @@ final readonly class RouteTemplates
             }
             $own = UrlTemplate::parse($path);
             $templates = [];
-            foreach (self::prefixes($node, $evidencePaths[$id] ?? (string) ($node['evidence_path'] ?? ''), $byLocal, $mountsInto, $rootUrlconfs) as [$prefix, $status, $mounts]) {
+            $chains = ($attributes['framework'] ?? null) === 'nestjs'
+                ? self::nestGlobalPrefix($path, $nestPrefixes)
+                : self::prefixes($node, $evidencePaths[$id] ?? (string) ($node['evidence_path'] ?? ''), $byLocal, $mountsInto, $rootUrlconfs);
+            foreach ($chains as [$prefix, $status, $mounts]) {
                 foreach (self::ownTemplates($path, $own, $nodes[$byLocal[$attributes['router'] ?? ''] ?? ''] ?? null, $mounts === [] ? null : $mountPrefixes[$mounts[array_key_last($mounts)]] ?? null) as $template) {
                     $templates[] = ['template' => $prefix === null ? $template : $template->prepend($prefix), 'prefix' => $status, 'mounts' => $mounts];
                 }
@@ -137,6 +149,31 @@ final readonly class RouteTemplates
         }
 
         return $names;
+    }
+
+    /**
+     * The prefix in front of a NestJS route: the application's `setGlobalPrefix`, unless the route's
+     * path is one it excludes. None set is no prefix; one that is not a literal, or two that differ
+     * (two applications in one project), leave the prefix unknown.
+     *
+     * @param list<array{prefix: ?string, exclude: list<string>}> $settings
+     * @return list<array{0: ?UrlTemplate, 1: string, 2: list<string>}>
+     */
+    private static function nestGlobalPrefix(string $path, array $settings): array
+    {
+        if ($settings === []) {
+            return [[null, 'declared', []]];
+        }
+        $prefixes = array_values(array_unique(array_map(static fn(array $setting): string => json_encode($setting['prefix']) ?: '', $settings)));
+        $setting = $settings[0];
+        if (count($prefixes) > 1 || $setting['prefix'] === null) {
+            return [[null, 'unknown', []]];
+        }
+        if (in_array(trim($path, '/'), $setting['exclude'], true)) {
+            return [[null, 'declared', []]];
+        }
+
+        return [[UrlTemplate::parse($setting['prefix'])[0] ?? null, 'declared', []]];
     }
 
     /**

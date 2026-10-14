@@ -236,6 +236,25 @@ final class RouteTemplatesTest extends KnossosTestCase
         assertSame('/v2/items/x', (string) $template['template']);
     }
 
+    #[Group('reconciliation')]
+    public function testANestjsRouteTakesTheGlobalPrefixOnlyWhenOneLiteralPrefixIsSet(): void
+    {
+        $route = self::route('r', ['framework' => 'nestjs', 'http_methods' => ['GET'], 'path' => '/users']);
+        $setting = static fn(string $id, ?string $prefix): array => [
+            'id' => $id, 'kind' => 'setting', 'canonical_name' => $id . '#setGlobalPrefix',
+            'attributes' => ['framework' => 'nestjs', 'global_prefix' => $prefix, 'exclude' => []], 'evidence_path' => 'src/main.ts',
+        ];
+        $templates = static fn(array $nodes): array => array_map(
+            static fn(array $t): array => [(string) $t['template'], $t['prefix']],
+            RouteTemplates::forRoutes(['r' => $route, ...$nodes], [])['r']['templates'],
+        );
+
+        assertSame([['/users', 'declared']], $templates([]));
+        assertSame([['/api/users', 'declared']], $templates(['s' => $setting('s', 'api')]));
+        assertSame([['/users', 'unknown']], $templates(['s' => $setting('s', null)]));
+        assertSame([['/users', 'unknown']], $templates(['s' => $setting('s', 'api'), 't' => $setting('t', 'v2')]));
+    }
+
     /**
      * @param array<string, mixed> $attributes
      * @return array<string, mixed>

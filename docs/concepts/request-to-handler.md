@@ -154,7 +154,7 @@ so it grew with them.
   does a Django settings module at `backend.settings` whose `ROOT_URLCONF` is
   `app.urls`.
 - FastAPI sub-applications (`app.mount`), `{p:path}` parameters that span
-  several segments, NestJS `setGlobalPrefix` and Symfony YAML route imports
+  several segments, NestJS `RouterModule` paths and Symfony YAML route imports
   with a prefix are not modelled.
 - Symfony generators inherited from a parent class or a trait, or typed on a
   closure parameter, are not recognised. The `Url` and `Redirect` facade checks

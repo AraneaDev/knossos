@@ -9,18 +9,28 @@ import {
 export class NestJsFactEnricher {
     constructor(context) {
         this.context = context;
+        // Local name to the name a @nestjs/* module exports it under.
         this.imports = new Map();
+        // Local names of `import * as nest from "@nestjs/..."`.
+        this.namespaces = new Set();
+        // Whether the file imports anything from @nestjs/*.
+        this.nestImported = false;
     }
 
     importDeclaration(node) {
         if (
             !ts.isStringLiteral(node.moduleSpecifier) ||
-            !node.moduleSpecifier.text.startsWith("@nestjs/") ||
-            !node.importClause?.namedBindings ||
-            !ts.isNamedImports(node.importClause.namedBindings)
+            !node.moduleSpecifier.text.startsWith("@nestjs/")
         )
             return;
-        for (const element of node.importClause.namedBindings.elements) {
+        this.nestImported = true;
+        const bindings = node.importClause?.namedBindings;
+        if (!bindings) return;
+        if (ts.isNamespaceImport(bindings)) {
+            this.namespaces.add(bindings.name.text);
+            return;
+        }
+        for (const element of bindings.elements) {
             this.imports.set(
                 element.name.text,
                 element.propertyName?.text ?? element.name.text,
@@ -51,6 +61,72 @@ export class NestJsFactEnricher {
                 result.roles.push("nestjs.framework_handler");
         }
         return result;
+    }
+
+    /**
+     * `app.setGlobalPrefix("api", { exclude: [...] })` in a file that imports
+     * from @nestjs/*: a `setting` node the core reads to put the prefix in
+     * front of every NestJS route but the excluded paths. A prefix that is
+     * not a literal is reported as null, so the core knows the routes'
+     * prefix is unknown rather than absent.
+     */
+    callExpression(node) {
+        if (
+            !this.nestImported ||
+            !ts.isPropertyAccessExpression(node.expression) ||
+            node.expression.name.text !== "setGlobalPrefix"
+        )
+            return;
+        const exclude = [];
+        const options = node.arguments[1];
+        const listed =
+            options && ts.isObjectLiteralExpression(options)
+                ? options.properties.find(
+                      (p) =>
+                          ts.isPropertyAssignment(p) &&
+                          propertyNameText(p.name) === "exclude",
+                  )?.initializer
+                : undefined;
+        for (const item of listed && ts.isArrayLiteralExpression(listed)
+            ? listed.elements
+            : []) {
+            const path = ts.isObjectLiteralExpression(item)
+                ? item.properties.find(
+                      (p) =>
+                          ts.isPropertyAssignment(p) &&
+                          propertyNameText(p.name) === "path",
+                  )?.initializer
+                : item;
+            if (
+                path &&
+                (ts.isStringLiteral(path) ||
+                    ts.isNoSubstitutionTemplateLiteral(path))
+            )
+                exclude.push(path.text);
+        }
+        const canonical = `${this.context.relative}#setGlobalPrefix`;
+        const id = reference("setting", canonical);
+        this.context.addNode(
+            id,
+            "setting",
+            canonical,
+            "setGlobalPrefix",
+            node,
+            {
+                framework: "nestjs",
+                global_prefix: literalDecoratorArgument(node),
+                exclude,
+            },
+            "framework_convention",
+        );
+        this.context.addEdge(
+            "configures",
+            this.context.moduleId,
+            id,
+            node,
+            { framework: "nestjs" },
+            "framework_convention",
+        );
     }
 
     moduleRelations(decorator, id) {
@@ -226,10 +302,16 @@ export class NestJsFactEnricher {
             const target = ts.isCallExpression(expression)
                 ? expression.expression
                 : expression;
-            if (
+            const named =
                 ts.isIdentifier(target) &&
-                this.imports.get(target.text) === exportedName
-            )
+                this.imports.get(target.text) === exportedName;
+            // `@nest.Get()` through `import * as nest from "@nestjs/common"`.
+            const namespaced =
+                ts.isPropertyAccessExpression(target) &&
+                ts.isIdentifier(target.expression) &&
+                this.namespaces.has(target.expression.text) &&
+                target.name.text === exportedName;
+            if (named || namespaced)
                 return ts.isCallExpression(expression)
                     ? expression
                     : { arguments: [] };
