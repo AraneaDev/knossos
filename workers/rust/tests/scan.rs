@@ -3849,3 +3849,155 @@ fn a_name_the_module_declares_and_imports_under_cfg_keeps_its_declaration() {
         targets_of(&contributions, "implements", "rust:class:crate::LazyLock")
     );
 }
+
+#[test]
+fn a_method_call_on_a_value_whose_type_the_code_states_resolves() {
+    // `Policy::new().evaluate()` and `make().check()` call a method on a
+    // temporary the constructor or the function's return type names; a
+    // receiver typed through a `type` alias names the aliased type; and a
+    // `match` arm or a `thread::scope` closure calls on behalf of the
+    // function it is written in.
+    let source = r#"
+pub struct Policy;
+
+impl Policy {
+    pub fn new() -> Self { Policy }
+    pub fn evaluate(&self) {}
+    pub fn check(&self) {}
+    pub fn dispatch(&self, n: u8) {
+        match n {
+            0 => self.evaluate(),
+            _ => self.check(),
+        }
+    }
+}
+
+pub type Alias = Policy;
+
+fn make() -> Policy { Policy }
+fn helper() {}
+
+pub struct Engine;
+impl Engine { pub fn run(&self) {} }
+pub trait Driver { type Out; fn drive(&self, out: &Self::Out); }
+pub struct Car;
+impl Driver for Car {
+    type Out = Engine;
+    fn drive(&self, out: &Self::Out) { out.run(); }
+}
+
+pub fn by_temporary() { Policy::new().evaluate(); make().check(); }
+pub fn by_alias(p: &Alias) { p.evaluate(); }
+pub fn by_scope() { std::thread::scope(|s| { s.spawn(|| helper()); }); }
+"#;
+    let contributions = scan_fixture("stated-receivers", &[("src/lib.rs", source)]);
+    let returns: Vec<(String, String)> = contributions[0]["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|edge| edge["kind"] == "returns")
+        .map(|edge| {
+            (
+                edge["source"].as_str().unwrap().to_owned(),
+                edge["target"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert!(
+        returns.contains(&(
+            "rust:function:crate::make".to_owned(),
+            "rust:class:crate::Policy".to_owned()
+        )),
+        "a free function records its return type: {returns:?}"
+    );
+    let targets = |from: &str| -> Vec<String> {
+        method_calls(&contributions, from)
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect()
+    };
+
+    let mut missing = Vec::new();
+    for (from, to) in [
+        // The worker names the call; the core resolves it through the
+        // declared return type, which a free function now records too.
+        (
+            "rust:function:crate::by_temporary",
+            "rust:method_of_return:crate::Policy::new::evaluate",
+        ),
+        (
+            "rust:function:crate::by_temporary",
+            "rust:method_of_return:crate::make::check",
+        ),
+        (
+            "rust:function:crate::by_alias",
+            "rust:method:crate::Policy::evaluate",
+        ),
+        (
+            "rust:method:crate::Policy::dispatch",
+            "rust:method:crate::Policy::evaluate",
+        ),
+        (
+            "rust:method:crate::Policy::dispatch",
+            "rust:method:crate::Policy::check",
+        ),
+        (
+            "rust:function:crate::by_scope",
+            "rust:function:crate::helper",
+        ),
+        (
+            "rust:method:crate::Car::drive",
+            "rust:method:crate::Engine::run",
+        ),
+    ] {
+        if !targets(from).contains(&to.to_owned()) {
+            missing.push(format!("{from} -> {to} (has {:?})", targets(from)));
+        }
+    }
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
+#[test]
+fn aliases_in_a_circle_end_the_walk() {
+    // `type A = B; type B = A;` does not compile, and a file like it must
+    // still scan: the receiver stays untyped rather than recursing forever.
+    let source = "type A = B;\ntype B = A;\npub fn go(a: &A) { a.run(); }\n";
+    let contributions = scan_fixture("alias-circle", &[("src/lib.rs", source)]);
+    assert_eq!(contributions.len(), 1);
+}
+
+#[test]
+fn a_receiver_typed_by_an_alias_another_file_declares_resolves() {
+    // The alias is declared in one file and named in another, plain and
+    // through a smart pointer: the declaration index carries what it names.
+    let files = [
+        ("src/lib.rs", "pub mod policy;\npub mod usage;\n"),
+        (
+            "src/policy.rs",
+            "pub struct Policy;\nimpl Policy { pub fn evaluate(&self) {} pub fn check(&self) {} }\npub type Alias = Policy;\npub type Shared = std::sync::Arc<Policy>;\n",
+        ),
+        (
+            "src/usage.rs",
+            "use crate::policy::{Alias, Shared};\npub fn plain(p: &Alias) { p.evaluate(); }\npub fn shared(p: Shared) { p.check(); }\n",
+        ),
+    ];
+    let contributions = scan_fixture("alias-across-files", &files);
+    let targets = |from: &str| -> Vec<String> {
+        method_calls(&contributions, from)
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect()
+    };
+    assert!(
+        targets("rust:function:crate::usage::plain")
+            .contains(&"rust:method:crate::policy::Policy::evaluate".to_owned()),
+        "{:?}",
+        targets("rust:function:crate::usage::plain")
+    );
+    assert!(
+        targets("rust:function:crate::usage::shared")
+            .contains(&"rust:method:crate::policy::Policy::check".to_owned()),
+        "{:?}",
+        targets("rust:function:crate::usage::shared")
+    );
+}

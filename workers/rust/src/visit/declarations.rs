@@ -43,6 +43,9 @@ pub struct Declarations {
     /// struct two files declare, whose fields cannot be told apart. See
     /// [`StructFields`].
     fields: BTreeMap<String, Option<BTreeMap<String, FieldType>>>,
+    /// The type every module-level alias names; `None` for a path two files
+    /// alias apart. See [`TypeAliases`].
+    aliases: BTreeMap<String, Option<String>>,
 }
 
 /// The names one file's visible `use` items (`pub use cfg::collect;`,
@@ -59,6 +62,12 @@ pub type ExportedNames = BTreeMap<String, Option<String>>;
 /// imports: what a method call through `self.field` in another file's
 /// `impl` block resolves through.
 pub type StructFields = BTreeMap<String, BTreeMap<String, FieldType>>;
+
+/// The type each module-level `type` alias of one file names, by the alias's
+/// canonical path, resolved through the file's own imports: what a receiver
+/// another file types by the alias holds. An alias whose type the file
+/// cannot resolve is not here.
+pub type TypeAliases = BTreeMap<String, String>;
 
 /// The declared type of one struct field, as far as its own file can tell.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -175,6 +184,28 @@ impl Declarations {
     pub fn export_of(&self, name: &str) -> Option<Option<String>> {
         self.lookups.borrow_mut().insert(name.to_owned());
         self.exports.get(name).cloned()
+    }
+
+    /// Record one file's type aliases, as [`index_facts`](super::index_facts)
+    /// returned them. A path another file aliases too names no one type.
+    pub fn add_aliases(&mut self, aliases: &TypeAliases) {
+        for (alias, target) in aliases {
+            let known = self.aliases.get(alias).cloned();
+            self.aliases.insert(
+                alias.clone(),
+                match known {
+                    Some(earlier) if earlier.as_deref() != Some(target.as_str()) => None,
+                    _ => Some(target.clone()),
+                },
+            );
+        }
+    }
+
+    /// The type the alias at `path` names, as its own file resolved it,
+    /// remembering that `path` was asked about.
+    pub fn alias_of(&self, path: &str) -> Option<String> {
+        self.lookups.borrow_mut().insert(path.to_owned());
+        self.aliases.get(path)?.clone()
     }
 
     /// The declared type of `owner`'s field `field`, as the struct's own

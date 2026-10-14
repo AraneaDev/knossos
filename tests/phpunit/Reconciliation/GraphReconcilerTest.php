@@ -1961,6 +1961,52 @@ final class GraphReconcilerTest extends TestCase
     }
 
     /**
+     * `make().render()` calls a method on what a free function returns. The
+     * scanner names the call; a function that declares its return type
+     * resolves it, as a method's declared return type does.
+     */
+    #[Group('reconciliation')]
+    public function testACallOnAFreeFunctionsResultResolvesThroughItsDeclaredReturnType(): void
+    {
+        $caller = $this->minimalNode('rust:function:crate::go', 'crate::go');
+        $make = $this->minimalNode('rust:function:crate::make', 'crate::make');
+        $policy = $this->minimalNode('rust:class:crate::Policy', 'crate::Policy');
+        $render = $this->minimalNode('rust:method:crate::Policy::render', 'crate::Policy::render');
+        $edges = [
+            new EdgeFact(
+                kind: 'returns',
+                sourceReference: $make->localId,
+                targetReference: $policy->localId,
+                origin: Origin::Ast,
+                confidence: Confidence::Probable,
+                evidence: new Evidence('src/Foo.php', 1, 1),
+                attributes: ['speculative' => true],
+            ),
+            new EdgeFact(
+                kind: 'calls',
+                sourceReference: $caller->localId,
+                targetReference: 'rust:method_of_return:crate::make::render',
+                origin: Origin::Ast,
+                confidence: Confidence::Probable,
+                evidence: new Evidence('src/Foo.php', 2, 2),
+            ),
+        ];
+        $request = $this->buildRequest([
+            'discovery' => $this->minimalDiscovery([$this->minimalDiscoveredFile('src/Foo.php')]),
+            'contributions' => [$this->minimalContribution([$caller, $make, $policy, $render], $edges)],
+        ]);
+
+        (new GraphReconciler($this->repo))->reconcile($request);
+
+        $ids = [];
+        foreach ($this->repo->nodes as $args) {
+            $ids[$args[4]] = $args[0];
+        }
+        $calls = array_values(array_filter($this->repo->edges, static fn(array $args): bool => $args[2] === 'calls'));
+        assertSame([[$ids['crate::go'], $ids['crate::Policy::render']]], array_map(static fn(array $args): array => [$args[3], $args[4]], $calls));
+    }
+
+    /**
      * `new ('App\\Cards\\' . $command)` builds a class name from a namespace
      * prefix: every class directly in that namespace may be the one built.
      * Only the graph knows them all, so the scanner names the prefix and the
