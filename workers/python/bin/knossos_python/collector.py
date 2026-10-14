@@ -59,6 +59,25 @@ def url_template(uri: str, prefix_unknown: bool) -> str:
     return "/" + "/".join(segments[1:] if prefix_unknown else segments)
 
 
+def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
+    """The `self.<name>` attributes the methods of `node` assign, in any form of assignment."""
+    names: set[str] = set()
+    for item in node.body:
+        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for statement in ast.walk(item):
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+            elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
+                targets = [statement.target]
+            else:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Attribute) and dotted(target.value) == "self":
+                    names.add(target.attr)
+    return frozenset(names)
+
+
 class PythonAstFactCollector(ast.NodeVisitor):
     """Coordinate one AST traversal and delegate fact enrichment."""
 
@@ -98,6 +117,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # canonical name, so `self.<name>` read as a value can be told apart
         # from a data attribute before the method's own definition is visited.
         self.class_methods: dict[str, frozenset[str]] = {}
+        # The `self.<name>` attributes a class's methods assign that name no
+        # method of it: `self.declarations = declarations` stores a callable,
+        # and `self.declarations(m)` calls that, not a method of the class.
+        self.stored_attributes: dict[str, frozenset[str]] = {}
         # `self.<name>` nodes that are the callee of a call: those are `calls`.
         self.called_attributes: set[int] = set()
         # What a receiver holds, so a call on it names the method that runs.
@@ -349,6 +372,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.class_methods[canonical] = frozenset(
             item.name for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
         )
+        self.stored_attributes[canonical] = assigned_self_attributes(node) - self.class_methods[canonical]
         serializer = self.declared_serializer(node)
         if serializer is not None:
             self.serializer_classes[canonical] = serializer
@@ -1012,8 +1036,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 # whatever `a` holds, and reading it as a member of this class
                 # invents a symbol named `a.b` that nothing declares.
                 class_container = next((item for item in reversed(self.containers) if item[2] == "class"), None)
-                if class_container:
-                    target = ref("method", f"{class_container[1]}::{name.split('.', 1)[1]}")
+                attribute = name.split(".", 1)[1]
+                if class_container and attribute not in self.stored_attributes.get(class_container[1], frozenset()):
+                    target = ref("method", f"{class_container[1]}::{attribute}")
             target = target or self.resolve_name(name, "function")
             if target is None and len(member) == 2:
                 self.untyped_calls.add(member[1])
