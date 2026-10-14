@@ -806,10 +806,12 @@ class PythonAstFactCollector(ast.NodeVisitor):
 
         A name off a module outside the project (``requests.get(url)``) reads
         as a class only because nothing says otherwise, and a parameter or
-        local named like an imported class holds whatever was passed in.
+        local named like an imported class holds whatever was passed in. A
+        call on another call's result, ``Repo().find(pk)``, has no name of its
+        own; what the inner call holds types it (see `returned_class`).
         """
         callee = dotted(call.func)
-        if callee is None or self.is_local_name(callee.split(".")[0]):
+        if callee is not None and self.is_local_name(callee.split(".")[0]):
             return None
         held = self.held_class(call)
         return held if held is not None and self.declares_class(held) else None

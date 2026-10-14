@@ -1654,9 +1654,18 @@ PYTHON);
                 'def load(pk) -> Document:',
                 '    return Document.objects.get(pk=pk)',
                 '',
+                'def make_repo() -> Repo:',
+                '    return Repo()',
+                '',
+                'def parsed(pk) -> "Document":',
+                '    return load(pk)',
+                '',
+                'def broken(pk) -> "Doc(":',
+                '    return load(pk)',
+                '',
             ]),
             'app/service.py' => implode("\n", [
-                'from .models import Document, Lock, Repo, load',
+                'from .models import Document, Lock, Repo, broken, load, make_repo, parsed',
                 '',
                 'def by_return(pk):',
                 '    doc = load(pk)',
@@ -1677,6 +1686,18 @@ PYTHON);
                 'def by_with():',
                 '    with Lock() as lock:',
                 '        lock.release()',
+                '',
+                'def by_chain(pk):',
+                '    Repo().find(pk).stamp()',
+                '    make_repo().find(pk).archive()',
+                '',
+                'def by_quoted(pk):',
+                '    parsed(pk).touch()',
+                '    broken(pk).save()',
+                '',
+                'def by_untyped(handlers, model):',
+                '    handlers[0]().save()',
+                '    model.objects.get(pk=1).save()',
                 '',
             ]),
         ];
@@ -1712,8 +1733,18 @@ PYTHON);
             'by_orm -> py:method:app.models.Document::touch',
             'by_orm -> py:method:app.models.Document::save',
             'by_with -> py:method:app.models.Lock::release',
+            // A call on what a call returns, built or returned in turn.
+            'by_chain -> py:method:app.models.Document::stamp',
+            'by_chain -> py:method:app.models.Document::archive',
+            // A quoted annotation names its class as a bare one does.
+            'by_quoted -> py:method:app.models.Document::touch',
         ] as $expected) {
             self::assertContains('py:function:app.service.' . $expected, $calls);
+        }
+        // An annotation that does not parse, a callee with no name and a
+        // manager read off a parameter state no class.
+        foreach (['by_quoted', 'by_untyped'] as $untyped) {
+            self::assertNotContains('py:function:app.service.' . $untyped . ' -> py:method:app.models.Document::save', $calls);
         }
     }
 
