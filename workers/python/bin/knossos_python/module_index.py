@@ -583,8 +583,7 @@ class ProjectModuleIndex:
         self._protocols |= declared_protocols(tree, name)
         self._cache[key or name] = declarations
         self._add_reexports(tree, location, is_package, declarations)
-        imported = self._imported_classes(tree, location, is_package)
-        self._add_instances(tree, declarations, name, imported)
+        imported = self._add_instances(tree, location, is_package, declarations, name)
         self._add_returns(tree, name, declarations, imported)
         return declarations
 
@@ -620,23 +619,6 @@ class ProjectModuleIndex:
                 reexported = exported.get(alias.name)
                 if reexported is not None:
                     declarations.setdefault(alias.asname or alias.name, reexported)
-
-    def _imported_classes(self, tree: ast.Module, module: str, is_package: bool) -> dict[str, str]:
-        """The project classes ``tree`` imports by ``from ... import``, by the name it binds."""
-        imported: dict[str, str] = {}
-        for child in module_statements(tree):
-            if not isinstance(child, ast.ImportFrom):
-                continue
-            source = absolute_import(module, child.level, child.module, is_package)
-            if not source:
-                continue
-            for alias in child.names:
-                if alias.name == "*":
-                    continue
-                target = self.module_declarations(source).get(alias.name)
-                if target is not None and target.startswith("py:class:"):
-                    imported[alias.asname or alias.name] = target
-        return imported
 
     def _add_returns(self, tree: ast.Module, name: str, declarations: dict[str, str], imported: dict[str, str]) -> None:
         """Record the project class each top-level function and method says it returns.
@@ -674,8 +656,8 @@ class ProjectModuleIndex:
         return self._returns.get(target)
 
     def _add_instances(
-        self, tree: ast.Module, declarations: dict[str, str], name: str, imported: dict[str, str]
-    ) -> None:
+        self, tree: ast.Module, module: str, is_package: bool, declarations: dict[str, str], name: str
+    ) -> dict[str, str]:
         """Add the module-level instances ``tree`` creates to its declarations.
 
         ``user_repo = UserRepository()`` at module level is how a service hands
@@ -687,8 +669,23 @@ class ProjectModuleIndex:
         node its own scan emits (``name`` is the module's id), so a mount in
         another module names it. The declarations are cached before this
         runs, so two modules importing each other resolve without recursing.
+        Returns the project classes the module imports by name, which its
+        return annotations may name too (:meth:`_add_returns`).
         """
         routers = router_constructors(tree)
+        imported: dict[str, str] = {}
+        for child in module_statements(tree):
+            if not isinstance(child, ast.ImportFrom):
+                continue
+            source = absolute_import(module, child.level, child.module, is_package)
+            if not source:
+                continue
+            for alias in child.names:
+                if alias.name == "*":
+                    continue
+                target = self.module_declarations(source).get(alias.name)
+                if target is not None and target.startswith("py:class:"):
+                    imported[alias.asname or alias.name] = target
         for child in module_statements(tree):
             variable, constructor = None, None
             if isinstance(child, ast.Assign) and len(child.targets) == 1 and isinstance(child.targets[0], ast.Name):
@@ -703,6 +700,7 @@ class ProjectModuleIndex:
             value = assigned_declaration(constructor, declarations, imported)
             if value is not None:
                 declarations[variable] = value
+        return imported
 
     def adopt_parsed(self, absolute: Path, relative: str, tree: ast.Module) -> tuple[str, str | None]:
         """Make a scanned file's own declarations come from the tree just parsed; return its id and its id's owner.

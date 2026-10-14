@@ -758,7 +758,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
             return model
         func = call.func
         if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Call):
-            held = self.fresh_instance_class(func.value)
+            # `Repo().find(pk)` or `load(pk).owner()`: the inner call's class is
+            # one it builds or one it returns, read here rather than through
+            # `held_class`, which reads it through this.
+            held = self.constructed_class(func.value) or self.returned_class(func.value)
             return None if held is None else self.index.return_type(ref("method", f"{held}::{func.attr}"))
         name = dotted(func)
         if name is None:
@@ -767,6 +770,15 @@ class PythonAstFactCollector(ast.NodeVisitor):
         target = self.receiver_member(member[0], member[1]) if len(member) == 2 else None
         target = target or self.resolve_name(name, "function")
         return None if target is None else self.index.return_type(target)
+
+    def constructed_class(self, call: ast.Call) -> str | None:
+        """The project class ``Repo()`` builds, when its name means that class here."""
+        callee = dotted(call.func)
+        if callee is None or self.is_local_name(callee.split(".")[0]):
+            return None
+        resolved = self.resolve_name(callee, "class")
+        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
+        return held if held is not None and self.declares_class(held) else None
 
     def manager_lookup_class(self, call: ast.Call) -> str | None:
         """The project model ``<Model>.objects.<lookup>(...)`` returns an instance of, if any."""
