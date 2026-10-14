@@ -4,7 +4,7 @@
  * interval that decides whether that difference is visible at all.
  */
 import { createHash } from "node:crypto";
-import { SCORABLE } from "./ledger.mjs";
+import { firstPasses, SCORABLE } from "./ledger.mjs";
 import { rng } from "./rng.mjs";
 
 export const METRICS = [
@@ -107,7 +107,7 @@ export function verdict(ci, { higherIsBetter }, n) {
 export function selectAblations(rows, tasks, { threshold = 0.2 } = {}) {
     const category = new Map(tasks.map((t) => [t.id, t.category]));
     const used = new Map();
-    for (const r of rows.filter(
+    for (const r of firstPasses(rows).filter(
         (r) => r.arm === "full" && SCORABLE.has(r.status),
     )) {
         const cat = category.get(r.task);

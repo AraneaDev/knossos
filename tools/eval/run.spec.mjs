@@ -27,6 +27,7 @@ import {
     dirtyPaths,
     drain,
     main,
+    notes,
     signalHandler,
 } from "./run.mjs";
 
@@ -40,6 +41,9 @@ vi.mock("../capture/session.mjs", async (importOriginal) => {
 const git = promisify(execFile);
 const FAKE = fileURLToPath(
     new URL("./fixtures/fake-claude.mjs", import.meta.url),
+);
+const FAKE_NOTES = fileURLToPath(
+    new URL("./fixtures/fake-notes.mjs", import.meta.url),
 );
 
 async function fixture({ second = false } = {}) {
@@ -131,6 +135,7 @@ async function fixture({ second = false } = {}) {
         KNOSSOS_EVAL_RUNS: await tmp("eval-runs-"),
         KNOSSOS_EVAL_ROOT: await tmp("eval-root-"),
         KNOSSOS_EVAL_CLAUDE: FAKE,
+        KNOSSOS_EVAL_NOTES: FAKE_NOTES,
         KNOSSOS_EVAL_REAL_HOME: await tmp("eval-nohome-"),
         KNOSSOS_EVAL_PLUGIN_DIR: pluginDir,
         // The demo origin stands in for the Knossos checkout, so provenance never reads this repository.
@@ -500,6 +505,99 @@ describe("corpus hash versions", () => {
 
 describe("continue with the fake claude", () => {
     const rowsOf = async (dir) => readLedger(path.join(dir, "ledger.jsonl"));
+    it("runs a second pass after its first, with the notes the first left, and resumes between passes", async () => {
+        const { env, runId, dir } = await started([
+            "--arms",
+            "baseline",
+            "--passes",
+            "2",
+        ]);
+        const meta = JSON.parse(
+            await readFile(path.join(dir, "meta.json"), "utf8"),
+        );
+        expect(meta.passes).toBe(2);
+        const notesLog = path.join(await tmp("eval-notes-"), "log.jsonl");
+        const withNotes = {
+            ...env,
+            FAKE_NOTES_LOG: notesLog,
+            FAKE_NOTES_WRITTEN: "2",
+        };
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        // Two first passes; their second passes wait for them, so a batch of 2 runs only the first passes.
+        await main(["continue", runId, "--batch", "2"], withNotes);
+        let rows = await rowsOf(dir);
+        expect(rows.map((r) => r.pass)).toEqual([1, 1]);
+        expect(rows.map((r) => r.notesWritten)).toEqual([2, 2]);
+        // Interrupted here: the next continue starts each second pass from its first pass's file.
+        await main(["continue", runId, "--batch", "2"], withNotes);
+        log.mockRestore();
+        rows = await rowsOf(dir);
+        expect(rows.map((r) => r.pass)).toEqual([1, 1, 2, 2]);
+        // A second pass says how many of the notes it ends with it was handed.
+        expect(rows.map((r) => r.notesImported)).toEqual([
+            undefined,
+            undefined,
+            2,
+            2,
+        ]);
+        const calls = (await readFile(notesLog, "utf8"))
+            .trim()
+            .split("\n")
+            .map((l) => JSON.parse(l));
+        const imports = calls.filter((c) => c.command === "import");
+        expect(imports).toHaveLength(2);
+        expect(imports[0].file).toMatch(
+            /notes\/demo-callers-[ab]--baseline--1\.json$/,
+        );
+        expect(calls.filter((c) => c.command === "export")).toHaveLength(4);
+        expect(
+            rows
+                .filter((r) => r.pass === 2)
+                .every((r) => r.transcript.endsWith("--p2.jsonl")),
+        ).toBe(true);
+    });
+    it("names the command and its cause when the notes helper fails", async () => {
+        const failing = notes(
+            {
+                notesBin: FAKE_NOTES,
+                env: { ...process.env, FAKE_NOTES_FAIL: "export" },
+            },
+            { data: "/data" },
+            "export",
+            "/repos/demo",
+            "/run/notes/x.json",
+        );
+        await expect(failing).rejects.toThrow(
+            /annotations export for \/repos\/demo failed: .*database is locked/,
+        );
+    });
+    it("starts every session without another session's annotations", async () => {
+        const { env, runId } = await started(["--arms", "baseline"]);
+        const notesLog = path.join(await tmp("eval-notes-"), "log.jsonl");
+        const log = vi.spyOn(console, "log").mockImplementation(() => {});
+        await main(["continue", runId, "--batch", "2"], {
+            ...env,
+            FAKE_NOTES_LOG: notesLog,
+        });
+        log.mockRestore();
+        const calls = (await readFile(notesLog, "utf8"))
+            .trim()
+            .split("\n")
+            .map((l) => JSON.parse(l));
+        // Each session clears before it runs and counts what it left after.
+        expect(calls.map((c) => c.command)).toEqual([
+            "clear",
+            "export",
+            "clear",
+            "export",
+        ]);
+        expect(calls[0].db).toBe(
+            path.join(env.KNOSSOS_EVAL_ROOT, "data", "knossos.sqlite"),
+        );
+        expect(calls[0].root).toBe(
+            path.join(env.KNOSSOS_EVAL_ROOT, "repos", "demo"),
+        );
+    });
     it("reruns a limited session on the next continue", async () => {
         const { env, runId, dir } = await started(["--arms", "baseline"]);
         const log = vi.spyOn(console, "log").mockImplementation(() => {});

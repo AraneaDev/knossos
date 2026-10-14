@@ -6,7 +6,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SCORABLE, readLedger } from "./ledger.mjs";
+import { firstPasses, readLedger, SCORABLE } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
 import { corpusHashFor, plannedCorpus, tierOf } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
@@ -382,14 +382,100 @@ function provenanceLines(meta, prepare) {
     return lines;
 }
 
+/** The metrics a second pass is read for: what the notes might save, and whether the answer held. */
+const LEARNING_METRICS = ["turns", "durationMs", "costUsd", "f1"];
+
+/**
+ * What a second pass made of the notes its first left, for a two-pass run:
+ * per arm, how often a first pass left a note, and the second pass against
+ * the first, paired by task. `baseline` has no Knossos and so no notes: its
+ * second pass shows what repeating a task alone does, the control.
+ */
+function learning(meta, rows) {
+    const label = (arm) => (arm === "baseline" ? "baseline (control)" : arm);
+    const arms = meta.arms.filter((a) => parseArm(a).minus === null);
+    const firsts = (arm) =>
+        firstPasses(rows).filter(
+            (r) => r.arm === arm && SCORABLE.has(r.status),
+        );
+    const wrote = table(
+        ["arm", "first passes that left a note"],
+        arms.map((arm) => {
+            const first = firsts(arm);
+            return [
+                label(arm),
+                first.length === 0
+                    ? "-"
+                    : pct(
+                          first.filter((r) => (r.notesWritten ?? 0) > 0)
+                              .length / first.length,
+                      ),
+            ];
+        }),
+    );
+    const body = [];
+    for (const arm of arms) {
+        const byPass = rows
+            .filter((r) => r.arm === arm)
+            .map((r) => ({
+                ...r,
+                arm: (r.pass ?? 1) === 2 ? "second" : "first",
+            }));
+        for (const key of LEARNING_METRICS) {
+            const m = metric(key);
+            const deltas = pairedDeltas(
+                taskMedians(byPass, key),
+                "second",
+                "first",
+            );
+            const ci = bootstrapCi(deltas, {
+                seed: comparisonSeed(meta.seed, "learning", arm, key),
+            });
+            body.push([
+                label(arm),
+                m.label,
+                String(deltas.length),
+                ci ? signed(shown(m, ci.mean), 3) : "-",
+                ci
+                    ? `[${signed(shown(m, ci.low), 3)}, ${signed(shown(m, ci.high), 3)}]`
+                    : "-",
+                verdict(ci, m, deltas.length),
+            ]);
+        }
+    }
+    return [
+        "## Learning",
+        "",
+        "Each session ran twice; the second pass started with the notes its first left.",
+        "",
+        ...wrote,
+        "",
+        ...table(
+            [
+                "arm",
+                "metric",
+                "tasks",
+                "second minus first",
+                "90% interval",
+                "verdict",
+            ],
+            body,
+        ),
+    ];
+}
+
 export function buildReport({
     meta,
-    rows,
+    rows: allRows,
     tasks,
     previous = null,
     defects = [],
     prepare = null,
 }) {
+    // A two-pass run's second passes started with notes: every section but
+    // the Learning one reads the first passes, so the arms compare as in any run.
+    const twoPass = meta.passes === 2;
+    const rows = firstPasses(allRows);
     // A run that holds both tiers gets a summary per tier: pooled, an easy
     // tier at F1 1.0 would hide what the hard one shows.
     const tierOfTask = new Map(tasks.map((t) => [t.id, tierOf(t)]));
@@ -422,6 +508,7 @@ export function buildReport({
         "",
         ...sincePrevious(rows, previous),
         "",
+        ...(twoPass ? [...learning(meta, allRows), ""] : []),
     ].join("\n");
 }
 
@@ -456,8 +543,10 @@ export async function previousRun(run, s) {
             ) {
                 return {
                     runId: id,
-                    rows: await readLedger(
-                        path.join(s.runsDir, id, "ledger.jsonl"),
+                    rows: firstPasses(
+                        await readLedger(
+                            path.join(s.runsDir, id, "ledger.jsonl"),
+                        ),
                     ),
                 };
             }

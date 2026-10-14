@@ -17,14 +17,29 @@ export const TERMINAL = new Set([
 ]);
 export const SCORABLE = new Set(["scored", "no-answer", "timeout", "budget"]);
 
-export const sessionKey = ({ task, arm, repeat }) => `${task}|${arm}|${repeat}`;
+/** A session's key; a second pass is keyed apart, so a first pass and every run before passes keep the key they had. */
+export const sessionKey = ({ task, arm, repeat, pass }) =>
+    `${task}|${arm}|${repeat}${pass === 2 ? "|p2" : ""}`;
 
-export function makePlan({ tasks, arms, repeats, seed }) {
+/**
+ * Every session of a run, shuffled. With `passes: 2`, each session also gets
+ * a second pass (`pass: 2`), which starts with the notes its first left.
+ */
+export function makePlan({ tasks, arms, repeats, seed, passes = 1 }) {
     const plan = [];
     for (const task of tasks) {
         for (const arm of arms) {
-            for (let repeat = 1; repeat <= repeats; repeat += 1)
+            for (let repeat = 1; repeat <= repeats; repeat += 1) {
                 plan.push({ task: task.id, repo: task.repo, arm, repeat });
+                if (passes === 2)
+                    plan.push({
+                        task: task.id,
+                        repo: task.repo,
+                        arm,
+                        repeat,
+                        pass: 2,
+                    });
+            }
         }
     }
     const next = rng(seed);
@@ -87,11 +102,28 @@ export async function appendRow(file, row) {
     await appendFile(file, `${prefix}${JSON.stringify(row)}\n`);
 }
 
+/**
+ * The rows of first passes. A second pass started with its first pass's
+ * notes, so anything comparing arms, choosing tasks or choosing tools reads
+ * only these; a run of one pass has nothing else.
+ */
+export const firstPasses = (rows) => rows.filter((r) => (r.pass ?? 1) === 1);
+
 export function pending(plan, rows) {
     const done = new Set(
         rows.filter((r) => TERMINAL.has(r.status)).map(sessionKey),
     );
     return plan.filter((e) => !done.has(sessionKey(e)));
+}
+
+/** The pending sessions that can start now: a second pass waits until its first is done, since it needs that pass's notes. */
+export function runnable(plan, rows) {
+    const done = new Set(
+        rows.filter((r) => TERMINAL.has(r.status)).map(sessionKey),
+    );
+    return pending(plan, rows).filter(
+        (e) => e.pass !== 2 || done.has(sessionKey({ ...e, pass: undefined })),
+    );
 }
 
 export function limitState(record, { maxUtilization }) {

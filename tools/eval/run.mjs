@@ -52,6 +52,7 @@ import {
     appendRow,
     makePlan,
     pending,
+    runnable,
     readLedger,
     sessionKey,
 } from "./ledger.mjs";
@@ -79,6 +80,10 @@ export function settings(env = process.env) {
         pluginDir:
             env.KNOSSOS_EVAL_PLUGIN_DIR ?? path.join(REPO_ROOT, ".plugin"),
         claudeBin: env.KNOSSOS_EVAL_CLAUDE ?? "claude",
+        // Clears, keeps and restores a project's annotations between sessions; tests use a fake.
+        notesBin:
+            env.KNOSSOS_EVAL_NOTES ??
+            path.join(REPO_ROOT, "tools", "eval", "annotations.php"),
         // Where the real credentials are copied from; tests point it at an empty dir.
         realHome: env.KNOSSOS_EVAL_REAL_HOME ?? os.homedir(),
         // The Knossos checkout whose commit a run records; tests point it at a throwaway repository.
@@ -369,8 +374,12 @@ async function start(args, s) {
             budget: { type: "string", default: "1" },
             timeout: { type: "string", default: "600" },
             tier: { type: "string" },
+            passes: { type: "string", default: "1" },
         },
     });
+    if (values.passes !== "1" && values.passes !== "2")
+        throw new Error(`--passes must be 1 or 2, got "${values.passes}"`);
+    const passes = Number(values.passes);
     if (values.tier !== undefined && !TIERS.includes(values.tier))
         throw new Error(`--tier must be one of ${TIERS.join(", ")}`);
     const repeats = positive("repeats", values.repeats, { integer: true });
@@ -424,6 +433,7 @@ async function start(args, s) {
         budgetUsd,
         timeoutMs: timeoutSeconds * 1000,
         ...(values.tier === undefined ? {} : { tier: values.tier }),
+        ...(passes === 2 ? { passes } : {}),
         ...(await provenance(s)),
     };
     const dir = path.join(s.runsDir, runId);
@@ -436,6 +446,7 @@ async function start(args, s) {
             arms: meta.arms,
             repeats: meta.repeats,
             seed: meta.seed,
+            passes,
         }),
     );
     console.log(runId);
@@ -517,15 +528,58 @@ async function warnPluginVersion(s) {
         );
 }
 
+/**
+ * Runs the annotations helper for one project: `clear`, or `export`/`import`
+ * with `file`. Prints, and so returns, how many notes a model wrote (export).
+ */
+export async function notes(s, paths, command, workspace, file) {
+    let stdout;
+    try {
+        ({ stdout } = await promisify(execFile)(
+            s.notesBin,
+            [
+                command,
+                path.join(paths.data, "knossos.sqlite"),
+                workspace,
+                ...(file === undefined ? [] : [file]),
+            ],
+            { env: s.env },
+        ));
+    } catch (e) {
+        // The session is paid for by now when an export fails: say why it stopped.
+        const reason = (e.stderr ?? "").trim() || e.message;
+        throw new Error(
+            `annotations ${command} for ${workspace} failed: ${reason}`,
+            { cause: e },
+        );
+    }
+    return Number.parseInt(stdout.trim(), 10) || 0;
+}
+
 async function executeEntry(entry, ctx) {
     const { run, s, paths, env, rows, maxUtilization } = ctx;
     const task = run.tasks.find((t) => t.id === entry.task);
     const repo = run.corpus.repos[entry.repo];
     const workspace = path.join(paths.repos, entry.repo);
     await resetWorkspace(workspace, repo.commit);
+    // Annotations live in the shared graph database: a note one session wrote
+    // would answer the next. Every session starts without any, except a
+    // second pass, which starts with exactly what its first pass left.
+    const kept = path.join(
+        run.dir,
+        "notes",
+        `${entry.task}--${entry.arm}--${entry.repeat}.json`,
+    );
+    const imported = await notes(
+        s,
+        paths,
+        entry.pass === 2 ? "import" : "clear",
+        workspace,
+        entry.pass === 2 ? kept : undefined,
+    );
     const transcript = path.join(
         "transcripts",
-        `${entry.task}--${entry.arm}--${entry.repeat}.jsonl`,
+        `${entry.task}--${entry.arm}--${entry.repeat}${entry.pass === 2 ? "--p2" : ""}.jsonl`,
     );
     const outcome = await runSession({
         claudeBin: s.claudeBin,
@@ -543,7 +597,23 @@ async function executeEntry(entry, ctx) {
         onSpawn: ctx.onSpawn,
         onClose: ctx.onClose,
     });
-    return buildRow({
+    // What the session left: a first pass keeps it for its second; every
+    // session counts the model notes it ends with, and a second pass how many
+    // of those it was handed.
+    await mkdir(path.dirname(kept), { recursive: true });
+    const written = await notes(
+        s,
+        paths,
+        "export",
+        workspace,
+        entry.pass === 2
+            ? path.join(
+                  path.dirname(kept),
+                  `${path.basename(kept, ".json")}--p2.json`,
+              )
+            : kept,
+    );
+    const row = buildRow({
         entry,
         task,
         language: repo.language,
@@ -561,6 +631,12 @@ async function executeEntry(entry, ctx) {
         model: run.meta.model,
         knossosCommit: ctx.knossosCommit,
     });
+    return {
+        ...row,
+        pass: entry.pass ?? 1,
+        notesWritten: written,
+        ...(entry.pass === 2 ? { notesImported: imported } : {}),
+    };
 }
 
 /**
@@ -660,7 +736,9 @@ async function continueRun(args, s) {
     );
     const run = await openRun(positionals[0], s);
     const rows = await readLedger(run.ledger);
-    const queue = pending(run.plan, rows).slice(0, batch);
+    // A second pass waits for its first, so a batch may hold only first
+    // passes; something is runnable whenever anything is pending.
+    const queue = runnable(run.plan, rows).slice(0, batch);
     if (queue.length === 0) {
         console.log(
             `run ${run.meta.runId} is complete; write the report with: node tools/eval/report.mjs ${run.meta.runId}`,

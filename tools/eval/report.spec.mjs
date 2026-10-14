@@ -499,6 +499,20 @@ describe("previousRun", () => {
         );
         expect(found).toEqual({ runId: "r2", rows: [{ task: "new" }] });
     });
+    it("hands back an earlier two-pass run's first passes only", async () => {
+        const runsDir = await runs([
+            [
+                "r1",
+                meta("r1"),
+                '{"task":"a","pass":1}\n{"task":"a","pass":2}\n{"task":"old"}\n',
+            ],
+        ]);
+        const found = await previousRun(
+            { meta: meta("r2"), corpus },
+            { runsDir },
+        );
+        expect(found.rows).toEqual([{ task: "a", pass: 1 }, { task: "old" }]);
+    });
     it("compares like with like: a run written with the legacy hash still matches", async () => {
         const runsDir = await runs([
             ["r1", legacy("r1"), '{"task":"legacy"}\n'],
@@ -637,5 +651,58 @@ describe("report by tier", () => {
             tasks: tiered.filter((t) => t.id === "h1"),
         });
         expect(md).toMatch(/, 1 tasks\./);
+    });
+});
+
+describe("a two-pass run's report", () => {
+    const tasks = ["a", "b", "c", "d", "e", "f"].map((id) => ({
+        id,
+        category: "impact",
+    }));
+    const passRows = (arm, firstTurns, secondTurns, wrote) =>
+        tasks.flatMap((t) => [
+            row(t.id, arm, 1, {
+                pass: 1,
+                turns: firstTurns,
+                notesWritten: wrote ? 1 : 0,
+            }),
+            row(t.id, arm, 1, {
+                pass: 2,
+                turns: secondTurns,
+                notesWritten: wrote ? 1 : 0,
+            }),
+        ]);
+    const md = buildReport({
+        meta: { ...meta, arms: ["baseline", "full"], passes: 2 },
+        rows: [
+            ...passRows("baseline", 8, 8, false),
+            ...passRows("full", 8, 4, true),
+        ],
+        tasks,
+    });
+
+    it("says how often a first pass left a note, and what the second pass saved, with baseline as the control", () => {
+        expect(md).toContain("## Learning");
+        expect(md).toMatch(/\| full \| 100% \|/);
+        expect(md).toMatch(/\| baseline \(control\) \| 0% \|/);
+        expect(md).toMatch(/\| full \| turns \| 6 \| -4\.000 \|/);
+        expect(md).toMatch(
+            /\| baseline \(control\) \| turns \| 6 \| \+0\.000 \|/,
+        );
+    });
+
+    it("reads every other section from the first passes only", () => {
+        // Pooled, full would average 6 turns; its first passes took 8.
+        expect(md).toMatch(/\| full \| 6 \| 1\.00 \| 0\.100 \| 8\.0 \|/);
+    });
+
+    it("leaves the section out of a one-pass run", () => {
+        expect(
+            buildReport({
+                meta,
+                rows: passRows("full", 8, 4, true).filter((r) => r.pass === 1),
+                tasks,
+            }),
+        ).not.toContain("## Learning");
     });
 });

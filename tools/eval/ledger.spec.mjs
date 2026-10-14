@@ -8,6 +8,7 @@ import {
     limitState,
     makePlan,
     pending,
+    runnable,
     readLedger,
     sessionKey,
 } from "./ledger.mjs";
@@ -236,5 +237,47 @@ describe("limitState", () => {
                 { maxUtilization: 0.85 },
             ),
         ).toBe("ok");
+    });
+});
+
+describe("two passes", () => {
+    const tasks = [
+        { id: "t1", repo: "r" },
+        { id: "t2", repo: "r" },
+    ];
+
+    it("plans a second pass of every session, keyed apart, with the first pass keyed as before", () => {
+        const plan = makePlan({
+            tasks,
+            arms: ["full"],
+            repeats: 1,
+            seed: 1,
+            passes: 2,
+        });
+        expect(plan).toHaveLength(4);
+        expect(plan.filter((e) => e.pass === 2)).toHaveLength(2);
+        const first = plan.find((e) => e.task === "t1" && e.pass !== 2);
+        expect(sessionKey(first)).toBe("t1|full|1");
+        expect(sessionKey({ ...first, pass: 2 })).toBe("t1|full|1|p2");
+        expect(
+            makePlan({ tasks, arms: ["full"], repeats: 1, seed: 1 }).every(
+                (e) => e.pass === undefined,
+            ),
+        ).toBe(true);
+    });
+
+    it("holds a second pass back until its first is done", () => {
+        const plan = makePlan({
+            tasks,
+            arms: ["full"],
+            repeats: 1,
+            seed: 1,
+            passes: 2,
+        });
+        const ready = (rows) => runnable(plan, rows).map(sessionKey).sort();
+        expect(ready([])).toEqual(["t1|full|1", "t2|full|1"]);
+        expect(
+            ready([{ task: "t1", arm: "full", repeat: 1, status: "scored" }]),
+        ).toEqual(["t1|full|1|p2", "t2|full|1"]);
     });
 });
