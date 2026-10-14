@@ -278,6 +278,28 @@ impl Facts {
         });
     }
 
+    /// The [`Facts::edge`] shape plus attributes, for framework facts (a
+    /// `mounts` edge carries its prefix and what it mounts onto).
+    pub fn edge_with_attributes(
+        &mut self,
+        kind: &str,
+        source: &str,
+        target: &str,
+        span: Span,
+        attributes: BTreeMap<String, Value>,
+    ) {
+        let evidence = self.evidence(span, span);
+        self.edges.push(Edge {
+            kind: kind.to_owned(),
+            source: source.to_owned(),
+            target: target.to_owned(),
+            origin: "ast",
+            confidence: "certain",
+            evidence,
+            attributes,
+        });
+    }
+
     /// Record one edge whose target the source names but cannot vouch for:
     /// a method called through a receiver whose type is stated (`self`, a
     /// typed parameter, an annotated or constructed binding), or a type named
@@ -427,16 +449,32 @@ impl Facts {
                 node.attributes.insert(key.clone(), value.clone());
             }
         }
+        // One router mounted twice under two prefixes answers both, so a
+        // mount is one per prefix; every other edge is one per kind, source
+        // and target.
+        let prefix = |edge: &Edge| edge.attributes.get("prefix").map(Value::to_string);
         self.edges.sort_by(|a, b| {
-            (&a.kind, &a.source, &a.target, a.evidence.start_line).cmp(&(
-                &b.kind,
-                &b.source,
-                &b.target,
-                b.evidence.start_line,
-            ))
+            (
+                &a.kind,
+                &a.source,
+                &a.target,
+                prefix(a),
+                a.evidence.start_line,
+            )
+                .cmp(&(
+                    &b.kind,
+                    &b.source,
+                    &b.target,
+                    prefix(b),
+                    b.evidence.start_line,
+                ))
         });
-        self.edges
-            .dedup_by(|a, b| a.kind == b.kind && a.source == b.source && a.target == b.target);
+        self.edges.dedup_by(|a, b| {
+            a.kind == b.kind
+                && a.source == b.source
+                && a.target == b.target
+                && prefix(a) == prefix(b)
+        });
 
         Contribution {
             owner_key: format!("knossos.rust:file:{}", self.relative),

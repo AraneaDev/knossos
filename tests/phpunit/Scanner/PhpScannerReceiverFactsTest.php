@@ -442,6 +442,55 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
         assertArrayContains('stale', $scan['untyped']);
     }
 
+    public function testALoopOverAPropertyDocumentedAsAListTypesItsVariable(): void
+    {
+        $edges = $this->edges(<<<'PHP'
+            <?php
+            namespace App;
+
+            interface Command
+            {
+                public function supports(string $name): bool;
+
+                public function run(): int;
+            }
+
+            final class Router
+            {
+                /** @var list<Command> */
+                private array $commands = [];
+
+                /** @var array<string, Command> */
+                private array $byName = [];
+
+                public function route(string $name): int
+                {
+                    $handler = null;
+                    foreach ($this->commands as $candidate) {
+                        if ($candidate->supports($name)) {
+                            $handler = $candidate;
+                            break;
+                        }
+                    }
+                    return $handler->run();
+                }
+
+                public function each(): void
+                {
+                    foreach ($this->byName as $command) {
+                        $command->supports('x');
+                    }
+                }
+            }
+            PHP);
+
+        // The loop variable, and a variable it is copied to.
+        assertArrayContains(['calls', 'php:method:App\Router::route', 'php:method:App\Command::supports'], $edges);
+        assertArrayContains(['calls', 'php:method:App\Router::route', 'php:method:App\Command::run'], $edges);
+        // A map's values: `array<string, Command>`.
+        assertArrayContains(['calls', 'php:method:App\Router::each', 'php:method:App\Command::supports'], $edges);
+    }
+
     public function testAnArgvNamingAnInterpreterAndAPathLaunchesThatPath(): void
     {
         $edges = $this->edges(<<<'PHP'

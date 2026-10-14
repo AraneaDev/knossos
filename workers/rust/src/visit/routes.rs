@@ -66,6 +66,7 @@ impl Walk<'_> {
                 path,
                 handler: canonical.to_owned(),
                 handler_unconfirmed: false,
+                router: None,
                 span: attr.span(),
             });
         }
@@ -103,7 +104,15 @@ impl Walk<'_> {
                         serde_json::json!(vec![route.method.clone()]),
                     ),
                     ("path".to_owned(), serde_json::json!(route.path)),
-                ]),
+                ])
+                .into_iter()
+                .chain(
+                    route
+                        .router
+                        .iter()
+                        .map(|router| ("router".to_owned(), serde_json::json!(router))),
+                )
+                .collect(),
             );
             let source = reference("route", &canonical);
             let target = reference("function", &route.handler);
@@ -131,12 +140,14 @@ impl Calls<'_, '_> {
     /// `web::resource("/path").route(web::get().to(handler))` call, recorded
     /// as a route fact for [`Walk::flush_routes`].
     ///
-    /// Only the two canonical shapes are handled: the routing shorthand
+    /// Only the canonical shapes are handled: the routing shorthand
     /// (`get(handler)`, `routing::post(handler)`, `any(handler)`) for axum,
-    /// and the `web::<verb>().to(handler)` chain actix builds inside `route`.
-    /// Anything else — `nest`, `route_service`, a handler named by a
-    /// non-path expression — contributes nothing rather than a guessed
-    /// route. A path that is not a string literal is diagnosed rather than
+    /// and the `web::<verb>().to(handler)` chain actix takes in
+    /// `resource(...).route(...)` or in `route(path, ...)` on an app or
+    /// scope. Anything else — `route_service`, a handler named by a non-path
+    /// expression — contributes nothing rather than a guessed route. The
+    /// path is served under every enclosing `nest(...)` and `scope(...)`
+    /// ([`Calls::prefixes`]) and every `scope(...)` the call is chained on. A path that is not a string literal is diagnosed rather than
     /// guessed, mirroring `PY_DYNAMIC_ROUTE_PATH`; a literal template with
     /// parameters is kept as written.
     fn framework_route(&mut self, node: &syn::ExprMethodCall) {
@@ -146,23 +157,30 @@ impl Calls<'_, '_> {
             return;
         }
         let args: Vec<&syn::Expr> = node.args.iter().collect();
-        let (route_path, method, handler, framework) = if has_axum && args.len() >= 2 {
+        let (route_path, method, handler, framework) = if args.len() >= 2 {
             let Some(path) = expr_string(args[0]) else {
                 self.dynamic_route(node.span());
                 return;
             };
-            let Some((method, handler)) = routing_shorthand(args[1]) else {
+            if let Some((method, handler)) = routing_shorthand(args[1]).filter(|_| has_axum) {
+                (path, method, handler, "axum")
+            } else if let Some((method, handler)) = actix_to(args[1]).filter(|_| has_actix) {
+                let scoped = join_path(&scope_prefix(&node.receiver), &path);
+                (scoped, method, handler, "actix")
+            } else {
                 return;
-            };
-            (path, method, handler, "axum")
+            }
         } else if has_actix && args.len() == 1 {
             let Some((path, method, handler)) = actix_resource(&node.receiver, args[0]) else {
                 return;
             };
-            (path, method, handler, "actix")
+            let scoped = join_path(&scope_prefix(&node.receiver), &path);
+            (scoped, method, handler, "actix")
         } else {
             return;
         };
+        let route_path = join_path(&self.prefixes.concat(), &route_path);
+        let router = Some(self.enclosing.clone());
         let Some(path) = path_of(handler).and_then(|path| {
             self.walk
                 .resolve_path(&self.container, path)
@@ -172,6 +190,7 @@ impl Calls<'_, '_> {
                     path: route_path,
                     handler: target,
                     handler_unconfirmed: unconfirmed,
+                    router,
                     span: node.span(),
                 })
         }) else {
@@ -253,6 +272,13 @@ fn actix_resource<'a>(
         }
         _ => return None,
     };
+    let (method, handler) = actix_to(arg)?;
+
+    Some((path, method, handler))
+}
+
+/// actix's `web::<verb>().to(handler)`: the HTTP verb and the handler.
+fn actix_to(arg: &syn::Expr) -> Option<(String, &syn::Expr)> {
     let syn::Expr::MethodCall(to) = arg else {
         return None;
     };
@@ -276,7 +302,47 @@ fn actix_resource<'a>(
         return None;
     }
 
-    Some((path, method, to.args.first()?))
+    Some((method, to.args.first()?))
+}
+
+/// The prefixes of the actix `scope("/p")` calls a method call is chained
+/// on, outermost first: `web::scope("/a").route(...)` is served under `/a`.
+fn scope_prefix(receiver: &syn::Expr) -> String {
+    let mut prefixes = Vec::new();
+    let mut current = receiver;
+    loop {
+        match current {
+            syn::Expr::MethodCall(call) => current = &call.receiver,
+            syn::Expr::Call(call) => {
+                if path_of(&call.func)
+                    .and_then(|path| path.segments.last())
+                    .is_some_and(|segment| segment.ident == "scope")
+                {
+                    if let Some(prefix) = call.args.first().and_then(expr_string) {
+                        prefixes.push(prefix);
+                    }
+                }
+                break;
+            }
+            _ => break,
+        }
+    }
+    prefixes.reverse();
+    prefixes.concat()
+}
+
+/// `path` served under `prefix`: one slash between them, and a root path
+/// under a prefix is the prefix itself, as axum's `nest` and actix's
+/// `scope` serve it.
+pub(super) fn join_path(prefix: &str, path: &str) -> String {
+    let prefix = prefix.trim_end_matches('/');
+    if prefix.is_empty() {
+        return path.to_owned();
+    }
+    if path.trim_matches('/').is_empty() {
+        return prefix.to_owned();
+    }
+    format!("{prefix}/{}", path.trim_start_matches('/'))
 }
 
 /// The `route(...)` method-call shapes of axum and actix. Dispatched from the
@@ -286,5 +352,68 @@ impl Calls<'_, '_> {
     /// Look for a route declaration in one `route(...)` method call.
     pub(super) fn call_routes(&mut self, node: &syn::ExprMethodCall) {
         self.framework_route(node);
+    }
+
+    /// The prefix a method call puts in front of the routes its arguments
+    /// declare: axum's `nest("/p", router)`, or an actix `service(...)`
+    /// chained on `scope("/p")`. `None` when it adds none.
+    pub(super) fn route_prefix(&self, node: &syn::ExprMethodCall) -> Option<String> {
+        let has_axum = self.walk.frameworks.iter().any(|f| f == "axum");
+        let has_actix = self.walk.frameworks.iter().any(|f| f == "actix");
+        if has_axum && node.method == "nest" && node.args.len() == 2 {
+            return node.args.first().and_then(expr_string);
+        }
+        if has_actix && node.method == "service" {
+            let prefix = scope_prefix(&node.receiver);
+            return (!prefix.is_empty()).then_some(prefix);
+        }
+        None
+    }
+
+    /// An axum `nest("/p", api())` or `merge(api())` whose router another
+    /// function builds: a `mounts` edge from this function to that one,
+    /// with the prefix (empty for `merge`) and this function as what it is
+    /// mounted onto. The core puts the prefix in front of that function's
+    /// routes. A router held in a variable or built inline names no
+    /// function and mounts nothing.
+    pub(super) fn mount_router(&mut self, node: &syn::ExprMethodCall) {
+        if !self.walk.frameworks.iter().any(|f| f == "axum") {
+            return;
+        }
+        let args: Vec<&syn::Expr> = node.args.iter().collect();
+        let (prefix, router) = match (node.method.to_string().as_str(), args.as_slice()) {
+            ("nest", [path, router]) => match expr_string(path) {
+                Some(path) => (path, *router),
+                None => return,
+            },
+            ("merge", [router]) => (String::new(), *router),
+            _ => return,
+        };
+        let syn::Expr::Call(call) = router else {
+            return;
+        };
+        let Some((target, unconfirmed)) =
+            path_of(&call.func).and_then(|path| self.walk.resolve_path(&self.container, path))
+        else {
+            return;
+        };
+        let mut attributes = BTreeMap::from([
+            (
+                "prefix".to_owned(),
+                serde_json::json!(join_path(&self.prefixes.concat(), &prefix)),
+            ),
+            ("onto".to_owned(), serde_json::json!(self.enclosing)),
+        ]);
+        if unconfirmed {
+            attributes.insert("speculative".to_owned(), serde_json::json!(true));
+        }
+        let source = self.enclosing.clone();
+        self.walk.facts.edge_with_attributes(
+            "mounts",
+            &source,
+            &reference("function", &target),
+            node.span(),
+            attributes,
+        );
     }
 }

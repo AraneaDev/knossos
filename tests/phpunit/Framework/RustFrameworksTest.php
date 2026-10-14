@@ -147,4 +147,41 @@ RUST);
             $this->removeTempTree($root);
         }
     }
+
+    /**
+     * A router another function builds and nests is served under the nest's
+     * prefix; a route on the router nothing nests keeps its own path.
+     */
+    #[Group('rust-frameworks')]
+    public function testACallerReachesAHandlerOnANestedAxumRouter(): void
+    {
+        if (!is_file(self::rustWorkerBinary())) {
+            self::markTestSkipped('The Rust worker binary is not built.');
+        }
+        $root = sys_get_temp_dir() . '/knossos-stale-rust-nest-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o700, true);
+        mkdir($root . '/web', 0o700, true);
+        file_put_contents($root . '/Cargo.toml', "[package]\nname = \"users\"\nversion = \"0.1.0\"\n\n[dependencies]\naxum = \"0.7\"\n");
+        file_put_contents($root . '/src/lib.rs', "use axum::Router;\nuse axum::routing::get;\n\nfn user() {}\nfn health() {}\n\n"
+            . "fn api() -> Router {\n    Router::new().route(\"/users/:id\", get(user))\n}\n\n"
+            . "fn app() -> Router {\n    Router::new().route(\"/health\", get(health)).nest(\"/api\", api())\n}\n");
+        file_put_contents($root . '/web/package.json', "{\"name\": \"web\", \"private\": true}\n");
+        file_put_contents($root . '/web/api.js', 'export const load = (id) => fetch(`/api/users/${id}`);' . "\n"
+            . "export const ping = () => fetch('/health');\n");
+        $pdo = $this->freshTestDatabase();
+        try {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $queries = \Knossos\Query\ArchitectureQueryService::forDatabase($pdo);
+            $nested = $queries->explainFlow($projectId, 'web/api.js#load', 'crate::user')->data['paths'][0]['hops'] ?? [];
+            assertSame(['calls_endpoint', 'resolves_to', 'routes_to'], array_column($nested, 'kind'));
+            // The prefix is declared, so the match through the parameter is as good as one gets.
+            assertSame(['probable', 'parameter'], [$nested[1]['confidence'], $nested[1]['attributes']['match']]);
+            $top = $queries->explainFlow($projectId, 'web/api.js#ping', 'crate::health')->data['paths'][0]['hops'] ?? [];
+            assertSame(['certain', 'exact'], [$top[1]['confidence'] ?? null, $top[1]['attributes']['match'] ?? null]);
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
 }

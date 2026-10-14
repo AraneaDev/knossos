@@ -130,6 +130,19 @@ final class DocblockTypes
     }
 
     /**
+     * The type a property's docblock gives it, `@var list<X>` or `@var array<K, X>`,
+     * or null when it gives none.
+     */
+    public static function documentedVar(string $docComment): ?string
+    {
+        if (preg_match('/@(?:(?:phpstan|psalm)-)?var\s+(' . self::DOC_TYPE . ')/', $docComment, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[1];
+    }
+
+    /**
      * The element type of an array or iterable type as a docblock writes it:
      * `list<X>`, `array<K, X>`, `iterable<X>` or `X[]`.
      */

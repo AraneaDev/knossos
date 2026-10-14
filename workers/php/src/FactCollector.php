@@ -49,7 +49,7 @@ final class FactCollector extends NodeVisitorAbstract
     /** @var list<array<string, mixed>> */
     private array $diagnostics = [];
 
-    /** @var list<array{id: string, name: string, parent: ?string, interfaces: list<string>, properties: array<string, string>}> */
+    /** @var list<array{id: string, name: string, parent: ?string, interfaces: list<string>, properties: array<string, string>, elements?: array<string, string>}> */
     private array $classes = [];
 
     /** @var list<array{id: string}> */
@@ -621,6 +621,15 @@ final class FactCollector extends NodeVisitorAbstract
                 $this->setPropertyType($property->name->toString(), $types[0]);
             }
         }
+        // `/** @var list<Command> */ private array $commands`: what a loop over it holds.
+        $documented = DocblockTypes::documentedVar($node->getDocComment()?->getText() ?? '');
+        $element = $documented === null ? null : DocblockTypes::elementType($documented);
+        $resolved = $element === null ? null : $this->docblocks->documentedClass($element, $this->namespaceScope, $this->namespaceName, $class['name']);
+        if ($resolved !== null && $this->classes !== []) {
+            foreach ($node->props as $property) {
+                $this->classes[array_key_last($this->classes)]['elements'][$property->name->toString()] = $resolved;
+            }
+        }
     }
 
     /**
@@ -1099,7 +1108,7 @@ final class FactCollector extends NodeVisitorAbstract
     /**
      * The innermost enclosing class-like declaration, or null at file scope.
      *
-     * @return array{id: string, name: string, parent: ?string, interfaces: list<string>, properties: array<string, string>}|null
+     * @return array{id: string, name: string, parent: ?string, interfaces: list<string>, properties: array<string, string>, elements?: array<string, string>}|null
      */
     private function currentClass(): ?array
     {
