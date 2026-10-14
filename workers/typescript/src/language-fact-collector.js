@@ -147,7 +147,8 @@ export class TypeScriptLanguageFactCollector {
      * the dispatch through it leaves no edge to this method.
      */
     overridesSupertypeMember(node) {
-        if (!ts.isMethodDeclaration(node)) return false;
+        if (!ts.isMethodDeclaration(node) && !isFunctionAssignment(node))
+            return false;
         // An object literal's method fulfils the member of the type the
         // literal is handed to (`registerHooks({ resolve() {} })`), which
         // calls it unseen.

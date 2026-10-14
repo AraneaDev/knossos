@@ -191,13 +191,41 @@ export function isFunctionAssignment(node) {
     if (
         !ts.isPropertyAssignment(node) ||
         !ts.isObjectLiteralExpression(node.parent) ||
-        !(ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+        !(ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) ||
+        !isModuleTable(node.parent)
     )
         return false;
     const value = unwrapExpression(node.initializer);
     return (
         value !== undefined &&
         (ts.isArrowFunction(value) || ts.isFunctionExpression(value))
+    );
+}
+
+/**
+ * An object literal a module names: `const tools = { ... }`, or one handed to
+ * a call whose result a module binding holds, `const action = register({ ... })`.
+ * A literal built inside a function, `return { make: () => ... }`, is a value
+ * of that function: its calls stay the function's own.
+ */
+function isModuleTable(literal) {
+    let holder = holderOf(literal);
+    if (
+        holder !== undefined &&
+        ts.isCallExpression(holder) &&
+        holder.arguments.some(
+            (argument) => unwrapExpression(argument) === literal,
+        )
+    )
+        holder = holderOf(holder);
+    return (
+        holder !== undefined &&
+        ts.isVariableDeclaration(holder) &&
+        holder.parent !== undefined &&
+        ts.isVariableDeclarationList(holder.parent) &&
+        holder.parent.parent !== undefined &&
+        ts.isVariableStatement(holder.parent.parent) &&
+        ts.isSourceFile(holder.parent.parent.parent)
     );
 }
 

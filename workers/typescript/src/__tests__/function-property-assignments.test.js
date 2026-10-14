@@ -95,6 +95,48 @@ describe("an object literal's property that holds a function", () => {
         },
     );
 
+    it("leaves a literal a function builds to that function, whose calls stay its own", () => {
+        const { nodes: inner, edges: innerEdges } = scan({
+            "package.json": '{"name":"fixture"}',
+            "tsconfig.json":
+                '{"compilerOptions":{"strict":false},"include":["src"]}',
+            "src/blocks.ts": [
+                "export function helper(): number { return 1; }",
+                "export function block() {",
+                "  return { make: () => helper() };",
+                "}",
+                "",
+            ].join("\n"),
+        });
+        const block = inner.find((n) => n.display_name === "block");
+        const helper = inner.find((n) => n.display_name === "helper");
+        expect(
+            inner.find((n) => n.kind === "method" && n.display_name === "make"),
+        ).toBeUndefined();
+        expect(calls(innerEdges, block.local_id, helper.local_id)).toBe(true);
+    });
+
+    it("marks a table's method that fulfils a declared type's member as overriding it", () => {
+        const { nodes: typed } = scan({
+            "package.json": '{"name":"fixture"}',
+            "tsconfig.json":
+                '{"compilerOptions":{"strict":false},"include":["src"]}',
+            "src/action.ts": [
+                "export interface Action { name: string; perform: (x: number) => number }",
+                "const register = (action: Action): Action => action;",
+                "export const actionDouble = register({",
+                '  name: "double",',
+                "  perform: (x: number) => x * 2,",
+                "});",
+                "",
+            ].join("\n"),
+        });
+        const perform = typed.find(
+            (n) => n.kind === "method" && n.display_name === "perform",
+        );
+        expect(perform?.attributes.overrides).toBe(true);
+    });
+
     it("leaves a property that holds no function out of the graph's methods", () => {
         expect(method("name")).toBeUndefined();
         expect(method("label")).toBeUndefined();
