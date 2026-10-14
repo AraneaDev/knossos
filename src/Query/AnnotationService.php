@@ -119,10 +119,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             }
             $cited->execute(['project' => $projectId, 'path' => $path]);
             $hash = $cited->fetchColumn();
-            if (!is_string($hash)) {
-                throw new InvalidArgumentException(sprintf('evidence path %s is not a scanned file of this project.', $path));
-            }
-            $basis[$path] = $hash;
+            // A file no scan reads (a CI script, a shell tool) is hashed from disk.
+            $basis[$path] = is_string($hash) ? $hash : ProjectFileHash::of($root, $path);
         }
 
         return array_map(static fn(string $path, string $hash): array => ['path' => $path, 'hash' => $hash], array_keys($basis), array_values($basis));

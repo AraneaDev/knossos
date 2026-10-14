@@ -97,7 +97,40 @@ final readonly class AnnotationNotes
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $file) {
             $current[(string) $file['relative_path']] = (string) $file['content_hash'];
         }
-        return $current;
+        // A file recorded by its disk hash is checked on disk, whatever a scan
+        // says of it since, under a key of its own; one no longer there is absent.
+        $root = null;
+        foreach ($rows as $row) {
+            foreach (self::basis((string) $row['basis_json']) as $entry) {
+                $key = self::currentKey($entry);
+                if ($key !== $entry['path'] && !array_key_exists($key, $current)) {
+                    $root ??= $this->root($projectId);
+                    $current[$key] = $root === null ? null : ProjectFileHash::current($root, $entry['path']);
+                }
+            }
+        }
+        return array_filter($current, static fn(?string $hash): bool => $hash !== null);
+    }
+
+    /**
+     * Where `currentHashes` keeps a basis entry's current hash: by its path
+     * for a scanned file, and apart for one recorded by its disk hash.
+     *
+     * @param array{path: string, hash: string} $entry
+     */
+    private static function currentKey(array $entry): string
+    {
+        return str_starts_with($entry['hash'], ProjectFileHash::PREFIX) ? ProjectFileHash::PREFIX . $entry['path'] : $entry['path'];
+    }
+
+    /** The project's root on disk, or null when it is unknown. */
+    private function root(string $projectId): ?string
+    {
+        $statement = $this->pdo->prepare('SELECT root_realpath FROM projects WHERE id = ?');
+        $statement->execute([$projectId]);
+        $root = $statement->fetchColumn();
+
+        return is_string($root) && $root !== '' ? $root : null;
     }
 
     /**
@@ -115,10 +148,11 @@ final readonly class AnnotationNotes
             return 'rests on no scanned file';
         }
         foreach ($basis as $entry) {
-            if (!isset($current[$entry['path']])) {
+            $key = self::currentKey($entry);
+            if (!isset($current[$key])) {
                 return sprintf('written before %s was removed', $entry['path']);
             }
-            if ($current[$entry['path']] !== $entry['hash']) {
+            if ($current[$key] !== $entry['hash']) {
                 return sprintf('written before %s changed', $entry['path']);
             }
         }
