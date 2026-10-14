@@ -6,14 +6,20 @@ quality_image="${2:-knossos:quality}"
 report_dir="${3:-coverage/supply-chain}"
 mkdir -p "$report_dir"
 
-trivy image --quiet --format cyclonedx --output "$report_dir/runtime.cdx.json" "$runtime_image"
-trivy image --quiet --format cyclonedx --output "$report_dir/quality.cdx.json" "$quality_image"
-trivy image --quiet --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
-    --format json --output "$report_dir/runtime-vulnerabilities.json" "$runtime_image"
-trivy image --quiet --ignore-unfixed --severity HIGH,CRITICAL --exit-code 0 \
+# The scans below are quiet, so a database that failed to download and a
+# finding both ended the lane with exit 1 and nothing else. The download runs
+# once, on its own and out loud; a failing gate prints what it found.
+trivy image --download-db-only
+trivy image --quiet --skip-db-update --format cyclonedx --output "$report_dir/runtime.cdx.json" "$runtime_image"
+trivy image --quiet --skip-db-update --format cyclonedx --output "$report_dir/quality.cdx.json" "$quality_image"
+trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
+    --format json --output "$report_dir/runtime-vulnerabilities.json" "$runtime_image" \
+    || { trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --format table "$runtime_image" >&2; exit 1; }
+trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --exit-code 0 \
     --format json --output "$report_dir/quality-vulnerabilities.json" "$quality_image"
 trivy config --quiet --ignorefile .trivyignore --severity HIGH,CRITICAL --exit-code 1 \
-    --format json --output "$report_dir/dockerfile-misconfigurations.json" Dockerfile
+    --format json --output "$report_dir/dockerfile-misconfigurations.json" Dockerfile \
+    || { trivy config --ignorefile .trivyignore --severity HIGH,CRITICAL --format table Dockerfile >&2; exit 1; }
 
 runtime_id=$(docker image inspect --format '{{.Id}}' "$runtime_image")
 quality_id=$(docker image inspect --format '{{.Id}}' "$quality_image")
