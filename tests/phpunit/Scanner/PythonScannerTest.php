@@ -1615,6 +1615,140 @@ PYTHON);
     }
 
     #[Group('python-scanner')]
+    public function testAReceiverIsTypedByAReturnAnnotationAnOrmLookupAndAWithTarget(): void
+    {
+        // `load(pk).save()`, `Document.objects.get(pk=pk).save()` and
+        // `with Lock() as lock: lock.release()` all call a method on an object
+        // whose class the code states: by a return annotation, by the model a
+        // manager belongs to, by the class a `with` builds. Each resolves to
+        // that class's method instead of an untyped receiver.
+        $root = sys_get_temp_dir() . '/knossos-py-typed-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/models.py' => implode("\n", [
+                'from django.db import models',
+                '',
+                'class Document(models.Model):',
+                '    def save(self):',
+                '        return 1',
+                '    def archive(self):',
+                '        return 1',
+                '    def touch(self):',
+                '        return 1',
+                '    def stamp(self):',
+                '        return 1',
+                '',
+                'class Repo:',
+                '    def find(self, pk) -> Document:',
+                '        return Document.objects.get(pk=pk)',
+                '',
+                'class Lock:',
+                '    def __enter__(self):',
+                '        return self',
+                '    def __exit__(self, *exc):',
+                '        return False',
+                '    def release(self):',
+                '        return 1',
+                '',
+                'def load(pk) -> Document:',
+                '    return Document.objects.get(pk=pk)',
+                '',
+                'def make_repo() -> Repo:',
+                '    return Repo()',
+                '',
+                'def parsed(pk) -> "Document":',
+                '    return load(pk)',
+                '',
+                'def broken(pk) -> "Doc(":',
+                '    return load(pk)',
+                '',
+            ]),
+            'app/service.py' => implode("\n", [
+                'from .models import Document, Lock, Repo, broken, load, make_repo, parsed',
+                '',
+                'def by_return(pk):',
+                '    doc = load(pk)',
+                '    doc.save()',
+                '',
+                'def chained(pk):',
+                '    load(pk).archive()',
+                '',
+                'def by_method(repo: Repo, pk):',
+                '    found = repo.find(pk)',
+                '    found.stamp()',
+                '',
+                'def by_orm(pk):',
+                '    doc = Document.objects.filter(pk=pk).first()',
+                '    doc.touch()',
+                '    Document.objects.get(pk=pk).save()',
+                '',
+                'def by_with():',
+                '    with Lock() as lock:',
+                '        lock.release()',
+                '',
+                'def by_chain(pk):',
+                '    Repo().find(pk).stamp()',
+                '    make_repo().find(pk).archive()',
+                '',
+                'def by_quoted(pk):',
+                '    parsed(pk).touch()',
+                '    broken(pk).save()',
+                '',
+                'def by_untyped(handlers, model):',
+                '    handlers[0]().save()',
+                '    model.objects.get(pk=1).save()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/service.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls') {
+                    $calls[] = $edge->sourceReference . ' -> ' . $edge->targetReference;
+                }
+            }
+        }
+
+        foreach ([
+            'by_return -> py:method:app.models.Document::save',
+            'chained -> py:method:app.models.Document::archive',
+            'by_method -> py:method:app.models.Document::stamp',
+            'by_orm -> py:method:app.models.Document::touch',
+            'by_orm -> py:method:app.models.Document::save',
+            'by_with -> py:method:app.models.Lock::release',
+            // A call on what a call returns, built or returned in turn.
+            'by_chain -> py:method:app.models.Document::stamp',
+            'by_chain -> py:method:app.models.Document::archive',
+            // A quoted annotation names its class as a bare one does.
+            'by_quoted -> py:method:app.models.Document::touch',
+        ] as $expected) {
+            self::assertContains('py:function:app.service.' . $expected, $calls);
+        }
+        // An annotation that does not parse, a callee with no name and a
+        // manager read off a parameter state no class.
+        foreach (['by_quoted', 'by_untyped'] as $untyped) {
+            self::assertNotContains('py:function:app.service.' . $untyped . ' -> py:method:app.models.Document::save', $calls);
+        }
+    }
+
+    #[Group('python-scanner')]
     public function testAMethodCalledOnAFreshInstanceResolvesThroughItsClass(): void
     {
         // `Repo().count()` calls a method on the instance just built, so the

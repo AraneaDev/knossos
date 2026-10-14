@@ -13,6 +13,7 @@ from .ast_helpers import (
     declared_protocols,
     dotted,
     module_statements,
+    optional_inner,
     ref,
     router_constructors,
     top_level_declarations,
@@ -122,6 +123,9 @@ class ProjectModuleIndex:
         # The import that found each path-qualified module, which is how its declarations are read.
         self._spellings: dict[str, str] = {}
         self._protocols: set[str] = set()
+        # The project class each function or method returns, by its ref, as
+        # its return annotation names it (:meth:`return_type`).
+        self._returns: dict[str, str] = {}
 
     @property
     def prefixes(self) -> list[tuple[str, ...]]:
@@ -579,7 +583,8 @@ class ProjectModuleIndex:
         self._protocols |= declared_protocols(tree, name)
         self._cache[key or name] = declarations
         self._add_reexports(tree, location, is_package, declarations)
-        self._add_instances(tree, location, is_package, declarations, name)
+        imported = self._add_instances(tree, location, is_package, declarations, name)
+        self._add_returns(tree, name, declarations, imported)
         return declarations
 
     def is_protocol(self, owner: str) -> bool:
@@ -615,9 +620,44 @@ class ProjectModuleIndex:
                 if reexported is not None:
                     declarations.setdefault(alias.asname or alias.name, reexported)
 
+    def _add_returns(self, tree: ast.Module, name: str, declarations: dict[str, str], imported: dict[str, str]) -> None:
+        """Record the project class each top-level function and method says it returns.
+
+        ``def load(pk) -> Document`` hands its caller a ``Document``, so
+        ``load(pk).save()`` calls ``Document.save``. Only an annotation naming a
+        class this module declares or imports counts.
+        """
+
+        def returned(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+            annotation = optional_inner(function.returns)
+            if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+                try:
+                    annotation = ast.parse(annotation.value, mode="eval").body
+                except SyntaxError:
+                    return None
+            named = dotted(annotation) if annotation is not None else None
+            target = None if named is None else declarations.get(named) or imported.get(named)
+            return target.removeprefix("py:class:") if target is not None and target.startswith("py:class:") else None
+
+        for child in module_statements(tree):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                held = returned(child)
+                if held is not None:
+                    self._returns[ref("function", f"{name}.{child.name}")] = held
+            elif isinstance(child, ast.ClassDef):
+                for member in child.body:
+                    if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        held = returned(member)
+                        if held is not None:
+                            self._returns[ref("method", f"{name}.{child.name}::{member.name}")] = held
+
+    def return_type(self, target: str) -> str | None:
+        """The project class the function or method ``target`` returns, once its module was read."""
+        return self._returns.get(target)
+
     def _add_instances(
         self, tree: ast.Module, module: str, is_package: bool, declarations: dict[str, str], name: str
-    ) -> None:
+    ) -> dict[str, str]:
         """Add the module-level instances ``tree`` creates to its declarations.
 
         ``user_repo = UserRepository()`` at module level is how a service hands
@@ -629,6 +669,8 @@ class ProjectModuleIndex:
         node its own scan emits (``name`` is the module's id), so a mount in
         another module names it. The declarations are cached before this
         runs, so two modules importing each other resolve without recursing.
+        Returns the project classes the module imports by name, which its
+        return annotations may name too (:meth:`_add_returns`).
         """
         routers = router_constructors(tree)
         imported: dict[str, str] = {}
@@ -658,6 +700,7 @@ class ProjectModuleIndex:
             value = assigned_declaration(constructor, declarations, imported)
             if value is not None:
                 declarations[variable] = value
+        return imported
 
     def adopt_parsed(self, absolute: Path, relative: str, tree: ast.Module) -> tuple[str, str | None]:
         """Make a scanned file's own declarations come from the tree just parsed; return its id and its id's owner.
