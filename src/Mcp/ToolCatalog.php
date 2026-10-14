@@ -235,7 +235,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'find_component',
                 'title' => 'Find component',
-                'description' => 'Locate a component by name when you are unsure of its exact canonical path. Returns ranked candidates. Use before inspect_component when the name is ambiguous.',
+                'description' => 'Locate a component by name when you are unsure of its exact canonical path, or by the file that declares it. Returns ranked candidates. Use before inspect_component when the name is ambiguous.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
