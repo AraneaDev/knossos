@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.28.0](https://github.com/AraneaDev/knossos/compare/v0.27.2...v0.28.0) (2026-10-14)
+
+
+### Features
+
+* **eval:** add a hard tier to the eval harness, with per-tier planning, reports and calibration ([#258](https://github.com/AraneaDev/knossos/issues/258)) ([ed67cd0](https://github.com/AraneaDev/knossos/commit/ed67cd05c2fb96d59403b192491b34e912fe8391))
+* **eval:** measure whether a note saves the next agent work ([#264](https://github.com/AraneaDev/knossos/issues/264)) ([9c11947](https://github.com/AraneaDev/knossos/commit/9c119473ec611f6ff72a007db400a37d3fbdebc2))
+* get agents to record what a Knossos answer missed ([#266](https://github.com/AraneaDev/knossos/issues/266)) ([dc799c3](https://github.com/AraneaDev/knossos/commit/dc799c3d11b3c9089f1d7b95bd3062ba5ccd17ba))
+* let a result carry 1000 characters of a note ([dc799c3](https://github.com/AraneaDev/knossos/commit/dc799c3d11b3c9089f1d7b95bd3062ba5ccd17ba))
+* say what a usage list covers, mark test call sites, and slim compact usage rows ([#256](https://github.com/AraneaDev/knossos/issues/256)) ([5ae7da9](https://github.com/AraneaDev/knossos/commit/5ae7da9a7cc4ca65ca931b71098997ce36f75830))
+* surface annotations where they apply, and mark a model's stale when its files change ([#262](https://github.com/AraneaDev/knossos/issues/262)) ([ee52b82](https://github.com/AraneaDev/knossos/commit/ee52b821e96f354780a0fd4c3aee66cb29972057))
+* teach agents to record what they had to dig for ([#263](https://github.com/AraneaDev/knossos/issues/263)) ([ba36aef](https://github.com/AraneaDev/knossos/commit/ba36aef73eb278ff769e60a38cb7da6c0ffe6a80))
+* tell a person's annotations from a model's, and let the person's win ([#261](https://github.com/AraneaDev/knossos/issues/261)) ([1b30121](https://github.com/AraneaDev/knossos/commit/1b301217c79b5ef4303afd7d61fe8a6ae1fe1659))
+
+
+### Fixes
+
+* **eval:** report only the comparisons a run planned, and show time in seconds ([#257](https://github.com/AraneaDev/knossos/issues/257)) ([2c658e0](https://github.com/AraneaDev/knossos/commit/2c658e0eab5a87af08a1cf248ea76249bb89f048))
+* **python:** type a receiver by a return annotation, a model manager lookup and a with target ([#269](https://github.com/AraneaDev/knossos/issues/269)) ([882bf17](https://github.com/AraneaDev/knossos/commit/882bf1731a99f184ae94ba430a9aff38397c11f0))
+* raise the snapshot byte cap above what the row cap allows ([#268](https://github.com/AraneaDev/knossos/issues/268)) ([d78f84e](https://github.com/AraneaDev/knossos/commit/d78f84ed257e8041dcc6f5f75e2dfb72a1625a66))
+* **rust:** type a call on a function's result, and a receiver typed by an alias ([#270](https://github.com/AraneaDev/knossos/issues/270)) ([964a894](https://github.com/AraneaDev/knossos/commit/964a8941611be2b41a20b9c16578fd759d692245))
+* **typescript:** hold functions written as IIFEs, wrapped properties and literal properties ([#267](https://github.com/AraneaDev/knossos/issues/267)) ([488fc16](https://github.com/AraneaDev/knossos/commit/488fc1617fb7217916472881d370fb06c1db5984))
+
+
+### Performance
+
+* cut the text every MCP tool definition carries, so the tool list costs a quarter less context per turn ([#254](https://github.com/AraneaDev/knossos/issues/254)) ([c7ad1cd](https://github.com/AraneaDev/knossos/commit/c7ad1cd18e618d43bbf2a23af615b13360745be1))
+
 ## [0.27.2](https://github.com/AraneaDev/knossos/compare/v0.27.1...v0.27.2) (2026-10-13)
 
 
