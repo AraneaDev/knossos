@@ -1073,18 +1073,75 @@ impl Walk<'_> {
         }
         // `Self` is the impl's type, however `resolve_path` flags it for calls.
         let is_self = path.is_ident("Self");
-        match self.resolve_path(container, path)? {
+        let target = match self.resolve_path(container, path)? {
             (target, true)
                 if path.segments.len() == 1
                     && !is_self
-                    && !self.own_declarations.contains(&target) =>
+                    && !self.own_declarations.contains(&target)
+                    && !self.type_aliases.contains_key(&target) =>
             {
-                None
+                return None;
             }
-            (target, _) => Some(target),
+            (target, _) => target,
+        };
+        self.through_aliases(container, target)
+    }
+
+    /// The type `target` names when it is an alias: one this file declares
+    /// (a module's `type`, an impl's associated type), or one another file
+    /// declares, as the index holds it. An alias names another type, which is
+    /// what a receiver typed by it holds. A file that does not compile can
+    /// alias in a circle; past a few hops the alias itself is the answer.
+    fn through_aliases(&self, container: &str, target: String) -> Option<String> {
+        let depth = self.alias_depth.get();
+        if depth >= MAX_ALIAS_HOPS {
+            return Some(target);
+        }
+        self.alias_depth.set(depth + 1);
+        let held = if let Some(aliased) = self.type_aliases.get(&target).cloned() {
+            self.receiver_type(container, &aliased)
+        } else if let Some(indexed) = self.declarations.alias_of(&target) {
+            match indexed.strip_prefix(POINTER_MARK) {
+                Some(_) => Some(indexed),
+                None => {
+                    let placed = self.renamed(indexed).map(|path| self.exported(path));
+                    placed.and_then(|path| self.through_aliases(container, path))
+                }
+            }
+        } else {
+            Some(target)
+        };
+        self.alias_depth.set(depth);
+        held
+    }
+
+    /// Record the `type` aliases a file declares at module level, and in its
+    /// inline modules, by canonical path (see `type_aliases`).
+    pub(super) fn collect_type_aliases(&mut self, module: &str, items: &[Item]) {
+        for item in items {
+            match item {
+                Item::Type(alias) => {
+                    self.type_aliases.insert(
+                        format!("{module}::{}", ident_name(&alias.ident)),
+                        (*alias.ty).clone(),
+                    );
+                }
+                Item::Mod(inner) => {
+                    if let Some((_, nested)) = &inner.content {
+                        self.collect_type_aliases(
+                            &format!("{module}::{}", ident_name(&inner.ident)),
+                            nested,
+                        );
+                    }
+                }
+                _ => {}
+            }
         }
     }
 }
+
+/// The most aliases one type is followed through (see `stated_type`).
+const MAX_ALIAS_HOPS: u8 = 8;
 
 /// Whether a path's first segment roots it (`crate`, `self`, `super`,
 /// `Self`) rather than naming something in scope.

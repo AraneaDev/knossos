@@ -263,4 +263,68 @@ final class ReturnedReceiverTest extends KnossosTestCase
         }
     }
 
+
+    /**
+     * Rust: `make().check()` calls a method on what a free function in another
+     * file returns, and `p.evaluate()` on `p: &Alias` names the type the alias
+     * does. Both reach `Policy`'s methods once the whole crate is known.
+     */
+    #[Group('rust-scanner')]
+    public function testARustCallOnAFunctionsResultAndAnAliasedReceiverResolve(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-incremental-rust-returned-' . bin2hex(random_bytes(6));
+        if (!mkdir($root . '/src', 0o755, true)) {
+            throw new \RuntimeException('Unable to create fixture tree.');
+        }
+        try {
+            file_put_contents($root . '/Cargo.toml', "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
+            file_put_contents($root . '/src/lib.rs', "pub mod policy;\npub mod usage;\n");
+            file_put_contents($root . '/src/policy.rs', <<<'RUST'
+                pub struct Policy;
+
+                impl Policy {
+                    pub fn check(&self) {}
+                    pub fn evaluate(&self) {}
+                }
+
+                pub type Alias = Policy;
+
+                pub fn make() -> Policy {
+                    Policy
+                }
+                RUST);
+            file_put_contents($root . '/src/usage.rs', <<<'RUST'
+                use crate::policy::{make, Alias};
+
+                pub fn by_temporary() {
+                    make().check();
+                }
+
+                pub fn by_alias(p: &Alias) {
+                    p.evaluate();
+                }
+                RUST);
+            $pdo = SqliteConnection::open($root . '/graph.sqlite');
+            (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+
+            $calls = $pdo->query(
+                "SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e " .
+                "JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id " .
+                "WHERE e.kind = 'calls' AND t.display_name IN ('check', 'evaluate') ORDER BY s.canonical_name",
+            )->fetchAll();
+
+            assertSame(
+                [
+                    ['source' => 'crate::usage::by_alias', 'target' => 'crate::policy::Policy::evaluate'],
+                    ['source' => 'crate::usage::by_temporary', 'target' => 'crate::policy::Policy::check'],
+                ],
+                array_map(static fn(array $row): array => ['source' => $row['source'], 'target' => $row['target']], $calls),
+            );
+        } finally {
+            unset($pdo);
+            $this->removeFixtureTree($root);
+        }
+    }
 }

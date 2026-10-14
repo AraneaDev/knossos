@@ -89,6 +89,14 @@ pub(super) struct Walk<'a> {
     /// confirms a type the file names unqualified in its own module whether
     /// or not the index answers for the file.
     pub(super) own_declarations: BTreeSet<String>,
+    /// The type each alias this file declares names, by the alias's
+    /// canonical path: `type Alias = Policy;` in a module, and an impl's
+    /// associated type, `type Out = Engine;`, under the impl's type. A
+    /// receiver typed by the alias is typed by what it names.
+    pub(super) type_aliases: BTreeMap<String, syn::Type>,
+    /// How many aliases the type being resolved has followed: a file that
+    /// does not compile can alias in a circle, which must not recurse forever.
+    pub(super) alias_depth: std::cell::Cell<u8>,
 }
 
 /// A `syn` visitor that emits a `calls` edge for every resolvable call

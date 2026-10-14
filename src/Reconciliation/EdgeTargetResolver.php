@@ -447,7 +447,10 @@ final class EdgeTargetResolver
         if ($callee === '' || $member === '') {
             return null;
         }
+        // The callee is a method (`State::new().mode()`) or a free function
+        // (`make().mode()`); a canonical name says which only by its kind.
         $returned = $this->returnTypes[$language . ':method:' . $callee]
+            ?? $this->returnTypes[$language . ':function:' . $callee]
             ?? $this->inheritedReturnType($language, $callee)
             ?? $this->modelFactoryType($language, $callee);
         if ($returned === null) {

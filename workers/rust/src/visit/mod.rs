@@ -27,6 +27,7 @@ pub use cfg::{collect_test_modules, is_test_module_path, TestModules};
 use cfg::{is_cfg_test, is_test_attribute, item_attrs};
 pub use declarations::{
     declaration_paths, declared_renames, Declarations, ExportedNames, FieldType, StructFields,
+    TypeAliases,
 };
 use placement::mod_child;
 use state::{Calls, Walk};
@@ -51,6 +52,7 @@ pub fn walk(
     }
     let mut walker = Walk::new(facts, module, frameworks, declarations, layout);
     walker.own_declarations = declaration_paths(module, &file.items);
+    walker.collect_type_aliases(module, &file.items);
     walker.collect_uses(module, &file.items);
     walker.resolve_globs();
     walker.collect_struct_fields(module, &file.items);
@@ -75,7 +77,7 @@ pub fn index_facts(
     module: &str,
     items: &[Item],
     layout: &Layout,
-) -> (ExportedNames, StructFields) {
+) -> (ExportedNames, StructFields, TypeAliases) {
     // Nothing here is emitted: the facts and the empty index only satisfy
     // the walk's resolution, which falls back on neither for a path the
     // file roots or imports.
@@ -83,15 +85,30 @@ pub fn index_facts(
     let declarations = Declarations::new();
     let mut walker = Walk::new(&mut facts, module, &[], &declarations, layout);
     walker.own_declarations = declaration_paths(module, items);
+    walker.collect_type_aliases(module, items);
     walker.collect_uses(module, items);
     // The glob sources a field type may come through, as this file alone
     // places them; which one provides a name is asked at lookup.
     walker.resolve_globs();
     walker.collect_struct_fields(module, items);
 
+    // Each module-level alias, as this file's own imports resolve the type
+    // it names; an impl's associated type is only ever named from its impl.
+    let aliases = walker
+        .type_aliases
+        .clone()
+        .into_iter()
+        .filter_map(|(alias, aliased)| {
+            let (container, _) = alias.rsplit_once("::")?;
+            let target = walker.receiver_type(container, &aliased)?;
+            Some((alias, target))
+        })
+        .collect();
+
     (
         std::mem::take(&mut walker.exports),
         std::mem::take(&mut walker.struct_fields),
+        aliases,
     )
 }
 
@@ -134,6 +151,8 @@ impl<'a> Walk<'a> {
             placed: BTreeSet::new(),
             exports: BTreeMap::new(),
             own_declarations: BTreeSet::new(),
+            type_aliases: BTreeMap::new(),
+            alias_depth: std::cell::Cell::new(0),
         }
     }
 }
@@ -253,6 +272,18 @@ impl Walk<'_> {
         }
         self.attribute_routes(&canonical, &node.attrs);
         let outer = self.enter_type_params(&node.sig.generics);
+        // The declared return type, which a call on the result resolves
+        // through in the core (`method_of_return`), as a method's does.
+        if let syn::ReturnType::Type(_, returned) = &node.sig.output {
+            if let Some(returned) = self.receiver_type(container, returned) {
+                self.facts.speculative_edge(
+                    "returns",
+                    &reference("function", &canonical),
+                    &reference("class", paths::pointee_of(&returned)),
+                    node.sig.output.span(),
+                );
+            }
+        }
         self.walk_body(
             &reference("function", &canonical),
             container,
@@ -411,6 +442,14 @@ impl Walk<'_> {
                 .external_unless_declared(&reference("class", &target));
         }
         let old_target = self.current_impl_target.replace(target.clone());
+        for member in &node.items {
+            if let ImplItem::Type(associated) = member {
+                self.type_aliases.insert(
+                    format!("{target}::{}", ident_name(&associated.ident)),
+                    associated.ty.clone(),
+                );
+            }
+        }
         // `impl Trait for Type` names both endpoints explicitly, so the
         // `implements` edge is `certain`. The trait name is resolved the
         // same way any other path is, through `use` and the `self`/`super`/

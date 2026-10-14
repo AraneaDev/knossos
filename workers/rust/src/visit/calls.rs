@@ -413,10 +413,19 @@ impl Calls<'_, '_> {
             }
             syn::Expr::Call(call) => match call.func.as_ref() {
                 // `Vec::new()` names no type of this crate: a guess placed
-                // in the enclosing module is not an owner.
-                syn::Expr::Path(path) if path.qself.is_none() && path.path.segments.len() >= 2 => {
+                // in the enclosing module is not an owner. `make()` is a
+                // function of this crate when its declaration or an import
+                // vouches for the name, and the core resolves the call on its
+                // result through the function's declared return type.
+                syn::Expr::Path(path) if path.qself.is_none() => {
                     match self.walk.resolve_path(&self.container, &path.path) {
                         Some((target, false)) => Some(target),
+                        Some((target, true))
+                            if path.path.segments.len() == 1
+                                && self.walk.own_declarations.contains(&target) =>
+                        {
+                            Some(target)
+                        }
                         _ => None,
                     }
                 }

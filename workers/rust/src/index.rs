@@ -37,6 +37,9 @@ struct FileIndex {
     /// The field types of every struct the file declares, see
     /// [`crate::visit::index_facts`].
     fields: crate::visit::StructFields,
+    /// The type every module-level alias of the file names, see
+    /// [`crate::visit::index_facts`].
+    aliases: crate::visit::TypeAliases,
 }
 
 impl FileIndex {
@@ -48,7 +51,7 @@ impl FileIndex {
         let mut test_modules = crate::visit::TestModules::new();
         crate::visit::collect_test_modules(relative, module, items, layout, &mut test_modules);
         let indexed = layout.is_indexed(relative, module);
-        let (exports, fields) = if indexed {
+        let (exports, fields, aliases) = if indexed {
             crate::visit::index_facts(relative, module, items, layout)
         } else {
             Default::default()
@@ -67,6 +70,7 @@ impl FileIndex {
             },
             exports,
             fields,
+            aliases,
         }
     }
 }
@@ -189,6 +193,7 @@ pub(crate) fn index_project(
             declarations.add_renames(&index.renames);
             declarations.add_exports(&index.exports);
             declarations.add_fields(&index.fields);
+            declarations.add_aliases(&index.aliases);
             test_modules.extend(index.test_modules.iter().cloned());
         }
         if let Some(hash) = &value {
