@@ -20,6 +20,8 @@ class LanguageWorkerPool
     private ?int $timeoutMs = null;
     private ?int $memoryMb = null;
     private bool $policySeen = false;
+    /** @var array<string, string> The hash of the worker code each running client was started from, by language. */
+    private array $codeHashes = [];
 
     /**
      * Discard workers started under a different execution policy.
@@ -40,10 +42,25 @@ class LanguageWorkerPool
         $this->policySeen = true;
     }
 
-    /** The running client for a language, started on demand. */
-    public function client(LanguageDescriptor $descriptor, WorkerExecutionPolicy $policy): ProcessScannerClient
+    /**
+     * The running client for a language, started on demand.
+     *
+     * A scan keys its cache by the worker's code as it is on disk
+     * (`$codeHash`). The MCP server keeps workers between scans, so a worker
+     * started before that code changed would answer with the old code under
+     * the new key, and the cache would keep those facts for good: a changed
+     * hash replaces the worker first. Without a hash the client is reused.
+     */
+    public function client(LanguageDescriptor $descriptor, WorkerExecutionPolicy $policy, ?string $codeHash = null): ProcessScannerClient
     {
         $this->prepare($policy);
+        if ($codeHash !== null) {
+            $startedFrom = $this->codeHashes[$descriptor->key] ?? null;
+            if ($startedFrom !== null && $startedFrom !== $codeHash) {
+                $this->stop($descriptor->key);
+            }
+            $this->codeHashes[$descriptor->key] = $codeHash;
+        }
         $adjusted = $descriptor->withMemoryMb($policy->workerMemoryMb);
         return $this->clients[$descriptor->key] ??= new ProcessScannerClient($adjusted->command, $policy->limits());
     }
@@ -58,8 +75,16 @@ class LanguageWorkerPool
      */
     public function restart(LanguageDescriptor $descriptor, WorkerExecutionPolicy $policy): ProcessScannerClient
     {
-        $client = $this->clients[$descriptor->key] ?? null;
-        unset($this->clients[$descriptor->key]);
+        $this->stop($descriptor->key);
+
+        return $this->client($descriptor, $policy);
+    }
+
+    /** Stop one language's worker, if it runs; the next client() starts a fresh one. */
+    private function stop(string $key): void
+    {
+        $client = $this->clients[$key] ?? null;
+        unset($this->clients[$key]);
         if ($client !== null) {
             try {
                 $client->shutdown();
@@ -67,8 +92,6 @@ class LanguageWorkerPool
                 // Already dead, which is the usual reason for restarting it.
             }
         }
-
-        return $this->client($descriptor, $policy);
     }
 
     /** Stop every worker; called on the way out of a scan, including a failed one. */
@@ -81,6 +104,7 @@ class LanguageWorkerPool
             }
         }
         $this->clients = [];
+        $this->codeHashes = [];
         $this->timeoutMs = null;
         $this->memoryMb = null;
         $this->policySeen = false;
