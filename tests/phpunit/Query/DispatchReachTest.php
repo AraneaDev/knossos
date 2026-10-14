@@ -220,4 +220,55 @@ final class DispatchReachTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    #[Group('flow')]
+    public function testAFlowStepsFromTheInterfaceMethodIntoAnImplementation(): void
+    {
+        [$pdo, $projectId, $root] = $this->dispatching();
+        try {
+            $flow = ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'App\\Uses::run', 'App\\Helper::shine');
+            $paths = $flow->data['paths'];
+            assertSame(1, count($paths));
+            assertSame(['App\\Uses::run', 'App\\Reads::read', 'App\\Fancy::read', 'App\\Helper::shine'], array_column($paths[0]['nodes'], 'canonical_name'));
+            $step = $paths[0]['hops'][1];
+            assertSame('implemented_by', $step['kind']);
+            assertSame('derived', $step['origin']);
+            // Which implementation runs is a guess, so the step is probable at best.
+            assertSame('probable', $step['confidence']);
+            assertSame(null, $step['evidence']);
+            // Plain::read implements it too but leads nowhere near the target.
+            assertNotContains('App\\Plain::read', array_column($paths[0]['nodes'], 'canonical_name'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('flow')]
+    public function testAFlowAskedForCertainHopsTakesNoImplementationStep(): void
+    {
+        [$pdo, $projectId, $root] = $this->dispatching();
+        try {
+            $flow = ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'App\\Uses::run', 'App\\Helper::shine', minConfidence: 'certain');
+            assertSame([], $flow->data['paths']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('flow')]
+    public function testAFlowStepsFromAParentMethodIntoTheOverride(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanned([
+            'src/Core/Helper.php' => "final class Helper\n{\n    public static function shine(string \$text): string\n    {\n        return '*' . \$text . '*';\n    }\n}",
+            'src/Core/Base.php' => "class Base\n{\n    public function read(): string\n    {\n        return 'base';\n    }\n}",
+            'src/Core/Fancy.php' => "final class Fancy extends Base\n{\n    public function read(): string\n    {\n        return Helper::shine('fancy');\n    }\n}",
+            'src/Core/Uses.php' => "final class Uses\n{\n    public function run(Base \$base): string\n    {\n        return \$base->read();\n    }\n}",
+        ]);
+        try {
+            $flow = ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'App\\Uses::run', 'App\\Helper::shine');
+            assertSame(['calls', 'implemented_by', 'calls'], array_column($flow->data['paths'][0]['hops'] ?? [], 'kind'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }
