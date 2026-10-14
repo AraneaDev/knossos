@@ -78,8 +78,9 @@ export function holderOf(node) {
 /**
  * `const f = () => {}` or `var f = function () {}` as a statement of the
  * module itself: a function written as a binding, which the graph holds as
- * the function it is. Bindings inside a function or block, and initializers
- * that wrap the function in a call, are left alone.
+ * the function it is, and so is one an immediately invoked function builds
+ * (see `builtFunction`). Bindings inside a function or block, and initializers
+ * that hand the function to any other call, are left alone.
  */
 export function isFunctionBinding(node) {
     if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name))
@@ -98,22 +99,148 @@ export function isFunctionBinding(node) {
     const value = unwrapExpression(node.initializer);
     return (
         value !== undefined &&
-        (ts.isArrowFunction(value) || ts.isFunctionExpression(value))
+        (ts.isArrowFunction(value) ||
+            ts.isFunctionExpression(value) ||
+            builtFunction(value) !== null)
     );
+}
+
+/**
+ * The function an immediately invoked function builds and returns, or null:
+ * `(function () { const f = () => {}; return f; })()`. The module name it is
+ * bound to is that function, built once in a closure; any other call in an
+ * initializer is left alone, since what it returns is not known here.
+ */
+export function builtFunction(value) {
+    if (value === undefined || !ts.isCallExpression(value)) return null;
+    const callee = unwrapExpression(value.expression);
+    if (
+        callee === undefined ||
+        !(ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)) ||
+        !ts.isBlock(callee.body)
+    )
+        return null;
+    const statements = callee.body.statements;
+    const returned = statements.find(ts.isReturnStatement)?.expression;
+    const name = unwrapExpression(returned);
+    if (name === undefined || !ts.isIdentifier(name)) return null;
+    for (const statement of statements) {
+        if (
+            ts.isFunctionDeclaration(statement) &&
+            statement.name?.text === name.text
+        )
+            return statement;
+        if (!ts.isVariableStatement(statement)) continue;
+        for (const declaration of statement.declarationList.declarations) {
+            if (!ts.isIdentifier(declaration.name)) continue;
+            if (declaration.name.text !== name.text) continue;
+            const inner = unwrapExpression(declaration.initializer);
+            return inner !== undefined &&
+                (ts.isArrowFunction(inner) || ts.isFunctionExpression(inner))
+                ? inner
+                : null;
+        }
+    }
+    return null;
+}
+
+/**
+ * The module binding whose immediately invoked function builds and returns
+ * `node`, or null. Calling the binding is calling that function.
+ */
+export function builderOf(node) {
+    const callee = node.parent?.parent;
+    if (
+        callee === undefined ||
+        !(ts.isArrowFunction(callee) || ts.isFunctionExpression(callee))
+    )
+        return null;
+    const binding = holderOf(holderOf(callee) ?? callee);
+    return binding !== undefined &&
+        isFunctionBinding(binding) &&
+        builtFunction(unwrapExpression(binding.initializer)) === node
+        ? binding
+        : null;
 }
 
 /**
  * `private initializeScene = async () => { ... }`: a class property that holds
  * a function, the way a React class component writes a method bound to its
- * instance. It is a method in all but syntax, and the calls in its body are
- * its own rather than the class's.
+ * instance, or the same function wrapped once (see `wrapsFunction`). It is a
+ * method in all but syntax, and the calls in its body are its own rather than
+ * the class's.
  */
 export function isFunctionProperty(node) {
     if (!ts.isPropertyDeclaration(node)) return false;
     const value = unwrapExpression(node.initializer);
     return (
         value !== undefined &&
+        (ts.isArrowFunction(value) ||
+            ts.isFunctionExpression(value) ||
+            wrapsFunction(value))
+    );
+}
+
+/**
+ * `perform: (elements) => { ... }` in an object literal: a method written as a
+ * property that holds a function, the way an action or handler table is
+ * written. It is called like a method, `action.perform(...)`, and the calls in
+ * its body are its own rather than the literal's.
+ */
+export function isFunctionAssignment(node) {
+    if (
+        !ts.isPropertyAssignment(node) ||
+        !ts.isObjectLiteralExpression(node.parent) ||
+        !(ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) ||
+        !isModuleTable(node.parent)
+    )
+        return false;
+    const value = unwrapExpression(node.initializer);
+    return (
+        value !== undefined &&
         (ts.isArrowFunction(value) || ts.isFunctionExpression(value))
+    );
+}
+
+/**
+ * An object literal a module names: `const tools = { ... }`, or one handed to
+ * a call whose result a module binding holds, `const action = register({ ... })`.
+ * A literal built inside a function, `return { make: () => ... }`, is a value
+ * of that function: its calls stay the function's own.
+ */
+function isModuleTable(literal) {
+    let holder = holderOf(literal);
+    if (
+        holder !== undefined &&
+        ts.isCallExpression(holder) &&
+        holder.arguments.some(
+            (argument) => unwrapExpression(argument) === literal,
+        )
+    )
+        holder = holderOf(holder);
+    return (
+        holder !== undefined &&
+        ts.isVariableDeclaration(holder) &&
+        holder.parent !== undefined &&
+        ts.isVariableDeclarationList(holder.parent) &&
+        holder.parent.parent !== undefined &&
+        ts.isVariableStatement(holder.parent.parent) &&
+        ts.isSourceFile(holder.parent.parent.parent)
+    );
+}
+
+/**
+ * `withBatchedUpdates(() => {})`, `debounce(() => {}, 300)`: a call whose first
+ * argument is the function it wraps. On a class property this is a handler
+ * wrapped once, called like a method; a module binding written this way is
+ * left alone, since there `createStore(() => {})` and the like build values.
+ */
+function wrapsFunction(value) {
+    if (!ts.isCallExpression(value)) return false;
+    const first = unwrapExpression(value.arguments[0]);
+    return (
+        first !== undefined &&
+        (ts.isArrowFunction(first) || ts.isFunctionExpression(first))
     );
 }
 
