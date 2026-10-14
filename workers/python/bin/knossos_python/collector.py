@@ -166,7 +166,14 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.roles = PythonFrameworkRoleEnricher(django=imports_django(tree))
         routing = (self.facts, self.name, self.module_id, self.aliases, self.resolve_name, index.module_declarations)
         self.fastapi = FastApiFactEnricher(*routing)
-        self.django = DjangoFactEnricher(self.facts, self.name, self.module_id, self.aliases, self.resolve_name)
+        self.django = DjangoFactEnricher(
+            self.facts,
+            self.name,
+            self.module_id,
+            self.aliases,
+            self.resolve_name,
+            lambda module: index.canonical_module(module) if index.module_file(module) is not None else None,
+        )
         self.flask = FlaskFactEnricher(*routing)
 
     def collect(self) -> dict[str, Any]:
@@ -672,13 +679,19 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             variable = node.targets[0].id
             self.fastapi.register_assignment(variable, node.value, not self.containers)
-            self.django.enrich_assignment(variable, node.value, node)
+            self.django.enrich_assignment(variable, node.value, node, not self.containers)
             self.flask.register_assignment(variable, node.value, not self.containers)
             self.remember_local(variable, node.value)
         if len(node.targets) == 1:
             attribute = self.self_attribute(node.targets[0])
             if attribute is not None:
                 self.remember_attribute(attribute, node.value)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        # `urlpatterns += [...]` adds patterns as the assignment does.
+        if isinstance(node.target, ast.Name) and node.target.id == "urlpatterns" and isinstance(node.op, ast.Add):
+            self.django.url_patterns(node.value)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -1126,4 +1139,5 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.facts.add_edge("calls", self.current(), target, node)
         self.fastapi.enrich_call(node, name)
         self.flask.enrich_call(node, name)
+        self.django.enrich_call(node, name)
         self.generic_visit(node)
