@@ -74,7 +74,7 @@ final class AnnotationNotesTest extends KnossosTestCase
         $names = [];
         for ($i = 1; $i <= 12; $i++) {
             $names[] = 'App\\Upcoming' . $i;
-            $queries->upsertAnnotation($ids['project'], 'App\\Upcoming' . $i, 'note', str_repeat('x', $i === 1 ? 400 : 10), execute: true);
+            $queries->upsertAnnotation($ids['project'], 'App\\Upcoming' . $i, 'note', str_repeat('x', match ($i) { 1 => 1200, 2 => 980, default => 10 }), execute: true);
         }
 
         $notes = (new AnnotationNotes($pdo))->forComponents($ids['project'], $names);
@@ -82,6 +82,8 @@ final class AnnotationNotesTest extends KnossosTestCase
         assertSame(AnnotationNotes::MAX_NOTES, count($notes));
         assertSame(AnnotationNotes::MAX_TEXT, mb_strlen($notes[0]['text']));
         assertSame(true, str_ends_with($notes[0]['text'], '…'));
+        // A note the length agents write when they record a missed path comes back whole.
+        assertSame(980, mb_strlen($notes[1]['text']));
         assertSame([], (new AnnotationNotes($pdo))->forComponents($ids['project'], ['App\\Nothing']));
     }
 

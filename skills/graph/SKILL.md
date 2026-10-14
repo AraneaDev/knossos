@@ -72,7 +72,7 @@ File::delete -> FileDeleted (model event) -> DeleteFileInStorage::handle (queued
 ```
 
 Use a short multi-line ASCII sketch only when the path branches, and keep it
-within the 300 characters a result shows. No Mermaid or Markdown: nothing that
+within the 1000 characters a result shows. No Mermaid or Markdown: nothing that
 shows a note renders them.
 
 A result marks one of your notes `stale` when a file it rests on changed. Check
