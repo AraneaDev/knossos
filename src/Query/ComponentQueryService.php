@@ -289,7 +289,12 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
     }
 
     /**
-     * Search components by name, kind, role, or boundary.
+     * Search components by name, kind, role, boundary, or the text of a note on them.
+     *
+     * A note holds what the graph cannot: `method_of_return` is a reference
+     * kind no symbol is named after, and only a note on its resolver says so.
+     * A component found only through a note ranks after every one whose own
+     * name, attributes or roles match.
      *
      * @param list<string> $kinds @param list<string> $roles @param list<string> $boundaryIds @param list<string> $confidences
      */
@@ -321,16 +326,23 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             throw new InvalidArgumentException('query must contain at most 8 words.');
         }
         $params = ['project' => $projectId, 'exact' => $query, 'prefix' => self::like($query) . '%'];
-        $sql = "SELECT DISTINCT n.*, f.relative_path, CASE WHEN n.canonical_name = :exact THEN 0 WHEN n.display_name = :exact THEN 1 WHEN n.canonical_name LIKE :prefix ESCAPE '!' THEN 2 ELSE 3 END AS rank " .
-            'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project';
         // Every whitespace-separated term must match somewhere, so natural
-        // phrasings like "review diff" find reviewDiffText.
+        // phrasings like "review diff" find reviewDiffText: in the component
+        // itself, or in a note recorded on it.
+        $own = [];
+        $where = '';
         foreach ($terms as $index => $term) {
             $key = 'contains' . $index;
             $params[$key] = '%' . self::like($term) . '%';
-            $sql .= " AND (n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR n.attributes_json LIKE :$key ESCAPE '!' " .
+            $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR n.attributes_json LIKE :$key ESCAPE '!' " .
                 "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";
+            $own[] = $matches;
+            $where .= " AND ($matches OR EXISTS (SELECT 1 FROM annotations aq WHERE aq.project_id = n.project_id " .
+                "AND aq.canonical_name = n.canonical_name AND aq.value LIKE :$key ESCAPE '!'))";
         }
+        $sql = "SELECT DISTINCT n.*, f.relative_path, CASE WHEN n.canonical_name = :exact THEN 0 WHEN n.display_name = :exact THEN 1 WHEN n.canonical_name LIKE :prefix ESCAPE '!' THEN 2 " .
+            'WHEN ' . implode(' AND ', $own) . ' THEN 3 ELSE 4 END AS rank ' .
+            'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project' . $where;
         $sql .= $this->filterClause('n.kind', 'kind', $kinds, $params);
         $sql .= $this->filterClause('n.confidence', 'confidence', $confidences, $params);
         if ($roles !== []) {
