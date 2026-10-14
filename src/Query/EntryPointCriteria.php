@@ -60,6 +60,9 @@ final readonly class EntryPointCriteria
     public const ROLES = [
         'application.controller', 'application.command', 'application.entry_point',
         'laravel.controller', 'laravel.command',
+        // Where a request starts in a Django, FastAPI, Flask, Next.js or Rust web application.
+        'django.view', 'fastapi.route_handler', 'flask.route_handler', 'nextjs.page', 'nextjs.route_handler',
+        'rust.route_handler',
     ];
 
     /**
