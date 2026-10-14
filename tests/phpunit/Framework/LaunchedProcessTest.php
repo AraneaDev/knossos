@@ -68,4 +68,23 @@ final class LaunchedProcessTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+    /**
+     * Starting a worker in another process is how code is meant to reach across an
+     * out-of-process boundary, so a policy does not count a launch unless it names it.
+     */
+    #[Group('scan')]
+    public function testAPolicyCountsALaunchOnlyWhenItNamesTheKind(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanned();
+        try {
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $policy = ['id' => 'app-stays-out-of-js', 'from_boundary' => 'namespace:App', 'deny_targets' => ['module:js']];
+            assertSame(0, count($queries->checkArchitecture($projectId, [$policy])->data['violations']));
+            $named = $queries->checkArchitecture($projectId, [$policy + ['edge_kinds' => ['launches']]])->data['violations'];
+            assertSame(1, count($named));
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
 }

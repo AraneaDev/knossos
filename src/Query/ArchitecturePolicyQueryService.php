@@ -255,7 +255,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
                 throw new InvalidArgumentException('Policy must declare allow_targets or deny_targets.');
             }
             $kinds = self::policyList($policy, 'edge_kinds');
-            $kinds = $kinds === [] ? self::IMPACT_EDGE_KINDS : array_values(array_unique($kinds));
+            $kinds = $kinds === [] ? self::POLICY_EDGE_KINDS : array_values(array_unique($kinds));
             if (array_diff($kinds, self::IMPACT_EDGE_KINDS) !== []) {
                 throw new InvalidArgumentException('Policy edge_kinds contains an unsupported dependency relationship.');
             }

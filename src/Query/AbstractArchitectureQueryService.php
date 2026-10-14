@@ -27,12 +27,24 @@ abstract readonly class AbstractArchitectureQueryService
         'injects', 'binds', 'observes', 'depends_on', 'imports', 'uses_middleware',
         'calls_endpoint', 'resolves_to', 'launches',
     ];
-    /** The relationships that count as one component depending on another: what a policy check and the boundary matrix walk. */
+    /** The relationships that count as one component depending on another, for impact; a policy check uses {@see self::POLICY_EDGE_KINDS}. */
     public const IMPACT_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs', 'injects',
         'binds', 'observes', 'depends_on', 'imports', 'uses_middleware', 'references',
         'extends', 'implements', 'returns', 'exports', 're_exports', 'uses_trait',
         'calls_endpoint', 'resolves_to', 'launches',
+    ];
+    /**
+     * What a policy check and the boundary matrix count by default: the impact kinds but
+     * `launches`. Starting a worker in another process is how code is meant to cross an
+     * out-of-process boundary, not a dependency on its code; a policy that means to forbid
+     * it names the kind in `edge_kinds`.
+     */
+    public const POLICY_EDGE_KINDS = [
+        'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs', 'injects',
+        'binds', 'observes', 'depends_on', 'imports', 'uses_middleware', 'references',
+        'extends', 'implements', 'returns', 'exports', 're_exports', 'uses_trait',
+        'calls_endpoint', 'resolves_to',
     ];
     /**
      * The three confidence levels in order, so two can be compared. One

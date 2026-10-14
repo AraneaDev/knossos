@@ -275,9 +275,9 @@ final readonly class BoundaryMatrix
     {
         $statement = $this->pdo->prepare(sprintf(
             'SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN (%s) LIMIT ?',
-            implode(',', array_fill(0, count(AbstractArchitectureQueryService::IMPACT_EDGE_KINDS), '?')),
+            implode(',', array_fill(0, count(AbstractArchitectureQueryService::POLICY_EDGE_KINDS), '?')),
         ));
-        foreach ([$projectId, ...AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, $this->maxEdges + 1] as $position => $value) {
+        foreach ([$projectId, ...AbstractArchitectureQueryService::POLICY_EDGE_KINDS, $this->maxEdges + 1] as $position => $value) {
             $statement->bindValue($position + 1, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
         $statement->execute();
