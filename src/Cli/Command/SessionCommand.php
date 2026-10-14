@@ -34,6 +34,20 @@ use Throwable;
  */
 final class SessionCommand implements CliCommand
 {
+    /** @var resource Where a failure's reason goes; the hook discards it, a person running the command sees it. */
+    private $errors;
+
+    /**
+     * @param resource|null $errors defaults to STDERR; tests pass their own,
+     *                              since a byte on the real STDERR stops a mutation run (see CliErrorRenderer)
+     */
+    public function __construct($errors = null)
+    {
+        /** @var resource $target */
+        $target = $errors ?? STDERR;
+        $this->errors = $target;
+    }
+
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
@@ -49,9 +63,9 @@ final class SessionCommand implements CliCommand
     /**
      * {@inheritDoc}
      *
-     * Always exit 0, always silent on failure. A broken brief that breaks a
+     * Always exit 0 and nothing on stdout on failure. A broken brief that breaks a
      * session start is worse than no brief at all, so every error path here
-     * degrades to producing nothing.
+     * degrades to no brief, with one line saying why on the error stream.
      */
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
@@ -70,8 +84,11 @@ final class SessionCommand implements CliCommand
                 ? ArchitectureQueryService::forDatabase(SqliteConnection::open($databasePath))->sessionBrief($path, $databasePath)
                 : (new SessionBriefRenderer())->render(SessionBriefService::unscanned($path, $databasePath));
             $context->output(['brief' => $brief], $context->options->flag($options, 'json'), $brief);
-        } catch (Throwable) {
-            // Swallowed on purpose: whatever happens, the session still starts.
+        } catch (Throwable $error) {
+            // No brief and exit 0, whatever happens: the session still starts.
+            // The reason goes to the error stream, which the hook discards, so a
+            // person running the command by hand learns why it said nothing.
+            fwrite($this->errors, 'knossos session-brief: ' . $error->getMessage() . "\n");
         }
         return CliCommand::EXIT_OK;
     }
