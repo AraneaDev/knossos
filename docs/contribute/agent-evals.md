@@ -11,7 +11,9 @@ The eval needs `php`, `rg` and `git` on the `PATH`, and a `claude` that is
 logged in. Run `tools/install` from this checkout first: it materialises the
 plugin in `.plugin`, and the `full` arm loads whatever is installed there, not
 the source tree. `prepare` warns when the installed plugin version differs from
-`version.txt`, so a stale install does not go unnoticed.
+`version.txt`, and when any installed hook or skill file differs from this
+checkout's (a copy pulled but never reinstalled keeps its version), so a stale
+install does not go unnoticed.
 
 Each `continue` copies `~/.claude/.credentials.json` into the eval's own config
 directory before its batch. Claude Code may refresh the OAuth token inside that
@@ -71,8 +73,9 @@ node tools/eval/run.mjs start --model opus --arms baseline,full --repeats 1
 `start` records the Knossos commit, whether the checkout had local changes
 (changes under `.superpowers/` and `tools/eval/corpus/` do not count), and the
 version of the installed plugin. Every ledger row records the commit too, and
-the report header shows all three. `continue` refuses to add sessions when the
-commit or the plugin version has changed since `start`, because rows from two
+the report header shows all three; `start` also records a hash of the installed
+plugin's files. `continue` refuses to add sessions when the commit, the plugin
+version or the plugin's files have changed since `start`, because rows from two
 builds must not be pooled. Pass `--force-provenance` to continue anyway.
 
 ## Environment overrides

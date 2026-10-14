@@ -11,7 +11,7 @@
  *   node tools/eval/run.mjs status <run-id>
  *   node tools/eval/report.mjs <run-id>               write report.md
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import {
     access,
@@ -120,7 +120,41 @@ export async function pluginVersion(pluginDir) {
     }
 }
 
-/** What a run measures: the Knossos commit, whether it had local changes, and the plugin version. */
+/** Every file under `dir`, as paths relative to it, sorted; none when it is missing. */
+async function filesUnder(dir) {
+    const entries = await readdir(dir, {
+        recursive: true,
+        withFileTypes: true,
+    }).catch(() => []);
+    return entries
+        .filter((entry) => entry.isFile())
+        .map((entry) =>
+            path.relative(
+                dir,
+                path.join(entry.parentPath ?? entry.path, entry.name),
+            ),
+        )
+        .sort();
+}
+
+/**
+ * A hash of everything the materialised plugin holds, or null when there is
+ * none. Its version alone cannot tell a reinstall at the same version, which
+ * changes what the full arm runs.
+ */
+export async function pluginHash(pluginDir) {
+    const files = await filesUnder(pluginDir);
+    if (files.length === 0) return null;
+    const hash = createHash("sha256");
+    for (const file of files) {
+        hash.update(`${file}\0`);
+        hash.update(await readFile(path.join(pluginDir, file)));
+        hash.update("\0");
+    }
+    return hash.digest("hex");
+}
+
+/** What a run measures: the Knossos commit, whether it had local changes, and the plugin version and contents. */
 export async function provenance(s) {
     const git = async (...args) =>
         (await exec("git", ["-C", s.sourceRoot, ...args])).stdout;
@@ -137,6 +171,7 @@ export async function provenance(s) {
         knossosCommit,
         knossosDirty,
         pluginVersion: await pluginVersion(s.pluginDir),
+        pluginHash: await pluginHash(s.pluginDir),
     };
 }
 
@@ -161,6 +196,14 @@ export function checkProvenance(meta, current) {
         changed.push(
             `plugin version ${meta.pluginVersion} -> ${current.pluginVersion}`,
         );
+    // A run started before the hash was recorded has none to compare, and a
+    // missing plugin is the prepare check's to report.
+    else if (
+        "pluginHash" in meta &&
+        current.pluginHash !== null &&
+        meta.pluginHash !== current.pluginHash
+    )
+        changed.push("plugin contents changed at the same version");
     if (changed.length > 0)
         throw new Error(
             `run ${meta.runId} started on a different build (${changed.join("; ")}); start a new run, or pass --force-provenance to pool the sessions anyway`,
@@ -525,6 +568,23 @@ async function warnPluginVersion(s) {
     if (installed !== null && checkout !== null && installed !== checkout)
         console.warn(
             `warning: the plugin in ${s.pluginDir} is version ${installed}, but this checkout is ${checkout}; the full arm runs the installed plugin, so run tools/install first to measure this checkout`,
+        );
+    // The same version can still be a stale copy: pulled, never reinstalled.
+    const stale = [];
+    for (const root of ["hooks", "skills"]) {
+        for (const file of await filesUnder(path.join(s.pluginDir, root))) {
+            const relative = path.join(root, file);
+            const ours = await readFile(
+                path.join(s.sourceRoot, relative),
+            ).catch(() => null);
+            if (ours === null) continue;
+            const theirs = await readFile(path.join(s.pluginDir, relative));
+            if (!ours.equals(theirs)) stale.push(relative);
+        }
+    }
+    if (stale.length > 0)
+        console.warn(
+            `warning: the plugin in ${s.pluginDir} differs from this checkout in ${stale.length} file${stale.length === 1 ? "" : "s"} (${stale.slice(0, 5).join(", ")}${stale.length > 5 ? ", …" : ""}); the full arm runs the installed plugin, so run tools/install first to measure this checkout`,
         );
 }
 
