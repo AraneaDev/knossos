@@ -608,6 +608,24 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if resolved.split(":", 2)[-1] in self.SERVED_APPS:
             self.serves_app = True
 
+    def visit_With(self, node: ast.With | ast.AsyncWith) -> None:
+        """``with Lock() as lock:`` binds ``lock`` to the ``Lock`` the statement builds.
+
+        Only a project class built right there types the name; ``with open(p)
+        as f`` and a context manager a function returns hold something this
+        worker does not follow, so the name drops whatever it held before.
+        """
+        for item in node.items:
+            if isinstance(item.optional_vars, ast.Name):
+                built = item.context_expr
+                callee = dotted(built.func) if isinstance(built, ast.Call) else None
+                resolved = self.resolve_name(callee, "class") if callee else None
+                constructs = resolved is not None and resolved.startswith("py:class:")
+                self.remember_local(item.optional_vars.id, built if constructs else None)
+        self.generic_visit(node)
+
+    visit_AsyncWith = visit_With
+
     def visit_Assign(self, node: ast.Assign) -> None:
         self.note_served_app(node.value)
         self.emit_value_references(node.value)
@@ -693,6 +711,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
             resolved = self.resolve_name(name, "class") if name else None
             if resolved and resolved.startswith("py:class:"):
                 return resolved.removeprefix("py:class:")
+        if isinstance(value, ast.Call):
+            returned = self.returned_class(value)
+            if returned is not None:
+                return returned
         # A name passed straight through carries whatever it is tracked as, from
         # the same two stacks a receiver is resolved against and in the same
         # order, so `other = local` propagates as `other = parameter` does.
@@ -703,15 +725,93 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 return self.parameter_types[-1].get(value.id)
         return None
 
+    # A model manager's lookups that hand back one instance of the model, and
+    # the queryset steps that may come between: `Document.objects.filter(...).first()`.
+    MANAGER_LOOKUPS = frozenset({"get", "create", "first", "last", "latest", "earliest"})
+    QUERYSET_STEPS = frozenset(
+        {
+            "all",
+            "filter",
+            "exclude",
+            "order_by",
+            "select_related",
+            "prefetch_related",
+            "only",
+            "defer",
+            "using",
+            "annotate",
+            "distinct",
+            "select_for_update",
+            "reverse",
+        }
+    )
+
+    def returned_class(self, call: ast.Call) -> str | None:
+        """The project class a call hands back, as the code states it.
+
+        ``load(pk)`` returns what ``def load(pk) -> Document`` annotates, and
+        ``repo.find(pk)`` what the method of ``repo``'s class annotates. A
+        model manager's lookup returns its model: ``Document.objects.get(...)``.
+        """
+        model = self.manager_lookup_class(call)
+        if model is not None:
+            return model
+        func = call.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Call):
+            # `Repo().find(pk)` or `load(pk).owner()`: the inner call's class is
+            # one it builds or one it returns, read here rather than through
+            # `held_class`, which reads it through this.
+            held = self.constructed_class(func.value) or self.returned_class(func.value)
+            return None if held is None else self.index.return_type(ref("method", f"{held}::{func.attr}"))
+        name = dotted(func)
+        if name is None:
+            return None
+        member = name.rsplit(".", 1)
+        target = self.receiver_member(member[0], member[1]) if len(member) == 2 else None
+        target = target or self.resolve_name(name, "function")
+        return None if target is None else self.index.return_type(target)
+
+    def constructed_class(self, call: ast.Call) -> str | None:
+        """The project class ``Repo()`` builds, when its name means that class here."""
+        callee = dotted(call.func)
+        if callee is None or self.is_local_name(callee.split(".")[0]):
+            return None
+        resolved = self.resolve_name(callee, "class")
+        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
+        return held if held is not None and self.declares_class(held) else None
+
+    def manager_lookup_class(self, call: ast.Call) -> str | None:
+        """The project model ``<Model>.objects.<lookup>(...)`` returns an instance of, if any."""
+        func = call.func
+        if not isinstance(func, ast.Attribute) or func.attr not in self.MANAGER_LOOKUPS:
+            return None
+        current = func.value
+        while (
+            isinstance(current, ast.Call)
+            and isinstance(current.func, ast.Attribute)
+            and current.func.attr in self.QUERYSET_STEPS
+        ):
+            current = current.func.value
+        if not isinstance(current, ast.Attribute) or current.attr != "objects":
+            return None
+        named = dotted(current.value)
+        if named is None or self.is_local_name(named.split(".")[0]):
+            return None
+        resolved = self.resolve_name(named, "class")
+        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
+        return held if held is not None and self.declares_class(held) else None
+
     def fresh_instance_class(self, call: ast.Call) -> str | None:
         """The project class ``Repo()`` builds, when its name means that class here.
 
         A name off a module outside the project (``requests.get(url)``) reads
         as a class only because nothing says otherwise, and a parameter or
-        local named like an imported class holds whatever was passed in.
+        local named like an imported class holds whatever was passed in. A
+        call on another call's result, ``Repo().find(pk)``, has no name of its
+        own; what the inner call holds types it (see `returned_class`).
         """
         callee = dotted(call.func)
-        if callee is None or self.is_local_name(callee.split(".")[0]):
+        if callee is not None and self.is_local_name(callee.split(".")[0]):
             return None
         held = self.held_class(call)
         return held if held is not None and self.declares_class(held) else None
@@ -918,8 +1018,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
             if target is None and len(member) == 2:
                 self.untyped_calls.add(member[1])
         elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
-            # `Repo().count()`: the class just instantiated types the receiver.
-            # Any other call's result has no type this worker follows.
+            # `Repo().count()`: the class just instantiated types the receiver,
+            # and so does the class a call returns (see `returned_class`). Any
+            # other call's result has no type this worker follows.
             held = self.fresh_instance_class(node.func.value)
             if held is None:
                 self.untyped_calls.add(node.func.attr)
