@@ -18,7 +18,7 @@ describe('the dig reminder', () => {
     expect(LOOKUPS_BEFORE_REMINDER).toBe(2)
     const { reminders } = run([['mcp__knossos__list_usages'], ['Grep'], ['Read']])
     expect(reminders).toEqual([
-      'You dug past a Knossos answer this turn (list_usages, then 2 lookups). If you established a structural fact, record it with annotate_component (kind note, evidence_paths), or say why not.',
+      'You dug past a Knossos answer this turn (list_usages, then 2 lookups). Agent notes are on here: the person using Knossos wants what the graph missed written down, so recording it is part of the task, not a side effect. Before you answer, record what you found that the answer left out (a caller, a hop, a dispatch the graph could not see) with annotate_component on the component it is about (kind note, evidence_paths, execute true). Write nothing only if the answer was complete and you merely confirmed it.',
     ])
   })
 

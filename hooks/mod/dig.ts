@@ -64,6 +64,9 @@ export function observe(dig: Dig, tool: string, input: unknown): { dig: Dig; rem
   if (next.annotated || next.reminded || next.lookups < LOOKUPS_BEFORE_REMINDER) return { dig: next, remind: null }
   return {
     dig: { ...next, reminded: true },
-    remind: `You dug past a Knossos answer this turn (${next.knossos}, then ${next.lookups} lookups). If you established a structural fact, record it with annotate_component (kind note, evidence_paths), or say why not.`,
+    // Agents read a bare suggestion as an unrequested write and skipped it, even after naming the gap themselves, and
+    // an open "or say why not" let them answer that the code holds the fact, which is why the next agent digs again.
+    // So it says whose wish this is (it is only sent with agent notes on) and names the one exception.
+    remind: `You dug past a Knossos answer this turn (${next.knossos}, then ${next.lookups} lookups). Agent notes are on here: the person using Knossos wants what the graph missed written down, so recording it is part of the task, not a side effect. Before you answer, record what you found that the answer left out (a caller, a hop, a dispatch the graph could not see) with annotate_component on the component it is about (kind note, evidence_paths, execute true). Write nothing only if the answer was complete and you merely confirmed it.`,
   }
 }
