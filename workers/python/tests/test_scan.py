@@ -446,7 +446,7 @@ def test_flask_alias_and_positional_add_url_rule_are_resolved(worker: ModuleType
     assert "GET /raw => app.render" in routes
 
 
-def test_flask_empty_methods_and_dynamic_add_url_rule_are_skipped(worker: ModuleType, project, scan_collect) -> None:
+def test_flask_empty_methods_and_a_rule_in_a_variable_are_skipped(worker: ModuleType, project, scan_collect) -> None:
     root = project(
         {
             "app.py": (
@@ -457,7 +457,8 @@ def test_flask_empty_methods_and_dynamic_add_url_rule_are_skipped(worker: Module
                 "    return ''\n"
                 "def render() -> str:\n"
                 "    return ''\n"
-                "app.add_url_rule('/users/<id>', view_func=render)\n"
+                "rule = '/users'\n"
+                "app.add_url_rule(rule, view_func=render)\n"
             )
         }
     )
@@ -466,7 +467,7 @@ def test_flask_empty_methods_and_dynamic_add_url_rule_are_skipped(worker: Module
     assert "PY_DYNAMIC_ROUTE_PATH" in _diag_codes(contribution)
 
 
-def test_flask_dynamic_route_path_is_diagnosed_not_guessed(worker: ModuleType, project, scan_collect) -> None:
+def test_flask_routes_with_parameters_keep_their_templates(worker: ModuleType, project, scan_collect) -> None:
     root = project(
         {
             "app.py": (
@@ -475,13 +476,16 @@ def test_flask_dynamic_route_path_is_diagnosed_not_guessed(worker: ModuleType, p
                 "@app.route('/users/<int:user_id>')\n"
                 "def user(user_id: int) -> str:\n"
                 "    return ''\n"
+                "def render(slug: str) -> str:\n"
+                "    return ''\n"
+                "app.add_url_rule('/pages/<slug>', view_func=render)\n"
             )
         }
     )
     [contribution] = scan_collect(root, ["app.py"])
-    routes = [node for node in contribution["nodes"] if node["kind"] == "route"]
-    assert routes == []
-    assert "PY_DYNAMIC_ROUTE_PATH" in _diag_codes(contribution)
+    routes = {node["canonical_name"] for node in contribution["nodes"] if node["kind"] == "route"}
+    assert routes == {"GET /users/<int:user_id> => app.user", "GET /pages/<slug> => app.render"}
+    assert "PY_DYNAMIC_ROUTE_PATH" not in _diag_codes(contribution)
 
 
 def test_own_declarations_come_from_the_hashed_bytes(worker: ModuleType, project) -> None:
