@@ -1105,6 +1105,34 @@ describe("provenance", () => {
         log.mockRestore();
         expect(code).toBe(0);
     });
+    it("refuses to continue when the plugin's contents changed at the same version", async () => {
+        const { env, runId, pluginDir } = await started(["--arms", "baseline"]);
+        await mkdir(path.join(pluginDir, "hooks", "mod"), { recursive: true });
+        await writeFile(
+            path.join(pluginDir, "hooks", "mod", "dig.ts"),
+            "// reinstalled\n",
+        );
+        await expect(main(["continue", runId], env)).rejects.toThrow(
+            /plugin contents changed/,
+        );
+    });
+    it("warns from prepare when an installed module differs from this checkout's", async () => {
+        const { env, runId, origin, pluginDir } = await started();
+        for (const [root, text] of [
+            [origin, "// new\n"],
+            [pluginDir, "// old\n"],
+        ]) {
+            await mkdir(path.join(root, "hooks", "mod"), { recursive: true });
+            await writeFile(path.join(root, "hooks", "mod", "dig.ts"), text);
+        }
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        expect(await main(["prepare", runId, "--no-scan"], env)).toBe(0);
+        const said = warn.mock.calls.map((c) => c[0]).join("\n");
+        warn.mockRestore();
+        expect(said).toMatch(
+            /differs from this checkout in 1 file \(hooks\/mod\/dig\.ts\)/,
+        );
+    });
     it("warns from prepare when the plugin is not this checkout's version", async () => {
         const { env, runId, origin, pluginDir } = await started();
         await writeFile(path.join(origin, "version.txt"), "0.27.1\n");
