@@ -81,6 +81,12 @@ final class ProjectScanService implements ProjectScanner
         return $cancellation instanceof CancellationToken ? $cancellation : null;
     }
 
+    /** The id a project rooted at `$rootRealpath` has, known before its first scan registers it. */
+    public static function projectIdOf(string $rootRealpath): string
+    {
+        return \Knossos\Store\StableId::project('root:' . $rootRealpath);
+    }
+
     /**
      * Run a scan end to end and return its result envelope.
      *
@@ -123,7 +129,7 @@ final class ProjectScanService implements ProjectScanner
         ];
         $planningStarted = hrtime(true);
         $cancellation->throwIfCancelled();
-        $projectId = \Knossos\Store\StableId::project('root:' . $preparation->discovery->rootRealpath);
+        $projectId = self::projectIdOf($preparation->discovery->rootRealpath);
         $held = $lease !== null && $lease->projectId() === $projectId;
         if ($lease === null || !$held) {
             $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
