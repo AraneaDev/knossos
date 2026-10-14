@@ -8,32 +8,44 @@
  */
 
 // What discovery leaves out, for a request that does not carry the core's own
-// rules: the directories a project vendors under or keeps tool state in, the
-// namespace this tool owns (`.knossos-ci` beside a project), and build output
-// directly under the project root. A request that carries `exclusions`, the
-// rules the core's IgnoreMatcher applies, uses those instead for its duration.
+// rules: the built-in rules of the core's IgnoreMatcher, with build output
+// anchored at the project root. A request that carries `exclusions` uses those
+// instead for its duration. WorkerFallbackExclusionsTest holds the two equal.
 export const BUILT_IN_EXCLUSIONS = Object.freeze({
     segments: [
         ".git",
+        ".idea",
         ".knossos",
-        "node_modules",
         "vendor",
+        "node_modules",
         ".next",
         ".nuxt",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".worktrees",
         ".stryker-tmp",
         ".pnpm-store",
         ".yarn",
-        ".worktrees",
     ],
     anchored_segments: ["build", "coverage", "dist", "site"],
     anchor_roots: [""],
-    prefixes: [".knossos-"],
+    prefixes: [".knossos-", "_ide_helper"],
     sequences: [
         [".vitepress", "cache"],
         [".vitepress", "dist"],
     ],
-    suffixes: [],
-    path_prefixes: [],
+    suffixes: [".min.js", ".min.mjs", ".min.cjs"],
+    path_prefixes: [
+        "public/build",
+        "storage/framework",
+        "storage/attachments",
+        "storage/debugbar",
+        "storage/logs",
+    ],
     patterns: [],
 });
 

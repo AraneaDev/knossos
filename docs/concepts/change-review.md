@@ -165,6 +165,15 @@ path:
 - `via` names up to three of the test components (classes/functions) in that
   file responsible for the reachability, sorted and de-duplicated.
 
+`test_files_via_wiring` has the same shape and holds the test files that reach
+the change only through a composition root: a method, function or class that
+constructs or injects at least six classes and makes fewer calls into the
+project than half that, such as a container's wiring method. Such a test
+builds the application rather than using the change, so it is listed after the
+direct ones. A file with any test that reaches the change some other way is
+only in `test_files`, and a change to the composition root itself reaches its
+tests directly.
+
 `changed_files` and `unresolved_files` mirror `changed_files_impact`'s
 fields. `bounds` reports the limits and what the search did:
 
@@ -173,8 +182,9 @@ fields. `bounds` reports the limits and what the search did:
 - `max_visited` (50,000 components) and `max_edges` (100,000 relationships):
   the search's own bounds. `timeout_ms` bounds the whole request.
 - `visited_nodes` and `edges_examined`: how far the search went.
-- `test_files_found`: how many test files the search reached before `limit`
-  cut the list.
+- `test_files_found` and `test_files_via_wiring_found`: how many test files
+  of each kind the search reached before `limit` cut the lists. One `limit`
+  covers both, the direct files first.
 - `truncation_reasons`: every bound that cut the answer, in the order met:
   `changed_file_limit`, `direct_component_limit`, `visit_limit`,
   `edge_limit`, `time_limit` or `result_limit`.

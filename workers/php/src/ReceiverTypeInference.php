@@ -140,6 +140,15 @@ final class ReceiverTypeInference
 
             return;
         }
+        if ($node->expr instanceof Expr\Variable && is_string($node->expr->name) && $node->expr->name !== $node->var->name) {
+            $copied = $this->variables->type($node->expr->name);
+            if ($copied !== null) {
+                // `$handler = $candidate`: the copy holds what the original holds.
+                $this->variables->set($node->var->name, $copied, 'probable');
+
+                return;
+            }
+        }
         $read = $this->readElementType($node->expr, $class);
         if ($read !== null) {
             // `$route = $candidate['template']`, `$first = self::own()[0]`: what
@@ -239,7 +248,7 @@ final class ReceiverTypeInference
      * `cases()` returns the enum's own cases, so each value is an instance of
      * the enum; nothing else in the loop header says so.
      *
-     * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
+     * @param array{name: string, parent: ?string, properties: array<string, string>, elements?: array<string, string>}|null $class
      */
     public function foreachLoop(Stmt\Foreach_ $node, ?array $class): void
     {
@@ -260,9 +269,13 @@ final class ReceiverTypeInference
 
             return;
         }
-        $element = $node->expr instanceof Expr\Variable && is_string($node->expr->name)
-            ? $this->variables->element($node->expr->name)
-            : $this->returnedElementType($node->expr, $class);
+        $element = match (true) {
+            $node->expr instanceof Expr\Variable && is_string($node->expr->name) => $this->variables->element($node->expr->name),
+            // A property of this class whose docblock names its element type.
+            $node->expr instanceof Expr\PropertyFetch && $node->expr->var instanceof Expr\Variable && $node->expr->var->name === 'this'
+                && $node->expr->name instanceof Identifier => $class['elements'][$node->expr->name->toString()] ?? null,
+            default => $this->returnedElementType($node->expr, $class),
+        };
         if ($element !== null) {
             // A parameter whose docblock names its element type, or a call to
             // a method of this file whose docblock returns a list of one.

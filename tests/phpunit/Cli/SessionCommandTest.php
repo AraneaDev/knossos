@@ -23,6 +23,9 @@ final class SessionCommandTest extends KnossosTestCase
     /** @var string|false */
     private string|false $allowedRoots = false;
 
+    /** @var resource Where the command under test writes why a brief failed. */
+    private $errors;
+
     /**
      * Two environment variables decide what these tests are actually testing.
      *
@@ -42,6 +45,18 @@ final class SessionCommandTest extends KnossosTestCase
         $this->allowedRoots = getenv('KNOSSOS_ALLOWED_ROOTS');
         putenv('KNOSSOS_DATA_DIR');
         putenv('KNOSSOS_ALLOWED_ROOTS=' . sys_get_temp_dir());
+        $errors = fopen('php://memory', 'w+');
+        self::assertIsResource($errors);
+        $this->errors = $errors;
+    }
+
+    /**
+     * The command, writing its reasons to a stream of this test's own: a byte
+     * on the real STDERR stops a mutation run.
+     */
+    private function command(): SessionCommand
+    {
+        return new SessionCommand($this->errors);
     }
 
     protected function tearDown(): void
@@ -64,11 +79,38 @@ final class SessionCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testCommandIsRoutedAndAcceptsOnlyItsOwnOptions(): void
     {
-        $command = new SessionCommand();
+        $command = $this->command();
 
         assertSame(true, $command->supports('session-brief'));
         assertSame(false, $command->supports('export-agent-brief'));
         assertSame(['db', 'json'], $command->allowedOptions('session-brief'));
+    }
+
+    /**
+     * The hook must never break a session start, so a failure prints no brief
+     * and exits 0. Run by hand, that read as "nothing to say": the reason now
+     * goes to the error stream, which the hook discards (2>/dev/null).
+     */
+    #[Group('cli')]
+    public function testAFailedBriefSaysWhyOnTheErrorStreamAndStillExitsZero(): void
+    {
+        $directory = $this->temporaryDirectory();
+        $database = $directory . '/broken.sqlite';
+        file_put_contents($database, 'not a database');
+        $errors = fopen('php://memory', 'w+');
+        try {
+            ob_start();
+            $status = (new SessionCommand($errors))->run('session-brief', [$directory], ['db' => [$database]], $this->context($database));
+            $output = (string) ob_get_clean();
+
+            assertSame(0, $status);
+            assertSame('', $output);
+            rewind($errors);
+            assertSame(true, str_starts_with((string) stream_get_contents($errors), 'knossos session-brief: '));
+        } finally {
+            fclose($errors);
+            $this->removeTempTree($directory);
+        }
     }
 
     #[Group('cli')]
@@ -77,7 +119,7 @@ final class SessionCommandTest extends KnossosTestCase
         $directory = $this->temporaryDirectory();
         try {
             ob_start();
-            $status = (new SessionCommand())->run('session-brief', [$directory], [], $this->context());
+            $status = $this->command()->run('session-brief', [$directory], [], $this->context());
             $output = (string) ob_get_clean();
 
             assertSame(0, $status);
@@ -102,7 +144,7 @@ final class SessionCommandTest extends KnossosTestCase
             $before = $this->treeSnapshot($directory);
 
             ob_start();
-            $status = (new SessionCommand())->run('session-brief', [$directory], [], $this->context());
+            $status = $this->command()->run('session-brief', [$directory], [], $this->context());
             $output = (string) ob_get_clean();
 
             assertSame(0, $status);
@@ -130,7 +172,7 @@ final class SessionCommandTest extends KnossosTestCase
             $before = $this->treeSnapshot($nested);
 
             ob_start();
-            $status = (new SessionCommand())->run('session-brief', [$nested], [], $this->context());
+            $status = $this->command()->run('session-brief', [$nested], [], $this->context());
             $output = (string) ob_get_clean();
 
             assertSame(0, $status);
@@ -162,11 +204,11 @@ final class SessionCommandTest extends KnossosTestCase
         $nested = $root . '/src/nested';
         try {
             ob_start();
-            (new SessionCommand())->run('session-brief', [$nested], [], $this->context());
+            $this->command()->run('session-brief', [$nested], [], $this->context());
             $inside = (string) ob_get_clean();
 
             ob_start();
-            (new SessionCommand())->run('session-brief', [$root], [], $this->context());
+            $this->command()->run('session-brief', [$root], [], $this->context());
             $atRoot = (string) ob_get_clean();
 
             assertSame(true, str_contains($inside, $projectId));
@@ -196,7 +238,7 @@ final class SessionCommandTest extends KnossosTestCase
         $missing = $root . '/src/gone';
         try {
             ob_start();
-            (new SessionCommand())->run('session-brief', [$missing], [], $this->context());
+            $this->command()->run('session-brief', [$missing], [], $this->context());
             $text = (string) ob_get_clean();
 
             assertSame(true, str_contains($text, $missing . ' does not exist;'));
@@ -231,7 +273,7 @@ final class SessionCommandTest extends KnossosTestCase
             ))->migrate();
 
             ob_start();
-            $status = (new SessionCommand())->run(
+            $status = $this->command()->run(
                 'session-brief',
                 [$root],
                 ['db' => [$databasePath]],
@@ -252,7 +294,7 @@ final class SessionCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
-    public function testAnUnusableDatabaseIsSilentAndStillExitsZero(): void
+    public function testAnUnusableDatabaseLeavesStdoutEmptyAndStillExitsZero(): void
     {
         // The governing rule for this command: it may fail to help, and may
         // never cost anything. A session start must not inherit a stack trace.
@@ -273,11 +315,13 @@ final class SessionCommandTest extends KnossosTestCase
 
         try {
             ob_start();
-            $status = (new SessionCommand())->run('session-brief', ['/tmp'], ['db' => [$databasePath]], $context);
+            $status = $this->command()->run('session-brief', ['/tmp'], ['db' => [$databasePath]], $context);
             $output = (string) ob_get_clean();
 
             assertSame(0, $status);
             assertSame('', trim($output));
+            rewind($this->errors);
+            self::assertStringStartsWith('knossos session-brief: ', (string) stream_get_contents($this->errors));
         } finally {
             $this->removeTempTree($directory);
         }

@@ -14,8 +14,10 @@ from .ast_helpers import (
     is_none,
     is_protocol_base,
     is_type_checking_guard,
+    module_statements,
     names_main_guard,
     optional_inner,
+    positional_string,
     ref,
 )
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
@@ -59,6 +61,39 @@ def url_template(uri: str, prefix_unknown: bool) -> str:
     return "/" + "/".join(segments[1:] if prefix_unknown else segments)
 
 
+def imports_django(tree: ast.Module) -> bool:
+    """Whether the module imports Django or its REST framework at its top level."""
+    for statement in module_statements(tree):
+        if isinstance(statement, ast.Import):
+            names = [alias.name for alias in statement.names]
+        elif isinstance(statement, ast.ImportFrom) and statement.level == 0:
+            names = [statement.module or ""]
+        else:
+            continue
+        if any(name.split(".")[0] in {"django", "rest_framework"} for name in names):
+            return True
+    return False
+
+
+def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
+    """The `self.<name>` attributes the methods of `node` assign, in any form of assignment."""
+    names: set[str] = set()
+    for item in node.body:
+        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for statement in ast.walk(item):
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+            elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
+                targets = [statement.target]
+            else:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Attribute) and dotted(target.value) == "self":
+                    names.add(target.attr)
+    return frozenset(names)
+
+
 class PythonAstFactCollector(ast.NodeVisitor):
     """Coordinate one AST traversal and delegate fact enrichment."""
 
@@ -98,6 +133,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # canonical name, so `self.<name>` read as a value can be told apart
         # from a data attribute before the method's own definition is visited.
         self.class_methods: dict[str, frozenset[str]] = {}
+        # The `self.<name>` attributes a class's methods assign that name no
+        # method of it: `self.declarations = declarations` stores a callable,
+        # and `self.declarations(m)` calls that, not a method of the class.
+        self.stored_attributes: dict[str, frozenset[str]] = {}
         # `self.<name>` nodes that are the callee of a call: those are `calls`.
         self.called_attributes: set[int] = set()
         # What a receiver holds, so a call on it names the method that runs.
@@ -124,10 +163,17 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.serves_app = False
         self.module_id = ref("module", self.name)
         self.facts = PythonFactAccumulator(relative)
-        self.roles = PythonFrameworkRoleEnricher()
+        self.roles = PythonFrameworkRoleEnricher(django=imports_django(tree))
         routing = (self.facts, self.name, self.module_id, self.aliases, self.resolve_name, index.module_declarations)
         self.fastapi = FastApiFactEnricher(*routing)
-        self.django = DjangoFactEnricher(self.facts, self.name, self.module_id, self.aliases, self.resolve_name)
+        self.django = DjangoFactEnricher(
+            self.facts,
+            self.name,
+            self.module_id,
+            self.aliases,
+            self.resolve_name,
+            lambda module: index.canonical_module(module) if index.module_file(module) is not None else None,
+        )
         self.flask = FlaskFactEnricher(*routing)
 
     def collect(self) -> dict[str, Any]:
@@ -349,6 +395,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.class_methods[canonical] = frozenset(
             item.name for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
         )
+        self.stored_attributes[canonical] = assigned_self_attributes(node) - self.class_methods[canonical]
         serializer = self.declared_serializer(node)
         if serializer is not None:
             self.serializer_classes[canonical] = serializer
@@ -632,13 +679,19 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             variable = node.targets[0].id
             self.fastapi.register_assignment(variable, node.value, not self.containers)
-            self.django.enrich_assignment(variable, node.value, node)
+            self.django.enrich_assignment(variable, node.value, node, not self.containers)
             self.flask.register_assignment(variable, node.value, not self.containers)
             self.remember_local(variable, node.value)
         if len(node.targets) == 1:
             attribute = self.self_attribute(node.targets[0])
             if attribute is not None:
                 self.remember_attribute(attribute, node.value)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        # `urlpatterns += [...]` adds patterns as the assignment does.
+        if isinstance(node.target, ast.Name) and node.target.id == "urlpatterns" and isinstance(node.op, ast.Add):
+            self.django.url_patterns(node.value)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -980,12 +1033,50 @@ class PythonAstFactCollector(ast.NodeVisitor):
         )
         self.facts.add_edge(edge_kind, self.current(), endpoint, node, None, "framework_convention")
 
+    def task_by_name(self, node: ast.Call, name: str | None) -> bool:
+        """Record a Celery task queued by its name as a dispatch; whether the call was one.
+
+        ``<app>.send_task("shop.tasks.deliver")`` queues the task registered
+        under that name, and ``celery.signature("shop.tasks.deliver")`` builds
+        a signature of it. Celery names a task after its module and function
+        unless the decorator says otherwise, so the name is read that way: a
+        function the named module declares is the target; any other name is a
+        speculative target the core keeps only when it exists. A name that is
+        not a literal names nothing.
+        """
+        if not name:
+            return False
+        if name.endswith(".send_task"):
+            signature = False
+        elif name.rsplit(".", 1)[-1] == "signature" and self.aliases.get(name, name).endswith("celery.signature"):
+            signature = True
+        else:
+            return False
+        task = positional_string(node, 0)
+        module, _, function = (task or "").rpartition(".")
+        if not module or not function:
+            return False
+        found = self.index.canonical_module(module) if self.index.module_file(module) is not None else None
+        declared = self.index.module_declarations(found).get(function, "") if found else ""
+        attributes: dict[str, Any] = {"celery": "signature"} if signature else {}
+        if declared.startswith("py:function:"):
+            confidence = "probable" if signature else "certain"
+            self.facts.add_edge("dispatches", self.current(), declared, node, attributes, confidence=confidence)
+        else:
+            attributes = {"celery": "signature" if signature else "by_name", "speculative": True}
+            self.facts.add_edge(
+                "dispatches", self.current(), ref("function", task or ""), node, attributes, confidence="probable"
+            )
+        return True
+
     def record_submission(self, node: ast.Call, name: str | None) -> bool:
         """Record a Celery submission or signature as a dispatch; whether the call was one.
 
         `deliver.delay(order_id)` queues `deliver` to run later: a dispatch,
         not a call, and `delay` is no function of the project.
         """
+        if self.task_by_name(node, name):
+            return True
         submitted = self.submitted_task(name)
         if submitted is None:
             return False
@@ -1012,8 +1103,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 # whatever `a` holds, and reading it as a member of this class
                 # invents a symbol named `a.b` that nothing declares.
                 class_container = next((item for item in reversed(self.containers) if item[2] == "class"), None)
-                if class_container:
-                    target = ref("method", f"{class_container[1]}::{name.split('.', 1)[1]}")
+                attribute = name.split(".", 1)[1]
+                if class_container and attribute not in self.stored_attributes.get(class_container[1], frozenset()):
+                    target = ref("method", f"{class_container[1]}::{attribute}")
             target = target or self.resolve_name(name, "function")
             if target is None and len(member) == 2:
                 self.untyped_calls.add(member[1])
@@ -1047,4 +1139,5 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.facts.add_edge("calls", self.current(), target, node)
         self.fastapi.enrich_call(node, name)
         self.flask.enrich_call(node, name)
+        self.django.enrich_call(node, name)
         self.generic_visit(node)
