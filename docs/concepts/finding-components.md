@@ -14,7 +14,7 @@ What the components, edges and evidence in the answers are is explained in
 | Tool                   | CLI                    | Answers                                             |
 | ---------------------- | ---------------------- | --------------------------------------------------- |
 | `list_projects`        | `list-projects`        | Which projects are scanned, how fresh, how large.   |
-| `find_component`       | `find-component`       | Ranked candidates when you know part of a name.     |
+| `find_component`       | `find-component`       | Candidates by part of a name, or by their file.     |
 | `inspect_component`    | `inspect-component`    | One component's roles, relations, and evidence.     |
 | `list_usages`          | `list-usages`          | Every usage site of a symbol, with `path:line`.     |
 | `architecture_summary` | `architecture-summary` | A one-call overview by language and node/edge kind. |
@@ -99,6 +99,15 @@ uses `child_limit`, `incoming_relationship_limit`, and
 `outgoing_relationship_limit`. Confidence filtering accepts `possible`,
 `probable`, or `certain`; a stricter level omits weaker static facts rather than
 upgrading their confidence.
+
+## Finding by file
+
+`find_component` also takes a file path, read as `file_context` reads one:
+project-relative, `./`-led, or absolute under the project root. When no
+component's name matches, it returns what that file declares, its module first,
+and says so in `declared_in`. A Python module is named in dotted form
+(`app.models`) and a PHP file has no module node, so a path is the only name a
+caller may have for either.
 
 ## Search
 
