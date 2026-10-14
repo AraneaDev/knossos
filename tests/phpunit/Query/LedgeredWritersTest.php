@@ -141,6 +141,34 @@ final class LedgeredWritersTest extends KnossosTestCase
         }
     }
 
+    /** A root no scan has registered yet waits for another writer's lease too, instead of failing busy. */
+    #[Group('query')]
+    public function testAFirstScanWaitsForAnotherWritersLease(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
+        $pdo = $this->freshTestDatabase();
+        try {
+            $projectId = \Knossos\Store\StableId::project('root:' . (string) realpath($root));
+            $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')
+                ->execute([$projectId, getmypid() . '@' . gethostname() . ':' . str_repeat('b', 32), time()]);
+            $waits = 0;
+            $lock = new ProjectWriterLock($pdo, sleep: static function () use (&$waits, $pdo): void {
+                ++$waits;
+                $pdo->exec('DELETE FROM scan_locks');
+            });
+            $scanner = new LedgeredScanner($pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), AllowedRoots::of([(string) realpath($root)]), lock: $lock);
+
+            $result = $scanner->scan($root);
+
+            assertSame(1, $waits);
+            assertSame($projectId, $result->projectId);
+            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM scan_locks')->fetchColumn());
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** The scan's cancellation reaches the wait for another writer's lease, however the caller passed it. */
     #[Group('query')]
     public function testACancelledScanStopsWaitingForTheLease(): void
