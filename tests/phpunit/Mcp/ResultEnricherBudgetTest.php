@@ -100,6 +100,45 @@ final class ResultEnricherBudgetTest extends KnossosTestCase
         assertSame(1, count($result->data['alpha']));
     }
 
+    /**
+     * A flow path's nodes and hops are a sequence: cut, the path stops short of
+     * its target. They are never trimmed; the paths list drops whole paths
+     * instead. (A collection inside a record, such as an entry point's roles,
+     * still is: MaxCharsTest pins that.)
+     */
+    #[Group('mcp')]
+    public function testAFlowPathIsNeverCutShort(): void
+    {
+        $enricher = $this->enricherMeasuringInTurn($this->freshTestDatabase(), [4_200, 3_900]);
+        $path = ['nodes' => ['a', 'b', 'c', 'd', 'e'], 'hops' => [1, 2, 3, 4]];
+        $envelope = new ResultEnvelope('project_x', 'scan_x', 'ok', ['paths' => [$path, $path]]);
+
+        $result = $enricher->enrich($envelope, 'explain_flow', 'compact', 4_000);
+
+        foreach ($result->data['paths'] as $kept) {
+            assertSame($path, $kept, 'A kept path is whole.');
+        }
+        assertSame(['paths' => 1], $result->meta['dropped_items']);
+    }
+
+    /**
+     * A cycle's members are a set, already capped where they are found: trimming
+     * some keeps a true answer, while freezing them would drop a lone large
+     * cycle whole and report cycles over an empty list.
+     */
+    #[Group('mcp')]
+    public function testALoneCycleKeepsItsRecordAndShedsMembers(): void
+    {
+        $enricher = $this->enricherMeasuringInTurn($this->freshTestDatabase(), [4_200, 3_900]);
+        $cycle = ['members' => ['a', 'b', 'c', 'd', 'e'], 'size' => 5];
+        $envelope = new ResultEnvelope('project_x', 'scan_x', 'ok', ['cycles' => [$cycle]]);
+
+        $result = $enricher->enrich($envelope, 'dependency_cycles', 'compact', 4_000);
+
+        assertSame(1, count($result->data['cycles']));
+        assertSame(['cycles.0.members' => 1], $result->meta['dropped_items']);
+    }
+
     /** An envelope that was already truncated stays truncated without any trimming. */
     #[Group('mcp')]
     public function testAnAlreadyTruncatedResultStaysTruncatedWithoutBeingTrimmed(): void
