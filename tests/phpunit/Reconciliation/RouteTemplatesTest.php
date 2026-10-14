@@ -236,6 +236,52 @@ final class RouteTemplatesTest extends KnossosTestCase
         assertSame('/v2/items/x', (string) $template['template']);
     }
 
+    #[Group('reconciliation')]
+    public function testADjangoRouteBehindIncludesTakesEveryPrefixUpToTheRootUrlconf(): void
+    {
+        $nodes = [
+            'setting' => [
+                'id' => 'setting', 'kind' => 'setting', 'canonical_name' => 'proj.settings.ROOT_URLCONF',
+                'attributes' => ['value' => 'proj.urls'], 'evidence_path' => 'proj/settings.py',
+            ],
+            'shop' => self::module('shop', 'py:module:shop.urls'),
+            'deep' => self::module('deep', 'py:module:shop.deep.urls'),
+            'router' => self::router('router', 'py:router:proj.urls.router'),
+            'deep-route' => self::route('deep-route', ['framework' => 'django', 'path' => 'items/<int:id>/', 'module' => 'shop.deep.urls']),
+            'drf-route' => self::route('drf-route', ['framework' => 'django', 'path' => 'notes/{pk}/', 'router' => 'py:router:proj.urls.router']),
+        ];
+        $edges = [
+            'm1' => self::mount('m1', 'shop', 'api/', 'py:module:proj.urls'),
+            'm2' => self::mount('m2', 'deep', 'deep/', 'py:module:shop.urls'),
+            'm3' => self::mount('m3', 'router', 'v2/', 'py:module:proj.urls'),
+        ];
+
+        $routes = RouteTemplates::forRoutes($nodes, $edges);
+
+        assertSame('/api/deep/items/{}', (string) $routes['deep-route']['templates'][0]['template']);
+        assertSame(['declared', ['m1', 'm2']], [$routes['deep-route']['templates'][0]['prefix'], $routes['deep-route']['templates'][0]['mounts']]);
+        assertSame('/v2/notes/{}', (string) $routes['drf-route']['templates'][0]['template']);
+        assertSame('declared', $routes['drf-route']['templates'][0]['prefix']);
+    }
+
+    #[Group('reconciliation')]
+    public function testDjangoIncludesThatLoopEndAsAnUnknownPrefix(): void
+    {
+        $nodes = [
+            'a' => self::module('a', 'py:module:a.urls'),
+            'b' => self::module('b', 'py:module:b.urls'),
+            'route' => self::route('route', ['framework' => 'django', 'path' => 'x/', 'module' => 'a.urls']),
+        ];
+        $edges = [
+            'ab' => self::mount('ab', 'a', 'one/', 'py:module:b.urls'),
+            'ba' => self::mount('ba', 'b', 'two/', 'py:module:a.urls'),
+        ];
+
+        $routes = RouteTemplates::forRoutes($nodes, $edges);
+
+        assertSame(['unknown'], array_values(array_unique(array_column($routes['route']['templates'], 'prefix'))));
+    }
+
     /**
      * @param array<string, mixed> $attributes
      * @return array<string, mixed>
@@ -245,6 +291,15 @@ final class RouteTemplatesTest extends KnossosTestCase
         return [
             'id' => $id, 'kind' => 'route', 'canonical_name' => 'route:' . $id, 'attributes' => $attributes,
             'evidence_path' => 'src/routes.py', 'file_id' => 'f', 'start_line' => 1, 'end_line' => 1, 'owner_key' => 'o',
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function module(string $id, string $local): array
+    {
+        return [
+            'id' => $id, 'kind' => 'module', 'canonical_name' => substr($local, strlen('py:module:')), 'attributes' => ['scanner_local_id' => $local],
+            'evidence_path' => 'src/urls.py', 'file_id' => 'f', 'start_line' => 1, 'end_line' => 1, 'owner_key' => 'o',
         ];
     }
 
