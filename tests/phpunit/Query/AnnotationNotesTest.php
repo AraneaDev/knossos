@@ -118,4 +118,23 @@ final class AnnotationNotesTest extends KnossosTestCase
 
         assertSame([true, 'rests on no scanned file'], [$note['stale'], $note['stale_reason']]);
     }
+
+    #[Group('query')]
+    public function testASearchFindsAComponentByTheTextOfANoteOnIt(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached through the reconciliation hook, which also drafts the invoice', execute: true);
+
+        $found = $queries->searchArchitecture($ids['project'], 'reconciliation hook');
+
+        // Only the note holds those words, so the note says why the component came up.
+        assertSame(['App\\Checkout'], array_column($found->data['results'], 'canonical_name'));
+        assertSame(['App\\Checkout'], array_column($found->data['notes'], 'component'));
+
+        // A name that holds the words still ranks above a note that does.
+        $named = $queries->searchArchitecture($ids['project'], 'Invoice');
+        assertSame(['App\\InvoiceService', 'App\\Checkout'], array_column($named->data['results'], 'canonical_name'));
+    }
 }

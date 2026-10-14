@@ -681,7 +681,7 @@ final readonly class ToolCatalog
             ],
             [
                 'name' => 'search_architecture', 'title' => 'Search architecture',
-                'description' => 'Search components by name, attribute, or role with structured filters. Use when you know a trait of what you want but not its exact name.',
+                'description' => 'Search components by name, attribute, role, or the text of a note on them, with structured filters. Use when you know a trait of what you want but not its exact name.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     ...self::commonReadProperties(),
                     'project_id' => ['type' => 'string', 'minLength' => 1],

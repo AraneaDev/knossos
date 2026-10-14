@@ -435,7 +435,8 @@ final readonly class ArchitectureQueryService
         int $limit = 20,
         int $offset = 0,
     ): ResultEnvelope {
-        return $this->services->componentQueries->searchArchitecture($projectId, $query, $kinds, $roles, $boundaryIds, $confidences, $limit, $offset);
+        // A note can be why a component matched, so its results carry their notes.
+        return $this->withNotes($this->services->componentQueries->searchArchitecture($projectId, $query, $kinds, $roles, $boundaryIds, $confidences, $limit, $offset));
     }
 
     /**
