@@ -516,6 +516,7 @@ export class TypeScriptLanguageFactCollector {
     }
 
     callExpression(node) {
+        this.nest.callExpression(node);
         if (
             node.expression.kind === ts.SyntaxKind.ImportKeyword &&
             node.arguments.length === 1 &&
