@@ -64,7 +64,8 @@ class PythonFactAccumulator:
             "evidence": evidence(self.relative, node),
             "attributes": added,
         }
-        key = json.dumps([kind, source, target], sort_keys=True)
+        # One router or urlconf mounted twice under two prefixes answers both, so a mount is one per prefix.
+        key = json.dumps([kind, source, target, *([added.get("prefix")] if kind == "mounts" else [])], sort_keys=True)
         existing = self.edges.get(key)
         if existing is None:
             self.edges[key] = item

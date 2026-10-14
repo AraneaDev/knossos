@@ -42,11 +42,13 @@ impl Walk<'_> {
             } else {
                 continue;
             };
-            let Some(path) = path.filter(|p| !is_dynamic_path(p)) else {
-                // A non-literal path, or a literal with dynamic segments
-                // (`<id>`, `{id}`, `:id`), would produce a guessed route;
-                // diagnose it instead, mirroring the Python worker's
-                // PY_DYNAMIC_ROUTE_PATH.
+            let Some(path) = path else {
+                // A non-literal path would produce a guessed route; diagnose
+                // it instead, mirroring the Python worker's
+                // PY_DYNAMIC_ROUTE_PATH. A literal with parameters (`<id>`,
+                // `{id}`, `:id`) is a template and kept as written, as the
+                // other languages keep theirs; the core reads all three forms
+                // as parameters when it binds a caller's URL.
                 self.facts.diagnostic(
                     "warning",
                     "RS_DYNAMIC_ROUTE_PATH",
@@ -134,8 +136,9 @@ impl Calls<'_, '_> {
     /// and the `web::<verb>().to(handler)` chain actix builds inside `route`.
     /// Anything else — `nest`, `route_service`, a handler named by a
     /// non-path expression — contributes nothing rather than a guessed
-    /// route. A dynamic path (a variable, or a `{}` segment) is diagnosed
-    /// rather than guessed, mirroring `PY_DYNAMIC_ROUTE_PATH`.
+    /// route. A path that is not a string literal is diagnosed rather than
+    /// guessed, mirroring `PY_DYNAMIC_ROUTE_PATH`; a literal template with
+    /// parameters is kept as written.
     fn framework_route(&mut self, node: &syn::ExprMethodCall) {
         let has_axum = self.walk.frameworks.iter().any(|f| f == "axum");
         let has_actix = self.walk.frameworks.iter().any(|f| f == "actix");
@@ -160,10 +163,6 @@ impl Calls<'_, '_> {
         } else {
             return;
         };
-        if is_dynamic_path(&route_path) {
-            self.dynamic_route(node.span());
-            return;
-        }
         let Some(path) = path_of(handler).and_then(|path| {
             self.walk
                 .resolve_path(&self.container, path)
@@ -190,15 +189,6 @@ impl Calls<'_, '_> {
             span.start().line,
         );
     }
-}
-
-/// Whether a route path contains a dynamic segment (`<id>` for rocket,
-/// `{id}` for actix, `:id` for axum). These arrive as plain string literals,
-/// so the literal check alone cannot tell them apart from a static path —
-/// and a route node named `GET /users/<id> => …` would be a false fact.
-fn is_dynamic_path(path: &str) -> bool {
-    path.bytes()
-        .any(|b| matches!(b, b'{' | b'}' | b'<' | b'>' | b':'))
 }
 
 /// The string value of a string-literal expression.

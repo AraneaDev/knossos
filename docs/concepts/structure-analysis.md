@@ -101,6 +101,12 @@ path from a caller's `fetch` or `route()` call to the
 handler that serves it, as [from request to handler](request-to-handler.md)
 describes.
 
+A call through an interface or a parent class lands on that method, while an
+implementation or override is what runs. When `calls` is followed, a path steps
+from such a method into each method that implements or overrides it, as a hop of
+kind `implemented_by`. Which one runs is a guess, so that hop is `derived`,
+`probable` and has no evidence line, and `min_confidence: certain` leaves it out.
+
 A pair with no static path returns an empty `paths` list rather than an error.
 That is a real answer, though it proves nothing about the runtime.
 

@@ -4,33 +4,37 @@ import re
 from typing import Any
 
 # What discovery leaves out, for a request that does not carry the core's own
-# rules (``exclusions``, see :class:`Exclusions`), which replace these.
-EXCLUDED = {
-    ".git",
-    ".knossos",
-    ".venv",
-    "venv",
-    "__pycache__",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".worktrees",
-    "node_modules",
-    "vendor",
-    # Mutation-testing sandboxes are not source.
-    ".stryker-tmp",
-    ".pnpm-store",
-    ".yarn",
+# rules (``exclusions``, see :class:`Exclusions`), which replace these: the
+# built-in rules of the core's IgnoreMatcher, with build output anchored at the
+# project root. WorkerFallbackExclusionsTest holds the two equal.
+BUILT_IN_RULES: dict[str, Any] = {
+    "segments": [
+        ".git",
+        ".idea",
+        ".knossos",
+        "vendor",
+        "node_modules",
+        ".next",
+        ".nuxt",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".worktrees",
+        ".stryker-tmp",
+        ".pnpm-store",
+        ".yarn",
+    ],
+    "anchored_segments": ["build", "coverage", "dist", "site"],
+    "anchor_roots": [""],
+    "prefixes": [".knossos-", "_ide_helper"],
+    "sequences": [[".vitepress", "cache"], [".vitepress", "dist"]],
+    "suffixes": [".min.js", ".min.mjs", ".min.cjs"],
+    "path_prefixes": ["public/build", "storage/framework", "storage/attachments", "storage/debugbar", "storage/logs"],
+    "patterns": [],
 }
-# Build output, excluded only directly under an anchor root: the project root,
-# or (when the core sends them) the directories holding a package or build
-# manifest. Below anything else these names are ordinary source directories.
-ANCHORED_EXCLUDED = ("build", "coverage", "dist", "site")
-# Name prefixes for the namespace this tool owns. ".knossos" alone is in the
-# set above; a CI job parks a checkout of the analyzer or its snapshot database
-# beside the project under the same convention, and neither is a source root of
-# the project being scanned.
-EXCLUDED_PREFIXES = (".knossos-",)
 # Dependency trees may be read for import resolution even though discovery
 # does not scan them as project-owned source. Generated and tool-owned trees
 # remain blocked at this boundary.
@@ -53,9 +57,7 @@ class Exclusions:
 
     def __init__(self, rules: Any = None) -> None:
         if rules is None:
-            rules = {"segments": sorted(EXCLUDED), "prefixes": list(EXCLUDED_PREFIXES)}
-            rules |= {"sequences": [], "suffixes": [], "path_prefixes": [], "patterns": []}
-            rules |= {"anchored_segments": list(ANCHORED_EXCLUDED), "anchor_roots": [""]}
+            rules = BUILT_IN_RULES
         if not self._valid(rules):
             raise ValueError(
                 "Python exclusions must be an object of segments, anchored_segments, anchor_roots, prefixes, "

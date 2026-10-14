@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ChunkedInQuery;
 
 /**
  * How one component can reach another: `explain_flow`'s bounded path search.
@@ -170,7 +171,11 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 continue;
             }
             $last = $nodes[array_key_last($nodes)];
-            foreach ($this->flowEdges($projectId, $last['id'], $edgeKinds, $minimumRank, $flowEdgesTruncated) as $index => $edge) {
+            $edges = [
+                ...$this->flowEdges($projectId, $last['id'], $edgeKinds, $minimumRank, $flowEdgesTruncated),
+                ...$this->implementationSteps($projectId, $last['id'], $edgeKinds, $minimumRank),
+            ];
+            foreach ($edges as $index => $edge) {
                 // Up to 500 edges per node: the clock is read on the first and
                 // every 64th, so one wide node cannot run past the deadline.
                 if ($index % 64 === 0 && $this->now() > $deadline) {
@@ -352,6 +357,42 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             $rows = array_slice($rows, 0, 500);
         }
         return $rows;
+    }
+
+    /**
+     * A call to an interface or parent method lands on that method in the
+     * graph, while an implementation or override is what may run: a step from
+     * the method to each of them, shaped as an edge row. Which one runs is a
+     * guess, so the step is derived and probable, and only taken when calls
+     * are followed and probable hops are allowed.
+     *
+     * @param list<string> $edgeKinds
+     * @return list<array<string, mixed>>
+     */
+    private function implementationSteps(string $projectId, string $sourceId, array $edgeKinds, int $minimumConfidence): array
+    {
+        if (!in_array('calls', $edgeKinds, true) || $minimumConfidence > self::CONFIDENCE_RANK['probable']) {
+            return [];
+        }
+        $targets = SupertypeMethods::implementationsOf($this->pdo, $projectId, [$sourceId])[$sourceId] ?? [];
+        if ($targets === []) {
+            return [];
+        }
+        $sql = 'SELECT target.id, target.kind, target.canonical_name, target.display_name, target.confidence, source.display_name AS source_name '
+            . 'FROM nodes target JOIN nodes source ON source.id = ? WHERE target.project_id = ? AND target.id IN (%s) ORDER BY target.canonical_name';
+        $steps = [];
+        foreach (ChunkedInQuery::rows($this->pdo, $sql, $targets, [$sourceId, $projectId]) as $target) {
+            $steps[] = [
+                'id' => 'derived:implemented_by:' . $sourceId . '>' . $target['id'], 'kind' => 'implemented_by',
+                'source_id' => $sourceId, 'target_id' => $target['id'], 'origin' => 'derived', 'confidence' => 'probable',
+                'attributes_json' => '{}', 'relative_path' => null, 'start_line' => null, 'end_line' => null,
+                'source_name' => $target['source_name'], 'target_name' => $target['display_name'],
+                'target_kind' => $target['kind'], 'target_canonical_name' => $target['canonical_name'],
+                'target_display_name' => $target['display_name'], 'target_confidence' => $target['confidence'],
+            ];
+        }
+
+        return $steps;
     }
 
     /**

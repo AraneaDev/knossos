@@ -333,9 +333,19 @@ class FastApiFactEnricher(RouterMounts):
 
 
 class DjangoFactEnricher:
-    """Add Django settings and URL-pattern facts."""
+    """Add Django settings and URL-pattern facts.
+
+    The worker never builds a full URL. A ``path()`` is a route carrying its
+    ``module``; an ``include()`` is a ``mounts`` edge from this urlconf onto
+    itself, with the path as its prefix, to the included module or DRF
+    router; a DRF ``router.register(prefix, ViewSet)`` is a list and a detail
+    route carrying its ``router``. The core joins the mounts up to
+    ROOT_URLCONF (RouteTemplates).
+    """
 
     SETTINGS = frozenset({"INSTALLED_APPS", "MIDDLEWARE", "ROOT_URLCONF", "ASGI_APPLICATION", "WSGI_APPLICATION"})
+
+    DRF_ROUTERS = ("rest_framework.routers.DefaultRouter", "rest_framework.routers.SimpleRouter")
 
     def __init__(
         self,
@@ -344,14 +354,21 @@ class DjangoFactEnricher:
         module_id: str,
         aliases: dict[str, str],
         resolve_name: Callable[[str, str], str | None],
+        project_module: Callable[[str], str | None],
     ) -> None:
         self.facts = facts
         self.module = module
         self.module_id = module_id
         self.aliases = aliases
         self.resolve_name = resolve_name
+        # The id of the project module a dotted name finds, None when it finds none.
+        self.project_module = project_module
+        # The module-level variables bound to a DRF router.
+        self.drf_routers: set[str] = set()
 
-    def enrich_assignment(self, variable: str, value_node: ast.AST, assignment: ast.Assign) -> None:
+    def enrich_assignment(
+        self, variable: str, value_node: ast.AST, assignment: ast.Assign, module_level: bool = True
+    ) -> None:
         if variable in self.SETTINGS:
             value = self.literal_value(value_node)
             setting_id = ref("setting", f"{self.module}.{variable}")
@@ -364,9 +381,99 @@ class DjangoFactEnricher:
                 {"framework": "django", "value": value, "dynamic": value is None},
             )
             self.facts.add_edge("configures", self.module_id, setting_id, assignment)
-        if variable == "urlpatterns" and isinstance(value_node, (ast.List, ast.Tuple)):
-            for item in value_node.elts:
+        if variable == "urlpatterns":
+            self.url_patterns(value_node)
+        if module_level and isinstance(value_node, ast.Call):
+            called = dotted(value_node.func)
+            resolved = (called and self.resolve_name(called, "class")) or ""
+            if resolved.endswith(self.DRF_ROUTERS):
+                router_id = ref("router", f"{self.module}.{variable}")
+                self.facts.add_node(
+                    router_id,
+                    "router",
+                    f"{self.module}.{variable}",
+                    variable,
+                    value_node,
+                    {"framework": "django", "prefix": ""},
+                )
+                self.facts.add_edge("contains", self.module_id, router_id, value_node)
+                self.drf_routers.add(variable)
+
+    def url_patterns(self, value: ast.AST) -> None:
+        """The patterns of ``urlpatterns = ...`` or ``urlpatterns += ...``: lists, joined by ``+``, and router URLs."""
+        if isinstance(value, (ast.List, ast.Tuple)):
+            for item in value.elts:
                 self.url_pattern(item)
+        elif isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+            self.url_patterns(value.left)
+            self.url_patterns(value.right)
+        elif (router := self.router_urls(value)) is not None:
+            self.facts.add_edge("mounts", self.module_id, router, value, {"prefix": "", "onto": self.module_id})
+
+    def router_urls(self, expression: ast.AST) -> str | None:
+        """The router a ``router.urls`` expression names, when ``router`` is a DRF router this file assigns."""
+        if isinstance(expression, ast.Attribute) and expression.attr == "urls":
+            variable = dotted(expression.value)
+            if variable in self.drf_routers:
+                return ref("router", f"{self.module}.{variable}")
+        return None
+
+    def include(self, prefix: str, call: ast.Call, expression: ast.Call) -> None:
+        """The ``mounts`` edge of ``path(prefix, include(...))``: a urlconf module by name, or a DRF router."""
+        included = call.args[0] if call.args else None
+        if isinstance(included, (ast.Tuple, ast.List)) and included.elts:
+            included = included.elts[0]  # include((patterns, app_namespace))
+        attributes: dict[str, Any] = {"prefix": prefix, "onto": self.module_id}
+        if included is not None and (router := self.router_urls(included)) is not None:
+            self.facts.add_edge("mounts", self.module_id, router, expression, attributes)
+            return
+        if isinstance(included, ast.Constant) and isinstance(included.value, str):
+            name = included.value
+        else:
+            spelled = dotted(included) if included is not None else None
+            name = self.aliases.get(spelled or "", spelled or "")
+        if not name:
+            return  # a pattern list held in a variable names no module
+        found = self.project_module(name)
+        if found is None:
+            attributes["speculative"] = True
+        self.facts.add_edge("mounts", self.module_id, ref("module", found or name), expression, attributes)
+
+    def enrich_call(self, node: ast.Call, name: str | None) -> None:
+        """A DRF ``router.register(prefix, ViewSet)``: the list and the detail route the router builds."""
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "register"):
+            return
+        variable = dotted(node.func.value)
+        if variable not in self.drf_routers:
+            return
+        prefix = positional_string(node, 0)
+        if prefix is None:
+            self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic DRF router prefix was skipped.", node)
+            return
+        viewset = (
+            node.args[1] if len(node.args) > 1 else next((k.value for k in node.keywords if k.arg == "viewset"), None)
+        )
+        target_name = dotted(viewset) if viewset is not None else None
+        target = self.resolve_name(target_name, "class") if target_name else None
+        base = prefix.strip("^$/")
+        for path in (f"{base}/", f"{base}/{{pk}}/"):
+            canonical = f"ANY /{path} => {target_name or 'dynamic'}"
+            route_id = ref("route", canonical)
+            self.facts.add_node(
+                route_id,
+                "route",
+                canonical,
+                f"ANY /{path}",
+                node,
+                {
+                    "framework": "django",
+                    "path": path,
+                    "name": keyword_string(node, "basename"),
+                    "router": ref("router", f"{self.module}.{variable}"),
+                },
+            )
+            if target:
+                self.facts.add_edge("routes_to", route_id, target, node)
 
     def url_pattern(self, expression: ast.AST) -> None:
         if not isinstance(expression, ast.Call):
@@ -380,6 +487,11 @@ class DjangoFactEnricher:
             self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic Django URL pattern was skipped.", expression)
             return
         target_expression = expression.args[1] if len(expression.args) > 1 else None
+        if isinstance(target_expression, ast.Call):
+            included = self.aliases.get(dotted(target_expression.func) or "", "")
+            if included.endswith("django.urls.include"):
+                self.include(path, target_expression, expression)
+                return
         target_name = dotted(target_expression) if target_expression else None
         if isinstance(target_expression, ast.Call) and isinstance(target_expression.func, ast.Attribute):
             target_name = dotted(target_expression.func.value)
@@ -418,10 +530,11 @@ class FlaskFactEnricher(RouterMounts):
 
     Flask's primary wiring is `@app.route("/path", methods=[...])` on a
     `Flask` or `Blueprint` instance, so unlike FastAPI it names one path per
-    decorator but may carry several verbs. A dynamic path (`<id>`) is a plain
-    string to the parser and would make a route node that no request ever
-    matches, so it is diagnosed rather than guessed, mirroring
-    `PY_DYNAMIC_ROUTE_PATH`.
+    decorator but may carry several verbs. A path with converters
+    (`<int:id>`) is a template and kept as written, as FastAPI's and Django's
+    are; the core reads `<...>` as a parameter when it binds a caller's URL.
+    A path that is not a string literal is diagnosed rather than guessed
+    (`PY_DYNAMIC_ROUTE_PATH`).
     """
 
     def register_assignment(self, variable: str, value: ast.AST | None, module_level: bool = True) -> None:
@@ -447,7 +560,7 @@ class FlaskFactEnricher(RouterMounts):
             if owner not in self.framework_objects:
                 continue
             raw_path = positional_string(decorator, 0)
-            if raw_path is None or any(marker in raw_path for marker in ("<", ">")):
+            if raw_path is None:
                 self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic Flask route path was skipped.", decorator)
                 continue
             prefix = self.framework_objects[owner][1]
@@ -499,7 +612,7 @@ class FlaskFactEnricher(RouterMounts):
             self.mount(node, "url_prefix")
         if name and name.endswith(".add_url_rule"):
             raw_path = positional_string(node, 0)
-            if raw_path is None or any(marker in raw_path for marker in ("<", ">")):
+            if raw_path is None:
                 self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic Flask URL rule was skipped.", node)
                 return
             view_value = next((item.value for item in node.keywords if item.arg == "view_func"), None)
