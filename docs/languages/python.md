@@ -162,3 +162,15 @@ describes the join.
 - A relative import that climbs above the project root emits no edge and reports
   `PY_UNRESOLVED_RELATIVE_IMPORT`. A module file and a package that share one
   module id both report `PY_MODULE_ID_COLLISION`; the package keeps the id.
+
+## Processes it starts
+
+A list or tuple that reads as the argv of a process links the code that builds
+it to the file the process runs, with a probable `launches` edge to that file's
+module: `[sys.executable, ..., str(ROOT / "worker.py")]`, `["node",
+"js/worker.js"]`, or a program path joined to a root in first place
+(`[str(ROOT) + "/bin/tool"]`). A path is a string literal or the literal parts
+it is joined from (`/`, `+`, an f-string, `os.path.join`); a name with no
+directory counts only with a script's extension. The core resolves the path to
+the module of the project file at that path, or of the one file whose path ends
+with it, and drops the edge when there is none.

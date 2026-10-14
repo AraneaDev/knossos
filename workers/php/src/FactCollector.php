@@ -262,7 +262,8 @@ final class FactCollector extends NodeVisitorAbstract
      * The project-relative path an argv element names: a string literal, or the literal a
      * concatenation ends with (`$root . '/bin/worker'`), when it reads as a path to a file.
      * A program in first place must be joined to something, since a bare literal there is a
-     * command looked up on PATH; an option (`-d`, `--flag`) is never a path.
+     * command looked up on PATH; an option (`-d`, `--flag`) is never a path, and a name with no
+     * directory is one only with a script's extension (`run.py`).
      */
     private static function argvPath(Expr $value, bool $program): ?string
     {
@@ -274,7 +275,8 @@ final class FactCollector extends NodeVisitorAbstract
             return null;
         }
         $path = ltrim(preg_replace('#^\./#', '', $literal) ?? $literal, '/');
-        if (str_starts_with($path, '-') || !str_contains($path, '/') || str_ends_with($path, '/') || preg_match('#[\s=:]#', $path) === 1) {
+        $script = preg_match('#\.(?:py|js|mjs|cjs|ts|php|rb|pl|sh)$#', $path) === 1;
+        if (str_starts_with($path, '-') || (!str_contains($path, '/') && !$script) || str_ends_with($path, '/') || preg_match('#[\s=:]#', $path) === 1) {
             return null;
         }
 

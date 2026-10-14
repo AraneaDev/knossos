@@ -507,6 +507,8 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
                         [$root . '/target/release/tool', '--quiet'],
                         ['--flag', 'not/an/argv.txt'],
                         ['node', '--version'],
+                        ['php', 'run.php'],
+                        ['bash', 'deploy'],
                     ];
                 }
             }
@@ -517,6 +519,7 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
             ['launches', 'php:method:App\Workers::commands', 'php:launched_file:bin/worker'],
             ['launches', 'php:method:App\Workers::commands', 'php:launched_file:tools/run.py'],
             ['launches', 'php:method:App\Workers::commands', 'php:launched_file:target/release/tool'],
+            ['launches', 'php:method:App\Workers::commands', 'php:launched_file:run.php'],
         ], $launched);
     }
 

@@ -38,6 +38,7 @@ import {
     startsWithShebang,
 } from "./module-entry.js";
 import { NestJsFactEnricher } from "./nestjs-fact-enricher.js";
+import { LaunchFacts } from "./launch-facts.js";
 import { nodeBuiltinPackage } from "./node-builtins.js";
 import {
     allowedCompilerPath,
@@ -86,6 +87,7 @@ export class TypeScriptLanguageFactCollector {
         );
         this.application = new TypeScriptApplicationEnricher(this);
         this.nest = new NestJsFactEnricher(this);
+        this.launches = new LaunchFacts(this);
         this.frameworks = new ComponentFrameworkEnricher(this);
         this.dynamicImports = new DynamicImportCollector(this);
         this.untypedCalls = new Set();
@@ -209,6 +211,7 @@ export class TypeScriptLanguageFactCollector {
         }
         if (ts.isNewExpression(node)) this.newExpression(node);
         if (ts.isCallExpression(node)) this.callExpression(node);
+        if (ts.isArrayLiteralExpression(node)) this.launches.array(node);
         if (ts.isTypeReferenceNode(node)) this.typeReference(node);
         if (ts.isIdentifier(node)) this.valueReference(node);
         if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent))
@@ -517,6 +520,7 @@ export class TypeScriptLanguageFactCollector {
 
     callExpression(node) {
         this.nest.callExpression(node);
+        this.launches.call(node);
         if (
             node.expression.kind === ts.SyntaxKind.ImportKeyword &&
             node.arguments.length === 1 &&
@@ -1062,7 +1066,15 @@ export class TypeScriptLanguageFactCollector {
         );
     }
 
-    addEdge(kind, source, target, node, attributes = {}, origin = "ast") {
+    addEdge(
+        kind,
+        source,
+        target,
+        node,
+        attributes = {},
+        origin = "ast",
+        confidence = "certain",
+    ) {
         this.accumulator.addEdge(
             kind,
             source,
@@ -1070,6 +1082,7 @@ export class TypeScriptLanguageFactCollector {
             node,
             attributes,
             origin,
+            confidence,
         );
     }
 }

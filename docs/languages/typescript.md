@@ -268,3 +268,15 @@ the cache can make `b.ts` report TS2589 and resolve a type differently (a
 full rebuild. A program the compiler
 cannot build or check at all reports `TS_PROGRAM_FAILED` for its files and costs
 no other program's facts.
+
+## Processes it starts
+
+`spawn`, `spawnSync`, `execFile` and `execFileSync` with an interpreter
+(`"node"`, `"python3"`, `process.execPath`) and an argument array, `fork(path)`,
+and an array that reads as an argv link the code to the file the process runs,
+with a probable `launches` edge to that file's module. A path is a string
+literal or the literal it is joined from (a template literal, `+`,
+`path.join`/`path.resolve`, `new URL("./a.js", import.meta.url)`); a name with no
+directory counts only with a script's extension. The core resolves the path to
+the module of the project file at that path, or of the one file whose path ends
+with it, and drops the edge when there is none.

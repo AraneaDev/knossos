@@ -68,6 +68,7 @@ final class LaunchedProcessTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
     /**
      * Starting a worker in another process is how code is meant to reach across an
      * out-of-process boundary, so a policy does not count a launch unless it names it.
@@ -84,6 +85,97 @@ final class LaunchedProcessTest extends KnossosTestCase
             assertSame(1, count($named));
         } finally {
             unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('scan')]
+    public function testPythonTypescriptAndRustCodeLaunchTheFilesTheyRun(): void
+    {
+        if (!is_file(self::rustWorkerBinary())) {
+            self::markTestSkipped('The Rust worker binary is not built.');
+        }
+        $root = sys_get_temp_dir() . '/knossos-stale-launches-polyglot-' . bin2hex(random_bytes(6));
+        $files = [
+            'runner.py' => "import subprocess\ndef start():\n    subprocess.run(['node', 'js/worker.js'])\n",
+            'js/package.json' => "{\"name\": \"js\", \"private\": true}\n",
+            'js/worker.js' => "export function main() { return 1; }\n",
+            'js/runner.js' => "import { execFile } from 'node:child_process';\nexport function start() { execFile('python3', ['tools/job.py']); }\n",
+            'tools/job.py' => "def main():\n    return 1\n",
+            'Cargo.toml' => "[package]\nname = \"launcher\"\nversion = \"0.1.0\"\n",
+            'src/lib.rs' => "use std::process::Command;\n\npub fn start() {\n    Command::new(\"python3\").arg(\"tools/job.py\").status().ok();\n}\n",
+        ];
+        foreach ($files as $path => $contents) {
+            if (!is_dir(dirname($root . '/' . $path))) {
+                mkdir(dirname($root . '/' . $path), 0o700, true);
+            }
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        $pdo = $this->freshTestDatabase();
+        try {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $launched = $pdo->query("SELECT s.canonical_name, t.canonical_name FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id WHERE e.kind = 'launches' ORDER BY s.canonical_name")->fetchAll(PDO::FETCH_NUM);
+            assertSame([
+                ['crate::start', 'tools.job'],
+                ['js/runner.js#start', 'tools.job'],
+                ['runner.start', 'js/worker.js'],
+            ], $launched);
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * Every argv form the TypeScript worker reads, driven through the worker so its
+     * coverage counts: interpreter calls, fork, argv arrays, and the path forms.
+     */
+    #[Group('scan')]
+    public function testTheTypescriptWorkerReadsEveryArgvForm(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-launches-ts-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o700, true);
+        file_put_contents($root . '/src/runner.js', implode("\n", [
+            "import { spawn, execFile, fork } from 'node:child_process';",
+            "import * as cp from 'node:child_process';",
+            "import path from 'node:path';",
+            'export function start(root, dynamic) {',
+            "    spawn(process.execPath, ['--expose-gc', path.join(root, 'workers/a.js')]);",
+            "    execFile('/usr/bin/python3', ['-I', 'tools/b.py']);",
+            "    cp.spawnSync('node', [`./c.mjs`]);",
+            "    fork(path.resolve(__dirname, 'd.js'));",
+            "    fork(new URL('./e.js', import.meta.url));",
+            '    const program = [`${root}/bin/f`, "--quiet"];',
+            "    const joined = ['node', root + '/g/h.js'];",
+            "    spawn('git', ['status']);",
+            "    spawn('node');",
+            "    spawn('node', dynamic);",
+            "    spawn(dynamic, ['x/y.js']);",
+            "    fork(dynamic);",
+            "    const options = ['node', '--inspect=9229', 'notes/', '--', 'plain'];",
+            "    const nothing = [];",
+            "    const allLiteral = [path.join('k', 'l.js')];",
+            "    const named = [process.argv, 'm/n.js'];",
+            "    dynamic.call(['node', 'o/p.js']);",
+            "    (dynamic)['spawn']('node', ['q/r.js']);",
+            '}',
+            '',
+        ]));
+        try {
+            $client = $this->typescriptWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/runner.js']]));
+            $client->shutdown();
+            $targets = [];
+            foreach ($contributions as $contribution) {
+                foreach ($contribution->edges as $edge) {
+                    if ($edge->kind === 'launches') {
+                        $targets[] = substr($edge->targetReference, strlen('ts:launched_file:'));
+                    }
+                }
+            }
+            sort($targets);
+            assertSame(['bin/f', 'c.mjs', 'd.js', 'e.js', 'g/h.js', 'o/p.js', 'tools/b.py', 'workers/a.js'], $targets);
+        } finally {
             $this->removeTempTree($root);
         }
     }
