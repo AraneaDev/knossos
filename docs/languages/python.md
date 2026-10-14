@@ -150,8 +150,9 @@ describes the join.
   behavior and dynamically selected call targets are not executed or inferred. A
   decorator name is structural evidence, not a claim about what it does at
   runtime.
-- A dynamic route path is skipped with `PY_DYNAMIC_ROUTE_PATH`. That includes
-  Flask converter paths such as `/users/<int:user_id>`.
+- A route path that is not a string literal is skipped with
+  `PY_DYNAMIC_ROUTE_PATH`. A Flask converter path such as
+  `/users/<int:user_id>` is a template and kept as written.
 - Django settings are limited to the five names above with statically literal
   values, and a settings module is never imported. FastAPI dependency callables
   are never invoked.

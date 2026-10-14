@@ -530,10 +530,11 @@ class FlaskFactEnricher(RouterMounts):
 
     Flask's primary wiring is `@app.route("/path", methods=[...])` on a
     `Flask` or `Blueprint` instance, so unlike FastAPI it names one path per
-    decorator but may carry several verbs. A dynamic path (`<id>`) is a plain
-    string to the parser and would make a route node that no request ever
-    matches, so it is diagnosed rather than guessed, mirroring
-    `PY_DYNAMIC_ROUTE_PATH`.
+    decorator but may carry several verbs. A path with converters
+    (`<int:id>`) is a template and kept as written, as FastAPI's and Django's
+    are; the core reads `<...>` as a parameter when it binds a caller's URL.
+    A path that is not a string literal is diagnosed rather than guessed
+    (`PY_DYNAMIC_ROUTE_PATH`).
     """
 
     def register_assignment(self, variable: str, value: ast.AST | None, module_level: bool = True) -> None:
@@ -559,7 +560,7 @@ class FlaskFactEnricher(RouterMounts):
             if owner not in self.framework_objects:
                 continue
             raw_path = positional_string(decorator, 0)
-            if raw_path is None or any(marker in raw_path for marker in ("<", ">")):
+            if raw_path is None:
                 self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic Flask route path was skipped.", decorator)
                 continue
             prefix = self.framework_objects[owner][1]
@@ -611,7 +612,7 @@ class FlaskFactEnricher(RouterMounts):
             self.mount(node, "url_prefix")
         if name and name.endswith(".add_url_rule"):
             raw_path = positional_string(node, 0)
-            if raw_path is None or any(marker in raw_path for marker in ("<", ">")):
+            if raw_path is None:
                 self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic Flask URL rule was skipped.", node)
                 return
             view_value = next((item.value for item in node.keywords if item.arg == "view_func"), None)
