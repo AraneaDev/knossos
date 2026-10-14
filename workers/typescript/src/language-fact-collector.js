@@ -59,6 +59,7 @@ import {
     functionBindingOf,
     builderOf,
     isFunctionBinding,
+    isFunctionAssignment,
     isFunctionProperty,
     reference,
     unwrapExpression,
@@ -613,7 +614,13 @@ export class TypeScriptLanguageFactCollector {
         const declarations = symbol?.declarations ?? [];
         if (declarations.some((declaration) => isFunctionBinding(declaration)))
             return this.symbolReference(symbol, "function", true);
-        if (declarations.some((declaration) => isFunctionProperty(declaration)))
+        if (
+            declarations.some(
+                (declaration) =>
+                    isFunctionProperty(declaration) ||
+                    isFunctionAssignment(declaration),
+            )
+        )
             return this.symbolReference(symbol, "method", true);
         return null;
     }

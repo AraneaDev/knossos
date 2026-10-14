@@ -182,6 +182,26 @@ export function isFunctionProperty(node) {
 }
 
 /**
+ * `perform: (elements) => { ... }` in an object literal: a method written as a
+ * property that holds a function, the way an action or handler table is
+ * written. It is called like a method, `action.perform(...)`, and the calls in
+ * its body are its own rather than the literal's.
+ */
+export function isFunctionAssignment(node) {
+    if (
+        !ts.isPropertyAssignment(node) ||
+        !ts.isObjectLiteralExpression(node.parent) ||
+        !(ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+    )
+        return false;
+    const value = unwrapExpression(node.initializer);
+    return (
+        value !== undefined &&
+        (ts.isArrowFunction(value) || ts.isFunctionExpression(value))
+    );
+}
+
+/**
  * `withBatchedUpdates(() => {})`, `debounce(() => {}, 300)`: a call whose first
  * argument is the function it wraps. On a class property this is a handler
  * wrapped once, called like a method; a module binding written this way is
