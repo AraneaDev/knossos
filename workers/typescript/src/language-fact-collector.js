@@ -57,6 +57,7 @@ import { TypeScriptApplicationEnricher } from "./typescript-application-enricher
 import {
     callName,
     functionBindingOf,
+    builderOf,
     isFunctionBinding,
     isFunctionProperty,
     reference,
@@ -339,6 +340,12 @@ export class TypeScriptLanguageFactCollector {
                 : ambientAttributes(node, descriptor.attributes),
         );
         this.addEdge("contains", parent.id, id, node);
+        // `const select = (() => { function inner() {} return inner; })()`:
+        // a caller of `select` runs `inner`, which owns the calls in its body.
+        const builder = ts.isFunctionDeclaration(node) ? builderOf(node) : null;
+        const builderId =
+            builder === null ? undefined : this.declaredIds.get(builder);
+        if (builderId !== undefined) this.addEdge("calls", builderId, id, node);
         if (kept && this.overridesSupertypeMember(node)) {
             const fact = this.accumulator.nodesById.get(id);
             fact.attributes = { ...fact.attributes, overrides: true };
