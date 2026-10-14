@@ -328,7 +328,7 @@ final class QueryCommandContractTest extends KnossosTestCase
                 $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'third'], ['execute' => [''], 'evidence' => ['nowhere.php']]);
                 self::fail('An unscanned evidence path must be refused.');
             } catch (InvalidArgumentException $error) {
-                assertSame('evidence path nowhere.php is not a scanned file of this project.', $error->getMessage());
+                assertSame('evidence path nowhere.php is not a file of this project.', $error->getMessage());
             }
         });
     }
