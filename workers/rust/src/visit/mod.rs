@@ -52,9 +52,9 @@ pub fn walk(
     }
     let mut walker = Walk::new(facts, module, frameworks, declarations, layout);
     walker.own_declarations = declaration_paths(module, &file.items);
-    walker.collect_type_aliases(module, &file.items);
     walker.collect_uses(module, &file.items);
     walker.resolve_globs();
+    walker.collect_type_aliases(module, &file.items);
     walker.collect_struct_fields(module, &file.items);
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
@@ -85,25 +85,16 @@ pub fn index_facts(
     let declarations = Declarations::new();
     let mut walker = Walk::new(&mut facts, module, &[], &declarations, layout);
     walker.own_declarations = declaration_paths(module, items);
-    walker.collect_type_aliases(module, items);
     walker.collect_uses(module, items);
     // The glob sources a field type may come through, as this file alone
     // places them; which one provides a name is asked at lookup.
     walker.resolve_globs();
+    walker.collect_type_aliases(module, items);
     walker.collect_struct_fields(module, items);
 
     // Each module-level alias, as this file's own imports resolve the type
     // it names; an impl's associated type is only ever named from its impl.
-    let aliases = walker
-        .type_aliases
-        .clone()
-        .into_iter()
-        .filter_map(|(alias, aliased)| {
-            let (container, _) = alias.rsplit_once("::")?;
-            let target = walker.receiver_type(container, &aliased)?;
-            Some((alias, target))
-        })
-        .collect();
+    let aliases = std::mem::take(&mut walker.type_aliases);
 
     (
         std::mem::take(&mut walker.exports),
@@ -152,7 +143,6 @@ impl<'a> Walk<'a> {
             exports: BTreeMap::new(),
             own_declarations: BTreeSet::new(),
             type_aliases: BTreeMap::new(),
-            alias_depth: std::cell::Cell::new(0),
         }
     }
 }
@@ -444,10 +434,12 @@ impl Walk<'_> {
         let old_target = self.current_impl_target.replace(target.clone());
         for member in &node.items {
             if let ImplItem::Type(associated) = member {
-                self.type_aliases.insert(
-                    format!("{target}::{}", ident_name(&associated.ident)),
-                    associated.ty.clone(),
-                );
+                if let Some(named) = self.receiver_type(container, &associated.ty) {
+                    self.type_aliases.insert(
+                        format!("{target}::{}", ident_name(&associated.ident)),
+                        named,
+                    );
+                }
             }
         }
         // `impl Trait for Type` names both endpoints explicitly, so the

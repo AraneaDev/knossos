@@ -1084,35 +1084,35 @@ impl Walk<'_> {
             }
             (target, _) => target,
         };
-        self.through_aliases(container, target)
+        Some(self.through_aliases(target))
     }
 
     /// The type `target` names when it is an alias: one this file declares
     /// (a module's `type`, an impl's associated type), or one another file
-    /// declares, as the index holds it. An alias names another type, which is
-    /// what a receiver typed by it holds. A file that does not compile can
-    /// alias in a circle; past a few hops the alias itself is the answer.
-    fn through_aliases(&self, container: &str, target: String) -> Option<String> {
-        let depth = self.alias_depth.get();
-        if depth >= MAX_ALIAS_HOPS {
-            return Some(target);
-        }
-        self.alias_depth.set(depth + 1);
-        let held = if let Some(aliased) = self.type_aliases.get(&target).cloned() {
-            self.receiver_type(container, &aliased)
-        } else if let Some(indexed) = self.declarations.alias_of(&target) {
-            match indexed.strip_prefix(POINTER_MARK) {
-                Some(_) => Some(indexed),
-                None => {
-                    let placed = self.renamed(indexed).map(|path| self.exported(path));
-                    placed.and_then(|path| self.through_aliases(container, path))
-                }
+    /// declares, as the index holds it, followed through any alias it names in
+    /// turn. Every alias is resolved when it is collected, so this only looks
+    /// paths up. A file that does not compile can alias in a circle; past a
+    /// few hops the alias reached is the answer.
+    fn through_aliases(&self, target: String) -> String {
+        let mut current = target;
+        for _ in 0..MAX_ALIAS_HOPS {
+            if current.starts_with(POINTER_MARK) {
+                break;
             }
-        } else {
-            Some(target)
-        };
-        self.alias_depth.set(depth);
-        held
+            let next = match self.type_aliases.get(&current) {
+                Some(local) => local.clone(),
+                None => match self.declarations.alias_of(&current) {
+                    Some(indexed) if indexed.starts_with(POINTER_MARK) => indexed,
+                    Some(indexed) => match self.renamed(indexed) {
+                        Some(placed) => self.exported(placed),
+                        None => break,
+                    },
+                    None => break,
+                },
+            };
+            current = next;
+        }
+        current
     }
 
     /// Record the `type` aliases a file declares at module level, and in its
@@ -1121,10 +1121,10 @@ impl Walk<'_> {
         for item in items {
             match item {
                 Item::Type(alias) => {
-                    self.type_aliases.insert(
-                        format!("{module}::{}", ident_name(&alias.ident)),
-                        (*alias.ty).clone(),
-                    );
+                    if let Some(named) = self.receiver_type(module, &alias.ty) {
+                        self.type_aliases
+                            .insert(format!("{module}::{}", ident_name(&alias.ident)), named);
+                    }
                 }
                 Item::Mod(inner) => {
                     if let Some((_, nested)) = &inner.content {
