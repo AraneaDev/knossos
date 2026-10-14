@@ -63,13 +63,22 @@ jobs:
         with:
           persist-credentials: false
       # Lowercased because a registry reference must be.
+      #
+      # The date refreshes the apt layers daily. A security fix Debian
+      # publishes later that day would still miss the image already built
+      # under today's key, and the release lane's scan would fail on it until
+      # midnight, so the key also carries a stamp of the security archive's
+      # package index: a new security release is a new key the same day. A
+      # stamp that cannot be read leaves the date alone in charge.
       - name: Key the dependency images
         id: key
         run: |
-          date=$(date -u +%F)
-          key="$(tools/quality-deps-key)-$date"
+          security=$(curl -fsSL --max-time 20 https://deb.debian.org/debian-security/dists/trixie-security/InRelease \
+            | awk '$3 == "main/binary-amd64/Packages.xz" && !found { found = 1; print substr($1, 1, 12) }') || security=
+          refresh="$(date -u +%F)-${security:-unstamped}"
+          key="$(tools/quality-deps-key)-$refresh"
           {
-            echo "date=$date"
+            echo "refresh=$refresh"
             echo "quality=ghcr.io/araneadev/knossos:quality-deps-$key"
             echo "runtime=ghcr.io/araneadev/knossos:runtime-deps-$key"
           } >> "$GITHUB_OUTPUT"
@@ -113,7 +122,7 @@ jobs:
           tags: ${{ steps.key.outputs.runtime }}
           cache-from: type=gha,scope=quality-deps
           cache-to: type=gha,mode=max,scope=quality-deps
-          build-args: APT_REFRESH=${{ steps.key.outputs.date }}
+          build-args: APT_REFRESH=${{ steps.key.outputs.refresh }}
           push: true
       - name: Build and push the quality dependency image
         if: ${{ steps.published.outputs.build == 'true' }}
@@ -124,7 +133,7 @@ jobs:
           tags: ${{ steps.key.outputs.quality }}
           cache-from: type=gha,scope=quality-deps
           cache-to: type=gha,mode=max,scope=quality-deps
-          build-args: APT_REFRESH=${{ steps.key.outputs.date }}
+          build-args: APT_REFRESH=${{ steps.key.outputs.refresh }}
           push: true
       # The local route: the full quality and runtime images, written to
       # tarballs instead of the registry. It reads the dependency layers the
@@ -137,7 +146,7 @@ jobs:
           target: quality
           tags: knossos:quality
           cache-from: type=gha,scope=quality-deps
-          build-args: APT_REFRESH=${{ steps.key.outputs.date }}
+          build-args: APT_REFRESH=${{ steps.key.outputs.refresh }}
           outputs: type=docker,dest=/tmp/quality.tar
       - name: Build the runtime image to a tarball
         if: ${{ env.REGISTRY_ROUTE != 'true' }}
@@ -147,7 +156,7 @@ jobs:
           target: runtime
           tags: knossos:quality-runtime
           cache-from: type=gha,scope=quality-deps
-          build-args: APT_REFRESH=${{ steps.key.outputs.date }}
+          build-args: APT_REFRESH=${{ steps.key.outputs.refresh }}
           outputs: type=docker,dest=/tmp/runtime.tar
       - name: Hand the images to the lanes
         if: ${{ env.REGISTRY_ROUTE != 'true' }}
