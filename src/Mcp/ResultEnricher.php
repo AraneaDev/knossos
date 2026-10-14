@@ -283,6 +283,13 @@ final readonly class ResultEnricher
     }
 
     /**
+     * Keys of lists a reader takes as complete sequences, a flow path's nodes
+     * and hops; see largestIn(). A cycle's members are a set, capped where they
+     * are found, so they stay trimmable.
+     */
+    private const WHOLE_SEQUENCES = ['nodes', 'hops'];
+
+    /**
      * The largest trimmable collection in one tier, or null when that tier is
      * already exhausted.
      *
@@ -295,7 +302,11 @@ final readonly class ResultEnricher
         $victimCount = 0;
         $walk = function (array $container, array $path, bool $inSupporting) use (&$walk, &$victim, &$victimCount, $supporting): void {
             foreach ($container as $key => $value) {
-                if (!is_array($value)) {
+                // A sequence is read as complete (a flow path's nodes and hops):
+                // cut, it says less than it claims, so neither
+                // it nor anything in it is trimmed; the list holding it sheds whole
+                // records instead.
+                if (!is_array($value) || in_array((string) $key, self::WHOLE_SEQUENCES, true)) {
                     continue;
                 }
                 $keyPath = [...$path, (string) $key];

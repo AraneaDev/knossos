@@ -1749,6 +1749,69 @@ PYTHON);
     }
 
     #[Group('python-scanner')]
+    public function testACallableStoredOnSelfIsNoMethodOfTheClass(): void
+    {
+        // `self.declarations = declarations` in __init__, then
+        // `self.declarations(module)`: the call runs whatever was stored, not a
+        // method of the class, so naming `Mounts::declarations` invented a
+        // component no file declares. A method of the class still resolves.
+        $root = sys_get_temp_dir() . '/knossos-py-stored-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/mounts.py' => implode("\n", [
+                'class Mounts:',
+                '    kind = "mounts"',
+                '    def __init__(self, declarations):',
+                '        self.declarations = declarations',
+                '        self.count: int = 0',
+                '    def mount(self, module):',
+                '        self.count += 1',
+                '        self.check(module)',
+                '        return self.declarations(module)',
+                '    def check(self, module):',
+                '        return module',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/mounts.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        $untyped = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls') {
+                    $calls[] = $edge->targetReference;
+                }
+            }
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'module') {
+                    $untyped = $node->attributes['unresolved_member_calls'] ?? [];
+                }
+            }
+        }
+
+        self::assertContains('py:method:app.mounts.Mounts::check', $calls);
+        self::assertNotContains('py:method:app.mounts.Mounts::declarations', $calls);
+        // The name is still recorded, as any call on a receiver nothing types is.
+        self::assertContains('declarations', $untyped);
+    }
+
+    #[Group('python-scanner')]
     public function testAMethodCalledOnAFreshInstanceResolvesThroughItsClass(): void
     {
         // `Repo().count()` calls a method on the instance just built, so the
