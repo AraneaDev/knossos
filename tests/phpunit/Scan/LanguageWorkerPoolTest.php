@@ -54,6 +54,28 @@ final class LanguageWorkerPoolTest extends TestCase
         assertSame([], $clients->getValue($pool));
     }
 
+    /**
+     * The MCP server keeps workers between scans, and a scan keys its cache by
+     * the worker's code as it is on disk. A worker started before that code
+     * changed would answer with the old code under the new key, so the cache
+     * would keep its facts for good. A changed code hash retires that worker.
+     */
+    public function testAWorkerWhoseCodeChangedIsReplacedAndOneWhoseCodeDidNotIsKept(): void
+    {
+        $pool = new LanguageWorkerPool();
+        $policy = new WorkerExecutionPolicy(30_000);
+        // A client starts its process on its first request, so none starts here.
+        $php = \Knossos\Scan\LanguageDescriptor::defaults('/opt/knossos')[0];
+
+        $first = $pool->client($php, $policy, 'code-v1');
+        assertSame($first, $pool->client($php, $policy, 'code-v1'), 'Unchanged code keeps the running worker.');
+        $replaced = $pool->client($php, $policy, 'code-v2');
+        assertSame(false, $replaced === $first, 'A worker started before its code changed is replaced.');
+        assertSame($replaced, $pool->client($php, $policy, 'code-v2'));
+
+        $pool->shutdown();
+    }
+
     /** An unchanged policy keeps the worker, including its program cache. */
     public function testPrepareKeepsWorkersWhenTheMemoryCapIsUnchanged(): void
     {

@@ -336,7 +336,11 @@ final readonly class LanguageScanRunner
     ): array {
         $started = hrtime(true);
         $cancellation->throwIfCancelled();
-        $client = $this->pool->client($descriptor, $plan->preparation->executionPolicy);
+        // The key follows the worker's own files, so editing one invalidates
+        // what it produced without a number to bump; a worker started from
+        // other code is replaced first, or it would fill the new key with old facts.
+        $analysisHash = AnalysisHash::of($this->installationRoot, $descriptor->analysisInputs);
+        $client = $this->pool->client($descriptor, $plan->preparation->executionPolicy, $analysisHash);
         $manifest = $client->initialize();
         // Where a file left out of the graph is cached: see
         // ContributionCacheService::leftOutConfigurationHash().
@@ -344,9 +348,6 @@ final readonly class LanguageScanRunner
             $plan->preparation->configurationHashes[$descriptor->key],
             $plan->preparation->executionPolicy->limits(),
         );
-        // The key follows the worker's own files, so editing one invalidates
-        // what it produced without a number to bump.
-        $analysisHash = AnalysisHash::of($this->installationRoot, $descriptor->analysisInputs);
         $partition = $this->cache->partition($files, $manifest, new PartitionContext(
             $plan->preparation->configurationHashes[$descriptor->key],
             $plan->cacheByScannerPath,
