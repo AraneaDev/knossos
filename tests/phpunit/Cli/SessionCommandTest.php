@@ -71,6 +71,33 @@ final class SessionCommandTest extends KnossosTestCase
         assertSame(['db', 'json'], $command->allowedOptions('session-brief'));
     }
 
+    /**
+     * The hook must never break a session start, so a failure prints no brief
+     * and exits 0. Run by hand, that read as "nothing to say": the reason now
+     * goes to the error stream, which the hook discards (2>/dev/null).
+     */
+    #[Group('cli')]
+    public function testAFailedBriefSaysWhyOnTheErrorStreamAndStillExitsZero(): void
+    {
+        $directory = $this->temporaryDirectory();
+        $database = $directory . '/broken.sqlite';
+        file_put_contents($database, 'not a database');
+        $errors = fopen('php://memory', 'w+');
+        try {
+            ob_start();
+            $status = (new SessionCommand($errors))->run('session-brief', [$directory], ['db' => [$database]], $this->context($database));
+            $output = (string) ob_get_clean();
+
+            assertSame(0, $status);
+            assertSame('', $output);
+            rewind($errors);
+            assertSame(true, str_starts_with((string) stream_get_contents($errors), 'knossos session-brief: '));
+        } finally {
+            fclose($errors);
+            $this->removeTempTree($directory);
+        }
+    }
+
     #[Group('cli')]
     public function testUnscannedPathStillExitsZeroWithABrief(): void
     {
