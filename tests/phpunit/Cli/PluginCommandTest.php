@@ -488,22 +488,28 @@ final class PluginCommandTest extends KnossosTestCase
     #[Group('cli')]
     /**
      * The mod's sources as the repository holds them, `/`-led and sorted:
-     * register.tsx and every module under hooks/lib and hooks/mod, specs left out.
+     * register.tsx and every module anywhere under hooks/lib and hooks/mod,
+     * at any depth, specs and `__tests__` left out. One folder deep was
+     * enough until a module lands in a subfolder: it would not ship, and a
+     * one-level glob would not notice.
      *
      * @return list<string>
      */
     private static function modSourcesOnDisk(): array
     {
         $root = self::repositoryRoot();
-        $found = [
-            ...(glob($root . '/hooks/register.tsx') ?: []),
-            ...(glob($root . '/hooks/lib/*.ts') ?: []),
-            ...(glob($root . '/hooks/mod/*.ts') ?: []),
-            ...(glob($root . '/hooks/mod/*.tsx') ?: []),
-        ];
+        $found = glob($root . '/hooks/register.tsx') ?: [];
+        foreach (['/hooks/lib', '/hooks/mod'] as $directory) {
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root . $directory, \FilesystemIterator::SKIP_DOTS));
+            foreach ($files as $file) {
+                $found[] = $file->getPathname();
+            }
+        }
         $sources = array_values(array_filter(
             array_map(static fn (string $path): string => substr($path, strlen($root)), $found),
-            static fn (string $path): bool => !str_ends_with($path, '.spec.ts'),
+            static fn (string $path): bool => self::isModSource($path)
+                && !str_ends_with($path, '.spec.ts')
+                && !str_contains($path, '/__tests__/'),
         ));
         sort($sources);
 
@@ -516,7 +522,7 @@ final class PluginCommandTest extends KnossosTestCase
      */
     private static function isModSource(string $path): bool
     {
-        return preg_match('~^/hooks/(register\.tsx|lib/[^/]+\.ts|mod/[^/]+\.tsx?)$~', $path) === 1;
+        return preg_match('~^/hooks/(register\.tsx|lib/.+\.ts|mod/.+\.tsx?)$~', $path) === 1;
     }
 
     /**
