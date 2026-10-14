@@ -54,10 +54,10 @@ component.
 further queries, grep or reading, record what it missed before you move on. That
 the code holds the fact is no reason to skip it: the graph could not give it to
 you, so the next agent will dig for it the same way, and a note is how the next
-result carries it. With agent notes on, the person using Knossos wants these
-notes: writing one is part of the task, not a side effect to ask about, so do it
-before you give your answer. Write nothing only when the answer was complete and
-your lookups merely confirmed it.
+result carries it. A fresh session with the same question then starts from
+your note instead of digging again, so writing one is part of the task, not a
+side effect to ask about: do it before you give your answer. Write nothing only
+when the answer was complete and your lookups merely confirmed it.
 
 Write the fact on the component it is about, `kind: note`, and pass the files
 you relied on as `evidence_paths`, so the note is marked stale when one of them
