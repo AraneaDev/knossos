@@ -64,10 +64,9 @@ export function observe(dig: Dig, tool: string, input: unknown): { dig: Dig; rem
   if (next.annotated || next.reminded || next.lookups < LOOKUPS_BEFORE_REMINDER) return { dig: next, remind: null }
   return {
     dig: { ...next, reminded: true },
-    // Agents read a bare suggestion as an unrequested write and skipped it, even after naming the gap themselves, and
-    // an open "or say why not" let them answer that the code holds the fact, which is why the next agent digs again.
-    // So it says that notes are on here (it is only sent when they are), what a note buys the next session, that writing
-    // it belongs to the task, and names the one exception.
-    remind: `You dug past a Knossos answer this turn (${next.knossos}, then ${next.lookups} lookups). Agent notes are on in this install. A fresh session with the same question gets the same incomplete answer and digs again, unless you leave a note: notes come back with every later result that names the component, so recording what you found is part of the task, not a side effect. Before you answer, record what the answer left out (a caller, a hop, a dispatch the graph could not see) with annotate_component on the component it is about (kind note, under 1000 characters, evidence_paths, execute true). Write nothing only if the answer was complete and you merely confirmed it.`,
+    // Agents read a bare suggestion in a tool result as a write nobody had asked for and skipped it, even after naming
+    // the gap themselves. The session brief states the rule as a standing instruction; this points back to it, says
+    // what the note buys the next session, and names the one exception instead of an open "or say why not".
+    remind: `You dug past a Knossos answer this turn (${next.knossos}, then ${next.lookups} lookups). That is the case the standing instruction in the session brief covers: before you answer, record what the answer left out (a caller, a hop, a dispatch the graph could not see) with annotate_component on the component it is about (kind note, under 1000 characters, evidence_paths, execute true), so a fresh session with the same question starts from your note instead of digging again. Write nothing only if the answer was complete and you merely confirmed it.`,
   }
 }

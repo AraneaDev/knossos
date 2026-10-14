@@ -41,6 +41,14 @@ final readonly class SessionBriefRenderer
 
     private const POINTER = 'Ask before grepping for structure: the `knossos:graph` skill.';
 
+    /**
+     * The note rule, said where a session takes its instructions. Said only in
+     * the reminder a tool result carries, agents skipped it as something nobody
+     * had asked for. Part of the floor, outside the section budget, so a stale
+     * brief keeps its Rules and Notes.
+     */
+    private const NOTE_RULE = 'Record what a Knossos answer missed: when you find it by digging, write it with annotate_component before you answer, so a fresh session starts from your note. A standing instruction, not a side effect.';
+
     /** The brief as injected text: optional sections kept within budget, verdict, identity and pointer always present. */
     public function render(SessionBrief $brief): string
     {
@@ -62,6 +70,7 @@ final readonly class SessionBriefRenderer
             [$verdict, $this->identity($brief)],
             array_filter($sections, static fn(?string $section): bool => $section !== null),
             $budget,
+            self::NOTE_RULE,
         );
     }
 
@@ -258,8 +267,9 @@ final readonly class SessionBriefRenderer
      *
      * @param list<string> $floor lines always kept, in order
      * @param array<int, string> $sections optional sections in order, kept while they fit
+     * @param string|null $rule a line always kept just before the pointer, outside the budget
      */
-    private function fit(array $floor, array $sections, int $budget): string
+    private function fit(array $floor, array $sections, int $budget, ?string $rule = null): string
     {
         $tail = "\n" . self::POINTER;
         $out = implode("\n", $floor);
@@ -269,6 +279,6 @@ final readonly class SessionBriefRenderer
                 $out = $candidate;
             }
         }
-        return $out . $tail;
+        return $out . ($rule === null ? '' : "\n" . $rule) . $tail;
     }
 }
