@@ -75,7 +75,8 @@ final readonly class FileTestReach
                 break;
             }
             $found = $queries->testImpact($projectId, [$file], maxDepth: self::DEPTH, limit: self::COUNTED, timeoutMs: max(1, min(self::PER_FILE_MS, $left)));
-            $tests = count($found->data['test_files'] ?? []);
+            // A test that only builds the application still runs the file's code.
+            $tests = count($found->data['test_files'] ?? []) + count($found->data['test_files_via_wiring'] ?? []);
             $unplaced = in_array($file, $found->data['unresolved_files'] ?? [], true);
             if ($unplaced || ($tests === 0 && $found->truncated)) {
                 continue;
@@ -108,7 +109,8 @@ final readonly class FileTestReach
     {
         $now = $clock ?? static fn(): float => microtime(true) * 1000;
         $until = $now() + self::TESTS_DEADLINE_MS;
-        $nearest = [];
+        // Tests that reach a file by a call, then those that only build the application.
+        $nearest = ['direct' => [], 'wired' => []];
         $truncated = false;
         foreach (array_chunk($files, ChangeImpactQueryService::MAX_FILES) as $chunk) {
             $left = (int) ($until - $now());
@@ -120,16 +122,22 @@ final readonly class FileTestReach
             // $limit below either way, so a smaller or larger one is clamped.
             $found = $queries->testImpact($projectId, $chunk, maxDepth: self::DEPTH, limit: max(1, min(100, $limit)), timeoutMs: max(1, min(self::CHUNK_MS, $left)));
             $truncated = $truncated || $found->truncated;
-            foreach ($found->data['test_files'] ?? [] as $test) {
-                $path = (string) $test['path'];
-                $nearest[$path] = min($nearest[$path] ?? PHP_INT_MAX, (int) $test['distance']);
+            foreach (['direct' => 'test_files', 'wired' => 'test_files_via_wiring'] as $group => $key) {
+                foreach ($found->data[$key] ?? [] as $test) {
+                    $path = (string) $test['path'];
+                    $nearest[$group][$path] = min($nearest[$group][$path] ?? PHP_INT_MAX, (int) $test['distance']);
+                }
             }
         }
         $tests = [];
-        foreach ($nearest as $path => $distance) {
-            $tests[] = ['path' => (string) $path, 'distance' => $distance];
+        foreach ([$nearest['direct'], array_diff_key($nearest['wired'], $nearest['direct'])] as $group) {
+            $listed = [];
+            foreach ($group as $path => $distance) {
+                $listed[] = ['path' => (string) $path, 'distance' => $distance];
+            }
+            usort($listed, static fn(array $a, array $b): int => [$a['distance'], $a['path']] <=> [$b['distance'], $b['path']]);
+            array_push($tests, ...$listed);
         }
-        usort($tests, static fn(array $a, array $b): int => [$a['distance'], $a['path']] <=> [$b['distance'], $b['path']]);
 
         return ['tests' => array_slice($tests, 0, $limit), 'truncated' => $truncated || count($tests) > $limit];
     }

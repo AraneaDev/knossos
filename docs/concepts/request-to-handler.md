@@ -48,8 +48,8 @@ call itself is `external`: it is never matched and never reported.
 
 A route's full template is its own path behind the prefixes of its `mounts`
 chain: FastAPI's `include_router(prefix=...)`, Flask's
-`register_blueprint(url_prefix=...)`, axum's `nest(prefix, router())`, through
-any number of levels. A router
+`register_blueprint(url_prefix=...)`, Django's `path(prefix, include(...))`,
+axum's `nest(prefix, router())`, through any number of levels. A router
 mounted in two places gives two candidates. A route whose chain cannot be
 completed has an unknown prefix. So has a FastAPI or Flask route on a router the
 scan cannot name, such as one built inside a function or handed in as a
@@ -135,10 +135,12 @@ so it grew with them.
 
 - Hosts, proxies, rewrites and deployment are not read. A call is matched by
   its path, so two services with the same path in one project look like one.
-- Django `include()` is not modelled. A route in the module `ROOT_URLCONF`
-  names has a known prefix, a route in any other urlconf has an unknown one and
-  can only match by suffix. The settings value is read as written, and a
-  settings module nested below the scanned root still finds its urlconf.
+- A Django route has a known prefix when its urlconf is the module
+  `ROOT_URLCONF` names or is included from it, through any number of
+  `include()` levels. A urlconf nothing includes has an unknown prefix and can
+  only match by suffix, as has one included through a pattern list held in a
+  variable. The settings value is read as written, and a settings module nested
+  below the scanned root still finds its urlconf.
 - Laravel routes in `routes/api.php` get the `api` prefix by convention. A
   prefix changed in `RouteServiceProvider` or `bootstrap/app.php` is not read.
 - A Django `re_path` pattern is not interpreted and takes no part in matching.
