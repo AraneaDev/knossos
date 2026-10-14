@@ -517,7 +517,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `search_architecture`
 
-Search components by name, attribute, or role with structured filters. Use when you know a trait of what you want but not its exact name.
+Search components by name, attribute, role, or the text of a note on them, with structured filters. Use when you know a trait of what you want but not its exact name.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |

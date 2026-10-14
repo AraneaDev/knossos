@@ -18,7 +18,7 @@ What the components, edges and evidence in the answers are is explained in
 | `inspect_component`    | `inspect-component`    | One component's roles, relations, and evidence.     |
 | `list_usages`          | `list-usages`          | Every usage site of a symbol, with `path:line`.     |
 | `architecture_summary` | `architecture-summary` | A one-call overview by language and node/edge kind. |
-| `search_architecture`  | `search-architecture`  | Components filtered by kind, role, boundary.        |
+| `search_architecture`  | `search-architecture`  | Components by name, role or note text, filtered.    |
 | `file_metrics`         | `file-metrics`         | Files ranked by line count or path.                 |
 | `list_boundaries`      | `list-boundaries`      | How the codebase is partitioned.                    |
 | `export_diagram`       | `export-diagram`       | Mermaid or PlantUML source for the current graph.   |
@@ -99,6 +99,15 @@ uses `child_limit`, `incoming_relationship_limit`, and
 `outgoing_relationship_limit`. Confidence filtering accepts `possible`,
 `probable`, or `certain`; a stricter level omits weaker static facts rather than
 upgrading their confidence.
+
+## Search
+
+`search_architecture` matches each word of the query against a component's
+name, attributes and roles, and against the text of the notes recorded on it.
+A note holds what the graph cannot, such as a reference kind no symbol is named
+after, so a search for that word still finds the component the note is on. A
+component found only through a note ranks after every one whose own name,
+attributes or roles match, and the result carries the notes of what it found.
 
 ## List usages
 
