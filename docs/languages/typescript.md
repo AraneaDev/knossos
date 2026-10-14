@@ -73,13 +73,20 @@ types>` that is not installed) is left out. A missing module, a type error
 ### NestJS
 
 Imports from `@nestjs/*` switch the NestJS collector on for a file. Its roles
-are certain.
+are certain. Decorators count whether they are imported by name, renamed, or
+through a namespace import (`@nest.Get()` after `import * as nest`); one
+re-exported from a module of the project does not.
 
 - `@Controller`, `@Injectable` and `@Module` classes get the
   `nestjs.controller`, `nestjs.provider` and `nestjs.module` roles.
 - `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`, `@Head`, `@Options` and `@All`
   methods on a controller become `route` nodes, with the controller's literal
   prefix joined to the method's path.
+- `app.setGlobalPrefix("api", { exclude: [...] })` becomes a `setting` node
+  with the prefix and the literal excluded paths. The core puts the prefix in
+  front of every NestJS route whose path is not excluded. A prefix that is not
+  a literal, or two applications in one project with different prefixes,
+  leave the routes' prefix unknown.
 - The `imports`, `controllers`, `providers` and `exports` arrays of `@Module`
   become `depends_on`, `contains` and `exports` edges to the classes they name.
 - Methods that Nest calls itself get the `nestjs.framework_handler` role: the
