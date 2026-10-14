@@ -52,3 +52,17 @@ is unaffected. A symbol that nothing in the scan declares, such as `\DateTime`
 written in two ways, is one external node, named by the spelling the
 declaration of its type uses or else by the first of the spellings in use, in
 byte order.
+
+## Processes it starts
+
+An array that reads as the argv of a process links the code that builds it to
+the file the process runs, with a probable `launches` edge to that file's
+module. The array starts with an interpreter (`PHP_BINARY`, or a literal such
+as `'node'`, `'python3'` or `'/usr/bin/php'`) followed by the script's path, or
+starts with a path joined to a root (`$root . '/target/release/tool'`). A path
+is a string literal, or the literal a concatenation ends with, so
+`$root . '/workers/run.js'` names `workers/run.js`. The core resolves it to the
+module of the project file at that path, or of the one file whose path ends
+with it, and drops the edge when there is none. Where the process is started
+does not matter: impact on a worker reaches the code that names it, in any
+language.

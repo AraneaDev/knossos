@@ -35,6 +35,9 @@ final class FactCollector extends NodeVisitorAbstract
     private const FACTORY_BUILDERS = ['create', 'make', 'createone', 'makeone', 'createquietly', 'createonequietly'];
 
     /** The members of {@see self::RELATION_NAMING_METHODS} where every argument may name relations. */
+    /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
+    private const INTERPRETERS = ['php', 'node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'ruby', 'perl', 'bash', 'sh', 'zsh'];
+
     private const VARIADIC_RELATION_METHODS = ['with', 'without', 'withonly', 'load', 'loadmissing', 'loadcount', 'withcount', 'withexists'];
 
     /** @var list<array<string, mixed>> */
@@ -172,6 +175,8 @@ final class FactCollector extends NodeVisitorAbstract
             $this->functionCall($node);
         } elseif ($node instanceof Expr\PropertyFetch || $node instanceof Expr\NullsafePropertyFetch) {
             $this->propertyRead($node);
+        } elseif ($node instanceof Expr\Array_) {
+            $this->launchedFile($node);
         }
         if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Property || $node instanceof Stmt\ClassMethod) {
             $this->annotationReferences($node);
@@ -216,6 +221,64 @@ final class FactCollector extends NodeVisitorAbstract
         foreach (array_unique($classNames) as $className) {
             $this->addEdge('references', $this->currentSource(), self::reference('class', $className), $node);
         }
+    }
+
+    /**
+     * An argv the code builds to start a process: `[PHP_BINARY, ..., $root . '/bin/worker']`,
+     * `['node', 'js/worker.js']`, or `[$root . '/target/release/tool', ...]`. Its script (the
+     * first path after an interpreter) or its program (a path in first place) is a file the
+     * process runs, so a speculative `launches` edge names it by path; the core resolves the
+     * path to that file's module, and drops the edge when the project holds no such file.
+     * Where the process is started does not matter: the code that names what runs is what a
+     * change to that file affects.
+     */
+    private function launchedFile(Expr\Array_ $array): void
+    {
+        $values = [];
+        foreach ($array->items as $item) {
+            if ($item === null || $item->key !== null || $item->unpack) {
+                return;
+            }
+            $values[] = $item->value;
+        }
+        if ($values === []) {
+            return;
+        }
+        $first = $values[0];
+        $interpreter = ($first instanceof Expr\ConstFetch && $first->name->toString() === 'PHP_BINARY')
+            || ($first instanceof Node\Scalar\String_ && in_array(basename($first->value), self::INTERPRETERS, true));
+        $candidates = $interpreter ? array_slice($values, 1) : [$first];
+        foreach ($candidates as $value) {
+            $path = self::argvPath($value, !$interpreter);
+            if ($path !== null) {
+                $this->addEdge('launches', $this->currentSource(), self::reference('launched_file', $path), $array, 'probable', ['speculative' => true]);
+
+                return;
+            }
+        }
+    }
+
+    /**
+     * The project-relative path an argv element names: a string literal, or the literal a
+     * concatenation ends with (`$root . '/bin/worker'`), when it reads as a path to a file.
+     * A program in first place must be joined to something, since a bare literal there is a
+     * command looked up on PATH; an option (`-d`, `--flag`) is never a path.
+     */
+    private static function argvPath(Expr $value, bool $program): ?string
+    {
+        if ($value instanceof Expr\BinaryOp\Concat && $value->right instanceof Node\Scalar\String_) {
+            $literal = $value->right->value;
+        } elseif (!$program && $value instanceof Node\Scalar\String_) {
+            $literal = $value->value;
+        } else {
+            return null;
+        }
+        $path = ltrim(preg_replace('#^\./#', '', $literal) ?? $literal, '/');
+        if (str_starts_with($path, '-') || !str_contains($path, '/') || str_ends_with($path, '/') || preg_match('#[\s=:]#', $path) === 1) {
+            return null;
+        }
+
+        return $path;
     }
 
     /** Unwind scope on the way out, keeping enclosing-class attribution correct. */

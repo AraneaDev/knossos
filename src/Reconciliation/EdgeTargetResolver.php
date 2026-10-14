@@ -69,6 +69,9 @@ final class EdgeTargetResolver
     /** @var ?array<string, string> Artisan command name => declaring class, built on the first Artisan call. */
     private ?array $artisanCommands = null;
 
+    /** @var array<string, string>|null project-relative path => the reference of that file's module, built on first use */
+    private ?array $modulesByPath = null;
+
     /** The same lookups over the case-insensitive matching keys, built with {@see $caseless}'s first retry. */
     private ?self $caselessTargets = null;
 
@@ -190,7 +193,51 @@ final class EdgeTargetResolver
             ?? $this->aliasedTypeTarget($reference)
             ?? $this->inheritedMemberTarget($reference)
             ?? $this->localScopeTarget($reference)
-            ?? $this->artisanCommandTarget($reference))];
+            ?? $this->artisanCommandTarget($reference)
+            ?? $this->launchedFileTarget($reference))];
+    }
+
+    /**
+     * The module of the file a launched process runs: `<lang>:launched_file:bin/worker` reaches
+     * the module node of the project file at that path, or of the one file whose path ends with
+     * it (an argv joins the path to a root the scanner cannot read). Null when no file, or more
+     * than one, matches, so the speculative edge is dropped.
+     */
+    private function launchedFileTarget(string $reference): ?string
+    {
+        $parts = explode(':', $reference, 3);
+        if (count($parts) !== 3 || $parts[1] !== 'launched_file') {
+            return null;
+        }
+        $this->modulesByPath ??= self::modulesByPath($this->contributions);
+        $path = $parts[2];
+        $module = $this->modulesByPath[$path] ?? null;
+        if ($module === null) {
+            $endings = array_values(array_filter(array_keys($this->modulesByPath), static fn(string $known): bool => str_ends_with($known, '/' . $path)));
+            $module = count($endings) === 1 ? $this->modulesByPath[$endings[0]] : null;
+        }
+
+        return $module === null ? null : ($this->nodeMap[$module] ?? null);
+    }
+
+    /**
+     * Each scanned file's module reference, by the file's project-relative path.
+     *
+     * @param list<ScanContribution> $contributions
+     * @return array<string, string>
+     */
+    private static function modulesByPath(array $contributions): array
+    {
+        $modules = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'module') {
+                    $modules[$node->evidence->relativePath] ??= $node->localId;
+                }
+            }
+        }
+
+        return $modules;
     }
 
     /**

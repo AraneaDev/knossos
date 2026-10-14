@@ -25,7 +25,10 @@ boundary membership.
 A policy takes these fields and no others: `id` (required, unique, at most 100
 bytes), `from_boundary` (required), `allow_targets`, `deny_targets` (at least
 one of the two) and `edge_kinds`. When you leave out `edge_kinds`, every
-dependency relationship counts. At most 50 policies can be evaluated at once.
+dependency relationship counts but `launches`: starting a worker in another
+process is how code is meant to cross an out-of-process boundary, so a policy
+that forbids it names `launches` in `edge_kinds`. The boundary matrix counts the
+same relationships. At most 50 policies can be evaluated at once.
 
 ```json
 [
