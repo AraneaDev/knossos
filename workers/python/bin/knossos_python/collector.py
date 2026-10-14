@@ -17,6 +17,7 @@ from .ast_helpers import (
     module_statements,
     names_main_guard,
     optional_inner,
+    positional_string,
     ref,
 )
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
@@ -1032,12 +1033,50 @@ class PythonAstFactCollector(ast.NodeVisitor):
         )
         self.facts.add_edge(edge_kind, self.current(), endpoint, node, None, "framework_convention")
 
+    def task_by_name(self, node: ast.Call, name: str | None) -> bool:
+        """Record a Celery task queued by its name as a dispatch; whether the call was one.
+
+        ``<app>.send_task("shop.tasks.deliver")`` queues the task registered
+        under that name, and ``celery.signature("shop.tasks.deliver")`` builds
+        a signature of it. Celery names a task after its module and function
+        unless the decorator says otherwise, so the name is read that way: a
+        function the named module declares is the target; any other name is a
+        speculative target the core keeps only when it exists. A name that is
+        not a literal names nothing.
+        """
+        if not name:
+            return False
+        if name.endswith(".send_task"):
+            signature = False
+        elif name.rsplit(".", 1)[-1] == "signature" and self.aliases.get(name, name).endswith("celery.signature"):
+            signature = True
+        else:
+            return False
+        task = positional_string(node, 0)
+        module, _, function = (task or "").rpartition(".")
+        if not module or not function:
+            return False
+        found = self.index.canonical_module(module) if self.index.module_file(module) is not None else None
+        declared = self.index.module_declarations(found).get(function, "") if found else ""
+        attributes: dict[str, Any] = {"celery": "signature"} if signature else {}
+        if declared.startswith("py:function:"):
+            confidence = "probable" if signature else "certain"
+            self.facts.add_edge("dispatches", self.current(), declared, node, attributes, confidence=confidence)
+        else:
+            attributes = {"celery": "signature" if signature else "by_name", "speculative": True}
+            self.facts.add_edge(
+                "dispatches", self.current(), ref("function", task or ""), node, attributes, confidence="probable"
+            )
+        return True
+
     def record_submission(self, node: ast.Call, name: str | None) -> bool:
         """Record a Celery submission or signature as a dispatch; whether the call was one.
 
         `deliver.delay(order_id)` queues `deliver` to run later: a dispatch,
         not a call, and `delay` is no function of the project.
         """
+        if self.task_by_name(node, name):
+            return True
         submitted = self.submitted_task(name)
         if submitted is None:
             return False
