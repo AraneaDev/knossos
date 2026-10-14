@@ -68,6 +68,7 @@ final class LaunchedProcessTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
     /**
      * Starting a worker in another process is how code is meant to reach across an
      * out-of-process boundary, so a policy does not count a launch unless it names it.
@@ -82,6 +83,43 @@ final class LaunchedProcessTest extends KnossosTestCase
             assertSame(0, count($queries->checkArchitecture($projectId, [$policy])->data['violations']));
             $named = $queries->checkArchitecture($projectId, [$policy + ['edge_kinds' => ['launches']]])->data['violations'];
             assertSame(1, count($named));
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('scan')]
+    public function testPythonTypescriptAndRustCodeLaunchTheFilesTheyRun(): void
+    {
+        if (!is_file(self::rustWorkerBinary())) {
+            self::markTestSkipped('The Rust worker binary is not built.');
+        }
+        $root = sys_get_temp_dir() . '/knossos-stale-launches-polyglot-' . bin2hex(random_bytes(6));
+        $files = [
+            'runner.py' => "import subprocess\ndef start():\n    subprocess.run(['node', 'js/worker.js'])\n",
+            'js/package.json' => "{\"name\": \"js\", \"private\": true}\n",
+            'js/worker.js' => "export function main() { return 1; }\n",
+            'js/runner.js' => "import { execFile } from 'node:child_process';\nexport function start() { execFile('python3', ['tools/job.py']); }\n",
+            'tools/job.py' => "def main():\n    return 1\n",
+            'Cargo.toml' => "[package]\nname = \"launcher\"\nversion = \"0.1.0\"\n",
+            'src/lib.rs' => "use std::process::Command;\n\npub fn start() {\n    Command::new(\"python3\").arg(\"tools/job.py\").status().ok();\n}\n",
+        ];
+        foreach ($files as $path => $contents) {
+            if (!is_dir(dirname($root . '/' . $path))) {
+                mkdir(dirname($root . '/' . $path), 0o700, true);
+            }
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        $pdo = $this->freshTestDatabase();
+        try {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $launched = $pdo->query("SELECT s.canonical_name, t.canonical_name FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id WHERE e.kind = 'launches' ORDER BY s.canonical_name")->fetchAll(PDO::FETCH_NUM);
+            assertSame([
+                ['crate::start', 'tools.job'],
+                ['js/runner.js#start', 'tools.job'],
+                ['runner.start', 'js/worker.js'],
+            ], $launched);
         } finally {
             unset($pdo);
             $this->removeTempTree($root);

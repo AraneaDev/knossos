@@ -4163,3 +4163,57 @@ fn app() {
         "{routes:?}"
     );
 }
+
+#[test]
+fn a_command_running_a_script_or_a_program_path_launches_that_file() {
+    let source = r#"
+use std::process::Command;
+
+fn start() {
+    Command::new("python3").arg("-I").arg("tools/run.py").status().ok();
+    Command::new("node").args(["--expose-gc", "js/worker.js"]).status().ok();
+    Command::new("./target/release/tool").status().ok();
+    Command::new("node").arg("--version").status().ok();
+    Command::new("git").arg("status").status().ok();
+}
+"#;
+    let contributions = scan_fixture_with(
+        "command-launches",
+        &[("src/lib.rs", source)],
+        &serde_json::json!({}),
+    );
+    let mut launched: Vec<(String, String, String)> = contributions[0]["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|edge| edge["kind"] == "launches")
+        .map(|edge| {
+            (
+                edge["target"].as_str().unwrap().to_owned(),
+                edge["confidence"].as_str().unwrap().to_owned(),
+                edge["attributes"]["speculative"].to_string(),
+            )
+        })
+        .collect();
+    launched.sort();
+    assert_eq!(
+        launched,
+        vec![
+            (
+                "rust:launched_file:js/worker.js".to_owned(),
+                "probable".to_owned(),
+                "true".to_owned()
+            ),
+            (
+                "rust:launched_file:target/release/tool".to_owned(),
+                "probable".to_owned(),
+                "true".to_owned()
+            ),
+            (
+                "rust:launched_file:tools/run.py".to_owned(),
+                "probable".to_owned(),
+                "true".to_owned()
+            ),
+        ]
+    );
+}

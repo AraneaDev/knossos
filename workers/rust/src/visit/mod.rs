@@ -17,6 +17,7 @@ use crate::resolve::{ident_name, is_standard_type, Aliases};
 mod calls;
 mod cfg;
 mod declarations;
+mod launches;
 mod paths;
 mod placement;
 mod routes;

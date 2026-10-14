@@ -488,6 +488,7 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
 
     fn visit_expr_call(&mut self, node: &syn::ExprCall) {
         if let syn::Expr::Path(path) = node.func.as_ref() {
+            self.command_program(node);
             self.inline_import(&path.path, node.span());
             self.visit_call(&path.path, node.span());
             // `Action::Deny(x)` builds a variant: the enum is used. The callee
@@ -569,6 +570,7 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
     }
 
     fn visit_expr_method_call(&mut self, node: &syn::ExprMethodCall) {
+        self.command_argument(node);
         // A `route(...)` method call is how axum and actix declare routes.
         if node.method == "route" {
             self.call_routes(node);

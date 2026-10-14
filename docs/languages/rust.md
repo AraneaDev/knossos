@@ -351,3 +351,14 @@ is read.
 The worker is checked with `cargo fmt`, `cargo clippy`, `cargo test` and the
 shared scanner-conformance check. The repository's Rust integration suite drives
 the real worker process over NDJSON-RPC.
+
+## Processes it starts
+
+`Command::new` links the function to the file the process runs, with a probable
+`launches` edge to that file's module: the first path among the `.arg(...)` and
+`.args([...])` literals after an interpreter (`Command::new("python3")
+.arg("tools/run.py")`), or a program named by a path
+(`Command::new("./target/release/tool")`). A name with no directory counts only
+with a script's extension. The core resolves the path to the module of the
+project file at that path, or of the one file whose path ends with it, and drops
+the edge when there is none.

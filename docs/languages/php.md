@@ -61,7 +61,8 @@ module. The array starts with an interpreter (`PHP_BINARY`, or a literal such
 as `'node'`, `'python3'` or `'/usr/bin/php'`) followed by the script's path, or
 starts with a path joined to a root (`$root . '/target/release/tool'`). A path
 is a string literal, or the literal a concatenation ends with, so
-`$root . '/workers/run.js'` names `workers/run.js`. The core resolves it to the
+`$root . '/workers/run.js'` names `workers/run.js`; a name with no directory
+counts only with a script's extension. The core resolves it to the
 module of the project file at that path, or of the one file whose path ends
 with it, and drops the edge when there is none. Where the process is started
 does not matter: impact on a worker reaches the code that names it, in any

@@ -83,7 +83,15 @@ export class FactAccumulator {
         return true;
     }
 
-    addEdge(kind, source, target, node, attributes = {}, origin = "ast") {
+    addEdge(
+        kind,
+        source,
+        target,
+        node,
+        attributes = {},
+        origin = "ast",
+        confidence = "certain",
+    ) {
         const location = this.located(node);
         if (this.appended.has(source)) source = this.moduleId;
         const key = `${kind}\0${source}\0${target}`;
@@ -136,7 +144,7 @@ export class FactAccumulator {
             source,
             target,
             origin,
-            confidence: "certain",
+            confidence,
             evidence: location,
             attributes,
         });
