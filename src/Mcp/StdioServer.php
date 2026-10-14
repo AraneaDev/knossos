@@ -25,6 +25,8 @@ final class StdioServer
     private int $keepaliveSequence = 0;
     /** @var resource|null */
     private $input = null;
+    /** @var resource|null The stream run() answers on, so a request that cannot be held is still answered. */
+    private $output = null;
     /** @var list<string> */
     private array $pendingLines = [];
     private string $inputBuffer = '';
@@ -46,6 +48,7 @@ final class StdioServer
     public function run($input, $output, $errors): int
     {
         $this->input = $input;
+        $this->output = $output;
         $this->dispatcher->logProtocolTo($errors);
         stream_set_read_buffer($input, 0);
         while (($line = $this->nextLine($input, $output)) !== false) {
@@ -70,6 +73,7 @@ final class StdioServer
             $this->answer($output, $errors, $message);
         }
         $this->input = null;
+        $this->output = null;
         return 0;
     }
 
@@ -278,10 +282,19 @@ final class StdioServer
         return $cancelled;
     }
 
-    /** Park a non-cancellation line for the main loop, capped so a flood cannot grow memory without bound. */
+    /**
+     * Park a non-cancellation line for the main loop, capped so a flood cannot
+     * grow memory without bound. A request past the cap is answered busy
+     * rather than dropped, or its client would wait for an answer forever.
+     */
     private function rememberPendingLine(string $line): void
     {
         if (count($this->pendingLines) >= self::MAX_PENDING_LINES) {
+            $message = json_decode(trim($line), true);
+            if ($this->output !== null && is_array($message) && isset($message['method']) && array_key_exists('id', $message)) {
+                // As answer() does: an id that is no integer or string comes back as null.
+                $this->write($this->output, McpDispatcher::error(JsonRpcId::reply($message['id']), -32000, 'Server busy: too many requests arrived during a scan; send it again.'));
+            }
             return;
         }
         $this->pendingLines[] = $line;
