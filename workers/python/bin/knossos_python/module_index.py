@@ -673,7 +673,9 @@ class ProjectModuleIndex:
         """The project class the function or method ``target`` returns, once its module was read."""
         return self._returns.get(target)
 
-    def _add_instances(self, tree: ast.Module, declarations: dict[str, str], name: str, imported: dict[str, str]) -> None:
+    def _add_instances(
+        self, tree: ast.Module, declarations: dict[str, str], name: str, imported: dict[str, str]
+    ) -> None:
         """Add the module-level instances ``tree`` creates to its declarations.
 
         ``user_repo = UserRepository()`` at module level is how a service hands
