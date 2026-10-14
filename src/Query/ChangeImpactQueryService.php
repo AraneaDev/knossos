@@ -220,17 +220,30 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
         $changeSet = $this->changeSet($projectId, $files, $workingTree, $baseRef, $timeoutMs);
         $search = (new TestReachSearch($this->pdo, $this->clock))
             ->search($projectId, array_column($changeSet['direct'], 'id'), $maxDepth, $edgeKinds, $minimumRank, $deadline);
-        $testFiles = $this->testFiles($search['tests']);
+        // A file holding any test that reaches the change by a call is a direct one;
+        // the rest reach it only because they build the application.
+        $testFiles = $this->testFiles(array_diff_key($search['tests'], $search['wired']));
+        $direct = array_flip(array_column($testFiles, 'path'));
+        $wiredFiles = array_values(array_filter(
+            $this->testFiles(array_intersect_key($search['tests'], $search['wired'])),
+            static fn(array $entry): bool => !isset($direct[$entry['path']]),
+        ));
         $found = count($testFiles);
+        $foundWired = count($wiredFiles);
         $reasons = [...$changeSet['truncation_reasons'], ...$search['truncation_reasons']];
         $summary = sprintf('%d test file%s statically exercise the change.', min($found, $limit), min($found, $limit) === 1 ? '' : 's');
+        if ($foundWired > 0) {
+            $summary .= sprintf(' %d more reach it only through a composition root that builds the application (test_files_via_wiring).', $foundWired);
+        }
         if ($reasons !== []) {
             $summary .= sprintf(' The search was truncated (%s), so test files beyond that bound are not listed.', implode(', ', $reasons));
         }
-        if ($found > $limit) {
+        // One limit for both lists, the direct files first.
+        if ($found + $foundWired > $limit) {
             $reasons[] = 'result_limit';
-            $summary .= sprintf(' The list was truncated to the first %d of %d test files.', $limit, $found);
+            $summary .= sprintf(' The %s truncated to the first %d of %d test files.', $foundWired > 0 ? 'lists were' : 'list was', $limit, $found + $foundWired);
             $testFiles = array_slice($testFiles, 0, $limit);
+            $wiredFiles = array_slice($wiredFiles, 0, $limit - count($testFiles));
         }
 
         return new ResultEnvelope(
@@ -241,11 +254,12 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
                 'changed_files' => $changeSet['files'],
                 'unresolved_files' => $changeSet['unresolved'],
                 'test_files' => $testFiles,
+                'test_files_via_wiring' => $wiredFiles,
                 'bounds' => [
                     'max_files' => self::MAX_FILES, 'max_direct_components' => self::MAX_DIRECT_COMPONENTS, 'limit' => $limit, 'max_depth' => $maxDepth,
                     'max_visited' => TestReachSearch::MAX_VISITED, 'max_edges' => TestReachSearch::MAX_EDGES,
                     'visited_nodes' => $search['visited'], 'edges_examined' => $search['edges_examined'],
-                    'test_files_found' => $found, 'truncation_reasons' => $reasons,
+                    'test_files_found' => $found, 'test_files_via_wiring_found' => $foundWired, 'truncation_reasons' => $reasons,
                 ],
             ],
             array_slice(array_map(static fn(array $entry): array => ['path' => $entry['path'], 'start_line' => null, 'end_line' => null], $testFiles), 0, self::MAX_EVIDENCE),
