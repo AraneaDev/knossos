@@ -166,15 +166,33 @@ export function builderOf(node) {
 /**
  * `private initializeScene = async () => { ... }`: a class property that holds
  * a function, the way a React class component writes a method bound to its
- * instance. It is a method in all but syntax, and the calls in its body are
- * its own rather than the class's.
+ * instance, or the same function wrapped once (see `wrapsFunction`). It is a
+ * method in all but syntax, and the calls in its body are its own rather than
+ * the class's.
  */
 export function isFunctionProperty(node) {
     if (!ts.isPropertyDeclaration(node)) return false;
     const value = unwrapExpression(node.initializer);
     return (
         value !== undefined &&
-        (ts.isArrowFunction(value) || ts.isFunctionExpression(value))
+        (ts.isArrowFunction(value) ||
+            ts.isFunctionExpression(value) ||
+            wrapsFunction(value))
+    );
+}
+
+/**
+ * `withBatchedUpdates(() => {})`, `debounce(() => {}, 300)`: a call whose first
+ * argument is the function it wraps. On a class property this is a handler
+ * wrapped once, called like a method; a module binding written this way is
+ * left alone, since there `createStore(() => {})` and the like build values.
+ */
+function wrapsFunction(value) {
+    if (!ts.isCallExpression(value)) return false;
+    const first = unwrapExpression(value.arguments[0]);
+    return (
+        first !== undefined &&
+        (ts.isArrowFunction(first) || ts.isFunctionExpression(first))
     );
 }
 
