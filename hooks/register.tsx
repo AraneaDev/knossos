@@ -17,6 +17,7 @@ import { NO_CHANGES } from './lib/layout'
 import { LIVE_OFF } from './lib/live'
 import { copyCommand, handlersOf, twinTarget } from './mod/actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
+import { freshDig, observe } from './mod/dig'
 import { request } from './mod/loaders'
 import type { Port } from './mod/port'
 import { drawBand, drawPane } from './mod/render'
@@ -194,17 +195,33 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // Every call of the session's, in every loop, by any tool that can write rather than wait or read: while one runs
-  // (and a moment after), what the watcher scans is the session's own, whatever route the change took.
+  /**
+   * The call's result, with the dig reminder (see ./mod/dig) added when this call completes the pattern. A call that
+   * was denied or failed answered nothing, so it neither starts, counts toward nor answers a dig. The reminder takes
+   * no slot of the turn's note cap: it comes once a turn at most, and a capped one would be lost for the whole turn.
+   */
+  const dug = <R extends { deny?: unknown; isError?: boolean; context?: string[] }>(e: { tool: string; agentId?: string }, ran: R): R => {
+    if (mod.disabled || !mod.notesOn || ran.deny !== undefined || ran.isError === true) return ran
+    const loop = e.agentId ?? ''
+    const seen = observe(mod.digs.get(loop) ?? freshDig(), e.tool, e)
+    mod.digs.set(loop, seen.dig)
+    return seen.remind === null ? ran : { ...ran, context: [...(ran.context ?? []), seen.remind] }
+  }
+
+  // Every call of the session's, in every loop. One handler, since the engine takes one without a matcher:
+  // - by any tool that can write rather than wait or read: while one runs (and a moment after), what the watcher
+  //   scans is the session's own, whatever route the change took;
+  // - by any tool at all: past a Knossos answer, a loop that keeps looking things up is asked, once a turn, to write
+  //   down what it found, on the result of the call that completes the pattern.
   on('tool.call', async ($, e, next) => {
-    if (mod.disabled || !counts(e.tool)) return next(e)
+    const timed = !mod.disabled && counts(e.tool)
     const id = `${++mod.callSeq}`
-    begin(mod.activity, id, await $.clock.now())
+    if (timed) begin(mod.activity, id, await $.clock.now())
     try {
-      return await next(e)
+      return dug(e, await next(e))
     } finally {
       // A clock torn down under the call (the session ending) ends it where it began.
-      finish(mod.activity, id, await $.clock.now().catch(() => mod.activity.running.get(id) ?? 0))
+      if (timed) finish(mod.activity, id, await $.clock.now().catch(() => mod.activity.running.get(id) ?? 0))
     }
   })
 
@@ -267,6 +284,7 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    mod.digs.delete(e.agentId ?? '')
     await endTurn(portOf($), e.agentId)
     return result
   })

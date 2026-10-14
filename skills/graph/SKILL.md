@@ -47,16 +47,35 @@ Reaching for the graph here wastes a call and returns the wrong shape:
 
 `annotate_component` is the only way one session leaves something for the next.
 Notes survive rescans, because annotations are keyed by canonical name rather
-than by node id.
+than by node id, and they come back with every later result that names the
+component.
 
-Write one when all three hold:
+**The rule:** when one Knossos query did not answer your question and you got
+the answer by further queries, grep or reading, record what you established
+before you move on. Write the fact on the component it is about, `kind: note`,
+and pass the files you relied on as `evidence_paths`, so the note is marked
+stale when one of them changes. Write the fact, not the question. If you already
+have a note there, extend it rather than replace it: the preview shows its text.
 
-1. The fact cost real effort to learn.
-2. It is not visible by reading the component itself.
-3. It will still be true in a month.
+Keep a note brief: one or two sentences, the evidence in `evidence_paths`, not
+in the text. A path reads best as a one-line arrow chain:
+
+```text
+File::delete -> FileDeleted (model event) -> DeleteFileInStorage::handle (queued)
+```
+
+Use a short multi-line ASCII sketch only when the path branches, and keep it
+within the 300 characters a result shows. No Mermaid or Markdown: nothing that
+shows a note renders them.
+
+A result marks one of your notes `stale` when a file it rests on changed. Check
+it against the code, then re-record it (that confirms it), correct it, or
+remove it. A note by a person (`author: user`) is theirs: never rewrite or
+remove it, and never write through the pane's own command (`knossos annotate`).
 
 Worth writing:
 
+- `BulkEditView::post`, "calls whatever BulkEditSerializer.validate_method returns, a function in documents.bulk_edit"
 - `ToolCatalog`, "the extension seam is here; `ToolService` is the dispatcher and should not grow arms"
 - `ProcessScannerClient`, "the worker boundary is process-enforced, not convention; in-process calls will pass tests and fail in production"
 

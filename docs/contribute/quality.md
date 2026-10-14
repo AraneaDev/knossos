@@ -114,13 +114,16 @@ The quality image is built in two parts. The dependency stages of the
 `Dockerfile` (system packages, PHP extensions, Composer and npm dependencies,
 the Rust toolchain and the compiled Rust worker) are published to the
 repository's registry under a key: a hash of their inputs, printed by
-`tools/quality-deps-key` (`--inputs` lists them), plus the UTC date. Each job
+`tools/quality-deps-key` (`--inputs` lists them), plus the UTC date and a
+stamp of Debian's security archive. Each job
 pulls that image and adds the commit's source on top in a build of a few
 seconds. The key changes, and the run first rebuilds and publishes the
 dependency images, when the `Dockerfile` changes in anything but comments and
 the release version, when a Composer or npm manifest or lockfile changes, when
-anything under `workers/rust` changes, and on the first run of each UTC day, so
-Debian's fixes reach the image. That run takes several minutes longer. A
+anything under `workers/rust` changes, on the first run of each UTC day, so
+Debian's fixes reach the image, and when Debian publishes a security release,
+so a fix that lands during the day does not leave the release lane's
+vulnerability scan red until midnight. That run takes several minutes longer. A
 scheduled run shortly after midnight UTC does the daily rebuild, so the day's
 first push usually finds the images published. A pull request from a fork, or
 from Dependabot, cannot write to the registry and builds the whole image in the

@@ -12,6 +12,7 @@ import { cycleSearchStopped } from '../lib/envelopes'
 import type { Activity } from '../lib/activity'
 import { watchPollMsOf } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
+import type { Dig } from './dig'
 
 /** The pane's id, as the engine opens and draws it. */
 export const PANE = 'knossos'
@@ -113,6 +114,8 @@ export const mod = {
   noteFailureLogged: false,
   /** Notes after tool results this turn, by loop; cleared when that loop's turn ends. */
   turnNotes: new Map<string, number>(),
+  /** Whether each loop dug past a Knossos answer this turn (see ./dig); cleared when that loop's turn ends. */
+  digs: new Map<string, Dig>(),
   /** Bash commands run since the turn's last edit; at the turn's end they become `turnRan`, what its scan's note checks. */
   ranCommands: [] as string[],
   turnRan: [] as string[],
@@ -225,6 +228,7 @@ export function stopWatcher(): number | null {
  * runs `register` again, and nothing of the old load's may carry over.
  */
 export function reset(options: PluginOptions): void {
+  mod.digs = new Map()
   mod.threshold = thresholdOf(options.fanInThreshold)
   mod.enforce = options.enforcePolicies !== false
   mod.dirty = false
