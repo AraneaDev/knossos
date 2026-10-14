@@ -240,7 +240,7 @@ fn app() {
 }
 
 #[test]
-fn axum_dynamic_route_path_is_diagnosed_not_guessed() {
+fn an_axum_route_with_a_parameter_keeps_its_template() {
     let source = r#"
 use axum::Router;
 use axum::routing::get;
@@ -249,6 +249,36 @@ fn handler() {}
 
 fn app() -> Router {
     Router::new().route("/users/:id", get(handler))
+}
+"#;
+    let contributions = scan_fixture_with(
+        "axum-template-route",
+        &[("src/lib.rs", source)],
+        &serde_json::json!({ "frameworks": ["axum"] }),
+    );
+    assert!(contributions[0]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|node| node["kind"] == "route"
+            && node["canonical_name"] == "GET /users/:id => crate::handler"));
+    assert!(!contributions[0]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|diagnostic| diagnostic["code"] == "RS_DYNAMIC_ROUTE_PATH"));
+}
+
+#[test]
+fn an_axum_route_path_built_at_runtime_is_diagnosed_not_guessed() {
+    let source = r#"
+use axum::Router;
+use axum::routing::get;
+
+fn handler() {}
+
+fn app(prefix: &str) -> Router {
+    Router::new().route(prefix, get(handler))
 }
 "#;
     let contributions = scan_fixture_with(
@@ -287,22 +317,27 @@ fn world() {}
 }
 
 #[test]
-fn a_dynamic_route_path_is_diagnosed_not_guessed() {
-    let source = r#"
-#[get("/users/<id>")]
-fn user() {}
-"#;
-    let contributions = scan_fixture_with(
-        "dynamic-route",
-        &[("src/lib.rs", source)],
-        &serde_json::json!({ "frameworks": ["rocket"] }),
-    );
-    let nodes = contributions[0]["nodes"].as_array().unwrap();
-    assert!(!nodes.iter().any(|node| node["kind"] == "route"));
-    let diagnostics = contributions[0]["diagnostics"].as_array().unwrap();
-    assert!(diagnostics
-        .iter()
-        .any(|diag| diag["code"] == "RS_DYNAMIC_ROUTE_PATH"));
+fn attribute_routes_with_parameters_keep_their_templates() {
+    for (framework, path) in [("rocket", "/users/<id>"), ("actix", "/users/{id}")] {
+        let source = format!("#[get(\"{path}\")]\nfn user() {{}}\n");
+        let contributions = scan_fixture_with(
+            &format!("template-route-{framework}"),
+            &[("src/lib.rs", source.as_str())],
+            &serde_json::json!({ "frameworks": [framework] }),
+        );
+        let nodes = contributions[0]["nodes"].as_array().unwrap();
+        let name = format!("GET {path} => crate::user");
+        assert!(
+            nodes
+                .iter()
+                .any(|node| node["kind"] == "route" && node["canonical_name"] == name.as_str()),
+            "{framework}: no route {name}"
+        );
+        let diagnostics = contributions[0]["diagnostics"].as_array().unwrap();
+        assert!(!diagnostics
+            .iter()
+            .any(|diag| diag["code"] == "RS_DYNAMIC_ROUTE_PATH"));
+    }
 }
 
 #[test]
