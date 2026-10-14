@@ -204,7 +204,10 @@ documents/views.py changed`; a note no scanned file backs at all reads `rests
 on no scanned file`. Re-recording the note confirms it against the code as it
 is now; removing it is the other way out. A person's note is never stale.
 `evidence_paths` reads a path as `file_context` does: project-relative,
-`./`-led, or absolute under the project root. They sit in their own table,
+`./`-led, or absolute under the project root. A file no scan reads, such as a
+CI script or a shell tool, counts too: its hash is read from disk when the note
+is written and again when it is shown. It must be a regular file under the
+root, after following any link, and at most 2 MB. Notes sit in their own table,
 keyed by canonical name and not by node id. `component` must match exactly: a
 stable id, a canonical name or a display name. A name that only starts like a
 component's is recorded as given, with a warning that names the components it

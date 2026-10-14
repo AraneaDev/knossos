@@ -118,4 +118,62 @@ final class AnnotationNotesTest extends KnossosTestCase
 
         assertSame([true, 'rests on no scanned file'], [$note['stale'], $note['stale_reason']]);
     }
+
+    #[Group('query')]
+    public function testANoteMayRestOnAFileNoScanReadsAndGoesStaleWhenItChanges(): void
+    {
+        // A CI script or a shell tool is no scanned file, yet often the fact a
+        // note records rests on it. Its content hash is read from disk.
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = sys_get_temp_dir() . '/knossos-stale-evidence-' . bin2hex(random_bytes(6));
+        mkdir($root . '/tools', 0o755, true);
+        try {
+            file_put_contents($root . '/tools/quality', "#!/bin/sh\necho gate\n");
+            $pdo->prepare('UPDATE projects SET root_realpath = ? WHERE id = ?')->execute([realpath($root), $ids['project']]);
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the gate lane fails it', execute: true, evidencePaths: ['tools/quality']);
+            $notes = new AnnotationNotes($pdo);
+
+            assertSame(false, $notes->forComponents($ids['project'], ['App\\Checkout'])[0]['stale']);
+            // A scan that reads the file later keeps its own hash; the note still checks the disk.
+            $pdo->prepare("INSERT INTO files(id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id) VALUES ('file_quality', ?, 'tools/quality', 'scanned-hash', 1, 1, 'shell', '1', ?)")
+                ->execute([$ids['project'], $ids['scan']]);
+            assertSame(false, $notes->forComponents($ids['project'], ['App\\Checkout'])[0]['stale']);
+            file_put_contents($root . '/tools/quality', "#!/bin/sh\necho changed\n");
+            assertSame('written before tools/quality changed', $notes->forComponents($ids['project'], ['App\\Checkout'])[0]['stale_reason']);
+            unlink($root . '/tools/quality');
+            assertSame('written before tools/quality was removed', $notes->forComponents($ids['project'], ['App\\Checkout'])[0]['stale_reason']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testAFileOutsideTheProjectOrNotThereIsNoEvidence(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = sys_get_temp_dir() . '/knossos-stale-evidence-' . bin2hex(random_bytes(6));
+        mkdir($root, 0o755, true);
+        $outside = tempnam(sys_get_temp_dir(), 'knossos-outside-');
+        try {
+            symlink($outside, $root . '/escape');
+            mkdir($root . '/folder');
+            $pdo->prepare('UPDATE projects SET root_realpath = ? WHERE id = ?')->execute([realpath($root), $ids['project']]);
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            foreach (['escape' => 'outside the project', 'missing.sh' => 'is not a file of this project', 'folder' => 'is not a file of this project'] as $path => $refusal) {
+                try {
+                    $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: [$path]);
+                    self::fail($path . ' was taken as evidence');
+                } catch (\InvalidArgumentException $e) {
+                    assertSame(true, str_contains($e->getMessage(), $refusal), $e->getMessage());
+                }
+            }
+        } finally {
+            @unlink($root . '/escape');
+            @unlink($outside);
+            $this->removeTempTree($root);
+        }
+    }
 }
