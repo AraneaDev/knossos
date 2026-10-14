@@ -121,18 +121,22 @@ final class ResultEnricherBudgetTest extends KnossosTestCase
         assertSame(['paths' => 1], $result->meta['dropped_items']);
     }
 
-    /** A cycle's members are a sequence too: a kept cycle lists all of them. */
+    /**
+     * A cycle's members are a set, already capped where they are found: trimming
+     * some keeps a true answer, while freezing them would drop a lone large
+     * cycle whole and report cycles over an empty list.
+     */
     #[Group('mcp')]
-    public function testACycleKeepsAllItsMembers(): void
+    public function testALoneCycleKeepsItsRecordAndShedsMembers(): void
     {
         $enricher = $this->enricherMeasuringInTurn($this->freshTestDatabase(), [4_200, 3_900]);
         $cycle = ['members' => ['a', 'b', 'c', 'd', 'e'], 'size' => 5];
-        $envelope = new ResultEnvelope('project_x', 'scan_x', 'ok', ['cycles' => [$cycle, $cycle]]);
+        $envelope = new ResultEnvelope('project_x', 'scan_x', 'ok', ['cycles' => [$cycle]]);
 
         $result = $enricher->enrich($envelope, 'dependency_cycles', 'compact', 4_000);
 
-        assertSame([$cycle], $result->data['cycles']);
-        assertSame(['cycles' => 1], $result->meta['dropped_items']);
+        assertSame(1, count($result->data['cycles']));
+        assertSame(['cycles.0.members' => 1], $result->meta['dropped_items']);
     }
 
     /** An envelope that was already truncated stays truncated without any trimming. */
