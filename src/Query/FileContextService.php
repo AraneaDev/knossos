@@ -63,7 +63,11 @@ final readonly class FileContextService
         $relative = (string) $file['path'];
         $root = substr((string) $detail['path'], 0, -strlen($relative) - 1);
         $tests = ArchitectureQueryService::forDatabase($this->pdo)->testImpact($projectId, [$relative], limit: self::NAMED, timeoutMs: self::TESTS_TIMEOUT_MS);
-        $listed = array_map(static fn(array $t): array => ['path' => (string) $t['path'], 'distance' => (int) $t['distance']], $tests->data['test_files'] ?? []);
+        // Tests that reach the file by a call first, then those that only build the application.
+        $listed = array_slice(array_map(
+            static fn(array $t): array => ['path' => (string) $t['path'], 'distance' => (int) $t['distance']],
+            [...$tests->data['test_files'] ?? [], ...$tests->data['test_files_via_wiring'] ?? []],
+        ), 0, self::NAMED);
 
         return ['file' => [
             'path' => $relative,
