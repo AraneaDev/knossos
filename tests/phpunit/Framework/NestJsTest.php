@@ -106,4 +106,63 @@ final class NestJsTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /**
+     * What a setGlobalPrefix call reports: its literal prefix and excluded paths in
+     * either form, null for a prefix that is not a literal, and nothing in a file
+     * that does not import NestJS.
+     */
+    #[Group('nestjs')]
+    public function testTheGlobalPrefixIsReportedAsWrittenOrAsUnknown(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-nest-settings-' . bin2hex(random_bytes(6));
+        $files = [
+            'src/main.ts' => "import { NestFactory } from '@nestjs/core';\ndeclare const AppModule: object;\n"
+                . "async function bootstrap(): Promise<void> {\n    const app = await NestFactory.create(AppModule);\n"
+                . "    app.setGlobalPrefix('api', { exclude: ['health', { path: 'metrics', method: 0 }, dynamicPath] });\n}\n"
+                . "declare const dynamicPath: string;\n",
+            'src/other.ts' => "import * as nest from '@nestjs/core';\ndeclare const prefix: string;\n"
+                . "export async function start(): Promise<void> {\n    const app = await nest.NestFactory.create(Object);\n    app.setGlobalPrefix(prefix);\n}\n",
+            'src/plain.ts' => "declare const server: { setGlobalPrefix(prefix: string): void };\nserver.setGlobalPrefix('v1');\n",
+            'src/jwt.strategy.ts' => "import { PassportStrategy } from '@nestjs/passport';\ndeclare const Strategy: new () => object;\n"
+                . "export class JwtStrategy extends PassportStrategy(Strategy) {\n    validate(): object { return {}; }\n    other(): void {}\n}\n"
+                . "export class Plain extends Object {\n    validate(): void {}\n}\n",
+        ];
+        foreach ($files as $path => $contents) {
+            if (!is_dir(dirname($root . '/' . $path))) {
+                mkdir(dirname($root . '/' . $path), 0o700, true);
+            }
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        try {
+            $client = $this->typescriptWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]));
+            $client->shutdown();
+            $settings = [];
+            foreach ($contributions as $contribution) {
+                foreach ($contribution->nodes as $node) {
+                    if ($node->kind === 'setting') {
+                        $settings[$node->canonicalName] = [$node->attributes['global_prefix'] ?? null, $node->attributes['exclude'] ?? null];
+                    }
+                }
+            }
+            ksort($settings);
+            $handlers = [];
+            foreach ($contributions as $contribution) {
+                foreach ($contribution->nodes as $node) {
+                    if (in_array('nestjs.framework_handler', $node->attributes['nestjs_roles'] ?? [], true)) {
+                        $handlers[] = $node->canonicalName;
+                    }
+                }
+            }
+            // Passport calls a strategy's validate(); nothing calls another class's.
+            assertSame(['src/jwt.strategy.ts#JwtStrategy::validate'], $handlers);
+            assertSame([
+                'src/main.ts#setGlobalPrefix' => ['api', ['health', 'metrics']],
+                'src/other.ts#setGlobalPrefix' => [null, []],
+            ], $settings);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }
