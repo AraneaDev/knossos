@@ -25,8 +25,10 @@ final class FrameworkInvokedRolesTest extends KnossosTestCase
         return [
             'django view' => ['django.view'],
             'django middleware' => ['django.middleware'],
-            'middleware' => ['application.middleware'],
             'fastapi route handler' => ['fastapi.route_handler'],
+            'flask route handler' => ['flask.route_handler'],
+            'nextjs route handler' => ['nextjs.route_handler'],
+            'rust route handler' => ['rust.route_handler'],
             'celery task' => ['python.task'],
             'laravel policy' => ['laravel.policy'],
             'laravel middleware' => ['laravel.middleware'],
@@ -51,11 +53,13 @@ final class FrameworkInvokedRolesTest extends KnossosTestCase
 
     /**
      * A component JSX does not name may really be unused, and `laravel.event`
-     * is also given by a class name's suffix alone: neither is a convention.
+     * and `application.middleware` are also given by a class name's suffix
+     * alone, in any project: none is a convention.
      */
     public function testARoleNamedByUseOrNameAloneIsNoConvention(): void
     {
         self::assertFalse(ReportableComponent::isDiscoveredByConvention(['react.component']));
         self::assertFalse(ReportableComponent::isDiscoveredByConvention(['laravel.event']));
+        self::assertFalse(ReportableComponent::isDiscoveredByConvention(['application.middleware']));
     }
 }

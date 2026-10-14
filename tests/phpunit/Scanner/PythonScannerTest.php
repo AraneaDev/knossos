@@ -1749,6 +1749,64 @@ PYTHON);
     }
 
     #[Group('python-scanner')]
+    public function testDjangoViewRolesNeedDjangoInTheModule(): void
+    {
+        // A base named *View and an @action decorator mean Django only where the
+        // module imports Django or its REST framework: a Qt `QGraphicsView`
+        // subclass is no view a URL router calls.
+        $root = sys_get_temp_dir() . '/knossos-py-views-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/api.py' => implode("\n", [
+                'from rest_framework.views import APIView',
+                'from rest_framework.decorators import action',
+                'class Orders(APIView):',
+                '    @action(detail=True)',
+                '    def ship(self, request):',
+                '        return request',
+                '',
+            ]),
+            'app/canvas.py' => implode("\n", [
+                'from PyQt5.QtWidgets import QGraphicsView',
+                'from tools import action',
+                'class Canvas(QGraphicsView):',
+                '    @action',
+                '    def redraw(self):',
+                '        return self',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/api.py', 'app/canvas.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $roles = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                $roles[$node->canonicalName] = $node->attributes['python_framework_roles'] ?? [];
+            }
+        }
+
+        self::assertSame(['django.view'], $roles['app.api.Orders']);
+        self::assertSame(['django.view'], $roles['app.api.Orders::ship']);
+        self::assertSame([], $roles['app.canvas.Canvas']);
+        self::assertSame([], $roles['app.canvas.Canvas::redraw']);
+    }
+
+    #[Group('python-scanner')]
     public function testAMethodCalledOnAFreshInstanceResolvesThroughItsClass(): void
     {
         // `Repo().count()` calls a method on the instance just built, so the
