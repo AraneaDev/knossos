@@ -115,4 +115,36 @@ RUST);
             @rmdir($root);
         }
     }
+
+    /**
+     * A route with a parameter is a template, kept as written: the handler
+     * gets its route and role, and a caller's URL with a value in that place
+     * binds to it.
+     */
+    #[Group('rust-frameworks')]
+    public function testAnAxumRouteWithAParameterBindsACallersUrlToItsHandler(): void
+    {
+        if (!is_file(self::rustWorkerBinary())) {
+            self::markTestSkipped('The Rust worker binary is not built.');
+        }
+        $root = sys_get_temp_dir() . '/knossos-stale-rust-template-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o700, true);
+        mkdir($root . '/web', 0o700, true);
+        file_put_contents($root . '/Cargo.toml', "[package]\nname = \"users\"\nversion = \"0.1.0\"\n\n[dependencies]\naxum = \"0.7\"\n");
+        file_put_contents($root . '/src/lib.rs', "use axum::Router;\nuse axum::routing::get;\n\nfn user() {}\n\nfn app() -> Router {\n    Router::new().route(\"/users/:id\", get(user))\n}\n");
+        file_put_contents($root . '/web/package.json', "{\"name\": \"web\", \"private\": true}\n");
+        file_put_contents($root . '/web/api.js', 'export const load = (id) => fetch(`/users/${id}`);' . "\n");
+        $pdo = $this->freshTestDatabase();
+        try {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'route' AND canonical_name = 'GET /users/:id => crate::user'")->fetchColumn());
+            assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM classifications c JOIN nodes n ON n.id = c.node_id WHERE c.role = 'rust.route_handler' AND n.canonical_name = 'crate::user'")->fetchColumn());
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $flow = \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'web/api.js#load', 'crate::user');
+            assertSame(['calls_endpoint', 'resolves_to', 'routes_to'], array_column($flow->data['paths'][0]['hops'] ?? [], 'kind'));
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
 }

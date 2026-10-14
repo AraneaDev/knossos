@@ -187,9 +187,10 @@ enrichment only runs for the frameworks it is asked for.
 - Rocket: verb attributes such as `#[get("/path")]`.
 
 A handler function gets the `rust_framework_roles` attribute with
-`rust.route_handler`. A route path that is not a literal is skipped with the
-`RS_DYNAMIC_ROUTE_PATH` warning. Literal framework markers such as `<id>`,
-`{id}` and `:id` count as dynamic too.
+`rust.route_handler`. A route path that is not a string literal is skipped
+with the `RS_DYNAMIC_ROUTE_PATH` warning. A literal with parameters such as
+`/users/:id`, `/users/{id}` or `/users/<id>` is a template and kept as written,
+so a caller's `fetch` of `/users/42` binds to it like any other route.
 
 ## Cross-file resolution
 
