@@ -43,6 +43,10 @@ final readonly class ReportableComponent
         'symfony.message_handler', 'symfony.route_handler', 'symfony.fixture', 'symfony.voter',
         'symfony.form_type', 'symfony.twig_extension',
         'nestjs.framework_handler',
+        // Reached through a URL router, a middleware stack, a task scheduler,
+        // an authorization gate or a file-system router, never by name.
+        'django.view', 'django.middleware', 'application.middleware', 'fastapi.route_handler', 'python.task',
+        'laravel.policy', 'laravel.middleware', 'nextjs.page', 'nextjs.layout',
         'library.public_api',
         self::TEST_ROLE,
         'tooling.config',
