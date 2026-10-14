@@ -12,6 +12,7 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\TreeFingerprint;
+use Knossos\Store\StableId;
 use PDO;
 use Throwable;
 
@@ -77,7 +78,15 @@ final readonly class LedgeredScanner implements ProjectScanner
         $real = realpath($root) ?: $root;
         $project = (new ProjectPathResolver($this->pdo))->resolve($real);
         if ($project === null || (string) $project['root_realpath'] !== $real) {
-            return $this->service->scan($root, ...$options);
+            // A first scan has no project yet, but its id is the root's: wait for
+            // another writer's lease on it as a rescan does, and hand the lease on.
+            $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))
+                ->acquire(StableId::project('root:' . $real), self::LEASE_WAIT_MS, ProjectScanService::cancellationIn($options));
+            try {
+                return $this->service->scan($root, ...$options, lease: $lease);
+            } finally {
+                $lease->release();
+            }
         }
         $projectId = (string) $project['id'];
         // Another writer's scan is mostly about to end: wait for it (unless the scan is cancelled), and scan what it left.
