@@ -21,14 +21,18 @@ final class SqliteSnapshotArchive
      * @param int $maxRowsPerTable more rows than this in any captured table and
      *   the snapshot records why instead of the facts
      * @param int $maxPayloadBytes the same, for the uncompressed payload size;
-     *   both ceilings are parameters so a test can reach them with a few rows
+     *   both ceilings are parameters so a test can reach them with a few rows.
+     *   Reads stream the payload a row at a time, so the row cap is what bounds
+     *   memory; the byte cap sits above what those rows come to. At 100 MB it
+     *   sat below: Knossos's own graph, 160,000 facts, reached 98.9 MB and the
+     *   next feature's handful of facts made its archive incomplete.
      */
     public function __construct(
         private readonly PDO $pdo,
         private readonly SqliteScanLifecycle $lifecycle,
         private readonly array $capturedTables,
         private readonly int $maxRowsPerTable = 200_000,
-        private readonly int $maxPayloadBytes = 100_000_000,
+        private readonly int $maxPayloadBytes = 250_000_000,
     ) {}
 
     /**

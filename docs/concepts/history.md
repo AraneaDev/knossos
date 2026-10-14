@@ -33,7 +33,7 @@ Or call `list_snapshots` over MCP. Results distinguish the active normalized
 scan from retained archives (`active`, `retained`) and include scanner and
 config fingerprints, timing, `fact_count`, `byte_size` and `complete_archive`.
 
-Each fact table is capped at 200,000 rows and a complete archive at 100 MB of
+Each fact table is capped at 200,000 rows and a complete archive at 250 MB of
 uncompressed payload. An oversized graph retains an explicit incomplete metadata record instead of
 silently presenting partial facts as complete. Incomplete snapshots are useful
 for audit timing and fingerprints but are not eligible for full snapshot diffs.
