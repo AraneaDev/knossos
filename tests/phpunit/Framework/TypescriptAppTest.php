@@ -74,4 +74,49 @@ final class TypescriptAppTest extends KnossosTestCase
             }
         }
     }
+
+    /**
+     * Next.js routes from the files under `app` (or `pages`): a `page.tsx`
+     * anywhere else is an ordinary module, and naming it a page made it an
+     * entry point no router calls.
+     */
+    #[Group('typescript-scanner')]
+    public function testANextPageOrLayoutIsOneOnlyUnderTheRoutingFolder(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-next-pages-' . bin2hex(random_bytes(6));
+        $files = [
+            'tsconfig.json' => '{"compilerOptions":{"strict":false,"jsx":"react-jsx"},"include":["app","src"]}',
+            'app/dashboard/page.tsx' => "export default function Dashboard() { return null; }\n",
+            'src/components/page.tsx' => "export default function Page() { return null; }\n",
+            'src/components/layout.tsx' => "export default function Layout() { return null; }\n",
+        ];
+        foreach ($files as $relative => $contents) {
+            @mkdir(dirname($root . '/' . $relative), 0o755, true);
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+        try {
+            $client = $this->typescriptWorkerClient();
+            $contributions = iterator_to_array($client->scan([
+                'root' => $root,
+                'files' => ['app/dashboard/page.tsx', 'src/components/page.tsx', 'src/components/layout.tsx'],
+                'config_files' => ['tsconfig.json'],
+            ]));
+            $client->shutdown();
+        } finally {
+            foreach (array_keys($files) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            foreach (['app/dashboard', 'app', 'src/components', 'src', ''] as $directory) {
+                @rmdir($root . '/' . $directory);
+            }
+        }
+        $roles = [];
+        foreach (array_merge(...array_map(fn(ScanContribution $item): array => $item->nodes, $contributions)) as $node) {
+            $roles[$node->canonicalName] = $node->attributes['typescript_framework_roles'] ?? [];
+        }
+
+        assertSame(true, in_array('nextjs.page', $roles['app/dashboard/page.tsx#Dashboard'] ?? [], true));
+        assertSame([], array_values(array_filter($roles['src/components/page.tsx#Page'] ?? [], static fn(string $role): bool => str_starts_with($role, 'nextjs.'))));
+        assertSame([], array_values(array_filter($roles['src/components/layout.tsx#Layout'] ?? [], static fn(string $role): bool => str_starts_with($role, 'nextjs.'))));
+    }
 }

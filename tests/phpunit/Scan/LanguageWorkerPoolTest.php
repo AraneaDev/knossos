@@ -70,7 +70,7 @@ final class LanguageWorkerPoolTest extends TestCase
         $first = $pool->client($php, $policy, 'code-v1');
         assertSame($first, $pool->client($php, $policy, 'code-v1'), 'Unchanged code keeps the running worker.');
         $replaced = $pool->client($php, $policy, 'code-v2');
-        assertSame(false, $replaced === $first, 'A worker started before its code changed is replaced.');
+        self::assertNotSame($first, $replaced, 'A worker started before its code changed is replaced.');
         assertSame($replaced, $pool->client($php, $policy, 'code-v2'));
 
         $pool->shutdown();

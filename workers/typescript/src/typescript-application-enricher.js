@@ -24,8 +24,15 @@ export class TypeScriptApplicationEnricher {
         const exported =
             hasModifier(node, ts.SyntaxKind.ExportKeyword) ||
             hasModifier(node, ts.SyntaxKind.DefaultKeyword);
-        if (base === "page" && exported) roles.push("nextjs.page");
-        if (base === "layout" && exported) roles.push("nextjs.layout");
+        // Next.js routes from the files under `app` (or `pages`); a page.tsx
+        // anywhere else is an ordinary module no router calls.
+        const routed = lower
+            .split("/")
+            .slice(0, -1)
+            .some((segment) => segment === "app" || segment === "pages");
+        if (base === "page" && exported && routed) roles.push("nextjs.page");
+        if (base === "layout" && exported && routed)
+            roles.push("nextjs.layout");
         if (
             base === "route" &&
             exported &&
