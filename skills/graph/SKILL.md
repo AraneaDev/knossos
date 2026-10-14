@@ -55,9 +55,10 @@ further queries, grep or reading, record what it missed before you move on. That
 the code holds the fact is no reason to skip it: the graph could not give it to
 you, so the next agent will dig for it the same way, and a note is how the next
 result carries it. A fresh session with the same question then starts from
-your note instead of digging again, so writing one is part of the task, not a
-side effect to ask about: do it before you give your answer. Write nothing only
-when the answer was complete and your lookups merely confirmed it.
+your note instead of digging again. With agent notes on (the default), writing
+one is part of the task, not a side effect to ask about: do it before you give
+your answer. Write nothing only when the answer was complete and your lookups
+merely confirmed it.
 
 Write the fact on the component it is about, `kind: note`, and pass the files
 you relied on as `evidence_paths`, so the note is marked stale when one of them
