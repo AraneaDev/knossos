@@ -142,6 +142,13 @@ describe("selectAblations", () => {
 
 describe("selectAblations edge cases", () => {
     const tasks = [{ id: "c1", category: "callers" }];
+    it("picks from first passes only: a second pass started with notes", () => {
+        const second = {
+            ...row("c1", "full", 1, "scored", { list_annotations: 1 }),
+            pass: 2,
+        };
+        expect(selectAblations([second], tasks)).toEqual([]);
+    });
     it("ignores a session of a task that is not in the corpus", () => {
         const rows = [row("gone", "full", 1, "scored", { list_usages: 1 })];
         expect(selectAblations(rows, tasks)).toEqual([]);

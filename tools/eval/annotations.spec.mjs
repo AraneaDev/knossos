@@ -60,12 +60,47 @@ describe("annotations.php", () => {
         ]);
     });
 
+    it("prints how many model notes an import handed over", async () => {
+        const root = await tmp("eval-root-");
+        const db = await database(root, [
+            ["App\\A", "found by an agent", "model"],
+            ["App\\B", "the team says so", "user"],
+        ]);
+        const file = path.join(path.dirname(db), "notes.json");
+        await run(HELPER, ["export", db, root, file]);
+        expect(
+            (await run(HELPER, ["import", db, root, file])).stdout.trim(),
+        ).toBe("1");
+    });
+
+    it("refuses an import whose file is gone and leaves the notes as they were", async () => {
+        const root = await tmp("eval-root-");
+        const db = await database(root, [
+            ["App\\A", "found by an agent", "model"],
+        ]);
+        const gone = path.join(path.dirname(db), "gone.json");
+        const failed = await run(HELPER, ["import", db, root, gone]).catch(
+            (e) => e,
+        );
+        expect(failed.code).toBe(1);
+        expect(failed.stderr).toContain(`no notes file at ${gone}`);
+        expect(JSON.parse(await values(db))).toEqual([
+            ["App\\A", "found by an agent", "model"],
+        ]);
+    });
+
     it("treats a repository no scan registered as one with no notes", async () => {
         const db = await database("/nowhere", []);
         const root = await tmp("eval-unscanned-");
         expect((await run(HELPER, ["clear", db, root])).stdout.trim()).toBe(
             "0",
         );
+        // Its export still leaves a file, so a second pass has one to import.
+        const file = path.join(path.dirname(db), "unscanned.json");
+        expect(
+            (await run(HELPER, ["export", db, root, file])).stdout.trim(),
+        ).toBe("0");
+        expect(JSON.parse(await readFile(file, "utf8"))).toEqual([]);
     });
 
     it("refuses an unknown command", async () => {

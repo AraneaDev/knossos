@@ -102,6 +102,13 @@ export async function appendRow(file, row) {
     await appendFile(file, `${prefix}${JSON.stringify(row)}\n`);
 }
 
+/**
+ * The rows of first passes. A second pass started with its first pass's
+ * notes, so anything comparing arms, choosing tasks or choosing tools reads
+ * only these; a run of one pass has nothing else.
+ */
+export const firstPasses = (rows) => rows.filter((r) => (r.pass ?? 1) === 1);
+
 export function pending(plan, rows) {
     const done = new Set(
         rows.filter((r) => TERMINAL.has(r.status)).map(sessionKey),

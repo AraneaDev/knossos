@@ -499,6 +499,20 @@ describe("previousRun", () => {
         );
         expect(found).toEqual({ runId: "r2", rows: [{ task: "new" }] });
     });
+    it("hands back an earlier two-pass run's first passes only", async () => {
+        const runsDir = await runs([
+            [
+                "r1",
+                meta("r1"),
+                '{"task":"a","pass":1}\n{"task":"a","pass":2}\n{"task":"old"}\n',
+            ],
+        ]);
+        const found = await previousRun(
+            { meta: meta("r2"), corpus },
+            { runsDir },
+        );
+        expect(found.rows).toEqual([{ task: "a", pass: 1 }, { task: "old" }]);
+    });
     it("compares like with like: a run written with the legacy hash still matches", async () => {
         const runsDir = await runs([
             ["r1", legacy("r1"), '{"task":"legacy"}\n'],

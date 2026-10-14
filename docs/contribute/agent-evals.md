@@ -160,8 +160,15 @@ notes its first pass left, kept in the run directory under `notes/`, so a run
 interrupted between the passes resumes with them. A second pass waits until its
 first is done.
 
+Each row records `notesWritten`, the model notes in the project when the
+session ended. A second pass also records `notesImported`, the model notes it
+was handed at the start, so the difference is what it added or removed itself.
+
 The report reads every section from the first passes, so the arms compare as
-in any run, and adds a **Learning** section: per arm, how often a first pass
+in any run. So do `ablate`, when it picks tools, `calibrate`, and the
+comparison with a previous run.
+
+The report adds a **Learning** section: per arm, how often a first pass
 left a note, and the second pass against the first on turns, time, cost and F1,
 paired by task. `baseline` has no Knossos and so no notes: its second pass
 shows what repeating a task alone does, the control.

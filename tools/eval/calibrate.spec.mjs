@@ -19,6 +19,19 @@ const tasks = [
 ];
 
 describe("calibrate", () => {
+    it("reads first passes only: a second pass started with the first's notes", () => {
+        const rows = [
+            row("h1", "baseline", 0.5),
+            row("h1", "full", 0.5),
+            { ...row("h1", "baseline", 1), pass: 2 },
+            { ...row("h1", "full", 1), pass: 2 },
+            { ...row("h1", "full", 1), pass: 2 },
+        ];
+        expect(calibrate(rows, [tasks[0]])[0]).toMatchObject({
+            full: 0.5,
+            verdict: "keep",
+        });
+    });
     it("keeps a hard task whose arms average at most the threshold and drops the rest", () => {
         const rows = [
             row("h1", "baseline", 0.5),

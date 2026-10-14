@@ -10,7 +10,7 @@ declare(strict_types=1);
  *
  *   annotations.php clear  <db> <project-root>
  *   annotations.php export <db> <project-root> <file>   writes the rows as JSON, prints how many a model wrote
- *   annotations.php import <db> <project-root> <file>   replaces the project's rows with the file's
+ *   annotations.php import <db> <project-root> <file>   replaces the project's rows with the file's, prints how many a model wrote
  *
  * The project is the one whose root is <project-root>.
  */
@@ -22,35 +22,46 @@ if (!in_array($command, ['clear', 'export', 'import'], true) || !is_string($db) 
     exit(2);
 }
 
+if ($command === 'import' && !is_file($file)) {
+    // Importing nothing would hand a second pass an empty table and measure it as if it had notes.
+    fwrite(STDERR, "annotations.php: no notes file at {$file}\n");
+    exit(1);
+}
+
 $pdo = new PDO('sqlite:' . $db, options: [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo->exec('PRAGMA busy_timeout = 10000');
 $find = $pdo->prepare('SELECT id FROM projects WHERE root_realpath = ?');
 $find->execute([realpath($root) ?: $root]);
 $project = $find->fetchColumn();
+$columns = 'canonical_name, kind, value, author, basis_json, created_at, updated_at';
+$byModel = static fn(array $rows): int => count(array_filter($rows, static fn(array $row): bool => $row['author'] === 'model'));
+
+if ($command === 'export') {
+    // A repository not scanned yet has no notes; its file still says so, for the second pass to import.
+    $all = [];
+    if (is_string($project)) {
+        $rows = $pdo->prepare("SELECT {$columns} FROM annotations WHERE project_id = ? ORDER BY canonical_name, kind, author");
+        $rows->execute([$project]);
+        $all = $rows->fetchAll(PDO::FETCH_ASSOC);
+    }
+    file_put_contents($file, json_encode($all, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n");
+    echo $byModel($all), "\n";
+    exit(0);
+}
 if (!is_string($project)) {
-    // A repository not scanned yet has no notes to clear, keep or restore.
+    // Nor any to clear or restore.
     echo "0\n";
     exit(0);
 }
-$columns = 'canonical_name, kind, value, author, basis_json, created_at, updated_at';
 
-if ($command === 'export') {
-    $rows = $pdo->prepare("SELECT {$columns} FROM annotations WHERE project_id = ? ORDER BY canonical_name, kind, author");
-    $rows->execute([$project]);
-    $all = $rows->fetchAll(PDO::FETCH_ASSOC);
-    file_put_contents($file, json_encode($all, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n");
-    echo count(array_filter($all, static fn(array $row): bool => $row['author'] === 'model')), "\n";
-    exit(0);
-}
-
+$rows = $command === 'import' ? json_decode((string) file_get_contents($file), true, flags: JSON_THROW_ON_ERROR) : [];
 $pdo->beginTransaction();
 $pdo->prepare('DELETE FROM annotations WHERE project_id = ?')->execute([$project]);
 if ($command === 'import') {
-    $rows = json_decode((string) file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
     $insert = $pdo->prepare("INSERT INTO annotations(project_id, {$columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     foreach ($rows as $row) {
         $insert->execute([$project, $row['canonical_name'], $row['kind'], $row['value'], $row['author'], $row['basis_json'], $row['created_at'], $row['updated_at']]);
     }
 }
 $pdo->commit();
-echo "0\n";
+echo $byModel($rows), "\n";

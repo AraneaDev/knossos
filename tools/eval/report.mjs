@@ -6,7 +6,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SCORABLE, readLedger } from "./ledger.mjs";
+import { firstPasses, readLedger, SCORABLE } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
 import { corpusHashFor, plannedCorpus, tierOf } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
@@ -395,9 +395,8 @@ function learning(meta, rows) {
     const label = (arm) => (arm === "baseline" ? "baseline (control)" : arm);
     const arms = meta.arms.filter((a) => parseArm(a).minus === null);
     const firsts = (arm) =>
-        rows.filter(
-            (r) =>
-                r.arm === arm && (r.pass ?? 1) === 1 && SCORABLE.has(r.status),
+        firstPasses(rows).filter(
+            (r) => r.arm === arm && SCORABLE.has(r.status),
         );
     const wrote = table(
         ["arm", "first passes that left a note"],
@@ -476,7 +475,7 @@ export function buildReport({
     // A two-pass run's second passes started with notes: every section but
     // the Learning one reads the first passes, so the arms compare as in any run.
     const twoPass = meta.passes === 2;
-    const rows = twoPass ? allRows.filter((r) => (r.pass ?? 1) === 1) : allRows;
+    const rows = firstPasses(allRows);
     // A run that holds both tiers gets a summary per tier: pooled, an easy
     // tier at F1 1.0 would hide what the hard one shows.
     const tierOfTask = new Map(tasks.map((t) => [t.id, tierOf(t)]));
@@ -544,8 +543,10 @@ export async function previousRun(run, s) {
             ) {
                 return {
                     runId: id,
-                    rows: await readLedger(
-                        path.join(s.runsDir, id, "ledger.jsonl"),
+                    rows: firstPasses(
+                        await readLedger(
+                            path.join(s.runsDir, id, "ledger.jsonl"),
+                        ),
                     ),
                 };
             }

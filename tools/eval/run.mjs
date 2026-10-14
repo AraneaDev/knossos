@@ -533,16 +533,25 @@ async function warnPluginVersion(s) {
  * with `file`. Prints, and so returns, how many notes a model wrote (export).
  */
 export async function notes(s, paths, command, workspace, file) {
-    const { stdout } = await promisify(execFile)(
-        s.notesBin,
-        [
-            command,
-            path.join(paths.data, "knossos.sqlite"),
-            workspace,
-            ...(file === undefined ? [] : [file]),
-        ],
-        { env: s.env },
-    );
+    let stdout;
+    try {
+        ({ stdout } = await promisify(execFile)(
+            s.notesBin,
+            [
+                command,
+                path.join(paths.data, "knossos.sqlite"),
+                workspace,
+                ...(file === undefined ? [] : [file]),
+            ],
+            { env: s.env },
+        ));
+    } catch (e) {
+        // The session is paid for by now when an export fails: say why it stopped.
+        const cause = (e.stderr ?? "").trim() || e.message;
+        throw new Error(
+            `annotations ${command} for ${workspace} failed: ${cause}`,
+        );
+    }
     return Number.parseInt(stdout.trim(), 10) || 0;
 }
 
@@ -560,8 +569,13 @@ async function executeEntry(entry, ctx) {
         "notes",
         `${entry.task}--${entry.arm}--${entry.repeat}.json`,
     );
-    if (entry.pass === 2) await notes(s, paths, "import", workspace, kept);
-    else await notes(s, paths, "clear", workspace);
+    const imported = await notes(
+        s,
+        paths,
+        entry.pass === 2 ? "import" : "clear",
+        workspace,
+        entry.pass === 2 ? kept : undefined,
+    );
     const transcript = path.join(
         "transcripts",
         `${entry.task}--${entry.arm}--${entry.repeat}${entry.pass === 2 ? "--p2" : ""}.jsonl`,
@@ -583,7 +597,8 @@ async function executeEntry(entry, ctx) {
         onClose: ctx.onClose,
     });
     // What the session left: a first pass keeps it for its second; every
-    // session counts the model notes it ends with.
+    // session counts the model notes it ends with, and a second pass how many
+    // of those it was handed.
     await mkdir(path.dirname(kept), { recursive: true });
     const written = await notes(
         s,
@@ -615,7 +630,12 @@ async function executeEntry(entry, ctx) {
         model: run.meta.model,
         knossosCommit: ctx.knossosCommit,
     });
-    return { ...row, pass: entry.pass ?? 1, notesWritten: written };
+    return {
+        ...row,
+        pass: entry.pass ?? 1,
+        notesWritten: written,
+        ...(entry.pass === 2 ? { notesImported: imported } : {}),
+    };
 }
 
 /**
@@ -715,9 +735,10 @@ async function continueRun(args, s) {
     );
     const run = await openRun(positionals[0], s);
     const rows = await readLedger(run.ledger);
-    // A second pass waits for its first; when nothing can start yet, the first passes still running say so.
+    // A second pass waits for its first, so a batch may hold only first
+    // passes; something is runnable whenever anything is pending.
     const queue = runnable(run.plan, rows).slice(0, batch);
-    if (queue.length === 0 && pending(run.plan, rows).length === 0) {
+    if (queue.length === 0) {
         console.log(
             `run ${run.meta.runId} is complete; write the report with: node tools/eval/report.mjs ${run.meta.runId}`,
         );

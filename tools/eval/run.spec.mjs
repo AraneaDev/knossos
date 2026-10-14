@@ -27,6 +27,7 @@ import {
     dirtyPaths,
     drain,
     main,
+    notes,
     signalHandler,
 } from "./run.mjs";
 
@@ -532,6 +533,13 @@ describe("continue with the fake claude", () => {
         log.mockRestore();
         rows = await rowsOf(dir);
         expect(rows.map((r) => r.pass)).toEqual([1, 1, 2, 2]);
+        // A second pass says how many of the notes it ends with it was handed.
+        expect(rows.map((r) => r.notesImported)).toEqual([
+            undefined,
+            undefined,
+            2,
+            2,
+        ]);
         const calls = (await readFile(notesLog, "utf8"))
             .trim()
             .split("\n")
@@ -547,6 +555,21 @@ describe("continue with the fake claude", () => {
                 .filter((r) => r.pass === 2)
                 .every((r) => r.transcript.endsWith("--p2.jsonl")),
         ).toBe(true);
+    });
+    it("names the command and its cause when the notes helper fails", async () => {
+        const failing = notes(
+            {
+                notesBin: FAKE_NOTES,
+                env: { ...process.env, FAKE_NOTES_FAIL: "export" },
+            },
+            { data: "/data" },
+            "export",
+            "/repos/demo",
+            "/run/notes/x.json",
+        );
+        await expect(failing).rejects.toThrow(
+            /annotations export for \/repos\/demo failed: .*database is locked/,
+        );
     });
     it("starts every session without another session's annotations", async () => {
         const { env, runId } = await started(["--arms", "baseline"]);

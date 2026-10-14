@@ -8,7 +8,7 @@
  */
 import { fileURLToPath } from "node:url";
 import { tierOf } from "./corpus.mjs";
-import { readLedger } from "./ledger.mjs";
+import { firstPasses, readLedger } from "./ledger.mjs";
 import { openRun, settings } from "./run.mjs";
 import { taskMedians } from "./stats.mjs";
 
@@ -20,7 +20,7 @@ export const KEEP_AT_MOST = 0.85;
  * and `keep`, `drop`, or which arm has no scored session.
  */
 export function calibrate(rows, tasks) {
-    const medians = taskMedians(rows, "f1");
+    const medians = taskMedians(firstPasses(rows), "f1");
     const of = (arm, id) => medians.get(arm)?.get(id) ?? null;
     return tasks
         .filter((t) => tierOf(t) === "hard")
