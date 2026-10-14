@@ -582,3 +582,18 @@ fn items_under_cfg_test_carry_the_test_attribute() {
     assert!(marked("crate::tests::helper"), "a helper inside it");
     assert!(!marked("crate::production"), "production code must not be");
 }
+
+#[test]
+fn an_alias_two_files_declare_apart_names_no_type() {
+    let mut declarations = Declarations::new();
+    let one =
+        |target: &str| std::iter::once(("crate::Alias".to_owned(), target.to_owned())).collect();
+    declarations.add_aliases(&one("crate::Policy"));
+    declarations.add_aliases(&one("crate::Policy"));
+    assert_eq!(
+        declarations.alias_of("crate::Alias"),
+        Some("crate::Policy".to_owned())
+    );
+    declarations.add_aliases(&one("crate::Other"));
+    assert_eq!(declarations.alias_of("crate::Alias"), None);
+}

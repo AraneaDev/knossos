@@ -3965,3 +3965,39 @@ fn aliases_in_a_circle_end_the_walk() {
     let contributions = scan_fixture("alias-circle", &[("src/lib.rs", source)]);
     assert_eq!(contributions.len(), 1);
 }
+
+#[test]
+fn a_receiver_typed_by_an_alias_another_file_declares_resolves() {
+    // The alias is declared in one file and named in another, plain and
+    // through a smart pointer: the declaration index carries what it names.
+    let files = [
+        ("src/lib.rs", "pub mod policy;\npub mod usage;\n"),
+        (
+            "src/policy.rs",
+            "pub struct Policy;\nimpl Policy { pub fn evaluate(&self) {} pub fn check(&self) {} }\npub type Alias = Policy;\npub type Shared = std::sync::Arc<Policy>;\n",
+        ),
+        (
+            "src/usage.rs",
+            "use crate::policy::{Alias, Shared};\npub fn plain(p: &Alias) { p.evaluate(); }\npub fn shared(p: Shared) { p.check(); }\n",
+        ),
+    ];
+    let contributions = scan_fixture("alias-across-files", &files);
+    let targets = |from: &str| -> Vec<String> {
+        method_calls(&contributions, from)
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect()
+    };
+    assert!(
+        targets("rust:function:crate::usage::plain")
+            .contains(&"rust:method:crate::policy::Policy::evaluate".to_owned()),
+        "{:?}",
+        targets("rust:function:crate::usage::plain")
+    );
+    assert!(
+        targets("rust:function:crate::usage::shared")
+            .contains(&"rust:method:crate::policy::Policy::check".to_owned()),
+        "{:?}",
+        targets("rust:function:crate::usage::shared")
+    );
+}
