@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.0](https://github.com/AraneaDev/knossos/compare/v0.28.0...v0.29.0) (2026-10-14)
+
+
+### Features
+
+* find a component by the text of a note on it ([#271](https://github.com/AraneaDev/knossos/issues/271)) ([2c0f5b4](https://github.com/AraneaDev/knossos/commit/2c0f5b442a5e1e5e6bcb5951baf1b83c336e7aa0))
+* let a note rest on a file no scan reads ([#273](https://github.com/AraneaDev/knossos/issues/273)) ([167e44f](https://github.com/AraneaDev/knossos/commit/167e44f7e0ac4e46a088e1f567d74d004dcf29b1))
+
 ## [0.28.0](https://github.com/AraneaDev/knossos/compare/v0.27.2...v0.28.0) (2026-10-14)
 
 
