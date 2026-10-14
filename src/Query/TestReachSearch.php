@@ -26,6 +26,13 @@ use PDOStatement;
  * Its bounds are its own: visited nodes, edge rows examined and one deadline,
  * each named in `truncation_reasons` when it cut the walk. The depth horizon is
  * the caller's question, not a cut, so reaching it is not a truncation.
+ *
+ * A component reached only through a {@see CompositionRoots composition root}
+ * is marked as reached through wiring, and so is everything reached only from
+ * it: a test that builds the application reaches every service that way
+ * without using one. Reached by any other edge on the same level, it is not.
+ * A start component is never taken as a composition root: a change to the
+ * wiring itself is what its tests exercise.
  */
 final readonly class TestReachSearch extends AbstractArchitectureQueryService
 {
@@ -52,8 +59,8 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      * @param list<string> $startIds direct components, distance 0
      * @param list<string> $edgeKinds validated impact edge kinds
      * @param bool $first stop after the level the first test is met at: enough to say whether any test reaches
-     * @return array{tests: array<string, int>, visited: int, edges_examined: int, truncation_reasons: list<string>}
-     *         tests: test-role node id => shortest distance
+     * @return array{tests: array<string, int>, wired: array<string, true>, visited: int, edges_examined: int, truncation_reasons: list<string>}
+     *         tests: test-role node id => shortest distance; wired: the tests among them reached only through wiring
      */
     public function search(string $projectId, array $startIds, int $maxDepth, array $edgeKinds, int $minimumRank, int $deadline, bool $first = false): array
     {
@@ -61,6 +68,8 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         $tests = [];
         $frontier = [];
         $reason = null;
+        // Visited node id => whether it was reached only through wiring.
+        $wired = [];
         foreach ($startIds as $id) {
             if (isset($seen[$id])) {
                 continue;
@@ -70,8 +79,10 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
                 break;
             }
             $seen[$id] = true;
+            $wired[$id] = false;
             $frontier[] = $id;
         }
+        $starts = array_fill_keys($frontier, true);
         $this->markTests($projectId, $frontier, 0, $tests);
         $examined = 0;
         // Supertype methods and constructed classes already read through: apart from $seen, so one found later as a dependant in its own right still counts.
@@ -79,20 +90,30 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $tests !== []); ++$level) {
             // A call through an interface or a parent goes to the supertype's method: what calls that
             // may run the frontier's own, so its dependants are read too, the supertype method passed through.
+            // A node read through stands in for the frontier node it was read for, wired as that one is.
             $through = [];
-            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $supertypes) {
+            $standIn = static function (string $id, string $for) use (&$wired): void {
+                $wired[$id] = ($wired[$id] ?? true) && $wired[$for];
+            };
+            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $method => $supertypes) {
                 foreach ($supertypes as $supertype) {
                     if (!isset($seen[$supertype]) && !isset($passed[$supertype])) {
                         $passed[$supertype] = true;
                         $through[] = $supertype;
                     }
+                    if (!isset($seen[$supertype])) {
+                        $standIn($supertype, (string) $method);
+                    }
                 }
             }
             // Nothing points at a property: its class's methods read it, so what uses the class may use it.
-            foreach (PropertyOwners::of($this->pdo, $projectId, $frontier) as $class) {
+            foreach (PropertyOwners::of($this->pdo, $projectId, $frontier) as $property => $class) {
                 if (!isset($seen[$class]) && !isset($passed[$class])) {
                     $passed[$class] = true;
                     $through[] = $class;
+                }
+                if (!isset($seen[$class])) {
+                    $standIn($class, (string) $property);
                 }
             }
             $targets = [...$frontier, ...$through];
@@ -101,22 +122,28 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
             // what constructs the class reaches the constructor, and nothing else that names the class does.
             $constructed = [];
             if (in_array(ConstructedClasses::EDGE_KIND, $edgeKinds, true)) {
-                foreach (ConstructedClasses::of($this->pdo, $projectId, $frontier) as $classes) {
+                foreach (ConstructedClasses::of($this->pdo, $projectId, $frontier) as $constructor => $classes) {
                     foreach ($classes as $class) {
                         if (!isset($seen[$class]) && !isset($passed[$class])) {
                             $passed[$class] = true;
                             $constructed[] = $class;
                         }
+                        if (!isset($seen[$class])) {
+                            $standIn($class, (string) $constructor);
+                        }
                     }
                 }
                 sort($constructed, SORT_STRING);
             }
+            $roots = array_diff_key(CompositionRoots::of($this->pdo, $projectId, [...$targets, ...$constructed]), $starts);
             $next = [];
+            $found = [];
             $reads = [...array_map(static fn(array $chunk): array => [$chunk, $edgeKinds], array_chunk($targets, self::CHUNK)), ...array_map(static fn(array $chunk): array => [$chunk, [ConstructedClasses::EDGE_KIND]], array_chunk($constructed, self::CHUNK))];
             foreach ($reads as [$chunk, $kinds]) {
                 $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
                 $row = 0;
-                while (($sourceId = $rows->fetchColumn()) !== false) {
+                while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
+                    [$targetId, $sourceId] = $edge;
                     if ($row++ % self::CLOCK_EVERY === 0 && $this->now() > $deadline) {
                         $reason = 'time_limit';
                         break;
@@ -127,7 +154,12 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
                     }
                     ++$examined;
                     $sourceId = (string) $sourceId;
+                    $viaWiring = isset($roots[(string) $targetId]) || ($wired[(string) $targetId] ?? false);
                     if (isset($seen[$sourceId])) {
+                        // Met again on the level it was found at: any edge that is not wiring makes it direct.
+                        if (isset($found[$sourceId]) && !$viaWiring) {
+                            $wired[$sourceId] = false;
+                        }
                         continue;
                     }
                     if (count($seen) >= $this->maxVisited) {
@@ -135,6 +167,8 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
                         break;
                     }
                     $seen[$sourceId] = true;
+                    $found[$sourceId] = true;
+                    $wired[$sourceId] = $viaWiring;
                     $next[] = $sourceId;
                 }
                 // Abandoned mid-result when a bound stops the walk; SQLite holds
@@ -149,7 +183,14 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
             $frontier = $next;
         }
 
-        return ['tests' => $tests, 'visited' => count($seen), 'edges_examined' => $examined, 'truncation_reasons' => $reason === null ? [] : [$reason]];
+        $wiredTests = [];
+        foreach (array_keys($tests) as $id) {
+            if ($wired[(string) $id] ?? false) {
+                $wiredTests[(string) $id] = true;
+            }
+        }
+
+        return ['tests' => $tests, 'wired' => $wiredTests, 'visited' => count($seen), 'edges_examined' => $examined, 'truncation_reasons' => $reason === null ? [] : [$reason]];
     }
 
     /**
@@ -180,15 +221,15 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
     /**
      * The dependants of one chunk of the frontier, streamed in target, source and edge order.
      *
-     * Only the source id is selected: the walk needs nothing else, and the
-     * order alone fixes which nodes a bound cuts.
+     * Only the target and source ids are selected: the walk needs nothing
+     * else, and the order alone fixes which nodes a bound cuts.
      *
      * @param list<string> $targetIds @param list<string> $edgeKinds
      */
     private function dependantRows(string $projectId, array $targetIds, array $edgeKinds, int $minimumRank): PDOStatement
     {
         $statement = $this->pdo->prepare(sprintf(
-            'SELECT e.source_id FROM edges e WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
+            'SELECT e.target_id, e.source_id FROM edges e WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
             "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
             'ORDER BY e.target_id, e.source_id, e.id',
             implode(',', array_fill(0, count($targetIds), '?')),
