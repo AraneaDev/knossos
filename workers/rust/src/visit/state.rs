@@ -122,6 +122,10 @@ pub(super) struct Calls<'a, 'b> {
     /// annotated or constructed through a path. What a method call on one of
     /// them resolves through.
     pub(super) receivers: BTreeMap<String, String>,
+    /// The route prefixes of the `nest(...)` and `scope(...)` calls whose
+    /// arguments are being walked, outermost first: a route declared inside
+    /// one is served under all of them.
+    pub(super) prefixes: Vec<String>,
 }
 
 /// One route fact discovered while walking, emitted after the walk.
@@ -143,6 +147,10 @@ pub(super) struct RouteCandidate {
     /// Whether `handler` is that guess — needs the same-file declarations to
     /// confirm it, like a call target.
     pub(super) handler_unconfirmed: bool,
+    /// The function whose body builds the router a call route is declared
+    /// on, as a `rust:function:` reference: another function's `nest(...)`
+    /// mounts it under a prefix. `None` for an attribute route.
+    pub(super) router: Option<String>,
     /// Where the routing statement is, for evidence.
     pub(super) span: proc_macro2::Span,
 }

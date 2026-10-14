@@ -171,8 +171,45 @@ final readonly class RouteTemplates
         if (!is_string($router)) {
             return [[null, 'declared', []]];
         }
+        if ($framework === 'axum' || $framework === 'actix') {
+            return self::nestChains($router, $byLocal, $mountsInto, []);
+        }
 
         return self::mountChains($byLocal[$router] ?? null, $byLocal, $mountsInto, []);
+    }
+
+    /**
+     * The prefixes in front of a Rust router, named by the function that builds it
+     * (`rust:function:<path>`), one per chain of `nest(...)`/`merge(...)` mounts. Unlike a
+     * FastAPI or Flask router, a Rust router nothing mounts is the one the application serves,
+     * so a chain that ends without a mount is declared; one that loops is unknown.
+     *
+     * @param array<string, string> $byLocal
+     * @param array<string, list<array{id: string, prefix: string, onto: mixed}>> $mountsInto
+     * @param array<string, true> $seen routers already on this chain
+     * @return list<array{0: ?UrlTemplate, 1: string, 2: list<string>}>
+     */
+    private static function nestChains(string $local, array $byLocal, array $mountsInto, array $seen): array
+    {
+        $id = $byLocal[$local] ?? null;
+        $mounts = $id === null ? [] : ($mountsInto[$id] ?? []);
+        if ($mounts === []) {
+            return [[null, 'declared', []]];
+        }
+        if (isset($seen[$local]) || count($seen) >= self::MAX_MOUNT_DEPTH) {
+            return [[null, 'unknown', []]];
+        }
+        $chains = [];
+        foreach ($mounts as $mount) {
+            $here = UrlTemplate::parse($mount['prefix'])[0] ?? null;
+            $parent = is_string($mount['onto']) ? $mount['onto'] : '';
+            foreach (self::nestChains($parent, $byLocal, $mountsInto, $seen + [$local => true]) as [$outer, $status, $through]) {
+                $prefix = $here === null ? $outer : ($outer === null ? $here : $here->prepend($outer));
+                $chains[] = [$prefix, $status, [...$through, $mount['id']]];
+            }
+        }
+
+        return $chains;
     }
 
     /**

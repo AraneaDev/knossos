@@ -48,7 +48,8 @@ call itself is `external`: it is never matched and never reported.
 
 A route's full template is its own path behind the prefixes of its `mounts`
 chain: FastAPI's `include_router(prefix=...)`, Flask's
-`register_blueprint(url_prefix=...)`, through any number of levels. A router
+`register_blueprint(url_prefix=...)`, axum's `nest(prefix, router())`, through
+any number of levels. A router
 mounted in two places gives two candidates. A route whose chain cannot be
 completed has an unknown prefix. So has a FastAPI or Flask route on a router the
 scan cannot name, such as one built inside a function or handed in as a
