@@ -20,7 +20,9 @@ the call is written in:
 - `$x ??= new Foo()` when `$x` held no other type, which is probable
 - the value of `foreach ($items as $item)` when `$items` is a parameter whose
   docblock names its element type (`@param list<Foo> $items`, `array<K, Foo>`,
-  `iterable<Foo>` or `Foo[]`), which is probable
+  `iterable<Foo>` or `Foo[]`), or of `foreach ($this->items as $item)` when the
+  property's docblock does (`@var list<Foo>`), which is probable
+- `$x = $y` when `$y`'s type is known, which is probable
 - `$result = $run()` when `$run` holds a closure that declares its return type,
   or one returned by a method of the same file documented as
   `@return \Closure(): Foo`, which is probable
