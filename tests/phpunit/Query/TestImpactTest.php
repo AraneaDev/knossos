@@ -178,7 +178,7 @@ final class TestImpactTest extends KnossosTestCase
         self::assertSame(1, $result->data['bounds']['test_files_found']);
         self::assertArrayNotHasKey('impacted_scan_limit', $result->data['bounds']);
         self::assertSame(
-            ['max_files', 'max_direct_components', 'limit', 'max_depth', 'max_visited', 'max_edges', 'visited_nodes', 'edges_examined', 'test_files_found', 'truncation_reasons'],
+            ['max_files', 'max_direct_components', 'limit', 'max_depth', 'max_visited', 'max_edges', 'visited_nodes', 'edges_examined', 'test_files_found', 'test_files_via_wiring_found', 'truncation_reasons'],
             array_keys($result->data['bounds']),
         );
         self::assertStringContainsString('the test search is bounded; see bounds.truncation_reasons', implode(' ', $result->warnings));
