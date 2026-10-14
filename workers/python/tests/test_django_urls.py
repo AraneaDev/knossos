@@ -130,3 +130,39 @@ def test_a_drf_router_registration_is_a_list_and_a_detail_route(worker: ModuleTy
     assert any(
         node["kind"] == "router" and node["canonical_name"] == "proj.urls.router" for node in contribution["nodes"]
     )
+
+
+def test_an_include_of_an_imported_urlconf_or_of_a_pattern_list(worker: ModuleType, project, scan_collect) -> None:
+    root = project(
+        {
+            "proj/__init__.py": "",
+            "proj/urls.py": (
+                "from django.urls import include, path\n"
+                "from shop import urls as shop_urls\n"
+                "from rest_framework.routers import SimpleRouter\n"
+                "from proj.views import NoteViewSet\n"
+                "extra = [path('x/', include('shop.urls'))]\n"
+                "router = SimpleRouter()\n"
+                "prefix = 'notes'\n"
+                "router.register(prefix, NoteViewSet)\n"
+                "router.register('cards', viewset=NoteViewSet)\n"
+                "urlpatterns = [\n"
+                "    path('shop/', include(shop_urls)),\n"
+                "    path('extra/', include(extra)),\n"
+                "    path('none/', include()),\n"
+                "]\n"
+            ),
+            "proj/views.py": "class NoteViewSet:\n    pass\n",
+            "shop/__init__.py": "",
+            "shop/urls.py": SHOP_URLS,
+            "shop/views.py": SHOP_VIEWS,
+        }
+    )
+    files = _by_file(scan_collect(root, ["proj/urls.py", "proj/views.py", "shop/urls.py", "shop/views.py"]))
+    contribution = files["proj/urls.py"]
+    targets = {(target, attributes["prefix"]) for _, target, attributes in _mounts(contribution)}
+    # The module an imported name stands for; a pattern list in a variable names none.
+    assert ("py:module:shop.urls", "shop/") in targets
+    assert all(prefix != "extra/" for _, prefix in targets)
+    assert set(_routes(contribution)) == {"ANY /cards/ => NoteViewSet", "ANY /cards/{pk}/ => NoteViewSet"}
+    assert "PY_DYNAMIC_ROUTE_PATH" in [item["code"] for item in contribution["diagnostics"]]

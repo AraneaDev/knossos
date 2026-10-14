@@ -430,10 +430,12 @@ class DjangoFactEnricher:
         if isinstance(included, ast.Constant) and isinstance(included.value, str):
             name = included.value
         else:
+            # Only an imported module names one: a local name holds a pattern list.
             spelled = dotted(included) if included is not None else None
-            name = self.aliases.get(spelled or "", spelled or "")
+            alias = self.aliases.get(spelled or "", "")
+            name = alias.removeprefix("py:module:") if alias.startswith("py:module:") or ":" not in alias else ""
         if not name:
-            return  # a pattern list held in a variable names no module
+            return
         found = self.project_module(name)
         if found is None:
             attributes["speculative"] = True

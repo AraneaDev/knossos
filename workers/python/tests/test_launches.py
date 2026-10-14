@@ -43,3 +43,25 @@ def test_an_argv_naming_an_interpreter_and_a_path_launches_that_path(worker: Mod
         ("py:function:runner.start", "py:launched_file:run.py"),
         ("py:function:runner.start", "py:launched_file:workers/worker.py"),
     ]
+
+
+def test_a_path_joined_by_an_f_string_or_os_path_join_is_read(worker: ModuleType, project, scan_collect) -> None:
+    root = project(
+        {
+            "runner.py": (
+                "import os, subprocess\n"
+                "ROOT = os.path.dirname(__file__)\n"
+                "def start(name):\n"
+                "    subprocess.run([f'{ROOT}/bin/tool', '--quiet'])\n"
+                "    subprocess.run(['python3', os.path.join(ROOT, 'jobs', 'run.py')])\n"
+                "    subprocess.run([os.path.join('only', 'literals.py')])\n"
+                "    subprocess.run([f'{ROOT}/{name}'])\n"
+                "    subprocess.run(['python3', ROOT / name])\n"
+                "    subprocess.run(['python3', name + 1])\n"
+            ),
+        }
+    )
+    assert _launched(scan_collect(root, ["runner.py"])) == [
+        ("py:function:runner.start", "py:launched_file:bin/tool"),
+        ("py:function:runner.start", "py:launched_file:jobs/run.py"),
+    ]
