@@ -14,6 +14,7 @@ from .ast_helpers import (
     is_none,
     is_protocol_base,
     is_type_checking_guard,
+    module_statements,
     names_main_guard,
     optional_inner,
     ref,
@@ -57,6 +58,20 @@ def url_template(uri: str, prefix_unknown: bool) -> str:
     path = re.sub(r"[?#].*$", "", uri, flags=re.DOTALL)
     segments = ["{}" if "{}" in segment else segment for segment in path.split("/") if segment]
     return "/" + "/".join(segments[1:] if prefix_unknown else segments)
+
+
+def imports_django(tree: ast.Module) -> bool:
+    """Whether the module imports Django or its REST framework at its top level."""
+    for statement in module_statements(tree):
+        if isinstance(statement, ast.Import):
+            names = [alias.name for alias in statement.names]
+        elif isinstance(statement, ast.ImportFrom) and statement.level == 0:
+            names = [statement.module or ""]
+        else:
+            continue
+        if any(name.split(".")[0] in {"django", "rest_framework"} for name in names):
+            return True
+    return False
 
 
 def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
@@ -147,7 +162,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.serves_app = False
         self.module_id = ref("module", self.name)
         self.facts = PythonFactAccumulator(relative)
-        self.roles = PythonFrameworkRoleEnricher()
+        self.roles = PythonFrameworkRoleEnricher(django=imports_django(tree))
         routing = (self.facts, self.name, self.module_id, self.aliases, self.resolve_name, index.module_declarations)
         self.fastapi = FastApiFactEnricher(*routing)
         self.django = DjangoFactEnricher(self.facts, self.name, self.module_id, self.aliases, self.resolve_name)

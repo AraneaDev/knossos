@@ -11,7 +11,15 @@ from .ast_helpers import decorator_short, dotted, keyword_string, positional_str
 
 
 class PythonFrameworkRoleEnricher:
-    """Derive framework classifications without owning AST traversal."""
+    """Derive framework classifications without owning AST traversal.
+
+    `django` says whether the module imports Django or its REST framework: a
+    base named *View or an @action decorator means a view a URL router calls
+    only there, never in, say, a Qt module.
+    """
+
+    def __init__(self, django: bool = False) -> None:
+        self.django = django
 
     @staticmethod
     def decorators(node: ast.AST) -> list[str]:
@@ -29,7 +37,7 @@ class PythonFrameworkRoleEnricher:
             base_name = dotted(base) or ""
             if base_name.endswith("models.Model") or base_name == "Model":
                 roles.append("django.model")
-            if base_name.endswith("View") or base_name.endswith("ViewSet"):
+            if self.django and (base_name.endswith("View") or base_name.endswith("ViewSet")):
                 roles.append("django.view")
         if node.name.endswith("Middleware") and any(
             isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__call__" for item in node.body
@@ -46,7 +54,7 @@ class PythonFrameworkRoleEnricher:
     ) -> list[str]:
         roles: list[str] = []
         framework_decorators = [decorator_short(name) for name in decorators]
-        if any(name in {"api_view", "action"} for name in framework_decorators):
+        if self.django and any(name in {"api_view", "action"} for name in framework_decorators):
             roles.append("django.view")
         if any(name in {"shared_task", "task"} for name in framework_decorators):
             roles.append("python.task")
