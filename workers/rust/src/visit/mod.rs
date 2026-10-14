@@ -677,6 +677,7 @@ impl Walk<'_> {
             enclosing: enclosing.to_owned(),
             container: container.to_owned(),
             receivers,
+            prefixes: Vec::new(),
         };
         visitor.visit_signature(signature);
         let outer = visitor.walk.enter_block_uses(container, &block.stmts);
@@ -702,6 +703,7 @@ impl Walk<'_> {
             enclosing: enclosing.to_owned(),
             container: container.to_owned(),
             receivers: BTreeMap::new(),
+            prefixes: Vec::new(),
         };
         visitor.serde_references(attrs);
         for fields in fields {
@@ -723,6 +725,7 @@ impl Walk<'_> {
             enclosing: reference("module", container),
             container: container.to_owned(),
             receivers: BTreeMap::new(),
+            prefixes: Vec::new(),
         };
         visitor.visit_type(ty);
         visitor.visit_expr(expr);
