@@ -49,6 +49,27 @@ final class ComponentBoundsTest extends KnossosTestCase
         assertSame(true, $queries->findComponent($project, 'App')->data['ambiguous']);
     }
 
+    /**
+     * A Python module is named `app.models`, a PHP file has no module node at
+     * all, so a file path named no component. Asked by a path no name
+     * matches, the answer is what that file declares.
+     */
+    #[Group('query')]
+    public function testAPathNoNameMatchesFindsWhatThatFileDeclares(): void
+    {
+        [$queries, $project] = $this->queries();
+
+        foreach (['src/Checkout.php', './src/Checkout.php', '/workspace/fixture-shop/src/Checkout.php'] as $path) {
+            $found = $queries->findComponent($project, $path);
+            assertSame(true, in_array('App\\Checkout', array_column($found->data['components'], 'canonical_name'), true), $path);
+            assertSame('src/Checkout.php', $found->data['declared_in'], $path);
+        }
+        // A path no file of the project has finds nothing, and says nothing of a file.
+        $none = $queries->findComponent($project, 'src/Absent.php');
+        assertSame([], $none->data['components']);
+        assertSame(false, isset($none->data['declared_in']));
+    }
+
     #[Group('query')]
     public function testListUsagesAcceptsOneThroughFiveHundred(): void
     {

@@ -41,6 +41,21 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $statement->bindValue(':fetch_limit', $limit + 1, PDO::PARAM_INT);
         $statement->execute();
         $rows = $statement->fetchAll();
+        // A Python module is named `app.models` and a PHP file has no module
+        // node, so a path names no component: asked by a path no name
+        // matches, the answer is what that file declares, its module first.
+        $declaredIn = $rows === [] ? $this->declaringFile($project, $name) : null;
+        if ($declaredIn !== null) {
+            $declared = $this->pdo->prepare(
+                'SELECT n.*, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id ' .
+                "WHERE f.project_id = :project AND f.relative_path = :path ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
+            );
+            $declared->bindValue(':project', $projectId);
+            $declared->bindValue(':path', $declaredIn);
+            $declared->bindValue(':fetch_limit', $limit + 1, PDO::PARAM_INT);
+            $declared->execute();
+            $rows = $declared->fetchAll();
+        }
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
@@ -65,12 +80,41 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            $count === 0 ? sprintf('No component matched "%s".', $name) : sprintf('Found %d component candidate%s.', $count, $count === 1 ? '' : 's'),
-            ['query' => $name, 'components' => $components, 'ambiguous' => $count > 1],
+            match (true) {
+                $count === 0 => sprintf('No component matched "%s".', $name),
+                $declaredIn !== null => sprintf('No name matched; %s declares %d component%s.', $declaredIn, $count, $count === 1 ? '' : 's'),
+                default => sprintf('Found %d component candidate%s.', $count, $count === 1 ? '' : 's'),
+            },
+            // What one file declares is a list, not a choice between candidates.
+            ['query' => $name, 'components' => $components, 'ambiguous' => $declaredIn === null && $count > 1]
+                + ($declaredIn !== null && $count > 0 ? ['declared_in' => $declaredIn] : []),
             $evidence,
             [],
             $truncated,
         );
+    }
+
+    /**
+     * The project file `$name` names, when it reads as a path (it holds a `/`
+     * or ends in an extension) and the project holds that file, read as
+     * `file_context` reads a path; null otherwise.
+     *
+     * @param array<string, mixed> $project
+     */
+    private function declaringFile(array $project, string $name): ?string
+    {
+        if (!str_contains($name, '/') && preg_match('/\.[A-Za-z0-9]{1,8}$/', $name) !== 1) {
+            return null;
+        }
+        try {
+            $path = ProjectRelativePath::of((string) $project['root_realpath'], $name);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+        $file = $this->pdo->prepare('SELECT 1 FROM files WHERE project_id = :project AND relative_path = :path');
+        $file->execute(['project' => $project['id'], 'path' => $path]);
+
+        return $file->fetchColumn() === false ? null : $path;
     }
     /** One component in detail: its members, relationships, and evidence. */
 
