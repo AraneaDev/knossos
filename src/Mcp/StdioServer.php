@@ -292,7 +292,8 @@ final class StdioServer
         if (count($this->pendingLines) >= self::MAX_PENDING_LINES) {
             $message = json_decode(trim($line), true);
             if ($this->output !== null && is_array($message) && isset($message['method']) && array_key_exists('id', $message)) {
-                $this->write($this->output, McpDispatcher::error($message['id'], -32000, 'Server busy: too many requests arrived during a scan; send it again.'));
+                // As answer() does: an id that is no integer or string comes back as null.
+                $this->write($this->output, McpDispatcher::error(JsonRpcId::reply($message['id']), -32000, 'Server busy: too many requests arrived during a scan; send it again.'));
             }
             return;
         }

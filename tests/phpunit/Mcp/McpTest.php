@@ -369,6 +369,8 @@ final class McpTest extends KnossosTestCase
         }
         fwrite($input, json_encode(['jsonrpc' => '2.0', 'id' => 7, 'method' => 'tools/list'], JSON_THROW_ON_ERROR) . "\n");
         fwrite($input, json_encode(['jsonrpc' => '2.0', 'method' => 'notifications/progress'], JSON_THROW_ON_ERROR) . "\n");
+        // An id that is no integer or string is answered as null, never echoed.
+        fwrite($input, json_encode(['jsonrpc' => '2.0', 'id' => ['x' => 1], 'method' => 'tools/list'], JSON_THROW_ON_ERROR) . "\n");
         rewind($input);
         $server = new StdioServer(new McpDispatcher($tools));
         (new ReflectionProperty($server, 'input'))->setValue($server, $input);
@@ -379,10 +381,11 @@ final class McpTest extends KnossosTestCase
 
         rewind($output);
         $written = array_values(array_filter(explode("\n", (string) stream_get_contents($output))));
-        assertSame(1, count($written), 'Only the request is answered.');
+        assertSame(2, count($written), 'Only the requests are answered.');
         $answer = json_decode($written[0], true, 512, JSON_THROW_ON_ERROR);
         assertSame(7, $answer['id']);
         assertSame(-32000, $answer['error']['code']);
+        assertSame(null, json_decode($written[1], true, 512, JSON_THROW_ON_ERROR)['id']);
         fclose($input);
         fclose($output);
     }
