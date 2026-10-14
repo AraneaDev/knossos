@@ -442,6 +442,35 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
         assertArrayContains('stale', $scan['untyped']);
     }
 
+    public function testAnArgvNamingAnInterpreterAndAPathLaunchesThatPath(): void
+    {
+        $edges = $this->edges(<<<'PHP'
+            <?php
+            namespace App;
+
+            final class Workers
+            {
+                public function commands(string $root): array
+                {
+                    return [
+                        [PHP_BINARY, '-d', 'memory_limit=1G', $root . '/bin/worker'],
+                        ['python3', '-I', 'tools/run.py'],
+                        [$root . '/target/release/tool', '--quiet'],
+                        ['--flag', 'not/an/argv.txt'],
+                        ['node', '--version'],
+                    ];
+                }
+            }
+            PHP);
+
+        $launched = array_values(array_filter($edges, static fn(array $edge): bool => $edge[0] === 'launches'));
+        self::assertSame([
+            ['launches', 'php:method:App\Workers::commands', 'php:launched_file:bin/worker'],
+            ['launches', 'php:method:App\Workers::commands', 'php:launched_file:tools/run.py'],
+            ['launches', 'php:method:App\Workers::commands', 'php:launched_file:target/release/tool'],
+        ], $launched);
+    }
+
     /** @return list<array{string, string, string}> */
     private function edges(string $source): array
     {

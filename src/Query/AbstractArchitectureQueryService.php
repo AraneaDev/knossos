@@ -25,14 +25,14 @@ abstract readonly class AbstractArchitectureQueryService
     protected const FLOW_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs',
         'injects', 'binds', 'observes', 'depends_on', 'imports', 'uses_middleware',
-        'calls_endpoint', 'resolves_to',
+        'calls_endpoint', 'resolves_to', 'launches',
     ];
     /** The relationships that count as one component depending on another: what a policy check and the boundary matrix walk. */
     public const IMPACT_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs', 'injects',
         'binds', 'observes', 'depends_on', 'imports', 'uses_middleware', 'references',
         'extends', 'implements', 'returns', 'exports', 're_exports', 'uses_trait',
-        'calls_endpoint', 'resolves_to',
+        'calls_endpoint', 'resolves_to', 'launches',
     ];
     /**
      * The three confidence levels in order, so two can be compared. One
