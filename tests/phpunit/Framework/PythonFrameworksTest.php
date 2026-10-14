@@ -183,4 +183,39 @@ final class PythonFrameworksTest extends KnossosTestCase
             }
         }
     }
+
+    /**
+     * A task sent by its name is dispatched to the function Celery names that
+     * way; a name nothing in the project declares leaves no node behind.
+     */
+    #[Group('python-frameworks')]
+    public function testATaskSentByItsNameIsReachedFromTheSender(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-celery-name-' . bin2hex(random_bytes(6));
+        $files = [
+            'requirements.txt' => "celery\n",
+            'shop/__init__.py' => '',
+            'shop/tasks.py' => "from celery import shared_task\n@shared_task\ndef deliver(order_id):\n    return order_id\n",
+            'shop/views.py' => "from celery import current_app\ndef checkout(order_id):\n"
+                . "    current_app.send_task('shop.tasks.deliver', args=[order_id])\n"
+                . "    current_app.send_task('emails.send_receipt', args=[order_id])\n",
+        ];
+        foreach ($files as $path => $contents) {
+            if (!is_dir(dirname($root . '/' . $path))) {
+                mkdir(dirname($root . '/' . $path), 0o700, true);
+            }
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        $pdo = $this->freshTestDatabase();
+        try {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $flow = \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'shop.views.checkout', 'shop.tasks.deliver');
+            assertSame(['dispatches'], array_column($flow->data['paths'][0]['hops'] ?? [], 'kind'));
+            assertSame('0', (string) $pdo->query("SELECT COUNT(*) FROM nodes WHERE canonical_name LIKE '%send_receipt%'")->fetchColumn());
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
 }

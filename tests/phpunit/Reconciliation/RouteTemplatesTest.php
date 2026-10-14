@@ -301,6 +301,30 @@ final class RouteTemplatesTest extends KnossosTestCase
         assertSame(['unknown'], array_values(array_unique(array_column($routes['route']['templates'], 'prefix'))));
     }
 
+    #[Group('reconciliation')]
+    public function testARustRouterIsServedUnderEveryNestAboveItAndAsItIsWhenNothingNestsIt(): void
+    {
+        $nodes = [
+            'api' => self::router('api', 'rust:function:crate::api'),
+            'v1' => self::router('v1', 'rust:function:crate::v1'),
+            'app' => self::router('app', 'rust:function:crate::app'),
+            'nested' => self::route('nested', ['framework' => 'axum', 'path' => '/users/:id', 'router' => 'rust:function:crate::api']),
+            'top' => self::route('top', ['framework' => 'axum', 'path' => '/health', 'router' => 'rust:function:crate::app']),
+        ];
+        $edges = [
+            'n1' => self::mount('n1', 'api', '/api', 'rust:function:crate::v1'),
+            'n2' => self::mount('n2', 'v1', '/v1', 'rust:function:crate::app'),
+            'merged' => self::mount('merged', 'api', '', 'rust:function:crate::app'),
+        ];
+
+        $routes = RouteTemplates::forRoutes($nodes, $edges);
+
+        $nested = array_map(static fn(array $t): array => [(string) $t['template'], $t['prefix']], $routes['nested']['templates']);
+        sort($nested);
+        assertSame([['/users/{}', 'declared'], ['/v1/api/users/{}', 'declared']], $nested);
+        assertSame([['/health', 'declared']], array_map(static fn(array $t): array => [(string) $t['template'], $t['prefix']], $routes['top']['templates']));
+    }
+
     /**
      * @param array<string, mixed> $attributes
      * @return array<string, mixed>
