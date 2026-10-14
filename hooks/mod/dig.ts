@@ -64,6 +64,9 @@ export function observe(dig: Dig, tool: string, input: unknown): { dig: Dig; rem
   if (next.annotated || next.reminded || next.lookups < LOOKUPS_BEFORE_REMINDER) return { dig: next, remind: null }
   return {
     dig: { ...next, reminded: true },
-    remind: `You dug past a Knossos answer this turn (${next.knossos}, then ${next.lookups} lookups). If you established a structural fact, record it with annotate_component (kind note, evidence_paths), or say why not.`,
+    // Agents read a bare suggestion in a tool result as a write nobody had asked for and skipped it, even after naming
+    // the gap themselves. The session brief states the rule as a standing instruction; this points back to it, says
+    // what the note buys the next session, and names the one exception instead of an open "or say why not".
+    remind: `You dug past a Knossos answer this turn (${next.knossos}, then ${next.lookups} lookups). That is the case the standing instruction in the session brief covers: before you answer, record what the answer left out (a caller, a hop, a dispatch the graph could not see, a name it did not resolve) with annotate_component on the component it is about, by its full name even if Knossos did not find it (kind note, under 1000 characters, evidence_paths, execute true), so a fresh session with the same question starts from your note instead of digging again. Write nothing only if the answer was complete and you merely confirmed it.`,
   }
 }

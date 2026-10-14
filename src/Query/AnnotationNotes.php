@@ -23,7 +23,7 @@ final readonly class AnnotationNotes
     public const MAX_NOTES = 10;
 
     /** The most characters of a note's text a result carries; the full text stays in list_annotations. */
-    public const MAX_TEXT = 300;
+    public const MAX_TEXT = 1000;
 
     public function __construct(private PDO $pdo) {}
 

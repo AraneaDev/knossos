@@ -58,6 +58,20 @@ final class SessionBriefRendererBoundaryTest extends KnossosTestCase
         assertSame("NOT SCANNED. Run scan_project path=/work/shop to map this repository.\n" . self::POINTER, $text);
     }
 
+    /** A scanned project's brief carries the standing note rule just before the pointer, outside the section budget. */
+    #[Group('query')]
+    public function testAScannedBriefCarriesTheNoteRuleBeforeThePointer(): void
+    {
+        $rule = 'Record what a Knossos answer missed: when you find it by digging, write it with annotate_component before you answer, so a fresh session starts from your note. A standing instruction, not a side effect.';
+        foreach (['fresh', 'stale'] as $state) {
+            $text = (new SessionBriefRenderer())->render(self::brief($state, rules: ['core -x-> tests']));
+
+            assertSame(true, str_ends_with($text, "\n" . $rule . "\n" . self::POINTER), $text);
+            // The rule sits outside the budget, so it pushes out no section.
+            assertSame(true, str_contains($text, "\nRules: core -x-> tests\n"), $text);
+        }
+    }
+
     /** One item sits on its label's line; several go one per indented line. */
     #[Group('query')]
     public function testASectionPutsOneItemInlineAndSeveralBelow(): void
@@ -77,14 +91,16 @@ final class SessionBriefRendererBoundaryTest extends KnossosTestCase
     public function testASectionThatFillsTheBudgetExactlyIsKept(): void
     {
         $budget = (new ReflectionClassConstant(SessionBriefRenderer::class, 'BUDGETS'))->getValue()['stale'];
+        // The note rule's line sits outside the budget.
+        $ruleLine = "\n" . (new ReflectionClassConstant(SessionBriefRenderer::class, 'NOTE_RULE'))->getValue();
         $bare = (new SessionBriefRenderer())->render(self::brief('stale'));
         // Room left for "\nRules: <rule>" before the pointer's line.
-        $room = $budget - strlen($bare) - strlen("\nRules: ");
+        $room = $budget - (strlen($bare) - strlen($ruleLine)) - strlen("\nRules: ");
 
         $exact = (new SessionBriefRenderer())->render(self::brief('stale', rules: [str_repeat('r', $room)]));
         $over = (new SessionBriefRenderer())->render(self::brief('stale', rules: [str_repeat('r', $room + 1)]));
 
-        assertSame($budget, strlen($exact));
+        assertSame($budget + strlen($ruleLine), strlen($exact));
         assertSame(true, str_contains($exact, 'Rules: '));
         assertSame($bare, $over, 'A section one byte over the budget is dropped whole.');
     }

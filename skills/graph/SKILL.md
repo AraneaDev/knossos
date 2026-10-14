@@ -50,12 +50,21 @@ Notes survive rescans, because annotations are keyed by canonical name rather
 than by node id, and they come back with every later result that names the
 component.
 
-**The rule:** when one Knossos query did not answer your question and you got
-the answer by further queries, grep or reading, record what you established
-before you move on. Write the fact on the component it is about, `kind: note`,
-and pass the files you relied on as `evidence_paths`, so the note is marked
-stale when one of them changes. Write the fact, not the question. If you already
-have a note there, extend it rather than replace it: the preview shows its text.
+**The rule:** when a Knossos answer left something out and you found it by
+further queries, grep or reading, record what it missed before you move on. That
+the code holds the fact is no reason to skip it: the graph could not give it to
+you, so the next agent will dig for it the same way, and a note is how the next
+result carries it. A fresh session with the same question then starts from
+your note instead of digging again. The session brief states this as a
+standing instruction: writing one is part of the task, not a side effect to ask
+about, so do it before you give your answer. Write nothing only when the answer was complete and your lookups
+merely confirmed it.
+
+Write the fact on the component it is about, `kind: note`, and pass the files
+you relied on as `evidence_paths`, so the note is marked stale when one of them
+changes. A component Knossos did not resolve takes a note too, under its full
+name: that it could not find it is the gap the next session would hit. Write the fact, not the question. If you already have a note there,
+extend it rather than replace it: the preview shows its text.
 
 Keep a note brief: one or two sentences, the evidence in `evidence_paths`, not
 in the text. A path reads best as a one-line arrow chain:
@@ -65,7 +74,7 @@ File::delete -> FileDeleted (model event) -> DeleteFileInStorage::handle (queued
 ```
 
 Use a short multi-line ASCII sketch only when the path branches, and keep it
-within the 300 characters a result shows. No Mermaid or Markdown: nothing that
+within the 1000 characters a result shows. No Mermaid or Markdown: nothing that
 shows a note renders them.
 
 A result marks one of your notes `stale` when a file it rests on changed. Check
@@ -81,7 +90,9 @@ Worth writing:
 
 Not worth writing, and actively harmful because they bury the ones above:
 
-- Anything you learned by reading the file once. The next session can read it too.
+- Anything the Knossos answer already gave you, or that one read of the file it
+  pointed to settles. The next session gets the same answer and can read the
+  same file.
 - Anything about the current task, branch, or PR. Notes have no expiry.
 - Restatements of what the graph already encodes, "this class implements that
   interface". The graph knows.

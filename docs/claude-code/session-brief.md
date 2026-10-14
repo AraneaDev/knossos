@@ -14,6 +14,7 @@ Rules:
   app -x-> cli, tests
   cli --> only app
 Notes: App\Kernel: boots twice in tests; the second boot is the one that counts.
+Record what a Knossos answer missed: when you find it by digging, write it with annotate_component before you answer, so a fresh session starts from your note. A standing instruction, not a side effect.
 Ask before grepping for structure: the `knossos:graph` skill.
 ```
 
@@ -27,6 +28,7 @@ Knossos project_4e273d56974562dde33b88495d8118a6604b19633c9dacd56efa42ec8c0eee3f
 Hubs:
   run (method, degree 2)
   B (class, degree 2)
+Record what a Knossos answer missed: when you find it by digging, write it with annotate_component before you answer, so a fresh session starts from your note. A standing instruction, not a side effect.
 Ask before grepping for structure: the `knossos:graph` skill.
 ```
 
@@ -114,6 +116,17 @@ Ask before grepping for structure: the `knossos:graph` skill.
 
 It is what arms the [routing skill](skill.md) for the rest of the session.
 
+**The note rule**, just before the pointer, for every state that has a project:
+
+```text
+Record what a Knossos answer missed: when you find it by digging, write it with annotate_component before you answer, so a fresh session starts from your note. A standing instruction, not a side effect.
+```
+
+The [routing skill](skill.md) says the same, and so does the reminder an agent
+gets when it digs past a Knossos answer. Said only in that reminder, which a
+tool result carries, agents skipped it as a write nobody had asked for. The
+brief is where a session takes its standing instructions.
+
 Rules and notes appear for every state that has a project, since a stale scan
 says nothing about whether a declared rule or a written note still holds.
 Entry and Hubs appear only when the graph is `fresh`: both are read from the
@@ -140,10 +153,11 @@ A section is kept only while the running total, pointer included, still fits.
 One that does not fit is dropped whole, since a cut list reads as a complete
 one.
 
-The verdict, the identity line and the pointer are always printed, even past
-the budget. A long path can therefore push the brief over its budget. That is
-the price of never printing a broken command or a brief that does not say which
-project it describes.
+The verdict, the identity line, the note rule and the pointer are always
+printed, even past the budget. The note rule does not count toward it, so it
+never pushes out a section. A long path can push the brief over its budget. That
+is the price of never printing a broken command or a brief that does not say
+which project it describes.
 
 ## Which database it reads
 
