@@ -16,6 +16,7 @@ import {
     holderOf,
     isExpressionWrapper,
     isFunctionBinding,
+    isFunctionAssignment,
     isFunctionProperty,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
@@ -61,7 +62,8 @@ export function declarationKind(node, fallback) {
         ts.isMethodDeclaration(node) ||
         ts.isMethodSignature(node) ||
         ts.isConstructorDeclaration(node) ||
-        isFunctionProperty(node)
+        isFunctionProperty(node) ||
+        isFunctionAssignment(node)
     )
         return "method";
     if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node))
@@ -155,6 +157,7 @@ export function isDeclaration(node) {
         ts.isConstructorDeclaration(node) ||
         ts.isPropertyDeclaration(node) ||
         ts.isPropertySignature(node) ||
+        isFunctionAssignment(node) ||
         isFunctionBinding(node) ||
         isObjectLiteralBinding(node) ||
         isContextualObjectLiteral(node)
@@ -173,10 +176,7 @@ export function isObjectLiteralBinding(node) {
     if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name))
         return false;
     const literal = objectLiteralOf(node.initializer);
-    return (
-        literal !== null &&
-        literal.properties.some((member) => ts.isMethodDeclaration(member))
-    );
+    return literal !== null && literal.properties.some(isLiteralMethod);
 }
 
 /**
@@ -189,7 +189,7 @@ export function isObjectLiteralBinding(node) {
 export function isContextualObjectLiteral(node) {
     if (
         !ts.isObjectLiteralExpression(node) ||
-        !node.properties.some((member) => ts.isMethodDeclaration(member))
+        !node.properties.some(isLiteralMethod)
     )
         return false;
     const current = holderOf(node);
@@ -198,6 +198,11 @@ export function isContextualObjectLiteral(node) {
         ts.isVariableDeclaration(current) &&
         isObjectLiteralBinding(current)
     );
+}
+
+// A method of an object literal, written as one or as a property holding a function.
+function isLiteralMethod(member) {
+    return ts.isMethodDeclaration(member) || isFunctionAssignment(member);
 }
 
 // The object literal an initializer evaluates to, through parentheses, `as`
@@ -230,6 +235,7 @@ export function containerDeclaration(node) {
     return (
         isFunctionBinding(node) ||
         isFunctionProperty(node) ||
+        isFunctionAssignment(node) ||
         isObjectLiteralBinding(node) ||
         isContextualObjectLiteral(node) ||
         ts.isClassDeclaration(node) ||
@@ -248,7 +254,8 @@ export function memberDeclaration(node) {
         ts.isMethodSignature(node) ||
         ts.isConstructorDeclaration(node) ||
         ts.isPropertyDeclaration(node) ||
-        ts.isPropertySignature(node)
+        ts.isPropertySignature(node) ||
+        isFunctionAssignment(node)
     );
 }
 
@@ -305,6 +312,7 @@ export function referenceableDeclaration(node) {
         ts.isTypeAliasDeclaration(node) ||
         isFunctionBinding(node) ||
         isFunctionProperty(node) ||
+        isFunctionAssignment(node) ||
         isObjectLiteralBinding(node)
     );
 }
@@ -509,7 +517,8 @@ export function importIsTypeOnly(clause) {
 export function callableKind(declaration) {
     return declaration &&
         (ts.isMethodDeclaration(declaration) ||
-            ts.isMethodSignature(declaration))
+            ts.isMethodSignature(declaration) ||
+            isFunctionAssignment(declaration))
         ? "method"
         : "function";
 }

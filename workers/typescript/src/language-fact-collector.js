@@ -57,7 +57,9 @@ import { TypeScriptApplicationEnricher } from "./typescript-application-enricher
 import {
     callName,
     functionBindingOf,
+    builderOf,
     isFunctionBinding,
+    isFunctionAssignment,
     isFunctionProperty,
     reference,
     unwrapExpression,
@@ -145,7 +147,8 @@ export class TypeScriptLanguageFactCollector {
      * the dispatch through it leaves no edge to this method.
      */
     overridesSupertypeMember(node) {
-        if (!ts.isMethodDeclaration(node)) return false;
+        if (!ts.isMethodDeclaration(node) && !isFunctionAssignment(node))
+            return false;
         // An object literal's method fulfils the member of the type the
         // literal is handed to (`registerHooks({ resolve() {} })`), which
         // calls it unseen.
@@ -339,6 +342,12 @@ export class TypeScriptLanguageFactCollector {
                 : ambientAttributes(node, descriptor.attributes),
         );
         this.addEdge("contains", parent.id, id, node);
+        // `const select = (() => { function inner() {} return inner; })()`:
+        // a caller of `select` runs `inner`, which owns the calls in its body.
+        const builder = ts.isFunctionDeclaration(node) ? builderOf(node) : null;
+        const builderId =
+            builder === null ? undefined : this.declaredIds.get(builder);
+        if (builderId !== undefined) this.addEdge("calls", builderId, id, node);
         if (kept && this.overridesSupertypeMember(node)) {
             const fact = this.accumulator.nodesById.get(id);
             fact.attributes = { ...fact.attributes, overrides: true };
@@ -606,7 +615,13 @@ export class TypeScriptLanguageFactCollector {
         const declarations = symbol?.declarations ?? [];
         if (declarations.some((declaration) => isFunctionBinding(declaration)))
             return this.symbolReference(symbol, "function", true);
-        if (declarations.some((declaration) => isFunctionProperty(declaration)))
+        if (
+            declarations.some(
+                (declaration) =>
+                    isFunctionProperty(declaration) ||
+                    isFunctionAssignment(declaration),
+            )
+        )
             return this.symbolReference(symbol, "method", true);
         return null;
     }
