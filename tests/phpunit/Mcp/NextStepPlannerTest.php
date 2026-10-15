@@ -246,6 +246,29 @@ final class NextStepPlannerTest extends TestCase
         }
     }
 
+    public function testEveryStepCarriesTheArgumentsItsToolRequires(): void
+    {
+        // A step an agent calls as written must not fail on a missing
+        // argument: every project tool requires project_id, and the steps
+        // once left it out, so following one mechanically was an error.
+        $emitted = [
+            ...$this->plan('find_component', ['components' => [['canonical_name' => 'A'], ['canonical_name' => 'B']]]),
+            ...$this->plan('inspect_component', ['component' => 'A', 'is_hub' => true]),
+            ...$this->plan('impact_analysis', ['target' => 'A', 'dependants' => [['canonical_name' => 'B']]]),
+            ...$this->plan('architecture_health', ['hotspots' => [['canonical_name' => 'A']]]),
+        ];
+
+        self::assertNotSame([], $emitted);
+        foreach ($emitted as $step) {
+            if (!isset($step['tool'])) {
+                continue;
+            }
+            $required = (array) (ToolCatalog::schemaFor($step['tool'])['required'] ?? []);
+            self::assertSame([], array_values(array_diff($required, array_keys($step['args']))), $step['tool'] . ' step misses required arguments.');
+            self::assertSame('p1', $step['args']['project_id'] ?? null, 'The step targets the project the result came from.');
+        }
+    }
+
     /**
      * @param array<string, mixed> $data
      * @return list<array{tool: string, args: array<string, mixed>, why: string}|array{shell: string, why: string}>
