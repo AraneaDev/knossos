@@ -29,10 +29,16 @@ if ($command === 'import' && !is_file($file)) {
 }
 
 $pdo = new PDO('sqlite:' . $db, options: [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$pdo->exec('PRAGMA busy_timeout = 10000');
+// A shared watcher the previous session started can still be rescanning
+// the reset workspace, and a large repository holds the write lock for
+// longer than ten seconds.
+$pdo->exec('PRAGMA busy_timeout = 120000');
 $find = $pdo->prepare('SELECT id FROM projects WHERE root_realpath = ?');
 $find->execute([realpath($root) ?: $root]);
 $project = $find->fetchColumn();
+// An open read keeps this connection in a read transaction, and SQLite answers
+// a write that would have to upgrade it with BUSY at once, without waiting.
+$find->closeCursor();
 $columns = 'canonical_name, kind, value, author, basis_json, created_at, updated_at';
 $byModel = static fn(array $rows): int => count(array_filter($rows, static fn(array $row): bool => $row['author'] === 'model'));
 
@@ -55,7 +61,9 @@ if (!is_string($project)) {
 }
 
 $rows = $command === 'import' ? json_decode((string) file_get_contents($file), true, flags: JSON_THROW_ON_ERROR) : [];
-$pdo->beginTransaction();
+// IMMEDIATE takes the write lock up front, where busy_timeout waits for it;
+// a deferred transaction would only ask for it at the first write.
+$pdo->exec('BEGIN IMMEDIATE');
 $pdo->prepare('DELETE FROM annotations WHERE project_id = ?')->execute([$project]);
 if ($command === 'import') {
     $insert = $pdo->prepare("INSERT INTO annotations(project_id, {$columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
@@ -63,5 +71,5 @@ if ($command === 'import') {
         $insert->execute([$project, $row['canonical_name'], $row['kind'], $row['value'], $row['author'], $row['basis_json'], $row['created_at'], $row['updated_at']]);
     }
 }
-$pdo->commit();
+$pdo->exec('COMMIT');
 echo $byModel($rows), "\n";
