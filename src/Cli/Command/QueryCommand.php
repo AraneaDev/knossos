@@ -270,7 +270,7 @@ final class QueryCommand implements CliCommand
     {
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos impact-analysis <path|project-id> <symbol> [options]'), $c);
         $symbol = $p[1] ?? throw new InvalidArgumentException('An impact target is required.');
-        $result = $this->queries($c)->impactAnalysis($project, $symbol, $c->options->integer($o, 'max-depth', 4, 1, 8), $c->options->integer($o, 'limit', 100, 1, 100), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', 1000, 1, 5000));
+        $result = $this->queries($c)->impactAnalysis($project, $symbol, $c->options->integer($o, 'max-depth', 6, 1, 8), $c->options->integer($o, 'limit', 100, 1, 100), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', 1000, 1, 5000));
         return $this->result($result, $o, $c);
     }
 

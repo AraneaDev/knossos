@@ -813,7 +813,7 @@ final readonly class ToolService
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'symbol'),
-            ToolArguments::integer($arguments, 'max_depth', 4, 1, 8),
+            ToolArguments::integer($arguments, 'max_depth', 6, 1, 8),
             ToolArguments::integer($arguments, 'limit', 100, 1, 100),
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',

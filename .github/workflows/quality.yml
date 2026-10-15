@@ -272,6 +272,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/trivy-cache"
           docker run --name knossos-quality -e KNOSSOS_QUALITY_CONTAINER=1 \
+            -e KNOSSOS_RUNTIME_IMAGE_GIVEN=1 \
             -e TRIVY_CACHE_DIR=/tmp/trivy-cache \
             -e KNOSSOS_EXTERNAL_LINKS="$EXTERNAL_LINKS" \
             -e KNOSSOS_PHPUNIT_IN_COVERAGE="$PHPUNIT_IN_COVERAGE" \

@@ -1,0 +1,56 @@
+#!/bin/sh
+# Prints a key for the runtime image (the Dockerfile's `runtime` target): the
+# dependency key (tools/quality-deps-key) and the files the runtime stage
+# copies on top of it. The release lane labels the image it builds with this
+# key and builds again when the label of an image already present differs, so
+# a run never checks an image built from older source. QualityDepsKeyTest holds
+# the list below to the Dockerfile.
+#
+# What .dockerignore keeps out of these paths cannot reach the image and must
+# not move the key either.
+#
+# Usage: tools/runtime-image-key            prints a 16-hex key
+#        tools/runtime-image-key --inputs   prints the hashed source paths, one per line
+set -eu
+
+cd "$(dirname "$0")/.."
+
+inputs='workers/php/src
+workers/php/bin
+workers/typescript/src
+workers/typescript/bin
+workers/python/bin
+bin
+src
+migrations
+schemas
+.claude-plugin
+hooks
+skills
+types'
+
+case "${1:-}" in
+    --inputs)
+        printf '%s\n' "$inputs"
+        exit 0
+        ;;
+    '') ;;
+    *)
+        echo "usage: tools/runtime-image-key [--inputs]" >&2
+        exit 2
+        ;;
+esac
+
+for input in $inputs; do
+    if [ ! -e "$input" ]; then
+        echo "runtime-image-key: missing input $input" >&2
+        exit 1
+    fi
+done
+
+# shellcheck disable=SC2086 # $inputs is a newline-separated list of plain paths
+sums=$(find $inputs \
+    \( -name __pycache__ -o -name .mypy_cache -o -name .ruff_cache -o -name .pytest_cache -o -path .claude-plugin/types \) -prune \
+    -o -type f ! -name '*.pyc' -exec sha256sum {} +)
+
+printf '%s\n%s  deps\n' "$sums" "$(tools/quality-deps-key)" | LC_ALL=C sort -k 2 | sha256sum | cut -c 1-16

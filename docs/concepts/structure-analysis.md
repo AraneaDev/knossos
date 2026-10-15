@@ -25,7 +25,14 @@ why in `bounds`, so a partial answer never passes for a complete one.
 
 Use `impact_analysis` before you change a symbol. It walks the graph backwards
 from the symbol to everything that statically depends on it, up to `max_depth`
-(1–8, default 4) hops.
+(1–8, default 6) hops.
+
+For a class, interface, trait, enum or module the walk also starts from what it
+contains (a module's classes and their members, at most 500), since a change to
+a class is mostly a change to its methods. A caller of a method that never names
+the class, such as one calling through what another method returns, is then
+found next door, and each dependant reached through a member names it in
+`via_member`. The members themselves are not listed.
 
 A call through an interface or a parent class reaches every implementation.
 The graph records such a call as one into the supertype's method, so for a
