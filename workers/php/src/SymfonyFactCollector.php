@@ -100,6 +100,27 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         return $this->diagnostics;
     }
 
+    /**
+     * The command name a class declares in `static $defaultName`, with the property node, or null.
+     *
+     * @return array{0: string, 1: Stmt\Property}|null
+     */
+    private static function defaultCommandName(Stmt\ClassLike $node): ?array
+    {
+        foreach ($node->stmts as $statement) {
+            if (!$statement instanceof Stmt\Property || !$statement->isStatic()) {
+                continue;
+            }
+            foreach ($statement->props as $property) {
+                if ($property->name->toString() === 'defaultName' && $property->default instanceof Node\Scalar\String_ && $property->default->value !== '') {
+                    return [$property->default->value, $statement];
+                }
+            }
+        }
+
+        return null;
+    }
+
     /** Emit the class node plus the facts its attributes imply (routes, services, subscribers). */
     private function enterClass(Stmt\ClassLike $node): void
     {
@@ -132,6 +153,12 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
                 $this->nodes[$id] = $this->node($id, 'command', $commandName, $commandName, $command, ['framework' => 'symfony']);
                 $this->edge('handles', $id, $classId, $command);
             }
+        } elseif (($default = self::defaultCommandName($node)) !== null) {
+            // The name a command declared before #[AsCommand]: `protected static $defaultName = 'app:sync';`.
+            [$commandName, $property] = $default;
+            $id = 'php:command:' . $commandName;
+            $this->nodes[$id] = $this->node($id, 'command', $commandName, $commandName, $property, ['framework' => 'symfony']);
+            $this->edge('handles', $id, $classId, $property);
         }
 
         $alias = $this->attribute($node->attrGroups, 'AsAlias');

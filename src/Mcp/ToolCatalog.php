@@ -717,6 +717,7 @@ final readonly class ToolCatalog
                     'value' => ['type' => 'string', 'maxLength' => 2000, 'default' => ''],
                     'evidence_paths' => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'string', 'minLength' => 1], 'description' => 'Files your note rests on besides the component\'s own, scanned or not (a CI script counts); it is marked stale when one changes.'],
                     'remove' => ['type' => 'boolean', 'default' => false],
+                    'replace' => ['type' => 'boolean', 'default' => false, 'description' => 'Replace a different model note stored here; without it such a write is refused and the stored note returned, so you can extend it instead.'],
                     'execute' => ['type' => 'boolean', 'default' => false],
                 ], 'required' => ['project_id', 'component', 'kind'], 'additionalProperties' => false],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
