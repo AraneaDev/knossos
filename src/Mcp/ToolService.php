@@ -461,10 +461,11 @@ final readonly class ToolService
         $remove = ToolArguments::boolean($arguments, 'remove', false);
         $execute = ToolArguments::boolean($arguments, 'execute', false);
         $evidence = ToolArguments::strings($arguments, 'evidence_paths', 5);
+        $replace = ToolArguments::boolean($arguments, 'replace', false);
 
         return $remove
             ? fn(): ResultEnvelope => $this->queries->removeAnnotation($projectId, $component, $kind, $value, $execute)
-            : fn(): ResultEnvelope => $this->queries->upsertAnnotation($projectId, $component, $kind, $value, $execute, 'model', $evidence);
+            : fn(): ResultEnvelope => $this->queries->upsertAnnotation($projectId, $component, $kind, $value, $execute, 'model', $evidence, $replace);
     }
 
     /**

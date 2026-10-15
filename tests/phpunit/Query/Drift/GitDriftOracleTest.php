@@ -228,7 +228,7 @@ final class GitDriftOracleTest extends KnossosTestCase
      * The guarantee this whole mechanism exists for: a file `.gitignore`
      * excludes and the scanner tracks anyway is absent from all three
      * listings this oracle gathers — `diff`, `--others` (excluded by
-     * `--exclude-standard`), and `--cached` — which is what makes it
+     * `--exclude-per-directory=.gitignore`), and `--cached` — which is what makes it
      * genuinely invisible to git rather than merely uncommitted. Deciding it
      * from the graph's own stored hash was the original design; it is no
      * longer what this oracle does. A tracked row git cannot name by any
@@ -408,7 +408,7 @@ final class GitDriftOracleTest extends KnossosTestCase
             self::assertSame([
                 [...$prefix, 'rev-parse', '--verify', self::HEAD . '^{commit}'],
                 [...$prefix, 'diff', '--name-only', '-z', '--no-ext-diff', '--no-renames', '--relative', self::HEAD, '--', $root],
-                [...$prefix, 'ls-files', '--others', '--exclude-standard', '-z', '--'],
+                [...$prefix, 'ls-files', '--others', '--exclude-per-directory=.gitignore', '-z', '--'],
                 [...$prefix, 'ls-files', '--cached', '-z', '--'],
             ], $runner->commands);
             self::assertSame([2000, 2000, 2000, 2000], $runner->timeouts);
