@@ -124,13 +124,18 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
 
             return $members;
         }, $components);
+        // Recursion inside one type is opt-in for the same reason a self-loop is.
+        if (!$includeSelfLoops && $components !== []) {
+            $declaringType = $this->declaringTypes(array_merge(...$components));
+            $components = array_values(array_filter($components, static fn(array $members): bool => !OneTypeCycles::withinOneType($members, $declaringType)));
+        }
         usort($components, static fn(array $a, array $b): int => (count($b) <=> count($a)) ?: ($a[0] <=> $b[0]));
         if (count($components) > $limit) {
             $components = array_slice($components, 0, $limit);
             $truncation->add('result_limit');
         }
 
-        $detail = $this->cycleDetails($components, $graph, $confidenceRank);
+        $detail = $this->cycleDetails($components, $graph, $confidenceRank, $includeSelfLoops);
         $truncation->add(...$detail['truncation_reasons']);
 
         return [
@@ -233,7 +238,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * @param array<string, int> $confidenceRank
      * @return array{cycles: list<array<string, mixed>>, evidence: list<array<string, mixed>>, truncation_reasons: list<string>}
      */
-    private function cycleDetails(array $components, array $graph, array $confidenceRank): array
+    private function cycleDetails(array $components, array $graph, array $confidenceRank, bool $includeSelfLoops = false): array
     {
         $componentOf = [];
         foreach ($components as $componentIndex => $component) {
@@ -245,7 +250,10 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         if ($componentOf !== []) {
             foreach ($graph['edge_sources'] as $position => $source) {
                 $componentIndex = $componentOf[$source] ?? null;
-                if ($componentIndex !== null && ($componentOf[$graph['edge_targets'][$position]] ?? null) === $componentIndex) {
+                // A self-call inside a cycle is recursion, not one of the
+                // relationships that make the cycle.
+                if ($componentIndex !== null && ($componentOf[$graph['edge_targets'][$position]] ?? null) === $componentIndex
+                    && ($includeSelfLoops || $graph['edge_targets'][$position] !== $source)) {
                     $internal[$componentIndex][] = $position;
                 }
             }
@@ -327,6 +335,28 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         }
 
         return ['cycles' => $cycles, 'evidence' => $evidence, 'truncation_reasons' => $truncationReasons];
+    }
+
+    /**
+     * The class, interface, trait or enum that contains each of these members.
+     *
+     * @param list<string> $memberIds
+     * @return array<string, string> member id => type id
+     */
+    private function declaringTypes(array $memberIds): array
+    {
+        $types = [];
+        foreach (ChunkedInQuery::rows(
+            $this->pdo,
+            "SELECT e.target_id, e.source_id FROM edges e JOIN nodes p ON p.id = e.source_id WHERE e.kind = 'contains' "
+            . "AND p.kind IN ('" . implode("', '", OneTypeCycles::TYPE_KINDS) . "') AND e.target_id IN (%s)",
+            array_values(array_unique($memberIds)),
+            mode: \PDO::FETCH_NUM,
+        ) as [$member, $type]) {
+            $types[(string) $member] = (string) $type;
+        }
+
+        return $types;
     }
 
     /**
