@@ -257,6 +257,11 @@ final readonly class ResultEnricher
      * components" over `cycles: []`. Supporting material is therefore exhausted
      * first, and only then does the payload pay.
      *
+     * Notes sit between the two. They annotate the payload too, but unlike a
+     * legend or evidence they say what the graph cannot and a fresh session
+     * cannot rebuild, and sharing the first tier with legends made
+     * inspect_component answer `notes: []` while its legend survived.
+     *
      * Within a tier the largest collection is chosen (alphabetical dotted path
      * on ties). The evidence list is folded into the walk under a reserved key
      * so it can be trimmed too, and the walk descends into maps and list
@@ -272,8 +277,8 @@ final readonly class ResultEnricher
     {
         $root = $data;
         $root[self::EVIDENCE_KEY] = $evidence;
-        foreach ([true, false] as $supporting) {
-            $victim = self::largestIn($root, $supporting);
+        foreach (['supporting', 'notes', 'payload'] as $tier) {
+            $victim = self::largestIn($root, $tier);
             if ($victim !== null) {
                 return $victim;
             }
@@ -294,13 +299,14 @@ final readonly class ResultEnricher
      * already exhausted.
      *
      * @param array<string, mixed> $root
+     * @param 'supporting'|'notes'|'payload' $tier
      * @return list<string>|null
      */
-    private static function largestIn(array $root, bool $supporting): ?array
+    private static function largestIn(array $root, string $tier): ?array
     {
         $victim = null;
         $victimCount = 0;
-        $walk = function (array $container, array $path, bool $inSupporting) use (&$walk, &$victim, &$victimCount, $supporting): void {
+        $walk = function (array $container, array $path, string $inTier) use (&$walk, &$victim, &$victimCount, $tier): void {
             foreach ($container as $key => $value) {
                 // A sequence is read as complete (a flow path's nodes and hops):
                 // cut, it says less than it claims, so neither
@@ -310,7 +316,7 @@ final readonly class ResultEnricher
                     continue;
                 }
                 $keyPath = [...$path, (string) $key];
-                $valueSupporting = $inSupporting || self::isSupportingKey((string) $key);
+                $valueTier = $inTier !== 'payload' ? $inTier : self::tierOf((string) $key);
                 // A legend is a map keyed by component name rather than a list, so
                 // it is trimmable in its own right; other maps are not, because
                 // popping a named field would change the result's shape. A
@@ -318,17 +324,17 @@ final readonly class ResultEnricher
                 $trimmable = array_is_list($value)
                     ? $value !== []
                     : self::isSupportingKey((string) $key);
-                if ($trimmable && $valueSupporting === $supporting) {
+                if ($trimmable && $valueTier === $tier) {
                     $count = count($value);
                     if ($count > $victimCount || ($count === $victimCount && $victim !== null && strcmp(implode('.', $keyPath), implode('.', $victim)) < 0)) {
                         $victim = $keyPath;
                         $victimCount = $count;
                     }
                 }
-                $walk($value, $keyPath, $valueSupporting);
+                $walk($value, $keyPath, $valueTier);
             }
         };
-        $walk($root, [], false);
+        $walk($root, [], 'payload');
 
         return $victim;
     }
@@ -340,6 +346,21 @@ final readonly class ResultEnricher
     private static function isSupportingKey(string $key): bool
     {
         return $key === self::EVIDENCE_KEY || $key === 'notes' || str_ends_with($key, '_legend');
+    }
+
+    /**
+     * The trimming tier a key opens: evidence and legends first, then notes,
+     * then everything else, the payload.
+     *
+     * @return 'supporting'|'notes'|'payload'
+     */
+    private static function tierOf(string $key): string
+    {
+        return match (true) {
+            $key === 'notes' => 'notes',
+            self::isSupportingKey($key) => 'supporting',
+            default => 'payload',
+        };
     }
 
     /**

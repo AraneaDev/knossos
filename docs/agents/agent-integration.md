@@ -194,7 +194,7 @@ and at most 300 characters of its text (`list_annotations` has the rest). At
 most 10 come with one result: a person's first, then in the order the result
 names the components, so the one asked about leads. A result naming no
 annotated component has no `notes` key. Under `max_chars`, notes are trimmed
-before the findings they annotate.
+after evidence and legends and before the findings they annotate.
 
 A model's note is an observation of code that can change under it. Writing
 it records the content hash of the component's own file and of up to 5 more
