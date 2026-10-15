@@ -257,7 +257,7 @@ final class QueryCommand implements CliCommand
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos explain-flow <path|project-id> <from> <to> [options]'), $c);
         $from = $p[1] ?? throw new InvalidArgumentException('A flow source is required.');
         $to = $p[2] ?? throw new InvalidArgumentException('A flow target is required.');
-        $result = $this->queries($c)->explainFlow($project, $from, $to, $c->options->integer($o, 'max-depth', 6, 1, 8), $c->options->integer($o, 'max-paths', 5, 1, 20), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', 1000, 1, 5000));
+        $result = $this->queries($c)->explainFlow($project, $from, $to, $c->options->integer($o, 'max-depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH), $c->options->integer($o, 'max-paths', 5, 1, 20), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000));
         return $this->result($result, $o, $c);
     }
 
