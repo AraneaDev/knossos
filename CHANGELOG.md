@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.31.0](https://github.com/AraneaDev/knossos/compare/v0.30.0...v0.31.0) (2026-10-15)
+
+
+### Features
+
+* keep a model note another session wrote unless the write says to replace it ([#322](https://github.com/AraneaDev/knossos/issues/322)) ([b8ce2b9](https://github.com/AraneaDev/knossos/commit/b8ce2b944c6c8f2fd097bcf0b741c5ff7d97ee9e))
+* let explain_flow search deeper and longer by default ([#320](https://github.com/AraneaDev/knossos/issues/320)) ([453d407](https://github.com/AraneaDev/knossos/commit/453d407653404a07b01e72f71c51fd5cb5c42906))
+* link a console command run by name to the command that declares it ([#323](https://github.com/AraneaDev/knossos/issues/323)) ([883f903](https://github.com/AraneaDev/knossos/commit/883f9039fae019f1458d869beba5c00f15940f09))
+* list usages through interface and parent methods, and leave tests out on request ([#318](https://github.com/AraneaDev/knossos/issues/318)) ([8654af6](https://github.com/AraneaDev/knossos/commit/8654af625edf2448c84edcfef74ea501879f8077))
+* rank what matches most terms when no component matches them all ([#327](https://github.com/AraneaDev/knossos/issues/327)) ([5a00caf](https://github.com/AraneaDev/knossos/commit/5a00caf736d9d98c6af1c96872c93124fce368f3))
+
+
+### Fixes
+
+* answer for a project file Knossos does not scan, and say a note makes it a component ([#324](https://github.com/AraneaDev/knossos/issues/324)) ([965bda7](https://github.com/AraneaDev/knossos/commit/965bda7bb5e6e522723d1b6c352f1fe4e86b7091))
+* leave recursion inside one type out of the cycles ([#328](https://github.com/AraneaDev/knossos/issues/328)) ([6f84c19](https://github.com/AraneaDev/knossos/commit/6f84c19d820f7cb4dfc54d4c8b5c2ca6003259df))
+* let the eval's notes helper wait for a busy graph instead of failing at once ([#319](https://github.com/AraneaDev/knossos/issues/319)) ([bd12055](https://github.com/AraneaDev/knossos/commit/bd12055e7ed7f1f62cb3890c2581d4c6c83e5d06))
+* let the PHP worker run under the memory limit it is started with ([#309](https://github.com/AraneaDev/knossos/issues/309)) ([d5b90b6](https://github.com/AraneaDev/knossos/commit/d5b90b6209e90597ce048ab0b5c141dd731382f0))
+* list untracked files by the tree's .gitignore only, as discovery does ([#316](https://github.com/AraneaDev/knossos/issues/316)) ([dd2a56c](https://github.com/AraneaDev/knossos/commit/dd2a56c3149a3f1d153d67838b7ab198b47eaead))
+* put project_id in every suggested next step ([#315](https://github.com/AraneaDev/knossos/issues/315)) ([2f13ef8](https://github.com/AraneaDev/knossos/commit/2f13ef8e08beb7205b797ba5fac58e6596646f90))
+* recompute trend figures when SharedNodeKinds changes ([#314](https://github.com/AraneaDev/knossos/issues/314)) ([b2cc7d1](https://github.com/AraneaDev/knossos/commit/b2cc7d110dfe9721d1257909b146762660676cca))
+* trim notes after evidence and legends, not with them ([#326](https://github.com/AraneaDev/knossos/issues/326)) ([edfc290](https://github.com/AraneaDev/knossos/commit/edfc290cee4d33ac85eef8eda3dbbe5021864b62))
+
 ## [0.30.0](https://github.com/AraneaDev/knossos/compare/v0.29.0...v0.30.0) (2026-10-15)
 
 
