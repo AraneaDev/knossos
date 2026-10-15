@@ -30,9 +30,10 @@ use PDO;
  * near the {@see self::MAX_PROBED_FILES} ceiling pays up to that many file
  * reads and SHA-256 hashes per tool call. Two things keep that bound tolerable
  * in practice rather than in theory: discovery caps a tracked file at 2 MB,
- * and a later oracle in this project's plan answers from git for a git
- * repository ahead of this one, so once that lands this walk only runs at all
- * for a small or gitless project.
+ * and {@see GitDriftOracle} answers first for a git repository
+ * ({@see FirstAnsweringDriftOracle}, as {@see \Knossos\Query\StalenessProbe}
+ * builds it), so this walk runs when git cannot answer: a gitless project, or
+ * one whose recorded commit or dirty set it cannot use.
  */
 final readonly class WalkDriftOracle implements DriftOracle
 {
