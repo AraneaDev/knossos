@@ -461,10 +461,11 @@ final readonly class ToolService
         $remove = ToolArguments::boolean($arguments, 'remove', false);
         $execute = ToolArguments::boolean($arguments, 'execute', false);
         $evidence = ToolArguments::strings($arguments, 'evidence_paths', 5);
+        $replace = ToolArguments::boolean($arguments, 'replace', false);
 
         return $remove
             ? fn(): ResultEnvelope => $this->queries->removeAnnotation($projectId, $component, $kind, $value, $execute)
-            : fn(): ResultEnvelope => $this->queries->upsertAnnotation($projectId, $component, $kind, $value, $execute, 'model', $evidence);
+            : fn(): ResultEnvelope => $this->queries->upsertAnnotation($projectId, $component, $kind, $value, $execute, 'model', $evidence, $replace);
     }
 
     /**
@@ -722,6 +723,7 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'limit', 100, 1, 500),
+            ToolArguments::boolean($arguments, 'exclude_tests', false),
         ];
 
         return fn(): ResultEnvelope => $this->queries->listUsages(...$args);
@@ -824,11 +826,11 @@ final readonly class ToolService
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'from'),
             ToolArguments::string($arguments, 'to'),
-            ToolArguments::integer($arguments, 'max_depth', 6, 1, 8),
+            ToolArguments::integer($arguments, 'max_depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH),
             ToolArguments::integer($arguments, 'max_paths', 5, 1, 20),
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            ToolArguments::integer($arguments, 'timeout_ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000),
         ];
 
         return fn(): ResultEnvelope => $this->queries->explainFlow(...$args);

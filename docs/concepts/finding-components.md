@@ -140,8 +140,15 @@ Each row carries the edge's stored `attributes`, so a qualification an enricher
 recorded on the relationship (a profile, a condition) stays attached to the
 usage instead of reading as unconditional.
 
+For a method, the list also holds the call sites of each interface or parent
+method it implements or overrides: a caller typed on the interface calls the
+interface's method in the graph. Those rows carry `via_supertype`, naming that
+method, and are at most `probable`, since which implementation runs is a guess;
+`min_confidence: certain` leaves them out.
+
 Each row also says whether its source is test code (`test`), and the summary
-and `bounds.outside_tests` count the sites outside tests. The summary states
+and `bounds.outside_tests` count the sites outside tests. Pass
+`exclude_tests: true` (`--exclude-tests`) to list production sites only. The summary states
 what the list covers: every static reference the graph resolved, and no call
 made through a string, reflection or dynamic dispatch. In `compact` verbosity a
 row leaves out its `edge_id`, `origin` and an empty `attributes`; `full` keeps

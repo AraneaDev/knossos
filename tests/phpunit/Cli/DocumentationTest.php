@@ -268,6 +268,19 @@ final class DocumentationTest extends KnossosTestCase
         assertContains('missing link target img/none.png', $errors);
     }
 
+    /** Codex and Claude Code read the same guidance; only the skill's name differs. */
+    #[Group('documentation')]
+    public function testTheCodexSkillMatchesTheClaudeCodeSkill(): void
+    {
+        $normalise = static fn(string $path): array => explode("\n", (string) preg_replace('/^name: .*$/m', 'name: <skill>', (string) file_get_contents(self::repositoryRoot() . '/' . $path)));
+        $claude = $normalise('skills/graph/SKILL.md');
+        $codex = $normalise('plugins/knossos/skills/knossos/SKILL.md');
+        foreach ($claude as $index => $line) {
+            self::assertSame($line, $codex[$index] ?? null, sprintf('plugins/knossos/skills/knossos/SKILL.md differs from skills/graph/SKILL.md at line %d.', $index + 1));
+        }
+        self::assertCount(count($claude), $codex);
+    }
+
     #[Group('documentation')]
     public function testLinkCheckCoversContributingSkillsAndPlugins(): void
     {

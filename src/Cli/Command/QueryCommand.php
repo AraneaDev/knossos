@@ -48,7 +48,7 @@ final class QueryCommand implements CliCommand
             'architecture-trends' => ['db', 'json', 'limit', 'release-from'],
             'find-component' => ['db', 'json', 'limit'],
             'inspect-component' => ['db', 'json', 'max-relationships', 'max-children', 'min-confidence'],
-            'list-usages' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit'],
+            'list-usages' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'exclude-tests'],
             'architecture-summary' => ['db', 'json', 'limit'],
             'file-metrics' => ['db', 'json', 'path', 'language', 'sort-by', 'order', 'limit', 'offset'],
             'explain-flow' => ['db', 'json', 'max-depth', 'max-paths', 'edge-kind', 'min-confidence', 'timeout-ms'],
@@ -65,7 +65,7 @@ final class QueryCommand implements CliCommand
             'export-diagram' => ['db', 'json', 'format', 'boundary', 'edge-kind', 'min-confidence', 'direction', 'max-nodes', 'max-edges'],
             'export-agent-brief' => ['db', 'json', 'max-chars', 'out'],
             'list-boundaries' => ['db', 'json', 'source', 'limit', 'offset'],
-            'annotate-component' => ['db', 'json', 'remove', 'execute', 'evidence'],
+            'annotate-component' => ['db', 'json', 'remove', 'replace', 'execute', 'evidence'],
             'search-architecture' => ['db', 'json', 'kind', 'role', 'boundary', 'confidence', 'limit', 'offset'],
             'list-annotations' => ['db', 'json', 'component', 'kind', 'limit', 'offset'],
             // Unreachable through the router, which asks only for supported
@@ -228,9 +228,9 @@ final class QueryCommand implements CliCommand
      */
     private function listUsages(array $p, array $o, CliCommandContext $c): int
     {
-        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos list-usages <path|project-id> <symbol> [--edge-kind=K]... [--min-confidence=L] [--limit=N] [--json]'), $c);
+        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos list-usages <path|project-id> <symbol> [--edge-kind=K]... [--min-confidence=L] [--limit=N] [--exclude-tests] [--json]'), $c);
         $symbol = $p[1] ?? throw new InvalidArgumentException('A symbol is required.');
-        $result = $this->queries($c)->listUsages($project, $symbol, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 100, 1, 500));
+        $result = $this->queries($c)->listUsages($project, $symbol, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 100, 1, 500), $c->options->flag($o, 'exclude-tests'));
         return $this->result($result, $o, $c);
     }
 
@@ -257,7 +257,7 @@ final class QueryCommand implements CliCommand
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos explain-flow <path|project-id> <from> <to> [options]'), $c);
         $from = $p[1] ?? throw new InvalidArgumentException('A flow source is required.');
         $to = $p[2] ?? throw new InvalidArgumentException('A flow target is required.');
-        $result = $this->queries($c)->explainFlow($project, $from, $to, $c->options->integer($o, 'max-depth', 6, 1, 8), $c->options->integer($o, 'max-paths', 5, 1, 20), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', 1000, 1, 5000));
+        $result = $this->queries($c)->explainFlow($project, $from, $to, $c->options->integer($o, 'max-depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH), $c->options->integer($o, 'max-paths', 5, 1, 20), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000));
         return $this->result($result, $o, $c);
     }
 
@@ -490,14 +490,14 @@ final class QueryCommand implements CliCommand
      */
     private function annotateComponent(array $p, array $o, CliCommandContext $c): int
     {
-        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--execute] [--json]'), $c);
+        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--replace] [--execute] [--json]'), $c);
         $component = $p[1] ?? throw new InvalidArgumentException('A component is required.');
         $kind = $p[2] ?? throw new InvalidArgumentException('A kind is required.');
         $value = $p[3] ?? '';
         $execute = $c->options->flag($o, 'execute');
         $result = $c->options->flag($o, 'remove')
             ? $this->queries($c)->removeAnnotation($project, $component, $kind, $value, $execute)
-            : $this->queries($c)->upsertAnnotation($project, $component, $kind, $value, $execute, 'model', array_values(array_map('trim', $o['evidence'] ?? [])));
+            : $this->queries($c)->upsertAnnotation($project, $component, $kind, $value, $execute, 'model', array_values(array_map('trim', $o['evidence'] ?? [])), $c->options->flag($o, 'replace'));
         return $this->result($result, $o, $c);
     }
 

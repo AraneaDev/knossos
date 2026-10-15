@@ -20,6 +20,12 @@ the same structure by reading the same files.
 | eyeball a diff for architectural risk        | `review_diff`                                              |
 | work out what a class is and what it touches | `find_component`, then `inspect_component`                 |
 | read a file's callers before editing it      | `file_context`, boundary, rules, dependents, tests         |
+| grep for a term no symbol is named after     | `search_architecture`, which also searches note text       |
+
+A `certain` row from `list_usages` is a fact, not a lead: the list holds every
+static call the graph resolved, each marked `test` or not, and the summary says
+what it cannot see (calls through a string or dynamic dispatch). Grepping for
+the same symbol afterwards repeats work the graph already did.
 
 Every project-scoped tool needs a `project_id`. The session brief puts it in
 context already. If it is not there, `list_projects` returns it.
@@ -42,22 +48,53 @@ Reaching for the graph here wastes a call and returns the wrong shape:
 
 `annotate_component` is the only way one session leaves something for the next.
 Notes survive rescans, because annotations are keyed by canonical name rather
-than by node id.
+than by node id, and they come back with every later result that names the
+component.
 
-Write one when all three hold:
+**The rule:** when a Knossos answer left something out and you found it by
+further queries, grep or reading, record what it missed before you move on. That
+the code holds the fact is no reason to skip it: the graph could not give it to
+you, so the next agent will dig for it the same way, and a note is how the next
+result carries it. A fresh session with the same question then starts from
+your note instead of digging again. The session brief states this as a
+standing instruction: writing one is part of the task, not a side effect to ask
+about, so do it before you give your answer. Write nothing only when the answer was complete and your lookups
+merely confirmed it.
 
-1. The fact cost real effort to learn.
-2. It is not visible by reading the component itself.
-3. It will still be true in a month.
+Write the fact on the component it is about, `kind: note`, and pass the files
+you relied on as `evidence_paths`, so the note is marked stale when one of them
+changes. A component Knossos did not resolve takes a note too, under its full
+name: that it could not find it is the gap the next session would hit. Write the fact, not the question. If you already have a note there,
+extend it rather than replace it: the preview shows its text, and a write that
+would drop it is refused unless you pass `replace`.
+
+Keep a note brief: one or two sentences, the evidence in `evidence_paths`, not
+in the text. A path reads best as a one-line arrow chain:
+
+```text
+File::delete -> FileDeleted (model event) -> DeleteFileInStorage::handle (queued)
+```
+
+Use a short multi-line ASCII sketch only when the path branches, and keep it
+within the 1000 characters a result shows. No Mermaid or Markdown: nothing that
+shows a note renders them.
+
+A result marks one of your notes `stale` when a file it rests on changed. Check
+it against the code, then re-record it (that confirms it), correct it, or
+remove it. A note by a person (`author: user`) is theirs: never rewrite or
+remove it, and never write through the pane's own command (`knossos annotate`).
 
 Worth writing:
 
+- `BulkEditView::post`, "calls whatever BulkEditSerializer.validate_method returns, a function in documents.bulk_edit"
 - `ToolCatalog`, "the extension seam is here; `ToolService` is the dispatcher and should not grow arms"
 - `ProcessScannerClient`, "the worker boundary is process-enforced, not convention; in-process calls will pass tests and fail in production"
 
 Not worth writing, and actively harmful because they bury the ones above:
 
-- Anything you learned by reading the file once. The next session can read it too.
+- Anything the Knossos answer already gave you, or that one read of the file it
+  pointed to settles. The next session gets the same answer and can read the
+  same file.
 - Anything about the current task, branch, or PR. Notes have no expiry.
 - Restatements of what the graph already encodes, "this class implements that
   interface". The graph knows.

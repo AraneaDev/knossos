@@ -78,15 +78,23 @@ final readonly class LaravelTestRequestFactCollector
     }
 
     /**
-     * `$this->artisan('orders:poll --dry-run')` or `Artisan::call('orders:poll')`:
-     * a call to whichever command declares that name, settled by the core,
-     * which sees every command's signature, and dropped there when no command
-     * of the project declares it (a framework command such as `migrate`).
+     * `$this->artisan('orders:poll --dry-run')`, `Artisan::call('orders:poll')`,
+     * or a command running another with `$this->call('orders:poll')` (and
+     * `callSilent`, `callSilently`): a call to whichever command declares that
+     * name, settled by the core, which sees every command's signature, and
+     * dropped there when no command of the project declares it (a framework
+     * command such as `migrate`). Matched by name rather than by the class's
+     * parent, which this pass does not know: an unrelated `$this->call('x')`
+     * links to nothing unless a command happens to be named `x`.
      */
     private function artisanCall(Node $node): void
     {
         $named = match (true) {
-            $node instanceof Expr\MethodCall => $node->name instanceof Identifier && strtolower($node->name->toString()) === 'artisan' && self::onThis($node->var),
+            $node instanceof Expr\MethodCall => $node->name instanceof Identifier && (
+                (strtolower($node->name->toString()) === 'artisan' && self::onThis($node->var))
+                || (in_array(strtolower($node->name->toString()), ['call', 'callsilent', 'callsilently'], true)
+                    && $node->var instanceof Expr\Variable && $node->var->name === 'this')
+            ),
             $node instanceof Expr\StaticCall => $node->class instanceof Node\Name && strtolower($node->class->getLast()) === 'artisan'
                 && $node->name instanceof Identifier && in_array(strtolower($node->name->toString()), ['call', 'queue'], true),
             default => false,

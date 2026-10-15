@@ -161,6 +161,7 @@ List every usage site of a symbol with file:line evidence: one row per occurrenc
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=500; default=100 |
+| `exclude_tests` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -270,11 +271,11 @@ Answer 'how does A reach B?' Traces evidence-backed static paths between two com
 | `project_id` | string | yes | minLength=1 |
 | `from` | string | yes | minLength=1 |
 | `to` | string | yes | minLength=1 |
-| `max_depth` | integer | no | minimum=1; maximum=8; default=6 |
+| `max_depth` | integer | no | minimum=1; maximum=12; default=6 |
 | `max_paths` | integer | no | minimum=1; maximum=20; default=5 |
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=3000 |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -547,6 +548,7 @@ Record, extend or remove your own (model) annotation on a component; it survives
 | `value` | string | no | maxLength=2000; default="" |
 | `evidence_paths` | array | no | maxItems=5 |
 | `remove` | boolean | no | default=false |
+| `replace` | boolean | no | default=false |
 | `execute` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
