@@ -142,7 +142,10 @@ knossos dependency-cycles project_... --limit=20 --json
 
 Self-loops are excluded unless you pass `--include-self-loops`: a recursive
 function is a real self-edge and almost never what someone hunting circular
-imports is looking for. An import that only the compiler needs, such as a
+imports is looking for. The same goes for a cycle whose members all belong to
+one class, interface, trait or enum, such as a tree walk whose methods call each
+other, and for a self-call inside a reported cycle, which is not listed among
+its relationships. The quality gate's `new_cycles` applies the same rule. An import that only the compiler needs, such as a
 TypeScript `import type`, is erased at runtime and does not count, so a loop
 closed only by such imports is not reported. The result says so in its
 `warnings`.

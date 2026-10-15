@@ -10,10 +10,11 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * A refactor that only moved a class holding a recursion to another namespace
- * and file failed the gate: every member got a new name, so the old cycle read
- * as new. The gate and the branch comparison now follow the move, and still
- * count a cycle the change really made.
+ * A refactor that only moved two classes calling each other to another
+ * namespace and file failed the gate: every member got a new name, so the old
+ * cycle read as new. The gate and the branch comparison now follow the move,
+ * and still count a cycle the change really made. (Recursion inside one class
+ * is no cycle at all; see OneTypeCycleTest.)
  */
 final class QualityGateMovedCycleTest extends KnossosTestCase
 {
@@ -24,6 +25,7 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
         mkdir($root . '/src/Old', 0777, true);
         file_put_contents($root . '/composer.json', '{"autoload": {"psr-4": {"App\\\\": "src/"}}}');
         file_put_contents($root . '/src/Old/Walk.php', self::walker('App\\Old'));
+        file_put_contents($root . '/src/Old/Visit.php', self::visitor('App\\Old'));
         try {
             $pdo = $this->freshTestDatabase();
             $scanner = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
@@ -31,13 +33,15 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
             $project = $baseline->projectId;
             mkdir($root . '/src/New');
             unlink($root . '/src/Old/Walk.php');
+            unlink($root . '/src/Old/Visit.php');
             file_put_contents($root . '/src/New/Walk.php', self::walker('App\\New'));
+            file_put_contents($root . '/src/New/Visit.php', self::visitor('App\\New'));
             $scanner->scan($root, mode: 'full');
             $queries = ArchitectureQueryService::forDatabase($pdo);
 
             $gate = $queries->qualityGate($project, $baseline->snapshotId, ['new_cycles' => 0]);
 
-            self::assertSame(0, $gate->data['metrics']['new_cycles'], 'Walk::walk and Walk::visit only moved.');
+            self::assertSame(0, $gate->data['metrics']['new_cycles'], 'Walk::walk and Visit::visit only moved.');
             self::assertSame(0, $queries->branchComparison($project, $baseline->snapshotId, [])['cycles']['count']);
 
             file_put_contents($root . '/src/New/Ping.php', <<<'PHP'
@@ -49,12 +53,15 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
                 {
                     public function ping(int $n): int
                     {
-                        return $n > 0 ? $this->pong($n - 1) : 0;
+                        return $n > 0 ? (new Pong())->pong($n - 1) : 0;
                     }
+                }
 
+                final class Pong
+                {
                     public function pong(int $n): int
                     {
-                        return $this->ping($n);
+                        return (new Ping())->ping($n);
                     }
                 }
                 PHP);
@@ -62,7 +69,7 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
 
             $gate = $queries->qualityGate($project, $baseline->snapshotId, ['new_cycles' => 0]);
 
-            self::assertSame(1, $gate->data['metrics']['new_cycles'], 'Ping::ping and Ping::pong are a cycle the change made.');
+            self::assertSame(1, $gate->data['metrics']['new_cycles'], 'Ping::ping and Pong::pong are a cycle the change made.');
             self::assertSame(1, $queries->branchComparison($project, $baseline->snapshotId, [])['cycles']['count']);
         } finally {
             $this->removeTempTree($root);
@@ -80,12 +87,24 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
             {
                 public function walk(array \$items): int
                 {
-                    return \$items === [] ? 0 : \$this->visit(\$items);
+                    return \$items === [] ? 0 : (new Visit())->visit(\$items);
                 }
+            }
+            PHP;
+    }
 
+    private static function visitor(string $namespace): string
+    {
+        return <<<PHP
+            <?php
+
+            namespace {$namespace};
+
+            final class Visit
+            {
                 public function visit(array \$items): int
                 {
-                    return 1 + \$this->walk(array_slice(\$items, 1));
+                    return 1 + (new Walk())->walk(array_slice(\$items, 1));
                 }
             }
             PHP;

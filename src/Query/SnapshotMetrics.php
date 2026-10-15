@@ -174,6 +174,10 @@ final readonly class SnapshotMetrics extends AbstractArchitectureQueryService
         $sccs = $erased === []
             ? $this->stronglyConnectedComponents($adjacency, $reverse)['components']
             : $this->stronglyConnectedComponents(...self::withoutErased($adjacency, $erased))['components'];
+        // Recursion inside one type is not an architectural cycle either; as in dependency_cycles.
+        $kinds = array_column($facts['nodes'] ?? [], 'kind', 'id');
+        $typeOf = array_filter($declaringType, static fn(string $type): bool => in_array($kinds[$type] ?? null, OneTypeCycles::TYPE_KINDS, true));
+        $sccs = array_values(array_filter($sccs, static fn(array $component): bool => !OneTypeCycles::withinOneType(array_values($component), $typeOf)));
         $errors = $warnings = 0;
         foreach ($facts['diagnostics'] ?? [] as $diagnostic) {
             $errors += $diagnostic['severity'] === 'error' ? 1 : 0;
