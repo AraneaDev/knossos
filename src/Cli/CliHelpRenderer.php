@@ -51,6 +51,8 @@ Usage:
   knossos architecture-trends <path|project-id> [--limit=N]
                               [--release-from=SNAPSHOT] [--json]
   knossos remove-project <project-id> [--execute] [--db=PATH] [--json]
+  knossos move-project <old-root|project-id> <new-root> [--execute] [--db=PATH]
+                       [--json]
   knossos cleanup-stale-scans <project-id> [--older-than-hours=N]
                               [--execute] [--db=PATH] [--json]
   knossos maintain-database <integrity|checkpoint|optimize|vacuum|backup>

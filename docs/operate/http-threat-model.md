@@ -41,7 +41,8 @@ HTTP with status `400`. Notifications carry no id and are not affected.
 
 That mirroring is also a control for operators. A reverse proxy in front of
 Knossos can allow-list read-only tools by `Mcp-Name`, or deny
-`scan_project` and `remove_project` outright, without parsing request bodies.
+`scan_project`, `remove_project` and `move_project` outright, without parsing
+request bodies.
 The server's own validation is what makes those header values trustworthy.
 Note the specification's caveat: an intermediary enforcing policy this way
 **should** first confirm that `MCP-Protocol-Version` names a revision that

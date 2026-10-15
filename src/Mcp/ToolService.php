@@ -365,6 +365,7 @@ final readonly class ToolService
             'list_annotations' => $this->listAnnotations($arguments),
             'annotate_component' => $this->annotateComponent($arguments),
             'remove_project' => $this->removeProject($arguments),
+            'move_project' => $this->moveProject($arguments),
             'cleanup_stale_scans' => $this->cleanupStaleScans($arguments),
             'maintain_database' => $this->maintainDatabase($arguments),
             default => throw new InvalidArgumentException(sprintf('Unknown tool: %s', $name)),
@@ -480,6 +481,37 @@ final readonly class ToolService
         ];
 
         return fn(): ResultEnvelope => $this->maintenance->removeProject(...$args);
+    }
+
+    /**
+     * Validates the tool arguments and forwards to {@see DatabaseMaintenanceService::moveProject()}.
+     *
+     * Never passes a roots file: roots.json is this server's read boundary, and
+     * a tool able to extend it would let a caller grant itself any directory. A
+     * target outside it is refused with the command that grants it instead, and
+     * so is a relative one, which would resolve against a working directory the
+     * caller cannot see.
+     *
+     * @param array<string, mixed> $arguments
+     * @return \Closure(): ResultEnvelope
+     */
+    private function moveProject(array $arguments): \Closure
+    {
+        $from = ToolArguments::string($arguments, 'from');
+        $to = ToolArguments::string($arguments, 'to');
+        $execute = ToolArguments::boolean($arguments, 'execute', false);
+        if (!str_starts_with($to, '/')) {
+            throw new \InvalidArgumentException(sprintf('MOVE_TARGET_NOT_ABSOLUTE: %s must be an absolute path.', $to));
+        }
+        if ($this->environment !== null && !$this->environment->admitsRoot($to)) {
+            throw new \InvalidArgumentException(sprintf(
+                'MOVE_TARGET_NOT_ALLOWED: %1$s is not an allowed root. Run `knossos allow-root %1$s --execute`, or move from the shell with `knossos move-project %2$s %1$s --execute`.',
+                $to,
+                $from,
+            ));
+        }
+
+        return fn(): ResultEnvelope => $this->maintenance->moveProject($from, $to, $execute, $this->scanner);
     }
 
     /**

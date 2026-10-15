@@ -130,6 +130,7 @@ final class ProjectScanService implements ProjectScanner
         $planningStarted = hrtime(true);
         $cancellation->throwIfCancelled();
         $projectId = self::projectIdOf($preparation->discovery->rootRealpath);
+        $existed = $this->projectExists($projectId);
         $held = $lease !== null && $lease->projectId() === $projectId;
         if ($lease === null || !$held) {
             $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
@@ -215,7 +216,7 @@ final class ProjectScanService implements ProjectScanner
                 (int) round(self::elapsedMilliseconds($startedAt)),
             );
 
-            return $this->resultFactory->create($plan, $language, $result, $startedAt, $stageMilliseconds);
+            $envelope = $this->resultFactory->create($plan, $language, $result, $startedAt, $stageMilliseconds);
         } catch (\Throwable $error) {
             self::recordFailedScan($repository, $projectId, $effectiveMode, $error);
             throw $error;
@@ -224,7 +225,30 @@ final class ProjectScanService implements ProjectScanner
                 error_log(sprintf('Knossos: writer lease for project %s released zero rows (already expired or stolen).', $projectId));
             }
         }
+
+        // Only the scan that created the project looks for one it replaces,
+        // and after the scan is committed and its lease released: a hint that
+        // cannot be worked out is no reason to report a good scan as failed.
+        if ($existed) {
+            return $envelope;
+        }
+        try {
+            $hint = (new OrphanedProjectHint($this->pdo))->warning($envelope->projectId, $preparation->discovery->rootRealpath);
+        } catch (\Throwable) {
+            $hint = null;
+        }
+
+        return $hint === null ? $envelope : $envelope->withWarnings([$hint]);
     }
+    /** Whether a project row exists yet, read before the scan registers one. */
+    private function projectExists(string $projectId): bool
+    {
+        $statement = $this->pdo->prepare('SELECT 1 FROM projects WHERE id = :id');
+        $statement->execute(['id' => $projectId]);
+
+        return $statement->fetchColumn() !== false;
+    }
+
     /**
      * Refuse a rescan that would reconcile away a failed language's facts.
      *
