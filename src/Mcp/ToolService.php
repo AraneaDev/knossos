@@ -276,11 +276,11 @@ final readonly class ToolService
         if ($drift->total() < 1) {
             return [['refresh_if_stale: the graph is stale but the change set is unknown; call scan_project to refresh.'], $snapshot];
         }
-        $decision = $this->queries->refreshDecision($projectId, $drift);
+        $root = $this->queries->projectRoot($projectId);
+        $decision = $this->queries->refreshDecision($projectId, $drift, $this->refreshBudgetMs($root));
         if (!$decision->refresh) {
             return [['refresh_if_stale: ' . (string) $decision->reason], $snapshot];
         }
-        $root = $this->queries->projectRoot($projectId);
         if ($root === null) {
             return [['refresh_if_stale: the project root is unknown; serving the last complete graph.'], $snapshot];
         }
@@ -295,6 +295,27 @@ final readonly class ToolService
             // No snapshot: a failed attempt leaves a scan row behind, and that
             // row is itself part of the staleness verdict.
             return [[sprintf('refresh_if_stale: rescan failed (%s); serving the last complete graph.', ToolErrorMapper::publicMessage($error))], null];
+        }
+    }
+
+    /**
+     * The project's `limits.refresh_budget_ms`, read from its knossos.json now
+     * rather than from the last scan: the key changes no scan output, so an
+     * edit to it does not make the graph stale and would otherwise wait for
+     * an unrelated rescan to take effect. A configuration that cannot be read
+     * gets the default; the rescan, if it runs, reports that fault itself.
+     */
+    private function refreshBudgetMs(?string $root): int
+    {
+        if ($root === null) {
+            return \Knossos\Query\RefreshPolicy::DEFAULT_BUDGET_MS;
+        }
+        try {
+            $allowed = $this->environment !== null ? $this->environment->roots : [$root];
+
+            return \Knossos\Configuration\ProjectConfigurationLoader::load($root, $allowed)->refreshBudgetMs ?? \Knossos\Query\RefreshPolicy::DEFAULT_BUDGET_MS;
+        } catch (\Throwable) {
+            return \Knossos\Query\RefreshPolicy::DEFAULT_BUDGET_MS;
         }
     }
 

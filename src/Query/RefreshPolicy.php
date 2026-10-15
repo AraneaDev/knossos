@@ -13,9 +13,10 @@ use PDO;
  *
  * Cost comes from the project's own scans rather than a tuned constant: a
  * PHP monolith and a small TypeScript package do not cost the same per file,
- * and only the project knows which it is. The per-file cost is the active
- * scan's; the fixed overhead a rescan pays before its first file is measured
- * too, from the project's recent incremental scans. When there is nothing to measure the
+ * and only the project knows which it is. The per-file cost is the median of
+ * the project's recent scans; the fixed overhead a rescan pays before its first
+ * file is measured too, from the project's recent incremental scans. The budget
+ * is the project's `limits.refresh_budget_ms`. When there is nothing to measure the
  * policy declines, because a cost that cannot be estimated cannot be capped,
  * and a query held open past the client's timeout returns nothing at all.
  */
@@ -44,7 +45,10 @@ final readonly class RefreshPolicy
     /** How many recent incremental scans the overhead is measured over. */
     private const OVERHEAD_SAMPLE = 10;
 
-    public function __construct(private PDO $pdo, private int $budgetMs = self::DEFAULT_BUDGET_MS) {}
+    /** How many recent scans, of either mode, the per-file cost is the median of. */
+    private const COST_SAMPLE = 10;
+
+    public function __construct(private PDO $pdo) {}
 
     /**
      * Whether to rescan before answering, given what drifted.
@@ -63,12 +67,19 @@ final readonly class RefreshPolicy
      * is why every uncertainty in this method (an unmeasurable cost, a tie at
      * the budget, a fractional millisecond rounded) resolves toward declining
      * rather than toward allowing.
+     *
+     * @param int $budgetMs the project's `limits.refresh_budget_ms`; 0 declines every refresh
      */
-    public function decide(string $projectId, DriftCounts $drift): RefreshDecision
+    public function decide(string $projectId, DriftCounts $drift, int $budgetMs = self::DEFAULT_BUDGET_MS): RefreshDecision
     {
         $driftedFiles = $drift->total();
         if ($driftedFiles < 1) {
             return RefreshDecision::decline('Nothing drifted.');
+        }
+        // Zero is the project saying "never", not a budget a free scan fits:
+        // a scan too fast to time estimates at 0 ms and would slip under it.
+        if ($budgetMs < 1) {
+            return RefreshDecision::decline('limits.refresh_budget_ms is 0, so stale graphs are not rescanned inside a query; call scan_project to refresh.');
         }
         // A saturated count is a floor, not a size. Costing a rescan against
         // it prices whatever the walk stopped looking at at nothing, and the
@@ -101,12 +112,12 @@ final readonly class RefreshPolicy
         // you asked for," not "slightly over" — and >= would flip that on any
         // future retuning of FIXED_OVERHEAD_MS or DEFAULT_BUDGET_MS that
         // happens to land the arithmetic on a round number.
-        if ($estimateMs > $this->budgetMs) {
+        if ($estimateMs > $budgetMs) {
             return RefreshDecision::decline(sprintf(
                 '%d files drifted, an estimated %d ms to rescan, over the %d ms budget; call scan_project to refresh.',
                 $driftedFiles,
                 $estimateMs,
-                $this->budgetMs,
+                $budgetMs,
             ));
         }
 
@@ -114,7 +125,7 @@ final readonly class RefreshPolicy
     }
 
     /**
-     * The estimate, capped at what the whole graph cost to build where that
+     * The estimate, capped at what a scan of the whole graph costs where that
      * cap actually holds.
      *
      * It holds only when the rescan is a subset of the scan it is compared
@@ -152,7 +163,15 @@ final readonly class RefreshPolicy
     }
 
     /**
-     * What the active scan measured itself as costing, whole and per file.
+     * What a scan of this graph costs, whole and per file.
+     *
+     * The whole is the median of the project's last {@see self::COST_SAMPLE}
+     * complete scans with a recorded duration. The last scan alone was the figure before, so one slow
+     * scan (a cold cache, a busy machine) priced every refresh after it out of
+     * the budget, and one quick one let a dear refresh in. An even sample
+     * takes the dearer of its two middles, which keeps the estimate on the
+     * declining side. The per-file cost spreads that over the files in the
+     * graph, which every complete scan restamps.
      *
      * Read from the duration the scan recorded rather than from its
      * timestamps. finished_at is restamped every time a rescan finds no
@@ -189,7 +208,7 @@ final readonly class RefreshPolicy
         if ($files < 1) {
             return null;
         }
-        $total = max(0.0, (float) $row['duration_ms']);
+        $total = max(0.0, $this->medianDuration($projectId));
         $recent = $this->pdo->prepare(
             'SELECT MIN(duration_ms) FROM (SELECT duration_ms FROM scans WHERE project_id = :id AND mode = :mode AND status = :status ' .
             'AND duration_ms IS NOT NULL ORDER BY started_at DESC, rowid DESC LIMIT :sample)',
@@ -202,5 +221,25 @@ final readonly class RefreshPolicy
         $fastest = $recent->fetchColumn();
 
         return ['total' => $total, 'perFile' => $total / $files, 'overhead' => max((float) self::FIXED_OVERHEAD_MS, is_numeric($fastest) ? (float) $fastest : 0.0)];
+    }
+
+    /**
+     * The upper median of the recent recorded durations. Only called once the
+     * active scan is known to have recorded one, so the sample is never empty.
+     */
+    private function medianDuration(string $projectId): float
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT duration_ms FROM scans WHERE project_id = :id AND status = :status AND duration_ms IS NOT NULL ' .
+            'ORDER BY started_at DESC, rowid DESC LIMIT :sample',
+        );
+        $statement->bindValue(':id', $projectId);
+        $statement->bindValue(':status', 'complete');
+        $statement->bindValue(':sample', self::COST_SAMPLE, PDO::PARAM_INT);
+        $statement->execute();
+        $durations = array_map(static fn(mixed $duration): float => (float) $duration, $statement->fetchAll(PDO::FETCH_COLUMN));
+        sort($durations);
+
+        return $durations[intdiv(count($durations), 2)];
     }
 }
