@@ -15,7 +15,7 @@ final class MaintenanceCommand implements CliCommand
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
-        return in_array($command, ['doctor', 'remove-project', 'cleanup-stale-scans', 'maintain-database'], true);
+        return in_array($command, ['doctor', 'remove-project', 'move-project', 'cleanup-stale-scans', 'maintain-database'], true);
     }
 
     /** {@inheritDoc} */
@@ -23,7 +23,7 @@ final class MaintenanceCommand implements CliCommand
     {
         return match ($command) {
             'doctor' => ['db', 'json'],
-            'remove-project' => ['db', 'json', 'execute'],
+            'remove-project', 'move-project' => ['db', 'json', 'execute'],
             'cleanup-stale-scans' => ['db', 'json', 'older-than-hours', 'execute'],
             default => ['db', 'json', 'execute', 'backup-name'],
         };
@@ -35,6 +35,7 @@ final class MaintenanceCommand implements CliCommand
         return match ($command) {
             'doctor' => $this->doctor($options, $context),
             'remove-project' => $this->removeProject($positionals, $options, $context),
+            'move-project' => $this->moveProject($positionals, $options, $context),
             'cleanup-stale-scans' => $this->cleanup($positionals, $options, $context),
             default => $this->maintain($positionals, $options, $context),
         };
@@ -66,6 +67,27 @@ final class MaintenanceCommand implements CliCommand
     {
         $projectId = $positionals[0] ?? throw new InvalidArgumentException('Usage: knossos remove-project <project-id> [--execute] [--json]');
         $result = $context->maintenance()->removeProject($projectId, $context->options->flag($options, 'execute'));
+        $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
+        return CliCommand::EXIT_OK;
+    }
+
+    /**
+     * Carry a moved checkout's notes to its new root, previewing unless --execute.
+     *
+     * The CLI is the one caller that may extend roots.json: whoever runs it can
+     * already edit that file, which a tool call cannot be assumed to.
+     *
+     * @param list<string> $positionals @param array<string, list<string>> $options
+     */
+    private function moveProject(array $positionals, array $options, CliCommandContext $context): int
+    {
+        [$from, $to] = count($positionals) === 2
+            ? $positionals
+            : throw new InvalidArgumentException('Usage: knossos move-project <old root|project id> <new root> [--execute] [--db=PATH] [--json]');
+        $target = realpath($to);
+        $scanner = \Knossos\Query\LedgeredScanner::local($context->database(), $context->installationRoot(), [$target === false ? $to : $target]);
+        $roots = new \Knossos\Discovery\RootsFile(\Knossos\Discovery\AllowedRoots::defaultConfigPath($context->databasePath()));
+        $result = $context->maintenance()->moveProject($from, $to, $context->options->flag($options, 'execute'), $scanner, $roots);
         $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
         return CliCommand::EXIT_OK;
     }

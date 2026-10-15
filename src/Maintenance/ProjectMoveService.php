@@ -115,6 +115,7 @@ final readonly class ProjectMoveService
         return ['id' => (string) $row['id'], 'name' => (string) $row['name'], 'root' => $root];
     }
 
+    /** Whether the target root has been scanned yet, which decides whether execute scans it first. */
     private function projectExists(string $projectId): bool
     {
         $statement = $this->pdo->prepare('SELECT 1 FROM projects WHERE id = :id');
@@ -124,6 +125,8 @@ final readonly class ProjectMoveService
     }
 
     /**
+     * How many annotations the project holds, in all and by author and kind.
+     *
      * @return array{total: int, by_author: array{user: int, model: int}, by_kind: array<string, int>}
      */
     private function counts(string $projectId): array
