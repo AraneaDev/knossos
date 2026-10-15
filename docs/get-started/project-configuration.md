@@ -85,8 +85,13 @@ re-includes only that directory, such as `"!/packages/a/dist"`. Your patterns
 decide after this rule, so a `!` pattern re-includes build output: `"!/dist"`
 scans the one at the root, and `"!dist"` scans every anchored `dist`.
 
-The configuration file itself cannot be ignored. It is part of the scanner
-configuration fingerprint, so changing it invalidates the cached contributions.
+The configuration file itself cannot be ignored. Its scan settings are part of
+the scanner configuration fingerprint: changing `ignores`, `frameworks`,
+`limits.max_files` or `limits.max_file_bytes` invalidates the cached
+contributions, so the next scan reads every file again. The other settings,
+such as `quality_budgets`, `policies`, `snapshot_retention` or the worker
+timeouts, are read when they are used, and changing one reuses every cached
+file.
 
 ### Limits
 

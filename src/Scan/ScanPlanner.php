@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Scan;
 
 use InvalidArgumentException;
-use Knossos\Configuration\ProjectConfigurationLoader;
+use Knossos\Configuration\{ProjectConfiguration, ProjectConfigurationLoader};
 use Knossos\Discovery\{AllowedRoots, DiscoveryConfig, ProjectDiscoverer, RootGuard};
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\DirtyPathSet;
@@ -141,19 +141,19 @@ final readonly class ScanPlanner
             $configuration->frameworks,
         );
         $configurationHashes = [
-            'php' => $this->configurationHash($discovery->units, ['composer', 'knossos']),
+            'php' => $this->configurationHash($discovery->units, ['composer', 'knossos'], $configuration),
             // tool_config: the worker reads module aliases from vite, svelte, webpack and
             // vue configs, so editing one must invalidate what was resolved under it.
-            'typescript' => $this->configurationHash($discovery->units, ['node', 'typescript', 'tool_config', 'knossos']),
+            'typescript' => $this->configurationHash($discovery->units, ['node', 'typescript', 'tool_config', 'knossos'], $configuration),
             // 'requirements' is in the hash because detectedFramework() reads
             // requirements.txt for the Python framework gating above: without
             // it, adding fastapi to requirements.txt would reuse contributions
             // scanned with enrichment switched off.
-            'python' => $this->configurationHash($discovery->units, ['python', 'requirements', 'knossos']),
+            'python' => $this->configurationHash($discovery->units, ['python', 'requirements', 'knossos'], $configuration),
             // Cargo.toml is now a recorded unit (kind 'cargo'), so editing it
             // invalidates a Rust contribution's cache entry the same way
             // composer.json and package.json do for PHP and TypeScript.
-            'rust' => $this->configurationHash($discovery->units, ['cargo', 'knossos']),
+            'rust' => $this->configurationHash($discovery->units, ['cargo', 'knossos'], $configuration),
         ];
 
         return new ScanPreparation(
@@ -363,21 +363,47 @@ final readonly class ScanPlanner
      * Identity of the project's configuration, so a change invalidates incremental reuse.
      *
      * The worker's own files are not part of it: the cache version follows them
-     * ({@see AnalysisHash}).
+     * ({@see AnalysisHash}). The project's knossos.json counts by its scan
+     * settings ({@see self::scanSettingsHash()}); every other unit by its bytes.
      *
      * @param list<object> $units @param list<string> $kinds
      */
-    private function configurationHash(array $units, array $kinds): string
+    private function configurationHash(array $units, array $kinds, ProjectConfiguration $configuration): string
     {
         $parts = [];
         foreach ($units as $unit) {
             if (in_array($unit->kind, $kinds, true)) {
-                $parts[] = $unit->kind . ':' . $unit->configPath . '=' . $unit->contentHash;
+                // The project's own knossos.json counts by the settings a worker reads, not
+                // its bytes: a budget, a policy or the retention is read by queries, and
+                // editing one must not reparse the project.
+                $hash = $unit->kind === 'knossos' && in_array($unit->configPath, ['knossos.json', 'knossos.jsonc'], true)
+                    ? self::scanSettingsHash($configuration)
+                    : $unit->contentHash;
+                $parts[] = $unit->kind . ':' . $unit->configPath . '=' . $hash;
             }
         }
         sort($parts, SORT_STRING);
         return hash('sha256', implode("\n", $parts));
     }
+    /**
+     * The knossos.json settings that change what a worker emits, hashed: the
+     * ignore patterns (the workers' exclusions), the framework hints and the
+     * file limits. Everything else in the file is read by queries.
+     * {@see \Knossos\Tests\Phpunit\Scan\ConfigurationCacheKeyTest} pins the split.
+     */
+    private static function scanSettingsHash(ProjectConfiguration $configuration): string
+    {
+        $frameworks = $configuration->frameworks;
+        sort($frameworks, SORT_STRING);
+
+        return hash('sha256', json_encode([
+            'ignores' => $configuration->ignores,
+            'frameworks' => $frameworks,
+            'max_files' => $configuration->maxFiles,
+            'max_file_bytes' => $configuration->maxFileBytes,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    }
+
     /** Milliseconds since a hrtime() mark, for the stage timings. */
 
     private static function elapsedMilliseconds(int $startedAt): float

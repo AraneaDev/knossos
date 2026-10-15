@@ -544,11 +544,11 @@ TOML);
         $composer = $unit('composer', 'composer.json', 'aa');
         $other = $unit('node', 'package.json', 'bb');
 
-        $hash = $method->invoke($planner, [$other, $composer], ['composer']);
+        $hash = $method->invoke($planner, [$other, $composer], ['composer'], new \Knossos\Configuration\ProjectConfiguration());
 
         assertSame(hash('sha256', 'composer:composer.json=aa'), $hash);
-        assertNotSame($hash, $method->invoke($planner, [$unit('composer', 'composer.json', 'cc')], ['composer']));
-        assertSame($hash, $method->invoke($planner, [$composer, $other], ['composer']));
+        assertNotSame($hash, $method->invoke($planner, [$unit('composer', 'composer.json', 'cc')], ['composer'], new \Knossos\Configuration\ProjectConfiguration()));
+        assertSame($hash, $method->invoke($planner, [$composer, $other], ['composer'], new \Knossos\Configuration\ProjectConfiguration()));
     }
 
     public function testPrepareRejectsSnapshotRetentionOutOfRange(): void
