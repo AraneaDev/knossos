@@ -543,9 +543,10 @@ final readonly class LanguageScanRunner
     /**
      * Name the setting that fixes a worker killed by its heap cap.
      *
-     * A worker that exhausts its heap says so, but only in the words V8 uses,
-     * and the reader is then left to discover on their own that the cap is a
-     * setting and what it is called. The failure is not a loud one either: the
+     * A worker that exhausts its heap says so, but only in its runtime's own
+     * words (V8's "heap out of memory", PHP's "Allowed memory size of N bytes
+     * exhausted"), and the reader is then left to discover on their own that
+     * the cap is a setting and what it is called. The failure is not a loud one either: the
      * scan still commits, with that language's facts missing. So when the
      * cause is recognisably heap exhaustion, the diagnostic carries the fix.
      */
@@ -560,7 +561,7 @@ final readonly class LanguageScanRunner
             return $message;
         }
         $memoryMb ??= $descriptor->workerMemoryMb;
-        if (!preg_match('/heap (?:limit|out of memory)|out of memory/i', $message)) {
+        if (!preg_match('/heap (?:limit|out of memory)|out of memory|allowed memory size of \d+ bytes exhausted/i', $message)) {
             return $message;
         }
 
