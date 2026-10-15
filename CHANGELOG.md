@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.30.0](https://github.com/AraneaDev/knossos/compare/v0.29.0...v0.30.0) (2026-10-15)
+
+
+### Features
+
+* find a component by the file that declares it ([#274](https://github.com/AraneaDev/knossos/issues/274)) ([efbc233](https://github.com/AraneaDev/knossos/commit/efbc233085a53c06eaa7cde3e96e6c425e7d44c8))
+* find a note in search even when the graph does not hold its name ([#303](https://github.com/AraneaDev/knossos/issues/303)) ([efdcafa](https://github.com/AraneaDev/knossos/commit/efdcafa01a85c225573ee54097ffc821eb9faa4c))
+* follow a flow from an interface or parent method into its implementations ([#288](https://github.com/AraneaDev/knossos/issues/288)) ([182ce42](https://github.com/AraneaDev/knossos/commit/182ce42a5979e809cd43802e8c194c2b0d4ed194))
+* follow Django include() and DRF routers to the full URL ([#291](https://github.com/AraneaDev/knossos/issues/291)) ([a30e1eb](https://github.com/AraneaDev/knossos/commit/a30e1eb015f2aec12524a4486cd5cc1fcc5fae00))
+* keep a Rust or Flask route with parameters as its template ([#290](https://github.com/AraneaDev/knossos/issues/290)) ([8d2010d](https://github.com/AraneaDev/knossos/commit/8d2010dfb54383ba4c3832a87eeb64a503cdcd5f))
+* let a project set its refresh budget, and cost a rescan from recent scans ([#307](https://github.com/AraneaDev/knossos/issues/307)) ([fe573ae](https://github.com/AraneaDev/knossos/commit/fe573ae56f60a3e1421b88de336c385a5f479ce0))
+* link a Celery task sent by its name to the sender ([#294](https://github.com/AraneaDev/knossos/issues/294)) ([4f3e406](https://github.com/AraneaDev/knossos/commit/4f3e40681f195eaf55d063805be44125a6607855))
+* link Python, TypeScript and Rust code to the files the processes it starts run ([#298](https://github.com/AraneaDev/knossos/issues/298)) ([5a5e926](https://github.com/AraneaDev/knossos/commit/5a5e926092bba15a1bdaf87522c15d3dd7d2bedc))
+* link the code that builds a process argv to the file it runs ([#295](https://github.com/AraneaDev/knossos/issues/295)) ([cddfcbe](https://github.com/AraneaDev/knossos/commit/cddfcbe2765391d61ea179796f88035ab88f169e))
+* make a project file no worker reads a component when something names it ([#299](https://github.com/AraneaDev/knossos/issues/299)) ([00962db](https://github.com/AraneaDev/knossos/commit/00962db119f70b7732d3363ee192380e81b03685))
+* match relationships in a snapshot diff by what they join, not where ([#300](https://github.com/AraneaDev/knossos/issues/300)) ([72934f0](https://github.com/AraneaDev/knossos/commit/72934f0321f0af58da64e4388f51fc7a348ccf2b))
+* move a project's notes to a moved checkout ([#308](https://github.com/AraneaDev/knossos/issues/308)) ([7ca1fc8](https://github.com/AraneaDev/knossos/commit/7ca1fc8ee5270c6a8e988f55d852fbd37830a1ea))
+* name the file a member is declared in when its type lives elsewhere ([#305](https://github.com/AraneaDev/knossos/issues/305)) ([31fe1d4](https://github.com/AraneaDev/knossos/commit/31fe1d4e11fbbc0bbf65037754df782e006f4e68))
+* read NestJS namespace-imported decorators and the global prefix ([#292](https://github.com/AraneaDev/knossos/issues/292)) ([a004dc4](https://github.com/AraneaDev/knossos/commit/a004dc422d8322fcd2dd31959ce9ac48c98e771f))
+* report tests that reach a change only through the wiring apart ([#289](https://github.com/AraneaDev/knossos/issues/289)) ([a62eeed](https://github.com/AraneaDev/knossos/commit/a62eeed0feb3ca976d08e50ded89af59e31d122c))
+* start impact on a class from its members, and look six hops deep ([#304](https://github.com/AraneaDev/knossos/issues/304)) ([5b22e20](https://github.com/AraneaDev/knossos/commit/5b22e204ca219054df5be14b880c3a60fd85f530))
+
+
+### Fixes
+
+* answer a request the server cannot hold during a scan ([#279](https://github.com/AraneaDev/knossos/issues/279)) ([d5e37d0](https://github.com/AraneaDev/knossos/commit/d5e37d08909e30e3930e34a28e185089395336c2))
+* call a callable stored on self without inventing a method ([#281](https://github.com/AraneaDev/knossos/issues/281)) ([03c7446](https://github.com/AraneaDev/knossos/commit/03c7446971a9b2e376de3cf48db154d925d110a3))
+* count handlers a framework invokes as conventions, and assign their roles only inside the framework ([#280](https://github.com/AraneaDev/knossos/issues/280)) ([61cc87c](https://github.com/AraneaDev/knossos/commit/61cc87cb7bd292a907820797d13f4b90cb4ccf49))
+* let a first scan wait for another writer's lease ([#277](https://github.com/AraneaDev/knossos/issues/277)) ([40bdc5b](https://github.com/AraneaDev/knossos/commit/40bdc5bc0824c0d5c4100e9fda146a58df81d0d9))
+* let a worker run without the core's rules leave out what a scan does ([#287](https://github.com/AraneaDev/knossos/issues/287)) ([9355f61](https://github.com/AraneaDev/knossos/commit/9355f616301110d0f448e01d30f6ce655424f01b))
+* name the review gate's baseline, and say when it is not base_ref ([#301](https://github.com/AraneaDev/knossos/issues/301)) ([298fa75](https://github.com/AraneaDev/knossos/commit/298fa7592aed22fa43be677f70a26fa2d1c09514))
+* never cut a flow path or a cycle short under max_chars ([#278](https://github.com/AraneaDev/knossos/issues/278)) ([7056f2b](https://github.com/AraneaDev/knossos/commit/7056f2bc9cdf97c4d50319470900c113d5ce20ba))
+* notice a stale or reinstalled plugin in the eval, whatever its version ([#284](https://github.com/AraneaDev/knossos/issues/284)) ([92ea79c](https://github.com/AraneaDev/knossos/commit/92ea79ceaf4fa097fdf3b7e38fbc4bd3fd28759b))
+* rebuild the runtime image when its source changed ([#306](https://github.com/AraneaDev/knossos/issues/306)) ([ed52714](https://github.com/AraneaDev/knossos/commit/ed5271455b04bfd89db84b2c1b5e4d29e3d0cdb8))
+* replace a worker whose code changed since it started ([#275](https://github.com/AraneaDev/knossos/issues/275)) ([5230a12](https://github.com/AraneaDev/knossos/commit/5230a12147f011256b5e0a2442fad2ddb425d9a9))
+* say why the session brief came out empty ([#285](https://github.com/AraneaDev/knossos/issues/285)) ([1ffb1a4](https://github.com/AraneaDev/knossos/commit/1ffb1a4e9ba45ad970c1e6e0e6b5e300ba4699c6))
+* type a loop over a property documented as a list, and a copy of a typed variable ([#296](https://github.com/AraneaDev/knossos/issues/296)) ([3180ff9](https://github.com/AraneaDev/knossos/commit/3180ff9e5ad8951ff87a72cfea692f1bcbe215a5))
+
+
+### Performance
+
+* let a query-time knossos.json edit reuse every cached file ([#302](https://github.com/AraneaDev/knossos/issues/302)) ([b6bc3fc](https://github.com/AraneaDev/knossos/commit/b6bc3fc17f64e95eedc719476b716cf4b2989a6c))
+
 ## [0.29.0](https://github.com/AraneaDev/knossos/compare/v0.28.0...v0.29.0) (2026-10-14)
 
 
