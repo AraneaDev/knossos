@@ -161,6 +161,7 @@ List every usage site of a symbol with file:line evidence: one row per occurrenc
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=500; default=100 |
+| `exclude_tests` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 

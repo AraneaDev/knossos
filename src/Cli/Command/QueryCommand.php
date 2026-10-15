@@ -48,7 +48,7 @@ final class QueryCommand implements CliCommand
             'architecture-trends' => ['db', 'json', 'limit', 'release-from'],
             'find-component' => ['db', 'json', 'limit'],
             'inspect-component' => ['db', 'json', 'max-relationships', 'max-children', 'min-confidence'],
-            'list-usages' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit'],
+            'list-usages' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'exclude-tests'],
             'architecture-summary' => ['db', 'json', 'limit'],
             'file-metrics' => ['db', 'json', 'path', 'language', 'sort-by', 'order', 'limit', 'offset'],
             'explain-flow' => ['db', 'json', 'max-depth', 'max-paths', 'edge-kind', 'min-confidence', 'timeout-ms'],
@@ -228,9 +228,9 @@ final class QueryCommand implements CliCommand
      */
     private function listUsages(array $p, array $o, CliCommandContext $c): int
     {
-        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos list-usages <path|project-id> <symbol> [--edge-kind=K]... [--min-confidence=L] [--limit=N] [--json]'), $c);
+        $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos list-usages <path|project-id> <symbol> [--edge-kind=K]... [--min-confidence=L] [--limit=N] [--exclude-tests] [--json]'), $c);
         $symbol = $p[1] ?? throw new InvalidArgumentException('A symbol is required.');
-        $result = $this->queries($c)->listUsages($project, $symbol, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 100, 1, 500));
+        $result = $this->queries($c)->listUsages($project, $symbol, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 100, 1, 500), $c->options->flag($o, 'exclude-tests'));
         return $this->result($result, $o, $c);
     }
 
