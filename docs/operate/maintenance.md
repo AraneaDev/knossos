@@ -11,6 +11,31 @@ knossos remove-project project_... --json
 knossos remove-project project_... --execute --json
 ```
 
+A project's id is its root path, so a checkout that moves (to a new home
+directory, a new machine layout) scans as a new, empty project, and its notes
+stay behind on the old id. The first scan of the new root says so when an old
+project with the same directory name is gone from disk and at least half of
+the components its notes name exist in the new tree. The warning names the
+command that carries them over:
+
+```sh
+knossos move-project /old/path/project /new/path/project --json
+knossos move-project /old/path/project /new/path/project --execute --json
+```
+
+`move-project` takes the old root or the old project id. It moves every
+annotation, from either author, to the project the new root scans as,
+scanning it first when needed, and then removes the old project. When both
+sides hold a note on the same component, kind and author, the later edit is
+kept and the other is listed in the result. The command also swaps the old
+root for the new one in `roots.json`. The `move_project` MCP tool does the
+same move but never edits `roots.json`, since that file decides what the
+server may read: it refuses a new root outside the allowed roots and names the
+`allow-root` command to run instead. Both refuse while the old root still
+exists, because then the new path is a second checkout rather than a move.
+Scan history, trends and quality-gate baselines start over with the new
+project.
+
 Preview abandoned, failed, or cancelled scans older than a threshold, then
 remove only records that are not referenced by the active graph:
 
@@ -42,8 +67,8 @@ folder. Without `--backup-name` the file is called
 filename; directory components and overwrites are rejected. Open a backup with Knossos or SQLite and run
 `PRAGMA integrity_check` before relying on it for recovery.
 
-The equivalent MCP tools are `remove_project`, `cleanup_stale_scans`, and
-`maintain_database`. The two deletion tools carry destructive annotations and
+The equivalent MCP tools are `remove_project`, `move_project`,
+`cleanup_stale_scans`, and `maintain_database`. The three deletion tools carry destructive annotations and
 require `execute: true` to mutate state. Maintenance takes advisory writer
 leases for every bounded project before checkpoint, optimize, vacuum, or backup work;
 an active scan therefore causes a safe busy error instead of concurrent
