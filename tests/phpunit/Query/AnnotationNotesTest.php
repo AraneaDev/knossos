@@ -195,4 +195,31 @@ final class AnnotationNotesTest extends KnossosTestCase
         $named = $queries->searchArchitecture($ids['project'], 'Invoice');
         assertSame(['App\\InvoiceService', 'App\\Checkout'], array_column($named->data['results'], 'canonical_name'));
     }
+
+    /**
+     * A note may rest on a name the graph does not hold: a symbol built at
+     * runtime, or one kept before it exists. A search still finds it, listed
+     * apart from the components because there is no component to show.
+     */
+    #[Group('query')]
+    public function testASearchFindsANoteOnANameTheGraphDoesNotHold(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Plugins\\Loader::boot', 'note', 'Plugins are loaded by name from config/plugins.php at boot', execute: true);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'Plugins hook in here', execute: true);
+
+        $found = $queries->searchArchitecture($ids['project'], 'plugins');
+
+        assertSame(['App\\Checkout'], array_column($found->data['results'], 'canonical_name'));
+        $apart = $found->data['notes_without_component'];
+        assertSame(['App\\Plugins\\Loader::boot'], array_column($apart, 'component'));
+        assertSame('model', $apart[0]['author']);
+        assertSame(true, str_contains($apart[0]['text'], 'loaded by name'));
+        // Every word must match, in the name or the note.
+        assertSame([], $queries->searchArchitecture($ids['project'], 'plugins invoice')->data['notes_without_component']);
+        // A filter on components leaves out notes that have none.
+        assertSame([], $queries->searchArchitecture($ids['project'], 'plugins', kinds: ['class'])->data['notes_without_component']);
+    }
 }
