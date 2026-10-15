@@ -444,9 +444,9 @@ final readonly class ArchitectureQueryService
      *
      * @param list<string> $evidencePaths
      */
-    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = []): ResultEnvelope
+    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = [], bool $replace = false): ResultEnvelope
     {
-        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author, $evidencePaths);
+        return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author, $evidencePaths, $replace);
     }
 
     /** {@see AnnotationService::removeAnnotation()} */

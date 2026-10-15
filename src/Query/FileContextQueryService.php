@@ -26,6 +26,11 @@ final readonly class FileContextQueryService extends AbstractArchitectureQuerySe
         $context = (new FileContextService($this->pdo))->context($root . '/' . $relative);
         $file = $context['file'];
         // A link to another project's file resolves to that project: it is not this one's to answer.
+        if ($context['status'] !== 'ok' && ProjectFile::exists($root, $relative)) {
+            // A CI script, a workflow, a config file: part of the project, never
+            // scanned. What git knows about it still answers "what changed here".
+            return new ResultEnvelope($projectId, $project['active_scan_id'], sprintf('%s is a project file Knossos does not scan, so it has no components or dependents; its latest commits are listed. A note on it makes it a file component on the next scan.', $relative), ['status' => 'not_scanned', 'path' => $relative, 'file' => null, 'commits' => (new FileContextService($this->pdo))->commits($root, $relative), 'policies' => []]);
+        }
         if ($context['status'] !== 'ok' || !is_array($file) || $context['project_id'] !== $projectId) {
             $status = $context['status'] === 'ok' ? 'not-found' : $context['status'];
 

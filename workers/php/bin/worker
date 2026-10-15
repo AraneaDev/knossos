@@ -8,7 +8,13 @@ declare(strict_types=1);
 // memory so a pathological file fails cleanly instead of taking down the host.
 ini_set('display_errors', 'stderr');
 ini_set('log_errors', '0');
-ini_set('memory_limit', '512M');
+// The host passes the cap as `-d memory_limit=NM` (limits.worker_memory_mb,
+// see LanguageDescriptor::withMemoryMb), so a cap already set is the one to
+// keep: overriding it here made that setting do nothing. Only an uncapped run,
+// such as a hand run under a php.ini with no limit, gets the old default.
+if (ini_get('memory_limit') === '-1') {
+    ini_set('memory_limit', '512M');
+}
 
 $autoload = dirname(__DIR__) . '/vendor/autoload.php';
 if (!is_file($autoload)) {
