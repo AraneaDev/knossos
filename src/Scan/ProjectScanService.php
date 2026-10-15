@@ -217,10 +217,6 @@ final class ProjectScanService implements ProjectScanner
             );
 
             $envelope = $this->resultFactory->create($plan, $language, $result, $startedAt, $stageMilliseconds);
-            // Only the scan that created the project looks for one it replaces.
-            $hint = $existed ? null : (new OrphanedProjectHint($this->pdo))->warning($result->projectId, $preparation->discovery->rootRealpath);
-
-            return $hint === null ? $envelope : $envelope->withWarnings([$hint]);
         } catch (\Throwable $error) {
             self::recordFailedScan($repository, $projectId, $effectiveMode, $error);
             throw $error;
@@ -229,6 +225,20 @@ final class ProjectScanService implements ProjectScanner
                 error_log(sprintf('Knossos: writer lease for project %s released zero rows (already expired or stolen).', $projectId));
             }
         }
+
+        // Only the scan that created the project looks for one it replaces,
+        // and after the scan is committed and its lease released: a hint that
+        // cannot be worked out is no reason to report a good scan as failed.
+        if ($existed) {
+            return $envelope;
+        }
+        try {
+            $hint = (new OrphanedProjectHint($this->pdo))->warning($envelope->projectId, $preparation->discovery->rootRealpath);
+        } catch (\Throwable) {
+            $hint = null;
+        }
+
+        return $hint === null ? $envelope : $envelope->withWarnings([$hint]);
     }
     /** Whether a project row exists yet, read before the scan registers one. */
     private function projectExists(string $projectId): bool

@@ -14,8 +14,10 @@ knossos remove-project project_... --execute --json
 A project's id is its root path, so a checkout that moves (to a new home
 directory, a new machine layout) scans as a new, empty project, and its notes
 stay behind on the old id. The first scan of the new root says so when an old
-project with the same directory name is gone from disk and at least half of
-the components its notes name exist in the new tree. The warning names the
+project with the same directory name is gone from disk, its parent directory
+is still there, and at least half of the components its notes name exist in
+the new tree. A gone parent may be an unmounted drive or a path another machine
+sees, so the preview of a move from there warns about it. The warning names the
 command that carries them over:
 
 ```sh

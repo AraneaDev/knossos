@@ -86,7 +86,8 @@ final class MoveProjectToolTest extends KnossosTestCase
                 InvalidArgumentException::class,
             );
 
-            self::assertStringStartsWith('MOVE_TARGET_NOT_ALLOWED:', $error->getMessage());
+            self::assertStringStartsWith('MOVE_TARGET_NOT_ABSOLUTE:', $error->getMessage());
+            self::assertStringNotContainsString('allow-root', $error->getMessage(), 'Granting a relative path would grant nothing.');
         } finally {
             $this->removeTempTree($newRoot);
         }

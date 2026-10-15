@@ -25,9 +25,10 @@ final readonly class OrphanedProjectHint
     /**
      * The warning naming the best-matching orphan, or null when none matches.
      *
-     * An orphan is a project whose root is gone, has the same basename as this
-     * one, and holds notes; it matches when at least half the components its
-     * notes name (and at least one) exist in this project's graph.
+     * An orphan is a project whose root is gone while its parent is not, has
+     * the same basename as this one, and holds notes; it matches when at least
+     * half the components its notes name (and at least one) exist in this
+     * project's graph.
      */
     public function warning(string $projectId, string $rootRealpath): ?string
     {
@@ -39,7 +40,9 @@ final readonly class OrphanedProjectHint
         $candidates = [];
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $root = (string) $row['root_realpath'];
-            if (basename($root) === basename($rootRealpath) && !file_exists($root)) {
+            // The parent must still be there: a gone root under a gone parent is
+            // as likely an unmounted drive or another machine's path as a move.
+            if (basename($root) === basename($rootRealpath) && !file_exists($root) && is_dir(dirname($root))) {
                 $candidates[] = $row;
             }
             if (count($candidates) === self::CANDIDATES) {
@@ -63,12 +66,12 @@ final readonly class OrphanedProjectHint
         }
 
         return sprintf(
-            'Project %s at %s no longer exists and %d of its notes name components in this tree. To carry them over: knossos move-project %s %s --execute (MCP: move_project).',
+            'Project %s at %s no longer exists and %d components its notes name exist in this tree. To carry them over: knossos move-project %s %s --execute (MCP: move_project).',
             $best['row']['name'],
             $best['row']['root_realpath'],
             $best['present'],
-            $best['row']['root_realpath'],
-            $rootRealpath,
+            escapeshellarg((string) $best['row']['root_realpath']),
+            escapeshellarg($rootRealpath),
         );
     }
 

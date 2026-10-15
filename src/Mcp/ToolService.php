@@ -500,7 +500,10 @@ final readonly class ToolService
         $from = ToolArguments::string($arguments, 'from');
         $to = ToolArguments::string($arguments, 'to');
         $execute = ToolArguments::boolean($arguments, 'execute', false);
-        if (!str_starts_with($to, '/') || ($this->environment !== null && !$this->environment->admitsRoot($to))) {
+        if (!str_starts_with($to, '/')) {
+            throw new \InvalidArgumentException(sprintf('MOVE_TARGET_NOT_ABSOLUTE: %s must be an absolute path.', $to));
+        }
+        if ($this->environment !== null && !$this->environment->admitsRoot($to)) {
             throw new \InvalidArgumentException(sprintf(
                 'MOVE_TARGET_NOT_ALLOWED: %1$s is not an allowed root. Run `knossos allow-root %1$s --execute`, or move from the shell with `knossos move-project %2$s %1$s --execute`.',
                 $to,

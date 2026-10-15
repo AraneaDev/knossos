@@ -32,7 +32,7 @@ final readonly class DatabaseMaintenanceService
      */
     public function moveProject(string $from, string $to, bool $execute, \Knossos\Scan\ProjectScanner $scanner, ?\Knossos\Discovery\RootsFile $roots = null): ResultEnvelope
     {
-        return (new ProjectMoveService($this->pdo, $this))->move($from, $to, $execute, $scanner, $roots);
+        return (new ProjectMoveService($this->pdo))->move($from, $to, $execute, $scanner, $roots);
     }
 
     /** Delete a project and its graph, previewing the row counts unless executing. */

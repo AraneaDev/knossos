@@ -22,11 +22,13 @@ final class OrphanedProjectHintTest extends KnossosTestCase
     {
         [$pdo, $parent, $root] = $this->checkout(['A', 'B']);
         try {
-            $this->orphan($pdo, '/nonexistent/knossos-hint/project', ['App\\A', 'App\\B']);
+            $gone = $this->goneRoot($parent, 'old', 'project');
+            $this->orphan($pdo, $gone, ['App\\A', 'App\\B']);
 
             $warnings = $this->scan($pdo, $root)->warnings;
 
-            self::assertCount(1, array_filter($warnings, static fn(string $warning): bool => str_contains($warning, 'knossos move-project /nonexistent/knossos-hint/project ' . realpath($root) . ' --execute')));
+            self::assertCount(1, array_filter($warnings, static fn(string $warning): bool => str_contains($warning, 'knossos move-project ' . escapeshellarg($gone) . ' ' . escapeshellarg((string) realpath($root)) . ' --execute')));
+            self::assertCount(1, array_filter($warnings, static fn(string $warning): bool => str_contains($warning, '2 components its notes name exist in this tree')));
         } finally {
             $this->removeTempTree($parent);
         }
@@ -38,7 +40,7 @@ final class OrphanedProjectHintTest extends KnossosTestCase
     {
         [$pdo, $parent, $root] = $this->checkout(['A']);
         try {
-            $this->orphan($pdo, '/nonexistent/knossos-hint/other', ['App\\A']);
+            $this->orphan($pdo, $this->goneRoot($parent, 'old', 'other'), ['App\\A']);
 
             self::assertSame([], self::hints($this->scan($pdo, $root)->warnings));
         } finally {
@@ -69,7 +71,7 @@ final class OrphanedProjectHintTest extends KnossosTestCase
     {
         [$pdo, $parent, $root] = $this->checkout(['A']);
         try {
-            $this->orphan($pdo, '/nonexistent/knossos-hint/project', ['App\\A', 'App\\X', 'App\\Y']);
+            $this->orphan($pdo, $this->goneRoot($parent, 'old', 'project'), ['App\\A', 'App\\X', 'App\\Y']);
 
             self::assertSame([], self::hints($this->scan($pdo, $root)->warnings));
         } finally {
@@ -83,7 +85,7 @@ final class OrphanedProjectHintTest extends KnossosTestCase
     {
         [$pdo, $parent, $root] = $this->checkout(['A']);
         try {
-            $this->orphan($pdo, '/nonexistent/knossos-hint/project', ['App\\A']);
+            $this->orphan($pdo, $this->goneRoot($parent, 'old', 'project'), ['App\\A']);
             $this->scan($pdo, $root);
             file_put_contents($root . '/src/A.php', "<?php\nnamespace App;\nfinal class A { public function run(): void {} }\n");
 
@@ -99,16 +101,42 @@ final class OrphanedProjectHintTest extends KnossosTestCase
     {
         [$pdo, $parent, $root] = $this->checkout(['A', 'B']);
         try {
-            $this->orphan($pdo, '/nonexistent/knossos-hint-half/project', ['App\\A', 'App\\Q']);
-            $this->orphan($pdo, '/nonexistent/knossos-hint-full/project', ['App\\A', 'App\\B']);
+            $this->orphan($pdo, $this->goneRoot($parent, 'half', 'project'), ['App\\A', 'App\\Q']);
+            $full = $this->goneRoot($parent, 'full', 'project');
+            $this->orphan($pdo, $full, ['App\\A', 'App\\B']);
 
             $hints = self::hints($this->scan($pdo, $root)->warnings);
 
             self::assertCount(1, $hints);
-            self::assertStringContainsString('/nonexistent/knossos-hint-full/project', $hints[0]);
+            self::assertStringContainsString(escapeshellarg($full), $hints[0]);
         } finally {
             $this->removeTempTree($parent);
         }
+    }
+
+    /**
+     * A root whose parent is gone too may be an unmounted drive or a path only
+     * another machine sees; the checkout may not have moved at all.
+     */
+    #[Group('scan')]
+    public function testAnOrphanWhoseParentIsGoneTooGivesNoHint(): void
+    {
+        [$pdo, $parent, $root] = $this->checkout(['A']);
+        try {
+            $this->orphan($pdo, '/nonexistent/knossos-hint/project', ['App\\A']);
+
+            self::assertSame([], self::hints($this->scan($pdo, $root)->warnings));
+        } finally {
+            $this->removeTempTree($parent);
+        }
+    }
+
+    /** A root that is gone under a parent that is still there: what a moved checkout leaves. */
+    private function goneRoot(string $parent, string $under, string $basename): string
+    {
+        mkdir($parent . '/' . $under, 0o700, true);
+
+        return $parent . '/' . $under . '/' . $basename;
     }
 
     /**

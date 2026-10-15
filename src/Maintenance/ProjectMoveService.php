@@ -7,7 +7,7 @@ namespace Knossos\Maintenance;
 use InvalidArgumentException;
 use Knossos\Discovery\{AllowedRoots, RootsFile};
 use Knossos\Result\ResultEnvelope;
-use Knossos\Scan\{ProjectScanService, ProjectScanner};
+use Knossos\Scan\{ProjectScanService, ProjectScanner, ProjectWriterLock};
 use PDO;
 use Throwable;
 
@@ -28,7 +28,7 @@ final readonly class ProjectMoveService
     /** How many conflicts a result lists; the total is always reported. */
     private const CONFLICTS_LISTED = 50;
 
-    public function __construct(private PDO $pdo, private DatabaseMaintenanceService $maintenance) {}
+    public function __construct(private PDO $pdo) {}
 
     /**
      * Move, or preview moving, the annotations of the project at `$from` to the
@@ -53,19 +53,24 @@ final readonly class ProjectMoveService
         $targetExists = $this->projectExists($targetId);
         $counts = $this->counts($source['id']);
         $conflicts = $this->conflicts($source['id'], $targetId);
+        $superseded = count(array_filter($conflicts, static fn(array $conflict): bool => $conflict['kept'] === 'to'));
         $data = [
             'executed' => false,
             'from' => $source,
             'to' => ['root' => $target, 'project_id' => $targetId, 'exists' => $targetExists],
             'annotations' => $counts,
             'conflicts' => ['total' => count($conflicts), 'items' => array_slice($conflicts, 0, self::CONFLICTS_LISTED)],
+            'moved' => $counts['total'] - $superseded,
+            'superseded' => $superseded,
             'roots' => $roots === null ? null : self::rootsChange($roots, $source['root'], $target),
             'scanned' => false,
             'removed_project' => null,
         ];
+        $warnings = self::parentWarning($source['root']);
         if (!$execute) {
-            return new ResultEnvelope($source['id'], '', sprintf('Dry run: %d annotations would move from %s to %s.', $counts['total'], $source['root'], $target), $data, warnings: [
-                sprintf('Set execute=true to move %d annotations and remove the old project.', $counts['total']),
+            return new ResultEnvelope($source['id'], '', sprintf('Dry run: %s would move from %s to %s.', self::annotations($data['moved']), $source['root'], $target), $data, warnings: [
+                ...$warnings,
+                sprintf('Set execute=true to move %s and remove the old project.', self::annotations($data['moved'])),
             ]);
         }
 
@@ -75,16 +80,36 @@ final readonly class ProjectMoveService
             $scanner->scan($target);
             $data['scanned'] = true;
         }
-        $this->rekey($source['id'], $targetId, $conflicts);
-        $warnings = [];
-        try {
-            $this->maintenance->removeProject($source['id'], true);
-            $data['removed_project'] = $source['id'];
-        } catch (Throwable $error) {
-            $warnings[] = sprintf('Notes moved; the old project could not be removed (%s). Finish with remove_project %s execute=true.', $error->getMessage(), $source['id']);
+        $this->moveAndRemove($source['id'], $targetId, $conflicts);
+        $data['removed_project'] = $source['id'];
+
+        return new ResultEnvelope($targetId, '', sprintf('Moved %s from %s to %s.', self::annotations($data['moved']), $source['root'], $target), $data, warnings: $warnings);
+    }
+
+    /** "1 annotation", "3 annotations". */
+    private static function annotations(int $count): string
+    {
+        return sprintf('%d annotation%s', $count, $count === 1 ? '' : 's');
+    }
+
+    /**
+     * A warning when the old root's parent is gone too.
+     *
+     * A checkout that moved leaves its parent behind (`/root` after
+     * `/root/project` moved). A missing parent is as likely a drive that is not
+     * mounted, or a path only another machine or a container sees, and moving
+     * from there strips a checkout that still exists of its notes.
+     *
+     * @return list<string>
+     */
+    private static function parentWarning(string $root): array
+    {
+        $parent = dirname($root);
+        if (is_dir($parent)) {
+            return [];
         }
 
-        return new ResultEnvelope($targetId, '', sprintf('Moved %d annotations from %s to %s.', $counts['total'], $source['root'], $target), $data, warnings: $warnings);
+        return [sprintf('%s does not exist either: if it is an unmounted drive or a path another machine sees, the checkout has not moved and should not be moved from.', $parent)];
     }
 
     /**
@@ -172,15 +197,22 @@ final readonly class ProjectMoveService
     }
 
     /**
-     * Settle each conflict, then hand every remaining source row to the target.
-     * One transaction: a failure leaves both projects as they were, so the
-     * command can simply be run again.
+     * Settle each conflict, hand every remaining source row to the target, and
+     * delete the old project with its graph, under the old project's writer
+     * lease and in one transaction.
+     *
+     * Together because apart they lose notes: a note written to the old id
+     * after the re-key and before the removal went with the project, and a
+     * removal that failed left the notes moved and the old project behind. A
+     * failure now leaves both projects as they were, so the command can simply
+     * be run again.
      *
      * @param list<array{canonical_name: string, kind: string, author: string, kept: 'from'|'to'}> $conflicts
      */
-    private function rekey(string $sourceId, string $targetId, array $conflicts): void
+    private function moveAndRemove(string $sourceId, string $targetId, array $conflicts): void
     {
         $delete = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+        $lease = (new ProjectWriterLock($this->pdo))->acquire($sourceId);
         $this->pdo->beginTransaction();
         try {
             foreach ($conflicts as $conflict) {
@@ -193,10 +225,18 @@ final readonly class ProjectMoveService
             }
             $this->pdo->prepare('UPDATE annotations SET project_id = :target WHERE project_id = :source')
                 ->execute(['target' => $targetId, 'source' => $sourceId]);
+            // As DatabaseMaintenanceService::removeProject does it: the cascade
+            // takes the graph, snapshots and scan history with the row.
+            $this->pdo->prepare('UPDATE projects SET active_scan_id = NULL WHERE id = :project')->execute(['project' => $sourceId]);
+            $this->pdo->prepare('DELETE FROM projects WHERE id = :project')->execute(['project' => $sourceId]);
             $this->pdo->commit();
         } catch (Throwable $error) {
-            $this->pdo->rollBack();
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             throw $error;
+        } finally {
+            $lease->release();
         }
     }
 
