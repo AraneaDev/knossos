@@ -247,7 +247,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     public function testAnnotateComponentAllowsMutationFlags(): void
     {
         assertSame(
-            ['db', 'json', 'remove', 'execute', 'evidence'],
+            ['db', 'json', 'remove', 'replace', 'execute', 'evidence'],
             (new QueryCommand())->allowedOptions('annotate-component'),
         );
     }
@@ -316,13 +316,13 @@ final class QueryCommandContractTest extends KnossosTestCase
     {
         $this->withScannedFixture(function (\Closure $run, string $project): void {
             $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'first'], ['execute' => ['']]);
-            $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'second'], ['execute' => [''], 'remove' => ['no']]);
+            $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'second'], ['execute' => [''], 'remove' => ['no'], 'replace' => ['']]);
 
             assertSame(['second'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'value'));
             // An agent can run the CLI as well as a person can: what it writes is the model's.
             assertSame(['model'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'author'));
             // A padded --evidence is trimmed, as the tool's evidence_paths are.
-            $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'padded'], ['execute' => [''], 'evidence' => ['  src/CheckoutService.php  ']]);
+            $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'padded'], ['execute' => [''], 'replace' => [''], 'evidence' => ['  src/CheckoutService.php  ']]);
             // --evidence, repeated, names the files the note rests on; an unscanned one is refused.
             try {
                 $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', 'third'], ['execute' => [''], 'evidence' => ['nowhere.php']]);
