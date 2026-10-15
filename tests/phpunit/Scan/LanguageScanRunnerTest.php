@@ -311,6 +311,52 @@ final class LanguageScanRunnerTest extends TestCase
         assertContains('2048 MB', $message);
     }
 
+    /** PHP words heap exhaustion its own way; the hint must recognise it. */
+    public function testAPhpWorkerOutOfMemoryNamesTheSetting(): void
+    {
+        $pool = $this->createStub(LanguageWorkerPool::class);
+        $pool->method('client')->willThrowException(new WorkerException(
+            'WORKER_EXITED',
+            'Scanner worker exited before responding (exit 255). Worker stderr: PHP Fatal error:  '
+                . 'Allowed memory size of 536870912 bytes exhausted (tried to allocate 20480 bytes)',
+        ));
+        $descriptor = new LanguageDescriptor(
+            key: 'php',
+            languages: ['php'],
+            command: ['php', '-d', 'memory_limit=512M', 'worker'],
+            stage: 'scanner_php',
+            workerMemoryMb: 512,
+        );
+        $runner = new LanguageScanRunner([$descriptor], $pool, new ContributionCacheService());
+
+        $message = $runner->run($this->planWithOneFile('php'), new CancellationToken())->workerDiagnostics[0]['message'] ?? '';
+
+        assertContains('limits.worker_memory_mb', $message);
+        assertContains('512 MB', $message);
+    }
+
+    /** A PHP error that merely mentions memory is not heap exhaustion. */
+    public function testAPhpErrorMentioningMemoryIsNotTreatedAsExhaustion(): void
+    {
+        $pool = $this->createStub(LanguageWorkerPool::class);
+        $pool->method('client')->willThrowException(new WorkerException(
+            'WORKER_EXITED',
+            'Scanner worker exited before responding. Worker stderr: PHP Warning:  memory_get_usage() expects no arguments',
+        ));
+        $descriptor = new LanguageDescriptor(
+            key: 'php',
+            languages: ['php'],
+            command: ['php', '-d', 'memory_limit=512M', 'worker'],
+            stage: 'scanner_php',
+            workerMemoryMb: 512,
+        );
+        $runner = new LanguageScanRunner([$descriptor], $pool, new ContributionCacheService());
+
+        $message = $runner->run($this->planWithOneFile('php'), new CancellationToken())->workerDiagnostics[0]['message'] ?? '';
+
+        self::assertStringNotContainsString('limits.worker_memory_mb', $message);
+    }
+
     public function testAWorkerThatEnforcesNoCapIsNotToldItRanWithOne(): void
     {
         // Python and Rust encode no memory flag, so LanguageDescriptor::withMemoryMb()

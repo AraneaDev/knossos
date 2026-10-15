@@ -38,7 +38,7 @@ use Throwable;
  * The question it asks is not "is this path in the index" but "can git name
  * this path at all": a path in any of the three listings this oracle already
  * gathers — `ls-files --cached` (committed), `ls-files --others
- * --exclude-standard` (untracked but not ignored), or `diff --name-only`
+ * --exclude-per-directory=.gitignore` (untracked but not ignored), or `diff --name-only`
  * (changed or deleted versus HEAD) — is visible to git, whatever its index
  * status. The index alone is not enough: an uncommitted new file lives only
  * in `--others`, and a staged rename's or delete's old path lives only in
@@ -129,7 +129,7 @@ final readonly class GitDriftOracle implements DriftOracle
      * in the class docblock, not only a performance cutoff.
      *
      * At or below it, a tracked row git cannot name by any of its three
-     * listings (`--cached`, `--others --exclude-standard`, `diff`) declines
+     * listings (`--cached`, `--others`, `diff`) declines
      * the oracle outright, so the walk answers from a complete view instead
      * of this one from an incomplete one. Above it, the cross-check is
      * skipped and this oracle proceeds as though git's universe were
@@ -207,7 +207,12 @@ final readonly class GitDriftOracle implements DriftOracle
             // a move arrives as both of its paths, which is what a graph has to
             // be rebuilt for.
             $changedOutput = $this->run($root, ['diff', '--name-only', '-z', '--no-ext-diff', '--no-renames', '--relative', $head, '--', $root]);
-            $untrackedOutput = $this->run($root, ['ls-files', '--others', '--exclude-standard', '-z', '--']);
+            // The tree's own .gitignore files only, as discovery reads them
+            // (GitIgnoreRules): --exclude-standard also applied
+            // .git/info/exclude, a machine-local file discovery deliberately
+            // ignores, so a new file matched only there was scanned yet never
+            // reported as an addition.
+            $untrackedOutput = $this->run($root, ['ls-files', '--others', '--exclude-per-directory=.gitignore', '-z', '--']);
         } catch (Throwable $error) {
             // A permanently silent fast path is undiagnosable: this oracle
             // failing simply means the walk answers, which looks like nothing
