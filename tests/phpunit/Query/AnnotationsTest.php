@@ -28,8 +28,8 @@ final class AnnotationsTest extends KnossosTestCase
         assertSame('upsert', $written->data['action']);
         assertSame('App\\Checkout', $written->data['component']);
 
-        // Upsert: same key, new value.
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'CORE flow', execute: true);
+        // Upsert: same key, new value, replaced on purpose.
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'CORE flow', execute: true, replace: true);
         $list = $queries->listAnnotations($ids['project']);
         assertSame(1, count($list->data['annotations']));
         assertSame('CORE flow', $list->data['annotations'][0]['value']);

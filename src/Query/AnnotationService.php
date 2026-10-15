@@ -25,14 +25,39 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
     /**
      * Record or replace a durable annotation, previewing unless executing.
      *
+     * A model note is not replaced by different text unless `$replace` says
+     * so: two agent sessions writing on one component made the second erase
+     * the first's finding without a word. Text that keeps the old note (an
+     * extension) and the same text (a confirmation) need no flag, and a
+     * person's own note, edited in the pane, is replaced as before. The
+     * refusal hands back the stored note so the caller can merge it.
+     *
      * @param list<string> $evidencePaths files besides the component's own that a model note rests on
+     * @param bool $replace replace a model note whose text this one does not keep
      */
-    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = []): ResultEnvelope
+    public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = [], bool $replace = false): ResultEnvelope
     {
         $target = $this->target($projectId, $component, $kind, $value, $author);
         $basis = $author === 'model' ? $this->basis($projectId, $target['canonical'], $evidencePaths) : [];
+        $kept = self::wouldLose($target['existing'], $value, $author) && !$replace;
+        if ($kept) {
+            $target['warnings'][] = sprintf(
+                'A different model note is stored here (written %s); pass replace: true to replace it, or include its text to extend it.',
+                substr((string) $target['existing']['updated_at'], 0, 10),
+            );
+        }
         if (!$execute) {
             return $this->preview($projectId, $target, $kind, 'upsert', ['value' => $value]);
+        }
+        if ($kept) {
+            return new ResultEnvelope(
+                $projectId,
+                $target['project']['active_scan_id'],
+                sprintf('Nothing written: %s already holds a different model %s; pass replace: true to replace it, or include its text to extend it.', $target['canonical'], $kind),
+                ['component' => $target['canonical'], 'kind' => $kind, 'action' => 'refused', 'executed' => false, 'previous' => $target['existing'], 'annotation' => null],
+                [],
+                $target['warnings'],
+            );
         }
         $statement = $this->pdo->prepare(
             'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
@@ -42,7 +67,25 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         );
         $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'author' => $author, 'basis' => json_encode($basis, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
 
-        return $this->executed($projectId, $target, $kind, 'upsert', 'Recorded', $this->fetch($projectId, $target['canonical'], $kind, $author));
+        $replaced = self::wouldLose($target['existing'], $value, $author);
+
+        return $this->executed($projectId, $target, $kind, 'upsert', $replaced ? 'Replaced the previous' : 'Recorded', $this->fetch($projectId, $target['canonical'], $kind, $author));
+    }
+
+    /**
+     * Whether writing `$value` would lose a model note's text: one is stored
+     * and the new text neither equals nor contains it.
+     *
+     * @param array<string, mixed>|null $existing
+     */
+    private static function wouldLose(?array $existing, string $value, string $author): bool
+    {
+        if ($author !== 'model' || $existing === null) {
+            return false;
+        }
+        $old = trim((string) $existing['value']);
+
+        return $old !== '' && !str_contains($value, $old);
     }
 
     /**
@@ -169,7 +212,11 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         $canonical = $matches === [] ? $component : (string) $matches[0]['canonical_name'];
         $warnings = [];
-        if ($matches === []) {
+        if ($matches === [] && ProjectFile::exists((string) $project['root_realpath'], $component)) {
+            // A noted project file becomes a file component on the next scan
+            // (NamedFiles), so "not found" would send the caller looking for a typo.
+            $warnings[] = sprintf('%s is a project file, not a component yet: the annotation is kept, and the file becomes a file component on the next scan.', $component);
+        } elseif ($matches === []) {
             $warning = 'Component not found in the current graph; the annotation is kept anyway (dynamic or upcoming symbol?).';
             $near = array_slice(array_column($this->resolve($projectId, $component), 'canonical_name'), 0, 5);
             $warnings[] = $near === [] ? $warning : $warning . ' Did you mean: ' . implode(', ', $near) . '?';
@@ -189,7 +236,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         return new ResultEnvelope(
             $projectId,
             $target['project']['active_scan_id'],
-            $summary ?? sprintf('Preview: would %s %s annotation on %s.', $action, $kind, $target['canonical']),
+            $summary ?? sprintf('Preview only, nothing written: would %s %s annotation on %s; pass execute to write it.', $action, $kind, $target['canonical']),
             ['component' => $target['canonical'], 'kind' => $kind, 'action' => $action, 'executed' => false, 'previous' => $target['existing'], 'annotation' => $annotation],
             [],
             [...$target['warnings'], 'Set execute=true to apply the change.'],

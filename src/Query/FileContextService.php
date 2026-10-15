@@ -91,7 +91,7 @@ final readonly class FileContextService
      *
      * @return list<array{rev: string, at: int, subject: string}>
      */
-    private function commits(string $root, string $relative): array
+    public function commits(string $root, string $relative): array
     {
         try {
             $out = $this->git->run(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '-C', $root, 'log', '-n', (string) self::COMMITS, '--format=%h%x1f%ct%x1f%s', '--', $relative], self::GIT_TIMEOUT_MS, 'file context');

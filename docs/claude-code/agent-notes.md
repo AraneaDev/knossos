@@ -217,7 +217,10 @@ what the command printed decides.
 The model asks for one file's context with the MCP server's `file_context`
 tool (`mcp__knossos__file_context`): the file's boundary and the declared
 rules whose source is that boundary, how many files depend on it and the
-closest five, the tests that reach it, and its three latest commits. The
+closest five, the tests that reach it, and its three latest commits. A project
+file Knossos does not scan, such as a CI script or a workflow, answers with
+status `not_scanned` and its latest commits; a note on such a file makes it a
+file component on the next scan. The
 [MCP tool reference](../reference/mcp-tools.md#file_context) has its input and
 output.
 

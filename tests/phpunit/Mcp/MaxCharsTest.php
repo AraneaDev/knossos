@@ -152,6 +152,32 @@ final class MaxCharsTest extends KnossosTestCase
         assertSame(true, ($result->meta['dropped_items']['component_legend'] ?? 0) > 0);
     }
 
+    /**
+     * Notes are what a fresh session most needs and cannot rebuild; a legend
+     * and evidence only repeat what the payload already names. Notes shared
+     * the first tier with them, so inspect_component came back with notes: []
+     * while its legend survived.
+     */
+    #[Group('mcp')]
+    public function testLegendsAndEvidenceAreTrimmedBeforeNotes(): void
+    {
+        $pdo = $this->freshTestDatabase();
+        $enricher = new ResultEnricher(new StalenessProbe($pdo), new NextStepPlanner());
+        $legend = [];
+        // More notes than legend entries: trimming by size alone takes the notes first.
+        foreach (range(1, 4) as $i) {
+            $legend['App\\Member' . $i] = ['kind' => 'method', 'confidence' => 'certain', 'origin' => 'ast', 'attributes' => ['note' => str_repeat('y', 700)]];
+        }
+        $notes = array_map(static fn(int $i): array => ['component' => 'App\\N' . $i, 'kind' => 'note', 'author' => 'model', 'text' => str_repeat('x', 200), 'written' => '2026-10-15', 'stale' => false, 'stale_reason' => null], range(1, 8));
+        $evidence = array_map(static fn(int $i): array => ['path' => 'src/E' . $i . '.php', 'start_line' => $i, 'end_line' => $i], range(1, 3));
+        $envelope = new ResultEnvelope('project_x', 'scan_x', 'Inspected App\\Thing.', ['component' => ['canonical_name' => 'App\\Thing'], 'notes' => $notes, 'component_legend' => $legend], $evidence);
+
+        $result = $enricher->enrich($envelope, 'inspect_component', 'compact', 4000);
+
+        assertSame(8, count($result->data['notes']), 'The notes outlast the legend and the evidence.');
+        assertSame(true, ($result->meta['dropped_items']['component_legend'] ?? 0) > 0);
+    }
+
     /** Notes annotate the answer they ride on: under a budget they pay before the findings do. */
     #[Group('mcp')]
     public function testNotesAreTrimmedBeforeTheFindingsTheyAnnotate(): void

@@ -139,7 +139,9 @@ and edge is paid for once instead of per row.
 
 Tools that accept `max_chars` size the _serialized envelope_ to that budget.
 When the result is over budget, Knossos drops tail items from the largest
-remaining list, descending into nested lists too, until it fits:
+remaining list, descending into nested lists too, until it fits. It spends three
+tiers in turn: evidence and legends first, then `notes`, then the findings
+themselves. Then:
 
 - `truncated` becomes `true`.
 - `meta.dropped_items` records how many items were dropped, keyed by dotted path

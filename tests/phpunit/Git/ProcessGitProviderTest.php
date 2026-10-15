@@ -520,6 +520,28 @@ final class ProcessGitProviderTest extends KnossosTestCase
         }
     }
 
+    /**
+     * Discovery reads only the tree's own .gitignore files, so a file matched
+     * by .git/info/exclude alone is scanned. --exclude-standard also applied
+     * that machine-local file, so such a file vanished from the untracked list
+     * while the graph held it.
+     */
+    public function testUntrackedFilesFollowTheTreesGitignoreOnly(): void
+    {
+        $repo = $this->gitRepository();
+        try {
+            $this->writeFiles($repo, ['.gitignore' => "ignored.ts\n", 'local.ts' => "l\n", 'ignored.ts' => "i\n"]);
+            file_put_contents($repo . '/.git/info/exclude', "local.ts\n", FILE_APPEND);
+
+            $paths = (new ProcessGitWorkingTreeProvider())->changes($repo, null, 100, 5000)['paths'];
+
+            assertSame(true, in_array('local.ts', $paths, true), 'A path excluded only on this machine is still part of the tree.');
+            assertSame(false, in_array('ignored.ts', $paths, true), 'The tree\'s own .gitignore still applies.');
+        } finally {
+            $this->removeTempTree($repo);
+        }
+    }
+
     public function testANestedProjectBeforeTheFirstCommitSeesOnlyItsOwnFiles(): void
     {
         $repo = $this->gitRepository();
