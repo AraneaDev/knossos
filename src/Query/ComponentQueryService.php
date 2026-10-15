@@ -239,9 +239,17 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
      * site. Edges are occurrence-level facts (their stable id includes the
      * evidence location), so this is a direct listing, not an aggregation.
      *
+     * A method also lists the usages of every supertype method it implements
+     * or overrides ({@see SupertypeMethods}), marked `via_supertype` and at
+     * most `probable`: a caller typed on an interface calls the interface's
+     * method in the graph, so without this step an implementation reached only
+     * through its interface listed no production caller at all. A
+     * certain-only listing leaves those rows out, as impact analysis does.
+     *
      * @param list<string> $edgeKinds
+     * @param bool $excludeTests leave out usages whose source is test code
      */
-    public function listUsages(string $projectId, string $symbol, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 100): ResultEnvelope
+    public function listUsages(string $projectId, string $symbol, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 100, bool $excludeTests = false): ResultEnvelope
     {
         if ($limit < 1 || $limit > 500) {
             throw new InvalidArgumentException('limit must be between 1 and 500.');
@@ -266,18 +274,22 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $confidenceRank,
             static fn(int $rank): bool => $rank >= $confidenceRank[$minConfidence],
         ));
+        $supertypes = $confidenceRank[$minConfidence] <= $confidenceRank['probable'] ? $this->supertypeNames($projectId, $target['id']) : [];
+        $targetIds = [$target['id'], ...array_keys($supertypes)];
         $kindPlaceholders = implode(',', array_fill(0, count($edgeKinds), '?'));
         $confidencePlaceholders = implode(',', array_fill(0, count($allowedConfidence), '?'));
+        $targetPlaceholders = implode(',', array_fill(0, count($targetIds), '?'));
+        $where = 'WHERE e.project_id = ? AND e.target_id IN (' . $targetPlaceholders . ') AND e.kind IN (' . $kindPlaceholders . ') '
+            . 'AND e.confidence IN (' . $confidencePlaceholders . ')' . ($excludeTests ? ' AND NOT ' . self::IN_TEST_SQL : '');
+        $whereParameters = [$projectId, ...$targetIds, ...$edgeKinds, ...$allowedConfidence, ...($excludeTests ? [ReportableComponent::TEST_ROLE] : [])];
         $statement = $this->pdo->prepare(
-            'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, f.relative_path, ' .
+            'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, e.target_id, f.relative_path, ' .
             's.id AS source_id, s.kind AS source_kind, s.canonical_name AS source_canonical, s.display_name AS source_display, ' .
             self::IN_TEST_SQL . ' AS in_test ' .
             'FROM edges e JOIN nodes s ON s.id = e.source_id LEFT JOIN files f ON f.id = e.file_id ' .
-            'WHERE e.project_id = ? AND e.target_id = ? AND e.kind IN (' . $kindPlaceholders . ') ' .
-            'AND e.confidence IN (' . $confidencePlaceholders . ') ' .
-            'ORDER BY f.relative_path, e.start_line, e.id LIMIT ?',
+            $where . ' ORDER BY f.relative_path, e.start_line, e.id LIMIT ?',
         );
-        $statement->execute([ReportableComponent::TEST_ROLE, $projectId, $target['id'], ...$edgeKinds, ...$allowedConfidence, $limit + 1]);
+        $statement->execute([ReportableComponent::TEST_ROLE, ...$whereParameters, $limit + 1]);
         $rows = $statement->fetchAll();
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
@@ -290,22 +302,24 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         if ($truncated) {
             $countStatement = $this->pdo->prepare(
                 'SELECT COUNT(*), COALESCE(SUM(CASE WHEN ' . self::IN_TEST_SQL . ' THEN 0 ELSE 1 END), 0) ' .
-                'FROM edges e JOIN nodes s ON s.id = e.source_id WHERE e.project_id = ? AND e.target_id = ? ' .
-                'AND e.kind IN (' . $kindPlaceholders . ') AND e.confidence IN (' . $confidencePlaceholders . ')',
+                'FROM edges e JOIN nodes s ON s.id = e.source_id ' . $where,
             );
-            $countStatement->execute([ReportableComponent::TEST_ROLE, $projectId, $target['id'], ...$edgeKinds, ...$allowedConfidence]);
+            $countStatement->execute([ReportableComponent::TEST_ROLE, ...$whereParameters]);
             [$totalMatched, $outsideTests] = array_map('intval', $countStatement->fetch(PDO::FETCH_NUM));
         }
         $usages = [];
         $evidence = [];
         foreach ($rows as $row) {
+            $via = $supertypes[(string) $row['target_id']] ?? null;
             $usages[] = [
-                'edge_id' => $row['edge_id'], 'kind' => $row['kind'], 'confidence' => $row['confidence'], 'origin' => $row['origin'],
+                // Which implementation a call through a supertype runs is a
+                // guess, so such a row is at most probable, as in impact.
+                'edge_id' => $row['edge_id'], 'kind' => $row['kind'], 'confidence' => $via !== null && $row['confidence'] === 'certain' ? 'probable' : $row['confidence'], 'origin' => $row['origin'],
                 'attributes' => self::decode($row['attributes_json']),
                 'source' => ['id' => $row['source_id'], 'kind' => $row['source_kind'], 'canonical_name' => $row['source_canonical'], 'display_name' => $row['source_display']],
                 'path' => $row['relative_path'], 'start_line' => $row['start_line'], 'end_line' => $row['end_line'],
                 'test' => (int) $row['in_test'] === 1,
-            ];
+            ] + ($via !== null ? ['via_supertype' => $via] : []);
             if ($row['relative_path'] !== null && count($evidence) < 100) {
                 $evidence[] = ['edge_id' => $row['edge_id'], 'path' => $row['relative_path'], 'start_line' => $row['start_line'], 'end_line' => $row['end_line']];
             }
@@ -338,6 +352,22 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             ['Usage sites are static occurrences; dynamic dispatch, reflection, and string-based references are not resolved.'],
             $truncated,
         );
+    }
+
+    /**
+     * The supertype methods a method fulfils, id => canonical name.
+     *
+     * @return array<string, string>
+     */
+    private function supertypeNames(string $projectId, string $methodId): array
+    {
+        $ids = SupertypeMethods::of($this->pdo, $projectId, [$methodId])[$methodId] ?? [];
+        $names = [];
+        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT id, canonical_name FROM nodes WHERE id IN (%s)', array_values($ids), mode: PDO::FETCH_NUM) as [$id, $name]) {
+            $names[(string) $id] = (string) $name;
+        }
+
+        return $names;
     }
 
     /**

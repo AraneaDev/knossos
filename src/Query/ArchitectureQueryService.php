@@ -160,9 +160,9 @@ final readonly class ArchitectureQueryService
      *
      * @param list<string> $edgeKinds
      */
-    public function listUsages(string $projectId, string $symbol, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 100): ResultEnvelope
+    public function listUsages(string $projectId, string $symbol, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 100, bool $excludeTests = false): ResultEnvelope
     {
-        return $this->withNotes($this->services->componentQueries->listUsages($projectId, $symbol, $edgeKinds, $minConfidence, $limit));
+        return $this->withNotes($this->services->componentQueries->listUsages($projectId, $symbol, $edgeKinds, $minConfidence, $limit, $excludeTests));
     }
 
     /** {@see GraphSummaryQuery::architectureSummary()} */

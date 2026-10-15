@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use JsonException;
+use Knossos\Store\SharedNodeKinds;
 use Knossos\Store\SnapshotPayload;
 use PDO;
 use PDOException;
@@ -34,6 +35,7 @@ final readonly class SnapshotMetricsCache
     private const SOURCES = [
         QualityGateQueryService::class, SnapshotMetrics::class, SnapshotResolver::class, AbstractArchitectureQueryService::class,
         ReportableComponent::class, SnapshotPayload::class, SnapshotGraphReader::class, ErasedTypeEdge::class, RenameMatching::class,
+        SharedNodeKinds::class,
     ];
 
     /** The code the stored figures must come from to answer. */
