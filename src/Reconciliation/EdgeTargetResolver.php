@@ -231,7 +231,8 @@ final class EdgeTargetResolver
         $modules = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
-                if ($node->kind === 'module') {
+                // A file no worker scans has a `file` component when something names it (NamedFiles).
+                if ($node->kind === 'module' || $node->kind === 'file') {
                     $modules[$node->evidence->relativePath] ??= $node->localId;
                 }
             }

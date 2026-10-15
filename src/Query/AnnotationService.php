@@ -106,6 +106,17 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             $basis[(string) $row['relative_path']] = (string) $row['content_hash'];
         }
         $root = (string) $this->project($projectId)['root_realpath'];
+        if ($basis === []) {
+            // A file component (NamedFiles): the note rests on the file it names, hashed from disk.
+            try {
+                $named = ProjectRelativePath::of($root, $canonical);
+                if (is_file($root . '/' . $named)) {
+                    $basis[$named] = ProjectFileHash::of($root, $named);
+                }
+            } catch (InvalidArgumentException) {
+                // A symbol name, not a path.
+            }
+        }
         $cited = $this->pdo->prepare('SELECT content_hash FROM files WHERE project_id = :project AND relative_path = :path');
         foreach ($evidencePaths as $written) {
             // Read as file_context reads a path: relative, `./`-led, or absolute under the root.
