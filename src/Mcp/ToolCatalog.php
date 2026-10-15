@@ -281,6 +281,7 @@ final readonly class ToolCatalog
                         'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 500, 'default' => 100],
+                        'exclude_tests' => ['type' => 'boolean', 'default' => false, 'description' => 'Leave out usages from test code.'],
                     ],
                     'required' => ['project_id', 'symbol'],
                     'additionalProperties' => false,
