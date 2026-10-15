@@ -109,6 +109,12 @@ and says so in `declared_in`. A Python module is named in dotted form
 (`app.models`) and a PHP file has no module node, so a path is the only name a
 caller may have for either.
 
+A member declared in another file than the type that contains it, such as a
+Rust method in an `impl` block of another module, is named after its type, so
+its name reads as if it lived beside it. `find_component`, `search_architecture`
+and `inspect_component` give such a member its own `declared_in`, the file it
+is declared in.
+
 ## Search
 
 `search_architecture` matches each word of the query against a component's
