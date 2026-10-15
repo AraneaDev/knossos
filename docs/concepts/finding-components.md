@@ -124,6 +124,12 @@ after, so a search for that word still finds the component the note is on. A
 component found only through a note ranks after every one whose own name,
 attributes or roles match, and the result carries the notes of what it found.
 
+A note can also rest on a name the graph does not hold, such as a symbol built
+at runtime. When no `kinds`, `roles`, `boundary_ids` or `confidences` filter is
+given, the first page lists such notes whose name or text holds every word in
+`notes_without_component`, at most 20, each with its text, author and stale
+flag, and the summary counts them.
+
 ## List usages
 
 Use `list_usages` when you need every call/reference site of a symbol with

@@ -18,6 +18,9 @@ use PDO;
  */
 final readonly class ComponentQueryService extends AbstractArchitectureQueryService
 {
+    /** The most notes on names the graph does not hold one search lists. */
+    private const MAX_NOTES_WITHOUT_COMPONENT = 20;
+
     /** Find components by name, reporting an ambiguous match rather than guessing. */
     public function findComponent(string $projectId, string $name, int $limit = 20): ResultEnvelope
     {
@@ -432,11 +435,20 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 ];
             }
         }
+        // Notes on names no component holds, on the first page of an unfiltered search:
+        // a filter is on components, and such a note has none.
+        $apart = $offset === 0 && $kinds === [] && $roles === [] && $boundaryIds === [] && $confidences === []
+            ? $this->notesWithoutComponent($projectId, $terms)
+            : [];
+        $summary = sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's');
+        if ($apart !== []) {
+            $summary .= sprintf(' %d note%s on names the graph does not hold match too (notes_without_component).', count($apart), count($apart) === 1 ? '' : 's');
+        }
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's'),
-            ['query' => $query, 'results' => $results, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
+            $summary,
+            ['query' => $query, 'results' => $results, 'notes_without_component' => $apart, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
             $evidence,
             [],
             $truncated,
@@ -466,6 +478,33 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         }
 
         return $apart;
+    }
+
+    /**
+     * The notes on names no component of the graph holds whose name or text
+     * holds every term, at most {@see self::MAX_NOTES_WITHOUT_COMPONENT}, as
+     * {@see AnnotationNotes} renders a note.
+     *
+     * @param list<string> $terms
+     * @return list<array{component: string, kind: string, author: string, text: string, written: string, stale: bool, stale_reason: ?string}>
+     */
+    private function notesWithoutComponent(string $projectId, array $terms): array
+    {
+        if ($terms === []) {
+            return [];
+        }
+        $params = ['project' => $projectId];
+        $sql = 'SELECT DISTINCT a.canonical_name FROM annotations a WHERE a.project_id = :project '
+            . 'AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name)';
+        foreach ($terms as $index => $term) {
+            $params['term' . $index] = '%' . self::like($term) . '%';
+            $sql .= " AND (a.canonical_name LIKE :term{$index} ESCAPE '!' OR a.value LIKE :term{$index} ESCAPE '!')";
+        }
+        $statement = $this->pdo->prepare($sql . ' ORDER BY a.canonical_name LIMIT ' . self::MAX_NOTES_WITHOUT_COMPONENT);
+        $statement->execute($params);
+        $names = array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
+
+        return (new AnnotationNotes($this->pdo))->forComponents($projectId, $names);
     }
 
     /**
