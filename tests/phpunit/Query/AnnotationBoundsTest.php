@@ -78,7 +78,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
         assertSame('upsert', $preview->data['action']);
         assertSame(null, $preview->data['previous']);
         assertSame(['value' => 'core flow'], $preview->data['annotation']);
-        assertSame('Preview: would upsert note annotation on App\\Checkout.', $preview->summary);
+        assertSame('Preview only, nothing written: would upsert note annotation on App\\Checkout; pass execute to write it.', $preview->summary);
         assertSame('Set execute=true to apply the change.', $preview->warnings[count($preview->warnings) - 1]);
         assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
 

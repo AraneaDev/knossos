@@ -547,6 +547,7 @@ Record, extend or remove your own (model) annotation on a component; it survives
 | `value` | string | no | maxLength=2000; default="" |
 | `evidence_paths` | array | no | maxItems=5 |
 | `remove` | boolean | no | default=false |
+| `replace` | boolean | no | default=false |
 | `execute` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
