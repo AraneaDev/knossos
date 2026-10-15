@@ -64,7 +64,9 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
         }
         if ($baseRef === null) {
             foreach (explode("\0", $this->runner->run([
-                ...$git, 'ls-files', '--others', '--exclude-standard', '-z', '--', '.',
+                // The tree's own .gitignore files only, as discovery reads them; not
+                // .git/info/exclude, which belongs to one machine's checkout.
+                ...$git, 'ls-files', '--others', '--exclude-per-directory=.gitignore', '-z', '--', '.',
             ], $timeoutMs, 'working-tree query')) as $path) {
                 if ($path === '') {
                     continue;
