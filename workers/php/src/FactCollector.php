@@ -248,13 +248,37 @@ final class FactCollector extends NodeVisitorAbstract
         $interpreter = ($first instanceof Expr\ConstFetch && $first->name->toString() === 'PHP_BINARY')
             || ($first instanceof Node\Scalar\String_ && in_array(basename($first->value), self::INTERPRETERS, true));
         $candidates = $interpreter ? array_slice($values, 1) : [$first];
-        foreach ($candidates as $value) {
+        foreach ($candidates as $index => $value) {
             $path = self::argvPath($value, !$interpreter);
             if ($path !== null) {
                 $this->addEdge('launches', $this->currentSource(), self::reference('launched_file', $path), $array, 'probable', ['speculative' => true]);
+                $this->launchedCommand($path, $candidates[$index + 1] ?? null, $array);
 
                 return;
             }
+        }
+    }
+
+    /**
+     * The console command an argv runs by name: `[PHP_BINARY, 'artisan', 'orders:poll']`
+     * runs the Artisan command declaring `orders:poll`, and `['php', 'bin/console', 'app:sync']`
+     * the Symfony command named `app:sync`. A speculative call, resolved by the core
+     * as `Artisan::call()` and `#[AsCommand]` names are, and dropped when no command
+     * of the project declares the name.
+     */
+    private function launchedCommand(string $script, ?Expr $argument, Expr\Array_ $array): void
+    {
+        if (!$argument instanceof Node\Scalar\String_) {
+            return;
+        }
+        $name = preg_split('/\s/', trim($argument->value), 2)[0] ?? '';
+        $kind = match (true) {
+            basename($script) === 'artisan' => 'artisan_command',
+            $script === 'bin/console' || str_ends_with($script, '/bin/console') => 'command',
+            default => null,
+        };
+        if ($kind !== null && $name !== '' && !str_starts_with($name, '-')) {
+            $this->addEdge('calls', $this->currentSource(), 'php:' . $kind . ':' . $name, $array, 'probable', ['speculative' => true]);
         }
     }
 
@@ -275,7 +299,10 @@ final class FactCollector extends NodeVisitorAbstract
             return null;
         }
         $path = ltrim(preg_replace('#^\./#', '', $literal) ?? $literal, '/');
-        $script = preg_match('#\.(?:py|js|mjs|cjs|ts|php|rb|pl|sh)$#', $path) === 1;
+        // `artisan` is a script by name: Laravel's entry point has no extension
+        // and sits at the root, where a bare word would otherwise be taken for
+        // an argument rather than a file.
+        $script = preg_match('#\.(?:py|js|mjs|cjs|ts|php|rb|pl|sh)$#', $path) === 1 || $path === 'artisan';
         if (str_starts_with($path, '-') || (!str_contains($path, '/') && !$script) || str_ends_with($path, '/') || preg_match('#[\s=:]#', $path) === 1) {
             return null;
         }
