@@ -8,10 +8,8 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
-use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, ReconciliationResult};
-use Knossos\Reconciliation\NamedFiles;
+use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, NamedFiles, ReconciliationResult};
 use Knossos\Result\ResultEnvelope;
-use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteGraphRepository;
@@ -199,7 +197,7 @@ final class ProjectScanService implements ProjectScanner
                 throw new ScanBusyException(sprintf('The writer lease for project %s was lost during the scan; another writer took over.', $projectId));
             }
             $result = (new GraphReconciler($repository))->reconcile(
-                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name, $named),
+                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name, [...$language->contributions, $named]),
                 $verifyUndiscovered,
             );
             foreach ($result->phaseMilliseconds as $phase => $milliseconds) {
@@ -265,6 +263,7 @@ final class ProjectScanService implements ProjectScanner
      * What reconciliation is asked to write for this scan.
      *
      * @param array<string, mixed> $projectConfig
+     * @param list<\Knossos\Scanner\Protocol\ScanContribution> $contributions every language's, then the file components (NamedFiles)
      */
     private static function fullScanRequest(
         ScanPreparation $preparation,
@@ -273,14 +272,14 @@ final class ProjectScanService implements ProjectScanner
         ScanAnalysis $analysis,
         array $projectConfig,
         ?string $name,
-        ScanContribution $named,
+        array $contributions,
     ): FullScanRequest {
         return new FullScanRequest(
             'root:' . $preparation->discovery->rootRealpath,
             $name ?? basename($preparation->discovery->rootRealpath),
             $preparation->discovery,
             $language->manifests,
-            [...$language->contributions, $named],
+            $contributions,
             $projectConfig,
             $analysis->classifications,
             $analysis->boundaries,
