@@ -49,4 +49,54 @@ final class SnapshotDiffTest extends KnossosTestCase
         self::assertSame('src/InvoiceService.php', $moved['after']['path']);
         self::assertContains('start_line', $moved['changed_fields']);
     }
+
+    /**
+     * An edge is identified by where it is written, so inserting a line above a
+     * call used to report the call removed and added again. A relationship that
+     * only moved is listed under `moved`, with its old and new line.
+     */
+    #[Group('query')]
+    public function testACallThatOnlyMovedIsMovedNotRemovedAndAdded(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-diff-moved-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o700, true);
+        $php = static fn(string $body): string => "<?php\n\nnamespace App;\n\n" . $body;
+        file_put_contents($root . '/composer.json', "{\"name\": \"demo/diff\", \"autoload\": {\"psr-4\": {\"App\\\\\": \"src/\"}}}\n");
+        file_put_contents($root . '/src/Helper.php', $php("final class Helper\n{\n    public static function shine(): string\n    {\n        return '';\n    }\n\n    public static function dim(): string\n    {\n        return '';\n    }\n}\n"));
+        $caller = static fn(string $extra): string => $php("final class Caller\n{\n    public function run(): string\n    {\n{$extra}        Helper::shine();\n\n        return Helper::dim();\n    }\n}\n");
+        file_put_contents($root . '/src/Caller.php', $caller(''));
+        $pdo = $this->freshTestDatabase();
+        try {
+            $scanner = new \Knossos\Scan\ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            $first = $scanner->scan($root);
+            file_put_contents($root . '/src/Caller.php', $caller("        \$unused = 1;\n\n"));
+            $scanner->scan($root);
+
+            $diff = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($first->projectId, $first->snapshotId);
+
+            $calls = static fn(string $kind): array => array_values(array_filter(
+                $diff->data['changes']['relationships'][$kind],
+                static fn(array $change): bool => (($change['after'] ?? $change['before'])['kind'] ?? null) === 'calls',
+            ));
+            self::assertSame([], $calls('added'));
+            self::assertSame([], $calls('removed'));
+            self::assertCount(2, $calls('moved'));
+            $moved = $calls('moved')[0];
+            self::assertSame(2, $moved['after']['start_line'] - $moved['before']['start_line']);
+            self::assertContains('start_line', $moved['changed_fields']);
+            self::assertSame(count($diff->data['changes']['relationships']['moved']), $diff->data['changes']['relationships']['counts']['moved']);
+            self::assertSame(0, $diff->data['changes']['relationships']['counts']['added'] + $diff->data['changes']['relationships']['counts']['removed']);
+
+            // A second call to the same method is a new occurrence: one added, the first kept.
+            file_put_contents($root . '/src/Caller.php', $caller("        \$unused = 1;\n\n        Helper::shine();\n"));
+            $second = $scanner->scan($root);
+            $again = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($first->projectId, $first->snapshotId, $second->snapshotId);
+            $added = array_values(array_filter($again->data['changes']['relationships']['added'], static fn(array $change): bool => $change['after']['kind'] === 'calls'));
+            self::assertCount(1, $added);
+            self::assertSame([], array_values(array_filter($again->data['changes']['relationships']['removed'], static fn(array $change): bool => $change['before']['kind'] === 'calls')));
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
 }

@@ -60,7 +60,12 @@ knossos snapshot-diff project_... scan_... active --max-changes=25 --json
 ```
 
 The changelog separates added, removed, changed, and moved components along
-with relationship, role, boundary, membership, and diagnostic changes. It also
+with relationship, role, boundary, membership, and diagnostic changes.
+Relationships are matched by kind, source and target rather than by where they
+are written, so a call that only moved, because a line was inserted above it, is
+listed under `moved` with its old and new line instead of as removed and added.
+A relationship whose confidence, origin or attributes changed is `changed`; one
+more or one fewer occurrence of the same relationship is added or removed. It also
 counts confidence increases and decreases. Every category has deterministic
 ordering, while `max_changes` applies a global output cap and reports both the
 total and reported counts.

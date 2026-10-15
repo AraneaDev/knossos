@@ -62,7 +62,7 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
         foreach ($tableMap as $section => [$table, $key]) {
             $fromRows = ($from['load'])($table);
             $toRows = ($to['load'])($table);
-            $diff = $this->diffSnapshotRows($fromRows, $toRows, $key);
+            $diff = $table === 'edges' ? self::diffEdgeRows($fromRows, $toRows) : $this->diffSnapshotRows($fromRows, $toRows, $key);
             unset($fromRows, $toRows); // free the raw rows before the next table
             if ($section === 'components') {
                 $allComponentChanges = $diff['changed'];
@@ -88,6 +88,19 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
                 $truncated = $truncated || $take < $count;
             }
             $sectionOutput['counts'] = ['added' => count($diff['added']), 'removed' => count($diff['removed']), 'changed' => count($diff['changed'])];
+            if (isset($diff['moved'])) {
+                // The same relationship written somewhere else, after the others.
+                $count = count($diff['moved']);
+                $total += $count;
+                $take = min($remaining, $count);
+                $sectionOutput['moved'] = array_map(
+                    fn(array $change): array => $this->snapshotChangeRecord($table, 'moved', $change, $fromFiles, $toFiles),
+                    array_slice($diff['moved'], 0, $take),
+                );
+                $remaining -= $take;
+                $truncated = $truncated || $take < $count;
+                $sectionOutput['counts']['moved'] = $count;
+            }
             $sections[$section] = $sectionOutput;
         }
 
@@ -224,6 +237,65 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
         return ['added' => $added, 'removed' => $removed, 'changed' => $changed];
     }
     /**
+     * Compare two edge sets by relationship rather than by id. An edge's id names
+     * where it is written, so a line inserted above a call gave the call a new id
+     * and it read as removed and added. Edges are paired by kind, source and
+     * target: the same id first, then the rest in order of position. A pair
+     * that differs only in where it is written is `moved`; one that differs in
+     * anything else is `changed`; what is left over is added or removed.
+     *
+     * @param list<array<string, mixed>> $beforeRows
+     * @param list<array<string, mixed>> $afterRows
+     * @return array{added: list<array<string, mixed>>, removed: list<array<string, mixed>>, changed: list<array<string, mixed>>, moved: list<array<string, mixed>>}
+     */
+    private static function diffEdgeRows(array $beforeRows, array $afterRows): array
+    {
+        $group = static function (array $rows): array {
+            $grouped = [];
+            foreach ($rows as $row) {
+                unset($row['last_scan_id'], $row['scan_id']);
+                ksort($row, SORT_STRING);
+                $grouped[$row['kind'] . "\0" . $row['source_id'] . "\0" . $row['target_id']][(string) $row['id']] = $row;
+            }
+            ksort($grouped, SORT_STRING);
+            foreach ($grouped as &$edges) {
+                uasort($edges, static fn(array $a, array $b): int => [(string) ($a['file_id'] ?? ''), (int) ($a['start_line'] ?? 0), (string) $a['id']]
+                    <=> [(string) ($b['file_id'] ?? ''), (int) ($b['start_line'] ?? 0), (string) $b['id']]);
+            }
+
+            return $grouped;
+        };
+        $where = ['id' => true, 'file_id' => true, 'start_line' => true, 'end_line' => true];
+        $before = $group($beforeRows);
+        $after = $group($afterRows);
+        $diff = ['added' => [], 'removed' => [], 'changed' => [], 'moved' => []];
+        foreach (array_keys($before + $after) as $relationship) {
+            $old = $before[$relationship] ?? [];
+            $new = $after[$relationship] ?? [];
+            foreach (array_intersect_key($old, $new) as $id => $row) {
+                if ($row !== $new[$id]) {
+                    $diff[array_diff_key($row, $where) === array_diff_key($new[$id], $where) ? 'moved' : 'changed'][] = ['id' => $id, 'before' => $row, 'after' => $new[$id]];
+                }
+            }
+            $old = array_values(array_diff_key($old, $new));
+            $new = array_values(array_diff_key($new, $before[$relationship] ?? []));
+            $paired = min(count($old), count($new));
+            for ($i = 0; $i < $paired; ++$i) {
+                $kind = array_diff_key($old[$i], $where) === array_diff_key($new[$i], $where) ? 'moved' : 'changed';
+                $diff[$kind][] = ['id' => (string) $new[$i]['id'], 'before' => $old[$i], 'after' => $new[$i]];
+            }
+            foreach (array_slice($new, $paired) as $row) {
+                $diff['added'][] = ['id' => (string) $row['id'], 'after' => $row];
+            }
+            foreach (array_slice($old, $paired) as $row) {
+                $diff['removed'][] = ['id' => (string) $row['id'], 'before' => $row];
+            }
+        }
+
+        return $diff;
+    }
+
+    /**
      * One change entry, carrying enough identity to be actionable rather than just a count.
      *
      * @param list<array<string, mixed>> $beforeFiles @param list<array<string, mixed>> $afterFiles @return array<string, mixed>
@@ -236,7 +308,7 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
             }
             $fields = match ($table) {
                 'nodes' => ['id', 'kind', 'canonical_name', 'display_name', 'file_id', 'start_line', 'end_line', 'origin', 'confidence'],
-                'edges' => ['id', 'kind', 'source_id', 'target_id', 'file_id', 'origin', 'confidence'],
+                'edges' => ['id', 'kind', 'source_id', 'target_id', 'file_id', 'start_line', 'end_line', 'origin', 'confidence'],
                 'classifications' => ['id', 'node_id', 'role', 'origin', 'confidence', 'rule_id'],
                 'boundaries' => ['id', 'name', 'source', 'matcher_json'],
                 'boundary_memberships' => ['boundary_id', 'node_id'],
