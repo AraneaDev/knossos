@@ -341,7 +341,7 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             $releaseNotes = [
                 'from_snapshot' => $diff->data['from']['scan_id'], 'to_snapshot' => $diff->data['to']['scan_id'],
                 'markdown' => sprintf(
-                    "## Architecture changes\n\n- Components: +%d / -%d / %d changed / %d moved\n- Relationships: +%d / -%d / %d changed\n- Confidence: %d raised / %d lowered\n%s",
+                    "## Architecture changes\n\n- Components: +%d / -%d / %d changed / %d moved\n- Relationships: +%d / -%d / %d changed / %d moved\n- Confidence: %d raised / %d lowered\n%s",
                     $components['added'],
                     $components['removed'],
                     $components['changed'],
@@ -349,6 +349,7 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                     $relationships['added'],
                     $relationships['removed'],
                     $relationships['changed'],
+                    $relationships['moved'],
                     $diff->data['confidence_changes']['raised'],
                     $diff->data['confidence_changes']['lowered'],
                     $diff->truncated ? "- Detail output was truncated by the 100-change release-note bound.\n" : '',

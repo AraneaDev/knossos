@@ -125,10 +125,12 @@
                     "id": "edge_4fab4fb5050707de1d316382285b805ae325faf03cf9b28a9722dffc44e0d4b9",
                     "after": {
                         "confidence": "certain",
+                        "end_line": 1,
                         "id": "edge_4fab4fb5050707de1d316382285b805ae325faf03cf9b28a9722dffc44e0d4b9",
                         "kind": "calls",
                         "origin": "ast",
                         "source_id": "symbol_e2487f7422ce43e75e2bb2c3abb2650ecdf4f2c7023ee4bff9446a37d39c0e77",
+                        "start_line": 1,
                         "target_id": "symbol_b73811ff6f1f7a2dddcf614633ee8188dbb47d9293f10777f59fac51deed5962",
                         "path": "src/Checkout.php"
                     }
@@ -139,10 +141,12 @@
                     "id": "edge_4642a1ff693195da5b7360a9c83b6ab145cedee0ecf7697ff11efcbc317f3547",
                     "before": {
                         "confidence": "certain",
+                        "end_line": 1,
                         "id": "edge_4642a1ff693195da5b7360a9c83b6ab145cedee0ecf7697ff11efcbc317f3547",
                         "kind": "calls",
                         "origin": "ast",
                         "source_id": "symbol_e2487f7422ce43e75e2bb2c3abb2650ecdf4f2c7023ee4bff9446a37d39c0e77",
+                        "start_line": 1,
                         "target_id": "symbol_ba05f9ea1d5b1b5f8d7bddad867f434dabb0241e1adaa2ea9ba79a99ac9b2a6f",
                         "path": "src/Checkout.php"
                     }
@@ -153,19 +157,23 @@
                     "id": "edge_9b6990e1cc2319453249f5a7197ab5f2a5fe5720cd9c74679a9f388ced16ac8e",
                     "before": {
                         "confidence": "certain",
+                        "end_line": 1,
                         "id": "edge_9b6990e1cc2319453249f5a7197ab5f2a5fe5720cd9c74679a9f388ced16ac8e",
                         "kind": "calls",
                         "origin": "ast",
                         "source_id": "symbol_e2487f7422ce43e75e2bb2c3abb2650ecdf4f2c7023ee4bff9446a37d39c0e77",
+                        "start_line": 1,
                         "target_id": "symbol_96f69eeab45dbc624bf4d5cbaab985d9ad065663cd195c6ad17d8c488c3464dc",
                         "path": "src/Checkout.php"
                     },
                     "after": {
                         "confidence": "possible",
+                        "end_line": 1,
                         "id": "edge_9b6990e1cc2319453249f5a7197ab5f2a5fe5720cd9c74679a9f388ced16ac8e",
                         "kind": "calls",
                         "origin": "ast",
                         "source_id": "symbol_e2487f7422ce43e75e2bb2c3abb2650ecdf4f2c7023ee4bff9446a37d39c0e77",
+                        "start_line": 1,
                         "target_id": "symbol_96f69eeab45dbc624bf4d5cbaab985d9ad065663cd195c6ad17d8c488c3464dc",
                         "path": "src/Checkout.php"
                     },
@@ -177,8 +185,10 @@
             "counts": {
                 "added": 1,
                 "removed": 1,
-                "changed": 1
-            }
+                "changed": 1,
+                "moved": 0
+            },
+            "moved": []
         },
         "roles": {
             "added": [],
