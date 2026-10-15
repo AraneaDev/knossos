@@ -60,6 +60,27 @@ describe("annotations.php", () => {
         ]);
     });
 
+    // A shared watcher left by the previous session can still be rescanning
+    // the reset workspace when the next session clears its notes, and an
+    // excalidraw rescan holds the write lock for well over ten seconds.
+    it("waits out a writer that holds the database for longer than ten seconds", async () => {
+        const root = await tmp("eval-root-");
+        await mkdir(root, { recursive: true });
+        const db = await database(root, [
+            ["App\\A", "found by an agent", "model"],
+        ]);
+        const holder = run("php", [
+            "-r",
+            `$pdo = new PDO('sqlite:${db}'); $pdo->exec('BEGIN IMMEDIATE'); usleep(12000000); $pdo->exec('COMMIT');`,
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        await run(HELPER, ["clear", db, root]);
+        await holder;
+
+        expect(JSON.parse(await values(db))).toEqual([]);
+    }, 60_000);
+
     it("prints how many model notes an import handed over", async () => {
         const root = await tmp("eval-root-");
         const db = await database(root, [
