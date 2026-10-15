@@ -70,10 +70,16 @@ instead of failing the whole call:
   ones come from a check scoped to the change's components, not from the first
   page of the whole project's. `not_evaluated` when no policies are declared or
   supplied.
-- `quality_gate`: `passed`, `checks`, `baseline_snapshot`, computed against
-  the most recently retained non-active snapshot unless `baseline_snapshot` is
-  given explicitly. `not_evaluated` when no budgets are declared or supplied,
-  or when no retained baseline snapshot exists yet.
+- `quality_gate`: `passed`, `checks`, `baseline_snapshot` and `baseline`,
+  computed against the most recently retained non-active snapshot unless
+  `baseline_snapshot` is given explicitly. `baseline` names that snapshot, its
+  `source` (`previous_scan` or `argument`), `captured_at` and `age_seconds`.
+  The previous scan is often minutes old, so a pass means no regression since
+  that scan, not since `base_ref`: `base_ref` only chooses the changed files.
+  When `base_ref` is given and the gate used the previous scan, a warning says
+  so; pass `baseline_snapshot` with a scan of that ref to gate against it.
+  `not_evaluated` when no budgets are declared or supplied, or when no retained
+  baseline snapshot exists yet.
 - `cycles_touching_change`: the subset of `dependency_cycles`'s cycles with
   at least one member among the change's direct or impacted components,
   matched on every member (`member_ids`), not only the first 100 listed.

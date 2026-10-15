@@ -97,6 +97,44 @@ final class ReviewDiffTest extends KnossosTestCase
         assertSame(true, is_bool($result->data['quality_gate']['passed']));
     }
 
+    /**
+     * The gate compares against the scan before the active one unless told
+     * otherwise, so its verdict means "no regression since that scan". The
+     * result names that baseline, and says when base_ref was asked for but
+     * is not what the gate compared against.
+     */
+    #[Group('query')]
+    public function testTheGateNamesItsBaselineAndWhenItIsNotTheBaseRef(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $repository->archiveActiveSnapshot($ids['project'], hash('sha256', '{}'), 5);
+        $scan2 = StableId::scan($ids['project'], 'scan-2');
+        $repository->createScan($scan2, $ids['project'], 'full', hash('sha256', 'scanner-set'));
+        $repository->completeScan($ids['project'], $scan2);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $previous = $queries->reviewDiff($ids['project'], files: ['src/Checkout.php'], budgets: ['new_cycles' => 0])->data['quality_gate']['baseline'];
+        assertSame($ids['scan'], $previous['snapshot']);
+        assertSame('previous_scan', $previous['source']);
+        assertSame(true, is_int($previous['age_seconds']) && $previous['age_seconds'] >= 0);
+
+        $given = $queries->reviewDiff($ids['project'], files: ['src/Checkout.php'], budgets: ['new_cycles' => 0], baselineSnapshot: $ids['scan'])->data['quality_gate']['baseline'];
+        assertSame('argument', $given['source']);
+
+        $tree = new class implements \Knossos\Git\GitWorkingTreeProvider {
+            public function changes(string $projectRoot, ?string $baseRef, int $maxFiles, int $timeoutMs): array
+            {
+                return ['paths' => ['src/Checkout.php'], 'renames' => [], 'truncated' => false];
+            }
+        };
+        $fromGit = ArchitectureQueryService::forDatabase($pdo, gitWorkingTree: $tree);
+        $warnings = $fromGit->reviewDiff($ids['project'], baseRef: 'main', budgets: ['new_cycles' => 0])->warnings;
+        assertSame(1, count(array_filter($warnings, static fn(string $w): bool => str_contains($w, 'not the graph of base_ref main'))));
+        $named = $fromGit->reviewDiff($ids['project'], baseRef: 'main', budgets: ['new_cycles' => 0], baselineSnapshot: $ids['scan'])->warnings;
+        assertSame(0, count(array_filter($named, static fn(string $w): bool => str_contains($w, 'not the graph of base_ref'))));
+    }
+
     #[Group('query')]
     public function testDispatchThroughToolService(): void
     {
