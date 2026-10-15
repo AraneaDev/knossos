@@ -26,6 +26,20 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     private const MAX_FLOW_STATES = 10_000;
 
     /**
+     * The deepest path a caller may ask for. Twelve, not eight: a scan reaches
+     * its worker process in about nine hops (ProjectScanService::scan to
+     * WorkerProcessSupervisor::start), and a cap of eight could never answer
+     * that question however long the search ran.
+     */
+    public const MAX_DEPTH = 12;
+
+    /**
+     * The search budget when the caller names none. 1000 ms gave up on a
+     * seven-hop search after 463 states that 5000 ms answered.
+     */
+    public const DEFAULT_TIMEOUT_MS = 3000;
+
+    /**
      * Paths by which one component can reach another, with the edges that justify each hop.
      *
      * Reads as its phases: validate the bounds, resolve both endpoints to one
@@ -33,7 +47,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      *
      * @param list<string> $edgeKinds
      */
-    public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000): ResultEnvelope
+    public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = self::DEFAULT_TIMEOUT_MS): ResultEnvelope
     {
         $project = $this->project($projectId);
         [$confidenceRank, $edgeKinds] = $this->flowArguments($maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs);
@@ -73,8 +87,8 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      */
     private function flowArguments(int $maxDepth, int $maxPaths, array $edgeKinds, string $minConfidence, int $timeoutMs): array
     {
-        if ($maxDepth < 1 || $maxDepth > 8) {
-            throw new InvalidArgumentException('max_depth must be between 1 and 8.');
+        if ($maxDepth < 1 || $maxDepth > self::MAX_DEPTH) {
+            throw new InvalidArgumentException(sprintf('max_depth must be between 1 and %d.', self::MAX_DEPTH));
         }
         if ($maxPaths < 1 || $maxPaths > 20) {
             throw new InvalidArgumentException('max_paths must be between 1 and 20.');
