@@ -71,9 +71,9 @@ final readonly class ArchitectureQueryService
      *
      * {@see RefreshPolicy::decide()}
      */
-    public function refreshDecision(string $projectId, \Knossos\Query\Drift\DriftCounts $drift): RefreshDecision
+    public function refreshDecision(string $projectId, \Knossos\Query\Drift\DriftCounts $drift, int $budgetMs = RefreshPolicy::DEFAULT_BUDGET_MS): RefreshDecision
     {
-        return $this->services->refreshPolicy->decide($projectId, $drift);
+        return $this->services->refreshPolicy->decide($projectId, $drift, $budgetMs);
     }
 
     /**

@@ -38,6 +38,11 @@
           "type": "integer",
           "minimum": 10000,
           "maximum": 3600000
+        },
+        "refresh_budget_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
         }
       }
     },

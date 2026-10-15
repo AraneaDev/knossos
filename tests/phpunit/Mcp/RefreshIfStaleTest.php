@@ -579,6 +579,51 @@ final class RefreshIfStaleTest extends KnossosTestCase
         }
     }
 
+    /**
+     * The budget comes from the project's own knossos.json, read when the
+     * query runs: 0 keeps every rescan out of the queries, and a raised
+     * budget admits one the 5000 ms default would have declined.
+     */
+    #[Group('mcp')]
+    public function testTheProjectSetsItsOwnRefreshBudget(): void
+    {
+        [$tools, $projectId, $root, $pdo] = $this->buildToolServiceWithScan('mixed');
+        try {
+            $file = $root . '/src/CheckoutService.php';
+            $drift = static function () use ($file): void {
+                file_put_contents($file, "\n// drift\n", FILE_APPEND);
+                touch($file, filemtime($file) + 60);
+            };
+            $countScans = static fn(): int => (int) $pdo->query('SELECT COUNT(*) FROM scans')->fetchColumn();
+
+            file_put_contents($root . '/knossos.json', '{"version":1,"limits":{"refresh_budget_ms":0}}');
+            $tools->call('scan_project', ['path' => $root]);
+            $drift();
+            $before = $countScans();
+            $result = $tools->call('architecture_summary', ['project_id' => $projectId, 'refresh_if_stale' => true]);
+
+            assertSame($before, $countScans(), 'A zero budget must not scan, however cheap the scan.');
+            assertSame(true, str_contains(implode(' ', $result->warnings), 'limits.refresh_budget_ms is 0'));
+
+            // 300 s a scan over 3 files, plus the same 300 s as the fastest
+            // incremental scan's overhead, is 400,000 ms for one file: far
+            // over the default, inside a 600,000 ms budget.
+            file_put_contents($root . '/knossos.json', '{"version":1,"limits":{"refresh_budget_ms":600000}}');
+            $tools->call('scan_project', ['path' => $root]);
+            $pdo->prepare('UPDATE scans SET duration_ms = 300000 WHERE project_id = :project AND duration_ms IS NOT NULL')->execute(['project' => $projectId]);
+            $drift();
+            $result = $tools->call('architecture_summary', ['project_id' => $projectId, 'refresh_if_stale' => true]);
+
+            assertSame('fresh', $result->staleness['state'], sprintf(
+                'The raised budget admits the rescan the default declines. Warnings: %s Staleness: %s',
+                implode(' ', $result->warnings),
+                json_encode($result->staleness),
+            ));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** A stale verdict with no measured change set cannot be costed, so it must decline rather than guess. */
     #[Group('mcp')]
     public function testAStaleGraphWithNoMeasuredDriftDeclines(): void

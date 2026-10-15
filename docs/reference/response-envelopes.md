@@ -208,16 +208,22 @@ rescan attempted.
 The rescan only runs when it is cheap enough to fit inside the call you are
 already waiting on. `RefreshPolicy` estimates the cost from the duration the
 project's own scans recorded: an overhead for the discovery, worker startup and
-reconciliation any rescan pays, plus the last scan's per-file cost times the
-number of files that drifted. The overhead is the fastest of the project's last
-ten incremental scans, and never less than 500 ms. That estimate is capped at what the full scan
-cost only when the drift is deletions alone, which is the one case where the old
-duration is a genuine upper bound: an added file was never in that scan, and a
-changed file may have grown since it was, so capping either against the old scan
-would price work nobody has measured. It compares that estimate against a 5000
-ms budget. Over budget, or when the active scan recorded no duration to estimate
-against, or when the graph is `stale` with no measured change set to cost, the
-refresh is declined and the stored graph answers instead. A declined or failed
+reconciliation any rescan pays, plus a per-file cost times the number of files
+that drifted. The per-file cost is the median duration of the project's last ten
+complete scans spread over the files in the graph, taking the dearer middle of
+an even sample, so one slow scan does not price every refresh after it out of
+reach. The overhead is the fastest of the project's last ten incremental scans,
+and never less than 500 ms. That estimate is capped at the median scan only when
+the drift is deletions alone, which is the one case where an old duration is a
+genuine upper bound: an added file was never in those scans, and a changed file
+may have grown since, so capping either against them would price work nobody
+has measured. It compares that estimate against the project's
+[`limits.refresh_budget_ms`](../get-started/project-configuration.md#limits),
+5000 ms unless set, read from `knossos.json` when the query runs. A budget of 0
+declines every refresh, an explicit `refresh_if_stale: true` included. Over
+budget, or when the active scan recorded no duration to estimate against, or
+when the graph is `stale` with no measured change set to cost, the refresh is
+declined and the stored graph answers instead. A declined or failed
 refresh adds one line to `warnings`, prefixed `refresh_if_stale:`, naming the
 reason and, when relevant, pointing you at `scan_project`. A refresh that
 succeeds adds no warning at all: staleness is probed again after the rescan, so

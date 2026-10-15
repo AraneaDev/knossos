@@ -222,11 +222,11 @@ final class RefreshPolicyTest extends KnossosTestCase
         [$pdo, $projectId] = $this->seedScanCosting(durationMs: 10_000, files: 1000);
 
         self::assertTrue(
-            (new RefreshPolicy($pdo, budgetMs: 550))->decide($projectId, new DriftCounts(5, 0, 0))->refresh,
+            (new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(5, 0, 0), budgetMs: 550)->refresh,
             '500 ms overhead plus 10 ms/file times 5 files is exactly 550 ms; a tie must fall on the side of allowing the refresh.',
         );
         self::assertFalse(
-            (new RefreshPolicy($pdo, budgetMs: 549))->decide($projectId, new DriftCounts(5, 0, 0))->refresh,
+            (new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(5, 0, 0), budgetMs: 549)->refresh,
             'One ms over the budget must still decline.',
         );
     }
@@ -277,26 +277,54 @@ final class RefreshPolicyTest extends KnossosTestCase
     }
 
     /**
-     * `scanCost()` floors a recorded duration at `max(0.0, ...)`, mutable to
-     * `max(1.0, ...)`. A scan that timed at exactly zero milliseconds is a
-     * genuine, cheap-to-repeat answer and must stay zero, not become a
-     * phantom one millisecond: the class docblock calls this distinction
-     * load-bearing, separate from the null case that means "unknown".
-     * Pinned with a zero budget so the two costs (0 ms vs 1 ms) fall on
-     * opposite sides of the `> budget` decision instead of both fitting, and
-     * on a deletion-only drift because the historical cap is what carries the
-     * recorded duration into the decision at all: any other change set is
-     * estimated from the per-file rate plus the fixed overhead, where a
-     * difference of one millisecond in a total nobody caps is invisible.
+     * `limits.refresh_budget_ms: 0` is how a project turns the automatic
+     * refresh off. A budget of zero would otherwise still admit a scan the
+     * history costs at nothing, so zero is read as "never", and the reason
+     * names the setting so nobody goes looking for a slow scan.
      */
     #[Group('query')]
-    public function testARecordedZeroDurationStaysZeroNotOneMillisecond(): void
+    public function testAZeroBudgetNeverRefreshes(): void
     {
         [$pdo, $projectId] = $this->seedScanCosting(durationMs: 0, files: 1);
 
-        $decision = (new RefreshPolicy($pdo, budgetMs: 0))->decide($projectId, new DriftCounts(0, 0, 1));
+        $decision = (new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(0, 0, 1), budgetMs: 0);
 
-        self::assertTrue($decision->refresh, 'A true zero-cost scan estimates 0 ms, which fits even a 0 ms budget; max(1.0, ...) would estimate 1 ms and be declined instead.');
+        self::assertFalse($decision->refresh, 'A free rescan is still a rescan the project said not to run inside a query.');
+        self::assertStringContainsString('limits.refresh_budget_ms is 0', (string) $decision->reason);
+    }
+
+    /**
+     * The per-file cost was the last scan's alone, so one slow scan (a cold
+     * cache, a busy machine) priced every refresh after it out of the budget.
+     * It is now the median of the recent scans: 2000 ms here, 2 ms a file,
+     * which with 2000 ms of overhead puts 100 files at 2200 ms. The 100 s scan
+     * alone would have put them at 12 s.
+     */
+    #[Group('query')]
+    public function testOneSlowScanDoesNotSetThePerFileCost(): void
+    {
+        [$pdo, $projectId] = $this->seedScanCosting(durationMs: 100_000, files: 1000);
+        $this->seedIncrementalScans($pdo, $projectId, [2_000, 2_000, 2_000, 2_000]);
+
+        self::assertTrue((new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(100, 0, 0))->refresh);
+    }
+
+    /**
+     * An even sample has two middles, and the dearer one is taken: 10 ms a
+     * file rather than 2, so one file costs 2010 ms on top of the 2000 ms
+     * overhead and not 2002. Too high an estimate costs a warning; too low a
+     * one costs the caller their answer.
+     */
+    #[Group('query')]
+    public function testAnEvenSampleTakesTheDearerMiddle(): void
+    {
+        [$pdo, $projectId] = $this->seedScanCosting(durationMs: 10_000, files: 1000);
+        $this->seedIncrementalScans($pdo, $projectId, [2_000]);
+
+        $decision = (new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(0, 1, 0), budgetMs: 2005);
+
+        self::assertFalse($decision->refresh);
+        self::assertStringContainsString('2010 ms', (string) $decision->reason);
     }
 
     /**
@@ -317,7 +345,7 @@ final class RefreshPolicyTest extends KnossosTestCase
         $decision = (new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(0, 1, 0));
 
         self::assertFalse($decision->refresh);
-        self::assertStringContainsString('5210 ms', (string) $decision->reason);
+        self::assertStringContainsString('5209 ms', (string) $decision->reason);
     }
 
     /** Only the last ten incremental scans count, so an old fast one no longer sets the overhead. */
@@ -330,7 +358,7 @@ final class RefreshPolicyTest extends KnossosTestCase
         $decision = (new RefreshPolicy($pdo))->decide($projectId, new DriftCounts(0, 1, 0));
 
         self::assertFalse($decision->refresh);
-        self::assertStringContainsString('6010 ms', (string) $decision->reason);
+        self::assertStringContainsString('6006 ms', (string) $decision->reason);
     }
 
     /** The floor stands when recent incremental scans were quicker than it. */

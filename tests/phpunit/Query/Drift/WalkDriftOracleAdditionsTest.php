@@ -255,6 +255,33 @@ final class WalkDriftOracleAdditionsTest extends KnossosTestCase
     }
 
     /**
+     * A directory that holds tracked files was there when the scan ran, so it
+     * is not an addition, whatever its ctime says. Its ctime moves whenever an
+     * entry inside it is created, renamed or removed, so an edit saved by
+     * rename in src/ counted src/ itself as a new file once the root was
+     * walked. A refresh that finished within that second then still read as
+     * stale, with two "added files" no rescan could clear until the clock
+     * moved on.
+     */
+    #[Group('query')]
+    public function testADirectoryThatHoldsTrackedFilesIsNotAnAddition(): void
+    {
+        [$pdo, $projectId, $root] = $this->seedProjectWithFiles(['root.php', 'src/existing.php']);
+        try {
+            file_put_contents($root . '/src/existing.php.tmp', "<?php\n");
+            unlink($root . '/src/existing.php.tmp');
+            $ctime = (int) filectime($root . '/src');
+            $pdo->prepare('UPDATE scans SET finished_at = :finished WHERE id = :id')
+                ->execute(['finished' => gmdate('Y-m-d\TH:i:s\Z', $ctime), 'id' => $this->activeScanId($pdo, $projectId)]);
+            touch($root, $ctime + 60);
+
+            self::assertSame(0, self::drift($pdo, $projectId, $root)->added, 'src/ holds a tracked file, so it existed when the scan ran.');
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
      * The inclusive boundaries must not swallow their own purpose: an entry
      * that genuinely predates the scan still has to read as no drift, or
      * every probe of a project with an untracked file beside its sources

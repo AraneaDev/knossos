@@ -98,6 +98,32 @@ final class ProjectConfigTest extends KnossosTestCase
     }
 
     /**
+     * refresh_if_stale's budget was a fixed 5000 ms. A project whose client
+     * waits longer, or that wants no rescan inside a query at all, had no
+     * way to say so. 0 is in range: it means never.
+     */
+    #[Group('project-config')]
+    public function testTheRefreshBudgetIsALimitWithItsOwnRange(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($root, 0o700);
+        try {
+            assertSame(null, ProjectConfigurationLoader::load($root, [$root])->refreshBudgetMs);
+            foreach ([0, 20_000, 600_000] as $bound) {
+                file_put_contents($root . '/knossos.json', '{"version":1,"limits":{"refresh_budget_ms":' . $bound . '}}');
+                assertSame($bound, ProjectConfigurationLoader::load($root, [$root])->refreshBudgetMs);
+            }
+            foreach (['-1', '600001', '"5000"'] as $invalid) {
+                file_put_contents($root . '/knossos.json', '{"version":1,"limits":{"refresh_budget_ms":' . $invalid . '}}');
+                $error = captureThrows(fn() => ProjectConfigurationLoader::load($root, [$root]), DiscoveryException::class);
+                assertSame('PROJECT_CONFIG_INVALID: refresh_budget_ms must be between 0 and 600000.', $error->getMessage());
+            }
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
      * The shared watcher's scan time limit was fixed at 300 s, out of reach
      * for a project whose scan needs longer: the plugin's hooks start the
      * watcher, so no flag can set it.

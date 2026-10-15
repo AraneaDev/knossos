@@ -15,6 +15,7 @@ final readonly class ProjectConfiguration
      * @param array<string, int> $qualityBudgets
      * @param list<string> $deadCodeSuppressions
      * @param int|null $watchScanTimeoutMs how long one scan of the shared watcher may run; null for its default
+     * @param int|null $refreshBudgetMs how long refresh_if_stale may rescan inside a query, 0 for never; null for its default
      */
     public function __construct(
         public ?string $path = null,
@@ -30,5 +31,6 @@ final readonly class ProjectConfiguration
         public array $qualityBudgets = [],
         public array $deadCodeSuppressions = [],
         public ?int $watchScanTimeoutMs = null,
+        public ?int $refreshBudgetMs = null,
     ) {}
 }

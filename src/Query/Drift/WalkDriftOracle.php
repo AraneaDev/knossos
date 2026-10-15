@@ -130,8 +130,10 @@ final readonly class WalkDriftOracle implements DriftOracle
         $deleted = 0;
         $named = [];
         $directories = [];
+        $holders = [];
         foreach ($tracked as $relativePath => $contentHash) {
             $absolute = $root . '/' . $relativePath;
+            $holders[dirname($absolute)] = true;
             // filemtime() here is only an existence probe, not a comparison: a
             // moved mtime does not prove the bytes changed (a `touch` or a
             // `git checkout` that restores identical content moves it for
@@ -156,7 +158,7 @@ final readonly class WalkDriftOracle implements DriftOracle
             $directories[dirname($absolute)][basename($absolute)] = true;
         }
 
-        $additions = $this->addedSince($directories, $finishedAt, $this->paths ?? ScannedPaths::forProject($this->pdo, $projectId), $root);
+        $additions = $this->addedSince($directories, self::withAncestors($holders, $root), $finishedAt, $this->paths ?? ScannedPaths::forProject($this->pdo, $projectId), $root);
 
         foreach ($additions['paths'] as $path) {
             $named = DriftCounts::name($named, $path, 'added');
@@ -213,10 +215,11 @@ final readonly class WalkDriftOracle implements DriftOracle
      * count, and a floor cannot be costed: see {@see DriftCounts}.
      *
      * @param array<string, array<string, true>> $directories directory => tracked basenames within it
+     * @param array<string, true> $holders every directory below the root that held a tracked file when the scan ran
      * @param ?string $finishedAt when the active scan finished
      * @return array{added: int, truncated: bool, paths: list<string>} `paths` names the first additions, at most {@see DriftCounts::NAMED}
      */
-    private function addedSince(array $directories, ?string $finishedAt, TrackedPathPredicate $scanned, string $root): array
+    private function addedSince(array $directories, array $holders, ?string $finishedAt, TrackedPathPredicate $scanned, string $root): array
     {
         if ($finishedAt === null) {
             return ['added' => 0, 'truncated' => false, 'paths' => []];
@@ -248,7 +251,7 @@ final readonly class WalkDriftOracle implements DriftOracle
             try {
                 $examined = 0;
                 while ($examined < self::MAX_ADDITION_ENTRIES && ($entry = readdir($handle)) !== false) {
-                    if ($entry === '.' || $entry === '..' || isset($tracked[$entry])) {
+                    if ($entry === '.' || $entry === '..' || isset($tracked[$entry]) || isset($holders[$directory . '/' . $entry])) {
                         continue;
                     }
                     // Counted before the question is asked, not after it is
@@ -296,5 +299,27 @@ final readonly class WalkDriftOracle implements DriftOracle
         }
 
         return ['added' => $added, 'truncated' => false, 'paths' => $paths];
+    }
+
+    /**
+     * The directories that held a tracked file when the scan ran, directly or
+     * further down, below the root. Each one existed then, so none is an
+     * addition, though its ctime moves every time an entry inside it is
+     * created, renamed or removed. Deleted files count too: a directory whose
+     * tracked files are all gone was still there when the scan read them.
+     *
+     * @param array<string, true> $directories the directories holding a tracked file directly
+     * @return array<string, true>
+     */
+    private static function withAncestors(array $directories, string $root): array
+    {
+        $holders = [];
+        foreach (array_keys($directories) as $directory) {
+            for ($current = (string) $directory; strlen($current) > strlen($root) && !isset($holders[$current]); $current = dirname($current)) {
+                $holders[$current] = true;
+            }
+        }
+
+        return $holders;
     }
 }
