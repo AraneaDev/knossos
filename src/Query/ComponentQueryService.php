@@ -407,43 +407,15 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         if (count($terms) > 8) {
             throw new InvalidArgumentException('query must contain at most 8 words.');
         }
-        $params = ['project' => $projectId, 'exact' => $query, 'prefix' => self::like($query) . '%'];
-        // Every whitespace-separated term must match somewhere, so natural
-        // phrasings like "review diff" find reviewDiffText: in the component
-        // itself, or in a note recorded on it.
-        $own = [];
-        $where = '';
-        foreach ($terms as $index => $term) {
-            $key = 'contains' . $index;
-            $params[$key] = '%' . self::like($term) . '%';
-            $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR n.attributes_json LIKE :$key ESCAPE '!' " .
-                "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";
-            $own[] = $matches;
-            $where .= " AND ($matches OR EXISTS (SELECT 1 FROM annotations aq WHERE aq.project_id = n.project_id " .
-                "AND aq.canonical_name = n.canonical_name AND aq.value LIKE :$key ESCAPE '!'))";
+        $rows = $this->searchRows($projectId, $query, $terms, $kinds, $roles, $boundaryIds, $confidences, $limit + 1, $offset, false);
+        $match = 'all_terms';
+        // A description with one word the code never uses found nothing at
+        // all. When nothing matches every term (on any page), rank what
+        // matches some of them, most terms first, and say so.
+        if ($rows === [] && count($terms) > 1 && ($offset === 0 || $this->searchRows($projectId, $query, $terms, $kinds, $roles, $boundaryIds, $confidences, 1, 0, false) === [])) {
+            $rows = $this->searchRows($projectId, $query, $terms, $kinds, $roles, $boundaryIds, $confidences, $limit + 1, $offset, true);
+            $match = 'any_term';
         }
-        $sql = "SELECT DISTINCT n.*, f.relative_path, CASE WHEN n.canonical_name = :exact THEN 0 WHEN n.display_name = :exact THEN 1 WHEN n.canonical_name LIKE :prefix ESCAPE '!' THEN 2 " .
-            'WHEN ' . implode(' AND ', $own) . ' THEN 3 ELSE 4 END AS rank ' .
-            'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project' . $where;
-        $sql .= $this->filterClause('n.kind', 'kind', $kinds, $params);
-        $sql .= $this->filterClause('n.confidence', 'confidence', $confidences, $params);
-        if ($roles !== []) {
-            $clause = $this->filterClause('cr.role', 'role', $roles, $params);
-            $sql .= ' AND EXISTS (SELECT 1 FROM classifications cr WHERE cr.node_id = n.id' . $clause . ')';
-        }
-        if ($boundaryIds !== []) {
-            $clause = $this->filterClause('bm.boundary_id', 'boundary', $boundaryIds, $params);
-            $sql .= ' AND EXISTS (SELECT 1 FROM boundary_memberships bm WHERE bm.node_id = n.id' . $clause . ')';
-        }
-        $sql .= ' ORDER BY rank, n.canonical_name, n.id LIMIT :limit OFFSET :offset';
-        $statement = $this->pdo->prepare($sql);
-        foreach ($params as $key => $value) {
-            $statement->bindValue(':' . $key, $value);
-        }
-        $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
-        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $statement->execute();
-        $rows = $statement->fetchAll();
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
@@ -470,7 +442,9 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $apart = $offset === 0 && $kinds === [] && $roles === [] && $boundaryIds === [] && $confidences === []
             ? $this->notesWithoutComponent($projectId, $terms)
             : [];
-        $summary = sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's');
+        $summary = $match === 'any_term'
+            ? sprintf('No component matches every term; found %d that match some, most terms first.', count($results))
+            : sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's');
         if ($apart !== []) {
             $summary .= sprintf(' %d note%s on names the graph does not hold match too (notes_without_component).', count($apart), count($apart) === 1 ? '' : 's');
         }
@@ -478,11 +452,62 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $projectId,
             $project['active_scan_id'],
             $summary,
-            ['query' => $query, 'results' => $results, 'notes_without_component' => $apart, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
+            ['query' => $query, 'match' => $match, 'results' => $results, 'notes_without_component' => $apart, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
             $evidence,
             [],
             $truncated,
         );
+    }
+
+    /**
+     * One page of search rows: every term matching (`$anyTerm` false), or at
+     * least one, ordered by how many match (`$anyTerm` true). A term matches
+     * the component itself (name, display name, attributes, a role) or the
+     * text of a note recorded on it.
+     *
+     * @param list<string> $terms @param list<string> $kinds @param list<string> $roles
+     * @param list<string> $boundaryIds @param list<string> $confidences
+     * @return list<array<string, mixed>>
+     */
+    private function searchRows(string $projectId, string $query, array $terms, array $kinds, array $roles, array $boundaryIds, array $confidences, int $limit, int $offset, bool $anyTerm): array
+    {
+        $params = ['project' => $projectId, 'exact' => $query, 'prefix' => self::like($query) . '%'];
+        $own = [];
+        $either = [];
+        foreach ($terms as $index => $term) {
+            $key = 'contains' . $index;
+            $params[$key] = '%' . self::like($term) . '%';
+            $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR n.attributes_json LIKE :$key ESCAPE '!' " .
+                "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";
+            $own[] = $matches;
+            $either[] = "($matches OR EXISTS (SELECT 1 FROM annotations aq WHERE aq.project_id = n.project_id " .
+                "AND aq.canonical_name = n.canonical_name AND aq.value LIKE :$key ESCAPE '!'))";
+        }
+        $matched = implode(' + ', array_map(static fn(string $condition): string => "(CASE WHEN $condition THEN 1 ELSE 0 END)", $either));
+        $sql = "SELECT DISTINCT n.*, f.relative_path, CASE WHEN n.canonical_name = :exact THEN 0 WHEN n.display_name = :exact THEN 1 WHEN n.canonical_name LIKE :prefix ESCAPE '!' THEN 2 " .
+            'WHEN ' . implode(' AND ', $own) . ' THEN 3 ELSE 4 END AS rank' . ($anyTerm ? ", $matched AS matched" : '') . ' ' .
+            'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project AND ' .
+            ($anyTerm ? '(' . implode(' OR ', $either) . ')' : implode(' AND ', $either));
+        $sql .= $this->filterClause('n.kind', 'kind', $kinds, $params);
+        $sql .= $this->filterClause('n.confidence', 'confidence', $confidences, $params);
+        if ($roles !== []) {
+            $clause = $this->filterClause('cr.role', 'role', $roles, $params);
+            $sql .= ' AND EXISTS (SELECT 1 FROM classifications cr WHERE cr.node_id = n.id' . $clause . ')';
+        }
+        if ($boundaryIds !== []) {
+            $clause = $this->filterClause('bm.boundary_id', 'boundary', $boundaryIds, $params);
+            $sql .= ' AND EXISTS (SELECT 1 FROM boundary_memberships bm WHERE bm.node_id = n.id' . $clause . ')';
+        }
+        $sql .= ($anyTerm ? ' ORDER BY matched DESC, rank,' : ' ORDER BY rank,') . ' n.canonical_name, n.id LIMIT :limit OFFSET :offset';
+        $statement = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $statement->bindValue(':' . $key, $value);
+        }
+        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $statement->execute();
+
+        return $statement->fetchAll();
     }
 
     /**

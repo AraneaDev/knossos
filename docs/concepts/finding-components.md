@@ -124,6 +124,11 @@ after, so a search for that word still finds the component the note is on. A
 component found only through a note ranks after every one whose own name,
 attributes or roles match, and the result carries the notes of what it found.
 
+Every word has to match. When no component matches all of them, the search
+returns the components that match some, most words first, sets `match` to
+`any_term` (otherwise `all_terms`), and says so in the summary, so a
+description with one word the code never uses still finds what it describes.
+
 A note can also rest on a name the graph does not hold, such as a symbol built
 at runtime. When no `kinds`, `roles`, `boundary_ids` or `confidences` filter is
 given, the first page lists such notes whose name or text holds every word in
