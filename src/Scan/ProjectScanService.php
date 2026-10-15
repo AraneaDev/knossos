@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
+use Knossos\Reconciliation\NamedFiles;
+use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Git\DirtyPathResolver;
@@ -178,7 +180,13 @@ final class ProjectScanService implements ProjectScanner
 
             $reconciliationStarted = hrtime(true);
             $projectConfig = $this->projectConfig($preparation);
-            $fastPath = $this->noChangeFastPath($plan, $language, $preparation, $projectConfig, $name, $verifyUndiscovered, $repository);
+            $namedFiles = new NamedFiles($this->pdo);
+            $named = $namedFiles->contribution($projectId, $preparation->discovery, $preparation->configuration->ignores, $language->contributions);
+            // A note added or removed changes the file components with nothing changed on disk.
+            $sameNamedFiles = array_map(static fn($node): string => $node->canonicalName, $named->nodes) === $namedFiles->current($projectId);
+            $fastPath = $sameNamedFiles
+                ? $this->noChangeFastPath($plan, $language, $preparation, $projectConfig, $name, $verifyUndiscovered, $repository)
+                : null;
             if ($fastPath !== null) {
                 $stageMilliseconds['reconciliation'] = self::elapsedMilliseconds($reconciliationStarted);
                 return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $stageMilliseconds, 'no_change');
@@ -191,7 +199,7 @@ final class ProjectScanService implements ProjectScanner
                 throw new ScanBusyException(sprintf('The writer lease for project %s was lost during the scan; another writer took over.', $projectId));
             }
             $result = (new GraphReconciler($repository))->reconcile(
-                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name),
+                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name, $named),
                 $verifyUndiscovered,
             );
             foreach ($result->phaseMilliseconds as $phase => $milliseconds) {
@@ -265,13 +273,14 @@ final class ProjectScanService implements ProjectScanner
         ScanAnalysis $analysis,
         array $projectConfig,
         ?string $name,
+        ScanContribution $named,
     ): FullScanRequest {
         return new FullScanRequest(
             'root:' . $preparation->discovery->rootRealpath,
             $name ?? basename($preparation->discovery->rootRealpath),
             $preparation->discovery,
             $language->manifests,
-            $language->contributions,
+            [...$language->contributions, $named],
             $projectConfig,
             $analysis->classifications,
             $analysis->boundaries,

@@ -664,7 +664,9 @@ final readonly class GraphReconciler
     {
         foreach ($nodes as &$node) {
             $node['file_id'] = $fileIds[$node['evidence_path']] ?? null;
-            if ($node['file_id'] === null) {
+            // A file component names a file discovery leaves to no worker, so it has
+            // no file row: its path is its name and its `path` attribute.
+            if ($node['file_id'] === null && $node['owner_key'] !== NamedFiles::OWNER) {
                 throw new ReconciliationException(sprintf(
                     'Node evidence file was not discovered: %s',
                     $node['evidence_path'],
