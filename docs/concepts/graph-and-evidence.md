@@ -23,6 +23,15 @@ your project. You get these kinds of fact:
 | Diagnostic | A warning or error about the scan itself: a file too large, a symlink skipped, a syntax error.                                                  |
 | Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](history.md).                                         |
 
+A project file no worker reads, such as a shell script or a CI tool, is a
+component of kind `file` once something names it: a `launches` edge from code
+that starts it, or a note on its path. Its name is the path from the project
+root, and it carries no file row because its contents are never read. A path
+that is excluded, ignored by a `.gitignore`, outside the root or not a regular
+file names nothing. The scan works these out again every time, so the component
+goes when the file or the note does, and a note added or removed is picked up
+by the next scan even when nothing else changed.
+
 Run `knossos architecture-summary` on a scanned project to see the kinds and
 counts for your own graph. A scan of a mixed PHP and TypeScript codebase
 produces mostly methods, classes and functions, joined mostly by `calls`,

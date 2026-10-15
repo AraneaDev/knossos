@@ -68,9 +68,11 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'confidence' => $row['confidence'], 'roles' => $rolesByNode[$row['id']] ?? [],
                 'attributes' => self::decode($row['attributes_json']),
             ];
-            if ($row['relative_path'] !== null) {
+            // A file component has no file row; its path is its name.
+            $path = $row['relative_path'] ?? ($row['kind'] === 'file' ? $row['canonical_name'] : null);
+            if ($path !== null) {
                 $evidence[] = [
-                    'component_id' => $row['id'], 'path' => $row['relative_path'],
+                    'component_id' => $row['id'], 'path' => $path,
                     'start_line' => $row['start_line'], 'end_line' => $row['end_line'],
                 ];
             }
