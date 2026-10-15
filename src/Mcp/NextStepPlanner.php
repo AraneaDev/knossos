@@ -38,7 +38,15 @@ final readonly class NextStepPlanner
             'scan_project' => $this->afterScan($data),
             default => [],
         };
-        return array_slice($steps, 0, 3);
+
+        // Every suggested tool is project-scoped and requires project_id, so a
+        // step followed as written targets the project this result came from.
+        return array_map(
+            static fn(array $step): array => isset($step['tool']) && $envelope->projectId !== ''
+                ? ['tool' => $step['tool'], 'args' => ['project_id' => $envelope->projectId] + $step['args'], 'why' => $step['why']]
+                : $step,
+            array_slice($steps, 0, 3),
+        );
     }
 
     /**
