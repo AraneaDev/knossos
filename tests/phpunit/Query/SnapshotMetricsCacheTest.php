@@ -127,4 +127,34 @@ final class SnapshotMetricsCacheTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /**
+     * The fingerprint is the cache's only invalidation, so every class the
+     * metric computation names must be in it. SharedNodeKinds, which decides
+     * whether a node's path counts, was left out, and editing it kept serving
+     * trend figures the old code had computed.
+     */
+    #[Group('query')]
+    public function testTheFingerprintCoversEveryClassTheMetricsUse(): void
+    {
+        $file = self::repositoryRoot() . '/src/Query/SnapshotMetrics.php';
+        $source = (string) file_get_contents($file);
+        preg_match_all('/^use (Knossos\\\\[A-Za-z\\\\]+);/m', $source, $imports);
+        $imported = [];
+        foreach ($imports[1] as $class) {
+            $imported[substr((string) strrchr('\\' . $class, '\\'), 1)] = $class;
+        }
+        preg_match_all('/(?<![\\\\\w$])([A-Z][A-Za-z]+)::/', (string) preg_replace('#/\*.*?\*/|//[^\n]*#s', '', $source), $references);
+        $used = [];
+        foreach (array_unique($references[1]) as $short) {
+            $class = $imported[$short] ?? 'Knossos\\Query\\' . $short;
+            if ($short !== 'self' && $short !== 'static' && class_exists($class)) {
+                $used[] = $class;
+            }
+        }
+        $sources = (new \ReflectionClass(SnapshotMetricsCache::class))->getConstant('SOURCES');
+
+        self::assertNotSame([], $used);
+        self::assertSame([], array_values(array_diff($used, (array) $sources)), 'SnapshotMetricsCache::SOURCES misses classes SnapshotMetrics computes with.');
+    }
 }
