@@ -109,6 +109,12 @@ and says so in `declared_in`. A Python module is named in dotted form
 (`app.models`) and a PHP file has no module node, so a path is the only name a
 caller may have for either.
 
+A member declared in another file than the type that contains it, such as a
+Rust method in an `impl` block of another module, is named after its type, so
+its name reads as if it lived beside it. `find_component`, `search_architecture`
+and `inspect_component` give such a member its own `declared_in`, the file it
+is declared in.
+
 ## Search
 
 `search_architecture` matches each word of the query against a component's
@@ -117,6 +123,12 @@ A note holds what the graph cannot, such as a reference kind no symbol is named
 after, so a search for that word still finds the component the note is on. A
 component found only through a note ranks after every one whose own name,
 attributes or roles match, and the result carries the notes of what it found.
+
+A note can also rest on a name the graph does not hold, such as a symbol built
+at runtime. When no `kinds`, `roles`, `boundary_ids` or `confidences` filter is
+given, the first page lists such notes whose name or text holds every word in
+`notes_without_component`, at most 20, each with its text, author and stale
+flag, and the summary counts them.
 
 ## List usages
 

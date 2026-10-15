@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ChunkedInQuery;
 use PDO;
 
 /**
@@ -17,6 +18,9 @@ use PDO;
  */
 final readonly class ComponentQueryService extends AbstractArchitectureQueryService
 {
+    /** The most notes on names the graph does not hold one search lists. */
+    private const MAX_NOTES_WITHOUT_COMPONENT = 20;
+
     /** Find components by name, reporting an ambiguous match rather than guessing. */
     public function findComponent(string $projectId, string $name, int $limit = 20): ResultEnvelope
     {
@@ -59,6 +63,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
+        $apart = $this->declaredApart(array_column($rows, 'id'));
         $components = [];
         $evidence = [];
         foreach ($rows as $row) {
@@ -67,7 +72,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'display_name' => $row['display_name'], 'origin' => $row['origin'],
                 'confidence' => $row['confidence'], 'roles' => $rolesByNode[$row['id']] ?? [],
                 'attributes' => self::decode($row['attributes_json']),
-            ];
+            ] + (isset($apart[$row['id']]) ? ['declared_in' => $apart[$row['id']]] : []);
             // A file component has no file row; its path is its name.
             $path = $row['relative_path'] ?? ($row['kind'] === 'file' ? $row['canonical_name'] : null);
             if ($path !== null) {
@@ -206,6 +211,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $truncationReasons[] = 'incoming_relationship_limit';
         }
 
+        $declaredIn = $this->declaredApart([$nodeId])[$nodeId] ?? null;
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
@@ -218,7 +224,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'annotations' => $this->annotationsFor($projectId, (string) $node['canonical_name']),
                 'parent' => $node['parent_component_id'] === null ? null : ['id' => $node['parent_component_id'], 'kind' => $node['parent_kind'], 'canonical_name' => $node['parent_canonical_name']],
                 'children' => $children, 'outgoing' => $outgoing, 'incoming' => $incoming,
-            ], 'limits' => ['max_relationships_per_direction' => $maxRelationships, 'max_children' => $maxChildren, 'min_confidence' => $minConfidence, 'truncation_reasons' => $truncationReasons]],
+            ] + ($declaredIn === null ? [] : ['declared_in' => $declaredIn]), 'limits' => ['max_relationships_per_direction' => $maxRelationships, 'max_children' => $maxChildren, 'min_confidence' => $minConfidence, 'truncation_reasons' => $truncationReasons]],
             $evidence,
             [],
             $truncationReasons !== [],
@@ -412,6 +418,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $rows = array_slice($rows, 0, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
         $boundariesByNode = $this->boundaryNames(array_column($rows, 'id'));
+        $apart = $this->declaredApart(array_column($rows, 'id'));
         $results = [];
         $evidence = [];
         foreach ($rows as $row) {
@@ -420,7 +427,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'display_name' => $row['display_name'], 'origin' => $row['origin'], 'confidence' => $row['confidence'],
                 'roles' => $rolesByNode[$row['id']] ?? [], 'boundaries' => $boundariesByNode[$row['id']] ?? [],
                 'attributes' => self::decode($row['attributes_json']),
-            ];
+            ] + (isset($apart[$row['id']]) ? ['declared_in' => $apart[$row['id']]] : []);
             if ($row['relative_path'] !== null) {
                 $evidence[] = [
                     'component_id' => $row['id'], 'path' => $row['relative_path'],
@@ -428,15 +435,76 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 ];
             }
         }
+        // Notes on names no component holds, on the first page of an unfiltered search:
+        // a filter is on components, and such a note has none.
+        $apart = $offset === 0 && $kinds === [] && $roles === [] && $boundaryIds === [] && $confidences === []
+            ? $this->notesWithoutComponent($projectId, $terms)
+            : [];
+        $summary = sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's');
+        if ($apart !== []) {
+            $summary .= sprintf(' %d note%s on names the graph does not hold match too (notes_without_component).', count($apart), count($apart) === 1 ? '' : 's');
+        }
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's'),
-            ['query' => $query, 'results' => $results, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
+            $summary,
+            ['query' => $query, 'results' => $results, 'notes_without_component' => $apart, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
             $evidence,
             [],
             $truncated,
         );
+    }
+
+    /**
+     * The file each member is declared in, for the members a type in another
+     * file contains: a Rust method in an `impl` block of another module is
+     * named after its type, so its name reads as if it lived beside it.
+     *
+     * @param list<string> $ids
+     * @return array<string, string> node id => project-relative path
+     */
+    private function declaredApart(array $ids): array
+    {
+        $apart = [];
+        foreach (ChunkedInQuery::rows(
+            $this->pdo,
+            'SELECT n.id, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id '
+            . "JOIN edges e ON e.target_id = n.id AND e.kind = 'contains' JOIN nodes c ON c.id = e.source_id "
+            . "WHERE c.kind IN ('class', 'interface', 'trait', 'enum') AND c.file_id <> n.file_id AND n.id IN (%s)",
+            array_values(array_map('strval', $ids)),
+            mode: PDO::FETCH_NUM,
+        ) as [$id, $path]) {
+            $apart[(string) $id] = (string) $path;
+        }
+
+        return $apart;
+    }
+
+    /**
+     * The notes on names no component of the graph holds whose name or text
+     * holds every term, at most {@see self::MAX_NOTES_WITHOUT_COMPONENT}, as
+     * {@see AnnotationNotes} renders a note.
+     *
+     * @param list<string> $terms
+     * @return list<array{component: string, kind: string, author: string, text: string, written: string, stale: bool, stale_reason: ?string}>
+     */
+    private function notesWithoutComponent(string $projectId, array $terms): array
+    {
+        if ($terms === []) {
+            return [];
+        }
+        $params = ['project' => $projectId];
+        $sql = 'SELECT DISTINCT a.canonical_name FROM annotations a WHERE a.project_id = :project '
+            . 'AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name)';
+        foreach ($terms as $index => $term) {
+            $params['term' . $index] = '%' . self::like($term) . '%';
+            $sql .= " AND (a.canonical_name LIKE :term{$index} ESCAPE '!' OR a.value LIKE :term{$index} ESCAPE '!')";
+        }
+        $statement = $this->pdo->prepare($sql . ' ORDER BY a.canonical_name LIMIT ' . self::MAX_NOTES_WITHOUT_COMPONENT);
+        $statement->execute($params);
+        $names = array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
+
+        return (new AnnotationNotes($this->pdo))->forComponents($projectId, $names);
     }
 
     /**
