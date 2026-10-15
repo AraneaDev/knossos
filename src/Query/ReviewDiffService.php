@@ -106,20 +106,32 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
         $gateEvidence = [];
         $qualityGate = ['status' => 'not_evaluated', 'reason' => $configReason ?? 'No quality budgets declared in knossos.json or supplied.'];
         if ($budgets !== []) {
+            $source = $baselineSnapshot === null ? 'previous_scan' : 'argument';
             $baselineSnapshot ??= $this->latestNonActiveSnapshot($projectId, (string) $project['active_scan_id']);
             if ($baselineSnapshot === null) {
                 $qualityGate = ['status' => 'not_evaluated', 'reason' => 'No retained snapshot other than the active scan; scan again after the next change to establish a baseline.'];
             } else {
                 try {
                     $gate = $this->gateQueries->qualityGate($projectId, $baselineSnapshot, $budgets, $policies);
+                    $baseline = $this->baseline($projectId, (string) $gate->data['baseline_snapshot'], $source);
                     $qualityGate = [
                         'status' => 'evaluated',
                         'passed' => $gate->data['passed'],
                         'checks' => $gate->data['checks'],
                         'baseline_snapshot' => $gate->data['baseline_snapshot'],
+                        'baseline' => $baseline,
                     ];
                     $gateEvidence = $gate->evidence;
                     $warnings = [...$warnings, ...$gate->warnings];
+                    if ($baseRef !== null && $source === 'previous_scan') {
+                        // The changed files come from base_ref; the gate's baseline does not.
+                        $warnings[] = sprintf(
+                            'The quality gate compared against the previous scan %s, not the graph of base_ref %s: it shows no regression since that scan. Pass baseline_snapshot with a scan of %s to gate against it.',
+                            $baseline['snapshot'],
+                            $baseRef,
+                            $baseRef,
+                        );
+                    }
                 } catch (InvalidArgumentException $error) {
                     $qualityGate = ['status' => 'not_evaluated', 'reason' => 'Quality gate failed: ' . $error->getMessage()];
                 }
@@ -209,6 +221,27 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
         }
         return [$policies, $budgets, $reason];
     }
+    /**
+     * What the gate compared against: the snapshot, whether it was asked for or
+     * is the scan before the active one, and when it was taken.
+     *
+     * @return array{snapshot: string, source: string, captured_at: ?string, age_seconds: ?int}
+     */
+    private function baseline(string $projectId, string $snapshot, string $source): array
+    {
+        $statement = $this->pdo->prepare('SELECT captured_at FROM scan_snapshots WHERE project_id = :project AND scan_id = :scan');
+        $statement->execute(['project' => $projectId, 'scan' => $snapshot]);
+        $captured = $statement->fetchColumn();
+        $at = is_string($captured) ? strtotime($captured) : false;
+
+        return [
+            'snapshot' => $snapshot,
+            'source' => $source,
+            'captured_at' => is_string($captured) ? $captured : null,
+            'age_seconds' => $at === false ? null : max(0, time() - $at),
+        ];
+    }
+
     /** The most recent retained snapshot, used as the gate baseline. */
 
     private function latestNonActiveSnapshot(string $projectId, string $activeScanId): ?string
