@@ -212,7 +212,11 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         $canonical = $matches === [] ? $component : (string) $matches[0]['canonical_name'];
         $warnings = [];
-        if ($matches === []) {
+        if ($matches === [] && ProjectFile::exists((string) $project['root_realpath'], $component)) {
+            // A noted project file becomes a file component on the next scan
+            // (NamedFiles), so "not found" would send the caller looking for a typo.
+            $warnings[] = sprintf('%s is a project file, not a component yet: the annotation is kept, and the file becomes a file component on the next scan.', $component);
+        } elseif ($matches === []) {
             $warning = 'Component not found in the current graph; the annotation is kept anyway (dynamic or upcoming symbol?).';
             $near = array_slice(array_column($this->resolve($projectId, $component), 'canonical_name'), 0, 5);
             $warnings[] = $near === [] ? $warning : $warning . ' Did you mean: ' . implode(', ', $near) . '?';
