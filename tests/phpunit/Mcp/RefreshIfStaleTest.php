@@ -614,7 +614,13 @@ final class RefreshIfStaleTest extends KnossosTestCase
             $drift();
             $result = $tools->call('architecture_summary', ['project_id' => $projectId, 'refresh_if_stale' => true]);
 
-            assertSame('fresh', $result->staleness['state'], 'The raised budget admits the rescan the default declines: ' . implode(' ', $result->warnings));
+            $scans = $pdo->query('SELECT id, mode, status, started_at, duration_ms FROM scans ORDER BY started_at, rowid')->fetchAll(PDO::FETCH_ASSOC);
+            assertSame('fresh', $result->staleness['state'], sprintf(
+                'The raised budget admits the rescan the default declines. Warnings: %s Staleness: %s Scans: %s',
+                implode(' ', $result->warnings),
+                json_encode($result->staleness),
+                json_encode($scans),
+            ));
         } finally {
             $this->removeTempTree($root);
         }

@@ -95,14 +95,14 @@ file.
 
 ### Limits
 
-| Key                     | Range                         | Meaning                                                    |
-| ----------------------- | ----------------------------- | ---------------------------------------------------------- |
-| `max_files`             | 1 to 100,000                  | Files discovered per scan.                                 |
-| `max_file_bytes`        | 1 to 100,000,000              | Size of the largest file a worker reads.                   |
-| `worker_timeout_ms`     | 1,000 to 120,000 (30,000)     | How long a worker may stay silent during one request.      |
-| `worker_memory_mb`      | 64 to 65,536                  | Heap cap for a language worker.                            |
-| `watch_scan_timeout_ms` | 10,000 to 3,600,000 (300,000) | How long one scan of the shared watcher may run.           |
-| `refresh_budget_ms`     | 0 to 600,000 (5,000)          | How long `refresh_if_stale` may rescan inside one query.   |
+| Key                     | Range                         | Meaning                                                  |
+| ----------------------- | ----------------------------- | -------------------------------------------------------- |
+| `max_files`             | 1 to 100,000                  | Files discovered per scan.                               |
+| `max_file_bytes`        | 1 to 100,000,000              | Size of the largest file a worker reads.                 |
+| `worker_timeout_ms`     | 1,000 to 120,000 (30,000)     | How long a worker may stay silent during one request.    |
+| `worker_memory_mb`      | 64 to 65,536                  | Heap cap for a language worker.                          |
+| `watch_scan_timeout_ms` | 10,000 to 3,600,000 (300,000) | How long one scan of the shared watcher may run.         |
+| `refresh_budget_ms`     | 0 to 600,000 (5,000)          | How long `refresh_if_stale` may rescan inside one query. |
 
 Every file a worker reports and every heartbeat restarts the `worker_timeout_ms`
 wait, and no request runs longer than 120,000 milliseconds. When a worker hits
