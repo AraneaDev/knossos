@@ -115,7 +115,12 @@ final class FlowTest extends KnossosTestCase
         $ambiguous = $query->explainFlow($ids['project'], 'Checkout', 'InvoiceService');
         assertSame([], $ambiguous->data['paths']);
         assertSame(2, count($ambiguous->data['from']['candidates']));
-        assertThrows(fn() => $query->explainFlow($ids['project'], $route, $ids['invoice'], maxDepth: 9), InvalidArgumentException::class);
+        // Twelve, not eight: a scan reaches its worker process in about nine
+        // hops, and a cap of eight could never answer that question.
+        assertSame(12, $query->explainFlow($ids['project'], $route, $ids['invoice'], maxDepth: 12)->data['bounds']['max_depth']);
+        assertThrows(fn() => $query->explainFlow($ids['project'], $route, $ids['invoice'], maxDepth: 13), InvalidArgumentException::class);
+        // The default budget: 1000 ms gave up on a seven-hop search that 5000 ms answered.
+        assertSame(3000, $flow->data['bounds']['timeout_ms']);
         assertThrows(fn() => $query->explainFlow($ids['project'], $route, $ids['invoice'], timeoutMs: 0), InvalidArgumentException::class);
         $time = 0;
         $timedQuery = ArchitectureQueryService::forDatabase($pdo, function () use (&$time): int {
