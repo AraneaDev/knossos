@@ -25,6 +25,16 @@ final readonly class DatabaseMaintenanceService
 {
     public function __construct(private PDO $pdo, private string $databasePath) {}
 
+    /**
+     * {@see ProjectMoveService::move()}
+     *
+     * @param \Knossos\Discovery\RootsFile|null $roots null leaves roots.json alone
+     */
+    public function moveProject(string $from, string $to, bool $execute, \Knossos\Scan\ProjectScanner $scanner, ?\Knossos\Discovery\RootsFile $roots = null): ResultEnvelope
+    {
+        return (new ProjectMoveService($this->pdo, $this))->move($from, $to, $execute, $scanner, $roots);
+    }
+
     /** Delete a project and its graph, previewing the row counts unless executing. */
     public function removeProject(string $projectId, bool $execute = false): ResultEnvelope
     {
