@@ -130,6 +130,7 @@ final class ProjectScanService implements ProjectScanner
         $planningStarted = hrtime(true);
         $cancellation->throwIfCancelled();
         $projectId = self::projectIdOf($preparation->discovery->rootRealpath);
+        $existed = $this->projectExists($projectId);
         $held = $lease !== null && $lease->projectId() === $projectId;
         if ($lease === null || !$held) {
             $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
@@ -215,7 +216,11 @@ final class ProjectScanService implements ProjectScanner
                 (int) round(self::elapsedMilliseconds($startedAt)),
             );
 
-            return $this->resultFactory->create($plan, $language, $result, $startedAt, $stageMilliseconds);
+            $envelope = $this->resultFactory->create($plan, $language, $result, $startedAt, $stageMilliseconds);
+            // Only the scan that created the project looks for one it replaces.
+            $hint = $existed ? null : (new OrphanedProjectHint($this->pdo))->warning($result->projectId, $preparation->discovery->rootRealpath);
+
+            return $hint === null ? $envelope : $envelope->withWarnings([$hint]);
         } catch (\Throwable $error) {
             self::recordFailedScan($repository, $projectId, $effectiveMode, $error);
             throw $error;
@@ -225,6 +230,15 @@ final class ProjectScanService implements ProjectScanner
             }
         }
     }
+    /** Whether a project row exists yet, read before the scan registers one. */
+    private function projectExists(string $projectId): bool
+    {
+        $statement = $this->pdo->prepare('SELECT 1 FROM projects WHERE id = :id');
+        $statement->execute(['id' => $projectId]);
+
+        return $statement->fetchColumn() !== false;
+    }
+
     /**
      * Refuse a rescan that would reconcile away a failed language's facts.
      *
