@@ -25,13 +25,13 @@ use PHPUnit\Framework\Attributes\Group;
 final class ToolCatalogPolicyTest extends KnossosTestCase
 {
     /** Tools that change state: everything else must be read-only. `architecture_trends` caches each snapshot's figures. */
-    private const WRITE_TOOLS = ['annotate_component', 'architecture_trends', 'cleanup_stale_scans', 'maintain_database', 'remove_project', 'scan_project'];
+    private const WRITE_TOOLS = ['annotate_component', 'architecture_trends', 'cleanup_stale_scans', 'maintain_database', 'move_project', 'remove_project', 'scan_project'];
 
     /** Tools that delete data, which a client must confirm before running. */
-    private const DESTRUCTIVE_TOOLS = ['cleanup_stale_scans', 'remove_project'];
+    private const DESTRUCTIVE_TOOLS = ['cleanup_stale_scans', 'move_project', 'remove_project'];
 
     /** Tools that give a different result, or fail, when repeated. */
-    private const NON_IDEMPOTENT_TOOLS = ['maintain_database', 'remove_project'];
+    private const NON_IDEMPOTENT_TOOLS = ['maintain_database', 'move_project', 'remove_project'];
 
     /** Tools that need a live server environment, and are omitted without one. */
     private const ENVIRONMENT_TOOLS = ['diagnose_runtime', 'server_info'];

@@ -730,6 +730,16 @@ final readonly class ToolCatalog
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
             ],
             [
+                'name' => 'move_project', 'title' => 'Move project',
+                'description' => "Carry a moved checkout's notes to the project its new root scans as, then remove the old project. Preview by default. Use when a scan warns that an orphaned project matches.",
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'from' => ['type' => 'string', 'minLength' => 1],
+                    'to' => ['type' => 'string', 'minLength' => 1],
+                    'execute' => ['type' => 'boolean', 'default' => false],
+                ], 'required' => ['from', 'to'], 'additionalProperties' => false],
+                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
+            ],
+            [
                 'name' => 'cleanup_stale_scans', 'title' => 'Clean up stale scans',
                 'description' => 'Remove failed, cancelled, or abandoned scan records. Preview by default. Use for housekeeping when the scan history is cluttered.',
                 'inputSchema' => ['type' => 'object', 'properties' => [

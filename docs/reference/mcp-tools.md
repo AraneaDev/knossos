@@ -562,6 +562,18 @@ Delete a project and its stored graph. Preview by default; pass execute to actua
 
 Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
 
+## `move_project`
+
+Carry a moved checkout's notes to the project its new root scans as, then remove the old project. Preview by default. Use when a scan warns that an orphaned project matches.
+
+| Input | Type | Required | Constraints/default |
+| --- | --- | --- | --- |
+| `from` | string | yes | minLength=1 |
+| `to` | string | yes | minLength=1 |
+| `execute` | boolean | no | default=false |
+
+Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
+
 ## `cleanup_stale_scans`
 
 Remove failed, cancelled, or abandoned scan records. Preview by default. Use for housekeeping when the scan history is cluttered.
