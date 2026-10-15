@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
-use Knossos\Reconciliation\NamedFiles;
-use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, ReconciliationResult};
+use Knossos\Reconciliation\NamedFiles;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteGraphRepository;
