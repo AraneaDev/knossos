@@ -454,7 +454,7 @@ final class QueryTest extends KnossosTestCase
                 ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => []],
                 ['jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/call', 'params' => ['name' => 'scan_project', 'arguments' => ['path' => '/etc']]],
                 ['jsonrpc' => '2.0', 'id' => 4, 'method' => 'tools/call', 'params' => ['name' => 'architecture_summary', 'arguments' => ['project_id' => 'missing', 'limit' => 0]]],
-                ['jsonrpc' => '2.0', 'id' => 5, 'method' => 'tools/call', 'params' => ['name' => 'explain_flow', 'arguments' => ['project_id' => 'missing', 'from' => 'A', 'to' => 'B', 'max_depth' => 9]]],
+                ['jsonrpc' => '2.0', 'id' => 5, 'method' => 'tools/call', 'params' => ['name' => 'explain_flow', 'arguments' => ['project_id' => 'missing', 'from' => 'A', 'to' => 'B', 'max_depth' => 13]]],
                 ['jsonrpc' => '2.0', 'id' => 6, 'method' => 'tools/call', 'params' => ['name' => 'impact_analysis', 'arguments' => ['project_id' => 'missing', 'symbol' => 'A', 'limit' => 0]]],
                 ['jsonrpc' => '2.0', 'id' => 7, 'method' => 'tools/call', 'params' => ['name' => 'scan_project', 'arguments' => ['path' => $root, 'boundaries' => [['name' => 'Bad', 'path_prefix' => 'src', 'namespace_prefix' => 'App\\']]]]],
                 ['jsonrpc' => '2.0', 'method' => 'notifications/cancelled', 'params' => ['requestId' => 8, 'reason' => 'integration test']],
@@ -503,7 +503,7 @@ final class QueryTest extends KnossosTestCase
             assertSame(true, $responses[3]['result']['isError']);
             assertContains('between 1 and 100', $responses[3]['result']['content'][0]['text']);
             assertSame(true, $responses[4]['result']['isError']);
-            assertContains('between 1 and 8', $responses[4]['result']['content'][0]['text']);
+            assertContains('between 1 and 12', $responses[4]['result']['content'][0]['text']);
             assertSame(true, $responses[5]['result']['isError']);
             assertContains('between 1 and 100', $responses[5]['result']['content'][0]['text']);
             assertSame(true, $responses[6]['result']['isError']);
