@@ -90,7 +90,8 @@ The pane draws the same walk as rings around the component:
 
 Use `explain_flow` to answer "how does a request here reach code there?". It
 traces static paths between two components and returns up to `max_paths` (1–20,
-default 5) of them within `max_depth` (1–8, default 6) hops.
+default 5) of them within `max_depth` (1–12, default 6) hops, searching for at
+most `timeout_ms` (default 3000).
 
 ```sh
 knossos explain-flow project_... 'App\Http\CheckoutController' 'App\Billing\InvoiceGenerator' --json
