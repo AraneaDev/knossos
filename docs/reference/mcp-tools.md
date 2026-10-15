@@ -289,7 +289,7 @@ Before editing a symbol, find everything that depends on it. Answers 'what break
 | `refresh_if_stale` | boolean | no | default=true |
 | `project_id` | string | yes | minLength=1 |
 | `symbol` | string | yes | minLength=1 |
-| `max_depth` | integer | no | minimum=1; maximum=8; default=4 |
+| `max_depth` | integer | no | minimum=1; maximum=8; default=6 |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |

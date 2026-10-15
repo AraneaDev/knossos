@@ -396,7 +396,7 @@ final readonly class ArchitectureQueryService
     public function impactAnalysis(
         string $projectId,
         string $symbol,
-        int $maxDepth = 4,
+        int $maxDepth = 6,
         int $limit = 100,
         array $edgeKinds = [],
         string $minConfidence = 'possible',
