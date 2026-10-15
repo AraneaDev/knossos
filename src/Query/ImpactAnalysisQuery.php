@@ -18,6 +18,9 @@ use Knossos\Result\ResultEnvelope;
  */
 final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryService
 {
+    /** The most members of a class or module the walk starts from. */
+    private const MAX_MEMBERS = 500;
+
     /**
      * Conservative static blast radius of changing a symbol; over-reports by design and says so.
      *
@@ -27,7 +30,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      *
      * @param list<string> $edgeKinds
      */
-    public function impactAnalysis(string $projectId, string $symbol, int $maxDepth = 4, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000, ?int $deadline = null): ResultEnvelope
+    public function impactAnalysis(string $projectId, string $symbol, int $maxDepth = 6, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000, ?int $deadline = null): ResultEnvelope
     {
         $project = $this->project($projectId);
         if ($maxDepth < 1 || $maxDepth > 8) {
@@ -98,6 +101,18 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         // a node is dequeued no further upgrade of its rank is possible and the
         // value read here is final.
         $bestRank = [$target['id'] => 3];
+        // A class or module is changed through its members too: the walk starts from
+        // each of them as well, and what it finds through one names that member.
+        $throughMember = [];
+        foreach ($this->members($projectId, $target) as $member) {
+            if (isset($seen[$member['id']])) {
+                continue;
+            }
+            $queue[] = [$member, 0];
+            $seen[$member['id']] = true;
+            $bestRank[$member['id']] = 3;
+            $throughMember[$member['id']] = (string) $member['canonical_name'];
+        }
         $dependants = [];
         $recordIndex = [];
         $edgesTruncated = false;
@@ -167,12 +182,16 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
                 }
                 $seen[$node['id']] = true;
                 $bestRank[$node['id']] = min($pathConfidence, $edgeConfidence);
+                $member = $throughMember[$current['id']] ?? null;
                 $dependants[] = [
                     'node' => $node,
                     'distance' => $distance + 1,
                     'path_confidence' => self::rankName($bestRank[$node['id']]),
                     'via' => $this->impactHop($edge),
-                ];
+                ] + ($member === null ? [] : ['via_member' => $member]);
+                if ($member !== null) {
+                    $throughMember[$node['id']] = $member;
+                }
                 // limit+1 semantics: keep exactly $limit, flag truncation only
                 // when a further dependant actually exists.
                 if (count($dependants) > $limit) {
@@ -191,6 +210,46 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         }
 
         return ['dependants' => $dependants, 'visited' => $visited];
+    }
+
+    /**
+     * What a class-like or module target contains, down two levels (a module's
+     * classes and their methods), at most {@see self::MAX_MEMBERS}. Empty for
+     * any other kind.
+     *
+     * @param array<string, mixed> $target
+     * @return list<array<string, mixed>>
+     */
+    private function members(string $projectId, array $target): array
+    {
+        if (!in_array($target['kind'], ['class', 'interface', 'trait', 'enum', 'module', 'file'], true)) {
+            return [];
+        }
+        $statement = $this->pdo->prepare(
+            "SELECT target_id FROM edges WHERE project_id = :project AND source_id = :source AND kind = 'contains' ORDER BY target_id",
+        );
+        $members = [];
+        $frontier = [(string) $target['id']];
+        for ($level = 0; $level < 2 && $frontier !== []; ++$level) {
+            $next = [];
+            foreach ($frontier as $parent) {
+                $statement->execute(['project' => $projectId, 'source' => $parent]);
+                foreach ($statement->fetchAll(\PDO::FETCH_COLUMN) as $child) {
+                    $node = $this->node((string) $child);
+                    if ($node === null) {
+                        continue;
+                    }
+                    $members[] = $node;
+                    $next[] = (string) $child;
+                    if (count($members) >= self::MAX_MEMBERS) {
+                        return $members;
+                    }
+                }
+            }
+            $frontier = $next;
+        }
+
+        return $members;
     }
 
     /**
@@ -243,7 +302,8 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
             [
                 'target' => $target,
                 'dependants' => array_map(
-                    static fn(array $r): array => ['node' => $r['node'], 'distance' => $r['distance'], 'path_confidence' => $r['path_confidence'], 'via' => $r['via']],
+                    static fn(array $r): array => ['node' => $r['node'], 'distance' => $r['distance'], 'path_confidence' => $r['path_confidence'], 'via' => $r['via']]
+                        + (isset($r['via_member']) ? ['via_member' => $r['via_member']] : []),
                     $dependants,
                 ),
                 'counts' => [

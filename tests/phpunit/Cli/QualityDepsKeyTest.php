@@ -57,6 +57,58 @@ final class QualityDepsKeyTest extends KnossosTestCase
 
     /** The source stages only copy and arrange; every install lives in a dependency stage. */
     #[Group('documentation')]
+    public function testEveryRuntimeStageInputIsHashedIntoTheRuntimeImageKey(): void
+    {
+        $lines = static fn(string $out): array => array_values(array_filter(explode("\n", $out), static fn(string $line): bool => $line !== ''));
+        $inputs = [
+            ...$lines($this->runKeyScript(self::repositoryRoot(), ['--inputs'])),
+            ...$lines($this->runCommand(['sh', self::repositoryRoot() . '/tools/runtime-image-key', '--inputs'], self::repositoryRoot())),
+        ];
+        $unkeyed = [];
+        foreach (self::stages()['runtime'] ?? [] as $instruction) {
+            foreach (self::contextSources($instruction) as $source) {
+                if (!self::covered($source, $inputs)) {
+                    $unkeyed[] = 'runtime: ' . $source;
+                }
+            }
+        }
+        assertSame([], $unkeyed, 'copied into the runtime image but not hashed by tools/runtime-image-key');
+    }
+
+    /**
+     * The release lane rebuilds the runtime image when this key differs from
+     * the one it was labelled with, so the key moves with the source the image
+     * holds and not with caches .dockerignore leaves out.
+     */
+    #[Group('documentation')]
+    public function testTheRuntimeImageKeyFollowsTheSourceAndIgnoresCaches(): void
+    {
+        $this->inSandbox(function (string $sandbox): void {
+            copy(self::repositoryRoot() . '/tools/runtime-image-key', $sandbox . '/tools/runtime-image-key');
+            chmod($sandbox . '/tools/runtime-image-key', 0o755);
+            $sources = array_values(array_filter(explode("\n", $this->runCommand(['sh', self::repositoryRoot() . '/tools/runtime-image-key', '--inputs'], self::repositoryRoot())), static fn(string $line): bool => $line !== ''));
+            foreach ($sources as $source) {
+                mkdir($sandbox . '/' . $source, 0o777, true);
+                file_put_contents($sandbox . '/' . $source . '/file', $source . "\n");
+            }
+            $key = fn(): string => $this->runCommand(['sh', $sandbox . '/tools/runtime-image-key'], $sandbox);
+            $first = $key();
+            assertMatchesRegularExpression('/^[0-9a-f]{16}\n$/', $first);
+
+            mkdir($sandbox . '/workers/python/bin/__pycache__', 0o777, true);
+            file_put_contents($sandbox . '/workers/python/bin/__pycache__/worker.cpython-312.pyc', 'bytecode');
+            assertSame($first, $key(), 'a bytecode cache changed the key');
+
+            file_put_contents($sandbox . '/src/file', "changed\n");
+            $changed = $key();
+            assertNotSame($first, $changed, 'a source change kept the key');
+
+            file_put_contents($sandbox . '/composer.lock', "changed\n");
+            assertNotSame($changed, $key(), 'a dependency change kept the key');
+        });
+    }
+
+    #[Group('documentation')]
     public function testSourceStagesInstallNothing(): void
     {
         $stages = self::stages();

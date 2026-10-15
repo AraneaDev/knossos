@@ -271,4 +271,29 @@ final class DispatchReachTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /**
+     * Impact on a class is impact on its members too: `Caller::run` calls
+     * `Helper::shine` on what `Factory::make` returns and never names the
+     * class, so only a walk from the class's methods finds it next door.
+     */
+    #[Group('query')]
+    public function testImpactOnAClassReachesTheCallersOfItsMethods(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanned([
+            'src/Core/Helper.php' => "final class Helper\n{\n    public function shine(): string\n    {\n        return '';\n    }\n}",
+            'src/Core/Factory.php' => "final class Factory\n{\n    public function make(): Helper\n    {\n        return new Helper();\n    }\n}",
+            'src/Core/Caller.php' => "final class Caller\n{\n    public function run(Factory \$factory): string\n    {\n        return \$factory->make()->shine();\n    }\n}",
+        ]);
+        try {
+            $dependants = ArchitectureQueryService::forDatabase($pdo)->impactAnalysis($projectId, 'App\\Helper')->data['dependants'];
+            $byName = array_column(array_map(static fn(array $d): array => ['name' => $d['node']['canonical_name'], 'd' => $d], $dependants), 'd', 'name');
+            assertSame(1, $byName['App\\Caller::run']['distance'] ?? null);
+            assertSame('App\\Helper::shine', $byName['App\\Caller::run']['via_member'] ?? null);
+            // The class's own members are the target, not its dependants.
+            assertNotContains('App\\Helper::shine', array_keys($byName));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }
