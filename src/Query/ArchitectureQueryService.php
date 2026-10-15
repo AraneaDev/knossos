@@ -383,7 +383,7 @@ final readonly class ArchitectureQueryService
         int $maxPaths = 5,
         array $edgeKinds = [],
         string $minConfidence = 'possible',
-        int $timeoutMs = 1000,
+        int $timeoutMs = FlowQuery::DEFAULT_TIMEOUT_MS,
     ): ResultEnvelope {
         return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs));
     }
