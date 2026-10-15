@@ -258,7 +258,8 @@ makes a particular call read-only.
 ## Next steps
 
 `next_steps` offers at most three follow-up calls, each with the `tool`, the
-`args` to pass, and a `why`. They are emitted after `find_component`,
+`args` to pass (including the `project_id` of the result they follow), and a
+`why`. They are emitted after `find_component`,
 `inspect_component`, `impact_analysis`, and `architecture_health`: the tools
 whose results most often lead to an obvious next question (for example, an
 ambiguous `find_component` match set suggests `inspect_component` on the top
