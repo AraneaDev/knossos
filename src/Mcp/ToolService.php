@@ -824,11 +824,11 @@ final readonly class ToolService
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'from'),
             ToolArguments::string($arguments, 'to'),
-            ToolArguments::integer($arguments, 'max_depth', 6, 1, 8),
+            ToolArguments::integer($arguments, 'max_depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH),
             ToolArguments::integer($arguments, 'max_paths', 5, 1, 20),
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            ToolArguments::integer($arguments, 'timeout_ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000),
         ];
 
         return fn(): ResultEnvelope => $this->queries->explainFlow(...$args);
