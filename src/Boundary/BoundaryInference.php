@@ -10,11 +10,14 @@ use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 
 /**
- * Infers boundaries from directory structure when none are declared.
+ * Infers boundaries from manifests and directory structure, beside any the
+ * project declares.
  *
- * A first approximation so policy checks and diagrams have something to work with
- * on an unconfigured project; inferred boundaries are labelled as such, so they are
- * never mistaken for an intentional architecture.
+ * Inference always runs: declared boundaries are added to the same rule set
+ * rather than replacing it, so a node can sit in an explicit boundary and in
+ * the inferred ones that match it. Inferred boundaries are labelled as such, so
+ * they are never mistaken for an intentional architecture, and they give policy
+ * checks and diagrams something to work with on an unconfigured project.
  */
 final class BoundaryInference
 {
@@ -23,7 +26,7 @@ final class BoundaryInference
     private const PATH_SEGMENT = '/^[A-Za-z0-9_.@-]+$/';
 
     /**
-     * Infer boundaries from directory structure when the project declares none.
+     * Infer boundaries from manifests and directory structure, and add the declared ones.
      *
      * @param list<ProjectUnit> $units
      * @param list<ScanContribution> $contributions
