@@ -449,6 +449,7 @@ final readonly class ToolCatalog
                         'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_EDGES, 'default' => QueryBounds::MAX_EDGES],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                         'include_self_loops' => ['type' => 'boolean', 'default' => false, 'description' => 'Include single-symbol self-recursion; excluded by default because recursion is not an architectural cycle.'],
+                        'within_type' => ['type' => 'boolean', 'default' => false, 'description' => 'Also list cycles whose members all sit in one class, interface, trait or enum, after the others, each marked within_type with its type; single-symbol recursion stays out.'],
                     ],
                     'required' => ['project_id'],
                     'additionalProperties' => false,

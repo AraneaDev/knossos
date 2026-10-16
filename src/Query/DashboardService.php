@@ -103,9 +103,11 @@ final readonly class DashboardService
         $healthResult = $queries->architectureHealth($id, limit: self::TOP, timeoutMs: $this->healthTimeoutMs);
         $health = $healthResult->data;
         $hubLimits = array_values(array_diff($health['bounds']['truncation_reasons'], ['result_limit']));
-        // Already ordered largest first by the cycle search.
-        $cycleSearch = $queries->dependencyCycles($id, limit: $this->cycleLimit);
-        $cycles = $cycleSearch->data['cycles'];
+        // Already ordered by the cycle search: the cycles between types largest first, then those inside one type.
+        // Only the first count as cycles (the tile, the toasts, the gate); the others are counted and listed apart.
+        $cycleSearch = $queries->dependencyCycles($id, limit: $this->cycleLimit, withinType: true);
+        $everyCycle = $cycleSearch->data['cycles'];
+        $cycles = array_values(array_filter($everyCycle, static fn(array $c): bool => $c['within_type'] !== true));
         $fanIn = (new FileFanInQuery($this->pdo))->aboveThreshold($id, $fanInThreshold, $this->fanInCap + 1);
         $series = $queries->architectureTrends($id, self::TREND_POINTS)->data['series'];
         $trend = self::trend($series);
@@ -154,7 +156,8 @@ final readonly class DashboardService
                 'count' => count($cycles),
                 'truncated' => $cycleSearch->truncated,
                 'truncation_reasons' => $cycleSearch->data['bounds']['truncation_reasons'],
-                'largest' => array_map(static fn(array $c): array => self::cycle($c, $labels), array_slice($cycles, 0, self::LARGEST_CYCLES)),
+                'within_type' => count($everyCycle) - count($cycles),
+                'largest' => array_map(static fn(array $c): array => self::cycle($c, $labels), array_slice($everyCycle, 0, self::LARGEST_CYCLES)),
             ],
             // The Overview's line about notes: how many, and how many need the person.
             'notes' => (new NotesService($this->pdo))->counts($id),
@@ -314,6 +317,9 @@ final readonly class DashboardService
                 'boundary' => $labels->of($m['boundaries'] ?? []),
             ], array_slice($cycle['members'], 0, self::CYCLE_NODES)),
             'nodes_truncated' => $cycle['size'] > min(count($cycle['members']), self::CYCLE_NODES),
+            // A cycle inside one type: recursion within it, listed apart and never counted as a cycle.
+            'within_type' => ($cycle['within_type'] ?? false) === true,
+            'type' => isset($cycle['type']) ? (string) $cycle['type'] : null,
         ];
     }
 
@@ -455,7 +461,7 @@ final readonly class DashboardService
             'status' => 'unscanned', 'path' => $path, 'project_root' => null, 'project_id' => null,
             'snapshot_id' => null, 'freshness' => ['state' => 'unscanned', 'age_seconds' => null, 'drift_files' => 0, 'drifted' => [], 'drifted_truncated' => false],
             'hubs' => [], 'hubs_truncated' => false, 'hubs_truncation_reasons' => [], 'hotspots' => [], 'dead_code_candidates' => 0, 'dead_code_truncated' => false,
-            'cycles' => ['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'largest' => []],
+            'cycles' => ['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'within_type' => 0, 'largest' => []],
             'notes' => ['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0],
             'trend' => [], 'deltas' => null, 'in_degree' => ['buckets' => [], 'truncated' => false], 'fan_in' => [], 'fan_in_truncated' => false, 'dead_code' => [],
             'boundary_matrix' => ['boundaries' => [], 'members' => [], 'labelled' => 0, 'boundaries_truncated' => false, 'cells' => [], 'forbidden' => [], 'flows' => [], 'edges' => 0, 'truncated' => false, 'truncation_reasons' => []],

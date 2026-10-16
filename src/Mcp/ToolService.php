@@ -879,8 +879,9 @@ final readonly class ToolService
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
             ToolArguments::boolean($arguments, 'include_self_loops', false),
         ];
+        $withinType = ToolArguments::boolean($arguments, 'within_type', false);
 
-        return fn(): ResultEnvelope => $this->queries->dependencyCycles(...$args);
+        return fn(): ResultEnvelope => $this->queries->dependencyCycles(...$args, withinType: $withinType);
     }
 
     /**

@@ -34,6 +34,81 @@ final class OneTypeCycleTest extends KnossosTestCase
         self::assertCount(2, array_filter($withSelfLoops, static fn(array $cycle): bool => count($cycle['members']) > 1), 'Asked for, the recursion inside Walk is reported too.');
     }
 
+    /**
+     * Asked for, a cycle inside one type is kept and marked with its type,
+     * after every cycle between types; a symbol that only calls itself is
+     * still left out.
+     */
+    #[Group('query')]
+    public function testWithinTypeKeepsTheCyclesInsideOneTypeMarkedAfterTheOthers(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $n = $this->graph($repository, $ids, $ids['scan'], withinType: true);
+        $alone = StableId::symbol($ids['project'], 'php', 'function', 'App\\recurse');
+        $repository->saveNode($alone, $ids['project'], 'php', 'function', 'App\\recurse', 'recurse', null, $ids['file'], 1, 2, 'ast', 'certain', [], 'php:file:src/recurse.php', $ids['scan']);
+        $this->edge($repository, $ids['project'], $ids['file'], $ids['scan'], 'calls', $alone, $alone);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'], withinType: true)->data['cycles'];
+
+        self::assertSame(
+            [[['App\\A', 'App\\B'], false, null], [['App\\Walk::walkItem', 'App\\Walk::walkItems'], true, 'App\\Walk']],
+            array_map(static fn(array $cycle): array => [self::names($cycle), $cycle['within_type'], $cycle['type']], $cycles),
+        );
+        self::assertArrayHasKey('A', $n);
+    }
+
+    /** Without the option the answer is as it was: no cycle inside one type, no mark. */
+    #[Group('query')]
+    public function testTheDefaultAnswerCarriesNoMark(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->graph($repository, $ids, $ids['scan'], withinType: true);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'])->data['cycles'];
+
+        self::assertCount(1, $cycles);
+        self::assertArrayNotHasKey('within_type', $cycles[0]);
+    }
+
+    /** The MCP tool takes the option, so the agent gets the pane's answer when it asks for it. */
+    #[Group('query')]
+    public function testTheMcpToolTakesWithinType(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->graph($repository, $ids, $ids['scan'], withinType: true);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $tools = new \Knossos\Mcp\ToolService(
+            new \Knossos\Scan\ProjectScanService($pdo, self::repositoryRoot(), []),
+            ArchitectureQueryService::forDatabase($pdo),
+            new \Knossos\Maintenance\DatabaseMaintenanceService($pdo, ':memory:'),
+            new \Knossos\Mcp\ResultEnricher(new \Knossos\Query\StalenessProbe($pdo), new \Knossos\Mcp\NextStepPlanner()),
+        );
+
+        $cycles = $tools->call('dependency_cycles', ['project_id' => $ids['project'], 'within_type' => true])->data['cycles'];
+
+        self::assertSame([false, true], array_column($cycles, 'within_type'));
+    }
+
+    /**
+     * The dashboard reads every cycle and counts them apart: `count` the
+     * cycles between types, which the tile, the toasts and the gate go by,
+     * `within_type` the rest; its list holds both, each marked.
+     */
+    #[Group('query')]
+    public function testTheDashboardCountsTheCyclesInsideOneTypeApart(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->graph($repository, $ids, $ids['scan'], withinType: true);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $cycles = (new \Knossos\Query\DashboardService($pdo))->dashboard('/workspace/fixture-shop')['cycles'];
+
+        self::assertSame([1, 1], [$cycles['count'], $cycles['within_type']]);
+        self::assertSame([[false, null], [true, 'App\\Walk']], array_map(static fn(array $cycle): array => [$cycle['within_type'], $cycle['type']], $cycles['largest']));
+    }
+
     /** A self-call inside a real cycle is recursion too, not one of the cycle's relationships. */
     #[Group('query')]
     public function testASelfCallIsNotListedAmongACyclesRelationships(): void
