@@ -18,5 +18,80 @@ function dependencyFanout(string $extension, string $source): int
         default => null,
     };
 
+    if ($extension === 'js') {
+        $source = withoutJavaScriptCommentsAndTemplates($source);
+    }
+
     return $pattern === null ? 0 : (int) preg_match_all($pattern, $source);
+}
+
+/**
+ * JavaScript source with comment and template literal bodies blanked, newlines
+ * kept, so an import written inside one is not counted and the `^` anchors
+ * still fall on real lines. String literals are kept: an import names its
+ * module in one.
+ */
+function withoutJavaScriptCommentsAndTemplates(string $source): string
+{
+    $out = '';
+    $length = strlen($source);
+    $state = 'code';
+    for ($at = 0; $at < $length; ++$at) {
+        $char = $source[$at];
+        $next = $source[$at + 1] ?? '';
+        if ($state === 'code') {
+            if ($char === '/' && $next === '*') {
+                $state = 'block';
+                $out .= '  ';
+                ++$at;
+            } elseif ($char === '/' && $next === '/') {
+                $state = 'line';
+                $out .= '  ';
+                ++$at;
+            } elseif ($char === '`') {
+                $state = 'template';
+                $out .= ' ';
+            } else {
+                if ($char === '"' || $char === "'") {
+                    $state = $char;
+                }
+                $out .= $char;
+            }
+            continue;
+        }
+        if ($char === "\n") {
+            $out .= "\n";
+            if ($state === 'line') {
+                $state = 'code';
+            }
+            continue;
+        }
+        if ($state === '"' || $state === "'") {
+            $out .= $char;
+            if ($char === '\\') {
+                $out .= $next;
+                ++$at;
+            } elseif ($char === $state) {
+                $state = 'code';
+            }
+            continue;
+        }
+        if (($state === 'template' || $state === '"' || $state === "'") && $char === '\\') {
+            $out .= '  ';
+            ++$at;
+            continue;
+        }
+        if (($state === 'block' && $char === '*' && $next === '/')) {
+            $state = 'code';
+            $out .= '  ';
+            ++$at;
+            continue;
+        }
+        if ($state === 'template' && $char === '`') {
+            $state = 'code';
+        }
+        $out .= ' ';
+    }
+
+    return $out;
 }
