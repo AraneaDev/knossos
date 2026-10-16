@@ -832,6 +832,7 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'timeout_ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000),
+            ToolArguments::boolean($arguments, 'both_directions', false),
         ];
 
         return fn(): ResultEnvelope => $this->queries->explainFlow(...$args);
@@ -853,6 +854,8 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            ToolArguments::boolean($arguments, 'seed_members', true),
+            ToolArguments::boolean($arguments, 'rings', false),
         ];
 
         return fn(): ResultEnvelope => $this->queries->impactAnalysis(...$args);
@@ -1130,6 +1133,7 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'confidences'),
             ToolArguments::integer($arguments, 'limit', 20, 1, 100),
             ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            ToolArguments::boolean($arguments, 'files', false),
         ];
 
         return fn(): ResultEnvelope => $this->queries->searchArchitecture(...$args);

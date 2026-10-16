@@ -46,8 +46,11 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * component each, search, rank the routes found, and report them.
      *
      * @param list<string> $edgeKinds
+     * @param bool $bothDirections when `from` reaches `to` by no route, look the other way too (within a timeout of
+     *                             its own): the answer then runs from `to` to `from`, and `reversed` says so. A
+     *                             forward search a bound cut is answered as it is: it may have had a route left
      */
-    public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = self::DEFAULT_TIMEOUT_MS): ResultEnvelope
+    public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = self::DEFAULT_TIMEOUT_MS, bool $bothDirections = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         [$confidenceRank, $edgeKinds] = $this->flowArguments($maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs);
@@ -57,14 +60,38 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         if (count($fromCandidates) !== 1 || count($toCandidates) !== 1) {
             return self::unresolvedFlow($project, $from, $to, $fromCandidates, $toCandidates);
         }
-        $source = $fromCandidates[0];
-        $target = $toCandidates[0];
+        $bounds = [$maxDepth, $maxPaths, $edgeKinds, $confidenceRank[$minConfidence], $timeoutMs];
+        $flow = $this->flowBetween($project, $fromCandidates[0], $toCandidates[0], ...$bounds);
+        if (!$bothDirections) {
+            return $flow;
+        }
+        if ($flow->data['paths'] === [] && !$flow->truncated) {
+            $back = $this->flowBetween($project, $toCandidates[0], $fromCandidates[0], ...$bounds);
+            if ($back->data['paths'] !== []) {
+                return $back->withData(['reversed' => true] + $back->data);
+            }
+        }
+
+        return $flow->withData(['reversed' => false] + $flow->data);
+    }
+
+    /**
+     * The routes from `$source` to `$target`, searched and ranked within the bounds, as the envelope reports them.
+     *
+     * @param array<string, mixed> $project
+     * @param array<string, mixed> $source
+     * @param array<string, mixed> $target
+     * @param list<string> $edgeKinds
+     */
+    private function flowBetween(array $project, array $source, array $target, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $timeoutMs): ResultEnvelope
+    {
+        $projectId = (string) $project['id'];
         $endpointTruncated = false;
         $sourceSet = $this->flowEndpointSet($projectId, $source, $endpointTruncated);
         $targetSet = $this->flowEndpointSet($projectId, $target, $endpointTruncated);
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
         $truncation = new Truncation();
-        $search = $this->searchFlows($projectId, $sourceSet, $targetSet, $maxDepth, $maxPaths, $edgeKinds, $confidenceRank[$minConfidence], $deadline, $truncation);
+        $search = $this->searchFlows($projectId, $sourceSet, $targetSet, $maxDepth, $maxPaths, $edgeKinds, $minimumRank, $deadline, $truncation);
         if ($endpointTruncated) {
             $truncation->add('endpoint_expansion_limit');
         }

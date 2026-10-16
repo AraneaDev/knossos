@@ -22,6 +22,12 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
     private const MAX_MEMBERS = 500;
 
     /**
+     * The largest `limit` a caller may set: the pane's rings read up to this
+     * many dependants. The MCP tool keeps its own, smaller bound.
+     */
+    public const MAX_LIMIT = 1500;
+
+    /**
      * Conservative static blast radius of changing a symbol; over-reports by design and says so.
      *
      * Reads as its phases: validate the bounds, resolve the symbol to one
@@ -29,14 +35,22 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      * distance and confidence.
      *
      * @param list<string> $edgeKinds
+     * @param bool $seedMembers start the walk from a class's or module's members too, each dependant found
+     *                          through one naming it as `via_member`
+     * @param bool $frameworkHooks count what uses a class as depending on the framework hooks it declares
+     *                             ({@see FrameworkHookMethods}): the framework calls them whenever the class is used
+     * @param bool $rings add `rings`: the dependants counted one hop out, two, and further, tests apart
+     * @param bool $links add `links`: every edge the walk read, as `[source id, target id]`, rediscoveries included
      */
-    public function impactAnalysis(string $projectId, string $symbol, int $maxDepth = 6, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000, ?int $deadline = null): ResultEnvelope
+    public function impactAnalysis(string $projectId, string $symbol, int $maxDepth = 6, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000, ?int $deadline = null, bool $seedMembers = true, bool $frameworkHooks = true, bool $rings = false, bool $links = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         if ($maxDepth < 1 || $maxDepth > 8) {
             throw new InvalidArgumentException('max_depth must be between 1 and 8.');
         }
-        self::assertLimit($limit);
+        if ($limit < 1 || $limit > self::MAX_LIMIT) {
+            throw new InvalidArgumentException(sprintf('Limit must be between 1 and %d.', self::MAX_LIMIT));
+        }
         $confidenceRank = $this->confidenceThreshold($timeoutMs, $minConfidence);
         $edgeKinds = self::selectedEdgeKinds($edgeKinds, self::IMPACT_EDGE_KINDS, 'impact');
         $candidates = $this->resolve($projectId, $symbol);
@@ -49,15 +63,55 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         // of each analysis resetting its own timeout.
         $deadline ??= $this->now() + ($timeoutMs * 1_000_000);
         $truncation = new Truncation();
-        $search = $this->searchDependants($projectId, $target, $maxDepth, $limit, $edgeKinds, $confidenceRank[$minConfidence], $deadline, $truncation);
+        $search = $this->searchDependants($projectId, $target, $maxDepth, $limit, $edgeKinds, $confidenceRank[$minConfidence], $deadline, $truncation, $seedMembers, $frameworkHooks);
 
-        return $this->impactEnvelope(
+        $envelope = $this->impactEnvelope(
             $project,
             $target,
             $search['dependants'],
             ['max_depth' => $maxDepth, 'limit' => $limit, 'timeout_ms' => $timeoutMs, 'visited_states' => $search['visited']],
             $truncation,
         );
+        if (!$rings && !$links) {
+            return $envelope;
+        }
+        $data = $envelope->data;
+        if ($rings) {
+            $data['rings'] = $this->rings($data['dependants']);
+        }
+        if ($links) {
+            $data['links'] = $search['links'];
+        }
+
+        return $envelope->withData($data);
+    }
+
+    /**
+     * The dependants counted one hop out, two, and three or more, each ring's
+     * tests counted apart from its other members and those by the confidence
+     * of their path.
+     *
+     * @param list<array<string, mixed>> $dependants
+     * @return list<array{hop: int, count: int, tests: int, by_confidence: array{certain: int, probable: int, possible: int}}>
+     */
+    private function rings(array $dependants): array
+    {
+        $roles = $this->roles(array_map(static fn(array $row): string => (string) $row['node']['id'], $dependants));
+        $rings = [];
+        foreach ([1, 2, 3] as $hop) {
+            $rings[$hop] = ['hop' => $hop, 'count' => 0, 'tests' => 0, 'by_confidence' => ['certain' => 0, 'probable' => 0, 'possible' => 0]];
+        }
+        foreach ($dependants as $row) {
+            $hop = min(3, (int) $row['distance']);
+            if (ReportableComponent::isTest(array_column($roles[(string) $row['node']['id']] ?? [], 'role'))) {
+                ++$rings[$hop]['tests'];
+                continue;
+            }
+            ++$rings[$hop]['count'];
+            ++$rings[$hop]['by_confidence'][(string) $row['path_confidence']];
+        }
+
+        return array_values($rings);
     }
 
     /**
@@ -85,9 +139,9 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      *
      * @param array<string, mixed> $target
      * @param list<string> $edgeKinds
-     * @return array{dependants: list<array<string, mixed>>, visited: int}
+     * @return array{dependants: list<array<string, mixed>>, visited: int, links: list<array{0: string, 1: string}>}
      */
-    private function searchDependants(string $projectId, array $target, int $maxDepth, int $limit, array $edgeKinds, int $minimumRank, int $deadline, Truncation $truncation): array
+    private function searchDependants(string $projectId, array $target, int $maxDepth, int $limit, array $edgeKinds, int $minimumRank, int $deadline, Truncation $truncation, bool $seedMembers, bool $frameworkHooks): array
     {
         // A head index instead of array_shift, which re-indexes the whole queue
         // on every pop; the visit order is the same first-in, first-out order.
@@ -104,7 +158,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         // A class or module is changed through its members too: the walk starts from
         // each of them as well, and what it finds through one names that member.
         $throughMember = [];
-        foreach ($this->members($projectId, $target) as $member) {
+        foreach ($seedMembers ? $this->members($projectId, $target) : [] as $member) {
             if (isset($seen[$member['id']])) {
                 continue;
             }
@@ -117,9 +171,11 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         $recordIndex = [];
         $edgesTruncated = false;
         $visited = 0;
+        // Every edge read, by "source>target", into the node it counts for.
+        $links = [];
         while (isset($queue[$head])) {
             // No visit bound: only accepted dependants are queued, and at most
-            // $limit (100) are accepted, so at most $limit + 1 states are visited.
+            // $limit are accepted, so at most $limit + 1 states are visited.
             if ($this->now() > $deadline) {
                 $truncation->add('time_limit');
                 break;
@@ -156,7 +212,21 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
                     array_push($edges, ...$this->impactEdges($projectId, $class, [ConstructedClasses::EDGE_KIND], $minimumRank, $edgesTruncated));
                 }
             }
+            // The framework calls a hook (`booted`, `newFactory`) whenever its class is used, so nothing names it:
+            // what uses the class or one of its members depends on the hook. Which use runs it is a guess.
+            if ($frameworkHooks && $current['kind'] === 'method' && FrameworkHookMethods::isHookName((string) $current['display_name'])) {
+                foreach (FrameworkHookMethods::among($this->pdo, $projectId, [(string) $current['id']]) as $class) {
+                    foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated, withMembers: true) as $edge) {
+                        if ($edge['source_id'] !== $current['id']) {
+                            $edges[] = $edge['confidence'] === 'certain' ? ['confidence' => 'probable'] + $edge : $edge;
+                        }
+                    }
+                }
+            }
             foreach ($edges as $edge) {
+                if ($edge['source_id'] !== $target['id']) {
+                    $links[$edge['source_id'] . '>' . $current['id']] = [(string) $edge['source_id'], (string) $current['id']];
+                }
                 $edgeConfidence = self::CONFIDENCE_RANK[$edge['confidence']];
                 if (isset($seen[$edge['source_id']])) {
                     // Already discovered: if this equal-distance alternate path
@@ -209,7 +279,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
             $truncation->add('per_node_edge_limit');
         }
 
-        return ['dependants' => $dependants, 'visited' => $visited];
+        return ['dependants' => $dependants, 'visited' => $visited, 'links' => array_values($links)];
     }
 
     /**
@@ -322,20 +392,25 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
     /**
      * Edge kinds that count as a dependency for impact, a wider set than flow.
      *
-     * @param list<string> $edgeKinds @return list<array<string, mixed>>
+     * @param list<string> $edgeKinds
+     * @param bool $withMembers also the edges into what `$targetId` contains
+     * @return list<array<string, mixed>>
      */
-    private function impactEdges(string $projectId, string $targetId, array $edgeKinds, int $minimumConfidence, bool &$truncated = false): array
+    private function impactEdges(string $projectId, string $targetId, array $edgeKinds, int $minimumConfidence, bool &$truncated = false, bool $withMembers = false): array
     {
         $placeholders = implode(',', array_fill(0, count($edgeKinds), '?'));
+        $into = $withMembers
+            ? "(e.target_id = ? OR e.target_id IN (SELECT target_id FROM edges WHERE project_id = e.project_id AND kind = 'contains' AND source_id = ?)) "
+            : 'e.target_id = ? ';
         $statement = $this->pdo->prepare(
             'SELECT e.*, f.relative_path, source.display_name AS source_name, target.display_name AS target_name ' .
             'FROM edges e JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
-            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND e.target_id = ? ' .
+            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND ' . $into .
             sprintf('AND e.kind IN (%s) ', $placeholders) .
             "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
             'ORDER BY CASE e.confidence WHEN \'certain\' THEN 3 WHEN \'probable\' THEN 2 ELSE 1 END DESC, e.kind, e.id LIMIT 501',
         );
-        $statement->execute([$projectId, $targetId, ...$edgeKinds, $minimumConfidence]);
+        $statement->execute([$projectId, $targetId, ...($withMembers ? [$targetId] : []), ...$edgeKinds, $minimumConfidence]);
         $rows = $statement->fetchAll();
         if (count($rows) > 500) {
             $truncated = true;

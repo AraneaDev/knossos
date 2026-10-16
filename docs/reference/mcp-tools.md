@@ -276,6 +276,7 @@ Answer 'how does A reach B?' Traces evidence-backed static paths between two com
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=3000 |
+| `both_directions` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -295,6 +296,8 @@ Before editing a symbol, find everything that depends on it. Answers 'what break
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
+| `seed_members` | boolean | no | default=true |
+| `rings` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -533,6 +536,7 @@ Search components by name, attribute, role, or the text of a note on them, with 
 | `confidences` | array | no | maxItems=20 |
 | `limit` | integer | no | minimum=1; maximum=100; default=20 |
 | `offset` | integer | no | minimum=0; maximum=100000; default=0 |
+| `files` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 

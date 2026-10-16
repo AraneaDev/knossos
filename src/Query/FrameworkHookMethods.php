@@ -45,6 +45,18 @@ final class FrameworkHookMethods
     ];
 
     /**
+     * Whether some framework base calls a hook by this name: a method by any
+     * other name is never one, so its class and ancestors need no reading.
+     */
+    public static function isHookName(string $name): bool
+    {
+        static $names = null;
+        $names ??= array_fill_keys(array_merge(...array_values(self::HOOKS)), true);
+
+        return isset($names[$name]);
+    }
+
+    /**
      * The framework hooks among `$methodIds`, each with the class declaring
      * it: a method by a hook's name on a class whose ancestors hold the base
      * that calls it.

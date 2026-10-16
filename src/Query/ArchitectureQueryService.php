@@ -386,8 +386,9 @@ final readonly class ArchitectureQueryService
         array $edgeKinds = [],
         string $minConfidence = 'possible',
         int $timeoutMs = FlowQuery::DEFAULT_TIMEOUT_MS,
+        bool $bothDirections = false,
     ): ResultEnvelope {
-        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs));
+        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs, $bothDirections));
     }
 
     /**
@@ -403,8 +404,10 @@ final readonly class ArchitectureQueryService
         array $edgeKinds = [],
         string $minConfidence = 'possible',
         int $timeoutMs = 1000,
+        bool $seedMembers = true,
+        bool $rings = false,
     ): ResultEnvelope {
-        return $this->withNotes($this->services->impactQueries->impactAnalysis($projectId, $symbol, $maxDepth, $limit, $edgeKinds, $minConfidence, $timeoutMs));
+        return $this->withNotes($this->services->impactQueries->impactAnalysis($projectId, $symbol, $maxDepth, $limit, $edgeKinds, $minConfidence, $timeoutMs, seedMembers: $seedMembers, rings: $rings));
     }
 
     /** {@see GraphSummaryQuery::listBoundaries()} */
@@ -436,9 +439,10 @@ final readonly class ArchitectureQueryService
         array $confidences = [],
         int $limit = 20,
         int $offset = 0,
+        bool $includeFiles = false,
     ): ResultEnvelope {
         // A note can be why a component matched, so its results carry their notes.
-        return $this->withNotes($this->services->componentQueries->searchArchitecture($projectId, $query, $kinds, $roles, $boundaryIds, $confidences, $limit, $offset));
+        return $this->withNotes($this->services->componentQueries->searchArchitecture($projectId, $query, $kinds, $roles, $boundaryIds, $confidences, $limit, $offset, $includeFiles));
     }
 
     /**

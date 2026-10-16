@@ -356,14 +356,17 @@ export type BoundaryCouplings = {
 }
 
 /**
- * The `graph-search` subcommand's answer: the components and files whose
- * name holds the typed letters in order, the closest first (at most 20);
- * `truncated` when a candidate read stopped at its bound.
+ * The `graph-search` subcommand's answer: search_architecture's components
+ * first, in its order, then the other components and files whose name holds
+ * the typed letters in order, the closest first (at most 20). `notes` are
+ * the notes on names no component holds that the words match. `truncated`
+ * when a read stopped at its bound.
  */
 export type GraphSearch = {
   status: 'ok' | 'unscanned' | 'error' | 'no-binary'
   query?: string
   results: { type: 'component' | 'file'; name: string; canonical_name: string; kind: string; path: string | null; line: number | null; boundary: string | null }[]
+  notes?: { canonical_name: string; kind: string; author: string; text: string; written: string; component_status: 'missing' }[]
   truncated: boolean
 }
 
@@ -425,27 +428,47 @@ export type ChurnState = { head: string | null; phase: 'loading' | 'done'; answe
 /** One component a ring or a route names. */
 export type RingItem = { name: string; canonical_name: string; kind: string; path?: string | null; line?: number | null; boundary: string | null }
 
+/** How sure a path through the graph is: its weakest edge's confidence. */
+export type Confidence = 'certain' | 'probable' | 'possible'
+
 /**
  * The `blast-radius` subcommand's answer: what depends on one component in
  * rings (one hop, two hops, three and more), each with how many of its
  * components a test reaches, the first few of them (the untested first) and
- * the test files that reach the ring, nearest first.
+ * the test files that reach the ring, nearest first. The members are
+ * impact_analysis's dependants: each item carries its path confidence and,
+ * when the walk reached it through one of the component's members, that
+ * member (`via_member`); each ring counts its members by confidence.
+ * `truncated` is the core's: a bound cut the walk, named in
+ * `truncation_reasons`.
  */
 export type BlastRadius = {
   status: 'ok' | 'not-found' | 'unscanned' | 'error' | 'no-binary'
   component: RingItem | null
-  rings: { hop: number; count: number; tested: number; items: (RingItem & { tested: boolean })[]; tests: { count: number; items: { path: string; hop: number }[] } }[]
+  rings: {
+    hop: number
+    count: number
+    tested: number
+    by_confidence?: Record<Confidence, number>
+    items: (RingItem & { tested: boolean; confidence?: Confidence; via_member?: string | null })[]
+    tests: { count: number; items: { path: string; hop: number }[] }
+  }[]
   truncated: boolean
+  truncation_reasons?: string[]
+  /** The tests' own searches ran out of time: a member marked untested may have a test no search reached. */
+  tests_partial?: boolean
 }
 
 /** The rings of the component the detail shows, read for its name and snapshot; loading until they land. */
 export type RingsState = { name: string; snapshot: string | null; phase: 'loading' | 'done'; answer: BlastRadius | null }
 
 /**
- * The `path-between` subcommand's answer: the routes from one component to
- * another, the strongest first, each its components and the hops between
- * them (kind, and where the hop is written). `reversed` when only the other
- * way had a route: `from` and `to` stay as asked.
+ * The `path-between` subcommand's answer, explain_flow's routes: from one
+ * component to another, the strongest first, each its components and the
+ * hops between them (kind, confidence, whether it is derived, such as an
+ * interface method to the one implementing it, its explanation, and where
+ * the hop is written). `reversed` when only the other way had a route:
+ * `from` and `to` stay as asked.
  */
 export type PathBetween = {
   status: 'ok' | 'not-found' | 'ambiguous' | 'unscanned' | 'error' | 'no-binary'
@@ -453,8 +476,9 @@ export type PathBetween = {
   from: RingItem | null
   to: RingItem | null
   reversed: boolean
-  routes: { nodes: RingItem[]; hops: { kind: string; confidence: string; path: string | null; line: number | null }[] }[]
+  routes: { nodes: RingItem[]; hops: { kind: string; confidence: string; derived?: boolean; explanation?: string; path: string | null; line: number | null }[] }[]
   truncated: boolean
+  truncation_reasons?: string[]
 }
 
 /** The route the pane draws: its two ends as picked, and the answer read for them at a snapshot. */
