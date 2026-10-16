@@ -408,7 +408,7 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
     // Cycles between types only: the ones inside one type show on the Cycles tab alone.
     { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, hue: STAT_HUES.cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
     ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), hue: STAT_HUES.degree, ...series(t => t.max_degree), ...moved('max_degree') }]),
-    { ...issuesTile(d, policy, diagnostics, listing), hue: STAT_HUES.issues },
+    issuesTile(d, policy, diagnostics, listing),
     { key: 'drifted', label: 'drifted', value: grouped(drifted), hue: STAT_HUES.drifted, ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
   ]
 }
@@ -431,7 +431,9 @@ function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | n
   const worst = violations > 0 || diagnosticErrors > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
   const value = worst === null ? figure : `${worst.glyph} ${figure}`
   const tone = worst === SEVERITY.error ? { tone: 'alert' as const } : worst === SEVERITY.warn ? { tone: 'warn' as const } : {}
-  return { key: 'issues', label: total === 1 && !floor ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
+  // The clean colour only while there are none: dead code or functions over budget alone carry no tone, and are not clean.
+  const hue = total === 0 && !floor ? STAT_HUES.issues : HEADING
+  return { key: 'issues', label: total === 1 && !floor ? 'issue' : 'issues', value, hue, ...tone, ...listing('issues', value) }
 }
 
 /**

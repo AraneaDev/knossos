@@ -2503,11 +2503,12 @@ describe('knossos mod', () => {
         await ui.press({ key: 'tab:hubs' })
         const grid = (await ui.findAll({ type: 'Box' })).some(b => typeof b.key === 'string' && b.key.includes('|'))
         expect(grid, `${surface} ${bodyColumns}`).toBe(bodyColumns > 130)
-        // Framed from 80 columns on, a light top rule below; wide, the list and the marked row's detail side by side, each framed.
+        // A title set into a rule at every width; wide, the list and the marked row's detail side by side.
         const keyed = (await ui.findAll({ type: 'Box' })).find(b => typeof b.key === 'string' && (bodyColumns > 130 ? b.key.startsWith('hubs-head|peek-') : b.key === 'hubs-head'))
         const text = keyed?.text ?? ''
         const head = text
-        expect(head.startsWith(bodyColumns >= 80 ? '╭─ ' : '── '), `${surface} ${bodyColumns}: ${head}`).toBe(true)
+        // Every card is a title set into a rule, at every width.
+        expect(head.startsWith('── '), `${surface} ${bodyColumns}: ${head}`).toBe(true)
         await ui.unmount()
       }
     }

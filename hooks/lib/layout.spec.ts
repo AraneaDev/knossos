@@ -1237,6 +1237,14 @@ describe('the overview stat tiles', () => {
     expect(tangled.find(s => s.key === 'cycles')!.tone).toBe('warn')
   })
 
+  it('draws the issues figure in the clean colour only when there are none', () => {
+    const issues = (over: Partial<Dashboard>) => statsOf(full({ diagnostics: { errors: 0, warnings: 0 }, policy: undefined, over_budget: { total: 0, items: [] }, ...over } as never), [], null, null, false).find(s => s.key === 'issues')!
+    const dead = issues({ dead_code_candidates: 312, dead_code_truncated: false })
+    expect(dead.tone).toBeUndefined()
+    expect(dead.hue).not.toBe(STATUS_COLOURS.ok)
+    expect(issues({ dead_code_candidates: 0, dead_code_truncated: false }).hue).toBe(STATUS_COLOURS.ok)
+  })
+
   it('colours each language chip in the header its own hue on its grey ground', () => {
     const title = row(paneRows(fullInput({}, full({ summary: { components: 9008, boundaries: 7, boundaries_truncated: false, languages: [{ language: 'php', files: 900 }, { language: 'typescript', files: 300 }] } } as never)), 140), 'title')!
     const php = title.segments.find(s => s.text.trim() === 'PHP')

@@ -44,11 +44,12 @@ export const TITLE = 'claude'
 /**
  * Each stat tile's figure, coloured when nothing is wrong with it: a tone
  * (cycles or issues above zero) still wins. Cycles and issues sit in the
- * success colour at rest, so a clean graph reads clean at a glance. No hue
- * here is a boundary's: those mean a boundary, on its own marks only.
+ * success colour at rest, so a clean graph reads clean at a glance; issues
+ * only while there are none. No hue here is a boundary's, nor the
+ * selection's: those mean a boundary, and the marker and the open tab.
  */
 export const STAT_HUES = {
-  components: ACCENT,
+  components: 'remember',
   boundaries: 'permission',
   cycles: STATUS_COLOURS.ok,
   degree: 'merged',

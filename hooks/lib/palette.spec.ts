@@ -124,6 +124,8 @@ describe('the livelier look', () => {
             expect(hue).not.toMatch(/^#/)
         }
         expect(Object.keys(STAT_HUES).sort()).toEqual(['boundaries', 'components', 'cycles', 'degree', 'drifted', 'issues'])
+        // The selection's colour means the marker and the open tab: no figure wears it.
+        expect(Object.values(STAT_HUES)).not.toContain(ACCENT)
     })
 
     it('colours each language its own hue, by its chip or its full name, and anything else as secondary text', () => {
