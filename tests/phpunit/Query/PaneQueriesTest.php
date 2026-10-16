@@ -287,8 +287,10 @@ final class PaneQueriesTest extends KnossosTestCase
             $notes = $ask('notes', ['filter' => 'all']);
 
             assertSame(['ok', 'ok', 'ok'], [$check['status'], $adopt['status'], $move['status']]);
-            assertSame(['total' => 3, 'missing' => 0, 'stale' => 0, 'flagged' => 1], $notes['counts']);
-            assertSame(['App\\Greeter', 'App\\Caller', 'App\\Greeter'], array_column($notes['groups']['rest'], 'component'));
+            // The moved model note keeps what it was written against, so it reads stale until the model looks.
+            assertSame(['total' => 3, 'missing' => 0, 'stale' => 1, 'flagged' => 1], $notes['counts']);
+            assertSame(['App\\Caller'], array_column($notes['groups']['stale'], 'component'));
+            assertSame(['App\\Greeter', 'App\\Greeter'], array_column($notes['groups']['rest'], 'component'));
         } finally {
             $this->removeTempTree($root);
         }

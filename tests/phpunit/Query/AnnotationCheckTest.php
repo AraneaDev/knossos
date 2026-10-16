@@ -115,6 +115,26 @@ final class AnnotationCheckTest extends KnossosTestCase
     }
 
     /**
+     * A request about a note goes with the last note on its component: a
+     * removed note leaves no flag the tab cannot show and the brief keeps
+     * naming. While another note stays, so does the request.
+     */
+    public function testRemovingTheLastNoteOnAFlaggedComponentTakesTheCheckWithIt(): void
+    {
+        [$pdo, $root, $projectId] = $this->paneAgreementGraph();
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($projectId, 'App\\User', 'note', 'the model saw this', execute: true);
+        $queries->upsertAnnotation($projectId, 'App\\User', 'note', 'and so did I', execute: true, author: 'user');
+        $this->pane($pdo, $root, ['component' => 'App\\User', 'kind' => 'check'], execute: true);
+
+        $queries->removeAnnotation($projectId, 'App\\User', 'note', execute: true);
+        assertSame([['user', '']], self::checks($pdo, $projectId, 'App\\User'));
+        $queries->removeAnnotation($projectId, 'App\\User', 'note', execute: true, author: 'user');
+
+        assertSame([], self::checks($pdo, $projectId, 'App\\User'));
+    }
+
+    /**
      * The pane's `annotate` command, as the wrapper passes it.
      *
      * @param array<string, string> $options

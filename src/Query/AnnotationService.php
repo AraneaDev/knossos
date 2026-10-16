@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\SqliteTransactions;
 
 /**
  * Agent write-backs: durable annotations keyed by canonical name so they
@@ -82,7 +83,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         );
         $write = fn() => $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'author' => $author, 'basis' => json_encode($basis, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
         if ($author === 'model' && $kind === 'note') {
-            $this->inTransaction(function () use ($write, $projectId, $target): void {
+            (new SqliteTransactions($this->pdo))->run(function () use ($write, $projectId, $target): void {
                 $write();
                 $this->pdo->prepare("DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = 'user'")
                     ->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => self::CHECK]);
@@ -94,29 +95,6 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $replaced = self::wouldLose($target['existing'], $value, $author);
 
         return $this->executed($projectId, $target, $kind, 'upsert', $replaced ? 'Replaced the previous' : 'Recorded', $this->fetch($projectId, $target['canonical'], $kind, $author));
-    }
-
-    /**
-     * Run `$work` in one transaction, or inside the caller's when one is open.
-     *
-     * @param \Closure(): void $work
-     */
-    private function inTransaction(\Closure $work): void
-    {
-        if ($this->pdo->inTransaction()) {
-            $work();
-
-            return;
-        }
-        $this->pdo->beginTransaction();
-        try {
-            $work();
-            $this->pdo->commit();
-        } catch (\Throwable $failed) {
-            $this->pdo->rollBack();
-
-            throw $failed;
-        }
     }
 
     /**
@@ -167,8 +145,17 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         if (!$execute) {
             return $this->preview($projectId, $target, $kind, 'remove', null, $nothing === null ? null : 'Preview: nothing to remove: ' . $nothing);
         }
-        $statement = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
-        $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'author' => $author]);
+        // The person's check request goes with the last note on its component: left, it would ask about nothing.
+        (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $target, $kind, $author): void {
+            $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author')
+                ->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'author' => $author]);
+            if ($kind !== self::CHECK) {
+                $this->pdo->prepare(
+                    "DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :check AND author = 'user' " .
+                    'AND NOT EXISTS (SELECT 1 FROM annotations o WHERE o.project_id = :project AND o.canonical_name = :name AND o.kind <> :check)',
+                )->execute(['project' => $projectId, 'name' => $target['canonical'], 'check' => self::CHECK]);
+            }
+        });
 
         return $this->executed($projectId, $target, $kind, 'remove', 'Removed', null, $nothing === null ? null : 'Nothing removed: ' . $nothing);
     }

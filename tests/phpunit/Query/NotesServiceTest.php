@@ -156,6 +156,74 @@ final class NotesServiceTest extends KnossosTestCase
     }
 
     /**
+     * A note left on a short name the graph resolves to another component
+     * (`Target`, which App\\Target displays as) moves as that stored row and
+     * no other: onto App\\Target itself, or elsewhere without touching the
+     * person's own note on App\\Target.
+     */
+    public function testAMoveTakesTheStoredRowByItsExactNameAndNoOther(): void
+    {
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $service = new NotesService($pdo);
+        $short = $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, 'Target', 'note', ?, 'user', '2026-10-16T09:00:00Z', '2026-10-16T09:00:00Z')");
+        $short->execute([$projectId, 'written before the class existed']);
+
+        $onto = $service->move($root, 'Target', 'App\\Target', execute: true);
+
+        assertSame('ok', $onto['status']);
+        assertSame([], self::stored($pdo, $projectId, 'Target', 'user'));
+        assertSame(['written before the class existed'], self::stored($pdo, $projectId, 'App\\Target', 'user'));
+
+        $short->execute([$projectId, 'a second one']);
+        $elsewhere = $service->move($root, 'Target', 'App\\Adapter', execute: true);
+
+        assertSame('ok', $elsewhere['status']);
+        assertSame([], self::stored($pdo, $projectId, 'Target', 'user'));
+        assertSame(['a second one'], self::stored($pdo, $projectId, 'App\\Adapter', 'user'));
+        assertSame(['written before the class existed'], self::stored($pdo, $projectId, 'App\\Target', 'user'));
+    }
+
+    /**
+     * A moved model note keeps what it was written against, so it reads stale
+     * where it lands until the model looks; and moving it is the person's
+     * doing, not the model's look, so a check on the target stays.
+     */
+    public function testAMovedModelNoteKeepsItsBasisAndTheTargetsCheck(): void
+    {
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $service = new NotesService($pdo);
+        $service->check($root, 'App\\Adapter', 'look at this', execute: true);
+        $basis = $pdo->prepare("SELECT basis_json FROM annotations WHERE project_id = ? AND canonical_name = ? AND kind = 'note' AND author = 'model'");
+        $basis->execute([$projectId, 'App\\Gone']);
+        $before = $basis->fetchColumn();
+
+        $service->move($root, 'App\\Gone', 'App\\Adapter', author: 'model', execute: true);
+
+        $basis->execute([$projectId, 'App\\Adapter']);
+        assertSame($before, $basis->fetchColumn());
+        assertSame(['look at this'], self::stored($pdo, $projectId, 'App\\Adapter', 'user', 'check'));
+    }
+
+    /**
+     * Adopting or flagging a note never writes on another component than the
+     * one it names: a short name the graph resolves elsewhere is refused.
+     */
+    public function testAdoptAndCheckRefuseANameTheGraphResolvesToAnotherComponent(): void
+    {
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, 'Target', 'note', 'short', 'model', '2026-10-16T09:00:00Z', '2026-10-16T09:00:00Z')")->execute([$projectId]);
+        $service = new NotesService($pdo);
+        $before = self::all($pdo, $projectId);
+
+        $adopt = $service->adopt($root, 'Target', execute: true);
+        $check = $service->check($root, 'Target', execute: true);
+
+        assertSame(['refused', 'refused'], [$adopt['status'], $check['status']]);
+        assertSame('Target names App\\Target in the graph: move the note there first.', $adopt['reason']);
+        assertSame($before, self::all($pdo, $projectId));
+    }
+
+    /**
      * The agreement graph's two model notes (on App\Target, with a check on
      * it, and on App\Gone, which no component holds), plus a model note on
      * App\Maybe, a stale one on App\Chain1, and the person's on App\User,

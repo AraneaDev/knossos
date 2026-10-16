@@ -105,6 +105,7 @@ final readonly class PaneQueries
                 throw new InvalidArgumentException('A note written here is the person\'s: only a remove names an author.');
             }
             $queries = ArchitectureQueryService::forDatabase($this->pdo);
+            NotesService::assertNamesItself($queries, $id, $component);
             // The pane is where a person writes: what they record is theirs.
             // Only a remove names another author, to take away a model's note.
             $result = $remove

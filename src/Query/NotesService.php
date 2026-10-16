@@ -8,7 +8,9 @@ use Closure;
 use InvalidArgumentException;
 use Knossos\Mcp\ToolErrorMapper;
 use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\SqliteTransactions;
 use PDO;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -25,7 +27,10 @@ use Throwable;
  * `$execute`. A refusal says why (`refused`); any other failure answers
  * `error` with the code {@see ToolErrorMapper} gives it, so a write that met
  * a scan's lock says `KNOSSOS_DATABASE_BUSY` and the pane keeps what was
- * typed. A move writes the new note and removes the old in one transaction.
+ * typed. A move copies the stored note to its new name and removes the old,
+ * both by their exact names, in one transaction that takes the write lock
+ * first. Adopting and flagging refuse a name the graph resolves to another
+ * component, so a note left on a short name is never written over another's.
  */
 final readonly class NotesService
 {
@@ -103,24 +108,30 @@ final readonly class NotesService
             if ($model === null) {
                 throw new InvalidArgumentException(sprintf('%s has no note by the model to adopt.', $component));
             }
+            self::assertNamesItself($queries, $projectId, $component);
 
             return self::answered($queries->upsertAnnotation($projectId, $component, 'note', $value ?? $model, $execute, 'user')->data, 'adopt');
         });
     }
 
     /**
-     * `$author`'s `$kind` note on `$component` moved to `$to`: written there,
-     * then removed here, together. Refused, before anything is written, when
-     * `$to` is a name the graph does not hold either, or already holds a
-     * note of that kind by that author.
+     * `$author`'s `$kind` note on `$component` moved to `$to`: the stored row
+     * copied there, then removed here, together, both by their exact names.
+     * The note keeps what it was written against, so a model note reads stale
+     * where it lands until the model looks, and a check on `$to` stays: the
+     * move is the person's, not the model's look. Refused, before anything is
+     * written, when `$to` is a name the graph does not hold either, or
+     * already holds a note of that kind by that author.
      *
      * @return array<string, mixed>
      */
     public function move(string $path, string $component, string $to, string $kind = 'note', string $author = 'user', bool $execute = false): array
     {
-        return $this->write($path, function (ArchitectureQueryService $queries, string $projectId) use ($component, $to, $kind, $author, $execute): array {
-            $value = $this->stored($projectId, $component, $kind, $author);
-            if ($value === null) {
+        return $this->write($path, fn(ArchitectureQueryService $queries, string $projectId): array => (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $component, $to, $kind, $author, $execute): array {
+            $source = $this->pdo->prepare('SELECT value, basis_json, created_at FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+            $source->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
+            $row = $source->fetch(PDO::FETCH_ASSOC);
+            if ($row === false) {
                 throw new InvalidArgumentException(sprintf('%s has no %s by the %s to move.', $component, $kind, $author));
             }
             $present = $this->pdo->prepare('SELECT 1 FROM nodes WHERE project_id = :project AND canonical_name = :name LIMIT 1');
@@ -131,22 +142,22 @@ final readonly class NotesService
             if ($this->stored($projectId, $to, $kind, $author) !== null) {
                 throw new InvalidArgumentException(sprintf('%s already holds a %s by the %s: edit or remove that one first.', $to, $kind, $author));
             }
+            $answer = ['status' => 'ok', 'action' => 'move', 'executed' => $execute, 'component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'value' => (string) $row['value']];
             if (!$execute) {
-                return ['status' => 'ok', 'action' => 'move', 'executed' => false, 'component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'value' => $value];
+                return $answer;
             }
-            $this->pdo->beginTransaction();
-            try {
-                $queries->upsertAnnotation($projectId, $to, $kind, $value, true, $author);
-                $queries->removeAnnotation($projectId, $component, $kind, '', true, $author);
-                $this->pdo->commit();
-            } catch (Throwable $failed) {
-                $this->pdo->rollBack();
-
-                throw $failed;
+            $this->pdo->prepare(
+                'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
+                'VALUES (:project, :to, :kind, :value, :author, :basis, :created, :now)',
+            )->execute(['project' => $projectId, 'to' => $to, 'kind' => $kind, 'value' => $row['value'], 'author' => $author, 'basis' => $row['basis_json'], 'created' => $row['created_at'], 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
+            $removed = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+            $removed->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
+            if ($removed->rowCount() !== 1) {
+                throw new RuntimeException(sprintf('The note on %s changed while it was moved; nothing was moved.', $component));
             }
 
-            return ['status' => 'ok', 'action' => 'move', 'executed' => true, 'component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'value' => $value];
-        });
+            return $answer;
+        }));
     }
 
     /**
@@ -157,12 +168,31 @@ final readonly class NotesService
      */
     public function check(string $path, string $component, string $value = '', bool $remove = false, bool $execute = false): array
     {
-        return $this->write($path, static fn(ArchitectureQueryService $queries, string $projectId): array => self::answered(
-            $remove
-                ? $queries->removeAnnotation($projectId, $component, AnnotationService::CHECK, '', $execute, 'user')->data
-                : $queries->upsertAnnotation($projectId, $component, AnnotationService::CHECK, $value, $execute, 'user')->data,
-            $remove ? 'uncheck' : 'check',
-        ));
+        return $this->write($path, static function (ArchitectureQueryService $queries, string $projectId) use ($component, $value, $remove, $execute): array {
+            self::assertNamesItself($queries, $projectId, $component);
+
+            return self::answered(
+                $remove
+                    ? $queries->removeAnnotation($projectId, $component, AnnotationService::CHECK, '', $execute, 'user')->data
+                    : $queries->upsertAnnotation($projectId, $component, AnnotationService::CHECK, $value, $execute, 'user')->data,
+                $remove ? 'uncheck' : 'check',
+            );
+        });
+    }
+
+    /**
+     * Refuse `$component` when a write on it would land on another
+     * component: the annotation service resolves a name no component holds
+     * by the names the graph shows (`Target` for `App\Target`), so a note
+     * left on such a short name would be written over that component's.
+     * Asked of the service's own preview, so the two never disagree.
+     */
+    public static function assertNamesItself(ArchitectureQueryService $queries, string $projectId, string $component): void
+    {
+        $lands = (string) $queries->upsertAnnotation($projectId, $component, 'note', '', false, 'user')->data['component'];
+        if ($lands !== $component) {
+            throw new InvalidArgumentException(sprintf('%s names %s in the graph: move the note there first.', $component, $lands));
+        }
     }
 
     /**
