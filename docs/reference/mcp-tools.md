@@ -311,8 +311,8 @@ Find circular dependencies. Use before a refactor to see which modules are tangl
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=100; default=20 |
-| `max_nodes` | integer | no | minimum=1; maximum=50000; default=50000 |
-| `max_edges` | integer | no | minimum=1; maximum=100000; default=100000 |
+| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 | `include_self_loops` | boolean | no | default=false |
 
@@ -331,8 +331,8 @@ Rank the structural hotspots, hubs, and likely-dead code. Use to decide where cl
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=100; default=20 |
-| `max_nodes` | integer | no | minimum=1; maximum=50000; default=50000 |
-| `max_edges` | integer | no | minimum=1; maximum=100000; default=100000 |
+| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 | `include_external` | boolean | no | default=false |
 | `include_tests` | boolean | no | default=false |
@@ -355,7 +355,7 @@ Verify declared boundary rules still hold. Use to confirm a change did not intro
 | `policies` | array | no | maxItems=50 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
-| `max_edges` | integer | no | minimum=1; maximum=100000; default=100000 |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
@@ -373,7 +373,7 @@ Decide where new code for a feature belongs. Ranks existing boundaries by lexica
 | `feature_description` | string | yes | minLength=1; maxLength=2000 |
 | `limit` | integer | no | minimum=1; maximum=20; default=5 |
 | `max_members` | integer | no | minimum=1; maximum=50000; default=20000 |
-| `max_edges` | integer | no | minimum=1; maximum=100000; default=100000 |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 | `ranking_mode` | string | no | default="deterministic"; enum=deterministic, semantic_if_available |
 

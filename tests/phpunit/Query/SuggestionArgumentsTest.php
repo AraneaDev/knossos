@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
+use Knossos\Query\QueryBounds;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -85,14 +86,14 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     }
 
     #[Group('query')]
-    public function testMaxEdgesAcceptsOneThroughAHundredThousand(): void
+    public function testMaxEdgesAcceptsOneThroughTheCeiling(): void
     {
         [$queries, $project] = $this->queries();
 
         $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 1);
-        $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000);
+        $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, QueryBounds::MAX_EDGES);
         assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 0), InvalidArgumentException::class);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_001), InvalidArgumentException::class);
+        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, QueryBounds::MAX_EDGES + 1), InvalidArgumentException::class);
     }
 
     #[Group('query')]

@@ -266,8 +266,8 @@ abstract readonly class AbstractArchitectureQueryService
      */
     protected function confidenceQueryBounds(int $maxEdges, int $timeoutMs, string $minConfidence): array
     {
-        if ($maxEdges < 1 || $maxEdges > 100_000) {
-            throw new InvalidArgumentException('max_edges must be between 1 and 100000.');
+        if ($maxEdges < 1 || $maxEdges > QueryBounds::MAX_EDGES) {
+            throw new InvalidArgumentException(sprintf('max_edges must be between 1 and %d.', QueryBounds::MAX_EDGES));
         }
         return $this->confidenceThreshold($timeoutMs, $minConfidence);
     }

@@ -53,7 +53,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      *
      * @param list<string> $edgeKinds
      */
-    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = 50_000, int $maxEdges = 100_000, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000): ResultEnvelope
+    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000): ResultEnvelope
     {
         $project = $this->project($projectId);
         [$confidenceRank, $edgeKinds] = $this->healthArguments($edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $candidateConfidence, $candidateOffset, $candidateTimeoutMs);
@@ -188,8 +188,8 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         if ($candidateTimeoutMs < 1 || $candidateTimeoutMs > 60_000) {
             throw new InvalidArgumentException('candidate_timeout_ms must be between 1 and 60000.');
         }
-        if ($maxNodes < 1 || $maxNodes > 50_000) {
-            throw new InvalidArgumentException('max_nodes must be between 1 and 50000.');
+        if ($maxNodes < 1 || $maxNodes > QueryBounds::MAX_NODES) {
+            throw new InvalidArgumentException(sprintf('max_nodes must be between 1 and %d.', QueryBounds::MAX_NODES));
         }
         $confidenceRank = $this->confidenceQueryBounds($maxEdges, $timeoutMs, $minConfidence);
 

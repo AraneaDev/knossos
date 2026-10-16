@@ -185,7 +185,7 @@ fields. `bounds` reports the limits and what the search did:
 
 - `max_files`, `max_direct_components`, `limit` and `max_depth`: the change
   set and answer limits, as in `changed_files_impact`.
-- `max_visited` (50,000 components) and `max_edges` (100,000 relationships):
+- `max_visited` (50,000 components) and `max_edges` (500,000 relationships):
   the search's own bounds. `timeout_ms` bounds the whole request.
 - `visited_nodes` and `edges_examined`: how far the search went.
 - `test_files_found` and `test_files_via_wiring_found`: how many test files

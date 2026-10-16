@@ -12,6 +12,7 @@ use Knossos\Git\ProcessGitHistoryProvider;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Query\ArchitecturePolicyQueryService;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\QueryBounds;
 use Knossos\Result\ResultEnvelope;
 
 /**
@@ -282,7 +283,7 @@ final class QueryCommand implements CliCommand
     private function dependencyCycles(array $p, array $o, CliCommandContext $c): int
     {
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos dependency-cycles <path|project-id> [options]'), $c);
-        $result = $this->queries($c)->dependencyCycles($project, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 20, 1, 100), $c->options->integer($o, 'max-nodes', 50_000, 1, 50_000), $c->options->integer($o, 'max-edges', 100_000, 1, 100_000), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->flag($o, 'include-self-loops'));
+        $result = $this->queries($c)->dependencyCycles($project, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 20, 1, 100), $c->options->integer($o, 'max-nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES), $c->options->integer($o, 'max-edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->flag($o, 'include-self-loops'));
         return $this->result($result, $o, $c);
     }
 
@@ -294,7 +295,7 @@ final class QueryCommand implements CliCommand
     private function architectureHealth(array $p, array $o, CliCommandContext $c): int
     {
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos architecture-health <path|project-id> [options]'), $c);
-        $result = $this->queries($c)->architectureHealth($project, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 20, 1, 100), $c->options->integer($o, 'max-nodes', 50_000, 1, 50_000), $c->options->integer($o, 'max-edges', 100_000, 1, 100_000), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->flag($o, 'include-external'), $c->options->flag($o, 'include-tests'), $c->options->single($o, 'candidate-confidence') ?? 'possible', $c->options->integer($o, 'candidate-offset', 0, 0, 100_000), $c->options->integer($o, 'candidate-timeout', 5000, 1, 60_000));
+        $result = $this->queries($c)->architectureHealth($project, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 20, 1, 100), $c->options->integer($o, 'max-nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES), $c->options->integer($o, 'max-edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->flag($o, 'include-external'), $c->options->flag($o, 'include-tests'), $c->options->single($o, 'candidate-confidence') ?? 'possible', $c->options->integer($o, 'candidate-offset', 0, 0, 100_000), $c->options->integer($o, 'candidate-timeout', 5000, 1, 60_000));
         return $this->result($result, $o, $c);
     }
 
@@ -308,7 +309,7 @@ final class QueryCommand implements CliCommand
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos check-architecture <path|project-id> [--policies=FILE] [options]'), $c);
         // Without a file, the policies the project declares in knossos.json.
         $path = $c->options->single($o, 'policies');
-        $result = $this->queries($c)->checkArchitecture($project, $path === null ? null : $c->input->policies($path), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 100, 1, 100), $c->options->integer($o, 'max-edges', ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, 1, 100_000), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000));
+        $result = $this->queries($c)->checkArchitecture($project, $path === null ? null : $c->input->policies($path), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 100, 1, 100), $c->options->integer($o, 'max-edges', ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, 1, QueryBounds::MAX_EDGES), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000));
         $c->output($result->jsonSerialize(), $c->options->flag($o, 'json'), $result->summary);
         // Exit non-zero when declared-policy violations exist so the "check"
         // command can gate CI on its own result, mirroring quality-gate. The
@@ -325,7 +326,7 @@ final class QueryCommand implements CliCommand
     {
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos suggest-location <path|project-id> <feature-description> [options]'), $c);
         $description = $p[1] ?? throw new InvalidArgumentException('A feature description is required.');
-        $result = $this->queries($c)->suggestLocation($project, $description, $c->options->integer($o, 'limit', 5, 1, 20), $c->options->integer($o, 'max-members', 20_000, 1, 50_000), $c->options->integer($o, 'max-edges', 100_000, 1, 100_000), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->single($o, 'ranking-mode') ?? 'deterministic');
+        $result = $this->queries($c)->suggestLocation($project, $description, $c->options->integer($o, 'limit', 5, 1, 20), $c->options->integer($o, 'max-members', 20_000, 1, 50_000), $c->options->integer($o, 'max-edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->single($o, 'ranking-mode') ?? 'deterministic');
         return $this->result($result, $o, $c);
     }
 

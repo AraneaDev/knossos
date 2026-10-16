@@ -141,25 +141,17 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
         $cycleEvidence = [];
         $touchingCycles = [];
         try {
-            $cycleResult = $this->cycleQueries->dependencyCycles($projectId, [], $minConfidence, 100, 50_000, 100_000, $timeoutMs);
-            $touchingCycles = array_values(array_filter(
-                $cycleResult->data['cycles'],
-                static function (array $cycle) use ($touched): bool {
-                    // member_ids is the whole cycle; `members` lists only its
-                    // first 100, so a larger cycle was missed when a change
-                    // touched a member past them.
-                    foreach ($cycle['member_ids'] as $memberId) {
-                        if (isset($touched[$memberId])) {
-                            return true;
-                        }
-                    }
-                    return false;
-                },
-            ));
+            // Filtered inside the search, before its limit of 100, so a touching
+            // cycle is found however many others sort ahead of it. An empty
+            // filter means every cycle, so a change touching nothing skips it.
+            if ($touched !== []) {
+                $cycleResult = $this->cycleQueries->dependencyCycles($projectId, [], $minConfidence, 100, QueryBounds::MAX_NODES, QueryBounds::MAX_EDGES, $timeoutMs, touchingIds: array_map('strval', array_keys($touched)));
+                $touchingCycles = $cycleResult->data['cycles'];
+                $cycleEvidence = $cycleResult->evidence;
+                $warnings = [...$warnings, ...$cycleResult->warnings];
+                $truncated = $truncated || $cycleResult->truncated;
+            }
             $cyclesSection = ['status' => 'evaluated', 'cycles' => $touchingCycles];
-            $cycleEvidence = $cycleResult->evidence;
-            $warnings = [...$warnings, ...$cycleResult->warnings];
-            $truncated = $truncated || $cycleResult->truncated;
         } catch (InvalidArgumentException $error) {
             $cyclesSection = ['status' => 'not_evaluated', 'reason' => 'Cycle scan failed: ' . $error->getMessage()];
         }
