@@ -14,7 +14,15 @@ use Knossos\Result\ResultEnvelope;
  */
 final readonly class AnnotationService extends AbstractArchitectureQueryService
 {
-    public const KINDS = ['intended_boundary', 'confirmed_dead', 'false_positive', 'intentional', 'note'];
+    public const KINDS = ['intended_boundary', 'confirmed_dead', 'false_positive', 'intentional', 'note', self::CHECK];
+
+    /**
+     * A person's request, written from the pane, that the model look at a
+     * component's note again; its value is the reason, possibly empty. The
+     * model's next note on that component clears it, and the model never
+     * writes one.
+     */
+    public const CHECK = 'check';
 
     /**
      * Who wrote an annotation: a person, through the pane (`user`), or an
@@ -32,11 +40,18 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * person's own note, edited in the pane, is replaced as before. The
      * refusal hands back the stored note so the caller can merge it.
      *
+     * A model note that is written clears the person's {@see self::CHECK} on
+     * the component in the same transaction: the request was to look again,
+     * and this is the look.
+     *
      * @param list<string> $evidencePaths files besides the component's own that a model note rests on
      * @param bool $replace replace a model note whose text this one does not keep
      */
     public function upsertAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model', array $evidencePaths = [], bool $replace = false): ResultEnvelope
     {
+        if ($kind === self::CHECK && $author !== 'user') {
+            throw new InvalidArgumentException('check is written by the person, from the pane.');
+        }
         $target = $this->target($projectId, $component, $kind, $value, $author);
         $basis = $author === 'model' ? $this->basis($projectId, $target['canonical'], $evidencePaths) : [];
         $kept = self::wouldLose($target['existing'], $value, $author) && !$replace;
@@ -65,11 +80,43 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             // Re-recording refreshes the basis: it is how a stale note is confirmed.
             'ON CONFLICT(project_id, canonical_name, kind, author) DO UPDATE SET value = excluded.value, basis_json = excluded.basis_json, updated_at = excluded.updated_at',
         );
-        $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'author' => $author, 'basis' => json_encode($basis, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
+        $write = fn() => $statement->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => $kind, 'value' => $value, 'author' => $author, 'basis' => json_encode($basis, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
+        if ($author === 'model' && $kind === 'note') {
+            $this->inTransaction(function () use ($write, $projectId, $target): void {
+                $write();
+                $this->pdo->prepare("DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = 'user'")
+                    ->execute(['project' => $projectId, 'name' => $target['canonical'], 'kind' => self::CHECK]);
+            });
+        } else {
+            $write();
+        }
 
         $replaced = self::wouldLose($target['existing'], $value, $author);
 
         return $this->executed($projectId, $target, $kind, 'upsert', $replaced ? 'Replaced the previous' : 'Recorded', $this->fetch($projectId, $target['canonical'], $kind, $author));
+    }
+
+    /**
+     * Run `$work` in one transaction, or inside the caller's when one is open.
+     *
+     * @param \Closure(): void $work
+     */
+    private function inTransaction(\Closure $work): void
+    {
+        if ($this->pdo->inTransaction()) {
+            $work();
+
+            return;
+        }
+        $this->pdo->beginTransaction();
+        try {
+            $work();
+            $this->pdo->commit();
+        } catch (\Throwable $failed) {
+            $this->pdo->rollBack();
+
+            throw $failed;
+        }
     }
 
     /**

@@ -253,7 +253,7 @@ List durable annotations recorded on components, each with its author (user or m
 | `refresh_if_stale` | boolean | no | default=true |
 | `project_id` | string | yes | minLength=1 |
 | `component` | string | no | minLength=1 |
-| `kind` | string | no | enum=intended_boundary, confirmed_dead, false_positive, intentional, note |
+| `kind` | string | no | enum=intended_boundary, confirmed_dead, false_positive, intentional, note, check |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
 | `offset` | integer | no | minimum=0; maximum=100000; default=0 |
 
