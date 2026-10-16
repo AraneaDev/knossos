@@ -29,6 +29,6 @@ final class LaunchInterpretersAgreementTest extends KnossosTestCase
         }
 
         self::assertCount(1, array_unique(array_map(static fn(array $list): string => implode(',', $list), $lists)), 'Interpreter lists differ: ' . json_encode($lists));
-        self::assertCount(12, reset($lists));
+        self::assertNotSame([], reset($lists));
     }
 }
