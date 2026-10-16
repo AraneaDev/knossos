@@ -10,6 +10,7 @@ use Knossos\Discovery\RootGuard;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\Protocol\ProtocolNegotiator;
 use Knossos\Query\{ArchitecturePolicyQueryService, ArchitectureQueryService, StalenessSnapshot};
+use Knossos\Query\QueryBounds;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanner;
@@ -870,8 +871,8 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'limit', 20, 1, 100),
-            ToolArguments::integer($arguments, 'max_nodes', 50_000, 1, 50_000),
-            ToolArguments::integer($arguments, 'max_edges', 100_000, 1, 100_000),
+            ToolArguments::integer($arguments, 'max_nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES),
+            ToolArguments::integer($arguments, 'max_edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES),
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
             ToolArguments::boolean($arguments, 'include_self_loops', false),
         ];
@@ -892,8 +893,8 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'limit', 20, 1, 100),
-            ToolArguments::integer($arguments, 'max_nodes', 50_000, 1, 50_000),
-            ToolArguments::integer($arguments, 'max_edges', 100_000, 1, 100_000),
+            ToolArguments::integer($arguments, 'max_nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES),
+            ToolArguments::integer($arguments, 'max_edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES),
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
             ToolArguments::boolean($arguments, 'include_external', false),
             ToolArguments::boolean($arguments, 'include_tests', false),
@@ -923,7 +924,7 @@ final readonly class ToolService
             $policies,
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'limit', 100, 1, 100),
-            ToolArguments::integer($arguments, 'max_edges', ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, 1, 100_000),
+            ToolArguments::integer($arguments, 'max_edges', ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, 1, QueryBounds::MAX_EDGES),
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
         ];
 
@@ -943,7 +944,7 @@ final readonly class ToolService
             ToolArguments::text($arguments, 'feature_description', 2000),
             ToolArguments::integer($arguments, 'limit', 5, 1, 20),
             ToolArguments::integer($arguments, 'max_members', 20_000, 1, 50_000),
-            ToolArguments::integer($arguments, 'max_edges', 100_000, 1, 100_000),
+            ToolArguments::integer($arguments, 'max_edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES),
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
             array_key_exists('ranking_mode', $arguments) ? ToolArguments::string($arguments, 'ranking_mode') : 'deterministic',
         ];

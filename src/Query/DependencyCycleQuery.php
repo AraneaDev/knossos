@@ -34,12 +34,12 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      *
      * @param list<string> $edgeKinds
      */
-    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = 50_000, int $maxEdges = 100_000, int $timeoutMs = 1000, bool $includeSelfLoops = false): ResultEnvelope
+    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         self::assertLimit($limit);
-        if ($maxNodes < 1 || $maxNodes > 50_000) {
-            throw new InvalidArgumentException('max_nodes must be between 1 and 50000.');
+        if ($maxNodes < 1 || $maxNodes > QueryBounds::MAX_NODES) {
+            throw new InvalidArgumentException(sprintf('max_nodes must be between 1 and %d.', QueryBounds::MAX_NODES));
         }
         $confidenceRank = $this->confidenceQueryBounds($maxEdges, $timeoutMs, $minConfidence);
         $edgeKinds = self::selectedEdgeKinds($edgeKinds, self::IMPACT_EDGE_KINDS, 'dependency');

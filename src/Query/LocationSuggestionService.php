@@ -34,7 +34,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
     }
 
     /** Rank where a described feature would fit the existing structure. */
-    public function suggestLocation(string $projectId, string $featureDescription, int $limit = 5, int $maxMembers = 20_000, int $maxEdges = 100_000, int $timeoutMs = 1000, string $rankingMode = 'deterministic'): ResultEnvelope
+    public function suggestLocation(string $projectId, string $featureDescription, int $limit = 5, int $maxMembers = 20_000, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, string $rankingMode = 'deterministic'): ResultEnvelope
     {
         $project = $this->project($projectId);
         $tokens = $this->assertArguments($featureDescription, $limit, $maxMembers, $maxEdges, $timeoutMs, $rankingMode);
@@ -87,8 +87,8 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
         if ($maxMembers < 1 || $maxMembers > 50_000) {
             throw new InvalidArgumentException('max_members must be between 1 and 50000.');
         }
-        if ($maxEdges < 1 || $maxEdges > 100_000) {
-            throw new InvalidArgumentException('max_edges must be between 1 and 100000.');
+        if ($maxEdges < 1 || $maxEdges > QueryBounds::MAX_EDGES) {
+            throw new InvalidArgumentException(sprintf('max_edges must be between 1 and %d.', QueryBounds::MAX_EDGES));
         }
         if ($timeoutMs < 1 || $timeoutMs > 5000) {
             throw new InvalidArgumentException('timeout_ms must be between 1 and 5000.');

@@ -32,7 +32,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
      * a violation in the rest would have passed CI. One constant keeps the
      * budgets from drifting apart again.
      */
-    public const DEFAULT_MAX_EDGES = 100_000;
+    public const DEFAULT_MAX_EDGES = QueryBounds::MAX_EDGES;
 
     /**
      * Evaluate declared policies, returning each violation with the edge that breaches it.

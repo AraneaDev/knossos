@@ -141,7 +141,7 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
         $cycleEvidence = [];
         $touchingCycles = [];
         try {
-            $cycleResult = $this->cycleQueries->dependencyCycles($projectId, [], $minConfidence, 100, 50_000, 100_000, $timeoutMs);
+            $cycleResult = $this->cycleQueries->dependencyCycles($projectId, [], $minConfidence, 100, QueryBounds::MAX_NODES, QueryBounds::MAX_EDGES, $timeoutMs);
             $touchingCycles = array_values(array_filter(
                 $cycleResult->data['cycles'],
                 static function (array $cycle) use ($touched): bool {

@@ -40,7 +40,7 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
     public const MAX_VISITED = 50_000;
 
     /** The largest `max_edges` any query accepts. */
-    public const MAX_EDGES = 100_000;
+    public const MAX_EDGES = QueryBounds::MAX_EDGES;
 
     /** Frontier ids per query, well under SQLite's 999-variable floor with the edge kinds added. */
     private const CHUNK = 500;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Mcp;
 
 use Knossos\Query\AbstractArchitectureQueryService;
+use Knossos\Query\QueryBounds;
 
 /**
  * The MCP tool catalogue: every tool this server advertises, and its input schema.
@@ -441,8 +442,8 @@ final readonly class ToolCatalog
                         'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 20],
-                        'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50000, 'default' => 50000],
-                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 100000],
+                        'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_NODES, 'default' => QueryBounds::MAX_NODES],
+                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_EDGES, 'default' => QueryBounds::MAX_EDGES],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                         'include_self_loops' => ['type' => 'boolean', 'default' => false, 'description' => 'Include single-symbol self-recursion; excluded by default because recursion is not an architectural cycle.'],
                     ],
@@ -463,8 +464,8 @@ final readonly class ToolCatalog
                         'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 20],
-                        'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50000, 'default' => 50000],
-                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 100000],
+                        'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_NODES, 'default' => QueryBounds::MAX_NODES],
+                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_EDGES, 'default' => QueryBounds::MAX_EDGES],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                         'include_external' => ['type' => 'boolean', 'default' => false, 'description' => 'Include external/unresolved symbols (builtins, vendor targets) in hubs and hotspots.'],
                         'include_tests' => ['type' => 'boolean', 'default' => false, 'description' => 'Include test-role components in hubs and hotspots.'],
@@ -492,7 +493,7 @@ final readonly class ToolCatalog
                         ],
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
-                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 100000],
+                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_EDGES, 'default' => QueryBounds::MAX_EDGES],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                     ],
                     'required' => ['project_id'],
@@ -512,7 +513,7 @@ final readonly class ToolCatalog
                         'feature_description' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 2000],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 20, 'default' => 5],
                         'max_members' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50000, 'default' => 20000],
-                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 100000],
+                        'max_edges' => ['type' => 'integer', 'minimum' => 1, 'maximum' => QueryBounds::MAX_EDGES, 'default' => QueryBounds::MAX_EDGES],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                         'ranking_mode' => ['type' => 'string', 'enum' => ['deterministic', 'semantic_if_available'], 'default' => 'deterministic'],
                     ],

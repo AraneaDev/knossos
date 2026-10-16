@@ -151,8 +151,8 @@ closed only by such imports is not reported. The result says so in its
 `warnings`.
 
 The default bounds cover the whole graph of most projects: `max_nodes`
-(default 50,000) counts only the symbols that take part in a selected
-relationship, and `max_edges` defaults to 100,000. The search reads bare
+(default 200,000) counts only the symbols that take part in a selected
+relationship, and `max_edges` defaults to 500,000. The search reads bare
 endpoint pairs first and loads names, files and lines only for the cycles it
 reports, so a graph of tens of thousands of relationships is searched well
 inside the default `timeout_ms` of one second. When a bound does stop the
@@ -188,7 +188,7 @@ components are always ranked, even when `timeout_ms` runs out while the
 degrees are counted; the summary then still says the ranking was truncated.
 A hotspot adds
 twice its cross-boundary degree, plus three if it takes part in a cycle.
-The cycle check runs with the same `max_nodes` (default 50,000) and
+The cycle check runs with the same `max_nodes` (default 200,000) and
 `max_edges` as the rest of the call, inside what is left of `timeout_ms`;
 when it is cut short, `bounds.cycle_scan_truncated` says so, `cycle_scan` is
 added to `bounds.truncation_reasons`, the result is `truncated` and the
