@@ -403,6 +403,7 @@ final readonly class ToolCatalog
                         'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 3000],
+                        'both_directions' => ['type' => 'boolean', 'default' => false, 'description' => 'When from reaches to by no route, look from to to from as well; the answer then says reversed.'],
                     ],
                     'required' => ['project_id', 'from', 'to'],
                     'additionalProperties' => false,

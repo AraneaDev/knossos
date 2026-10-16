@@ -386,8 +386,9 @@ final readonly class ArchitectureQueryService
         array $edgeKinds = [],
         string $minConfidence = 'possible',
         int $timeoutMs = FlowQuery::DEFAULT_TIMEOUT_MS,
+        bool $bothDirections = false,
     ): ResultEnvelope {
-        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs));
+        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs, $bothDirections));
     }
 
     /**

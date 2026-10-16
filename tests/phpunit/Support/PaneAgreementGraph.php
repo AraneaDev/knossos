@@ -18,7 +18,9 @@ trait PaneAgreementGraph
      * only `App\Target::make`; `App\User` calling the class, with a chain
      * three deep above it (`App\Chain1` to `App\Chain3`); `App\Maybe`
      * calling the class on a probable edge; and `Tests\TargetTest`, a test,
-     * calling `App\User`.
+     * calling `App\User`. Apart from those, `App\User::go` calls
+     * `App\Port::run`, an interface method `App\Adapter::run` implements,
+     * so a route from `App\User` to it ends on a derived hop.
      *
      * @return array{0: PDO, 1: string, 2: string} the database, the project root and its id
      */
@@ -56,6 +58,16 @@ trait PaneAgreementGraph
             $below = $above;
         }
         $edge('calls', $node('Tests\\TargetTest', test: true), $user);
+        $go = $node('App\\User::go', 'method', $user);
+        $edge('contains', $user, $go);
+        $port = $node('App\\Port', 'interface');
+        $portRun = $node('App\\Port::run', 'method', $port);
+        $edge('contains', $port, $portRun);
+        $adapter = $node('App\\Adapter');
+        $adapterRun = $node('App\\Adapter::run', 'method', $adapter);
+        $edge('contains', $adapter, $adapterRun);
+        $edge('implements', $adapter, $port);
+        $edge('calls', $go, $portRun);
         $repository->completeScan($ids['project'], $ids['scan']);
 
         return [$pdo, '/workspace/fixture-shop', $ids['project']];

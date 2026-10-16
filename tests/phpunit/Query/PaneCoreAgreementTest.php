@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\BlastRadiusService;
+use Knossos\Query\PathBetweenService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
 use PHPUnit\Framework\Attributes\Group;
@@ -54,5 +55,65 @@ final class PaneCoreAgreementTest extends KnossosTestCase
 
         assertSame($fromImpact, $fromRings);
         assertSame(['App\\Maybe', 'App\\StaticCaller', 'App\\User'], $fromRings[1]);
+    }
+
+    /**
+     * The pane's routes are explain_flow's, hop for hop: the names, the
+     * confidences, and the derived `implemented_by` step from the interface
+     * method to the one implementing it, marked as derived.
+     */
+    #[Group('query')]
+    public function testRoutesAgreeWithExplainFlow(): void
+    {
+        [$pdo, $root, $projectId] = $this->paneAgreementGraph();
+
+        $pane = (new PathBetweenService($pdo))->routes($root, 'App\\User', 'App\\Adapter::run');
+        $core = ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'App\\User', 'App\\Adapter::run')->data;
+
+        assertSame(false, $pane['reversed']);
+        assertSame(self::coreRoutes($core), self::paneRoutes($pane));
+        $last = end($pane['routes'][0]['hops']);
+        assertSame(['implemented_by', 'probable', true], [$last['kind'], $last['confidence'], $last['derived']]);
+    }
+
+    /**
+     * Asked the wrong way round, the pane shows the routes the other way, as
+     * explain_flow does when asked for both directions.
+     */
+    #[Group('query')]
+    public function testAReversedRouteAgreesWithExplainFlowBothWays(): void
+    {
+        [$pdo, $root, $projectId] = $this->paneAgreementGraph();
+
+        $pane = (new PathBetweenService($pdo))->routes($root, 'App\\Adapter::run', 'App\\User');
+        $core = ArchitectureQueryService::forDatabase($pdo)->explainFlow($projectId, 'App\\Adapter::run', 'App\\User', bothDirections: true)->data;
+
+        assertSame([true, true], [$pane['reversed'], $core['reversed']]);
+        assertSame(['App\\Adapter::run', 'App\\User'], [$pane['from']['canonical_name'], $pane['to']['canonical_name']]);
+        assertSame(self::coreRoutes($core), self::paneRoutes($pane));
+    }
+
+    /**
+     * @param array<string, mixed> $flow explain_flow's data
+     * @return list<array{nodes: list<string>, confidences: list<string>}>
+     */
+    private static function coreRoutes(array $flow): array
+    {
+        return array_map(static fn(array $route): array => [
+            'nodes' => array_map(static fn(array $node): string => (string) $node['canonical_name'], $route['nodes']),
+            'confidences' => array_map(static fn(array $hop): string => (string) $hop['confidence'], $route['hops']),
+        ], $flow['paths']);
+    }
+
+    /**
+     * @param array<string, mixed> $routes the pane's answer
+     * @return list<array{nodes: list<string>, confidences: list<string>}>
+     */
+    private static function paneRoutes(array $routes): array
+    {
+        return array_map(static fn(array $route): array => [
+            'nodes' => array_column($route['nodes'], 'canonical_name'),
+            'confidences' => array_column($route['hops'], 'confidence'),
+        ], $routes['routes']);
     }
 }
