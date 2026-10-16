@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Runtime;
 use Knossos\Filesystem\RegularFileOpener;
 use Knossos\Runtime\DoctorService;
 use Knossos\Runtime\RuntimeVersionRequirement;
+use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -254,35 +255,28 @@ final class DoctorServiceTest extends KnossosTestCase
         $this->assertStringContainsString('schema_migrations', $check['detail']);
     }
 
-    public function testRunSqliteMigrationsCheckFailsWhenFewerThanSixMigrationsApplied(): void
+    public function testRunSqliteMigrationsCheckFailsWhenNoneAreApplied(): void
     {
-        // Set up the table with only 3 rows — below the source's threshold.
+        $this->pdo->exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)');
+
+        $check = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run(), 'sqlite.migrations');
+
+        assertSame('error', $check['status']);
+        $this->assertStringContainsString('No migrations', $check['detail']);
+    }
+
+    /** An installation without a migrations directory has nothing to compare against, so any applied set passes. */
+    public function testRunSqliteMigrationsCheckCountsAppliedWithoutAMigrationsDirectory(): void
+    {
         $this->pdo->exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)');
         for ($i = 1; $i <= 3; $i++) {
             $this->pdo->prepare('INSERT INTO schema_migrations (version) VALUES (:v)')->execute(['v' => "m{$i}"]);
         }
 
-        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
-
-        $check = $this->findCheck($service->run(), 'sqlite.migrations');
-
-        assertSame('error', $check['status']);
-        $this->assertStringContainsString('Only 3 migrations', $check['detail']);
-    }
-
-    public function testRunSqliteMigrationsCheckPassesWhenSixMigrationsApplied(): void
-    {
-        $this->pdo->exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)');
-        for ($i = 1; $i <= 6; $i++) {
-            $this->pdo->prepare('INSERT INTO schema_migrations (version) VALUES (:v)')->execute(['v' => "m{$i}"]);
-        }
-
-        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
-
-        $check = $this->findCheck($service->run(), 'sqlite.migrations');
+        $check = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run(), 'sqlite.migrations');
 
         assertSame('ok', $check['status']);
-        assertSame('6 applied', $check['detail']);
+        assertSame('3 applied', $check['detail']);
     }
 
     // ----- data.writable (conditional) -----
@@ -605,6 +599,46 @@ final class DoctorServiceTest extends KnossosTestCase
     }
 
     // ----- helpers -----
+
+    /** A database a newer checkout migrated is still usable, but doctor says so. */
+    public function testMigrationsANewerCheckoutAppliedAreAWarning(): void
+    {
+        symlink(self::repositoryRoot() . '/migrations', $this->installationRoot . '/migrations');
+        (new MigrationRunner($this->pdo, self::repositoryRoot() . '/migrations'))->migrate();
+        $this->pdo->exec("INSERT INTO schema_migrations (version, checksum, applied_at) VALUES ('999_from_the_future', 'x', '2026-10-16T00:00:00Z')");
+
+        $result = (new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run();
+        $check = $this->findCheck($result, 'sqlite.migrations');
+
+        $this->assertSame('warning', $check['status']);
+        $this->assertStringContainsString('999_from_the_future', $check['detail']);
+        $this->assertStringContainsString('newer Knossos', $check['detail']);
+    }
+
+    /** A migration the checkout has but the database lacks is an error that names it. */
+    public function testAMigrationTheDatabaseLacksIsAnError(): void
+    {
+        symlink(self::repositoryRoot() . '/migrations', $this->installationRoot . '/migrations');
+        (new MigrationRunner($this->pdo, self::repositoryRoot() . '/migrations'))->migrate();
+        $this->pdo->exec("DELETE FROM schema_migrations WHERE version = '023_annotation_basis'");
+
+        $check = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run(), 'sqlite.migrations');
+
+        $this->assertSame('error', $check['status']);
+        $this->assertStringContainsString('023_annotation_basis', $check['detail']);
+    }
+
+    /** With every applied migration known, the check passes and counts them. */
+    public function testMigrationsTheCheckoutKnowsAreOk(): void
+    {
+        symlink(self::repositoryRoot() . '/migrations', $this->installationRoot . '/migrations');
+        (new MigrationRunner($this->pdo, self::repositoryRoot() . '/migrations'))->migrate();
+
+        $check = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run(), 'sqlite.migrations');
+
+        $this->assertSame('ok', $check['status']);
+        $this->assertMatchesRegularExpression('/^\d+ applied$/', $check['detail']);
+    }
 
     /**
      * @param array{ok: bool, checks: list<array{name: string, status: string, detail: string}>} $result

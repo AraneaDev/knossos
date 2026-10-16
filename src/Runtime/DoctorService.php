@@ -82,12 +82,18 @@ final readonly class DoctorService
         });
         $this->check($checks, 'sqlite.foreign_keys', fn(): string => (string) $this->pdo->query('PRAGMA foreign_keys')->fetchColumn() === '1' ? 'enabled' : throw new \RuntimeException('disabled'));
         $this->check($checks, 'sqlite.migrations', function (): string {
-            $count = (int) $this->pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
-            if ($count < 6) {
-                throw new \RuntimeException(sprintf('Only %d migrations are applied.', $count));
+            $applied = array_map('strval', $this->pdo->query('SELECT version FROM schema_migrations')->fetchAll(PDO::FETCH_COLUMN));
+            $missing = array_values(array_diff($this->knownMigrations(), $applied));
+            sort($missing);
+            if ($missing !== []) {
+                throw new \RuntimeException(sprintf('The database lacks migrations this checkout has: %s.', implode(', ', $missing)));
             }
-            return sprintf('%d applied', $count);
+            if ($applied === []) {
+                throw new \RuntimeException('No migrations are applied.');
+            }
+            return sprintf('%d applied', count($applied));
         });
+        $this->compareMigrations($checks);
         if ($this->databasePath !== ':memory:') {
             $this->check($checks, 'data.writable', fn(): string => is_writable(dirname($this->databasePath)) ? dirname($this->databasePath) : throw new \RuntimeException('Data directory is not writable.'));
         }
@@ -161,6 +167,47 @@ final readonly class DoctorService
             }
         });
         $this->compareSource($checks, $descriptor, $built);
+    }
+
+    /**
+     * The migration versions this installation ships, by file name, or none without a migrations directory.
+     *
+     * @return list<string>
+     */
+    private function knownMigrations(): array
+    {
+        return array_map(static fn(string $file): string => basename($file, '.sql'), glob($this->installationRoot . '/migrations/*.sql') ?: []);
+    }
+
+    /**
+     * Downgrade the migrations check to a warning when the database carries versions this checkout lacks.
+     *
+     * Every process applies its own checkout's pending migrations when it opens
+     * the database, and never complains about versions it has no file for. A
+     * database a newer Knossos migrated therefore opens without error under an
+     * older one, whose queries may not expect the newer schema. That is a
+     * warning, not an error: the database still opens. An installation without
+     * a migrations directory has nothing to compare against and is left alone.
+     *
+     * @param non-empty-list<array{name: string, status: string, detail: string}> $checks
+     */
+    private function compareMigrations(array &$checks): void
+    {
+        $last = array_key_last($checks);
+        $known = $this->knownMigrations();
+        if ($checks[$last]['status'] !== 'ok' || $known === []) {
+            return;
+        }
+        $applied = $this->pdo->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN);
+        $unknown = array_values(array_diff(array_map('strval', $applied), $known));
+        if ($unknown === []) {
+            return;
+        }
+        $checks[$last]['status'] = 'warning';
+        $checks[$last]['detail'] .= sprintf(
+            '; the database has migrations this checkout does not know (%s): it was used by a newer Knossos. Update this checkout, or point it at its own data directory.',
+            implode(', ', $unknown),
+        );
     }
 
     /**
