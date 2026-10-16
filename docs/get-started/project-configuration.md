@@ -108,8 +108,9 @@ Every file a worker reports and every heartbeat restarts the `worker_timeout_ms`
 wait, and no request runs longer than 120,000 milliseconds. The PHP, Python and
 Rust workers show life between files only, so for them the limit applies to
 each file: one file that takes longer to parse fails the scan with
-`WORKER_TIMEOUT`. The TypeScript worker also sends a heartbeat every 5 seconds
-while it builds a program, because that step comes before any file is reported.
+`WORKER_TIMEOUT`. The TypeScript worker sends a heartbeat every 5 seconds for
+the whole request, because it builds a program before it reports any file, so
+for it only the 120,000 millisecond cap applies.
 When a worker hits its heap cap, the scan error names `limits.worker_memory_mb`
 as the fix.
 

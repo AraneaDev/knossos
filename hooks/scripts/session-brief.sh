@@ -84,7 +84,7 @@ if TIMEOUT_BIN="$(find_timeout)"; then
     # The one failure that says so: a brief cut off by the bound leaves the
     # session without one, and silence would give no hint why. Still exit 0.
     if [ "$STATUS" -eq 124 ]; then
-        printf 'Knossos brief timed out after 3 s; run knossos session-brief %s to see why.\n' "$PROJECT_DIR"
+        printf "Knossos brief timed out after 3 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
         exit 0
     fi
     [ "$STATUS" -eq 0 ] || exit 0

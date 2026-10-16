@@ -86,7 +86,7 @@ final readonly class DoctorService
             $missing = array_values(array_diff($this->knownMigrations(), $applied));
             sort($missing);
             if ($missing !== []) {
-                throw new \RuntimeException(sprintf('The database lacks migrations this checkout has: %s.', implode(', ', $missing)));
+                throw new \RuntimeException(sprintf('The database lacks migrations this checkout has: %s. A server started before the pull that added them runs older code: reconnect it, or run any knossos command, which applies them.', implode(', ', $missing)));
             }
             if ($applied === []) {
                 throw new \RuntimeException('No migrations are applied.');

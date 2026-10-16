@@ -51,7 +51,7 @@ chmod +x "$tmp/knossos"
 output="$(env KNOSSOS_BIN="$tmp/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$HOOK" 2>/dev/null)"
 status=$?
 case $output in
-    "Knossos brief timed out after 3 s; run knossos session-brief /tmp to see why.")
+    "Knossos brief timed out after 3 s; run knossos session-brief '/tmp' to see why.")
         [ "$status" -eq 0 ] && printf 'ok   hanging binary says it timed out\n' || { printf 'FAIL hanging binary: status=%s\n' "$status"; failures=$((failures + 1)); } ;;
     *) printf 'FAIL hanging binary: status=%s output=%s\n' "$status" "$output"; failures=$((failures + 1)) ;;
 esac
@@ -116,7 +116,9 @@ exec "$@"
 STUB
 chmod +x "$BOX/killer/timeout"
 : > "$BOX/bin/removed"
-env PATH="$BOX/killer:$BOX/bin:$PATH" CLAUDE_PROJECT_DIR="$BOX/proj" sh "$BOX/hook.sh" >/dev/null 2>&1
+container_output="$(env PATH="$BOX/killer:$BOX/bin:$PATH" CLAUDE_PROJECT_DIR="$BOX/proj" sh "$BOX/hook.sh" 2>/dev/null)"
+container_proj="$(CDPATH='' cd -P -- "$BOX/proj" && pwd -P)"
+if [ "$container_output" = "Knossos brief timed out after 10 s; run knossos session-brief '$container_proj' to see why." ]; then printf 'ok   %s\n' 'timed-out container hook says it timed out'; else printf 'FAIL %s: output=%s\n' 'timed-out container hook says it timed out' "$container_output"; failures=$((failures + 1)); fi
 if grep -q '^rm -f knossos-hook-' "$BOX/bin/removed"; then printf 'ok   %s\n' 'timed-out container hook is removed'; else printf 'FAIL %s\n' 'timed-out container hook is removed'; failures=$((failures + 1)); fi
 if grep -qx 'kill-after=2 limit=10' "$BOX/killer/calls"; then printf 'ok   %s\n' 'timed-out container hook client is killed 2 s after its 10 s limit'; else printf 'FAIL %s (calls %s)\n' 'timed-out container hook client is killed 2 s after its 10 s limit' "$(cat "$BOX/killer/calls" 2>/dev/null)"; failures=$((failures + 1)); fi
 if grep -qx 'bounded=2 docker' "$BOX/killer/calls"; then printf 'ok   %s\n' 'container hook removal is bounded at 2 s'; else printf 'FAIL %s (calls %s)\n' 'container hook removal is bounded at 2 s' "$(cat "$BOX/killer/calls" 2>/dev/null)"; failures=$((failures + 1)); fi
@@ -217,4 +219,4 @@ fi
 rm -rf "$planted"
 
 [ "$failures" -eq 0 ] || exit 1
-printf 'all hook failure modes silent\n'
+printf 'all hook failure modes exit 0, silent but for a timeout\n'

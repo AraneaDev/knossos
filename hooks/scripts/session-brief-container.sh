@@ -108,7 +108,14 @@ if TIMEOUT_BIN="$(find_timeout)"; then
         -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
         -v "$PROJECT_DIR:$PROJECT_DIR:ro" \
         -v "$DATA:/data" \
-        "$IMAGE" session-brief "$PROJECT_DIR" 2>/dev/null)" || { "$TIMEOUT_BIN" 2 docker rm -f "$NAME" >/dev/null 2>&1; exit 0; }
+        "$IMAGE" session-brief "$PROJECT_DIR" 2>/dev/null)"
+    STATUS=$?
+    if [ "$STATUS" -ne 0 ]; then
+        "$TIMEOUT_BIN" 2 docker rm -f "$NAME" >/dev/null 2>&1
+        # As in session-brief.sh, a brief cut off by the bound says so in one line.
+        [ "$STATUS" -eq 124 ] && printf "Knossos brief timed out after 10 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
+        exit 0
+    fi
 else
     # Neither `timeout` nor `gtimeout` exists here, so this one call has no
     # bound of its own. The backstop is the harness: hooks.json sets this
