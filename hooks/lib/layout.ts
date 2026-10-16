@@ -329,7 +329,12 @@ export function paneStatus(d: Dashboard, refresh: RefreshState, rescan: RescanSt
   if (live.phase === 'scanning') return { tone: 'warn', text: state === 'fresh' ? 'scanning…' : aged(`scanning… · ${state}`) }
   // Another process holds the scan lock: a rescan from here would only wait for it.
   if (live.external !== undefined) {
-    const note = live.external.pid === null ? 'another process is scanning' : `another process is scanning (pid ${live.external.pid})`
+    const note =
+      live.external.host !== undefined
+        ? `another host is scanning (${live.external.host}, a container or another machine)`
+        : live.external.pid === null
+          ? 'another process is scanning'
+          : `another process is scanning (pid ${live.external.pid})`
     return { tone: 'warn', text: state === 'fresh' ? 'scanning…' : aged(`scanning… · ${state}`), note }
   }
   // The leader's watcher is stuck or gone quiet: the graph is not being kept current, whatever its age says.

@@ -620,7 +620,7 @@ export type RescanState = { phase: 'idle' | 'scanning' | 'failed'; reason: strin
  * quiet).
  */
 /** `external`: another process (the model's `scan_project`, `knossos scan`) holds the scan lock; its pid, when its lease names one. */
-export type LiveState = { phase: 'off' | 'starting' | 'live' | 'scanning' | 'following'; stale?: true; external?: { pid: number | null } }
+export type LiveState = { phase: 'off' | 'starting' | 'live' | 'scanning' | 'following'; stale?: true; external?: { pid: number | null; host?: string } }
 
 /** One event of the live watcher, one JSON object per line on its stdout; `no-binary` comes from the wrapper. */
 export type WatchEvent = {
@@ -657,6 +657,8 @@ export type WatchEvent = {
   same_process?: boolean
   /** On `external_scan`: the process holding the scan lock (null for a lease that names none), and how long it has held it. */
   holder_pid?: number | null
+  /** On `external_scan` from a writer on another host (a container among them): that host, and no pid. */
+  holder_host?: string
   held_seconds?: number
 }
 

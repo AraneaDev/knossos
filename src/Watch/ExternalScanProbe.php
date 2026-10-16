@@ -28,8 +28,17 @@ final class ExternalScanProbe
     /** The process the last start named. */
     private ?int $pid = null;
 
-    /** @param (Closure(): ?array{pid: ?int, held_seconds: int})|null $holder who holds the lease, if anyone */
-    public function __construct(private readonly ?Closure $holder) {}
+    /** This host's name, against which a lease's host is told apart. */
+    private string $localHost;
+
+    /**
+     * @param (Closure(): ?array{pid: ?int, host?: ?string, held_seconds: int})|null $holder who holds the lease, if anyone
+     * @param string|null $localHost this host's name; gethostname() when null
+     */
+    public function __construct(private readonly ?Closure $holder, ?string $localHost = null)
+    {
+        $this->localHost = $localHost ?? (string) gethostname();
+    }
 
     /**
      * Who holds a project's write lease in a graph database, as the probe
@@ -68,8 +77,16 @@ final class ExternalScanProbe
         }
         $this->scanning = $holder !== null;
         $this->pid = $holder['pid'] ?? null;
-        $emit($holder === null
-            ? ['event' => 'external_scan_ended']
+        if ($holder === null) {
+            $emit(['event' => 'external_scan_ended']);
+
+            return;
+        }
+        // A writer on another host, a container among them: its process id
+        // names some other process here, so its host is said instead.
+        $host = $holder['host'] ?? null;
+        $emit($host !== null && $host !== $this->localHost
+            ? ['event' => 'external_scan', 'holder_pid' => null, 'holder_host' => $host, 'held_seconds' => $holder['held_seconds']]
             : ['event' => 'external_scan', 'holder_pid' => $holder['pid'], 'held_seconds' => $holder['held_seconds']]);
     }
 }

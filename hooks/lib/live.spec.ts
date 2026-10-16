@@ -55,6 +55,11 @@ describe('the watcher phase', () => {
     expect(seen).toEqual({ phase: 'live', external: { pid: 1234 } })
     expect(liveAfter({ event: 'snapshot', snapshot_id: 's2' }, seen)).toEqual({ phase: 'live', external: { pid: 1234 } })
     expect(liveAfter({ event: 'external_scan_ended' }, seen)).toEqual({ phase: 'live' })
+    // A writer on another host, a container among them, is named by its host: its pid means nothing here.
+    expect(liveAfter({ event: 'external_scan', holder_pid: null, holder_host: 'f3a9c2e1b7d0', held_seconds: 1 }, { phase: 'live' })).toEqual({
+      phase: 'live',
+      external: { pid: null, host: 'f3a9c2e1b7d0' },
+    })
     expect(liveAfter({ event: 'stopped' }, seen)).toEqual({ phase: 'off' })
     // A lease an older knossos took names no process; a follower whose leader is stuck can still see another scan.
     expect(liveAfter({ event: 'external_scan', holder_pid: null }, { phase: 'following', stale: true })).toEqual({ phase: 'following', stale: true, external: { pid: null } })
