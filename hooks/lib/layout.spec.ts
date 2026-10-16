@@ -243,7 +243,7 @@ describe('paneRows', () => {
   it('draws the header with the project, the status and the rescan action', () => {
     const rows = paneRows(input(), 60)
     // Narrow: the name and the status as a pill in its colour, the rescan beside it; no summary line under it.
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +stale 11h {3}r: rescan$/)
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +(60 · narrow +)?stale 11h {3}r: rescan$/)
     expect(row(rows, 'title')!.segments.find(s => s.text === ' stale 11h ')).toMatchObject({ bg: 'warning', color: 'inverseText', bold: true })
     expect(row(rows, 'summary')).toBeUndefined()
     // Narrow: no row above the name, one between it and the tabs, then a blank row and a rule before the first card.
@@ -1180,6 +1180,23 @@ describe('colour', () => {
   })
 })
 
+describe('the width gauge in the header', () => {
+  it('says the layout the pane is in, and follows it across a bound', () => {
+    const at = (columns: number) => rawText(row(paneRows(fullInput(), columns), 'title')!)
+    expect(at(129)).toMatch(/medium ━*▮─* wide +129\/131/)
+    expect(at(131)).toMatch(/wide ━+▮ +131/)
+    expect(at(200)).toMatch(/wide ━+▮ +200/)
+  })
+
+  it('gives way before anything the header already says: the pill and the way back stay', () => {
+    for (const columns of [60, 80, 100, 140]) {
+      const text = rawText(row(paneRows(fullInput(), columns), 'title')!)
+      expect(text, `${columns}`).toContain('Knossos-MCP')
+      expect(rowWidth(row(paneRows(fullInput(), columns), 'title')!), `${columns}`).toBeLessThanOrEqual(columns)
+    }
+  })
+})
+
 describe('the overview stat tiles', () => {
   it('gives each tile its hue while nothing is wrong with it, a warning tone still winning', () => {
     const clean = statsOf(full({ cycles: { count: 0, truncated: false, truncation_reasons: [], largest: [] } }), ['9,008 components', '7 boundaries'], null, null, false)
@@ -1557,11 +1574,12 @@ describe('the header: the project, where its checkout stands, its languages and 
 
   it('gives way chips first, then the commit, then the branch, keeping the name, the pill and the rescan', () => {
     const at = (columns: number) => plainText(titleRow(pane(), columns, columns < 80 ? 'narrow' : columns <= 130 ? 'medium' : 'wide'))
-    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +stale 11h {3}r: rescan$/)
+    // The width gauge sits beside the pill while there is room for it (see the width gauge's own tests).
+    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +(wide .* {3})?stale 11h {3}r: rescan$/)
     expect(at(80)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 +stale 11h {3}r: rescan$/)
-    expect(at(66)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
-    // Narrow: the name and the pill alone, however much room.
-    expect(at(79)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
+    // Narrow: the name and the pill, and the width gauge's short form while there is room for it.
+    expect(at(66)).toMatch(/^Knossos-MCP +(66 · narrow +)?stale 11h {3}r: rescan$/)
+    expect(at(79)).toMatch(/^Knossos-MCP +(79 · narrow +|narrow ━*▮─* medium +79\/80 +)?stale 11h {3}r: rescan$/)
     expect(at(40)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     for (const columns of [10, 16, 20, 24, 30]) expect(rowWidth(titleRow(pane(), columns, 'narrow')), `${columns}`).toBeLessThanOrEqual(columns)
   })
@@ -1578,7 +1596,7 @@ describe('the header: the project, where its checkout stands, its languages and 
 
   it('becomes the way back in a detail: project › tab › what is shown', () => {
     const rows = paneRows({ ...detailPane(), git }, 140)
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +stale 11h {3}r: rescan$/)
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +(wide .* {3})?stale 11h {3}r: rescan$/)
     expect(row(rows, 'tabs')).toBeUndefined()
     // Cut from the label: the project and the way back stay.
     const narrow = plainText(row(paneRows({ ...detailPane(), git }, 50), 'title')!)

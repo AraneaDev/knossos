@@ -53,6 +53,7 @@ import type { Stat } from './tiles'
 import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLineBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
+import { widthGauge } from './gauge'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
 import { notesArrangement, notesInput, notesItems, notesList } from './notes-view'
@@ -687,12 +688,14 @@ function pill(status: PaneStatus): Segment {
  * the languages as small chips, then against the right edge why the status
  * is what it is, the status as a pill in its colour and the rescan action
  * whenever no scan is running. In a detail the name becomes the way
- * back: `project › Tab › what is shown`. As the width shrinks the chips go
- * first, then the commit, the branch and the reason; then the name is cut,
+ * back: `project › Tab › what is shown`. Beside the pill, the width gauge
+ * (see `gauge.ts`): the first thing given up, from its slider to its short
+ * form to nothing. As the width shrinks the chips go
+ * next, then the commit, the branch and the reason; then the name is cut,
  * never below four cells, then the pill's words. Narrow, the name, the
  * pill and, while it fits, why.
  */
-export function titleRow(input: PaneInput, columns: number, tier: Tier): Row {
+export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColumns = columns): Row {
   const rescan: Segment[] = input.canRescan ? [{ text: '  ' }, button('rescan', 'rescan', 'r', { dim: false })] : []
   // Where the header is short of room the label goes before the reason does;
   // the hotkey stays, on a twin drawn out of sight, as a tab's digit does.
@@ -711,8 +714,16 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier): Row {
   const chips: Segment[] =
     tier === 'narrow' || away || input.languages === '' ? [] : input.languages.split(' ').flatMap((l): Segment[] => [{ text: ' ' }, { text: ` ${l} `, color: languageColour(l), bg: CHIP_BG }])
   const chipsLead: Segment[] = chips.length === 0 ? [] : [{ text: ' ' }, ...chips]
+  // How wide the pane is against the layouts' bounds, full or short: the first thing the header gives up.
+  const gauge = (room: number): Segment[] => {
+    // The pane's own width, which the layout goes by, not the title's padded one.
+    const drawn = widthGauge(paneColumns, room)
+    return drawn.length === 0 ? [] : [...drawn, { text: '   ' }]
+  }
   // Each layout from the fullest down; the first that fits wins.
   const variants: [Segment[], Segment[]][] = [
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(Infinity), ...note, pill(input.status), ...rescan]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(14), ...note, pill(input.status), ...rescan]],
     [[...crumbs, ...(away ? [] : where), ...chipsLead], [...note, pill(input.status), ...rescan]],
     [[...crumbs, ...(away ? [] : where)], [...note, pill(input.status), ...rescan]],
     [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status), ...rescan]],
@@ -1231,7 +1242,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
   const inner = Math.max(1, width - 2 * pad)
   const rows: Row[] = []
   if (!short && tier !== 'narrow') rows.push(blank('head-top'))
-  rows.push(padded(titleRow(input, inner, tier), pad, width))
+  rows.push(padded(titleRow(input, inner, tier, width), pad, width))
   if (input.detail === null && input.route === null) {
     const count = issueCount(input.issues)
     const touched = input.changes.files.length
