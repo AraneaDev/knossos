@@ -434,7 +434,7 @@ export function displayName(item: { name: string; canonical_name: string; kind: 
  * with: a namespace (`\\`), a path (`/`), a file's export (`#`), a module
  * (`.`) or a Rust path (`::`).
  */
-function lastSegment(name: string): string {
+export function lastSegment(name: string): string {
   const cut = Math.max(name.lastIndexOf('\\'), name.lastIndexOf('/'), name.lastIndexOf('#'), name.lastIndexOf('.'))
   const rust = name.lastIndexOf('::')
   return rust > cut ? name.slice(rust + 2) : name.slice(cut + 1)

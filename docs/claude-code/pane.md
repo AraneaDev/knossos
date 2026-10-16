@@ -236,9 +236,8 @@ dead code, diagnostics, policy and drifted. Beside a figure, how it moved since
 the snapshot retained before this one (`▲1,788`, `▼1`, `±0`). A figure that
 deviates is coloured: cycles and diagnostics above zero in the warning colour,
 policy violations in the error colour, drifted files in the accent. The cycles
-figure counts cycles between types only; when some cycles stay inside one type,
-the tile says how many beside it, dim (`0 · 2 within one type`), and they
-neither warn nor move the figure. A tile
+figure counts cycles between types only; the ones that stay inside one type
+show on the Cycles tab alone. A tile
 draws its trend as a sparkline when it has room and five or more snapshots
 move. `dead code` counts the candidates the Issues tab lists and has no delta.
 The `drifted` label is a button that lists the drifted files, as `d` does. The

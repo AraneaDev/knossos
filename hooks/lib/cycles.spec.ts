@@ -26,13 +26,13 @@ describe('cycles inside one type', () => {
     expect(cyclesList(cyclesInput(both)).map(i => i.canonical)).toContain('App\\Walk::walk_mod')
   })
 
-  it('counts only the cycles between types, saying how many are inside one type beside them', () => {
+  it('counts only the cycles between types, the tab saying how many are inside one type beside them', () => {
     expect(text(both)).toContain('1 · 1 within one type')
     const onlyInside = dash({ count: 0, truncated: false, truncation_reasons: [], within_type: 1, largest: [inside] })
     const t = text(onlyInside)
     expect(t).toContain('0 · 1 within one type')
     expect(t).not.toContain('No dependency cycles.')
-    expect(text(onlyInside, view({ tab: 'overview' }))).toMatch(/0 · 1 within one type/)
+    expect(text(onlyInside, view({ tab: 'overview' }))).not.toContain('within one type')
   })
 
   it('keeps them out of what the session counts as new cycles', () => {
@@ -42,10 +42,9 @@ describe('cycles inside one type', () => {
     expect(cyclesSinceStart(start, { count: both.cycles.count, largest: both.cycles.largest.filter(c => c.within_type !== true) }).fresh).toEqual([])
   })
 
-  it('marks a cut count of them as a floor, on the tab and on the tile', () => {
+  it('marks a cut count of them as a floor', () => {
     const cut = dash({ count: 1, truncated: false, truncation_reasons: [], within_type: 50, within_type_truncated: true, largest: [between, inside] })
     expect(text(cut)).toContain('1 · 50+ within one type')
-    expect(text(cut, view({ tab: 'overview' }))).toMatch(/1 · 50\+ within one type/)
   })
 
   it('keeps the line over them out of the window until they are in it', () => {
@@ -55,5 +54,26 @@ describe('cycles inside one type', () => {
     const rows = (limit: number) => list.make(80, limit)!.body.map(plainText).join('\n')
     expect(rows(3)).toMatch(/cycle 1[\s\S]*cycle 2[\s\S]*cycle 3/)
     expect(rows(3)).not.toContain('Within one type')
+  })
+
+  it('names a Rust type by its last path segment', () => {
+    const rust = { ...inside, type: 'knossos_rust_worker::visit::state::Walk' }
+    const t = text(dash({ count: 0, truncated: false, truncation_reasons: [], within_type: 1, largest: [rust] }))
+    expect(t).toMatch(/ Walk · 3 members/)
+    expect(t).not.toContain('state::Walk')
+  })
+
+  it('leaves them off the Overview tile, which shows the count between types alone', () => {
+    const d = { ...both, deltas: { against: 's0', components: 0, cycles: 0, max_degree: 0, dead_code: 0, diagnostics: 0 } }
+    for (const columns of [100, 50]) {
+      const t = text(d, view({ tab: 'overview' }), columns)
+      expect(t).toMatch(/1 ±0|1 cycle ±0/)
+      expect(t).not.toContain('within one type')
+    }
+  })
+
+  it('names a self-loop no type declares by its one member', () => {
+    const loop = { size: 1, members: ['recurse'], nodes: [node('knossos_rust_worker::visit::recurse')], within_type: true, type: null }
+    expect(text(dash({ count: 0, truncated: false, truncation_reasons: [], within_type: 1, largest: [loop] }))).toMatch(/ recurse · 1 member/)
   })
 })
