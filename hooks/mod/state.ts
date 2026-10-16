@@ -85,6 +85,12 @@ export const mod = {
   dashboardTriedAt: 0,
   /** Keeps the band's age current while the mod is on. */
   ticker: null as Timer | null,
+  /** The frames the pane's motion draws (see `motion.ts`): running only while something moves. */
+  motionTimer: null as Timer | null,
+  /** Bumped by every start of the motion, so a frame that read state across a restart does not stop the new one. */
+  motionGen: 0,
+  /** Frames ticked: while only a scan runs, every other one draws. */
+  motionTicks: 0,
   /**
    * Component lookups in flight, by snapshot and name: a press while one runs
    * starts no second. Checked and set with no await between, so two presses
@@ -253,6 +259,10 @@ export function reset(options: PluginOptions): void {
   mod.dashboardTriedAt = 0
   mod.ticker?.cancel()
   mod.ticker = null
+  mod.motionTimer?.cancel()
+  mod.motionTimer = null
+  mod.motionGen = 0
+  mod.motionTicks = 0
   mod.fetching = new Set()
   mod.allowing = false
   mod.focused = null

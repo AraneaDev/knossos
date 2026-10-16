@@ -3,10 +3,11 @@
  * person's theme (dark, light, daltonized, ANSI), so the pane matches the
  * rest of the screen instead of carrying a palette of its own.
  *
- * Colour carries meaning only: a boundary, a status, the selection. Every
- * other thing is neutral: headings in `text`, secondary text in `inactive`,
- * tracks, rules and empty cells in `subtle`. One accent, `suggestion`, marks
- * the selection, the active tab and the heat map.
+ * Colour marks what matters first: a boundary, a status, the selection. It
+ * also gives the pane its life within the theme: card titles in Claude's own
+ * orange, each stat tile its hue, language chips in theirs, histograms shaded
+ * cool to hot. Secondary text stays `inactive`, tracks, rules and empty cells
+ * `subtle`; `suggestion` marks the selection and the active tab.
  *
  * Kept apart from the layout so every view colours a boundary the same way.
  */
@@ -36,6 +37,50 @@ export const ON_FILL = 'inverseText'
 
 export const STATUS_COLOURS = { ok: 'success', warn: 'warning', alert: 'error' } as const
 export type Tone = keyof typeof STATUS_COLOURS
+
+/** A card's title: the orange Claude Code marks itself with, so the cards read as part of the screen around them. */
+export const TITLE = 'claude'
+
+/**
+ * Each stat tile's figure, coloured when nothing is wrong with it: a tone
+ * (cycles or issues above zero) still wins. Cycles and issues sit in the
+ * success colour at rest, so a clean graph reads clean at a glance; issues
+ * only while there are none. No hue here is a boundary's, nor the
+ * selection's: those mean a boundary, and the marker and the open tab.
+ */
+export const STAT_HUES = {
+  components: 'remember',
+  boundaries: 'permission',
+  cycles: STATUS_COLOURS.ok,
+  degree: 'merged',
+  issues: STATUS_COLOURS.ok,
+  drifted: 'ide',
+} as const
+
+/** Each language's chip colour, by its short name: theme keys no boundary uses. */
+const LANGUAGE_COLOURS: Record<string, string> = {
+  php: 'merged',
+  ts: 'ide',
+  js: 'autoAccept',
+  py: 'planMode',
+  rs: 'bashBorder',
+}
+const LANGUAGE_SHORT: Record<string, string> = { typescript: 'ts', javascript: 'js', python: 'py', rust: 'rs' }
+
+/** A language's chip colour, by its chip (`PHP`) or its full name (`typescript`); secondary text for one with none. */
+export function languageColour(language: string): string {
+  const name = language.toLowerCase()
+  return LANGUAGE_COLOURS[LANGUAGE_SHORT[name] ?? name] ?? SECONDARY
+}
+
+/** Cool to hot, the order {@link heat} steps through. */
+const HEAT = [ACCENT, STATUS_COLOURS.ok, STATUS_COLOURS.warn, STATUS_COLOURS.alert] as const
+
+/** Bucket `bucket` of `of`, shaded cool to hot: the first in the accent, the last in the error colour. */
+export function heat(bucket: number, of: number): string {
+  if (of <= 1) return HEAT[0]
+  return HEAT[Math.round((Math.max(0, Math.min(bucket, of - 1)) * (HEAT.length - 1)) / (of - 1))]!
+}
 
 /**
  * Seven of the eight colours Claude Code tells subagents apart by, themed

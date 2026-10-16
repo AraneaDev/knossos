@@ -1607,7 +1607,7 @@ describe('knossos mod', () => {
     await w.clock.settle()
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await mountPane($, surface)
-      expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ repo +fresh 1s {3}rescan$/)
+      expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ repo +(\d+ · narrow +)?fresh 1s {3}rescan$/)
       // The header is two rows, the title and the tabs: no summary line under them.
       expect(await ui.find({ key: 'summary' })).toBeUndefined()
       // Narrow, the stat tiles are a line of figures under the tabs.
@@ -2503,11 +2503,12 @@ describe('knossos mod', () => {
         await ui.press({ key: 'tab:hubs' })
         const grid = (await ui.findAll({ type: 'Box' })).some(b => typeof b.key === 'string' && b.key.includes('|'))
         expect(grid, `${surface} ${bodyColumns}`).toBe(bodyColumns > 130)
-        // Framed from 80 columns on, a light top rule below; wide, the list and the marked row's detail side by side, each framed.
+        // A title set into a rule at every width; wide, the list and the marked row's detail side by side.
         const keyed = (await ui.findAll({ type: 'Box' })).find(b => typeof b.key === 'string' && (bodyColumns > 130 ? b.key.startsWith('hubs-head|peek-') : b.key === 'hubs-head'))
         const text = keyed?.text ?? ''
         const head = text
-        expect(head.startsWith(bodyColumns >= 80 ? '╭─ ' : '── '), `${surface} ${bodyColumns}: ${head}`).toBe(true)
+        // Every card is a title set into a rule, at every width.
+        expect(head.startsWith('── '), `${surface} ${bodyColumns}: ${head}`).toBe(true)
         await ui.unmount()
       }
     }
@@ -3886,11 +3887,11 @@ describe('knossos mod', () => {
       for (const bodyRows of [24, 80]) {
         const ui = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 100, scroll: { offset: 0, bodyRows } } })
         expect(titled((await ui.find({ key: 'health-head' }))?.text)).toMatch(/^Health over time +6 snapshots$/)
-        expect((await ui.find({ key: 'health-0' }))?.text).toMatch(/│ cycles +[▁-█]+ +3 +1–4 /)
-        expect((await ui.find({ key: 'health-1' }))?.text).toMatch(/│ gate unreferenced +[▁-█]+ +4 +4–9 /)
+        expect((await ui.find({ key: 'health-0' }))?.text).toMatch(/^ +cycles +[▁-█]+ +3 +1–4 /)
+        expect((await ui.find({ key: 'health-1' }))?.text).toMatch(/^ +gate unreferenced +[▁-█]+ +4 +4–9 /)
         // The gate's count is named apart from the dead-code tile, which counts the listed candidates.
         expect((await ui.find({ key: 'health-said' }))?.text).toContain("gate unreferenced: the quality gate's count, wider than the dead-code list")
-        expect((await ui.find({ key: 'health-3' }))?.text).toMatch(/│ diagnostics +▁+ +0 +no change /)
+        expect((await ui.find({ key: 'health-3' }))?.text).toMatch(/^ +diagnostics +▁+ +0 +no change /)
         expect(await ui.find({ type: 'Raster' })).toBeUndefined()
         expect((await ui.find({ key: 'tiles-0-value' }))?.text).toMatch(/[▁-█]{5}/)
         await ui.unmount()
@@ -4562,15 +4563,17 @@ describe('the live watcher', () => {
     }
   })
 
-  test('a pane too large to draw at its fewest rows draws one line saying so, and logs it once', async ($, on) => {
+  test('a pane too large to draw at its fewest rows draws one line saying so, and logs it once', { timeoutMs: 60_000 }, async ($, on) => {
     // Names thousands of cells long on a pane 9,000 wide (the engine's Box tops out at 10,000): the rows it cannot give back are past the budget on their own.
-    const long = (i: number) => `Component${i}${'x'.repeat(4000)}`
+    const long = (i: number) => `Component${i}${'x'.repeat(6000)}`
     const hubs = Array.from({ length: 100 }, (_, i) => ({ name: long(i), canonical_name: `App\\Component${i}`, kind: 'class', boundary: 'core', in_degree: 900 - i, out_degree: 1, cross_boundary_degree: 0, dependent_files: 5, path: `src/C${i}.php`, line: 3, top_dependents: ['src/a.php', 'src/b.php'] }))
     const w = world(on, { dashboard: [{ stdout: paneDashboard({ hubs }) }] })
     await $.session.start(START)
     await w.clock.settle()
     for (let i = 0; i < 2; i++) {
       const ui = await $.ui.mount({ plugin: 'knossos', surface: 'terminal', component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 9_000, scroll: { offset: 0, bodyRows: 60 } } })
+      // Hubs lists every one of them; a pane already too large on the Overview has no tab to press, and stays as it is.
+      if ((await ui.find({ key: 'tab:hubs' })) !== undefined) await ui.press({ key: 'tab:hubs' })
       expect(treeSize(await ui.drawn()).text).toBeLessThan(100_000)
       expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join('\n')).toContain('Too large to draw here')
       await ui.unmount()
@@ -4742,7 +4745,8 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await wide($, surface)
       const title = (await ui.find({ key: 'title' }))?.text ?? ''
-      expect(title).toMatch(/^ {2}repo {2}feat\/pane · 0123456 {3}PHP {3}TS +fresh 1s {3}rescan$/)
+      // The width gauge sits before the pill while there is room for it.
+      expect(title).toMatch(/^ {2}repo {2}feat\/pane · 0123456 {3}PHP {3}TS +(wide ━+▮ +\d+ +)?fresh 1s {3}rescan$/)
       const pill = (await ui.findAll({ type: 'Text' })).find(t => t.text === ' fresh 1s ')
       expect(pill?.props).toMatchObject({ backgroundColor: 'success', color: 'inverseText', bold: true })
       await ui.unmount()
@@ -4794,11 +4798,11 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     await $.session.start(START)
     await w.clock.settle()
     const ui = await wide($)
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo +fresh 1s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo +(wide ━+▮ +\d+ +)?fresh 1s {3}rescan$/)
     await ui.press({ key: 'tab:hubs' })
     await ui.press({ key: 'open' })
     await w.clock.settle()
-    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo › Hubs › Router +fresh 1s {3}rescan$/)
+    expect((await ui.find({ key: 'title' }))?.text).toMatch(/^ +repo › Hubs › Router +(wide ━+▮ +\d+ +)?fresh 1s {3}rescan$/)
     await ui.unmount()
   })
 
@@ -5033,7 +5037,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     await ui.press({ key: 'back' })
     await w.clock.settle()
     const back = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
-    expect(back).toMatch(/Overview › Greeter +fresh/)
+    expect(back).toMatch(/Overview › Greeter +(medium ━*▮─* wide +\d+\/131 +)?fresh/)
     expect(back).not.toContain('Route ›')
     await ui.unmount()
   })

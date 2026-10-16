@@ -41,6 +41,7 @@ function rescanPort(scan: string | Promise<string> = JSON.stringify({ status: 'o
             }),
         },
     )
+    const everies: number[] = []
     const io = {
         clock: {
             now: async () => now,
@@ -48,6 +49,10 @@ function rescanPort(scan: string | Promise<string> = JSON.stringify({ status: 'o
                 const timer = { at: now + ms, run, done: false }
                 timers.push(timer)
                 return { cancel: () => void (timer.done = true) }
+            },
+            every: () => {
+                everies.push(1)
+                return { cancel: () => undefined }
             },
         },
         ui: { log: () => undefined, invalidate: () => undefined, toast: () => undefined },
@@ -78,7 +83,7 @@ function rescanPort(scan: string | Promise<string> = JSON.stringify({ status: 'o
         }
         await flush()
     }
-    return { io, values, runs, advance, flush }
+    return { io, values, runs, advance, flush, everies }
 }
 
 const answer = (body: Record<string, unknown>) => JSON.stringify(body)
@@ -103,6 +108,17 @@ describe('requestRescan', () => {
         requestRescan(port.io)
         await port.advance(0)
         expect(port.runs.filter(r => r === 'scan')).toHaveLength(1)
+    })
+
+    it('turns the spinner while a rescan runs on an open pane', async () => {
+        mod.paneText = 'stale'
+        let land!: (stdout: string) => void
+        const port = rescanPort(new Promise<string>(resolve => (land = resolve)))
+        requestRescan(port.io)
+        await port.advance(0)
+        expect(port.everies).toEqual([1])
+        land(answer({ status: 'ok', snapshot_id: 's2' }))
+        await port.advance(0)
     })
 
     it('adds nothing for a press while the scan runs, and shows scanning meanwhile', async () => {

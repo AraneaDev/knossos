@@ -32,7 +32,7 @@ import type { Block, Section } from './cards'
 import { noteOf } from './cards'
 import { timelineRow, untestedText } from './changes'
 import type { ChangesInput, LookAt } from './changes'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, heat, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
@@ -57,6 +57,8 @@ export type HealthSeries = { label: string; values: number[] }
 
 /** What the Overview's charts draw, read from the dashboard once. */
 export type OverviewData = {
+  /** A bar's width as drawn at this frame: grown in for a moment after a scan lands (see `motion.ts`), whole otherwise. */
+  grow: (width: number) => number
   composition: Composition[]
   buckets: Bucket[]
   /** The walk the histogram counts stopped early: the buckets are floors. */
@@ -72,7 +74,7 @@ export type OverviewData = {
   notes: NoteCounts | null
 }
 
-export const NO_OVERVIEW: OverviewData = { composition: [], buckets: [], bucketsPartial: false, health: [], healthLimit: [], flows: [], flowEdges: 0, flowsPartial: false, notes: null }
+export const NO_OVERVIEW: OverviewData = { grow: width => width, composition: [], buckets: [], bucketsPartial: false, health: [], healthLimit: [], flows: [], flowEdges: 0, flowsPartial: false, notes: null }
 
 /** The most parts a stacked bar names before the rest become "other": boundaries keep their colours, the others three textures. */
 const BOUNDARY_PARTS = 5
@@ -118,7 +120,7 @@ function parts(counts: { label: string; value: number; colour?: string }[], tota
 }
 
 /** The Overview's chart data from the dashboard; whatever an older knossos does not send is left empty. */
-export function overviewData(d: Dashboard, hues: Hues): OverviewData {
+export function overviewData(d: Dashboard, hues: Hues, grow: (width: number) => number = width => width): OverviewData {
   const composition: Composition[] = []
   const m = d.boundary_matrix
   if (m !== undefined && Array.isArray(m.boundaries) && Array.isArray(m.members) && m.boundaries.length > 0) {
@@ -164,7 +166,7 @@ export function overviewData(d: Dashboard, hues: Hues): OverviewData {
       ]
     : []
   const notes = d.notes !== undefined && d.notes !== null && d.notes.total > 0 ? d.notes : null
-  return { composition, buckets, bucketsPartial: d.in_degree?.truncated === true, health, healthLimit, flows, flowEdges: m?.edges ?? 0, flowsPartial: m?.truncated === true, notes }
+  return { grow, composition, buckets, bucketsPartial: d.in_degree?.truncated === true, health, healthLimit, flows, flowEdges: m?.edges ?? 0, flowsPartial: m?.truncated === true, notes }
 }
 
 /** A bucket as its row names it: `0`, `1–5`, `101+`. */
@@ -340,7 +342,7 @@ export function compositionBlock(data: OverviewData): Block | null {
         const unitWidth = Math.max(...data.composition.map(x => cells(` ${x.unit}`)))
         if (beside) {
           const width = Math.max(4, columns - COMPOSITION_LABEL - 1 - 1 - totals - unitWidth)
-          const drawn = stackedBar(c, width)
+          const drawn = stackedBar(c, data.grow(width))
           const used = drawn.reduce((k, s) => k + cells(s.text), 0)
           body.push({ key: `comp-${c.key}`, segments: [{ text: padEnd(c.title, COMPOSITION_LABEL), dim: true }, { text: ' ' }, ...drawn, { text: spaces(width - used + 1) }, ...total] })
           body.push(...legendRows(c, columns, COMPOSITION_LABEL + 1))
@@ -380,13 +382,13 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
       const top = buckets.length - 1
       const head: Row = { key: 'degree-head', segments: [{ text: `   ${padEnd('in-degree', labelWidth + 1 + width)}`, dim: true }, { text: padStart('components', countWidth + 1), dim: true }] }
       const body = buckets.map((b, i) => {
-        const glyphs = bar(b.components, max, width)
+        const glyphs = bar(b.components, max, data.grow(width))
         const segments: Segment[] = [
           i === top ? mark(PLACE.hub) : { text: ' ' },
           { text: ' ' },
           button(`row:${offset + i}`, labels[i]!),
           { text: spaces(labelWidth - cells(labels[i]!) + 1) },
-          { text: glyphs, color: ACCENT },
+          { text: glyphs, color: heat(i, buckets.length) },
           { text: TRACK.repeat(width - cells(glyphs)), color: FAINT },
           { text: ` ${padStart(counts[i]!, countWidth)}`, color: HEADING },
           ...(i === top ? [{ text: flag, dim: true }] : []),
@@ -498,7 +500,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
         const from: Segment[] = [{ text: PLACE.swatch.glyph, color: boundaryColour(f.from, hues) ?? FAINT }, { text: ' ' }, button(`row:${offset + i}`, name)]
         const to = chip(f.to, hues, toWidth, {})
         const pad = (s: Segment[], w: number) => [...s, { text: spaces(w - s.reduce((n, x) => n + cells(x.text), 0)) }]
-        const glyphs = withBar ? bar(f.edges, max, width) : ''
+        const glyphs = withBar ? bar(f.edges, max, data.grow(width)) : ''
         const segments: Segment[] = [
           { text: ' ' },
           ...pad(from, fromWidth),

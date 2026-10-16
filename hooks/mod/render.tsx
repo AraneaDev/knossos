@@ -45,6 +45,7 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
     feedback: await io.state.feedback.read(),
     couplings: await io.state.couplings.read(),
     flash: await io.state.flash.read(),
+    motion: await io.state.motion.read(),
     search: await io.state.search.read(),
     branch: await io.state.branch.read(),
     churn: await io.state.churn.read(),

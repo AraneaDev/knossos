@@ -29,10 +29,11 @@ export type StatTone = 'warn' | 'alert' | 'accent'
  * `delta` is how the figure moved since the previous snapshot; `worse` says
  * the figure is a status (cycles, dead code, diagnostics), so a rise is drawn
  * in its warning colour and a fall in its success colour; a figure that is
- * not a status keeps its delta dim.
+ * not a status keeps its delta dim. `hue` colours the figure while it has
+ * no tone.
  */
 /** `lit` while the latest scan has just moved the figure: drawn on the flash ground for a moment. */
-export type Stat = { key: string; label: string; value: string; tone?: StatTone; trend?: number[]; press?: string; delta?: number; worse?: 'up'; lit?: true }
+export type Stat = { key: string; label: string; value: string; hue?: string; tone?: StatTone; trend?: number[]; press?: string; delta?: number; worse?: 'up'; lit?: true }
 
 /** A trend is drawn only with this many points, and only when it moves. */
 export const TREND_MIN_POINTS = 5
@@ -45,9 +46,9 @@ const DIVIDER = 3
 export const moves = (values: number[] | undefined): values is number[] =>
   values !== undefined && values.length >= TREND_MIN_POINTS && Math.min(...values) !== Math.max(...values)
 
-/** A tile's figure as a segment: bold, in its tone's colour, else the text colour. */
+/** A tile's figure as a segment: bold, in its tone's colour, else its hue, else the text colour. */
 function figure(stat: Stat): Segment {
-  const color = stat.tone === undefined ? HEADING : stat.tone === 'accent' ? ACCENT : STATUS_COLOURS[stat.tone]
+  const color = stat.tone === undefined ? (stat.hue ?? HEADING) : stat.tone === 'accent' ? ACCENT : STATUS_COLOURS[stat.tone]
   return { text: stat.value, bold: true, color, ...(stat.lit === true ? { bg: FLASH_BG } : {}) }
 }
 

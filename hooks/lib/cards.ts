@@ -4,22 +4,21 @@
  *
  * Every section of the pane is a card, one style per {@link Tier}:
  *
- * - medium and wide: a thin rounded frame in `subtle`, the title set into
- *   its top edge (with the section's note against the right corner), one
- *   cell of padding inside;
- * - narrow: only the top rule with the title in it, no sides and no
- *   padding, so a narrow pane loses no column to the frame.
+ * - medium and wide: the title in Claude's orange set into a rule across
+ *   the card (with the section's note at its end), the rows two cells in;
+ * - narrow: the same rule, the rows from the edge, so a narrow pane loses
+ *   no column.
  *
- * A diff (the engine's own element, which paints its backgrounds to the
- * edge) keeps the top and bottom edges but no sides: a side border would cut
- * through its gutter.
+ * No box closes around a card: the rule, the colour and the gap between
+ * cards carry the structure. A diff (the engine's own element, which paints
+ * its backgrounds to the edge) is drawn as it comes.
  *
  * Lists grow with the height the pane has: each card that holds one says how
  * long it is and the fewest rows it shows, and {@link fitBlocks} hands out
  * the rows left after the rest, one row at a time to each list in turn. A
  * list cut short shows the rows around the marker and an `n more ↓` line.
  */
-import { FAINT, HEADING } from './palette'
+import { FAINT, HEADING, TITLE } from './palette'
 import { cells, clip, dimRow, fit, rowsHeight, rowWidth, segmentsWidth, spaces, tierOf, tinted } from './rows'
 import type { Row, Segment, Tier } from './rows'
 import { CARD_ICON } from './marks'
@@ -80,19 +79,19 @@ export function figures(text: string): Segment[] {
 }
 
 /**
- * A card's top edge: the title (and the subtitle, while it fits) set into
- * the rule, the note before the right corner. As the width shrinks the
- * subtitle goes, then the note, then the title is cut.
+ * A card's top edge: the title, in Claude's orange (and the subtitle, while
+ * it fits), set into a rule across the card, the note before its end. As
+ * the width shrinks the subtitle goes, then the note, then the title is cut.
+ * No box closes around the card: the rule and the colour carry it.
  */
-export function topRow(section: Section, width: number, tier: Tier): Row {
-  const framed = tier !== 'narrow'
-  const lead = framed ? '╭─ ' : '── '
-  const close = framed ? '─╮' : '──'
+export function topRow(section: Section, width: number): Row {
+  const lead = '── '
+  const close = '──'
   const note = section.note ?? []
   const glyph = section.glyph ?? GLYPHS[section.key]
-  const mark: Segment[] = glyph === undefined ? [] : [{ text: `${glyph} `, dim: true }]
+  const mark: Segment[] = glyph === undefined ? [] : [{ text: `${glyph} `, color: TITLE }]
   const build = (subtitle: boolean, withNote: boolean, titleWidth = cells(section.title)): Segment[] | null => {
-    const title: Segment[] = [...mark, { text: fit(section.title, titleWidth).replace(/ …$/, '…'), bold: true, color: HEADING }, ...(subtitle && section.subtitle ? [{ text: ` · ${section.subtitle}`, dim: true }] : [])]
+    const title: Segment[] = [...mark, { text: fit(section.title, titleWidth).replace(/ …$/, '…'), bold: true, color: TITLE }, ...(subtitle && section.subtitle ? [{ text: ` · ${section.subtitle}`, dim: true }] : [])]
     const right: Segment[] = withNote && note.length > 0 ? [{ text: ' ' }, ...note, { text: ` ${close}`, color: FRAME }] : [{ text: close, color: FRAME }]
     const fill = width - cells(lead) - segmentsWidth(title) - 1 - segmentsWidth(right)
     if (fill < 1) return null
@@ -104,22 +103,20 @@ export function topRow(section: Section, width: number, tier: Tier): Row {
   const segments = build(true, true) ?? build(false, true) ?? cut ?? build(false, false)
   if (segments !== null) return { key: `${section.key}-head`, segments }
   // Too narrow for the rule: the title alone, cut.
-  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: HEADING }] }
+  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: TITLE }] }
 }
 
 /**
- * One body row inside the frame: `│ `, the row padded to the inner width,
- * ` │`. A tinted row (the marked one) carries its tint from the frame's
- * inner edge to the other, padding included.
+ * One body row of a card: two cells in, the row padded to the inner width,
+ * two cells to the edge, where a box's sides once stood. A tinted row (the
+ * marked one) carries its tint across the inner width and the cell either
+ * side of it.
  */
 function framedRow(row: Row, width: number): Row {
   const inner = width - 4
   const fitted = rowWidth(row) <= inner ? row.segments : clip(row.segments, inner)
   const filled: Segment[] = [{ text: ' ' }, ...fitted, { text: spaces(inner - segmentsWidth(fitted) + 1) }]
-  return {
-    ...row,
-    segments: [{ text: '│', color: FRAME }, ...(row.tint === undefined ? filled : tinted(filled, row.tint)), { text: '│', color: FRAME }],
-  }
+  return { ...row, segments: [{ text: ' ' }, ...(row.tint === undefined ? filled : tinted(filled, row.tint)), { text: ' ' }], inset: 2 }
 }
 
 /** A row of a frameless (narrow) card at `width`: cut to it, and a tinted row filled to it. */
@@ -136,13 +133,13 @@ export function cardRows(section: Section, width: number, tier: Tier): Row[] {
   if (section.body.length === 0 && section.empty !== undefined) {
     // Its note says how it stands when it has one (`✓ 0`); else the word.
     const note = section.note !== undefined && section.note.length > 0 ? section.note : [{ text: section.empty, dim: true }]
-    return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width, 'narrow')]
+    return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width)]
   }
   if (section.bare === true) return section.body.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
-  const head = topRow(section, width, tier)
+  const head = topRow(section, width)
   if (tier === 'narrow') return [head, ...section.body.map(row => bareRow(row, width))]
   const body = section.body.map(row => (row.code !== undefined ? row : framedRow(row, width)))
-  return [head, ...body, { key: `${section.key}-end`, segments: [{ text: `╰${'─'.repeat(Math.max(0, width - 2))}╯`, color: FRAME }] }]
+  return [head, ...body]
 }
 
 /** Cards stacked, each after a blank row. */
@@ -171,10 +168,11 @@ export function besideRows(left: Row[], right: Row[], leftWidth: number, gap = G
     const key = `${l?.key ?? `pad-l-${i}`}|${r?.key ?? `pad-r-${i}`}`
     const head = [...(l?.segments ?? []), { text: spaces(leftWidth - used + gap) }].filter(s => s.text !== '')
     const raster = l?.raster ?? r?.raster
-    out.push({ key, segments: [...head, ...(r?.segments ?? [])], split: head.length, ...(raster === undefined ? {} : { raster }) })
+    const insets = { ...(l?.inset === undefined ? {} : { inset: l.inset }), ...(r?.inset === undefined ? {} : { insetRight: r.inset }) }
+    out.push({ key, segments: [...head, ...(r?.segments ?? [])], split: head.length, ...insets, ...(raster === undefined ? {} : { raster }) })
   }
   const textual = new Set(out.filter(row => row.raster !== undefined && interactive(row)).map(row => row.raster))
-  return out.map(row => (row.raster !== undefined && textual.has(row.raster) ? { key: row.key, segments: row.segments, split: row.split } : row))
+  return out.map(row => (row.raster !== undefined && textual.has(row.raster) ? { key: row.key, segments: row.segments, split: row.split, ...(row.inset === undefined ? {} : { inset: row.inset }), ...(row.insetRight === undefined ? {} : { insetRight: row.insetRight }) } : row))
 }
 
 /** The first and one-past-last index of a list `length` long shown `limit` at a time, the marked one (`selected`, local; -1 for none) inside. */
@@ -338,16 +336,11 @@ export function equalColumns(width: number, count: number): number[] {
   return Array.from({ length: n }, (_, i) => each + (i < rest ? 1 : 0))
 }
 
-/** A card's rows stretched to `height`: blank rows inside its frame, before its bottom edge (after its last row when it has none). */
-function stretched(rows: Row[], width: number, height: number, tier: Tier, key: string): Row[] {
+/** A card's rows stretched to `height`: blank rows after its last. */
+function stretched(rows: Row[], width: number, height: number, key: string): Row[] {
   const tall = rowsHeight(rows)
   if (tall >= height || rows.length === 0) return rows
-  const framed = tier !== 'narrow' && rows[rows.length - 1]?.key.endsWith('-end') === true
-  const fill = Array.from({ length: height - tall }, (_, i): Row => ({
-    key: `${key}-fill-${i}`,
-    segments: framed ? [{ text: '│', color: FRAME }, { text: spaces(width - 2) }, { text: '│', color: FRAME }] : [{ text: spaces(width) }],
-  }))
-  return framed ? [...rows.slice(0, -1), ...fill, rows[rows.length - 1]!] : [...rows, ...fill]
+  return [...rows, ...Array.from({ length: height - tall }, (_, i): Row => ({ key: `${key}-fill-${i}`, segments: [{ text: spaces(width) }] }))]
 }
 
 /**
@@ -410,7 +403,7 @@ export function gridRows(grid: Block[][], width: number, tier: Tier, budget: num
   }
   return placed.flatMap((p, n) => {
     const height = lineHeight(starts[n]!, p.line.length) + share(n)
-    const cards = p.line.map((block, j) => stretched(rowsOf(starts[n]! + j), p.widths[j]!, height, tier, block.key))
+    const cards = p.line.map((block, j) => stretched(rowsOf(starts[n]! + j), p.widths[j]!, height, block.key))
     let joined = cards[0]!
     let used = p.widths[0]!
     for (let j = 1; j < cards.length; j++) {
@@ -431,11 +424,7 @@ export function fillColumn(rows: Row[], width: number, height: number, tier: Tie
   // Counted as drawn: a diff element takes a row for each of its lines.
   const tall = rowsHeight(rows)
   if (tall >= height || rows.length === 0) return rows
-  // The last framed card grows, wherever it stands: collapsed cards after it (one line each, no frame) follow it down.
-  const end = tier === 'narrow' ? -1 : rows.map(row => !row.key.includes('|') && row.segments[0]?.text.startsWith('╰') === true).lastIndexOf(true)
-  if (end < 0) return [...rows, ...Array.from({ length: height - tall }, (_, i): Row => blankRow(`${key}-${i}`))]
-  const fill = Array.from({ length: height - tall }, (_, i): Row => ({ key: `${key}-${i}`, segments: [{ text: '│', color: FRAME }, { text: spaces(width - 2) }, { text: '│', color: FRAME }] }))
-  return [...rows.slice(0, end), ...fill, ...rows.slice(end)]
+  return [...rows, ...Array.from({ length: height - tall }, (_, i): Row => blankRow(`${key}-${i}`))]
 }
 
 /** Whether `block`, one of `count` side by side in `width`, collapses to one line (an empty list with its `empty` word). */

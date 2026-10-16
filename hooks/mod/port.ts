@@ -83,6 +83,8 @@ export async function disable(io: Port): Promise<void> {
   mod.disabled = true
   mod.ticker?.cancel()
   mod.ticker = null
+  mod.motionTimer?.cancel()
+  mod.motionTimer = null
   // Nor a debounced search or lookup: a loader that would run after this finds the mod off and reads nothing.
   mod.searchTimer?.cancel()
   mod.searchTimer = null

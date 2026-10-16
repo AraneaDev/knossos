@@ -195,7 +195,7 @@ describe('drawPane: a field', () => {
     })
 
     for (const columns of [80, 100, 140]) {
-        it(`gives the field the blank cells after it and stops at the card's frame (${columns} columns)`, async () => {
+        it(`gives the field the blank cells after it, to the edge of its row (${columns} columns)`, async () => {
             const tree = await drawPane(fakePort(finder('ab')), elements as never, 'terminal', { bodyColumns: columns }, spies())
             const row = rowOf(tree, 'find-row')
             const drawn = children(row)
@@ -204,12 +204,10 @@ describe('drawPane: a field', () => {
             const cellsOf = (ns: Node[]) => ns.reduce((n, t) => n + [...wordsOf(t)].length, 0)
             const before = cellsOf(drawn.slice(0, at))
             const after = cellsOf(drawn.slice(at + 1))
-            // The frame's closing edge follows the field: the blanks laid out between them are the field's.
-            expect(wordsOf(drawn[drawn.length - 1]!).trim()).toBe('│')
-            // The blanks are absorbed, not drawn: the frame is the very next element after the field.
-            expect(at).toBe(drawn.length - 2)
-            expect(after).toBe(1)
-            expect(drawn[at]!.props.width).toBe(Math.max(1, columns - before - after))
+            // Nothing closes the card after the field: the blanks laid out to the row's edge are the field's, absorbed, not drawn.
+            expect(at).toBe(drawn.length - 1)
+            expect(after).toBe(0)
+            expect(drawn[at]!.props.width).toBe(Math.max(1, columns - before))
             // The field is wider than its own value ('ab'): it took the blank cells.
             expect(drawn[at]!.props.width as number).toBeGreaterThan(2)
             expect(before + (drawn[at]!.props.width as number) + after).toBe(columns)
@@ -322,9 +320,9 @@ describe('drawPane: plain text', () => {
     it('joins a run of plain segments into one Text, its blank cells bare and its styled pieces nested', async () => {
         const tree = await drawPane(fakePort(finder('ab')), elements as never, 'terminal', { bodyColumns: 80 }, spies())
         const [lead] = children(rowOf(tree, 'find-row'))
-        // The frame, the space after it and the label: three segments, one Text.
+        // The gutter, the space after it and the label: three segments, one Text.
         expect(lead!.type).toBe('Text')
-        expect(wordsOf(lead)).toBe('│    find: ')
+        expect(wordsOf(lead)).toBe('     find: ')
         const parts = lead!.props.children as unknown[]
         expect(parts.some(p => typeof p === 'string' && /^ +$/.test(p))).toBe(true)
     })

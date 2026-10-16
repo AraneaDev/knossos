@@ -26,7 +26,11 @@ import { paneRows } from './__tests__/pane'
 import type { PaneInput, Row } from './layout'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
-import { gitLabel, paneLayout, shrinkRows, titleRow } from './layout'
+import { LIST_MAX } from './cards'
+import { gitLabel, paneLayout, shrinkRows, statsOf, titleRow } from './layout'
+import { CHIP_BG, languageColour, STAT_HUES, STATUS_COLOURS } from './palette'
+import { dotGlyph, NO_MOTION, spinGlyph } from './motion'
+import type { Motion } from './motion'
 import { chainGroups, cyclesInput } from './cycles'
 import { issueCount, issuesInput, issuesList, superscript } from './views'
 
@@ -241,7 +245,7 @@ describe('paneRows', () => {
   it('draws the header with the project, the status and the rescan action', () => {
     const rows = paneRows(input(), 60)
     // Narrow: the name and the status as a pill in its colour, the rescan beside it; no summary line under it.
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +stale 11h {3}r: rescan$/)
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ Knossos-MCP +(60 · narrow +)?stale 11h {3}r: rescan$/)
     expect(row(rows, 'title')!.segments.find(s => s.text === ' stale 11h ')).toMatchObject({ bg: 'warning', color: 'inverseText', bold: true })
     expect(row(rows, 'summary')).toBeUndefined()
     // Narrow: no row above the name, one between it and the tabs, then a blank row and a rule before the first card.
@@ -631,7 +635,7 @@ describe('the header summary', () => {
     expect(row(paneRows(fullInput(), 60), 'summary')).toBeUndefined()
     const title = row(paneRows(fullInput(), 100), 'title')!
     expect(title.segments.filter(s => s.bg === 'userMessageBackground').map(s => s.text)).toEqual([' PHP ', ' JS ', ' RS '])
-    expect(title.segments.find(s => s.text === ' PHP ')?.dim).toBe(true)
+    expect(title.segments.find(s => s.text === ' PHP ')?.color).toBe(languageColour('php'))
     expect(row(paneRows(fullInput(), 60), 'title')!.segments.some(s => s.text === ' PHP ')).toBe(false)
   })
   it('falls back to hubs, cycles and dead code from an older knossos', () => {
@@ -1091,10 +1095,10 @@ describe('the pane at every width and height', () => {
       const head = rows.find(r => r.key.endsWith('|concentration-head'))!
       expect(rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), `${columns}`).toBe(left + 2)
       expect(plainText({ key: 'x', segments: head.segments.slice(head.split) })).toMatch(/^Dependency concentration +15 components$/)
-      // The composition and the concentration end on the same row: the shorter is stretched inside its frame.
-      const ends = rows.filter(r => r.key.split('|').includes('composition-end'))
-      expect(ends).toHaveLength(1)
-      expect(ends[0]!.key.split('|')).toContain('concentration-end')
+      // The composition and the concentration end on the same row: the shorter is stretched, never padded.
+      const last = (card: string) => rows.map(r => r.key.split('|').some(k => k.startsWith(card))).lastIndexOf(true)
+      expect(last('composition')).toBeGreaterThan(-1)
+      expect(last('composition')).toBe(last('concentration'))
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
@@ -1178,7 +1182,75 @@ describe('colour', () => {
   })
 })
 
+describe('motion in the header and the Overview', () => {
+  const in_degree = { buckets: [{ from: 0, to: 0, components: 400 }, { from: 1, to: 5, components: 900 }, { from: 6, to: null, components: 120 }], truncated: false }
+  const fresh = full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 }, in_degree })
+  const at = (live: Parameters<typeof paneInput>[11], motion: Motion, now = 1_100) => paneInput(fresh, brief(), FETCHED, IDLE, view({ tab: 'overview' }), now, true, null, null, undefined, null, live, { motion })
+  const pillText = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!.text
+
+  it('breathes the live dot for a moment after a scan lands, and holds it still after', () => {
+    expect(pillText(at({ phase: 'live' }, { since: 1_000, frame: 1 }))).toMatch(new RegExp(`^ ${dotGlyph({ since: 1_000, frame: 1 }, 1_100)} live · \\d+s $`))
+    expect(pillText(at({ phase: 'live' }, { since: 1_000, frame: 1 }))).not.toBe(pillText(at({ phase: 'live' }, { since: 1_000, frame: 2 })))
+    expect(pillText(at({ phase: 'live' }, NO_MOTION))).toMatch(/^ ◍ live · \d+s $/)
+  })
+
+  it('turns a spinner in the pill while a scan runs, and none on a stale or failed pill', () => {
+    expect(pillText(at({ phase: 'scanning' }, { since: null, frame: 3 }))).toMatch(new RegExp(`^ ${spinGlyph(3)} scanning…`))
+    expect(pillText(paneInput(full(), brief(), FETCHED, IDLE, view(), 0, true))).toBe(' stale 11h ')
+  })
+
+  it('grows the Overview bars in after a scan lands, and draws them whole once it has', () => {
+    const bars = (motion: Motion) => paneRows(at({ phase: 'live' }, motion), 140).filter(r => r.key.split('|').some(k => k.startsWith('degree-'))).map(r => rawText(r).split('━').length)
+    const early = bars({ since: 1_000, frame: 0 })
+    const settled = bars(NO_MOTION)
+    expect(early.reduce((a, b) => a + b, 0)).toBeLessThan(settled.reduce((a, b) => a + b, 0))
+    expect(bars({ since: 1_000, frame: 20 })).toEqual(settled)
+  })
+})
+
+describe('the width gauge in the header', () => {
+  it('says the layout the pane is in, and follows it across a bound', () => {
+    const at = (columns: number) => rawText(row(paneRows(fullInput(), columns), 'title')!)
+    expect(at(129)).toMatch(/medium ━*▮─* wide +129\/131/)
+    expect(at(131)).toMatch(/wide ━+▮ +131/)
+    expect(at(200)).toMatch(/wide ━+▮ +200/)
+  })
+
+  it('gives way before anything the header already says: the pill and the way back stay', () => {
+    for (const columns of [60, 80, 100, 140]) {
+      const text = rawText(row(paneRows(fullInput(), columns), 'title')!)
+      expect(text, `${columns}`).toContain('Knossos-MCP')
+      expect(rowWidth(row(paneRows(fullInput(), columns), 'title')!), `${columns}`).toBeLessThanOrEqual(columns)
+    }
+  })
+})
+
 describe('the overview stat tiles', () => {
+  it('gives each tile its hue while nothing is wrong with it, a warning tone still winning', () => {
+    const clean = statsOf(full({ cycles: { count: 0, truncated: false, truncation_reasons: [], largest: [] } }), ['9,008 components', '7 boundaries'], null, null, false)
+    for (const stat of clean) {
+      const key = stat.key === 'boundary' ? 'boundaries' : stat.key
+      if (stat.tone === undefined) expect(stat.hue, stat.key).toBe(STAT_HUES[key as keyof typeof STAT_HUES])
+    }
+    expect(clean.find(s => s.key === 'cycles')!.hue).toBe(STATUS_COLOURS.ok)
+    const tangled = statsOf(full({ cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [] } }), [], null, null, false)
+    expect(tangled.find(s => s.key === 'cycles')!.tone).toBe('warn')
+  })
+
+  it('draws the issues figure in the clean colour only when there are none', () => {
+    const issues = (over: Partial<Dashboard>) => statsOf(full({ diagnostics: { errors: 0, warnings: 0 }, policy: undefined, over_budget: { total: 0, items: [] }, ...over } as never), [], null, null, false).find(s => s.key === 'issues')!
+    const dead = issues({ dead_code_candidates: 312, dead_code_truncated: false })
+    expect(dead.tone).toBeUndefined()
+    expect(dead.hue).not.toBe(STATUS_COLOURS.ok)
+    expect(issues({ dead_code_candidates: 0, dead_code_truncated: false }).hue).toBe(STATUS_COLOURS.ok)
+  })
+
+  it('colours each language chip in the header its own hue on its grey ground', () => {
+    const title = row(paneRows(fullInput({}, full({ summary: { components: 9008, boundaries: 7, boundaries_truncated: false, languages: [{ language: 'php', files: 900 }, { language: 'typescript', files: 300 }] } } as never)), 140), 'title')!
+    const php = title.segments.find(s => s.text.trim() === 'PHP')
+    expect(php).toMatchObject({ color: languageColour('php'), bg: CHIP_BG })
+  })
+
   it('keeps the Issues total a floor when policy or dead-code counts are truncated', () => {
     const tile = (policyTruncated: boolean, deadTruncated: boolean) => {
       const dashboard = full({
@@ -1215,11 +1287,12 @@ describe('the overview stat tiles', () => {
     // 55 dead code, an error and a warning, 7 policy violations and 3 functions over budget.
     expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ ✗ 67 +│ 41$/)
     const colour = (text: string) => row(rows, 'tiles-0-value')!.segments.find(s => s.text === text)?.color
-    expect(colour('7,878')).toBe('text')
+    expect(colour('7,878')).toBe(STAT_HUES.components)
     // A policy violation among them is the worst there is.
     expect(colour('✗ 67')).toBe('error')
     expect(colour('41')).toBe('suggestion')
-    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning'])
+    // Two figures read 2: the boundaries in their hue, the cycles in the warning their count calls for.
+    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual([STAT_HUES.boundaries, 'warning'])
     const issues = row(rows, 'tiles-0-label')!.segments.find(s => s.text.startsWith('issues'))
     expect(issues?.press?.id).toBe('stat:issues')
     // Every figure stands at the left edge of its tile, over its label: the rules line up.
@@ -1421,13 +1494,15 @@ describe('the pane at every width and height, with a large project', () => {
   const at = (over: Partial<KnossosView> = {}) => paneInput(big, brief(), FETCHED, IDLE, view(over), 0, true)
   const shown = (rows: Row[], prefix: string) => rows.filter(r => r.key.split('|').some(k => new RegExp(`^${prefix}-\\d+$`).test(k))).length
   /** Where each column of the wide grid ends: the last row with anything in its left or right half. */
+  // The last row each side of the grid holds of its own cards (their stretch included), not padding for a side that ran out.
   const ends = (rows: Row[]): [number, number] => {
     let left = -1
     let right = -1
     rows.forEach((r, i) => {
       if (r.split === undefined) return
-      if (r.segments.slice(0, r.split).some(s => s.text.trim() !== '')) left = i
-      if (r.segments.slice(r.split).some(s => s.text.trim() !== '')) right = i
+      const [l, rr] = r.key.split('|')
+      if (l !== undefined && !l.startsWith('pad-')) left = i
+      if (rr !== undefined && !rr.startsWith('pad-')) right = i
     })
     return [left, right]
   }
@@ -1450,7 +1525,9 @@ describe('the pane at every width and height, with a large project', () => {
     for (const columns of WIDTHS) {
       const hubs = HEIGHTS.map(h => shown(paneRows(at({ tab: 'hubs' }), columns, h), 'hub'))
       expect(hubs[1], `${columns}`).toBeGreaterThan(hubs[0]!)
-      expect(hubs[2], `${columns}`).toBeGreaterThan(hubs[1]!)
+      // More again, unless the list already reached the most it ever shows.
+      if (hubs[1]! < LIST_MAX) expect(hubs[2], `${columns}`).toBeGreaterThan(hubs[1]!)
+      else expect(hubs[2], `${columns}`).toBe(LIST_MAX)
     }
   })
 
@@ -1533,11 +1610,12 @@ describe('the header: the project, where its checkout stands, its languages and 
 
   it('gives way chips first, then the commit, then the branch, keeping the name, the pill and the rescan', () => {
     const at = (columns: number) => plainText(titleRow(pane(), columns, columns < 80 ? 'narrow' : columns <= 130 ? 'medium' : 'wide'))
-    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +stale 11h {3}r: rescan$/)
+    // The width gauge sits beside the pill while there is room for it (see the width gauge's own tests).
+    expect(at(200)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 {3}PHP {3}JS {3}RS +(wide .* {3})?stale 11h {3}r: rescan$/)
     expect(at(80)).toMatch(/^Knossos-MCP {2}feat\/claude-code-mod · 610c773 +stale 11h {3}r: rescan$/)
-    expect(at(66)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
-    // Narrow: the name and the pill alone, however much room.
-    expect(at(79)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
+    // Narrow: the name and the pill, and the width gauge's short form while there is room for it.
+    expect(at(66)).toMatch(/^Knossos-MCP +(66 · narrow +)?stale 11h {3}r: rescan$/)
+    expect(at(79)).toMatch(/^Knossos-MCP +(79 · narrow +|narrow ━*▮─* medium +79\/80 +)?stale 11h {3}r: rescan$/)
     expect(at(40)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     for (const columns of [10, 16, 20, 24, 30]) expect(rowWidth(titleRow(pane(), columns, 'narrow')), `${columns}`).toBeLessThanOrEqual(columns)
   })
@@ -1546,7 +1624,7 @@ describe('the header: the project, where its checkout stands, its languages and 
     const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!
     expect(pill(pane())).toMatchObject({ text: ' stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
     const live = paneInput(full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 } }), brief(), FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }, { git })
-    expect(pill(live)).toMatchObject({ text: ' live · 7s ', bg: 'success' })
+    expect(pill(live)).toMatchObject({ text: ' ◍ live · 7s ', bg: 'success' })
     const failed = paneInput(full(), brief(), FETCHED, { phase: 'failed', reason: 'not an allowed root' }, view(), 0, true, null, null, undefined, null, undefined, { git })
     expect(pill(failed)).toMatchObject({ text: ' scan failed ', bg: 'error' })
     expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}scan failed {3}r: rescan$/)
@@ -1554,7 +1632,7 @@ describe('the header: the project, where its checkout stands, its languages and 
 
   it('becomes the way back in a detail: project › tab › what is shown', () => {
     const rows = paneRows({ ...detailPane(), git }, 140)
-    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +stale 11h {3}r: rescan$/)
+    expect(plainText(row(rows, 'title')!)).toMatch(/^ {2}Knossos-MCP › Overview › DashboardService +(wide .* {3})?stale 11h {3}r: rescan$/)
     expect(row(rows, 'tabs')).toBeUndefined()
     // Cut from the label: the project and the way back stay.
     const narrow = plainText(row(paneRows({ ...detailPane(), git }, 50), 'title')!)
@@ -1569,7 +1647,9 @@ describe('the marked row, tinted across', () => {
       const rows = paneRows(fullInput({ tab: 'hubs', selected: 1 }), columns)
       const marked = row(rows, 'hub-1')!
       expect(plainText(marked).startsWith('›'), `${columns}`).toBe(true)
-      expect(marked.segments.filter(s => s.text !== '' && s.text !== '│').every(s => s.bg === 'userMessageBackground'), `${columns}`).toBe(true)
+      // All but a card's gutter cells, one each side, carry the tint.
+      const inner = columns < 80 ? marked.segments : marked.segments.slice(1, -1)
+      expect(inner.filter(s => s.text !== '').every(s => s.bg === 'userMessageBackground'), `${columns}`).toBe(true)
       expect(row(rows, 'hub-0')!.segments.some(s => s.bg !== undefined), `${columns}`).toBe(false)
       // The tinted part reaches the frame on a framed card, and the pane's edge on a narrow one.
       const raw = rows.find(r => r.key.split('|').includes('hub-1'))!

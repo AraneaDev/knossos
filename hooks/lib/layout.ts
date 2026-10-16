@@ -16,7 +16,7 @@ import type { ChangesInput, LookAt } from './changes'
 import { countLabel } from './envelopes'
 import { driftInput, driftList, driftSection, fileDetailArrangement, fileDetailList } from './files'
 import type { DriftInput } from './files'
-import { ACCENT, boundaryLabel, CHIP_BG, declaredOf, FAINT, HEADING, huesOf, ON_FILL, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryLabel, CHIP_BG, declaredOf, FAINT, HEADING, huesOf, languageColour, ON_FILL, STAT_HUES, STATUS_COLOURS } from './palette'
 import type { Hues, Tone } from './palette'
 import {
   baseName,
@@ -53,6 +53,9 @@ import type { Stat } from './tiles'
 import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLineBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
+import { widthGauge } from './gauge'
+import { dotGlyph, grown, NO_MOTION, spinGlyph } from './motion'
+import type { Motion } from './motion'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
 import { notesArrangement, notesInput, notesItems, notesList } from './notes-view'
@@ -180,6 +183,8 @@ export type PaneInput = {
   notes: NotesInput
   /** The route the path explorer draws instead of a tab or a detail, or null. */
   route: RouteInput | null
+  /** The glyph that moves in the status pill (see {@link pulseOf}), or ''. */
+  pulse: string
 }
 
 /** A refused root the pane offers to allow: the root, the roots file it would join, and where the action stands. */
@@ -276,6 +281,8 @@ export type PaneExtras = {
   note?: NoteState | null
   /** Whether the Changes list holds only the files no test reaches. */
   untestedOnly?: boolean
+  /** When the last scan landed and the frames drawn since: what the pane's motion draws from. */
+  motion?: Motion
 }
 
 /**
@@ -395,14 +402,14 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
     ...(d.summary === undefined
       ? []
       : [
-          ...counted(summary[0], 'components', { ...moved('components'), ...series(t => t.components), ...listing('components', figureOf(summary[0])) }),
-          ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', listing('boundaries', figureOf(summary[1]))),
+          ...counted(summary[0], 'components', { hue: STAT_HUES.components, ...moved('components'), ...series(t => t.components), ...listing('components', figureOf(summary[0])) }),
+          ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', { hue: STAT_HUES.boundaries, ...listing('boundaries', figureOf(summary[1])) }),
         ]),
     // Cycles between types only: the ones inside one type show on the Cycles tab alone.
-    { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
-    ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), ...series(t => t.max_degree), ...moved('max_degree') }]),
+    { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, hue: STAT_HUES.cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
+    ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), hue: STAT_HUES.degree, ...series(t => t.max_degree), ...moved('max_degree') }]),
     issuesTile(d, policy, diagnostics, listing),
-    { key: 'drifted', label: 'drifted', value: grouped(drifted), ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
+    { key: 'drifted', label: 'drifted', value: grouped(drifted), hue: STAT_HUES.drifted, ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
   ]
 }
 
@@ -424,7 +431,9 @@ function issuesTile(d: Dashboard, policy: string | null, diagnostics: number | n
   const worst = violations > 0 || diagnosticErrors > 0 ? SEVERITY.error : errors > 0 ? SEVERITY.warn : null
   const value = worst === null ? figure : `${worst.glyph} ${figure}`
   const tone = worst === SEVERITY.error ? { tone: 'alert' as const } : worst === SEVERITY.warn ? { tone: 'warn' as const } : {}
-  return { key: 'issues', label: total === 1 && !floor ? 'issue' : 'issues', value, ...tone, ...listing('issues', value) }
+  // The clean colour only while there are none: dead code or functions over budget alone carry no tone, and are not clean.
+  const hue = total === 0 && !floor ? STAT_HUES.issues : HEADING
+  return { key: 'issues', label: total === 1 && !floor ? 'issue' : 'issues', value, hue, ...tone, ...listing('issues', value) }
 }
 
 /**
@@ -490,6 +499,7 @@ export function paneInput(
   const policy = issues.policy?.evaluated ? issues.policy.total : turn
   const diagnostics = issues.diagnostics === null ? null : issues.diagnostics.errors + issues.diagnostics.warnings
   const lit = litAt(extras.flash ?? null, now)
+  const motion = extras.motion ?? NO_MOTION
   const allowing = allowInput(brief, rescan, allow)
   const route = view.route ?? null
   return {
@@ -508,7 +518,8 @@ export function paneInput(
     items,
     partial: d.hubs_truncated,
     stats: statsOf(d, summary, policy, diagnostics, drift !== null).map(stat => (lit.has(`tile:${stat.key}`) ? { ...stat, lit: true as const } : stat)),
-    overview: overviewData(d, hues),
+    overview: overviewData(d, hues, width => grown(width, motion, now)),
+    pulse: pulseOf(live, rescan, d, refresh, now, motion),
     fileHubs: [...d.fan_in]
       .sort((a, b) => b.dependent_files - a.dependent_files || a.path.localeCompare(b.path))
       .map(f => ({ path: f.path, dependents: f.dependent_files, boundary: f.boundary ?? null, loc: locIn(d.project_root, f.path), top: f.top_dependents ?? [] })),
@@ -677,8 +688,19 @@ export function gitLabel(git: GitHead | undefined): string {
 }
 
 /** The status as a pill: the words on the status colour, in the text set on a fill. No dot: ● means probably dead. */
-function pill(status: PaneStatus): Segment {
-  return { text: ` ${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
+function pill(status: PaneStatus, pulse = ''): Segment {
+  return { text: ` ${pulse === '' ? '' : `${pulse} `}${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
+}
+
+/**
+ * What moves in the status pill: a spinner while a scan runs, the live dot
+ * (breathing for a moment after a scan lands) while the watcher keeps a fresh
+ * graph current, and nothing on any other status.
+ */
+function pulseOf(live: LiveState, rescan: RescanState, d: Dashboard, refresh: RefreshState, now: number, motion: Motion): string {
+  if (live.phase === 'scanning' || rescan.phase === 'scanning') return spinGlyph(motion.frame)
+  const status = paneStatus(d, refresh, rescan, now, live)
+  return status.tone === 'ok' && (live.phase === 'live' || live.phase === 'following') && /^(live|following)\b/.test(status.text) ? dotGlyph(motion, now) : ''
 }
 
 /**
@@ -687,12 +709,14 @@ function pill(status: PaneStatus): Segment {
  * the languages as small chips, then against the right edge why the status
  * is what it is, the status as a pill in its colour and the rescan action
  * whenever no scan is running. In a detail the name becomes the way
- * back: `project › Tab › what is shown`. As the width shrinks the chips go
- * first, then the commit, the branch and the reason; then the name is cut,
+ * back: `project › Tab › what is shown`. Beside the pill, the width gauge
+ * (see `gauge.ts`): the first thing given up, from its slider to its short
+ * form to nothing. As the width shrinks the chips go
+ * next, then the commit, the branch and the reason; then the name is cut,
  * never below four cells, then the pill's words. Narrow, the name, the
  * pill and, while it fits, why.
  */
-export function titleRow(input: PaneInput, columns: number, tier: Tier): Row {
+export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColumns = columns): Row {
   const rescan: Segment[] = input.canRescan ? [{ text: '  ' }, button('rescan', 'rescan', 'r', { dim: false })] : []
   // Where the header is short of room the label goes before the reason does;
   // the hotkey stays, on a twin drawn out of sight, as a tab's digit does.
@@ -709,28 +733,36 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier): Row {
   const where: Segment[] = git === '' || tier === 'narrow' ? [] : [{ text: `  ${git}`, dim: true }]
   const away = input.detail !== null || input.route !== null
   const chips: Segment[] =
-    tier === 'narrow' || away || input.languages === '' ? [] : input.languages.split(' ').flatMap((l): Segment[] => [{ text: ' ' }, { text: ` ${l} `, dim: true, bg: CHIP_BG }])
+    tier === 'narrow' || away || input.languages === '' ? [] : input.languages.split(' ').flatMap((l): Segment[] => [{ text: ' ' }, { text: ` ${l} `, color: languageColour(l), bg: CHIP_BG }])
   const chipsLead: Segment[] = chips.length === 0 ? [] : [{ text: ' ' }, ...chips]
+  // How wide the pane is against the layouts' bounds, full or short: the first thing the header gives up.
+  const gauge = (room: number): Segment[] => {
+    // The pane's own width, which the layout goes by, not the title's padded one.
+    const drawn = widthGauge(paneColumns, room)
+    return drawn.length === 0 ? [] : [...drawn, { text: '   ' }]
+  }
   // Each layout from the fullest down; the first that fits wins.
   const variants: [Segment[], Segment[]][] = [
-    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...note, pill(input.status), ...rescan]],
-    [[...crumbs, ...(away ? [] : where)], [...note, pill(input.status), ...rescan]],
-    [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status), ...rescan]],
-    [crumbs, [...note, pill(input.status), ...rescan]],
-    [crumbs, [...note, pill(input.status), ...rescanKey]],
-    [crumbs, [pill(input.status), ...rescan]],
-    [crumbs, [pill(input.status), ...rescanKey]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(Infinity), ...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(14), ...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(away ? [] : where)], [...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [...note, pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [...note, pill(input.status, input.pulse), ...rescanKey]],
+    [crumbs, [pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [pill(input.status, input.pulse), ...rescanKey]],
   ]
   for (const [left, right] of variants) {
     if (segmentsWidth(left) + 1 + segmentsWidth(right) <= columns) return spread('title', left, right, columns)
   }
   // Nothing fits whole: the right side first, then the way back cut from its middle, then the pill's words cut.
   // The rescan label is the first thing given up; its hotkey stays.
-  const right: Segment[] = [pill(input.status), ...rescanKey]
+  const right: Segment[] = [pill(input.status, input.pulse), ...rescanKey]
   const room = columns - 1 - segmentsWidth(right)
   if (room >= Math.min(4, cells(input.project))) return spread('title', cutCrumbs(crumbs, room), right, columns)
   const keep = Math.max(0, columns - 1 - Math.min(4, cells(input.project)))
-  const shortPill: Segment = { ...pill(input.status), text: fit(pill(input.status).text, keep) }
+  const shortPill: Segment = { ...pill(input.status, input.pulse), text: fit(pill(input.status, input.pulse).text, keep) }
   const left = cutCrumbs(crumbs, Math.max(0, columns - 1 - cells(shortPill.text)))
   return spread('title', left, keep >= 4 ? [shortPill, ...rescanKey] : rescanKey, columns)
 }
@@ -1231,7 +1263,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
   const inner = Math.max(1, width - 2 * pad)
   const rows: Row[] = []
   if (!short && tier !== 'narrow') rows.push(blank('head-top'))
-  rows.push(padded(titleRow(input, inner, tier), pad, width))
+  rows.push(padded(titleRow(input, inner, tier, width), pad, width))
   if (input.detail === null && input.route === null) {
     const count = issueCount(input.issues)
     const touched = input.changes.files.length

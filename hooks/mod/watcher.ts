@@ -18,6 +18,7 @@ import { deliverNote, turnEndNote } from './agent'
 import { refreshDashboard } from './loaders'
 import { disable, keepScan, light, shownChanges, sleep, wrapper } from './port'
 import type { Port } from './port'
+import { startMotion } from './motion'
 import { exclusively, mod } from './state'
 
 /** The wrapper bounds a turn brief at 60 s, plus room for it to exit on its own. */
@@ -194,6 +195,7 @@ async function rescanSafely(io: Port): Promise<void> {
 async function runRescan(io: Port): Promise<void> {
   if (mod.disabled) return
   await io.state.rescan.update((): RescanState => ({ phase: 'scanning', reason: null }))
+  await startMotion(io, null)
   const started = await io.clock.now()
   const parsed = parseRescan(await exclusively(() => wrapper(io, 'scan', [], RESCAN_TIMEOUT_MS)))
   if (parsed?.status === 'ok' && typeof parsed.snapshot_id === 'string') await attributeScan(io, parsed.snapshot_id, started, await io.clock.now())
@@ -298,6 +300,8 @@ async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
   const before = await io.state.live.read()
   const after = liveAfter(event, before)
   if (liveChanged(before, after)) await io.state.live.update(() => after)
+  // A scan under way turns the spinner in the pill until it is done.
+  if (after.phase === 'scanning' && before.phase !== 'scanning') await startMotion(io, null)
   const snapshot = snapshotOf(event)
   const moved = snapshot !== null && snapshot !== mod.snapshot
   await attributeEvent(io, event, snapshot, moved)
