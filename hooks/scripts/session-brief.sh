@@ -83,7 +83,9 @@ if TIMEOUT_BIN="$(find_timeout)"; then
     STATUS=$?
     # The one failure that says so: a brief cut off by the bound leaves the
     # session without one, and silence would give no hint why. Still exit 0.
-    if [ "$STATUS" -eq 124 ]; then
+    # GNU and Homebrew's gtimeout exit 124 when the bound fires; BusyBox exits
+    # 143, a status a brief could also end with, so that one counts only from BusyBox.
+    if [ "$STATUS" -eq 124 ] || { [ "$STATUS" -eq 143 ] && "$TIMEOUT_BIN" --help 2>&1 | grep -q BusyBox; }; then
         printf "Knossos brief timed out after 3 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
         exit 0
     fi
