@@ -18,9 +18,11 @@ final class SnapshotBounds
     public const MAX_ROWS_PER_TABLE = 300_000;
 
     /**
-     * The same, for a payload's uncompressed size. It sits above what rows at
-     * the limit come to (about 585 bytes a fact on Knossos's own graph), so
-     * the row limit is the one that applies.
+     * The same, for a payload's uncompressed size. At about 585 bytes a fact
+     * (Knossos's own graph), a graph whose largest table is at the row limit
+     * and the rest in the usual proportion comes to well under it, so the row
+     * limit is the one that applies; a graph with several tables near the
+     * limit at once reaches this one first, and the archive says so.
      */
     public const MAX_PAYLOAD_BYTES = 600_000_000;
 }

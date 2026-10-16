@@ -264,8 +264,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
     /**
      * Annotations recorded for a project, optionally filtered.
      *
-     * Each row says whether its component is `present` in the active graph or
-     * `missing`: notes are keyed by name, so a rename or a move leaves a note
+     * Each row's `component_status` says whether its component is `present` in
+     * the active graph or `missing`: notes are keyed by name, so a rename or a move leaves a note
      * on a name nothing carries any more, and only its author can move it.
      */
     public function listAnnotations(string $projectId, ?string $component = null, ?string $kind = null, int $limit = 100, int $offset = 0): ResultEnvelope
@@ -279,7 +279,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             throw new InvalidArgumentException('kind must be one of: ' . implode(', ', self::KINDS) . '.');
         }
         $sql = 'SELECT a.canonical_name, a.kind, a.value, a.author, a.created_at, a.updated_at, ' .
-            "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component " .
+            "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status " .
             'FROM annotations a WHERE a.project_id = :project';
         $parameters = ['project' => $projectId];
         if ($component !== null) {
@@ -303,7 +303,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
 
-        $missing = count(array_filter($rows, static fn(array $row): bool => $row['component'] === 'missing'));
+        $missing = count(array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing'));
 
         return new ResultEnvelope(
             $projectId,

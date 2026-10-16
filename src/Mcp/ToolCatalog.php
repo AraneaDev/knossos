@@ -360,7 +360,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'list_annotations',
                 'title' => 'List annotations',
-                'description' => 'List durable annotations recorded on components, each with its author (user or model) and whether its component is present in the active graph or missing (renamed or moved), optionally filtered by component or kind.',
+                'description' => 'List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved), optionally filtered by component or kind.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

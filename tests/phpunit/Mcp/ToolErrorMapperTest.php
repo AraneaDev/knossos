@@ -47,4 +47,24 @@ final class ToolErrorMapperTest extends KnossosTestCase
         assertSame(true, str_contains($message, 'retry'));
         assertSame(false, str_contains($message, 'SQLSTATE'));
     }
+
+    /** Only SQLite's own busy wording counts: a table that happens to be called busy_jobs is no lock. */
+    #[Group('mcp')]
+    public function testOnlyALockedDatabaseReadsAsBusy(): void
+    {
+        $missing = new \PDOException('SQLSTATE[HY000]: General error: 1 no such table: busy_jobs');
+        (new \ReflectionProperty(\PDOException::class, 'code'))->setValue($missing, 'HY000');
+
+        assertSame('KNOSSOS_TOOL_ERROR', ToolErrorMapper::code($missing));
+    }
+
+    /** A busy database wrapped by a layer above is still a busy database. */
+    #[Group('mcp')]
+    public function testABusyDatabaseWrappedInAnotherErrorStillSaysToRetry(): void
+    {
+        $busy = new \PDOException('SQLSTATE[HY000]: General error: 5 database is locked');
+        (new \ReflectionProperty(\PDOException::class, 'code'))->setValue($busy, 'HY000');
+
+        assertSame('KNOSSOS_DATABASE_BUSY', ToolErrorMapper::code(new RuntimeException('could not write the note', 0, $busy)));
+    }
 }

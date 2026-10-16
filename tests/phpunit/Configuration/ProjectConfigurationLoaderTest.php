@@ -370,6 +370,21 @@ JSON;
         $this->assertStringContainsString('duplicate boundary name', $error->getMessage());
     }
 
+    /** A policy names `@unassigned` and `@external` as targets of their own, so no boundary may take either name. */
+    public function testLoadRejectsABoundaryNamedLikeAReservedPolicyTarget(): void
+    {
+        foreach (['@external', '@unassigned'] as $name) {
+            $root = $this->writeConfig('knossos.json', json_encode(['version' => 1, 'boundaries' => [['name' => $name, 'path_prefix' => 'src/A']]], JSON_THROW_ON_ERROR));
+
+            $error = captureThrows(
+                static fn() => ProjectConfigurationLoader::load($root, [$root]),
+                DiscoveryException::class,
+            );
+
+            $this->assertStringContainsString('reserved', $error->getMessage(), $name);
+        }
+    }
+
     public function testLoadRejectsBoundaryDeclaringBothPathAndNamespacePrefix(): void
     {
         $root = $this->writeConfig('knossos.json', '{"version": 1, "boundaries": [{"name": "Core", "path_prefix": "src/A", "namespace_prefix": "App\\\\Core"}]}');

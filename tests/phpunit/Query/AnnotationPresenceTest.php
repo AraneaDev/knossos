@@ -26,7 +26,7 @@ final class AnnotationPresenceTest extends KnossosTestCase
 
         $result = $queries->listAnnotations($ids['project']);
 
-        $presence = array_column($result->data['annotations'], 'component', 'canonical_name');
+        $presence = array_column($result->data['annotations'], 'component_status', 'canonical_name');
         self::assertSame(['App\\Checkout' => 'present', 'App\\RenamedAway' => 'missing'], $presence);
         self::assertSame('Found 2 annotations, 1 on a component the graph no longer has.', $result->summary);
     }

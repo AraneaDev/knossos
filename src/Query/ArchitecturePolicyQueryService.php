@@ -40,7 +40,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
      * `external_*` stand-ins, and packages a worker marks external, such as an
      * npm import), which never join one.
      */
-    public const RESERVED_TARGETS = ['@unassigned', '@external'];
+    public const RESERVED_TARGETS = ProjectConfigurationLoader::RESERVED_BOUNDARY_NAMES;
 
     /**
      * Evaluate declared policies, returning each violation with the edge that breaches it.

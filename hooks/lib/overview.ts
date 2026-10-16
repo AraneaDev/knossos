@@ -154,7 +154,9 @@ export function overviewData(d: Dashboard, hues: Hues): OverviewData {
   const uncounted = points.some(p => p.cycles === null || p.max_degree === null || p.dead_code === null) || limit !== null
   const healthLimit = uncounted
     ? [
-        `cycles, ${UNREFERENCED} and max degree: not counted past ${grouped(limit?.limit ?? 200_000)} rows a table`,
+        limit === null
+          ? `cycles, ${UNREFERENCED} and max degree: not counted past the row limit of a table`
+          : `cycles, ${UNREFERENCED} and max degree: not counted past ${grouped(limit.limit)} rows a table`,
         ...(limit === null ? [] : [`the live graph holds ${grouped(limit.rows)} rows in ${limit.table}`]),
       ]
     : []

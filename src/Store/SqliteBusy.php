@@ -29,7 +29,8 @@ final class SqliteBusy
         }
         $message = strtolower($error->getMessage());
 
-        return str_contains($message, 'database is locked') || str_contains($message, 'database table is locked') || str_contains($message, 'busy');
+        // The phrases themselves: a bare "busy" also matched a table named busy_jobs.
+        return str_contains($message, 'database is locked') || str_contains($message, 'database table is locked') || str_contains($message, 'database is busy');
     }
 
     /**

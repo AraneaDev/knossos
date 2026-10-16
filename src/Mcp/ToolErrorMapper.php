@@ -34,7 +34,7 @@ final class ToolErrorMapper
     {
         return match (true) {
             $error instanceof ScanBusyException => 'KNOSSOS_SCAN_BUSY',
-            $error instanceof PDOException && SqliteBusy::is($error) => 'KNOSSOS_DATABASE_BUSY',
+            self::busy($error) => 'KNOSSOS_DATABASE_BUSY',
             // Mapped so the message survives: the file this exception names
             // is the whole of what the caller needs to act on.
             $error instanceof ScanSnapshotChangedException => 'KNOSSOS_SCAN_SNAPSHOT_CHANGED',
@@ -43,6 +43,18 @@ final class ToolErrorMapper
             $error instanceof InvalidArgumentException => 'KNOSSOS_INVALID_ARGUMENT',
             default => self::GENERIC_CODE,
         };
+    }
+
+    /** Whether a contended SQLite write lock is behind this failure, however many layers wrapped it. */
+    private static function busy(Throwable $error): bool
+    {
+        for ($cause = $error; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof PDOException && SqliteBusy::is($cause)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** The message safe to send. An unexpected failure is logged and replaced. */

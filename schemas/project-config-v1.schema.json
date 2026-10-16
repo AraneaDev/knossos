@@ -54,7 +54,11 @@
         "additionalProperties": false,
         "required": ["name"],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "not": { "enum": ["@unassigned", "@external"] }
+          },
           "path_prefix": { "type": "string" },
           "namespace_prefix": { "type": "string" }
         },
