@@ -246,7 +246,8 @@ final class SnapshotGraphReaderBlobStreamTest extends KnossosTestCase
         $reader = new SnapshotGraphReader($pdo, blobReads: false);
 
         $reader->archivedById($scan);
-        $reader->archivedTablesById($scan, ['nodes', 'edges']);
+        self::rowsOf($reader, $scan, 'nodes');
+        self::rowsOf($reader, $scan, 'edges');
 
         assertSame(0, $pdo->opens);
     }
@@ -315,16 +316,30 @@ final class SnapshotGraphReaderBlobStreamTest extends KnossosTestCase
     }
 
     #[Group('query')]
-    public function testTablesThroughTheBlobStreamKeepEveryColumnOfOnlyThoseTables(): void
+    public function testRowsThroughTheBlobStreamKeepEveryColumn(): void
     {
         [$pdo, , $scan, $stored] = $this->archivedStore();
 
-        $tables = (new SnapshotGraphReader($pdo))->archivedTablesById($scan, ['nodes']);
+        $nodes = self::rowsOf(new SnapshotGraphReader($pdo), $scan, 'nodes');
 
         assertSame(1, $pdo->opens);
-        assertSame(['nodes'], array_keys($tables));
-        assertSame(self::whole($stored)['nodes'], $tables['nodes']);
-        assertGreaterThan(count(SnapshotGraphReader::COLUMNS['nodes']), count(array_keys($tables['nodes'][0])), 'Every stored column, not only the compared ones.');
+        assertSame(self::whole($stored)['nodes'], $nodes);
+        assertGreaterThan(count(SnapshotGraphReader::COLUMNS['nodes']), count(array_keys($nodes[0])), 'Every stored column, not only the compared ones.');
+    }
+
+    /**
+     * Every row of one archived table, as eachArchivedRow hands them over.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function rowsOf(SnapshotGraphReader $reader, string $scan, string $table): array
+    {
+        $rows = [];
+        $reader->eachArchivedRow($scan, $table, static function (array $row) use (&$rows): void {
+            $rows[] = $row;
+        });
+
+        return $rows;
     }
 }
 

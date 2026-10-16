@@ -18,15 +18,17 @@ final readonly class TestModuleRule implements ClassificationRule
 {
     public const ROLE = 'quality.test_module';
 
-    /** Unambiguous test directories: always tag regardless of nesting. */
-    private const UNAMBIGUOUS_SEGMENTS = ['__tests__', '__test__'];
+    /** Unambiguous test directories: always tag regardless of nesting. Fixtures and mocks are test support. */
+    private const UNAMBIGUOUS_SEGMENTS = ['__tests__', '__test__', '__fixtures__', '__mocks__'];
 
     /**
      * Ambiguous directory names that are only a test convention at the root of
      * a package. Nested under a recognized source root (e.g. `src/openapi/spec`)
-     * they are ordinary source directories, not test modules.
+     * they are ordinary source directories, not test modules. `fixtures`
+     * holds what the specs import to set themselves up, which tests alone
+     * reach because that is what it is for.
      */
-    private const AMBIGUOUS_SEGMENTS = ['tests', 'test', 'spec', 'e2e'];
+    private const AMBIGUOUS_SEGMENTS = ['tests', 'test', 'spec', 'e2e', 'fixtures'];
 
     private const SOURCE_ROOTS = ['src', 'lib', 'app', 'source'];
 

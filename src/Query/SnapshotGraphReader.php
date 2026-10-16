@@ -22,7 +22,7 @@ use PDO;
  * report ({@see QualityGateQueryService::branchComparison()},
  * {@see QualityGateQueryService::qualityGate()},
  * {@see QualityGateQueryService::architectureTrends()}), and snapshot_diff
- * for whole archived tables ({@see self::archivedTablesById()}).
+ * a row of an archived table at a time ({@see self::eachArchivedRow()}).
  *
  * A stored row carries far more (owners, hashes, the scan it came from),
  * and a snapshot holds tens of thousands of rows: reading every column of
@@ -107,22 +107,6 @@ final readonly class SnapshotGraphReader
     }
 
     /**
-     * Whole tables of an archived snapshot, every column, with the payload read from the store.
-     *
-     * One table per call keeps the working set to that table's rows; several
-     * in one call read the payload once for all of them, which is what a
-     * payload that can only be decoded whole (see {@see self::isStreamable()})
-     * wants.
-     *
-     * @param list<string> $tables
-     * @return array<string, list<array<string, mixed>>>
-     */
-    public function archivedTablesById(string $scanId, array $tables): array
-    {
-        return $this->readStored($scanId, array_fill_keys($tables, null));
-    }
-
-    /**
      * Each row of one archived table, every column, handed to `$sink` as it is
      * read, so a caller that keeps only what it needs of each row never holds
      * the table. A payload that can only be decoded whole still is, and its
@@ -171,17 +155,6 @@ final readonly class SnapshotGraphReader
         foreach ($this->decodedWhole($stored, $scanId, $columns)[$table] as $row) {
             $sink($row);
         }
-    }
-
-    /** Whether the stored payload is one the bounded read takes apart, rather than one decoded whole. */
-    public function isStreamable(string $scanId): bool
-    {
-        $statement = $this->pdo->prepare('SELECT substr(payload_json, 1, :length) FROM scan_snapshots WHERE scan_id = :scan');
-        $statement->bindValue(':length', strlen(self::PREFIX), PDO::PARAM_INT);
-        $statement->bindValue(':scan', $scanId);
-        $statement->execute();
-
-        return $statement->fetchColumn() === self::PREFIX;
     }
 
     /**
