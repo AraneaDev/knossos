@@ -94,6 +94,8 @@ final class ReviewDiffTest extends KnossosTestCase
         assertSame([], $result->data['change']['direct_components'] ?? []);
         assertSame('evaluated', $result->data['cycles_touching_change']['status']);
         assertSame([], $result->data['cycles_touching_change']['cycles']);
+        // Skipped, not searched and found empty: the cycle search's caveat is not there.
+        assertSame(false, str_contains(implode(' ', $result->warnings), 'Cycles are derived'));
     }
 
     /**
