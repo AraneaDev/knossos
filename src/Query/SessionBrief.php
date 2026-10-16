@@ -62,6 +62,8 @@ final readonly class SessionBrief
      *   caller named rather than about the project, so it is the one line that
      *   can assert a directory into existence. Meaningless, and ignored, when
      *   $queriedPath is null.
+     * @param int $missingNotes notes on a name the active graph no longer has,
+     *   left behind by a rename or a move; only their author can move them
      * @param string|null $rootsFile the roots file this brief actually read,
      *   following {@see \Knossos\Discovery\AllowedRoots::defaultConfigPath()}'s
      *   own precedence rather than guessing where roots live. Named in the
@@ -88,5 +90,6 @@ final readonly class SessionBrief
         public ?string $queriedPath = null,
         public bool $queriedPathExists = true,
         public ?string $rootsFile = null,
+        public int $missingNotes = 0,
     ) {}
 }

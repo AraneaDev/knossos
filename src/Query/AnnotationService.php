@@ -261,8 +261,13 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         );
     }
 
-    /** Annotations recorded for a project, optionally filtered. */
-
+    /**
+     * Annotations recorded for a project, optionally filtered.
+     *
+     * Each row says whether its component is `present` in the active graph or
+     * `missing`: notes are keyed by name, so a rename or a move leaves a note
+     * on a name nothing carries any more, and only its author can move it.
+     */
     public function listAnnotations(string $projectId, ?string $component = null, ?string $kind = null, int $limit = 100, int $offset = 0): ResultEnvelope
     {
         $project = $this->project($projectId);
@@ -273,18 +278,20 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         if ($kind !== null && !in_array($kind, self::KINDS, true)) {
             throw new InvalidArgumentException('kind must be one of: ' . implode(', ', self::KINDS) . '.');
         }
-        $sql = 'SELECT canonical_name, kind, value, author, created_at, updated_at FROM annotations WHERE project_id = :project';
+        $sql = 'SELECT a.canonical_name, a.kind, a.value, a.author, a.created_at, a.updated_at, ' .
+            "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component " .
+            'FROM annotations a WHERE a.project_id = :project';
         $parameters = ['project' => $projectId];
         if ($component !== null) {
-            $sql .= ' AND canonical_name = :name';
+            $sql .= ' AND a.canonical_name = :name';
             $parameters['name'] = $component;
         }
         if ($kind !== null) {
-            $sql .= ' AND kind = :kind';
+            $sql .= ' AND a.kind = :kind';
             $parameters['kind'] = $kind;
         }
         // A person's note before a model's on the same component and kind.
-        $sql .= " ORDER BY canonical_name, kind, CASE author WHEN 'user' THEN 0 ELSE 1 END LIMIT :limit OFFSET :offset";
+        $sql .= " ORDER BY a.canonical_name, a.kind, CASE a.author WHEN 'user' THEN 0 ELSE 1 END LIMIT :limit OFFSET :offset";
         $statement = $this->pdo->prepare($sql);
         foreach ($parameters as $key => $parameterValue) {
             $statement->bindValue(':' . $key, $parameterValue);
@@ -296,10 +303,13 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
 
+        $missing = count(array_filter($rows, static fn(array $row): bool => $row['component'] === 'missing'));
+
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            sprintf('Found %d annotation%s.', count($rows), count($rows) === 1 ? '' : 's'),
+            sprintf('Found %d annotation%s', count($rows), count($rows) === 1 ? '' : 's')
+                . ($missing === 0 ? '.' : sprintf(', %d on a component the graph no longer has.', $missing)),
             ['annotations' => $rows, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null]],
             [],
             [],

@@ -121,7 +121,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
         assertSame(true, $page->truncated);
         assertSame(2, $page->data['pagination']['next_offset']);
         assertSame(0, $page->data['pagination']['offset']);
-        assertSame('Found 2 annotations.', $page->summary);
+        assertSame('Found 2 annotations, 2 on a component the graph no longer has.', $page->summary);
         assertSame(['App\\Alpha', 'App\\Beta'], array_column($page->data['annotations'], 'canonical_name'));
 
         $whole = $queries->listAnnotations($this->project, limit: 3);
@@ -132,7 +132,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
 
         $single = $queries->listAnnotations($this->project, limit: 1);
 
-        assertSame('Found 1 annotation.', $single->summary);
+        assertSame('Found 1 annotation, 1 on a component the graph no longer has.', $single->summary);
         assertSame(1, $single->data['pagination']['next_offset']);
     }
 
