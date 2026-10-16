@@ -1133,6 +1133,7 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'confidences'),
             ToolArguments::integer($arguments, 'limit', 20, 1, 100),
             ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            ToolArguments::boolean($arguments, 'files', false),
         ];
 
         return fn(): ResultEnvelope => $this->queries->searchArchitecture(...$args);

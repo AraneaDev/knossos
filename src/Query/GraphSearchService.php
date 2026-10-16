@@ -8,31 +8,42 @@ use Knossos\Scan\ProjectPathResolver;
 use PDO;
 
 /**
- * The architecture pane's finder: every component and file of a project
- * whose name holds what was typed, letters in order, the closest first.
+ * The architecture pane's finder: what search_architecture answers the
+ * agent for what was typed, then every other component and file whose name
+ * holds the letters in order, the closest first.
  *
- * A match is fuzzy: the typed characters must appear in the name in order,
- * any case, with anything between them (`dsvc` finds `DashboardService`).
- * Candidates are read with one bounded `LIKE` per kind of thing, each at most
- * {@see self::CANDIDATES} rows, the strongest kinds of match first (see
- * {@see self::strength()}) so the bound drops scattered letters before a name
- * that starts with what was typed, then ranked here: the whole name, then the
- * name's start, then a run inside the name, then a run anywhere in the full
- * name or path, then the scattered letters, the fewest gaps first; among
- * equals a type before a function or member and a component before a file,
- * then shorter names before longer, then by name, so the order is stable.
- * Every kind of component is searched, routes and the kinds an enricher
- * contributes among them, except external symbols (a vendor class, a
- * built-in), which have no place to open, and the members there are too many
- * of to look for by name ({@see self::UNSEARCHED}).
+ * The core's results come first and in its order: every term matching a
+ * component's name, attributes, roles or a note on it, else the components
+ * matching most terms; a query naming a file no component matches finds
+ * what that file declares. Notes on names no component holds are listed
+ * apart, under `notes`, as the core lists them.
+ *
+ * The core has no match by letters in order, so the finder keeps its own as
+ * a fallback after the core's results, then the files: the typed characters
+ * must appear in the name in order, any case, with anything between them
+ * (`dsvc` finds `DashboardService`). Candidates are read with one bounded
+ * `LIKE` per kind of thing, each at most {@see self::CANDIDATES} rows, the
+ * strongest kinds of match first (see {@see self::strength()}) so the bound
+ * drops scattered letters before a name that starts with what was typed,
+ * then ranked here: the whole name, then the name's start, then a run inside
+ * the name, then a run anywhere in the full name or path, then the scattered
+ * letters, the fewest gaps first; among equals a type before a function or
+ * member and a component before a file, then shorter names before longer,
+ * then by name, so the order is stable. Every kind of component is searched,
+ * routes and the kinds an enricher contributes among them, except external
+ * symbols (a vendor class, a built-in), which have no place to open, and the
+ * members there are too many of to look for by name ({@see self::UNSEARCHED}).
  *
  * Read-only, never scans; `truncated` says a list may have missed a match
- * because a candidate read stopped at its bound.
+ * because a read stopped at its bound.
  */
 final readonly class GraphSearchService
 {
     /** Results listed: as many as the finder shows. */
     public const LIMIT = 20;
+
+    /** Results read from search_architecture, its own largest page. */
+    private const CORE_READ = 100;
 
     /** Rows each candidate read takes at most. */
     private const CANDIDATES = 400;
@@ -65,7 +76,7 @@ final readonly class GraphSearchService
     {
         $absolute = realpath($path) ?: $path;
         $typed = mb_substr(trim($query), 0, self::QUERY_MAX);
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'query' => $typed, 'results' => [], 'truncated' => false];
+        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'query' => $typed, 'results' => [], 'notes' => [], 'truncated' => false];
         $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
@@ -76,12 +87,37 @@ final readonly class GraphSearchService
         if ($needle === '') {
             return $base;
         }
+        // The core takes at most eight words.
+        $words = implode(' ', array_slice(preg_split('/\s+/u', $typed, -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, 8));
+        // Read past the finder's own limit: the components it cannot open (externals first among them) can fill a page.
+        $core = ArchitectureQueryService::forDatabase($this->pdo)->searchArchitecture($id, $words, limit: self::CORE_READ, includeFiles: true);
+        $places = [];
+        foreach ($core->evidence as $evidence) {
+            $places[(string) $evidence['component_id']] = ['path' => (string) $evidence['path'], 'line' => $evidence['start_line'] === null ? null : (int) $evidence['start_line']];
+        }
+        $listed = [];
+        $found = [];
+        foreach ($core->data['results'] as $row) {
+            $listed[(string) $row['id']] = true;
+            // What the finder cannot open, or would drown in, as its own search leaves out.
+            if (str_starts_with((string) $row['kind'], 'external_') || in_array($row['kind'], self::UNSEARCHED, true)) {
+                continue;
+            }
+            $found[] = ['type' => 'component', 'id' => (string) $row['id'], 'name' => (string) $row['display_name'], 'canonical_name' => (string) $row['canonical_name'], 'kind' => (string) $row['kind'],
+                'path' => $places[(string) $row['id']]['path'] ?? null, 'line' => $places[(string) $row['id']]['line'] ?? null];
+        }
+        foreach ($core->data['files'] as $file) {
+            $listed['file:' . $file] = true;
+        }
         [$components, $cutComponents] = $this->components($id, $needle);
         [$files, $cutFiles] = $this->files($id, $needle);
         // A candidate the pattern let through only for a non-ASCII letter it stood in for scores 0.
-        $ranked = array_values(array_filter([...$components, ...$files], static fn(array $r): bool => $r['score'] > 0));
+        $ranked = array_values(array_filter([...$components, ...$files], static fn(array $r): bool => $r['score'] > 0 && !isset($listed[$r['type'] === 'file' ? 'file:' . $r['path'] : (string) $r['id']])));
         usort($ranked, static fn(array $a, array $b): int => [$b['score'], $a['order'], mb_strlen($a['name']), $a['name']] <=> [$a['score'], $b['order'], mb_strlen($b['name']), $b['name']]);
-        $results = array_slice($ranked, 0, self::LIMIT);
+        $coreFiles = array_map(static fn(string $file): array => ['type' => 'file', 'id' => null, 'name' => $file, 'canonical_name' => $file, 'kind' => 'file', 'path' => $file, 'line' => null], $core->data['files']);
+        $fuzzyComponents = array_values(array_filter($ranked, static fn(array $r): bool => $r['type'] === 'component'));
+        $fuzzyFiles = array_values(array_filter($ranked, static fn(array $r): bool => $r['type'] === 'file'));
+        $results = array_slice([...$found, ...$fuzzyComponents, ...$coreFiles, ...$fuzzyFiles], 0, self::LIMIT);
         $labels = BoundaryLabels::load($this->pdo, $id);
         $nodeLabels = $labels->forNodes(array_values(array_filter(array_column($results, 'id'))));
         $fileLabels = $labels->forFiles($id, array_values(array_column(array_filter($results, static fn(array $r): bool => $r['type'] === 'file'), 'path')));
@@ -94,7 +130,14 @@ final readonly class GraphSearchService
             'path' => $r['path'],
             'line' => $r['line'],
             'boundary' => $r['type'] === 'file' ? ($fileLabels[(string) $r['path']] ?? null) : ($nodeLabels[(string) $r['id']] ?? null),
-        ], $results), 'truncated' => $cutComponents || $cutFiles] + $base;
+        ], $results), 'notes' => array_map(static fn(array $note): array => [
+            'canonical_name' => $note['component'],
+            'kind' => $note['kind'],
+            'author' => $note['author'],
+            'text' => $note['text'],
+            'written' => $note['written'],
+            'component_status' => 'missing',
+        ], $core->data['notes_without_component']), 'truncated' => $core->truncated || $cutComponents || $cutFiles] + $base;
     }
 
     /**

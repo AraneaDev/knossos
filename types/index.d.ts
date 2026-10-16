@@ -356,14 +356,17 @@ export type BoundaryCouplings = {
 }
 
 /**
- * The `graph-search` subcommand's answer: the components and files whose
- * name holds the typed letters in order, the closest first (at most 20);
- * `truncated` when a candidate read stopped at its bound.
+ * The `graph-search` subcommand's answer: search_architecture's components
+ * first, in its order, then the other components and files whose name holds
+ * the typed letters in order, the closest first (at most 20). `notes` are
+ * the notes on names no component holds that the words match. `truncated`
+ * when a read stopped at its bound.
  */
 export type GraphSearch = {
   status: 'ok' | 'unscanned' | 'error' | 'no-binary'
   query?: string
   results: { type: 'component' | 'file'; name: string; canonical_name: string; kind: string; path: string | null; line: number | null; boundary: string | null }[]
+  notes?: { canonical_name: string; kind: string; author: string; text: string; written: string; component_status: 'missing' }[]
   truncated: boolean
 }
 

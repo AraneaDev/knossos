@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\BlastRadiusService;
+use Knossos\Query\GraphSearchService;
 use Knossos\Query\PathBetweenService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
@@ -115,5 +116,28 @@ final class PaneCoreAgreementTest extends KnossosTestCase
             'nodes' => array_column($route['nodes'], 'canonical_name'),
             'confidences' => array_column($route['hops'], 'confidence'),
         ], $routes['routes']);
+    }
+
+    /**
+     * The finder's components are search_architecture's, in its order, for a
+     * name, for two words, and for a word only a note holds; a note on a name
+     * no component holds is listed apart, under `notes`.
+     */
+    #[Group('query')]
+    public function testFinderAgreesWithSearchArchitecture(): void
+    {
+        [$pdo, $root, $projectId] = $this->paneAgreementGraph();
+        $finder = new GraphSearchService($pdo);
+        $core = ArchitectureQueryService::forDatabase($pdo);
+
+        foreach (['target', 'static caller', 'zebrafish'] as $query) {
+            $found = $finder->search($root, $query)['results'];
+            $expected = array_column($core->searchArchitecture($projectId, $query)->data['results'], 'canonical_name');
+            $components = array_column(array_filter($found, static fn(array $row): bool => $row['type'] === 'component'), 'canonical_name');
+            assertSame($expected, array_slice($components, 0, count($expected)), $query);
+        }
+        $notes = $finder->search($root, 'zebrafish')['notes'];
+        assertSame([['App\\Gone', 'model', 'missing']], array_map(static fn(array $row): array => [$row['canonical_name'], $row['author'], $row['component_status']], $notes));
+        assertSame('Replaced by the zebrafish adapter.', $notes[0]['text']);
     }
 }

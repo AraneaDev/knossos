@@ -639,12 +639,15 @@ itself. The band, the notes and Changes count the same way.
 
 ![The finder over the pane: ResultEnv typed, 20 matches listed with ResultEnvelope marked first](../images/claude-code/finder.png)
 
-`f` opens the finder over any tab. Type part of a name and it lists the
-components and files whose name holds those letters in order (`dsvc` finds
-`DashboardService`), the closest first, a type before its members, at most
-twenty. The note says how many were found. Every kind of component is
-searched, routes and the kinds an enricher adds among them, except symbols from
-outside the project and fields, variables and parameters.
+`f` opens the finder over any tab. Type part of a name, or a few words, and it
+lists first what `search_architecture` answers the agent: the components every
+word matches (in a name, an attribute, a role or a note on the component), else
+those most words match, and for a file's path what that file declares. After
+those come the other components and files whose name holds the letters in order
+(`dsvc` finds `DashboardService`), the closest first, a type before its members,
+at most twenty in all. The note says how many were found. Every kind of
+component is searched, routes and the kinds an enricher adds among them, except
+symbols from outside the project and fields, variables and parameters.
 
 The search runs after a short pause in the typing. Until its answer lands, the
 card says `searching…` and keeps the last matches. Knossos searches on the

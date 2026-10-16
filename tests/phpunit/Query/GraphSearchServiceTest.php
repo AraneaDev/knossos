@@ -50,9 +50,9 @@ final class GraphSearchServiceTest extends KnossosTestCase
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
         try {
             $service = new GraphSearchService($pdo);
-            // `%` and `_` are matched as themselves, not as any text.
+            // `%` and `_` are matched as themselves, not as any text: only the tests hold an underscore, in their role.
             assertSame([], $service->search($root, '%')['results']);
-            assertSame([], $service->search($root, '_')['results']);
+            assertSame(['App\\Tests\\GreeterTest', 'App\\Tests\\GreeterTest::testGreets'], array_column($service->search($root, '_')['results'], 'canonical_name'));
             assertSame([], $service->search($root, "  \t ")['results']);
             assertSame(GraphSearchService::QUERY_MAX, mb_strlen($service->search($root, str_repeat('a', 200))['query']));
             for ($i = 0; $i < 30; ++$i) {

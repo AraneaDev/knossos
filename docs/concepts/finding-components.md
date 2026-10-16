@@ -118,11 +118,14 @@ is declared in.
 ## Search
 
 `search_architecture` matches each word of the query against a component's
-name, attributes and roles, and against the text of the notes recorded on it.
-A note holds what the graph cannot, such as a reference kind no symbol is named
-after, so a search for that word still finds the component the note is on. A
-component found only through a note ranks after every one whose own name,
-attributes or roles match, and the result carries the notes of what it found.
+name, the words its attributes hold (a route's path, never an attribute's own
+name or the scanner's bookkeeping) and roles, and against the text of the notes
+recorded on it. A note holds what the graph cannot, such as a reference kind no
+symbol is named after, so a search for that word still finds the component the
+note is on. A name equal to the query ranks first, then a name starting with
+it, then the rest; a component found only through a note ranks after every one
+whose own name, attributes or roles match, and the result carries the notes of
+what it found.
 
 Every word has to match. When no component matches all of them, the search
 returns the components that match some, most words first, sets `match` to
@@ -134,6 +137,10 @@ at runtime. When no `kinds`, `roles`, `boundary_ids` or `confidences` filter is
 given, the first page lists such notes whose name or text holds every word in
 `notes_without_component`, at most 20, each with its text, author and stale
 flag, and the summary counts them.
+
+With `files`, the answer also lists the project files whose path holds every
+word, under `files`, and a query naming a project file no component matches
+returns what that file declares, with `match` set to `declared_in`.
 
 ## List usages
 

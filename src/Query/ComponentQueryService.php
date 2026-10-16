@@ -50,15 +50,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         // matches, the answer is what that file declares, its module first.
         $declaredIn = $rows === [] ? $this->declaringFile($project, $name) : null;
         if ($declaredIn !== null) {
-            $declared = $this->pdo->prepare(
-                'SELECT n.*, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id ' .
-                "WHERE f.project_id = :project AND f.relative_path = :path ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
-            );
-            $declared->bindValue(':project', $projectId);
-            $declared->bindValue(':path', $declaredIn);
-            $declared->bindValue(':fetch_limit', $limit + 1, PDO::PARAM_INT);
-            $declared->execute();
-            $rows = $declared->fetchAll();
+            $rows = $this->declaredRows($projectId, $declaredIn, $limit + 1);
         }
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
@@ -99,6 +91,48 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             [],
             $truncated,
         );
+    }
+
+    /**
+     * The components `$path` declares, its module first, then in the order
+     * they are written, at most `$limit`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function declaredRows(string $projectId, string $path, int $limit): array
+    {
+        $declared = $this->pdo->prepare(
+            'SELECT n.*, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id ' .
+            "WHERE f.project_id = :project AND f.relative_path = :path ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
+        );
+        $declared->bindValue(':project', $projectId);
+        $declared->bindValue(':path', $path);
+        $declared->bindValue(':fetch_limit', $limit, PDO::PARAM_INT);
+        $declared->execute();
+
+        return $declared->fetchAll();
+    }
+
+    /**
+     * The project files whose path holds every term, the shortest first, at
+     * most `$limit`, and whether more do.
+     *
+     * @param list<string> $terms
+     * @return array{0: list<string>, 1: bool}
+     */
+    private function filesMatching(string $projectId, array $terms, int $limit): array
+    {
+        $params = ['project' => $projectId];
+        $sql = 'SELECT relative_path FROM files WHERE project_id = :project';
+        foreach ($terms as $index => $term) {
+            $params['term' . $index] = '%' . self::like($term) . '%';
+            $sql .= " AND relative_path LIKE :term{$index} ESCAPE '!'";
+        }
+        $statement = $this->pdo->prepare($sql . ' ORDER BY LENGTH(relative_path), relative_path LIMIT ' . ($limit + 1));
+        $statement->execute($params);
+        $paths = array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
+
+        return [array_slice($paths, 0, $limit), count($paths) > $limit];
     }
 
     /**
@@ -380,7 +414,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
      *
      * @param list<string> $kinds @param list<string> $roles @param list<string> $boundaryIds @param list<string> $confidences
      */
-    public function searchArchitecture(string $projectId, string $query, array $kinds = [], array $roles = [], array $boundaryIds = [], array $confidences = [], int $limit = 20, int $offset = 0): ResultEnvelope
+    public function searchArchitecture(string $projectId, string $query, array $kinds = [], array $roles = [], array $boundaryIds = [], array $confidences = [], int $limit = 20, int $offset = 0, bool $includeFiles = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         if (trim($query) === '') {
@@ -416,6 +450,12 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $rows = $this->searchRows($projectId, $query, $terms, $kinds, $roles, $boundaryIds, $confidences, $limit + 1, $offset, true);
             $match = 'any_term';
         }
+        // With files asked for, a query naming a project file no component matches finds what that file declares.
+        $declaredIn = $includeFiles && $rows === [] && $offset === 0 ? $this->declaringFile($project, trim($query)) : null;
+        if ($declaredIn !== null) {
+            $rows = $this->declaredRows($projectId, $declaredIn, $limit + 1);
+            $match = 'declared_in';
+        }
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
@@ -442,9 +482,12 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $apart = $offset === 0 && $kinds === [] && $roles === [] && $boundaryIds === [] && $confidences === []
             ? $this->notesWithoutComponent($projectId, $terms)
             : [];
-        $summary = $match === 'any_term'
-            ? sprintf('No component matches every term; found %d that match some, most terms first.', count($results))
-            : sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's');
+        $summary = match ($match) {
+            'any_term' => sprintf('No component matches every term; found %d that match some, most terms first.', count($results)),
+            'declared_in' => sprintf('No component matches; %s declares %d.', $declaredIn, count($results)),
+            default => sprintf('Found %d architecture search result%s.', count($results), count($results) === 1 ? '' : 's'),
+        };
+        [$files, $filesCut] = $includeFiles && $offset === 0 ? $this->filesMatching($projectId, $terms, $limit) : [[], false];
         if ($apart !== []) {
             $summary .= sprintf(' %d note%s on names the graph does not hold match too (notes_without_component).', count($apart), count($apart) === 1 ? '' : 's');
         }
@@ -452,18 +495,22 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $projectId,
             $project['active_scan_id'],
             $summary,
-            ['query' => $query, 'match' => $match, 'results' => $results, 'notes_without_component' => $apart, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]],
+            ['query' => $query, 'match' => $match, 'results' => $results, 'notes_without_component' => $apart, 'pagination' => ['offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null, 'truncation_reason' => $truncated ? 'result_limit' : null]]
+                + ($declaredIn !== null ? ['declared_in' => $declaredIn] : [])
+                + ($includeFiles ? ['files' => $files, 'files_truncated' => $filesCut] : []),
             $evidence,
             [],
-            $truncated,
+            $truncated || $filesCut,
         );
     }
 
     /**
      * One page of search rows: every term matching (`$anyTerm` false), or at
      * least one, ordered by how many match (`$anyTerm` true). A term matches
-     * the component itself (name, display name, attributes, a role) or the
-     * text of a note recorded on it.
+     * the component itself (name, display name, the words its attributes
+     * hold, a role) or the text of a note recorded on it. The full name or
+     * the display name exactly ranks first, then a full name or a display
+     * name starting with the query, then the rest.
      *
      * @param list<string> $terms @param list<string> $kinds @param list<string> $roles
      * @param list<string> $boundaryIds @param list<string> $confidences
@@ -477,7 +524,10 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         foreach ($terms as $index => $term) {
             $key = 'contains' . $index;
             $params[$key] = '%' . self::like($term) . '%';
-            $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR n.attributes_json LIKE :$key ESCAPE '!' " .
+            // An attribute's words, never its name or the scanner's bookkeeping: the raw JSON's LIKE narrows first.
+            $attribute = "(n.attributes_json LIKE :$key ESCAPE '!' AND EXISTS (SELECT 1 FROM json_tree(n.attributes_json) jt WHERE jt.type = 'text' " .
+                "AND jt.key NOT IN ('scanner', 'scanner_local_id') AND jt.atom LIKE :$key ESCAPE '!'))";
+            $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR $attribute " .
                 "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";
             $own[] = $matches;
             $either[] = "($matches OR EXISTS (SELECT 1 FROM annotations aq WHERE aq.project_id = n.project_id " .
@@ -485,7 +535,8 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         }
         $matched = implode(' + ', array_map(static fn(string $condition): string => "(CASE WHEN $condition THEN 1 ELSE 0 END)", $either));
         $sql = "SELECT DISTINCT n.*, f.relative_path, CASE WHEN n.canonical_name = :exact THEN 0 WHEN n.display_name = :exact THEN 1 WHEN n.canonical_name LIKE :prefix ESCAPE '!' THEN 2 " .
-            'WHEN ' . implode(' AND ', $own) . ' THEN 3 ELSE 4 END AS rank' . ($anyTerm ? ", $matched AS matched" : '') . ' ' .
+            "WHEN n.display_name LIKE :prefix ESCAPE '!' THEN 3 " .
+            'WHEN ' . implode(' AND ', $own) . ' THEN 4 ELSE 5 END AS rank' . ($anyTerm ? ", $matched AS matched" : '') . ' ' .
             'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project AND ' .
             ($anyTerm ? '(' . implode(' OR ', $either) . ')' : implode(' AND ', $either));
         $sql .= $this->filterClause('n.kind', 'kind', $kinds, $params);

@@ -20,7 +20,9 @@ trait PaneAgreementGraph
      * calling the class on a probable edge; and `Tests\TargetTest`, a test,
      * calling `App\User`. Apart from those, `App\User::go` calls
      * `App\Port::run`, an interface method `App\Adapter::run` implements,
-     * so a route from `App\User` to it ends on a derived hop.
+     * so a route from `App\User` to it ends on a derived hop. A model note
+     * on `App\Target` and one on `App\Gone`, a name no component holds,
+     * both mention a zebrafish.
      *
      * @return array{0: PDO, 1: string, 2: string} the database, the project root and its id
      */
@@ -69,6 +71,9 @@ trait PaneAgreementGraph
         $edge('implements', $adapter, $port);
         $edge('calls', $go, $portRun);
         $repository->completeScan($ids['project'], $ids['scan']);
+        $note = $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, ?, 'note', ?, 'model', '2026-10-16T10:00:00Z', '2026-10-16T10:00:00Z')");
+        $note->execute([$ids['project'], 'App\\Target', 'Built once per request; the zebrafish cache keeps it.']);
+        $note->execute([$ids['project'], 'App\\Gone', 'Replaced by the zebrafish adapter.']);
 
         return [$pdo, '/workspace/fixture-shop', $ids['project']];
     }

@@ -536,6 +536,7 @@ Search components by name, attribute, role, or the text of a note on them, with 
 | `confidences` | array | no | maxItems=20 |
 | `limit` | integer | no | minimum=1; maximum=100; default=20 |
 | `offset` | integer | no | minimum=0; maximum=100000; default=0 |
+| `files` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 

@@ -697,6 +697,7 @@ final readonly class ToolCatalog
                     'confidences' => ['type' => 'array', 'maxItems' => 20, 'items' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible']]],
                     'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 20],
                     'offset' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100000, 'default' => 0],
+                    'files' => ['type' => 'boolean', 'default' => false, 'description' => 'Also list the project files whose path holds every term, and when the query names a file no component matches, what that file declares.'],
                 ], 'required' => ['project_id', 'query'], 'additionalProperties' => false],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
             ],
