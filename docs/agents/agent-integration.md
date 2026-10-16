@@ -253,6 +253,11 @@ knossos list-annotations project_... --json
 `false_positive`, `intentional`, `confirmed_dead` and `note` change what another tool shows.
 `intended_boundary` is recorded and listed, and no tool reads it.
 
+A sixth kind, `check`, is the person's and only the pane writes it: a request
+that you look at a component's note again, its value the reason (possibly
+empty). `list_annotations` lists it and `annotate_component` refuses it. Your
+next `note` on that component clears it.
+
 ### Survival across rescans
 
 Every scan rebuilds `nodes` and everything keyed to a node id, because node ids

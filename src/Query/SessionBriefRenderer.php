@@ -72,8 +72,36 @@ final readonly class SessionBriefRenderer
             [$verdict, $this->identity($brief)],
             array_filter($sections, static fn(?string $section): bool => $section !== null),
             $budget,
-            self::NOTE_RULE,
+            implode("\n", [self::NOTE_RULE, ...self::checks($brief->checks)]),
         );
+    }
+
+    /** How many flagged components the check line names before counting the rest. */
+    private const CHECKS_NAMED = 5;
+
+    /**
+     * The person's request to check flagged notes, as one line, or none.
+     * Part of the floor beside the note rule: it is the person asking, so a
+     * tight budget never drops it.
+     *
+     * @param list<string> $checks
+     * @return list<string>
+     */
+    private static function checks(array $checks): array
+    {
+        if ($checks === []) {
+            return [];
+        }
+        $named = implode(', ', array_slice($checks, 0, self::CHECKS_NAMED));
+        $rest = count($checks) - self::CHECKS_NAMED;
+
+        return [sprintf(
+            'The user asked you to check %d note%s: %s%s. Read each one and rewrite it with annotate_component; your note clears the request.',
+            count($checks),
+            count($checks) === 1 ? '' : 's',
+            $named,
+            $rest > 0 ? sprintf(' and %d more', $rest) : '',
+        )];
     }
 
     /**

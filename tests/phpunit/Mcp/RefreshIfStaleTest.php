@@ -105,7 +105,7 @@ final class RefreshIfStaleTest extends KnossosTestCase
         yield 'diagram format' => ['export_diagram', ['format' => 'bogus'], 'format must be mermaid or plantuml.'];
         yield 'diagram direction' => ['export_diagram', ['direction' => 'bogus'], 'direction must be LR or TB.'];
         yield 'boundary source' => ['list_boundaries', ['source' => 'bogus'], 'source must be explicit or inferred.'];
-        yield 'annotation kind' => ['list_annotations', ['kind' => 'bogus'], 'kind must be one of: intended_boundary, confirmed_dead, false_positive, intentional, note.'];
+        yield 'annotation kind' => ['list_annotations', ['kind' => 'bogus'], 'kind must be one of: intended_boundary, confirmed_dead, false_positive, intentional, note, check.'];
         yield 'confidence filter items' => ['search_architecture', ['query' => 'checkout', 'confidences' => ['bogus']], 'confidence filter is invalid.'];
         // Policy and budget contents, by the validators the services use.
         yield 'a policy id' => ['check_architecture', ['policies' => [['id' => '', 'from_boundary' => 'core', 'deny_targets' => ['tests']]]], 'Policy id must be a non-empty string of at most 100 characters.'];

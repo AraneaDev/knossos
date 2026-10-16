@@ -127,6 +127,16 @@ gets when it digs past a Knossos answer. Said only in that reminder, which a
 tool result carries, agents skipped it as a write nobody had asked for. The
 brief is where a session takes its standing instructions.
 
+**The check request**, after the note rule, when you have flagged notes for the
+model from the pane (a `check` annotation):
+
+```text
+The user asked you to check 2 notes: App\Checkout, App\InvoiceService. Read each one and rewrite it with annotate_component; your note clears the request.
+```
+
+It names five components and counts the rest. The model's next note on a
+component clears that request.
+
 Rules and notes appear for every state that has a project, since a stale scan
 says nothing about whether a declared rule or a written note still holds.
 Entry and Hubs appear only when the graph is `fresh`: both are read from the
@@ -153,9 +163,9 @@ A section is kept only while the running total, pointer included, still fits.
 One that does not fit is dropped whole, since a cut list reads as a complete
 one.
 
-The verdict, the identity line, the note rule and the pointer are always
-printed, even past the budget. The note rule does not count toward it, so it
-never pushes out a section. A long path can push the brief over its budget. That
+The verdict, the identity line, the note rule, the check request and the
+pointer are always printed, even past the budget. The note rule and the check
+request do not count toward it, so they never push out a section. A long path can push the brief over its budget. That
 is the price of never printing a broken command or a brief that does not say
 which project it describes.
 

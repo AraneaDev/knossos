@@ -568,4 +568,26 @@ final class SessionBriefRendererTest extends TestCase
         assertSame(true, str_contains($text, '`knossos:graph` skill'));  // never dropped
         assertSame(false, str_contains($text, 'Hub1xxxx'));        // dropped whole, not truncated
     }
+
+    /**
+     * The request to check flagged notes is part of the floor, as the note
+     * rule is: a stale brief whose sections overflow its budget still says
+     * it, naming five and counting the rest.
+     */
+    #[Group('query')]
+    public function testTheCheckLineStaysUnderATightBudgetAndNamesFive(): void
+    {
+        $brief = new SessionBrief(
+            'stale', 'project_1b4f41', 'Knossos-MCP', '/root/Knossos-MCP', 3600, 3, 402,
+            [str_repeat('core -x-> php-worker, ', 200)],
+            [str_repeat('a long note ', 300)],
+            checks: ['App\\A', 'App\\B', 'App\\C', 'App\\D', 'App\\E', 'App\\F'],
+        );
+
+        $text = (new SessionBriefRenderer())->render($brief);
+
+        assertSame(false, str_contains($text, 'a long note'));
+        assertSame(true, str_contains($text, 'The user asked you to check 6 notes: App\\A, App\\B, App\\C, App\\D, App\\E and 1 more.'));
+        assertSame(false, str_contains((new SessionBriefRenderer())->render($this->brief('stale')), 'asked you to check'));
+    }
 }

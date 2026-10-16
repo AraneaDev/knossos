@@ -208,6 +208,41 @@ expect_silent_success 'annotate refuses the value first' env KNOSSOS_BIN="$STUBS
 expect_silent_success 'annotate refuses a note with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A "--value=a
 b"
 expect_silent_success 'annotate refuses a note past 2,000 characters' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A "--value=$(printf '%02001d' 0)"
+# annotate removes a note: the component, --remove, then the author and the kind it names, and --execute last.
+expect_output 'annotate removes the model note it names' "annotate|$ABS_PROJ|--component=A|--remove|--author=model|--kind=note|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --author=model --kind=note --execute
+expect_output 'annotate previews removing the persons note' "annotate|$ABS_PROJ|--component=A|--remove|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove
+expect_silent_success 'annotate refuses an author it does not know' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --author=root
+expect_silent_success 'annotate refuses the check kind' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --kind=check
+expect_silent_success 'annotate refuses a remove with a note' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --value=x
+# notes: the filter from its fixed set, then the text, each at most once.
+expect_output 'notes asks for the project alone' "notes|$ABS_PROJ|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj"
+expect_output 'notes passes a filter and a text' "notes|$ABS_PROJ|--filter=stale|--text=cache|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --filter=stale --text=cache
+expect_silent_success 'notes refuses a filter it does not know' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --filter=everything
+expect_silent_success 'notes refuses the text first' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --text=a --filter=all
+expect_silent_success 'notes refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --db=/tmp/x
+# note-adopt: the component, the edited note, --execute last.
+expect_output 'note-adopt records the edited note' "note-adopt|$ABS_PROJ|--component=A|--value=mine|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --component=A --value=mine --execute
+expect_silent_success 'note-adopt refuses an option-looking component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --db=/tmp/x
+expect_silent_success 'note-adopt refuses a note with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --component=A "--value=a
+b"
+# note-move: the component, where it goes, the author and the kind, --execute last.
+expect_output 'note-move moves a model note' "note-move|$ABS_PROJ|--component=A|--to=B|--author=model|--kind=note|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=B --author=model --kind=note --execute
+expect_silent_success 'note-move refuses no target' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A
+expect_silent_success 'note-move refuses an empty target' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=
+expect_silent_success 'note-move refuses --execute before the author' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=B --execute --author=model
+# note-check: the component, the reason or --remove, --execute last.
+expect_output 'note-check flags with a reason' "note-check|$ABS_PROJ|--component=A|--value=still?|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value=still? --execute
+expect_output 'note-check takes the flag back' "note-check|$ABS_PROJ|--component=A|--remove|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --remove --execute
+expect_silent_success 'note-check refuses a reason and a remove' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value=x --remove
+expect_silent_success 'note-check refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --db=/tmp/x
 
 # watch: the live watcher, `knossos watch --shared`, with at most its poll interval.
 expect_output 'watch runs the shared watcher on the project' "watch|$ABS_PROJ|--shared|--poll-ms=1500|" \
@@ -375,6 +410,20 @@ expect_output 'container annotate records a confirmed note' "img:1|annotate|$ABS
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --value=n --execute
 expect_silent_success 'container annotate refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --value=n --db=/tmp/x
+expect_output 'container annotate removes a model note' "img:1|annotate|$ABS_PROJ|--component=A|--remove|--author=model|--execute|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --remove --author=model --execute
+expect_output 'container notes passes the filter' "img:1|notes|$ABS_PROJ|--filter=missing|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" notes "$STUBS/proj" --filter=missing
+expect_silent_success 'container notes refuses another option' \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" notes "$STUBS/proj" --db=/tmp/x
+expect_output 'container note-adopt records the note' "img:1|note-adopt|$ABS_PROJ|--component=A|--execute|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-adopt "$STUBS/proj" --component=A --execute
+expect_output 'container note-move moves the note' "img:1|note-move|$ABS_PROJ|--component=A|--to=B|--execute|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-move "$STUBS/proj" --component=A --to=B --execute
+expect_silent_success 'container note-move refuses another option' \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-move "$STUBS/proj" --component=A --to=B --db=/tmp/x
+expect_output 'container note-check flags the note' "img:1|note-check|$ABS_PROJ|--component=A|--execute|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-check "$STUBS/proj" --component=A --execute
 expect_output 'container path-between passes both ends' "img:1|path-between|$ABS_PROJ|--from=A|--to=B|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" path-between "$STUBS/proj" --from=A --to=B
 expect_output 'container blast-radius passes the component' "img:1|blast-radius|$ABS_PROJ|--component=A|--json|" \

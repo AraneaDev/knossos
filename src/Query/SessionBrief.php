@@ -72,6 +72,9 @@ final readonly class SessionBrief
      *   necessarily the one derived here. Null when there was none to consult,
      *   which is the ':memory:' and no-database case, and the verdict then
      *   keeps its unqualified wording rather than inventing a path.
+     * @param list<string> $checks the components whose note the person
+     *   flagged for the model to look at again (a `check` annotation),
+     *   by canonical name
      */
     public function __construct(
         public string $state,
@@ -91,5 +94,6 @@ final readonly class SessionBrief
         public bool $queriedPathExists = true,
         public ?string $rootsFile = null,
         public int $missingNotes = 0,
+        public array $checks = [],
     ) {}
 }

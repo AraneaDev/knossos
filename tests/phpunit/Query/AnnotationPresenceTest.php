@@ -30,4 +30,28 @@ final class AnnotationPresenceTest extends KnossosTestCase
         self::assertSame(['App\\Checkout' => 'present', 'App\\RenamedAway' => 'missing'], $presence);
         self::assertSame('Found 2 annotations, 1 on a component the graph no longer has.', $result->summary);
     }
+
+    /**
+     * A model note whose file changed since it was written is marked stale,
+     * with the reason; a person's note never is.
+     */
+    public function testAListingMarksStaleModelNotesAndNeverAPersons(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the model saw this', execute: true);
+        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the person wrote this', execute: true, author: 'user');
+        $queries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'declared in that file too', execute: true);
+        $before = array_column($queries->listAnnotations($ids['project'])->data['annotations'], 'stale');
+        $pdo->exec("UPDATE files SET content_hash = 'edited' WHERE relative_path = 'src/Checkout.php'");
+
+        $rows = $queries->listAnnotations($ids['project'])->data['annotations'];
+
+        self::assertSame([false, false, false], $before);
+        self::assertSame(
+            [['user', false, null], ['model', true, 'written before src/Checkout.php changed'], ['model', true, 'written before src/Checkout.php changed']],
+            array_map(static fn(array $row): array => [$row['author'], $row['stale'], $row['stale_reason']], $rows),
+        );
+    }
 }

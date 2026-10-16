@@ -814,4 +814,25 @@ final class SessionBriefServiceTest extends KnossosTestCase
             }
         }
     }
+
+    /** A note the person flagged is named in the brief, so the next session looks at it again. */
+    #[Group('query')]
+    public function testTheBriefAsksTheModelToCheckFlaggedNotes(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
+        $insert = $pdo->prepare(
+            'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
+            "VALUES(:p, :n, :k, '', 'user', '2026-09-01T12:00:00+00:00', '2026-09-01T12:00:00+00:00')",
+        );
+        $insert->execute(['p' => $ids['project'], 'n' => 'App\\InvoiceService', 'k' => 'check']);
+        $insert->execute(['p' => $ids['project'], 'n' => 'App\\Checkout', 'k' => 'check']);
+        $insert->execute(['p' => $ids['project'], 'n' => 'App\\Checkout', 'k' => 'note']);
+
+        $service = new SessionBriefService($pdo);
+
+        self::assertSame(['App\\Checkout', 'App\\InvoiceService'], $service->gather($root)->checks);
+        self::assertStringContainsString('The user asked you to check 2 notes: App\\Checkout, App\\InvoiceService.', $service->brief($root));
+    }
 }

@@ -527,8 +527,16 @@ final class BriefCommandTest extends KnossosTestCase
             assertSame([0, 'ok'], [$status, $out['status']]);
             [$status, $out] = $this->runJson('annotate', [$root], ['component' => ['App\\Greeter'], 'value' => ['a note']]);
             assertSame([0, 'ok', false], [$status, $out['status'], $out['executed']]);
+            [$status, $out] = $this->runJson('notes', [$root], ['filter' => ['all'], 'text' => ['x']]);
+            assertSame([0, 'ok', ['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0]], [$status, $out['status'], $out['counts']]);
+            [$status, $out] = $this->runJson('note-check', [$root], ['component' => ['App\\Greeter'], 'value' => ['look again']]);
+            assertSame([0, 'ok', false], [$status, $out['status'], $out['executed']]);
+            [$status, $out] = $this->runJson('note-adopt', [$root], ['component' => ['App\\Greeter']]);
+            assertSame([0, 'refused'], [$status, $out['status']]);
+            [$status, $out] = $this->runJson('note-move', [$root], ['component' => ['App\\Gone'], 'to' => ['App\\Greeter']]);
+            assertSame([0, 'refused'], [$status, $out['status']]);
             // A missing end, an option another command takes, a stray argument: an error status, never a failure.
-            foreach ([['blast-radius', [$root], []], ['path-between', [$root], ['from' => ['a']]], ['churn', [$root], ['query' => ['x']]], ['annotate', [$root], ['value' => ['x']]], ['churn', [$root, 'b'], []]] as [$command, $positionals, $options]) {
+            foreach ([['blast-radius', [$root], []], ['path-between', [$root], ['from' => ['a']]], ['churn', [$root], ['query' => ['x']]], ['annotate', [$root], ['value' => ['x']]], ['churn', [$root, 'b'], []], ['note-move', [$root], ['component' => ['a']]], ['notes', [$root], ['component' => ['a']]]] as [$command, $positionals, $options]) {
                 assertSame([0, ['status' => 'error']], $this->runJson($command, $positionals, $options), $command);
             }
         } finally {
@@ -543,7 +551,7 @@ final class BriefCommandTest extends KnossosTestCase
         $directory = $this->temporaryDirectory();
         $router = new CliCommandRouter(self::repositoryRoot(), new CliOptionParser(), new CliHelpRenderer(), 'test');
         try {
-            foreach ([['churn', []], ['blast-radius', ['component' => ['A']]], ['path-between', ['from' => ['A'], 'to' => ['B']]], ['annotate', ['component' => ['A'], 'value' => ['x'], 'execute' => ['true']]]] as [$command, $options]) {
+            foreach ([['churn', []], ['blast-radius', ['component' => ['A']]], ['path-between', ['from' => ['A'], 'to' => ['B']]], ['annotate', ['component' => ['A'], 'value' => ['x'], 'execute' => ['true']]], ['notes', []], ['note-check', ['component' => ['A'], 'execute' => ['true']]], ['note-adopt', ['component' => ['A'], 'execute' => ['true']]], ['note-move', ['component' => ['A'], 'to' => ['B'], 'execute' => ['true']]]] as [$command, $options]) {
                 ob_start();
                 $status = $router->route($command, [$directory], $options + ['json' => ['true']]);
                 $out = json_decode((string) ob_get_clean(), true);

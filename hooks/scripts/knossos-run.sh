@@ -18,6 +18,11 @@
 #        knossos-run.sh blast-radius <project-dir> --component=<name>
 #        knossos-run.sh path-between <project-dir> --from=<name> --to=<name>
 #        knossos-run.sh annotate <project-dir> --component=<name> --value=<note> [--execute]
+#        knossos-run.sh annotate <project-dir> --component=<name> --remove [--author=user|model] [--kind=<kind>] [--execute]
+#        knossos-run.sh notes <project-dir> [--filter=<filter>] [--text=<text>]
+#        knossos-run.sh note-adopt <project-dir> --component=<name> [--value=<note>] [--execute]
+#        knossos-run.sh note-move <project-dir> --component=<name> --to=<name> [--author=user|model] [--kind=<kind>] [--execute]
+#        knossos-run.sh note-check <project-dir> --component=<name> [--value=<reason> | --remove] [--execute]
 #
 # Every failure exits 0. All but one print nothing: the mod reads silence as
 # "no data", keeps its last figures with their age and asks again later, so a
@@ -99,6 +104,8 @@ case "$SUBCOMMAND" in
     branch-diff) LIMIT=${KNOSSOS_RUN_TIMEOUT:-30} ;;
     # A git log of the last 30 days, a search out from one component, two route searches, a note.
     churn|blast-radius|path-between|annotate) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
+    # The Notes tab: every note read with its staleness, or one note written.
+    notes|note-adopt|note-move|note-check) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     allow-root) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     session-changes|session-head|session-diff|boundary-couplings) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     watch) LIMIT=0 ;;
@@ -160,18 +167,97 @@ if [ "$SUBCOMMAND" = path-between ]; then
     case "$2" in --to=) exit 0 ;; --to=*) ;; *) exit 0 ;; esac
     is_text_line "$1" 520 && is_text_line "$2" 520 || exit 0
 fi
+# Whether "$1" is a kind of note the pane may name. Not `check`: the person's
+# request has its own command, note-check.
+is_kind() {
+    case "$1" in note | intended_boundary | confirmed_dead | false_positive | intentional) return 0 ;; esac
+    return 1
+}
+# Whether the options from the "$1"th on are, each at most once and in this
+# order, among: `--author=user|model` (a), `--kind=<kind>` (k) and `--execute`
+# (e), as "$2" lists the ones allowed (say `ake`). Positions count from 1, the
+# remaining arguments follow.
+in_order() (
+    from=$1
+    allowed=$2
+    shift 2
+    at=0
+    stage=0
+    for arg in "$@"; do
+        at=$((at + 1))
+        [ "$at" -ge "$from" ] || continue
+        case "$arg" in
+            --author=user | --author=model) step=1 letter=a ;;
+            --kind=*) is_kind "${arg#--kind=}" || exit 1; step=2 letter=k ;;
+            --execute) step=3 letter=e ;;
+            *) exit 1 ;;
+        esac
+        case "$allowed" in *"$letter"*) ;; *) exit 1 ;; esac
+        [ "$step" -gt "$stage" ] || exit 1
+        stage=$step
+    done
+)
 # annotate takes the component, a note of one line of text (at most 2,000
 # characters) and, last, `--execute` when the person confirmed the preview in
-# the pane: without it nothing is written. Nothing else: an option such as
-# `--db=...` would write into another graph.
+# the pane: without it nothing is written. Or, to remove one, the component,
+# `--remove`, then the author and the kind of the note it names. Nothing else:
+# an option such as `--db=...` would write into another graph.
 if [ "$SUBCOMMAND" = annotate ]; then
-    [ "$#" -eq 2 ] || [ "$#" -eq 3 ] || exit 0
+    [ "$#" -ge 2 ] && [ "$#" -le 5 ] || exit 0
     case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    case "$2" in --value=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 && is_text_line "$2" 2008 || exit 0
-    if [ "$#" -eq 3 ]; then
-        [ "$3" = --execute ] || exit 0
+    is_text_line "$1" 520 || exit 0
+    if [ "$2" = --remove ]; then
+        in_order 3 ake "$@" || exit 0
+    else
+        [ "$#" -le 3 ] || exit 0
+        case "$2" in --value=*) ;; *) exit 0 ;; esac
+        is_text_line "$2" 2008 || exit 0
+        in_order 3 e "$@" || exit 0
     fi
+fi
+# notes takes, each at most once and in this order, the filter (one of a fixed
+# set) and the text the list is narrowed by, one line of at most 200 characters.
+if [ "$SUBCOMMAND" = notes ]; then
+    [ "$#" -le 2 ] || exit 0
+    stage=0
+    for arg in "$@"; do
+        case "$arg" in
+            --filter=all | --filter=yours | --filter=model | --filter=stale | --filter=missing | --filter=flagged) step=1 ;;
+            --text=*) is_text_line "$arg" 207 || exit 0; step=2 ;;
+            *) exit 0 ;;
+        esac
+        [ "$step" -gt "$stage" ] || exit 0
+        stage=$step
+    done
+fi
+# note-adopt takes the component, the note as the person edited it (one line,
+# at most 2,000 characters) and, last, `--execute`.
+if [ "$SUBCOMMAND" = note-adopt ]; then
+    [ "$#" -ge 1 ] && [ "$#" -le 3 ] || exit 0
+    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
+    is_text_line "$1" 520 || exit 0
+    from=2
+    case "${2:-}" in --value=*) is_text_line "$2" 2008 || exit 0; from=3 ;; esac
+    in_order "$from" e "$@" || exit 0
+fi
+# note-move takes the component, the one the note moves to, then the author and
+# the kind of the note, and, last, `--execute`.
+if [ "$SUBCOMMAND" = note-move ]; then
+    [ "$#" -ge 2 ] && [ "$#" -le 5 ] || exit 0
+    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
+    case "$2" in --to=) exit 0 ;; --to=*) ;; *) exit 0 ;; esac
+    is_text_line "$1" 520 && is_text_line "$2" 520 || exit 0
+    in_order 3 ake "$@" || exit 0
+fi
+# note-check takes the component, the reason (one line, at most 2,000
+# characters) or `--remove` to take the request back, and, last, `--execute`.
+if [ "$SUBCOMMAND" = note-check ]; then
+    [ "$#" -ge 1 ] && [ "$#" -le 3 ] || exit 0
+    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
+    is_text_line "$1" 520 || exit 0
+    from=2
+    case "${2:-}" in --value=*) is_text_line "$2" 2008 || exit 0; from=3 ;; --remove) from=3 ;; esac
+    in_order "$from" e "$@" || exit 0
 fi
 # scan takes nothing but the project: an option such as `--db=...` would point the write at another graph.
 if [ "$SUBCOMMAND" = scan ]; then
