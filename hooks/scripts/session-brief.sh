@@ -2,8 +2,9 @@
 # Injects a Knossos orientation brief at session start.
 #
 # Read-only: it never scans, writes, or executes project code. Every failure
-# path is identical, exit 0 with nothing on stdout, because a hook that breaks
-# a session start costs more than the brief was ever worth.
+# path exits 0, and all but one print nothing, because a hook that breaks a
+# session start costs more than the brief was ever worth. The exception is a
+# brief cut off by the timeout, which prints one line saying so.
 set -u
 
 # The directory the hook works in, resolved below to its physical path.
@@ -78,7 +79,15 @@ BIN="$(find_knossos)" || exit 0
 
 # Bound the worst case so a locked SQLite file cannot stall a session start.
 if TIMEOUT_BIN="$(find_timeout)"; then
-    OUTPUT="$("$TIMEOUT_BIN" 3 "$BIN" session-brief "$PROJECT_DIR" 2>/dev/null)" || exit 0
+    OUTPUT="$("$TIMEOUT_BIN" 3 "$BIN" session-brief "$PROJECT_DIR" 2>/dev/null)"
+    STATUS=$?
+    # The one failure that says so: a brief cut off by the bound leaves the
+    # session without one, and silence would give no hint why. Still exit 0.
+    if [ "$STATUS" -eq 124 ]; then
+        printf "Knossos brief timed out after 3 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
+        exit 0
+    fi
+    [ "$STATUS" -eq 0 ] || exit 0
 else
     # Neither `timeout` nor `gtimeout` exists here, so this one call has no
     # bound of its own. The backstop is the harness: hooks.json sets this

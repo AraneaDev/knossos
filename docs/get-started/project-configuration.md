@@ -105,8 +105,14 @@ file.
 | `refresh_budget_ms`     | 0 to 600,000 (5,000)          | How long `refresh_if_stale` may rescan inside one query. |
 
 Every file a worker reports and every heartbeat restarts the `worker_timeout_ms`
-wait, and no request runs longer than 120,000 milliseconds. When a worker hits
-its heap cap, the scan error names `limits.worker_memory_mb` as the fix.
+wait, and no request runs longer than 120,000 milliseconds. The PHP, Python and
+Rust workers show life between files only, so for them the limit applies to
+each file: one file that takes longer to parse fails the scan with
+`WORKER_TIMEOUT`. The TypeScript worker sends a heartbeat every 5 seconds for
+the whole request, because it builds a program before it reports any file, so
+for it only the 120,000 millisecond cap applies.
+When a worker hits its heap cap, the scan error names `limits.worker_memory_mb`
+as the fix.
 
 `watch_scan_timeout_ms` bounds each scan of the [shared
 watcher](../operate/watch-mode.md#shared-mode) the Claude Code mod starts. It
