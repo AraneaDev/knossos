@@ -111,3 +111,37 @@ describe('the finder picking where a route ends', () => {
     expect(t).toContain('A route from BriefCommand::answer: type the letters of the component it should reach.')
   })
 })
+
+describe("a route's hops", () => {
+  const derived = {
+    nodes: [
+      { name: 'go', canonical: 'App\\User::go', kind: 'method', boundary: 'core' },
+      { name: 'run', canonical: 'App\\Port::run', kind: 'method', boundary: 'core' },
+      { name: 'run', canonical: 'App\\Adapter::run', kind: 'method', boundary: 'core' },
+    ],
+    hops: [
+      { kind: 'calls', place: 'src/User.php:9', loc: null, confidence: 'certain', derived: false },
+      { kind: 'implemented_by', place: '', loc: null, confidence: 'probable', derived: true },
+    ],
+  }
+
+  it('draws a derived hop dotted and says how sure a hop is when it is not certain', () => {
+    const wide = routeDiagram(derived, 80, -1).rows.map(plainText).join('\n')
+    expect(wide).toContain('┆')
+    expect(wide).toContain('implemented_by · probable · derived')
+    expect(wide).not.toContain('calls · certain')
+    const narrow = routeDiagram(derived, 48, -1).rows.map(plainText).join('\n')
+    expect(narrow).toContain('⇣ implemented_by · probable · derived')
+    expect(narrow).toContain('↓ calls · src/User.php:9')
+  })
+
+  it('reads the confidence and the derived mark from the answer', () => {
+    const answer: PathBetween = {
+      status: 'ok', from: node('App\\User::go'), to: node('App\\Adapter::run'), reversed: false, truncated: false,
+      routes: [{ nodes: [node('App\\User::go'), node('App\\Port::run'), node('App\\Adapter::run')], hops: [{ kind: 'calls', confidence: 'certain', derived: false, path: 'src/User.php', line: 9 }, { kind: 'implemented_by', confidence: 'probable', derived: true, path: null, line: null }] }],
+    }
+    const input = routeInput({ from: FROM.name, to: TO.name, snapshot: 's1', phase: 'done', answer }, FROM, TO, 0, ROOT)
+    expect(input.routes[0]?.hops.map(h => [h.confidence, h.derived])).toEqual([['certain', false], ['probable', true]])
+  })
+})
+

@@ -82,3 +82,23 @@ describe('the finder', () => {
     expect(found(rowsAt(29)).at(-1)).toBe(29)
   })
 })
+
+describe("the finder's notes on missing names", () => {
+  const withNotes = (s: SearchState): SearchState => ({ ...s, answer: { ...(s.answer as GraphSearch), notes: [{ canonical_name: 'App\\Gone', kind: 'note', author: 'model', text: 'Replaced by the dash adapter.\nMore.', written: '2026-10-16', component_status: 'missing' }] } })
+  const drawn = (s: SearchState, v = view()) => paneLayout(pane(s, v), 100, 60).body.map(plainText).join('\n')
+
+  it('lists a note on a name no component holds under the matches, a press away from the Notes tab, never walked', () => {
+    const t = drawn(withNotes(state({})))
+    expect(t).toContain('Notes on names the graph no longer holds')
+    expect(t).toMatch(/▲ Gone +model +Replaced by the dash adapter\./)
+    expect(listFor(pane(withNotes(state({}))))).toHaveLength(4)
+    const press = paneLayout(pane(withNotes(state({}))), 100, 60).body.flatMap(r => r.segments).find(seg => seg.press?.id === 'finder-note:App\\Gone')
+    expect(press).toBeDefined()
+  })
+
+  it('shows none while it picks where a route ends or a note moves', () => {
+    expect(drawn(withNotes(state({})), view({ picking: { name: 'App\\A', label: 'A' } }))).not.toContain('no longer holds')
+    expect(drawn(withNotes(state({})), view({ moving: { component: 'App\\Gone', author: 'model', kind: 'note' } }))).not.toContain('no longer holds')
+  })
+})
+

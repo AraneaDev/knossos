@@ -27,7 +27,7 @@
  *
  * Text is always in a text tone; colour is on the marks (bars, swatches).
  */
-import type { Dashboard } from '../../types'
+import type { Dashboard, NoteCounts, NotesFilter } from '../../types'
 import type { Block, Section } from './cards'
 import { noteOf } from './cards'
 import { timelineRow, untestedText } from './changes'
@@ -37,7 +37,8 @@ import type { Hues } from './palette'
 import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Openable } from './views'
-import { PLACE, REACH, mark } from './marks'
+import { NOTE, PLACE, REACH, mark } from './marks'
+import { countsLine } from './notes-view'
 
 /** One part of a whole: its label, how many, and how its share of the bar is drawn (a glyph in a colour). */
 export type Part = { label: string; value: number; glyph: string; colour: string }
@@ -67,9 +68,11 @@ export type OverviewData = {
   /** Every dependency between labelled components the matrix counted. */
   flowEdges: number
   flowsPartial: boolean
+  /** How many notes the project holds and how many need the person; null with none, or from a knossos that does not count them. */
+  notes: NoteCounts | null
 }
 
-export const NO_OVERVIEW: OverviewData = { composition: [], buckets: [], bucketsPartial: false, health: [], healthLimit: [], flows: [], flowEdges: 0, flowsPartial: false }
+export const NO_OVERVIEW: OverviewData = { composition: [], buckets: [], bucketsPartial: false, health: [], healthLimit: [], flows: [], flowEdges: 0, flowsPartial: false, notes: null }
 
 /** The most parts a stacked bar names before the rest become "other": boundaries keep their colours, the others three textures. */
 const BOUNDARY_PARTS = 5
@@ -160,7 +163,8 @@ export function overviewData(d: Dashboard, hues: Hues): OverviewData {
         ...(limit === null ? [] : [`the live graph holds ${grouped(limit.rows)} rows in ${limit.table}`]),
       ]
     : []
-  return { composition, buckets, bucketsPartial: d.in_degree?.truncated === true, health, healthLimit, flows, flowEdges: m?.edges ?? 0, flowsPartial: m?.truncated === true }
+  const notes = d.notes !== undefined && d.notes !== null && d.notes.total > 0 ? d.notes : null
+  return { composition, buckets, bucketsPartial: d.in_degree?.truncated === true, health, healthLimit, flows, flowEdges: m?.edges ?? 0, flowsPartial: m?.truncated === true, notes }
 }
 
 /** A bucket as its row names it: `0`, `1–5`, `101+`. */
@@ -202,7 +206,31 @@ export function overviewList(data: OverviewData, changes: ChangesInput): Openabl
       ask: `Using the Knossos graph, why does ${f.from} depend on ${f.to} (${grouped(f.edges)} dependencies), and should any of it move?`,
     }),
   )
-  return [...sessionRow(changes), ...buckets, ...flows]
+  // Last, so the rows before it keep their places in the walk.
+  const notes: Openable[] = data.notes === null ? [] : [{ name: 'notes', canonical: 'notes', jump: { tab: 'notes', notesFilter: pressing(data.notes) }, ask: 'Using the Knossos notes, which notes in this project need looking at again, and why?' }]
+  return [...sessionRow(changes), ...buckets, ...flows, ...notes]
+}
+
+/** What the Notes tab opens on from the Overview: the group that needs the person most, else every note. */
+const pressing = (counts: NoteCounts): NotesFilter => (counts.missing > 0 ? 'missing' : counts.stale > 0 ? 'stale' : counts.flagged > 0 ? 'flagged' : 'all')
+
+/**
+ * The Overview's line about notes: how many the project holds and how many
+ * need the person, the most pressing in its mark's colour; `o` on it opens
+ * the Notes tab on that group. Null with no notes. `walk` is its place in
+ * the Overview's walk.
+ */
+export function notesLineBlock(data: OverviewData, selected: number, walk: number): Block | null {
+  const counts = data.notes
+  if (counts === null) return null
+  return {
+    key: 'notes',
+    make: (columns): Section => {
+      const tone = counts.missing > 0 ? mark(NOTE.missing, ' ') : counts.stale > 0 ? mark(NOTE.stale, ' ') : counts.flagged > 0 ? mark(NOTE.flagged, ' ') : { text: '' }
+      const line: Segment[] = [{ text: '  ' }, ...(tone.text === '' ? [] : [tone]), button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
+      return { key: 'notes', title: 'Notes', body: [walked('notes-line', selected === walk, line, columns)] }
+    },
+  }
 }
 
 /** The marker and tint of a walkable row: `›` and the tint when marked. */

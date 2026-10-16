@@ -11,7 +11,7 @@ import { diffBlock } from './diff'
 import type { DiffView } from './diff'
 import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
-import type { ComponentDetail, Counterpart, Dashboard, Diagnostic, DetailState, Inspected, NoteState, PaneTab } from '../../types'
+import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, Inspected, NotesFilter, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
 import type { RingsInput } from './rings'
 import { countLabel, detailLines } from './envelopes'
@@ -75,7 +75,7 @@ export type Openable = {
  * range Hubs narrows to, the row its marker starts on, and the boundary a
  * Boundaries cell runs to.
  */
-export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null }; selected?: number; target?: string }
+export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null }; selected?: number; target?: string; notesFilter?: NotesFilter }
 
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
 /** `certainty` is the candidate's confidence, `probable` or `possible`: how sure the scan is that nothing reaches it. */

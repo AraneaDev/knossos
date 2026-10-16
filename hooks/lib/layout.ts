@@ -50,7 +50,7 @@ import { LIVE_OFF } from './live'
 import { CARD_MAX, componentFigures, fileFigures, previewCard } from './hover'
 import { tilesBlock } from './tiles'
 import type { Stat } from './tiles'
-import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
+import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLineBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
 import { churnArrangement, churnInput, churnList } from './churn'
@@ -530,7 +530,7 @@ export function paneInput(
     target: view.target ?? null,
     couplings: shownCouplings(boundaries, view, d.snapshot_id ?? null, extras.couplings ?? null),
     lit,
-    finder: view.finding === true && extras.search !== undefined && extras.search !== null ? finderInput(extras.search, d.project_root, view.picking?.label ?? null) : null,
+    finder: view.finding === true && extras.search !== undefined && extras.search !== null ? finderInput(extras.search, d.project_root, view.picking?.label ?? null, (view.moving ?? null) !== null) : null,
     branch: branchInput(extras.branch ?? null, d.project_root),
     peek,
     churn: churnInput(extras.churn ?? null, d.project_root),
@@ -1160,13 +1160,14 @@ function overviewArrangement(input: PaneInput, selected: number, tier: Tier): Ar
   const concentration = concentrationBlock(data, selected, session)
   const health = healthBlock(data)
   const flows = flowsBlock(data, input.hues, selected, session + data.buckets.length)
+  const notes = notesLineBlock(data, selected, session + data.buckets.length + data.flows.length)
   const present = (blocks: (Block | null)[]): Block[] => blocks.filter((b): b is Block => b !== null)
   // A card with nothing to show is one line: it stands on a row of its own rather than beside a card it cannot match in height.
   const quiet = data.flows.length === 0
-  const rows: Block[][] = [[sessionCard], present([composition, concentration]), present([health, ...(quiet ? [] : [flows])]), ...(quiet ? [[flows]] : [])].filter(line => line.length > 0)
+  const rows: Block[][] = [[sessionCard], present([composition, concentration]), present([health, ...(quiet ? [] : [flows])]), ...(quiet ? [[flows]] : []), present([notes])].filter(line => line.length > 0)
   // A tall pane's spare rows go to the files a change is riskiest in and the files most depended on, rather than to blank space.
   const extra = present([spotsBlock(input), topFilesBlock(input)])
-  return { top: tiles, left: [], rows, split: 0.5, order: [...tiles, sessionCard, ...present([composition, concentration, health, flows])], ...(extra.length > 0 ? { extra: [extra] } : {}) }
+  return { top: tiles, left: [], rows, split: 0.5, order: [...tiles, sessionCard, ...present([composition, concentration, health, flows, notes])], ...(extra.length > 0 ? { extra: [extra] } : {}) }
 }
 
 /** The fewest rows a secondary list on the Overview shows when it shows at all. */

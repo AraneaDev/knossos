@@ -14,7 +14,9 @@ import { moreRows, noteOf } from './cards'
 import type { Block } from './cards'
 import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
-import { clip, dimRow, displayName, placeOf, tableRow, tableSpec, wrapWords } from './rows'
+import { NOTE, mark } from './marks'
+import { labelOf } from './notes-view'
+import { button, clip, dimRow, displayName, fit, placeOf, tableRow, tableSpec, wrapWords } from './rows'
 import type { Loc, Row, Tier } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -31,13 +33,15 @@ export type FinderInput = {
   failed: boolean
   /** While it picks where a route ends (`p`): the component the route starts at, by its label. Only components are listed then. */
   routeFrom?: string
+  /** Notes on names no component holds that the words match: each a press onto the Notes tab, never walked. */
+  notes: { canonical: string; label: string; author: 'user' | 'model'; line: string }[]
 }
 
 /** The fewest matches the finder lists, however short the pane. */
 const FOUND_MIN = 5
 
 /** The finder's view of the search state; `root` places each match on disk. */
-export function finderInput(state: SearchState, root: string | null, routeFrom: string | null = null): FinderInput {
+export function finderInput(state: SearchState, root: string | null, routeFrom: string | null = null, picking = false): FinderInput {
   const answer = state.answer
   // A route runs between components: while one is picked, files are not offered.
   const results = (answer?.status === 'ok' ? answer.results : []).filter(r => routeFrom === null || r.type !== 'file').map(
@@ -59,6 +63,8 @@ export function finderInput(state: SearchState, root: string | null, routeFrom: 
     truncated: answer?.status === 'ok' && answer.truncated,
     failed: typed !== '' && state.phase === 'idle' && state.for === typed && answer?.status !== 'ok',
     ...(routeFrom === null ? {} : { routeFrom }),
+    // While it picks a component (a route's end, where a note moves), a note is no answer.
+    notes: typed === '' || routeFrom !== null || picking || answer?.status !== 'ok' ? [] : (answer.notes ?? []).map(n => ({ canonical: n.canonical_name, label: labelOf(n.canonical_name), author: n.author === 'user' ? 'user' : 'model', line: n.text.split('\n')[0]?.trim() ?? '' })),
   }
 }
 
@@ -93,6 +99,14 @@ export function finderBlock(finder: FinderInput, selected: number, tier: Tier, h
         // What is above and below, each a press that moves the marker onto the nearest match it counts, then the hint.
         const cut = moreRows('found-more', { start, end: start + shown.length }, list.length, columns, 0)[0]
         if (cut !== undefined) rows.push({ key: 'found-more', segments: clip([...cut.segments, { text: ' · type more to narrow', dim: true }], columns) })
+      }
+      if (finder.notes.length > 0) {
+        rows.push(dimRow('found-notes', '   Notes on names the graph no longer holds:', columns))
+        finder.notes.forEach((n, i) => {
+          const who = n.author === 'user' ? 'you' : 'model'
+          const room = Math.max(1, columns - 4 - n.label.length - who.length - 4)
+          rows.push({ key: `found-note-${i}`, segments: clip([{ text: '   ' }, mark(NOTE.missing, ' '), button(`finder-note:${n.canonical}`, n.label), { text: `  ${who}  `, dim: true }, { text: fit(n.line, room) }], columns) })
+        })
       }
       const note = finder.searching ? 'searching…' : finder.query.trim() === '' ? 'components and files' : `${list.length}${finder.truncated ? '+' : ''} found`
       return { key: 'find', title: finder.routeFrom === undefined ? 'Find' : `Route from ${finder.routeFrom} to…`, note: noteOf(note), body: rows }

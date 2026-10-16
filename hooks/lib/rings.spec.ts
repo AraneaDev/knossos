@@ -61,6 +61,16 @@ describe('the blast radius in a component detail', () => {
     expect(text(state({ ...radius(), tests_partial: true }))).toContain('34 dependents, tests apart, tests partly searched')
   })
 
+  it("counts a ring's probable members beside its count, and names the member a dependant came through", () => {
+    const r = radius()
+    r.rings[0] = { ...r.rings[0]!, by_confidence: { certain: 2, probable: 1, possible: 1 }, items: r.rings[0]!.items.map((m, i) => (i === 0 ? { ...m, via_member: 'App\\Store\\StableId::make' } : m)) }
+    const t = text(state(r))
+    expect(t).toContain('1 hop · 4 (2 probable)')
+    expect(t).toMatch(/Near0 via make/)
+    // None probable: the count alone.
+    expect(t).not.toContain('2 hops · 30 (')
+  })
+
   it('gives a ring its legend: how many are tested and how many are not', () => {
     expect(text(state(radius()))).toMatch(/✓ 3 tested · ▲ 1 untested/)
   })

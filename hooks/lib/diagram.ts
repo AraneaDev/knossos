@@ -126,6 +126,17 @@ function put(c: Canvas, x: number, y: number, cell: CellAt): void {
 }
 
 /**
+ * The straight vertical stretch of a connector at `x`, `y` drawn dotted (`┆`):
+ * a step no edge holds, only the graph's reading of it. A cell that is no
+ * plain vertical line (a turn, a junction, an arrowhead) is left as it is.
+ */
+export function dotted(c: Canvas, x: number, y: number): void {
+  const cell = at(c, x, y)
+  if (cell === undefined || cell.kind !== 'line' || cell.mask !== (UP | DOWN)) return
+  c.grid[y]![x] = { ch: '┆', kind: 'text', mask: 0, style: cell.style }
+}
+
+/**
  * A connector through `points` (each turn a point), each leg straight along
  * a row or a column. With `arrow`, its last point is an arrowhead pointing the
  * way the last leg runs.

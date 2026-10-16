@@ -66,7 +66,7 @@ async function openRow(io: Port, index?: number): Promise<void> {
   // An Overview chart's bar opens the tab it counts: Hubs narrowed to a bucket, a flow's cell on Boundaries, Changes.
   const jump = item.jump
   if (jump !== undefined) {
-    await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target }))
+    await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target, ...(jump.notesFilter === undefined ? {} : { notesFilter: jump.notesFilter, notesText: '' }) }))
     return
   }
   // A boundary opens nothing: marking it is what spells it out.
@@ -622,6 +622,8 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['notes-yes', io => confirmNotes(io)],
   ['notes-no', viewing(v => ({ ...v, notesAsk: null }))],
   ['notes-move:', (io, rest) => askMove(io, rest)],
+  // A note on a missing name the finder found: the Notes tab, on the missing notes, narrowed to its name.
+  ['finder-note:', viewing((v, rest) => ({ ...v, finding: false, picking: null, inspect: null, route: null, tab: 'notes', notesFilter: 'missing', notesText: rest, filtering: false, selected: 0 }))],
   ['clear', viewing(v => ({ ...v, filter: '', filtering: false, degree: null, selected: 0 }))],
   ['sort', viewing(v => ({ ...v, sort: SORTS[(SORTS.indexOf(v.sort) + 1) % SORTS.length] ?? 'in', selected: 0 }))],
   ['rescan', io => requestRescan(io)],

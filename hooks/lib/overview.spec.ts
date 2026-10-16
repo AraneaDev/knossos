@@ -304,3 +304,24 @@ describe('the overview pane', () => {
     expect(listFor(input)).toHaveLength(1 + 5 + 3)
   })
 })
+
+describe("the Overview's line about notes", () => {
+  const counted = { ...dash, notes: { total: 142, missing: 3, stale: 5, flagged: 1 } }
+  const drawn = (d: Dashboard) => paneLayout(paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, VIEW, 0, true, null, null), 120, 60).body.map(plainText).join('\n')
+
+  it('counts the notes and those that need the person, and opens the Notes tab on the most pressing', () => {
+    expect(drawn(counted)).toContain('142 notes · 3 missing · 5 stale · 1 flagged')
+    const list = overviewList(overviewData(counted, huesOf(counted)), changesInput(NO_CHANGES, ROOT))
+    expect(list.at(-1)).toMatchObject({ name: 'notes', jump: { tab: 'notes', notesFilter: 'missing' } })
+    const staleOnly = { ...dash, notes: { total: 4, missing: 0, stale: 2, flagged: 1 } }
+    expect(overviewList(overviewData(staleOnly, huesOf(staleOnly)), changesInput(NO_CHANGES, ROOT)).at(-1)?.jump).toEqual({ tab: 'notes', notesFilter: 'stale' })
+  })
+
+  it('says nothing, and walks nothing, without notes or from an older knossos', () => {
+    for (const d of [dash, { ...dash, notes: { total: 0, missing: 0, stale: 0, flagged: 0 } }]) {
+      expect(drawn(d)).not.toMatch(/\d+ notes?\b/)
+      expect(overviewList(overviewData(d, huesOf(d)), changesInput(NO_CHANGES, ROOT)).some(o => o.name === 'notes')).toBe(false)
+    }
+  })
+})
+
