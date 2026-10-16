@@ -101,6 +101,20 @@ final class AnnotationCheckTest extends KnossosTestCase
     }
 
     /**
+     * A result about the component carries the request in data.notes, a
+     * check without a reason too, so the agent sees it where it looks.
+     */
+    public function testAResultAboutTheComponentCarriesTheCheck(): void
+    {
+        [$pdo, $root, $projectId] = $this->paneAgreementGraph();
+        $this->pane($pdo, $root, ['component' => 'App\\Target', 'kind' => 'check'], execute: true);
+
+        $notes = ArchitectureQueryService::forDatabase($pdo)->findComponent($projectId, 'App\\Target')->data['notes'];
+
+        assertSame([['App\\Target', 'check', 'user', '']], array_map(static fn(array $note): array => [$note['component'], $note['kind'], $note['author'], $note['text']], array_values(array_filter($notes, static fn(array $note): bool => $note['kind'] === 'check'))));
+    }
+
+    /**
      * The pane's `annotate` command, as the wrapper passes it.
      *
      * @param array<string, string> $options

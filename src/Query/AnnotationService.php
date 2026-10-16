@@ -324,6 +324,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * Each row's `component_status` says whether its component is `present` in
      * the active graph or `missing`: notes are keyed by name, so a rename or a move leaves a note
      * on a name nothing carries any more, and only its author can move it.
+     * `stale` and `stale_reason` say whether a model annotation's files changed
+     * since it was written ({@see AnnotationNotes}); a person's never is.
      */
     public function listAnnotations(string $projectId, ?string $component = null, ?string $kind = null, int $limit = 100, int $offset = 0): ResultEnvelope
     {
@@ -335,7 +337,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         if ($kind !== null && !in_array($kind, self::KINDS, true)) {
             throw new InvalidArgumentException('kind must be one of: ' . implode(', ', self::KINDS) . '.');
         }
-        $sql = 'SELECT a.canonical_name, a.kind, a.value, a.author, a.created_at, a.updated_at, ' .
+        $sql = 'SELECT a.canonical_name, a.kind, a.value, a.author, a.created_at, a.updated_at, a.basis_json, ' .
             "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status " .
             'FROM annotations a WHERE a.project_id = :project';
         $parameters = ['project' => $projectId];
@@ -359,6 +361,11 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $rows = $statement->fetchAll();
         $truncated = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
+        $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
+        foreach ($rows as $index => $row) {
+            unset($row['basis_json']);
+            $rows[$index] = $row + ['stale' => $reasons[$index] !== null, 'stale_reason' => $reasons[$index]];
+        }
 
         $missing = count(array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing'));
 

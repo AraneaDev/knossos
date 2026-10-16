@@ -135,7 +135,21 @@ final readonly class SessionBriefService
             is_dir($queried),
             $rootStatus['roots_file'],
             $this->missingNotes($projectId),
+            $this->checks($projectId),
         );
+    }
+
+    /**
+     * The components the person flagged for the model to check, by name.
+     *
+     * @return list<string>
+     */
+    private function checks(string $projectId): array
+    {
+        $statement = $this->pdo->prepare("SELECT DISTINCT canonical_name FROM annotations WHERE project_id = :project AND kind = :kind AND author = 'user' ORDER BY canonical_name");
+        $statement->execute(['project' => $projectId, 'kind' => AnnotationService::CHECK]);
+
+        return array_map('strval', $statement->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     /**

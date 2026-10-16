@@ -29,6 +29,8 @@ final readonly class AnnotationNotes
 
     /**
      * The notes on the named components, the person's first, capped and cut.
+     * A person's `check` request is among them even without a reason: it is
+     * a request, not text.
      *
      * @param list<string> $canonicalNames
      * @return list<array{component: string, kind: string, author: string, text: string, written: string, stale: bool, stale_reason: ?string}>
@@ -43,7 +45,7 @@ final readonly class AnnotationNotes
         foreach (array_chunk($names, 500) as $chunk) {
             $statement = $this->pdo->prepare(
                 'SELECT canonical_name, kind, value, author, basis_json, updated_at FROM annotations ' .
-                'WHERE project_id = ? AND canonical_name IN (' . implode(',', array_fill(0, count($chunk), '?')) . ") AND value <> ''",
+                'WHERE project_id = ? AND canonical_name IN (' . implode(',', array_fill(0, count($chunk), '?')) . ") AND (value <> '' OR kind = 'check')",
             );
             $statement->execute([$projectId, ...$chunk]);
             array_push($rows, ...$statement->fetchAll(PDO::FETCH_ASSOC));
@@ -68,6 +70,22 @@ final readonly class AnnotationNotes
                 'stale_reason' => $reason,
             ];
         }, $rows);
+    }
+
+    /**
+     * Why each of these notes is stale, in their order, or null for one that
+     * is not: a model note whose basis changed or is gone. A person's note
+     * rests on nothing and is never stale.
+     *
+     * @param list<array<string, mixed>> $rows annotation rows with `author` and `basis_json`
+     * @return list<?string>
+     */
+    public function staleness(string $projectId, array $rows): array
+    {
+        $models = array_values(array_filter($rows, static fn(array $row): bool => $row['author'] === 'model'));
+        $current = $this->currentHashes($projectId, $models);
+
+        return array_map(fn(array $row): ?string => $row['author'] === 'model' ? $this->staleReason((string) $row['basis_json'], $current) : null, $rows);
     }
 
     /**
