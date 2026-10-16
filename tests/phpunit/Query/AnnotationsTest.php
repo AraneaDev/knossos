@@ -50,6 +50,21 @@ final class AnnotationsTest extends KnossosTestCase
     }
 
     /** A note's limit is 2,000 characters: 2,000 CJK characters (6,000 bytes) fit, one more does not. */
+    /** `./src/a.php` and `src/a.php` name one file, so they hold one note. */
+    #[Group('query')]
+    public function testADotSlashPathIsStoredAsTheProjectPath(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $queries->upsertAnnotation($ids['project'], './src/Checkout.php', 'note', 'first', execute: true);
+        $queries->upsertAnnotation($ids['project'], 'src/./Checkout.php', 'note', 'second', execute: true, replace: true);
+
+        $rows = $pdo->query('SELECT canonical_name, value FROM annotations')->fetchAll(\PDO::FETCH_ASSOC);
+        assertSame([['canonical_name' => 'src/Checkout.php', 'value' => 'second']], $rows);
+    }
+
     #[Group('query')]
     public function testANoteIsMeasuredInCharactersNotBytes(): void
     {

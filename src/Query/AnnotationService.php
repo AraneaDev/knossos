@@ -199,6 +199,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         if (trim($component) === '') {
             throw new InvalidArgumentException('component must not be empty.');
         }
+        $component = self::projectPath($component);
         // Characters, as the schema's maxLength counts them, not bytes.
         if (mb_strlen($value) > 2000) {
             throw new InvalidArgumentException('value must not exceed 2000 characters.');
@@ -315,6 +316,21 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             [],
             $truncated,
         );
+    }
+
+    /**
+     * A path-shaped name the way the scan stores paths: `./src/a.php` and
+     * `src/./a.php` name `src/a.php`, so they hold its note rather than one
+     * no scan ever matches. A class name (it holds a backslash) is left alone.
+     */
+    private static function projectPath(string $component): string
+    {
+        if (!str_contains($component, '/') || str_contains($component, '\\')) {
+            return $component;
+        }
+        $segments = array_values(array_filter(explode('/', $component), static fn(string $segment): bool => $segment !== '.'));
+
+        return $segments === [] ? $component : implode('/', $segments);
     }
 
     /**
