@@ -1,6 +1,6 @@
 /**
  * What the band and the pane draw: the pane's input from state, the laid-out
- * rows as elements, the hover cards, and the tree budget that keeps the pane
+ * rows as elements, the hover cards, and the text budget that keeps the pane
  * within the engine's bounds. Drawing reads state but acts on nothing: what
  * a press does is handed in ({@link Handlers}).
  */
@@ -86,10 +86,10 @@ const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 
  * Button, a link and a field are the surface's own, whose width the pane
  * cannot know in cells: the row's width and overflow clip them at its edge.
  *
- * Every tree the engine takes is bounded (20,000 nodes, 32 deep, 100,000
- * characters serialized): a Text carries no key and no Box of its own, and a
+ * The engine draws a pane's first 100,000 characters of text (see
+ * {@link TEXT_BUDGET}); a Text carries no key and no Box of its own, and a
  * Box is keyed only where a key is needed (a tint, a hidden twin), so a tall
- * pane stays well within them.
+ * pane stays a light tree to diff.
  */
 function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Segment, i: number, links: boolean, terminal: boolean, room: number, scope?: string) {
   const { Box, Button, Markdown, Text } = ui
@@ -258,17 +258,30 @@ function mergedRun(run: Segment[]): Segment[] {
 }
 
 /**
- * How much of the engine's tree bounds the pane lets itself use: its tree
- * serialized stays under this many characters (the engine's limit is
- * 100,000) and so, with room to spare, under its 20,000 nodes.
+ * How much text the pane lets one drawing hold. The engine refuses no tree
+ * for its size: it draws the first 100,000 characters of its texts (children,
+ * labels, link texts, code) and cuts the rest, so the pane stays under that,
+ * with room to spare, rather than see its last rows cut mid-line.
  */
-const TREE_BUDGET = 70_000
+export const TEXT_BUDGET = 90_000
 
 /** The fewest rows the pane lays its lists out for when it gives rows back to fit its budget. */
 const SHORT_ROWS = 16
 
-/** A drawn tree's size as the engine bounds it: its length serialized (handlers are not data). */
-const treeWeight = (tree: RenderElement): number => JSON.stringify(tree)?.length ?? 0
+/**
+ * A drawn tree's size as the engine bounds it: the characters of every text
+ * it draws (children, labels, link texts, code sources, alts). The engine's
+ * element keeps its children beside its props; a JSX element, as the specs
+ * build one, inside them: both are read.
+ */
+export function drawnText(tree: unknown): number {
+  if (typeof tree === 'string') return tree.length
+  if (Array.isArray(tree)) return tree.reduce((n: number, t) => n + drawnText(t), 0)
+  if (tree === null || typeof tree !== 'object') return 0
+  const { props = {}, children } = tree as { props?: Record<string, unknown>; children?: unknown }
+  const own = ['label', 'text', 'source', 'alt'].reduce((n, k) => n + (typeof props[k] === 'string' ? (props[k] as string).length : 0), 0)
+  return own + drawnText(children) + drawnText(props.children)
+}
 
 /** The most hover cards a pane hangs: those on the rows nearest the marked one. */
 const CARDS_MAX = 8
@@ -389,8 +402,7 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
 
 /**
  * The architecture pane, for a pane `bodyColumns` wide scrolled as `scroll`
- * says. The engine refuses a tree past its bounds (100,000 characters
- * serialized, 20,000 nodes) and draws its own: past {@link TREE_BUDGET} the
+ * says. The engine draws only a tree's first 100,000 characters of text: past {@link TEXT_BUDGET} the
  * pane drops its hover cards and most links, then gives its lists fewer
  * rows, until it fits; past it even at {@link SHORT_ROWS}, one line says so.
  */
@@ -449,15 +461,15 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
     )
   }
   let tree = draw(height, false)
-  if (treeWeight(tree) <= TREE_BUDGET) return tree
+  if (drawnText(tree) <= TEXT_BUDGET) return tree
   tree = draw(height, true)
   // Lists make most of the weight: fewer rows each try, in proportion to the budget, down to SHORT_ROWS at the last.
-  const lean = { tree, weight: treeWeight(tree) }
-  const fitted = shrinkRows(Math.min(height, used), SHORT_ROWS, TREE_BUDGET, lean, rows => {
+  const lean = { tree, weight: drawnText(tree) }
+  const fitted = shrinkRows(Math.min(height, used), SHORT_ROWS, TEXT_BUDGET, lean, rows => {
     const drawn = draw(rows, true)
-    return { tree: drawn, weight: treeWeight(drawn) }
+    return { tree: drawn, weight: drawnText(drawn) }
   })
-  if (fitted.weight <= TREE_BUDGET) return fitted.tree
+  if (fitted.weight <= TEXT_BUDGET) return fitted.tree
   const { weight, rows } = fitted
   // Still past the budget at the fewest rows: one line says so, rather than a tree the engine would refuse.
   if (!mod.tooLargeLogged) {

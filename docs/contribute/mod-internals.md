@@ -104,35 +104,34 @@ the Button the keyboard goes back to the prompt. The focus call itself runs on a
 timer after the press, so that the drawing which brings the field has already
 happened.
 
-## The tree budget and the engine limits
+## The text budget and the engine limits
 
-Claude Code refuses a render tree past three bounds, and draws its own tree
-instead when that happens:
+Claude Code draws a pane's first 100,000 characters of text (string children,
+button labels, link texts, code sources) and cuts the rest, with words saying
+how much it left out. It refuses no pane tree for its size. A `Box` is held to a
+width of 10,000.
 
-| bound                  | limit   |
-| ---------------------- | ------- |
-| characters, serialized | 100,000 |
-| nodes                  | 20,000  |
-| depth                  | 32      |
+The pane stays under that rather than see its last rows cut mid-line.
+`drawPane` in `hooks/mod/render.tsx` counts the text of the tree it drew
+(`drawnText`) against `TEXT_BUDGET`, 90,000 characters. Past that it drops the
+hover cards and most links, then gives the lists fewer rows in proportion to
+how far over it is, down to 16 rows (`SHORT_ROWS`). If it is still over at 16
+rows it draws one line, "Too large to draw here", and logs the size once to the
+debug log. Within the engine's width cap that takes rows thousands of characters
+long, so in practice it is never reached.
 
-The pane keeps well inside them. `drawPane` in `hooks/mod/render.tsx` measures
-the tree it drew (its length serialized, `treeWeight`) against `TREE_BUDGET`,
-70,000 characters. Past that it drops the hover cards and most links, then gives
-the lists fewer rows in proportion to how far over it is, down to 16 rows
-(`SHORT_ROWS`). If it is still over at 16 rows it draws one line, "Too large to
-draw here", and logs the size once to the debug log.
+`drawnText` reads an element's children both where the engine keeps them,
+beside its props, and where a JSX element in the specs keeps them, inside its
+props: a count that read only one shape would see no text in the other and never
+step in.
 
-Two habits keep a tall pane cheap. A `Text` carries no key and no `Box` of its
-own, and a `Box` gets a key only where one is needed, such as a tint or a hidden
-twin.
+A `Text` carries no key and no `Box` of its own, and a `Box` gets a key only
+where one is needed, such as a tint or a hidden twin, which keeps a tall pane
+cheap to diff.
 
-The plugin test (below) holds every view to a guard at every pane size and
-surface, with the largest lists the dashboard sends: under 72,000 characters,
-under 10,000 nodes and under 16 deep. On characters the guard leaves 2,000 of
-slack over the 70,000 budget, so it catches a view the budget failed to shrink.
-All three limits sit well inside the engine's bounds of 100,000 characters,
-20,000 nodes and 32 deep, so a change that pushes a view past the guard fails
-there first.
+The plugin test (below) holds every view, at every pane size and surface and
+with the largest lists the dashboard sends, to the text budget, under 10,000
+nodes and under 16 deep.
 
 ## Scan ledger
 

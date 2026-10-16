@@ -725,8 +725,12 @@ function overflowsOf(tree: unknown, columns: number, terminal: boolean): string[
   return out
 }
 
-/** How big a drawn tree is, as the engine bounds every tree: its nodes, its depth and its length serialized. */
-function treeSize(tree: unknown): { nodes: number; depth: number; chars: number } {
+/**
+ * How big a drawn tree is: its nodes, its depth, its length serialized, and
+ * the text it draws (strings, labels, link texts, code sources, alts), which
+ * is what the engine bounds a pane by: it draws the first 100,000 characters.
+ */
+function treeSize(tree: unknown): { nodes: number; depth: number; chars: number; text: number } {
   let nodes = 0
   const deepest = (node: unknown, depth: number): number => {
     if (typeof node !== 'object' || node === null) return depth - 1
@@ -734,7 +738,14 @@ function treeSize(tree: unknown): { nodes: number; depth: number; chars: number 
     return Math.max(depth, ...((node as DrawnNode).children ?? []).map(c => deepest(c, depth + 1)))
   }
   const depth = deepest(tree, 1)
-  return { nodes, depth, chars: JSON.stringify(tree).length }
+  const texts = (node: unknown): number => {
+    if (typeof node === 'string') return node.length
+    if (typeof node !== 'object' || node === null) return 0
+    const n = node as DrawnNode
+    const own = ['label', 'text', 'source', 'alt'].reduce((sum, k) => sum + (typeof n.props?.[k] === 'string' ? (n.props[k] as string).length : 0), 0)
+    return own + (n.children ?? []).reduce((sum: number, c) => sum + texts(c), 0)
+  }
+  return { nodes, depth, chars: JSON.stringify(tree).length, text: texts(tree) }
 }
 
 describe('knossos mod', () => {
@@ -821,7 +832,7 @@ describe('knossos mod', () => {
           expect(size.nodes, at).toBeGreaterThan(20)
           expect(size.nodes, at).toBeLessThan(10_000)
           expect(size.depth, at).toBeLessThan(16)
-          expect(size.chars, at).toBeLessThan(72_000)
+          expect(size.text, at).toBeLessThanOrEqual(90_000)
         }
         await ui.unmount()
       }
@@ -3577,7 +3588,7 @@ describe('knossos mod', () => {
       for (const [bodyColumns, bodyRows] of [[60, 30], [120, 40], [200, 60]] as const) {
         await ui.redraw({ ...PANE_PROPS, bodyColumns, scroll: { offset: 0, bodyRows } })
         const size = treeSize(await ui.drawn())
-        expect(size.chars, `${bodyColumns}`).toBeLessThan(72_000)
+        expect(size.text, `${bodyColumns}`).toBeLessThanOrEqual(90_000)
         expect(size.nodes, `${bodyColumns}`).toBeLessThan(10_000)
         expect(size.depth, `${bodyColumns}`).toBeLessThan(16)
       }
@@ -4473,7 +4484,7 @@ describe('the live watcher', () => {
         expect(await ui.find({ type: 'Code' }), at).toBeDefined()
         expect(size.nodes, at).toBeLessThan(10_000)
         expect(size.depth, at).toBeLessThan(16)
-        expect(size.chars, at).toBeLessThan(72_000)
+        expect(size.text, at).toBeLessThanOrEqual(90_000)
         await ui.press({ key: 'back' })
         await ui.unmount()
       }
@@ -4496,7 +4507,7 @@ describe('the live watcher', () => {
       const size = treeSize(await ui.drawn())
       expect(size.nodes, at).toBeLessThan(10_000)
       expect(size.depth, at).toBeLessThan(16)
-      expect(size.chars, at).toBeLessThan(72_000)
+      expect(size.text, at).toBeLessThanOrEqual(90_000)
     }
     await ui.press({ key: 'tab:changes' })
     await ui.press({ key: 'open' })
@@ -4552,13 +4563,15 @@ describe('the live watcher', () => {
   })
 
   test('a pane too large to draw at its fewest rows draws one line saying so, and logs it once', async ($, on) => {
-    const w = world(on, { dashboard: [{ stdout: paneDashboard() }] })
+    // Names thousands of cells long on a pane 9,000 wide (the engine's Box tops out at 10,000): the rows it cannot give back are past the budget on their own.
+    const long = (i: number) => `Component${i}${'x'.repeat(4000)}`
+    const hubs = Array.from({ length: 100 }, (_, i) => ({ name: long(i), canonical_name: `App\\Component${i}`, kind: 'class', boundary: 'core', in_degree: 900 - i, out_degree: 1, cross_boundary_degree: 0, dependent_files: 5, path: `src/C${i}.php`, line: 3, top_dependents: ['src/a.php', 'src/b.php'] }))
+    const w = world(on, { dashboard: [{ stdout: paneDashboard({ hubs }) }] })
     await $.session.start(START)
     await w.clock.settle()
-    // So wide that the rows the pane cannot give back outweigh the budget on their own.
     for (let i = 0; i < 2; i++) {
       const ui = await $.ui.mount({ plugin: 'knossos', surface: 'terminal', component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 9_000, scroll: { offset: 0, bodyRows: 60 } } })
-      expect(treeSize(await ui.drawn()).chars).toBeLessThan(100_000)
+      expect(treeSize(await ui.drawn()).text).toBeLessThan(100_000)
       expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join('\n')).toContain('Too large to draw here')
       await ui.unmount()
     }

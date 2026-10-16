@@ -26,9 +26,10 @@ export const LINE_MAX = 200
 /** The element's own limit on its text. */
 const SOURCE_MAX = 10_000
 /**
- * The most text the card's hunks draw together, serialized as the engine
- * weighs it: the engine refuses a tree past 100,000 characters, and twelve
- * hunks of forty full lines would be most of it.
+ * The most text the card's hunks draw together, weighed serialized (a little
+ * heavier than as drawn, so on the safe side): the engine draws a pane's first
+ * 100,000 characters of text, and twelve hunks of forty full lines would be
+ * most of it.
  * Past it the rest of the hunks are counted, as those past {@link HUNKS_SHOWN} are.
  */
 export const DIFF_TEXT_MAX = 24_000
@@ -227,7 +228,7 @@ function drawnHunk(view: Extract<DiffView, { phase: 'diff' }>, index: number): D
   return { index, source, more, cut: shown.length - (source.split('\n').length - 1) }
 }
 
-/** A hunk's weight as the engine weighs the tree, serialized: a quote or a backslash counts twice, a control byte six times. */
+/** A hunk's weight, serialized: a quote or a backslash counts twice, a control byte six times, so never less than it draws. */
 const weightOf = (drawn: DrawnHunk): number => JSON.stringify(drawn.source).length
 
 /**

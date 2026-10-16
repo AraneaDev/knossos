@@ -3,7 +3,7 @@ import type { BoundaryMatrix, Dashboard, KnossosView, TurnBrief } from '../../ty
 import { NO_CHANGES } from '../lib/layout'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
-import { currentInput, drawPane } from './render'
+import { currentInput, drawnText, drawPane, TEXT_BUDGET } from './render'
 import type { Handlers } from './render'
 import { mod, reset } from './state'
 
@@ -327,39 +327,106 @@ describe('drawPane: surfaces', () => {
     })
 })
 
+/**
+ * The widest layouts the person keeps the pane at: a long list at 200 and
+ * 240 columns, 40 and 60 rows tall, draws whole (its hover cards kept, so
+ * no budget step ran) and leaves the room the livelier look will spend.
+ */
+/** How much of the budget a wide tab may use as drawn whole: the rest is room for the livelier look. */
+const WIDE_HEADROOM = Math.floor(TEXT_BUDGET * 0.85)
+
+describe('drawPane: wide tabs fit', () => {
+    for (const tab of ['hubs', 'overview'] as const) {
+        for (const bodyColumns of [200, 240]) {
+            for (const bodyRows of [40, 60]) {
+                it(`draws ${tab} at ${bodyColumns}x${bodyRows} whole, within the headroom`, async () => {
+                    const { io, logs } = fakePort({ dashboard: dashboard({ hubs: hubs(300) }), view: view({ tab }) })
+                    mod.paneWide = true
+                    const tree = await drawPane(io, elements as never, 'terminal', { bodyColumns, scroll: { offset: 0, bodyRows } }, act)
+                    expect(drawnText(tree)).toBeLessThanOrEqual(WIDE_HEADROOM)
+                    // Hubs hangs hover cards: they go first when a tree is over budget, so keeping them shows no step ran.
+                    if (tab === 'hubs') expect(nodesOf(tree).filter(isCard).length).toBeGreaterThan(0)
+                    expect(textOf(tree)).not.toContain('Too large to draw here')
+                    expect(logs).toEqual([])
+                })
+            }
+        }
+    }
+})
+
+/**
+ * The engine draws a pane's first 100,000 characters of text and cuts the
+ * rest; it refuses no tree for its size. So the pane spends that, not the
+ * length of its tree serialized: a tall list whose props are heavy but whose
+ * text fits is drawn whole.
+ */
+describe('drawPane: the budget is the text the engine draws', () => {
+    it('counts the text of a tree in the engine shape, its children beside its props, as in the stub shape', () => {
+        const engine = { type: 'Box', props: { width: 10 }, children: [{ type: 'Text', props: { color: 'text' }, children: ['abc', { type: 'Text', children: ['de'] }] }, { type: 'Button', props: { key: 'k', label: 'fgh' } }] }
+        const stub = { type: 'Box', props: { width: 10, children: [{ type: 'Text', props: { children: ['abc', { type: 'Text', props: { children: 'de' } }] } }, { type: 'Button', props: { label: 'fgh' } }] } }
+        expect(drawnText(engine)).toBe(8)
+        expect(drawnText(stub)).toBe(8)
+        expect(drawnText({ type: 'Code', props: { source: '+x\n', path: 'a.ts' } })).toBe(3)
+    })
+
+    it('draws a tall list whole when its text fits, however heavy its tree', async () => {
+        const { io, logs } = fakePort({ dashboard: dashboard({ hubs: hubs(300) }), view: view({ tab: 'hubs' }) })
+        const tree = await drawPane(io, elements as never, 'terminal', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 340 } }, act)
+        expect(weight(tree)).toBeGreaterThan(100_000)
+        expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
+        // Drawn whole: no budget step ran, so the hover cards, the first thing a step drops, are all there.
+        expect(nodesOf(tree).filter(isCard).length).toBeGreaterThan(0)
+        expect(logs).toEqual([])
+    })
+})
+
+/** Hubs whose names run `extra` cells past their own: on a pane wide enough to show them, each row draws that much text more. */
+const longHubs = (n: number, extra: number) => hubs(n).map(h => ({ ...h, name: `${h.name}${'x'.repeat(extra)}`, canonical_name: `${h.canonical_name}${'x'.repeat(extra)}` }))
+
 describe('drawPane: the tree budget', () => {
     it('drops the hover cards and most links before it gives up rows', async () => {
-        const { io } = fakePort({ dashboard: dashboard({ hubs: hubs(300) }) })
-        const full = await drawPane(io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)
-        expect(nodesOf(full).filter(isCard).length).toBeGreaterThan(0)
-        const fullLinks = nodesOf(full).filter(n => n.type === 'Markdown').length
-        const tall = await drawPane(io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 100 } }, act)
-        expect(weight(tall)).toBeLessThanOrEqual(70_000)
-        expect(nodesOf(tall).filter(isCard)).toEqual([])
-        // Only the marked row keeps its links: fewer than a pane a third as tall drew.
-        expect(nodesOf(tall).filter(n => n.type === 'Markdown').length).toBeLessThan(fullLinks)
-        expect(textOf(tall)).not.toContain('Too large to draw here')
+        // The rows a 40-row window lists when nothing weighs on it.
+        const listed = new Set(textOf(await drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)).match(/Component\d+/g)).size
+        const at = async (bodyColumns: number) => drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns, scroll: { offset: 0, bodyRows: 40 } }, act)
+        // The narrowest pane whose text first passes the budget, found by halving: whatever its rows weigh, the first step
+        // the budget takes there is the one this test is about.
+        let fits = 120
+        let over = 8000
+        expect(nodesOf(await at(fits)).filter(isCard).length).toBeGreaterThan(0)
+        expect(nodesOf(await at(over)).filter(isCard)).toEqual([])
+        while (over - fits > 25) {
+            const mid = Math.floor((fits + over) / 2)
+            if (nodesOf(await at(mid)).filter(isCard).length > 0) fits = mid
+            else over = mid
+        }
+        const tree = await at(over)
+        expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
+        expect(nodesOf(tree).filter(isCard)).toEqual([])
+        // Only the marked row keeps its links, and every row is still listed.
+        expect(nodesOf(tree).filter(n => n.type === 'Markdown').length).toBeLessThanOrEqual(1)
+        expect(new Set(textOf(tree).match(/Component\d+/g)).size).toBe(listed)
+        expect(textOf(tree)).not.toContain('Too large to draw here')
     })
 
     it('gives the lists fewer rows when even the lean tree is past the budget', async () => {
-        const { io, logs } = fakePort({ dashboard: dashboard({ hubs: hubs(300) }) })
-        // The same window at a width that fits the budget: the row count a shrink must undercut.
-        const fits = await drawPane(io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)
-        const fullRows = new Set(textOf(fits).match(/Component\d+/g)).size
-        const tree = await drawPane(io, elements as never, 'desktop', { bodyColumns: 2000, scroll: { offset: 0, bodyRows: 40 } }, act)
-        expect(weight(tree)).toBeLessThanOrEqual(70_000)
+        const light = await drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)
+        const listed = new Set(textOf(light).match(/Component\d+/g)).size
+        const { io, logs } = fakePort({ dashboard: dashboard({ hubs: longHubs(300, 2200) }) })
+        const tree = await drawPane(io, elements as never, 'desktop', { bodyColumns: 2800, scroll: { offset: 0, bodyRows: 40 } }, act)
+        expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
         const shown = new Set(textOf(tree).match(/Component\d+/g))
         expect(shown.size).toBeGreaterThan(0)
-        expect(shown.size).toBeLessThan(fullRows)
+        expect(shown.size).toBeLessThan(listed)
         expect(textOf(tree)).not.toContain('Too large to draw here')
         expect(logs).toEqual([])
     })
 
     it('draws one line and logs once to debug when even the fewest rows are too heavy', async () => {
-        const { io, logs } = fakePort({ dashboard: dashboard({ hubs: hubs(300) }) })
-        const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 5000, scroll: { offset: 0, bodyRows: 40 } }, act)) as unknown as Node
+        // Names eight thousand cells long on a pane 9,000 wide (the engine's Box tops out at 10,000): past the budget at any row count.
+        const { io, logs } = fakePort({ dashboard: dashboard({ hubs: longHubs(300, 8000) }) })
+        const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 9_000, scroll: { offset: 0, bodyRows: 40 } }, act)) as unknown as Node
         expect(tree.key).toBe('pane')
-        expect(weight(tree)).toBeLessThanOrEqual(70_000)
+        expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
         expect(children(tree).map(r => r.key)).toEqual(['too-large'])
         expect(textOf(tree)).toContain('Too large to draw here')
         expect(logs).toHaveLength(1)
@@ -369,12 +436,12 @@ describe('drawPane: the tree budget', () => {
         // The header status is still what the age tick compares against.
         expect(mod.paneText).toBe((await currentInput(io, true))!.status.text)
 
-        await drawPane(io, elements as never, 'terminal', { bodyColumns: 5000, scroll: { offset: 0, bodyRows: 40 } }, act)
+        await drawPane(io, elements as never, 'terminal', { bodyColumns: 9_000, scroll: { offset: 0, bodyRows: 40 } }, act)
         expect(logs).toHaveLength(1)
     })
 
     // A sweep over every width and height: seconds under coverage, so it gets its own bound rather than the default 5 s.
-    it('never hands the engine a tree past its 100,000 serialized characters', { timeout: 30_000 }, async () => {
+    it('never hands the engine more text than the 100,000 characters it draws', { timeout: 30_000 }, async () => {
         const many = dashboard({ hubs: hubs(400) })
         const cases: [string, Record<string, unknown>, number, number][] = [
             ['desktop', { dashboard: many }, 120, 200],
@@ -388,7 +455,7 @@ describe('drawPane: the tree budget', () => {
             const { io } = fakePort(cells)
             const ui = surface === 'mobile' ? mobileElements : elements
             const tree = await drawPane(io, ui as never, surface, { bodyColumns, scroll: { offset: 0, bodyRows } }, act)
-            expect(weight(tree), `${surface} ${bodyColumns}x${bodyRows}`).toBeLessThanOrEqual(100_000)
+            expect(drawnText(tree), `${surface} ${bodyColumns}x${bodyRows}`).toBeLessThanOrEqual(100_000)
         }
     })
 })
