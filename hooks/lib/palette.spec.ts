@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ACCENT, BOUNDARY_COLOURS, FAINT, HEADING, SECONDARY, STATUS_COLOURS, boundaryColour, boundaryLabel, declaredOf, huesOf } from './palette'
+import { ACCENT, BOUNDARY_COLOURS, FAINT, HEADING, SECONDARY, STATUS_COLOURS, STAT_HUES, TITLE, boundaryColour, boundaryLabel, declaredOf, heat, huesOf, languageColour } from './palette'
 
 describe('boundaryColour', () => {
   it('is one of the palette, and the same for the same name every time', () => {
@@ -108,4 +108,36 @@ describe('boundaryLabel', () => {
     expect(boundaryLabel(null)).toBe('')
     expect(boundaryLabel(undefined)).toBe('')
   })
+})
+
+describe('the livelier look', () => {
+    const THEME_KEYS = new Set(['text', 'inverseText', 'inactive', 'subtle', 'suggestion', 'remember', 'success', 'error', 'warning', 'merged', 'claude', 'permission', 'planMode', 'autoAccept', 'ide', ...BOUNDARY_COLOURS])
+
+    it('titles cards in the orange Claude Code marks itself with', () => {
+        expect(TITLE).toBe('claude')
+    })
+
+    it('gives each stat tile a theme hue, none a raw colour', () => {
+        for (const hue of Object.values(STAT_HUES)) {
+            expect(THEME_KEYS.has(hue), hue).toBe(true)
+            expect(hue).not.toMatch(/^#/)
+        }
+        expect(Object.keys(STAT_HUES).sort()).toEqual(['boundaries', 'components', 'cycles', 'degree', 'drifted', 'issues'])
+    })
+
+    it('colours each language its own hue, by its chip or its full name, and anything else as secondary text', () => {
+        expect(languageColour('php')).not.toBe(languageColour('ts'))
+        expect(languageColour('PHP')).toBe(languageColour('php'))
+        expect(languageColour('typescript')).toBe(languageColour('ts'))
+        expect(languageColour('cobol')).toBe(SECONDARY)
+        for (const l of ['php', 'ts', 'js', 'py', 'rs']) expect(THEME_KEYS.has(languageColour(l)), l).toBe(true)
+    })
+
+    it('shades buckets cool to hot: the first in the suggestion blue, the last in the error colour, never cooler further on', () => {
+        expect(heat(0, 5)).toBe(ACCENT)
+        expect(heat(4, 5)).toBe(STATUS_COLOURS.alert)
+        const order = [ACCENT, STATUS_COLOURS.ok, STATUS_COLOURS.warn, STATUS_COLOURS.alert]
+        for (let i = 1; i < 9; i++) expect(order.indexOf(heat(i, 9))).toBeGreaterThanOrEqual(order.indexOf(heat(i - 1, 9)))
+        expect(heat(0, 1)).toBe(ACCENT)
+    })
 })
