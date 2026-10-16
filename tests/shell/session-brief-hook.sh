@@ -52,7 +52,13 @@ output="$(env KNOSSOS_BIN="$tmp/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$HOOK" 2>/d
 status=$?
 case $output in
     "Knossos brief timed out after 3 s; run knossos session-brief '/tmp' to see why.")
-        [ "$status" -eq 0 ] && printf 'ok   hanging binary says it timed out\n' || { printf 'FAIL hanging binary: status=%s\n' "$status"; failures=$((failures + 1)); } ;;
+        if [ "$status" -eq 0 ]; then
+            printf 'ok   hanging binary says it timed out\n'
+        else
+            printf 'FAIL hanging binary: status=%s\n' "$status"
+            failures=$((failures + 1))
+        fi
+        ;;
     *) printf 'FAIL hanging binary: status=%s output=%s\n' "$status" "$output"; failures=$((failures + 1)) ;;
 esac
 
