@@ -424,6 +424,8 @@ final readonly class ToolCatalog
                         'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
+                        'seed_members' => ['type' => 'boolean', 'default' => true, 'description' => 'Start from a class\'s or module\'s members too, so a caller of a static method counts; each dependant found that way names the member as via_member.'],
+                        'rings' => ['type' => 'boolean', 'default' => false, 'description' => 'Add rings: the dependants counted one hop out, two, and three or more, tests counted apart, by path confidence.'],
                     ],
                     'required' => ['project_id', 'symbol'],
                     'additionalProperties' => false,

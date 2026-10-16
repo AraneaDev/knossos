@@ -295,6 +295,8 @@ Before editing a symbol, find everything that depends on it. Answers 'what break
 | `edge_kinds` | array | no | maxItems=22 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
+| `seed_members` | boolean | no | default=true |
+| `rings` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 

@@ -853,6 +853,8 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'edge_kinds'),
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            ToolArguments::boolean($arguments, 'seed_members', true),
+            ToolArguments::boolean($arguments, 'rings', false),
         ];
 
         return fn(): ResultEnvelope => $this->queries->impactAnalysis(...$args);

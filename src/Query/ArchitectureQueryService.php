@@ -403,8 +403,10 @@ final readonly class ArchitectureQueryService
         array $edgeKinds = [],
         string $minConfidence = 'possible',
         int $timeoutMs = 1000,
+        bool $seedMembers = true,
+        bool $rings = false,
     ): ResultEnvelope {
-        return $this->withNotes($this->services->impactQueries->impactAnalysis($projectId, $symbol, $maxDepth, $limit, $edgeKinds, $minConfidence, $timeoutMs));
+        return $this->withNotes($this->services->impactQueries->impactAnalysis($projectId, $symbol, $maxDepth, $limit, $edgeKinds, $minConfidence, $timeoutMs, seedMembers: $seedMembers, rings: $rings));
     }
 
     /** {@see GraphSummaryQuery::listBoundaries()} */
