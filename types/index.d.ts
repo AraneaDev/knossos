@@ -131,6 +131,8 @@ export type Dashboard = {
     truncation_reasons: string[]
     /** The cycles whose members are all in one type, which `count` leaves out. Absent from an older knossos. */
     within_type?: number
+    /** Whether the search stopped listing them at its limit, so `within_type` is a floor. */
+    within_type_truncated?: boolean
     /**
      * `nodes` and `nodes_truncated` are optional: a knossos older than the mod
      * sends names only. `within_type` marks a cycle inside one type, `type`

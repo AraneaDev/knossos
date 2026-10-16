@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView } from '../../types'
-import { cyclesInput, cyclesList } from './cycles'
+import { cyclesArrangement, cyclesInput, cyclesList } from './cycles'
 import { paneInput, paneLayout } from './layout'
 import { plainText } from './__tests__/plain-text'
 import { cyclesOf } from '../mod/state'
@@ -40,5 +40,20 @@ describe('cycles inside one type', () => {
     expect(start.complete).toBe(true)
     expect(cyclesOf(both)).toMatchObject({ count: 1, complete: true, keys: start.keys })
     expect(cyclesSinceStart(start, { count: both.cycles.count, largest: both.cycles.largest.filter(c => c.within_type !== true) }).fresh).toEqual([])
+  })
+
+  it('marks a cut count of them as a floor, on the tab and on the tile', () => {
+    const cut = dash({ count: 1, truncated: false, truncation_reasons: [], within_type: 50, within_type_truncated: true, largest: [between, inside] })
+    expect(text(cut)).toContain('1 · 50+ within one type')
+    expect(text(cut, view({ tab: 'overview' }))).toMatch(/1 · 50\+ within one type/)
+  })
+
+  it('keeps the line over them out of the window until they are in it', () => {
+    const pair = (n: number) => ({ ...between, members: [`A${n}`, `B${n}`], nodes: [node(`App\\A${n}::run`), node(`App\\B${n}::run`)] })
+    const input = cyclesInput(dash({ count: 3, truncated: false, truncation_reasons: [], within_type: 1, largest: [pair(1), pair(2), pair(3), inside] }))
+    const list = cyclesArrangement(input, 'wide').left.find(b => b.key === 'cycles')!
+    const rows = (limit: number) => list.make(80, limit)!.body.map(plainText).join('\n')
+    expect(rows(3)).toMatch(/cycle 1[\s\S]*cycle 2[\s\S]*cycle 3/)
+    expect(rows(3)).not.toContain('Within one type')
   })
 })

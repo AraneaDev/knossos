@@ -43,11 +43,12 @@ export type CycleLine = { size: number; nodes: CycleNode[]; more: number; type?:
 /**
  * The cycles, largest first (those between types, then those inside one),
  * and the ones the person unfolded (by index). `count` counts the cycles
- * between types, `within` the ones inside one type. `stopped` names the
+ * between types, `within` the ones inside one type (`withinCut` when the
+ * search stopped counting those at its limit). `stopped` names the
  * bounds a search hit before it found any cycle: empty when the search
  * found some or ran to the end.
  */
-export type CyclesInput = { count: string; cycles: CycleLine[]; unfolded: number[]; stopped?: string[]; within?: number }
+export type CyclesInput = { count: string; cycles: CycleLine[]; unfolded: number[]; stopped?: string[]; within?: number; withinCut?: boolean }
 
 /** The most boxes a cycle shows before its middle folds, per tier. */
 export const FOLD_AT: Record<Tier, number> = { narrow: 6, medium: 10, wide: 16 }
@@ -72,6 +73,7 @@ export function cyclesInput(d: Pick<Dashboard, 'cycles'>, unfolded: number[] = [
     }),
     unfolded,
     within: d.cycles.within_type ?? 0,
+    withinCut: d.cycles.within_type_truncated === true,
   }
 }
 
@@ -194,10 +196,11 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
   const shown = input.cycles.length
   const marked = selected < 0 ? null : markedCycle(input, selected)
   const offsets = cycleOffsets(input)
+  // The line over the cycles inside one type is a row too.
+  const header = input.cycles.some(c => c.type !== undefined) ? 1 : 0
   const list: Block = {
     key: 'cycles',
-    // The line over the cycles inside one type is a row too.
-    grow: { length: shown + (input.cycles.some(c => c.type !== undefined) ? 1 : 0), min: CYCLES_MIN },
+    grow: { length: shown + header, min: CYCLES_MIN + header },
     make: (columns, limit) => {
       const stopped = input.stopped ?? []
       // The bounds as words, the way the rest of the pane speaks: `time_limit` reads `time limit`.
@@ -205,14 +208,15 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
       const within = input.within ?? 0
       const inside = input.cycles.findIndex(c => c.type !== undefined)
       // Every one listed: as many between types as counted, and as many inside one type.
-      const whole = String(inside < 0 ? shown : inside) === input.count && shown - (inside < 0 ? shown : inside) === within
-      const counted = `${input.count}${within > 0 ? ` · ${within} within one type` : ''}`
+      const whole = String(inside < 0 ? shown : inside) === input.count && shown - (inside < 0 ? shown : inside) === within && input.withinCut !== true
+      const counted = `${input.count}${within > 0 ? ` · ${countLabel(within, input.withinCut === true)} within one type` : ''}`
       const note = shown === 0 ? (within > 0 ? counted : empty) : `${counted}${whole ? '' : ` · ${shown} shown`} · largest first`
       const section = (body: Row[]): Section => ({ key: 'cycles', title: shown > 1 ? 'All cycles' : 'Cycles', note: noteOf(note), body })
       // A search cut short has not shown there are none, so it does not say so.
       if (shown === 0) return section([{ key: 'cycles-none', segments: [{ text: stopped.length > 0 ? '   Search stopped early; none found before it did.' : '   No dependency cycles.', dim: true }] }])
-      // The line over the cycles inside one type takes a row of the window.
-      const window = windowOf(shown, inside < 0 ? limit : limit - 1, marked?.index ?? -1)
+      // The line over the cycles inside one type takes a row of the window, once they are in it.
+      const reach = windowOf(shown, limit, marked?.index ?? -1)
+      const window = inside >= 0 && reach.end > inside ? windowOf(shown, limit - 1, marked?.index ?? -1) : reach
       const rows = input.cycles.slice(window.start, window.end).flatMap((cycle, n) => {
         const i = window.start + n
         const line = cycleLine(cycle, i, offsets[i]!, marked?.index === i, columns, hues)

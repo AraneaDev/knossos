@@ -108,6 +108,7 @@ final readonly class DashboardService
         $cycleSearch = $queries->dependencyCycles($id, limit: $this->cycleLimit, withinType: true);
         $everyCycle = $cycleSearch->data['cycles'];
         $cycles = array_values(array_filter($everyCycle, static fn(array $c): bool => $c['within_type'] !== true));
+        $inside = array_values(array_filter($everyCycle, static fn(array $c): bool => $c['within_type'] === true));
         $fanIn = (new FileFanInQuery($this->pdo))->aboveThreshold($id, $fanInThreshold, $this->fanInCap + 1);
         $series = $queries->architectureTrends($id, self::TREND_POINTS)->data['series'];
         $trend = self::trend($series);
@@ -156,8 +157,13 @@ final readonly class DashboardService
                 'count' => count($cycles),
                 'truncated' => $cycleSearch->truncated,
                 'truncation_reasons' => $cycleSearch->data['bounds']['truncation_reasons'],
-                'within_type' => count($everyCycle) - count($cycles),
-                'largest' => array_map(static fn(array $c): array => self::cycle($c, $labels), array_slice($everyCycle, 0, self::LARGEST_CYCLES)),
+                'within_type' => count($inside),
+                'within_type_truncated' => $cycleSearch->data['bounds']['within_type_truncated'],
+                // The largest of each kind, so the cycles inside one type show however many others there are.
+                'largest' => array_map(
+                    static fn(array $c): array => self::cycle($c, $labels),
+                    [...array_slice($cycles, 0, self::LARGEST_CYCLES), ...array_slice($inside, 0, self::LARGEST_CYCLES)],
+                ),
             ],
             // The Overview's line about notes: how many, and how many need the person.
             'notes' => (new NotesService($this->pdo))->counts($id),
@@ -461,7 +467,7 @@ final readonly class DashboardService
             'status' => 'unscanned', 'path' => $path, 'project_root' => null, 'project_id' => null,
             'snapshot_id' => null, 'freshness' => ['state' => 'unscanned', 'age_seconds' => null, 'drift_files' => 0, 'drifted' => [], 'drifted_truncated' => false],
             'hubs' => [], 'hubs_truncated' => false, 'hubs_truncation_reasons' => [], 'hotspots' => [], 'dead_code_candidates' => 0, 'dead_code_truncated' => false,
-            'cycles' => ['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'within_type' => 0, 'largest' => []],
+            'cycles' => ['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'within_type' => 0, 'within_type_truncated' => false, 'largest' => []],
             'notes' => ['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0],
             'trend' => [], 'deltas' => null, 'in_degree' => ['buckets' => [], 'truncated' => false], 'fan_in' => [], 'fan_in_truncated' => false, 'dead_code' => [],
             'boundary_matrix' => ['boundaries' => [], 'members' => [], 'labelled' => 0, 'boundaries_truncated' => false, 'cells' => [], 'forbidden' => [], 'flows' => [], 'edges' => 0, 'truncated' => false, 'truncation_reasons' => []],

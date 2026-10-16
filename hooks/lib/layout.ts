@@ -404,7 +404,7 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
       label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles',
       value: cycles,
       // The cycles inside one type, beside the figure but not in it: they neither warn nor move it.
-      ...(within > 0 ? { aside: ` · ${within} within one type` } : {}),
+      ...(within > 0 ? { aside: ` · ${countLabel(within, d.cycles.within_type_truncated === true)} within one type` } : {}),
       ...series(t => t.cycles),
       ...moved('cycles', true),
       ...(above(cycles) ? { tone: 'warn' as const } : {}),

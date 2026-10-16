@@ -138,6 +138,76 @@ final class OneTypeCycleTest extends KnossosTestCase
         self::assertSame([[false, null], [true, 'App\\Walk']], array_map(static fn(array $cycle): array => [$cycle['within_type'], $cycle['type']], $cycles['largest']));
     }
 
+    /**
+     * The limit applies to each kind apart: the cycles inside one type can
+     * neither cut a cycle between types nor mark that count as cut, and a cut
+     * among them is said apart, as `within_type_truncated`.
+     */
+    #[Group('query')]
+    public function testTheLimitCutsTheCyclesInsideOneTypeApart(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->graph($repository, $ids, $ids['scan'], withinType: true);
+        $this->oneTypeCycle($repository, $ids, 'Tree');
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $one = $queries->dependencyCycles($ids['project'], limit: 1, withinType: true);
+        self::assertSame([false, true], array_column($one->data['cycles'], 'within_type'));
+        self::assertSame([], $one->data['bounds']['truncation_reasons']);
+        self::assertFalse($one->truncated);
+        self::assertTrue($one->data['bounds']['within_type_truncated']);
+
+        $two = $queries->dependencyCycles($ids['project'], limit: 2, withinType: true);
+        self::assertSame([false, true, true], array_column($two->data['cycles'], 'within_type'));
+        self::assertFalse($two->data['bounds']['within_type_truncated']);
+        self::assertArrayNotHasKey('within_type_truncated', $queries->dependencyCycles($ids['project'])->data['bounds']);
+    }
+
+    /** Asked for alongside self-loops, a symbol that calls itself is not a cycle between types. */
+    #[Group('query')]
+    public function testASelfLoopIsNotACycleBetweenTypes(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $n = $this->graph($repository, $ids, $ids['scan'], withinType: false);
+        $alone = StableId::symbol($ids['project'], 'php', 'function', 'App\\recurse');
+        $repository->saveNode($alone, $ids['project'], 'php', 'function', 'App\\recurse', 'recurse', null, $ids['file'], 1, 2, 'ast', 'certain', [], 'php:file:src/recurse.php', $ids['scan']);
+        $this->edge($repository, $ids['project'], $ids['file'], $ids['scan'], 'calls', $alone, $alone);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'], includeSelfLoops: true, withinType: true)->data['cycles'];
+
+        self::assertSame([[2, false, null], [1, true, null]], array_map(static fn(array $cycle): array => [count($cycle['members']), $cycle['within_type'], $cycle['type']], $cycles));
+        self::assertArrayHasKey('A', $n);
+    }
+
+    /**
+     * The dashboard lists the largest of each kind, so the cycles inside one
+     * type still show however many cycles there are between types, and says
+     * when it cut them.
+     */
+    #[Group('query')]
+    public function testTheDashboardListsSomeOfEachKind(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->graph($repository, $ids, $ids['scan'], withinType: true);
+        foreach (range(1, 11) as $i) {
+            $c = StableId::symbol($ids['project'], 'php', 'class', 'App\\C' . $i);
+            $d = StableId::symbol($ids['project'], 'php', 'class', 'App\\D' . $i);
+            foreach ([[$c, 'C'], [$d, 'D']] as [$id, $prefix]) {
+                $repository->saveNode($id, $ids['project'], 'php', 'class', 'App\\' . $prefix . $i, $prefix . $i, null, $ids['file'], 1, 9, 'ast', 'certain', [], 'php:file:src/' . $prefix . $i . '.php', $ids['scan']);
+            }
+            $this->edge($repository, $ids['project'], $ids['file'], $ids['scan'], 'calls', $c, $d);
+            $this->edge($repository, $ids['project'], $ids['file'], $ids['scan'], 'calls', $d, $c);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $cycles = (new \Knossos\Query\DashboardService($pdo))->dashboard('/workspace/fixture-shop')['cycles'];
+
+        self::assertSame([12, 1, false, false], [$cycles['count'], $cycles['within_type'], $cycles['truncated'], $cycles['within_type_truncated']]);
+        self::assertSame(array_merge(array_fill(0, 10, false), [true]), array_column($cycles['largest'], 'within_type'));
+    }
+
     /** A self-call inside a real cycle is recursion too, not one of the cycle's relationships. */
     #[Group('query')]
     public function testASelfCallIsNotListedAmongACyclesRelationships(): void
@@ -201,6 +271,22 @@ final class OneTypeCycleTest extends KnossosTestCase
         }
 
         return $n;
+    }
+
+    /** Class `$name` whose methods walk and walkAll call each other. */
+    private function oneTypeCycle(GraphRepository $repository, array $ids, string $name): void
+    {
+        $project = $ids['project'];
+        $type = StableId::symbol($project, 'php', 'class', 'App\\' . $name);
+        $repository->saveNode($type, $project, 'php', 'class', 'App\\' . $name, $name, null, $ids['file'], 1, 9, 'ast', 'certain', [], 'php:file:src/' . $name . '.php', $ids['scan']);
+        $methods = [];
+        foreach (['walk', 'walkAll'] as $method) {
+            $methods[] = $id = StableId::symbol($project, 'php', 'method', 'App\\' . $name . '::' . $method);
+            $repository->saveNode($id, $project, 'php', 'method', 'App\\' . $name . '::' . $method, $method, null, $ids['file'], 2, 3, 'ast', 'certain', [], 'php:file:src/' . $name . '.php', $ids['scan']);
+            $this->edge($repository, $project, $ids['file'], $ids['scan'], 'contains', $type, $id);
+        }
+        $this->edge($repository, $project, $ids['file'], $ids['scan'], 'calls', $methods[0], $methods[1]);
+        $this->edge($repository, $project, $ids['file'], $ids['scan'], 'calls', $methods[1], $methods[0]);
     }
 
     private function edge(GraphRepository $repository, string $project, string $file, string $scan, string $kind, string $source, string $target): void
