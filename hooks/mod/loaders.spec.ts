@@ -18,7 +18,7 @@ const churnOk = JSON.stringify({ status: 'ok', files: [] })
  * subcommand from `answers` and records every run.
  */
 function fakePort(initial: Record<string, unknown>, answers: Record<string, string> = {}) {
-  const blank = { brief: null, dashboard: null, view: view(), detail: null, refresh: { fetchedAt: null, failed: false }, rescan: { phase: 'idle', reason: null }, allow: { phase: 'idle', root: null, reason: null }, theme: 'dark', changes: NO_CHANGES, sessionRoot: null, live: LIVE_OFF, sessionLedger: null, sessionStart: null, sessionBegan: null, sessionEdits: [], sessionScans: [], sessionRev: null, fileDiff: null, diffFold: null, untestedOnly: false, gitHead: null, couplings: null, feedback: null, search: { query: '', for: null, phase: 'idle', answer: null }, peek: null, branch: null, flash: null, churn: null, rings: null, route: null, note: null }
+  const blank = { brief: null, dashboard: null, view: view(), detail: null, refresh: { fetchedAt: null, failed: false }, rescan: { phase: 'idle', reason: null }, allow: { phase: 'idle', root: null, reason: null }, theme: 'dark', changes: NO_CHANGES, sessionRoot: null, live: LIVE_OFF, sessionLedger: null, sessionStart: null, sessionBegan: null, sessionEdits: [], sessionScans: [], sessionRev: null, fileDiff: null, diffFold: null, untestedOnly: false, gitHead: null, couplings: null, feedback: null, search: { query: '', for: null, phase: 'idle', answer: null }, peek: null, branch: null, flash: null, churn: null, notes: null, rings: null, route: null, note: null }
   const values = new Map<string, unknown>(Object.entries({ ...blank, ...initial }))
   const timers: { at: number; run: () => void; cancelled: boolean }[] = []
   const runs: string[][] = []
@@ -69,6 +69,45 @@ function fakePort(initial: Record<string, unknown>, answers: Record<string, stri
 }
 
 const options = { fanInThreshold: 20, enforcePolicies: true, agentNotes: true, watch: false, watchPollMs: 1000, notifications: true }
+
+describe('the Notes tab loader', () => {
+  const notesOk = JSON.stringify({ status: 'ok', groups: { missing: [], stale: [], rest: [] }, counts: { total: 0, missing: 0, stale: 0, flagged: 0 }, truncated: false })
+
+  it('reads the notes while the tab is open, narrowed as the view says, the filter before the text', async () => {
+    reset(options)
+    const port = fakePort({ dashboard: dashboard('s1'), view: view({ tab: 'notes', notesFilter: 'stale', notesText: 'cache' }) }, { notes: notesOk })
+    await request(port.io, 'notes')
+    await port.advance()
+    expect(port.runs).toEqual([['sh', '/plugin/hooks/scripts/knossos-run.sh', 'notes', ROOT, '--filter=stale', '--text=cache']])
+    expect(port.values.get('notes')).toMatchObject({ snapshot: 's1', filter: 'stale', text: 'cache', version: 0, phase: 'done' })
+  })
+
+  it('asks nothing of the wrapper for every note and no text, and nothing at all on another tab', async () => {
+    reset(options)
+    const port = fakePort({ dashboard: dashboard('s1'), view: view({ tab: 'notes' }) }, { notes: notesOk })
+    await request(port.io, 'notes')
+    await port.advance()
+    expect(port.runs).toEqual([['sh', '/plugin/hooks/scripts/knossos-run.sh', 'notes', ROOT]])
+    port.values.set('view', view({ tab: 'hubs', notesFilter: 'missing' }))
+    await request(port.io, 'notes')
+    await port.advance()
+    expect(port.runs).toHaveLength(1)
+  })
+
+  it('reads again after a write moves the version, the same filter and text notwithstanding', async () => {
+    reset(options)
+    const port = fakePort({ dashboard: dashboard('s1'), view: view({ tab: 'notes' }) }, { notes: notesOk })
+    await request(port.io, 'notes')
+    await port.advance()
+    await request(port.io, 'notes')
+    await port.advance()
+    expect(port.runs).toHaveLength(1)
+    mod.notesVersion += 1
+    await request(port.io, 'notes')
+    await port.advance()
+    expect(port.runs).toHaveLength(2)
+  })
+})
 
 describe('the keyed loader', () => {
   it('reads what the cell wants on a timer, keeps the last answer on show meanwhile, and stores the new one', async () => {

@@ -24,10 +24,12 @@ import type { Loc, Row, Segment } from './rows'
 import { PLACE, REACH, kindMark, mark } from './marks'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
-export type RingMember = { name: string; canonical: string; kind: string; boundary: string | null; tested: boolean; loc: Loc | null }
+/** `via` names the member of the component a dependant reaches it through (a static method's caller), by its own name. */
+export type RingMember = { name: string; canonical: string; kind: string; boundary: string | null; tested: boolean; loc: Loc | null; via?: string | null }
 
 /** One ring as the detail draws it. */
-export type Ring = { label: string; count: number; tested: number; members: RingMember[]; tests: { count: number; paths: string[] } }
+/** `probable` counts the members whose path is only probable or possible: a guess, as the interface a call goes through. */
+export type Ring = { label: string; count: number; tested: number; probable?: number; members: RingMember[]; tests: { count: number; paths: string[] } }
 
 /**
  * The blast radius the detail draws: loading, what to say instead, or the
@@ -59,7 +61,8 @@ export function ringsInput(state: RingsState | null, name: string, root: string 
       label: ringLabel(r.hop),
       count: r.count,
       tested: r.tested,
-      members: r.items.map(i => ({ name: displayName(i), canonical: i.canonical_name, kind: i.kind, boundary: i.boundary, tested: i.tested, loc: root === null || i.path === null || i.path === undefined ? null : { path: absolute(root, i.path), line: i.line ?? null } })),
+      probable: (r.by_confidence?.probable ?? 0) + (r.by_confidence?.possible ?? 0),
+      members: r.items.map(i => ({ name: displayName(i), canonical: i.canonical_name, kind: i.kind, boundary: i.boundary, tested: i.tested, loc: root === null || i.path === null || i.path === undefined ? null : { path: absolute(root, i.path), line: i.line ?? null }, via: i.via_member === undefined || i.via_member === null ? null : memberName(i.via_member) })),
       tests: { count: r.tests.count, paths: r.tests.items.map(t => t.path) },
     })),
     truncated: answer.truncated,
@@ -82,6 +85,12 @@ function standing(ring: Ring): Segment[] {
   return ring.tested === 0 ? [untestedPart] : [mark(REACH.tested, ` ${grouped(ring.tested)} ${REACH.tested.legend}`), { text: ' · ', dim: true }, untestedPart]
 }
 
+/** A member's own name, what follows `::` or the last `\` or `.` of its full one. */
+const memberName = (full: string): string => full.split(/::|\\|(?<=\w)\.(?=\w)/).at(-1) ?? full
+
+/** A ring's count as its title says it: how many, and how many of them only probably depend on the component. */
+const countOf = (ring: Ring): string => `${grouped(ring.count)}${(ring.probable ?? 0) > 0 ? ` (${grouped(ring.probable ?? 0)} probable)` : ''}`
+
 /**
  * A ring's components as runs of names `width` wide, at most
  * {@link NAME_LINES} of them, then `+N more`: each name a press that opens
@@ -97,7 +106,8 @@ function memberLines(ring: Ring, offset: number, width: number, selected: number
     // A boundary is named only where it is not the component's own: what crosses stands out.
     const own = m.boundary === home ? [] : chip(m.boundary, hues)
     const name: Segment = { ...button(`rel:${index}`, fit(m.name, Math.max(4, width - 6))), ...(index === selected ? { bg: SELECTED_BG, bold: true } : {}) }
-    const piece: Segment[] = [...flag, kindMark(m.kind), name, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
+    const via: Segment[] = m.via === undefined || m.via === null ? [] : [{ text: ` via ${m.via}`, dim: true }]
+    const piece: Segment[] = [...flag, kindMark(m.kind), name, ...via, ...(own.length > 0 && cells(m.name) < 24 ? [{ text: ' ' }, ...own] : [])]
     const need = segmentsWidth(piece) + (used === 0 ? 0 : 3)
     if (used > 0 && used + need > width) {
       if (lines.length === NAME_LINES) break
@@ -164,7 +174,7 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
     const index = n - 1 - d
     const width = columns - 4 * d
     const colour = frameColour(index)
-    const title: Segment[] = [{ text: ring.label, bold: true, color: index === 0 ? HEADING : SECONDARY }, { text: ` · ${grouped(ring.count)}`, color: HEADING }]
+    const title: Segment[] = [{ text: ring.label, bold: true, color: index === 0 ? HEADING : SECONDARY }, { text: ` · ${countOf(ring)}`, color: HEADING }]
     const state = standing(ring)
     const fill = Math.max(1, width - 8 - segmentsWidth(title) - segmentsWidth(state))
     const top: Segment[] = [{ text: '╭─ ', color: colour }, ...title, { text: ` ${'─'.repeat(fill)} `, color: colour }, ...state, { text: ' ─╮', color: colour }]
@@ -206,7 +216,7 @@ function ringLists(input: RingsInput, columns: number, selected: number, offset:
   const rows: Row[] = []
   let at = offset
   input.rings.forEach((ring, index) => {
-    rows.push({ key: `ring-${index}-head`, segments: [{ text: ring.label, bold: true, color: HEADING }, { text: ` · ${grouped(ring.count)}  `, dim: true }, ...standing(ring)] })
+    rows.push({ key: `ring-${index}-head`, segments: [{ text: ring.label, bold: true, color: HEADING }, { text: ` · ${countOf(ring)}  `, dim: true }, ...standing(ring)] })
     memberLines(ring, at, Math.max(1, columns - 2), selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push({ key: `ring-${index}-names-${i}`, segments: [{ text: '  ' }, ...line] }))
     const tests = testsLine(ring, Math.max(1, columns - 2))
     if (tests.length > 0) rows.push({ key: `ring-${index}-tests`, segments: [{ text: '  ' }, ...tests] })

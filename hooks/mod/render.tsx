@@ -48,6 +48,7 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
     search: await io.state.search.read(),
     branch: await io.state.branch.read(),
     churn: await io.state.churn.read(),
+    notes: await io.state.notes.read(),
     rings: await io.state.rings.read(),
     route: await io.state.route.read(),
     note: await io.state.note.read(),

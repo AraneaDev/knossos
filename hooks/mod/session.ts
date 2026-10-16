@@ -247,6 +247,11 @@ export async function endTurn(io: Port, agentId: string | undefined): Promise<vo
   mod.ranCommands = []
   // Still refused once the timed retries ran out: each turn's end asks again, a session being bound by now.
   if (!mod.disabled && !mod.commandRegistered && mod.registerTimer === null) await registerCommand(io)
+  // The model's notes land during its turns, through MCP, which moves no snapshot: the Notes tab reads them again.
+  if (!mod.disabled) {
+    mod.notesVersion += 1
+    await request(io, 'notes').catch(() => undefined)
+  }
   // The turn may have committed or switched branches: the header reads where the checkout stands again.
   if (!mod.disabled) io.clock.after(0, () => void readGitHead(io).catch(() => undefined))
   // No graph to draw yet (the person may just have asked Claude to scan): look again, once the turn is over.

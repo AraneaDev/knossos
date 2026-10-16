@@ -154,7 +154,7 @@ any other press, a tab or `f`, which then does what it does:
 
 | key         | what it does                                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------------------ |
-| `1`–`8`     | switch tabs (or click one)                                                                             |
+| `1`–`9`     | switch tabs (or click one)                                                                             |
 | `j` `k`     | move the `›` marker (or Tab, the arrows, or a click)                                                   |
 | `o`         | open the marked row: a component or a file shows what depends on it, an Overview bar the tab it counts |
 | `e`         | open the marked row's file in your editor                                                              |
@@ -169,6 +169,8 @@ any other press, a tab or `f`, which then does what it does:
 | `p`         | in a component's detail: draw a [route](#a-route-between-two-components) to another component          |
 | `m`         | in a component's detail: add a [note](#a-note-on-a-component)                                          |
 | `n` `s` `x` | on Hubs: narrow the list, sort by in, out or cross degree, clear the narrowing                         |
+| `n` `s` `x` | on [Notes](#notes): narrow by text, show yours, the model's, the stale, missing or flagged, clear both |
+| `m` `w` `g` | on Notes: edit your note or adopt the model's, remove a note, flag the model's note for it to check    |
 | `r`         | rescan the project now, fresh or not                                                                   |
 | `a`         | allow a refused root (asks first)                                                                      |
 
@@ -289,7 +291,12 @@ opens its cell on Boundaries.
 On a tall pane, the rows left over go to two more lists: the complexity
 hotspots and the files most depended on, each a link to its file.
 
-The marker walks the way to Changes, the buckets, then the flows.
+**Notes**: one line, how many notes the project holds and how many need you
+(`142 notes · 3 missing · 5 stale · 1 flagged`). `o` on it opens the
+[Notes tab](#notes) on the most pressing group: the missing, else the stale,
+else the flagged.
+
+The marker walks the way to Changes, the buckets, the flows, then the notes.
 
 ## Hubs
 
@@ -591,6 +598,48 @@ large to read whole is read again over the last 50 commits and marked cut. It
 is read again when the checkout moves to another commit, not on every scan.
 Without git the tab says so.
 
+## Notes
+
+The Notes tab lists every note in the project, yours and the model's, so the
+ones that need you come first:
+
+- **On a name the graph no longer holds** (`▲`): its component was renamed or
+  moved, and the note sits on the old name.
+- **Stale** (`≈`): a model note whose files changed since it was written.
+- **The rest**: yours first, then the model's, newest first. A model note you
+  flagged for the model carries a `?`.
+
+Each row names the component, who wrote it (`you` or `model`), its kind when it
+is not a plain note, the first line of its text and the day it was written. The
+card's note counts them: `142 notes · 3 missing · 5 stale · 1 flagged`. A long
+list pages as Issues does.
+
+`n` narrows the list by text (part of a name or of a note; Enter keeps it), `s`
+shows every note, yours, the model's, the stale, the missing or the flagged in
+turn, and `x` clears both. On the marked note:
+
+| key | what it does                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------ |
+| `o` | open its component's detail; on a note on a missing name, open the finder on the old name to pick where it belongs |
+| `m` | edit your note, or adopt the model's: the detail opens with its text in the editor, and saving writes it as yours  |
+| `w` | remove it, yours or the model's, after asking                                                                      |
+| `g` | flag the model's note for the model to check, with a reason if you give one; on a flagged note, take the flag back |
+
+A note you adopt is yours: it wins over the model's and never goes stale, and
+the model's stays beside it. Picking a component in the finder for a note on a
+missing name asks `Move the note on App\Gone to App\Adapter?`; `y` moves it.
+The note keeps what it was written against, so a moved model note reads stale
+until the model looks again. A move to a component that already holds a note by
+the same author is refused, and nothing is written.
+
+A flag reaches the next session: its brief says
+`The user asked you to check 1 note: App\Target`, and the model's next note on
+that component clears it. Removing the last note on a component takes its flag
+with it.
+
+A write that meets a scan's commit keeps your question, or your typed note, and
+the footer says `a scan is committing; try again in a moment`.
+
 ## A component's detail
 
 `o` on a component, or `/knossos inspect <component>`, opens its detail. It
@@ -649,6 +698,10 @@ at most twenty in all. The note says how many were found. Every kind of
 component is searched, routes and the kinds an enricher adds among them, except
 symbols from outside the project and fields, variables and parameters.
 
+Under the matches, the finder lists the notes on names no component holds that
+the words match, each with who wrote it and its first line. A press on one opens
+the [Notes tab](#notes) on the missing notes, narrowed to that name.
+
 The search runs after a short pause in the typing. Until its answer lands, the
 card says `searching…` and keeps the last matches. Knossos searches on the
 first 80 characters of what you type.
@@ -678,7 +731,9 @@ strongest first.` When only the other direction has a route, the pane draws
 - **Route 1** draws the chosen route as boxes down the pane, each framed in its
   boundary's colour with the boundary beside it. Each hop is an arrow labelled
   with its kind and the file and line it is written at (`calls ·
-ServeCommand.php:33`).
+ServeCommand.php:33`). A hop that is only probable says so, and a hop no edge
+  holds, a call to an interface method landing on the method that implements
+  it, is drawn dotted and labelled `implemented_by · probable · derived`.
 
 `o` opens a box's component. `b` goes back to the detail the route began on.
 
@@ -693,7 +748,8 @@ dependents there are in all, `tests apart`, since a test is no member of a
 ring.
 
 Each frame's top edge carries its hop and how many components it holds
-(`2 hops · 53`), and on the right either `✓ all tested` or how many no test
+(`2 hops · 53`, and `53 (12 probable)` when some of them depend on it only
+probably, through an interface or a property), and on the right either `✓ all tested` or how many no test
 reaches (`▲ 1 untested`, in the warning colour). The rings are impact
 analysis's own dependants, the answer the agent gets from `impact_analysis`:
 the walk starts from the component's members too, so a caller of a static
@@ -747,8 +803,10 @@ overwrites.
 4. Only `y` (or the `record` button) writes it; `n` cancels.
 
 A refusal, such as an ambiguous name or a note over 2,000 bytes, is said in the
-card: `✗ knossos did not record it: …`. Once recorded, the detail is read
-again so the note shows, and the button reads `m: change the note`.
+card: `✗ knossos did not record it: …`. A note that meets a scan's commit stays
+at the question with its text, and the footer says to try again in a moment.
+Once recorded, the detail is read again so the note shows, and the button reads
+`m: change the note`.
 
 ## The diff since the session began
 

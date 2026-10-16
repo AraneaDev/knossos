@@ -7,7 +7,7 @@
  * shared primitives (segments, cutting, bars, the self-fitting table) are in
  * `rows.ts`; the Issues and Cycles tabs and the component detail in `views.ts`.
  */
-import type { AllowState, BranchState, ChurnState, CouplingState, Dashboard, Feedback, GitHead, HubSort, KnossosView, LiveState, NoteState, PaneTab, Ranked, RefreshState, RescanState, RingsState, RouteState, SearchState, SessionChanges, TurnBrief } from '../../types'
+import type { AllowState, BranchState, ChurnState, CouplingState, Dashboard, Feedback, GitHead, HubSort, KnossosView, LiveState, NotesState, NoteState, PaneTab, Ranked, RefreshState, RescanState, RingsState, RouteState, SearchState, SessionChanges, TurnBrief } from '../../types'
 import { formatAge } from './band'
 import { boundariesArrangement, boundariesInput, boundariesList, couplingView, markedCell } from './boundaries'
 import type { BoundariesInput, CouplingView } from './boundaries'
@@ -50,11 +50,13 @@ import { LIVE_OFF } from './live'
 import { CARD_MAX, componentFigures, fileFigures, previewCard } from './hover'
 import { tilesBlock } from './tiles'
 import type { Stat } from './tiles'
-import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
+import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLineBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
+import { notesArrangement, notesInput, notesItems, notesList } from './notes-view'
+import type { NotesInput } from './notes-view'
 import { ringsInput } from './rings'
 import { routeArrangement, routeInput, routeList } from './route'
 import type { RouteInput } from './route'
@@ -174,6 +176,8 @@ export type PaneInput = {
   peek: DetailInput | null
   /** The Churn tab: the files changed most that much depends on. */
   churn: ChurnInput
+  /** The Notes tab: every note, grouped so what needs the person comes first. */
+  notes: NotesInput
   /** The route the path explorer draws instead of a tab or a detail, or null. */
   route: RouteInput | null
 }
@@ -191,6 +195,7 @@ export const TABS: { id: PaneTab; full: string; hotkey: string }[] = [
   { id: 'changes', full: 'Changes', hotkey: '6' },
   { id: 'branch', full: 'Branch', hotkey: '7' },
   { id: 'churn', full: 'Churn', hotkey: '8' },
+  { id: 'notes', full: 'Notes', hotkey: '9' },
 ]
 
 export const SORTS: HubSort[] = ['in', 'out', 'cross']
@@ -248,7 +253,7 @@ export function fileHubList(files: FileHub[], filter: string): FileHub[] {
 }
 
 /** What a list addresses: the fields the selection, `o`, `e`, `c` and `q` read. */
-export type ListInput = Pick<PaneInput, 'tab' | 'items' | 'filter' | 'sort' | 'degree' | 'issues' | 'detail' | 'changes' | 'cycles' | 'boundaries' | 'lookAt' | 'overview' | 'drift' | 'driftOpen' | 'fileHubs'> & Partial<Pick<PaneInput, 'finder' | 'branch' | 'churn' | 'route' | 'showKeys'>>
+export type ListInput = Pick<PaneInput, 'tab' | 'items' | 'filter' | 'sort' | 'degree' | 'issues' | 'detail' | 'changes' | 'cycles' | 'boundaries' | 'lookAt' | 'overview' | 'drift' | 'driftOpen' | 'fileHubs'> & Partial<Pick<PaneInput, 'finder' | 'branch' | 'churn' | 'notes' | 'route' | 'showKeys'>>
 
 /** A file row of a list: it opens as the file's detail, and `e` opens the file. */
 const fileRow = (path: string, loc: Loc | null): Openable => ({ name: path, canonical: path, loc, file: true })
@@ -262,6 +267,8 @@ export type PaneExtras = {
   search?: SearchState | null
   branch?: BranchState | null
   churn?: ChurnState | null
+  /** The Notes tab's notes, as last read. */
+  notes?: NotesState | null
   /** The blast radius of the component the detail shows, as last read. */
   rings?: RingsState | null
   route?: RouteState | null
@@ -306,6 +313,7 @@ export function listFor(input: ListInput): Openable[] {
   if (input.tab === 'boundaries') return boundariesList(input.boundaries)
   if (input.tab === 'branch') return input.branch === undefined ? [] : branchList(input.branch)
   if (input.tab === 'churn') return input.churn === undefined ? [] : churnList(input.churn)
+  if (input.tab === 'notes') return input.notes === undefined ? [] : notesList(input.notes)
   return input.tab === 'issues' ? issuesList(input.issues) : []
 }
 
@@ -522,10 +530,11 @@ export function paneInput(
     target: view.target ?? null,
     couplings: shownCouplings(boundaries, view, d.snapshot_id ?? null, extras.couplings ?? null),
     lit,
-    finder: view.finding === true && extras.search !== undefined && extras.search !== null ? finderInput(extras.search, d.project_root, view.picking?.label ?? null) : null,
+    finder: view.finding === true && extras.search !== undefined && extras.search !== null ? finderInput(extras.search, d.project_root, view.picking?.label ?? null, (view.moving ?? null) !== null) : null,
     branch: branchInput(extras.branch ?? null, d.project_root),
     peek,
     churn: churnInput(extras.churn ?? null, d.project_root),
+    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null),
     route: route === null ? null : routeInput(extras.route ?? null, route.from, route.to, route.index, d.project_root),
   }
 }
@@ -869,6 +878,8 @@ const KEY_HELP: [string, string][] = [
   ['p', "in a component's detail: pick another component in the finder and draw the route between them"],
   ['m', "in a component's detail: add a note to it; knossos checks it first, and y records it"],
   ['n s x', 'on Hubs: narrow the list (type, then Enter), sort by in, out or cross, clear the narrowing or the in-degree range'],
+  ['n s x', "on Notes: narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both"],
+  ['m w g', "on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)"],
   ['r', 'rescan the project now, fresh or not'],
   ['a', 'allow a refused root (asks first)'],
 ]
@@ -929,6 +940,15 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   if (onTab && input.tab === 'hubs') {
     actions.push(button('filter', 'narrow', 'n'), button('sort', `sort: ${input.sort}`, 's'))
     if (input.filter !== '' || input.degree !== null) actions.push(button('clear', 'clear', 'x'))
+  }
+  // While the card asks, its own y and n are the keys: nothing else on the tab may take them.
+  if (onTab && input.tab === 'notes' && input.notes.ask === null) {
+    const note = notesItems(input.notes)[Math.min(Math.max(0, input.selected), notesItems(input.notes).length - 1)]
+    if (note !== undefined && !note.missing) actions.push(button('notes-edit', note.author === 'user' ? 'edit' : 'adopt', 'm'))
+    if (note !== undefined) actions.push(button('notes-remove', 'remove', 'w'))
+    if (note !== undefined && !note.missing && note.author === 'model') actions.push(button('notes-flag', note.checked ? 'unflag' : 'flag', 'g'))
+    actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'))
+    if (input.notes.filter !== 'all' || input.notes.text !== '') actions.push(button('notes-clear', 'clear', 'x'))
   }
   // From a component's own detail, a route to any other component (the finder picks where it ends).
   if (input.route === null && input.detail?.component !== null && input.detail?.component !== undefined && input.detail.file === undefined) actions.push(button('route', 'route to…', 'p'))
@@ -1140,13 +1160,14 @@ function overviewArrangement(input: PaneInput, selected: number, tier: Tier): Ar
   const concentration = concentrationBlock(data, selected, session)
   const health = healthBlock(data)
   const flows = flowsBlock(data, input.hues, selected, session + data.buckets.length)
+  const notes = notesLineBlock(data, selected, session + data.buckets.length + data.flows.length)
   const present = (blocks: (Block | null)[]): Block[] => blocks.filter((b): b is Block => b !== null)
   // A card with nothing to show is one line: it stands on a row of its own rather than beside a card it cannot match in height.
   const quiet = data.flows.length === 0
-  const rows: Block[][] = [[sessionCard], present([composition, concentration]), present([health, ...(quiet ? [] : [flows])]), ...(quiet ? [[flows]] : [])].filter(line => line.length > 0)
+  const rows: Block[][] = [[sessionCard], present([composition, concentration]), present([health, ...(quiet ? [] : [flows])]), ...(quiet ? [[flows]] : []), present([notes])].filter(line => line.length > 0)
   // A tall pane's spare rows go to the files a change is riskiest in and the files most depended on, rather than to blank space.
   const extra = present([spotsBlock(input), topFilesBlock(input)])
-  return { top: tiles, left: [], rows, split: 0.5, order: [...tiles, sessionCard, ...present([composition, concentration, health, flows])], ...(extra.length > 0 ? { extra: [extra] } : {}) }
+  return { top: tiles, left: [], rows, split: 0.5, order: [...tiles, sessionCard, ...present([composition, concentration, health, flows, notes])], ...(extra.length > 0 ? { extra: [extra] } : {}) }
 }
 
 /** The fewest rows a secondary list on the Overview shows when it shows at all. */
@@ -1268,7 +1289,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
 }
 
 /** The tabs whose marked row shows its detail beside the list on a wide pane. */
-export const PEEK_TABS: readonly PaneTab[] = ['hubs', 'changes', 'issues', 'cycles', 'branch', 'churn']
+export const PEEK_TABS: readonly PaneTab[] = ['hubs', 'changes', 'issues', 'cycles', 'branch', 'churn', 'notes']
 /** The list's share of a wide pane beside the marked row's detail. */
 const PEEK_SPLIT = 0.55
 /** How each panel of master-detail is laid out: one column of framed cards. */
@@ -1318,6 +1339,7 @@ function tabArrangement(input: PaneInput, selected: number, tier: Tier): Arrange
   if (input.tab === 'cycles') return cyclesArrangement(input.cycles, tier, input.hues, selected)
   if (input.tab === 'branch') return branchArrangement(input.branch, selected, input.hues)
   if (input.tab === 'churn') return churnArrangement(input.churn, selected, tier, input.hues)
+  if (input.tab === 'notes') return notesArrangement(input.notes, selected, input.hues)
   return boundariesArrangement(input.boundaries, tier, input.hues, selected, input.target, input.couplings, input.lit)
 }
 

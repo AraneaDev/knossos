@@ -5,12 +5,12 @@
  * runs on a timer, never inside a render, and stores its answer only while
  * it is still the one wanted.
  */
-import type { BranchState, ChurnState, ComponentDetail, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState } from '../../types'
+import type { BranchState, ChurnState, ComponentDetail, NotesFilter, NotesState, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState } from '../../types'
 import { alertKeys, freshAlerts } from '../lib/alerts'
 import { BASELINES_KEY, baselinesOf, remember } from '../lib/baseline'
 import { BOUNDARY_AXES } from '../lib/boundaries'
 import type { Baseline } from '../lib/baseline'
-import { parseBlastRadius, parseBranchDiff, parseChurn, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parsePathBetween, parseSessionDiff, parseSessionHead, parseSessionRev } from '../lib/envelopes'
+import { parseBlastRadius, parseBranchDiff, parseChurn, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseNotes, parsePathBetween, parseSessionDiff, parseSessionHead, parseSessionRev } from '../lib/envelopes'
 import { flashKeys } from '../lib/flash'
 import { couplingPair, PEEK_TABS } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
@@ -36,6 +36,8 @@ const PEEK_DEBOUNCE_MS = 120
 const CHURN_TIMEOUT_MS = 20_000
 const RINGS_TIMEOUT_MS = 20_000
 const ROUTE_TIMEOUT_MS = 20_000
+/** The wrapper bounds the notes commands at 15 s. */
+const NOTES_TIMEOUT_MS = 20_000
 
 /**
  * Loads the dashboard into state; false when nothing was stored. Silence, or
@@ -95,6 +97,7 @@ async function loadDashboard(io: Port): Promise<void> {
   await request(io, 'branch')
   await request(io, 'peek')
   await request(io, 'route')
+  await request(io, 'notes')
 }
 
 /**
@@ -279,6 +282,27 @@ export const LOADERS = {
     parse: parseChurn,
     landed: (c, w, parsed) => (c !== null && c.head === w.head ? { head: w.head, phase: 'done', answer: parsed } : c),
   } satisfies Loader<ChurnState, { head: string | null; root: string | undefined }, NonNullable<ReturnType<typeof parseChurn>>>,
+  /**
+   * Every note while the Notes tab is open, for this graph, narrowed as the
+   * view says, and read again after each note the pane writes (`version`).
+   * The last answer stays on show meanwhile.
+   */
+  notes: {
+    cell: io => io.state.notes,
+    want: async io => {
+      const v = await io.state.view.read()
+      if (v.tab !== 'notes' || v.inspect !== null || (v.route ?? null) !== null) return null
+      const d = await io.state.dashboard.read()
+      if (d?.status !== 'ok') return null
+      return { snapshot: d.snapshot_id ?? null, filter: v.notesFilter ?? 'all', text: v.notesText ?? '', version: mod.notesVersion, root: d.project_root ?? undefined }
+    },
+    holds: (c, w) => c !== null && c.snapshot === w.snapshot && c.filter === w.filter && c.text === w.text && c.version === w.version,
+    loading: (c, w): NotesState => ({ snapshot: w.snapshot, filter: w.filter, text: w.text, version: w.version, phase: 'loading', answer: c?.answer ?? null }),
+    // The wrapper takes the filter, then the text, each at most once.
+    ask: async (_, w) => ({ sub: 'notes', args: [...(w.filter === 'all' ? [] : [`--filter=${w.filter}`]), ...(w.text === '' ? [] : [`--text=${w.text}`])], timeoutMs: NOTES_TIMEOUT_MS, root: w.root }),
+    parse: parseNotes,
+    landed: (c, w, parsed) => (c !== null && c.snapshot === w.snapshot && c.filter === w.filter && c.text === w.text && c.version === w.version ? { ...c, phase: 'done', answer: parsed } : c),
+  } satisfies Loader<NotesState, { snapshot: string | null; filter: NotesFilter; text: string; version: number; root: string | undefined }, NonNullable<ReturnType<typeof parseNotes>>>,
   /** A component's blast radius for its detail, for this graph (a file's detail has none): the last rings stay on show meanwhile. */
   rings: {
     cell: io => io.state.rings,

@@ -5,12 +5,14 @@
  */
 import type { AllowState, DiffFold, Inspected, KnossosView, NoteState, PaneTab, RescanState, SearchState } from '../../types'
 import { diffPage, diffView } from '../lib/diff'
-import { parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
+import { BUSY_CODE, BUSY_SAID, parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
 import { askPrompt, editTarget, locOf, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
+import { nextFilter } from '../lib/notes-view'
 import { editorCommand } from '../lib/rows'
 import type { Loc } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { request, requestDetail, showComponent } from './loaders'
+import { askFlag, askMove, askRemove, confirm as confirmNotes, editMarked, missingMarked, startMove, submitReason, typeReason } from './notes-actions'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
 import { currentInput, currentList } from './render'
@@ -51,6 +53,8 @@ async function openRow(io: Port, index?: number): Promise<void> {
   if ((await io.state.view.read()).finding === true) {
     // Picking where a route ends: the match is that end, and the route is drawn.
     if (((await io.state.view.read()).picking ?? null) !== null) return showRoute(io, { name: item.canonical, label: item.name })
+    // Picking where a note on a missing name moves: the Notes tab asks to move it there.
+    if (((await io.state.view.read()).moving ?? null) !== null) return item.file === true ? undefined : askMove(io, item.canonical)
     mod.openWhenFound = false
     await io.state.view.update((v): KnossosView => ({ ...v, finding: false, selected: mod.findFrom }))
     return showComponent(io, { name: item.canonical, label: item.name, ...(item.file === true ? { file: true } : {}) })
@@ -59,7 +63,7 @@ async function openRow(io: Port, index?: number): Promise<void> {
   // An Overview chart's bar opens the tab it counts: Hubs narrowed to a bucket, a flow's cell on Boundaries, Changes.
   const jump = item.jump
   if (jump !== undefined) {
-    await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target }))
+    await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target, ...(jump.notesFilter === undefined ? {} : { notesFilter: jump.notesFilter, notesText: '' }) }))
     return
   }
   // A boundary opens nothing: marking it is what spells it out.
@@ -163,7 +167,8 @@ async function openFinder(io: Port): Promise<void> {
 /** Closes the finder: the tab (or the detail) under it comes back with its marker where it stood. */
 async function closeFinder(io: Port): Promise<void> {
   mod.openWhenFound = false
-  await io.state.view.update((v): KnossosView => (v.finding === true ? { ...v, finding: false, picking: null, selected: mod.findFrom } : v))
+  // A note waiting to move goes back to waiting for o: the finder no longer picks for it.
+  await io.state.view.update((v): KnossosView => (v.finding === true ? { ...v, finding: false, picking: null, moving: null, selected: mod.findFrom } : v))
 }
 
 /** What was typed into the finder, kept at once; the search for it runs after a short pause in the typing. */
@@ -171,6 +176,23 @@ async function typeQuery(io: Port, text: string): Promise<void> {
   await io.state.search.update((f): SearchState => ({ ...f, query: text }))
   await io.state.view.update(v => ({ ...v, selected: 0 }))
   requestSearch(io)
+}
+
+/**
+ * `o`: opens the marked row, or, on a note on a name the graph no longer
+ * holds, opens the finder on that name to pick where the note belongs. Apart
+ * from {@link openRow}, which the finder's own search calls once a match
+ * lands, so the search never leads back here.
+ */
+async function openOrMove(io: Port): Promise<void> {
+  const lost = (await io.state.view.read()).finding !== true ? await missingMarked(io) : null
+  return lost === null ? openRow(io) : startMove(io, lost, openFinderOn)
+}
+
+/** Opens the finder with `query` typed in it, looking it up at once. */
+async function openFinderOn(io: Port, query: string): Promise<void> {
+  await openFinder(io)
+  await typeQuery(io, query)
 }
 
 /** Enter in the finder: opens the marked match once the answer for what is typed is in; an empty field closes the finder. */
@@ -322,6 +344,7 @@ async function pressPane(io: Port, id: string, surface?: RenderSurface): Promise
   await request(io, 'branch')
   await request(io, 'peek')
   await request(io, 'churn')
+  await request(io, 'notes')
 }
 
 /** A press in the detail beside the tab (`peek:N`): opens what it lists as the detail itself. */
@@ -420,6 +443,11 @@ async function recordNote(io: Port, component: string, value: string): Promise<v
   const root = (await io.state.dashboard.read())?.project_root ?? undefined
   const parsed = parseAnnotate(await wrapper(io, 'annotate', [`--component=${component}`, `--value=${value}`, '--execute'], NOTE_TIMEOUT_MS, root))
   if (parsed?.status === 'no-binary') return disable(io)
+  // A scan committing holds the write lock: the note stays at its question, its text kept, to try again.
+  if (parsed?.status === 'error' && parsed.code === BUSY_CODE) {
+    await io.state.note.update((n): NoteState | null => (n !== null && n.component === component ? { ...n, phase: 'confirming' } : n))
+    return say(io, BUSY_SAID, 'alert')
+  }
   if (parsed?.status !== 'ok' || parsed.executed !== true) {
     await io.state.note.update((n): NoteState | null => (n !== null && n.component === component ? { ...n, phase: 'failed', reason: parsed?.status === 'refused' ? (parsed.reason ?? 'it refused') : 'it said nothing' } : n))
     return
@@ -548,6 +576,8 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
     'tab:',
     async (io, rest) => {
       const tab = rest as PaneTab
+      // The model writes notes through MCP, which moves no snapshot: entering the tab reads them again.
+      if (tab === 'notes') mod.notesVersion += 1
       if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
     },
   ],
@@ -576,7 +606,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['unfold:', (io, _, __, id) => unfoldCycle(io, id)],
   ['down', io => moveSelection(io, 1)],
   ['up', io => moveSelection(io, -1)],
-  ['open', io => openRow(io)],
+  ['open', io => openOrMove(io)],
   ['edit', (io, _, surface) => openEditTarget(io, surface)],
   ['tests', (io, _, surface) => copyTestCommand(io, surface)],
   // The detail's diff: a folded hunk shown whole, the page of hunks moved, and from the panel beside a tab the full detail.
@@ -594,6 +624,17 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['keys', viewing(v => ({ ...v, showKeys: !v.showKeys }))],
   ['keys-close', viewing(v => ({ ...v, showKeys: false }))],
   ['filter', io => openFilter(io)],
+  ['notes-narrow', io => openNotesFilter(io)],
+  ['notes-filter', viewing(v => ({ ...v, notesFilter: nextFilter(v.notesFilter ?? 'all'), selected: 0 }))],
+  ['notes-clear', viewing(v => ({ ...v, notesFilter: 'all', notesText: '', filtering: false, selected: 0 }))],
+  ['notes-edit', io => editMarked(io)],
+  ['notes-remove', io => askRemove(io)],
+  ['notes-flag', io => askFlag(io)],
+  ['notes-yes', io => confirmNotes(io)],
+  ['notes-no', viewing(v => ({ ...v, notesAsk: null }))],
+  ['notes-move:', (io, rest) => askMove(io, rest)],
+  // A note on a missing name the finder found: the Notes tab, on the missing notes, narrowed to its name.
+  ['finder-note:', viewing((v, rest) => ({ ...v, finding: false, picking: null, inspect: null, route: null, tab: 'notes', notesFilter: 'missing', notesText: rest, filtering: false, selected: 0 }))],
   ['clear', viewing(v => ({ ...v, filter: '', filtering: false, degree: null, selected: 0 }))],
   ['sort', viewing(v => ({ ...v, sort: SORTS[(SORTS.indexOf(v.sort) + 1) % SORTS.length] ?? 'in', selected: 0 }))],
   ['rescan', io => requestRescan(io)],
@@ -626,14 +667,32 @@ async function pressAction(io: Port, id: string, surface?: RenderSurface): Promi
   return PRESSES.get(press.key)!(io, press.rest, surface, id)
 }
 
-/** Into the field `field` (the finder's, a note's, the hubs filter's): what was typed, kept at once. */
+/** Into the field `field` (the finder's, a note's, the hubs filter's, the Notes tab's): what was typed, kept at once. */
 function typeInto(io: Port, field: string, text: string): Promise<void> {
-  return field === 'find' ? typeQuery(io, text) : field === 'note' ? typeNote(io, text) : typeFilter(io, text)
+  return field === 'find' ? typeQuery(io, text) : field === 'note' ? typeNote(io, text) : field === 'notes-filter' ? typeNotesFilter(io, text) : field === 'notes-reason' ? typeReason(io, text) : typeFilter(io, text)
 }
 
 /** Enter in the field `field`. */
 function submitFrom(io: Port, field: string, text: string): Promise<void> {
-  return field === 'find' ? submitQuery(io, text) : field === 'note' ? submitNote(io, text) : submitFilter(io, text)
+  return field === 'find' ? submitQuery(io, text) : field === 'note' ? submitNote(io, text) : field === 'notes-filter' ? submitNotesFilter(io, text) : field === 'notes-reason' ? submitReason(io, text) : submitFilter(io, text)
+}
+
+/** Opens the field that narrows the Notes tab by text, and moves the focus into it once it is drawn. */
+async function openNotesFilter(io: Port): Promise<void> {
+  await io.state.view.update((v): KnossosView => ({ ...v, tab: 'notes', filtering: true }))
+  focusField(io, 'notes-filter')
+}
+
+/** The Notes tab's text as typed: the list is read again for it, the marker back at the top. */
+async function typeNotesFilter(io: Port, text: string): Promise<void> {
+  await io.state.view.update(v => ({ ...v, notesText: text, selected: 0 }))
+  await request(io, 'notes')
+}
+
+/** Enter in the Notes tab's field: keep the text (an empty one clears it) and close the field. */
+async function submitNotesFilter(io: Port, text: string): Promise<void> {
+  await io.state.view.update(v => ({ ...v, notesText: text.trim(), filtering: false, selected: 0 }))
+  await request(io, 'notes')
 }
 
 /** What the pane's elements do, for the pane drawn through `io`: each action's failure (a teardown under it) is swallowed. */

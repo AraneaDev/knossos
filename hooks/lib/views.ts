@@ -11,7 +11,7 @@ import { diffBlock } from './diff'
 import type { DiffView } from './diff'
 import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
-import type { ComponentDetail, Counterpart, Dashboard, Diagnostic, DetailState, Inspected, NoteState, PaneTab } from '../../types'
+import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, Inspected, NotesFilter, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
 import type { RingsInput } from './rings'
 import { countLabel, detailLines } from './envelopes'
@@ -75,7 +75,7 @@ export type Openable = {
  * range Hubs narrows to, the row its marker starts on, and the boundary a
  * Boundaries cell runs to.
  */
-export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null }; selected?: number; target?: string }
+export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null }; selected?: number; target?: string; notesFilter?: NotesFilter }
 
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
 /** `certainty` is the candidate's confidence, `probable` or `possible`: how sure the scan is that nothing reaches it. */
@@ -298,9 +298,9 @@ export function detailList(detail: DetailInput): Openable[] {
 }
 
 /** An issue row's columns: its main text, then the boundary, then the place. */
-type EntrySpec = { main: number; boundary: number; place: number }
+export type EntrySpec = { main: number; boundary: number; place: number }
 /** One issue row: `need` is how wide its main text is uncut; `loc` makes its place a link. */
-type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
+export type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
@@ -309,7 +309,7 @@ type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: n
  * boundary goes first, then the place; the main text keeps at least
  * {@link MAIN_MIN}.
  */
-function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
+export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
   const placeNeed = Math.min(Math.max(12, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
   // A boundary is a chip: its swatch and a space before its label.
   const longest = Math.max(0, ...entries.map(e => cells(boundaryLabel(e.boundary ?? null, hues))))
@@ -322,7 +322,8 @@ function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): Ent
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
 }
 
-function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Row {
+/** One issue row, its columns fitted by {@link entrySpec}; the marked one on the selection's tint. */
+export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Row {
   const main = e.main(spec.main)
   const used = main.reduce((n, s) => n + cells(s.text), 0)
   const segments: Segment[] = [

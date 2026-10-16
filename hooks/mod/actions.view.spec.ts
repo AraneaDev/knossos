@@ -4,7 +4,7 @@ import { SORTS } from '../lib/layout'
 import { handlersOf, PRESSES, pressOf } from './actions'
 import { request } from './loaders'
 import type { Port } from './port'
-import { fieldKey, PANE, reset } from './state'
+import { fieldKey, mod, PANE, reset } from './state'
 import { requestRescan } from './watcher'
 
 // The loaders and the rescan reach the wrapper through timers of their own: here only that they are asked for, and when, matters.
@@ -72,10 +72,40 @@ describe('a press on a tab', () => {
         expect(port.log).toEqual([])
     })
 
+    it('reads the notes again on entering the Notes tab, notes the model wrote meanwhile included', async () => {
+        const port = viewPort({ tab: 'hubs' })
+        const before = mod.notesVersion
+        await port.press('tab:notes')
+        expect(mod.notesVersion).toBe(before + 1)
+        await port.press('tab:hubs')
+        expect(mod.notesVersion).toBe(before + 1)
+    })
+
     it('switches the same way from the hidden hotkey twin', async () => {
         const port = viewPort({ selected: 3 })
         await port.press('tabkey:churn')
         expect(port.view()).toMatchObject({ tab: 'churn', selected: 0 })
+    })
+})
+
+describe('the Notes tab', () => {
+    it('cycles what it shows on s, the marker back at the top, and back to every note after the flagged', async () => {
+        const port = viewPort({ tab: 'notes', selected: 4 })
+        await port.press('notes-filter')
+        expect(port.view()).toMatchObject({ notesFilter: 'yours', selected: 0 })
+        for (const next of ['model', 'stale', 'missing', 'flagged', 'all']) {
+            await port.press('notes-filter')
+            expect(port.view().notesFilter).toBe(next)
+        }
+    })
+
+    it('opens its own field on n, never the Hubs filter, and clears both on x', async () => {
+        const port = viewPort({ tab: 'notes', filter: 'hub text' })
+        await port.press('notes-narrow')
+        expect(port.view()).toMatchObject({ tab: 'notes', filtering: true, filter: 'hub text' })
+        await port.press('notes-filter')
+        await port.press('notes-clear')
+        expect(port.view()).toMatchObject({ notesFilter: 'all', notesText: '', filtering: false, filter: 'hub text' })
     })
 })
 
@@ -261,7 +291,7 @@ describe("a press through the pane's handlers", () => {
         handlersOf(port.io).press('next:2')
         await settle()
         expect(port.view().selected).toBe(2)
-        expect(port.log).toEqual(['update:view', 'request:couplings', 'request:branch', 'request:peek', 'request:churn'])
+        expect(port.log).toEqual(['update:view', 'request:couplings', 'request:branch', 'request:peek', 'request:churn', 'request:notes'])
         for (const call of vi.mocked(request).mock.calls) expect(call[0]).toBe(port.io)
     })
 
@@ -271,6 +301,6 @@ describe("a press through the pane's handlers", () => {
         handlersOf(port.io).press('nope')
         await settle()
         expect(port.view()).toEqual(VIEW)
-        expect(port.log).toEqual(['request:couplings', 'request:branch', 'request:peek', 'request:churn'])
+        expect(port.log).toEqual(['request:couplings', 'request:branch', 'request:peek', 'request:churn', 'request:notes'])
     })
 })

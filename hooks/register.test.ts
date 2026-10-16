@@ -1678,7 +1678,7 @@ describe('knossos mod', () => {
       const tabs = await ui.findAll({ type: 'Button' })
       // Six tabs at 60 columns, narrow: the active one by name, the others by digit, none drawing a hotkey.
       const labelled = (t: (typeof tabs)[number]) => (t.props.hotkey === undefined ? String(t.text) : `${String(t.props.hotkey)}: ${t.text}`)
-      expect(tabs.filter(t => String(t.key).startsWith('tab:')).map(labelled)).toEqual([' Overview ', ' 2 ', ' 3 ', ' 4 ', ' 5 ', ' 6 ', ' 7 ', ' 8 '])
+      expect(tabs.filter(t => String(t.key).startsWith('tab:')).map(labelled)).toEqual([' Overview ', ' 2 ', ' 3 ', ' 4 ', ' 5 ', ' 6 ', ' 7 ', ' 8 ', ' 9 '])
       // The open tab stands on the selection colour.
       expect((await ui.find({ key: 'tab:overview-bg' }))?.props.backgroundColor).toBe('selectionBg')
       expect(await ui.find({ key: 'tab:hubs-bg' })).toBeUndefined()
@@ -1692,6 +1692,7 @@ describe('knossos mod', () => {
         '6 tabkey:changes',
         '7 tabkey:branch',
         '8 tabkey:churn',
+        '9 tabkey:notes',
       ])
       await ui.press({ key: 'tabkey:cycles' })
       expect((await ui.find({ key: 'tab:cycles' }))?.text).toBe(' Cycles ')

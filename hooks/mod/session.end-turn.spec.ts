@@ -80,6 +80,15 @@ afterEach(() => {
 })
 
 describe('endTurn', () => {
+    it("reads the Notes tab again at the main loop's turn end, where the model's notes land, never at a subagent's", async () => {
+        quiet()
+        const port = fakePort({ dashboard: okDashboard })
+        await endTurn(port.io, 'sub-1')
+        expect(mod.notesVersion).toBe(0)
+        await endTurn(port.io, undefined)
+        expect(mod.notesVersion).toBe(1)
+    })
+
     it("ends a subagent's turn at its own notes: the main loop's commands and timers are left alone", async () => {
         quiet()
         mod.commandRegistered = false

@@ -189,6 +189,8 @@ export const mod = {
   loadTimers: new Map<string, Timer>(),
   /** The row (by `peekKey`) last found to have nothing to show beside the tab, so the tick does not look again. */
   peekNone: null as string | null,
+  /** Moved by each note the pane writes, so the Notes tab reads its notes again. */
+  notesVersion: 0,
   /** Whether a pane too large to draw however few rows it gave was logged: once a load. */
   tooLargeLogged: false,
   /** Commit notes already given, by loop and text: the same note is never said twice. */
@@ -292,6 +294,7 @@ export function reset(options: PluginOptions): void {
   mod.findFrom = 0
   mod.paneWide = false
   mod.peekNone = null
+  mod.notesVersion = 0
   mod.tooLargeLogged = false
   mod.loadTimers.forEach(timer => timer.cancel())
   mod.loadTimers = new Map()

@@ -1,4 +1,4 @@
-import type { AllowRoot, Annotate, BlastRadius, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
+import type { AllowRoot, Annotate, BlastRadius, NoteWrite, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
 import { printableDeep } from './printable'
 
 // The envelope shapes are written once, in the plugin's contract, and re-exported
@@ -214,6 +214,21 @@ export function parseBranchDiff(stdout: string): BranchDiff | null {
   return placed ? parsed : null
 }
 
+const NOTES = new Set(['ok', 'refused', 'unscanned', 'error', 'no-binary'])
+
+/** Whether every row of a notes group carries what the tab draws. */
+const noteRows = (rows: unknown): boolean =>
+  Array.isArray(rows) && rows.every(r => isObject(r) && ['component', 'value', 'author', 'kind', 'updated_at'].every(k => typeof (r as Record<string, unknown>)[k] === 'string'))
+
+/** The Notes tab's notes from the wrapper's stdout; null for silence or anything unexpected (a group without its rows). */
+export function parseNotes(stdout: string): Notes | null {
+  const parsed = parse(stdout, NOTES, [], ['groups', 'counts']) as Notes | null
+  if (parsed === null || parsed.status !== 'ok') return parsed === null ? null : { ...parsed, groups: { missing: [], stale: [], rest: [] }, counts: { total: 0, missing: 0, stale: 0, flagged: 0 }, truncated: false }
+  const g = parsed.groups
+  const counted = ['total', 'missing', 'stale', 'flagged'].every(k => typeof (parsed.counts as Record<string, unknown>)[k] === 'number')
+  return noteRows(g.missing) && noteRows(g.stale) && noteRows(g.rest) && counted ? { ...parsed, truncated: parsed.truncated === true } : null
+}
+
 const CHURN = new Set(['ok', 'no-git', 'unreadable', 'unscanned', 'error', 'no-binary'])
 
 /** The Churn tab's hotspots from the wrapper's stdout; null for silence or anything unexpected (a file without its figures). */
@@ -258,6 +273,19 @@ export function parseAnnotate(stdout: string): Annotate | null {
   if (parsed === null || parsed.status !== 'ok') return parsed
   return typeof parsed.component === 'string' && typeof parsed.executed === 'boolean' ? parsed : null
 }
+
+/** A note write's answer from the wrapper's stdout (note-adopt, note-move, note-check, a remove); null for silence or anything unexpected. */
+export function parseNoteWrite(stdout: string): NoteWrite | null {
+  const parsed = parse(stdout, NOTE, [], []) as NoteWrite | null
+  if (parsed === null || parsed.status !== 'ok') return parsed
+  return typeof parsed.executed === 'boolean' ? parsed : null
+}
+
+/** The code a write that met a scan's commit answers with: the pane keeps what was typed and says to retry. */
+export const BUSY_CODE = 'KNOSSOS_DATABASE_BUSY'
+
+/** What the pane says for such a write. */
+export const BUSY_SAID = 'a scan is committing; try again in a moment'
 
 /** Why a rescan did not land, in a few words for the pane's header. */
 export function rescanReason(rescan: Rescan | null): string {
