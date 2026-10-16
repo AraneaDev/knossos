@@ -329,4 +329,3 @@ describe('drawPane: plain text', () => {
         expect(parts.some(p => typeof p === 'string' && /^ +$/.test(p))).toBe(true)
     })
 })
-

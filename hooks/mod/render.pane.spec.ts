@@ -3,7 +3,7 @@ import type { BoundaryMatrix, Dashboard, KnossosView, TurnBrief } from '../../ty
 import { NO_CHANGES } from '../lib/layout'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
-import { currentInput, drawnText, drawPane, TEXT_BUDGET, WIDE_HEADROOM } from './render'
+import { currentInput, drawnText, drawPane, TEXT_BUDGET } from './render'
 import type { Handlers } from './render'
 import { mod, reset } from './state'
 
@@ -332,6 +332,9 @@ describe('drawPane: surfaces', () => {
  * 240 columns, 40 and 60 rows tall, draws whole (its hover cards kept, so
  * no budget step ran) and leaves the room the livelier look will spend.
  */
+/** How much of the budget a wide tab may use as drawn whole: the rest is room for the livelier look. */
+const WIDE_HEADROOM = Math.floor(TEXT_BUDGET * 0.85)
+
 describe('drawPane: wide tabs fit', () => {
     for (const tab of ['hubs', 'overview'] as const) {
         for (const bodyColumns of [200, 240]) {
@@ -377,17 +380,26 @@ describe('drawPane: the budget is the text the engine draws', () => {
     })
 })
 
-/** Hubs whose names run `extra` cells past their own: on a pane wide enough to show them, each row draws that much text. */
+/** Hubs whose names run `extra` cells past their own: on a pane wide enough to show them, each row draws that much text more. */
 const longHubs = (n: number, extra: number) => hubs(n).map(h => ({ ...h, name: `${h.name}${'x'.repeat(extra)}`, canonical_name: `${h.canonical_name}${'x'.repeat(extra)}` }))
 
 describe('drawPane: the tree budget', () => {
     it('drops the hover cards and most links before it gives up rows', async () => {
         // The rows a 40-row window lists when nothing weighs on it.
-        const light = await drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)
-        const listed = new Set(textOf(light).match(/Component\d+/g)).size
-        expect(nodesOf(light).filter(isCard).length).toBeGreaterThan(0)
-        const { io } = fakePort({ dashboard: dashboard({ hubs: longHubs(300, 2000) }) })
-        const tree = await drawPane(io, elements as never, 'desktop', { bodyColumns: 2600, scroll: { offset: 0, bodyRows: 40 } }, act)
+        const listed = new Set(textOf(await drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)).match(/Component\d+/g)).size
+        const at = async (bodyColumns: number) => drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns, scroll: { offset: 0, bodyRows: 40 } }, act)
+        // The narrowest pane whose text first passes the budget, found by halving: whatever its rows weigh, the first step
+        // the budget takes there is the one this test is about.
+        let fits = 120
+        let over = 8000
+        expect(nodesOf(await at(fits)).filter(isCard).length).toBeGreaterThan(0)
+        expect(nodesOf(await at(over)).filter(isCard)).toEqual([])
+        while (over - fits > 25) {
+            const mid = Math.floor((fits + over) / 2)
+            if (nodesOf(await at(mid)).filter(isCard).length > 0) fits = mid
+            else over = mid
+        }
+        const tree = await at(over)
         expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
         expect(nodesOf(tree).filter(isCard)).toEqual([])
         // Only the marked row keeps its links, and every row is still listed.

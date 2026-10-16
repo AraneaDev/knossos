@@ -86,10 +86,10 @@ const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 
  * Button, a link and a field are the surface's own, whose width the pane
  * cannot know in cells: the row's width and overflow clip them at its edge.
  *
- * Every tree the engine takes is bounded (20,000 nodes, 32 deep, 100,000
- * characters serialized): a Text carries no key and no Box of its own, and a
+ * The engine draws a pane's first 100,000 characters of text (see
+ * {@link TEXT_BUDGET}); a Text carries no key and no Box of its own, and a
  * Box is keyed only where a key is needed (a tint, a hidden twin), so a tall
- * pane stays well within them.
+ * pane stays a light tree to diff.
  */
 function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Segment, i: number, links: boolean, terminal: boolean, room: number, scope?: string) {
   const { Box, Button, Markdown, Text } = ui
@@ -264,9 +264,6 @@ function mergedRun(run: Segment[]): Segment[] {
  * with room to spare, rather than see its last rows cut mid-line.
  */
 export const TEXT_BUDGET = 90_000
-
-/** How much of the budget a wide tab may use as drawn whole: the rest is room for the livelier look. */
-export const WIDE_HEADROOM = Math.floor(TEXT_BUDGET * 0.85)
 
 /** The fewest rows the pane lays its lists out for when it gives rows back to fit its budget. */
 const SHORT_ROWS = 16

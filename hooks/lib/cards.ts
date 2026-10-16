@@ -220,8 +220,8 @@ export const LIST_SOFT = 10
 
 /**
  * The most rows a list grows to however tall the pane: past it the list says
- * `n more ↓` and scrolls to the marker. It keeps the tree the engine takes
- * well inside its bounds (100,000 characters serialized) on a tall, wide pane.
+ * `n more ↓` and scrolls to the marker. It keeps the text a tall, wide pane
+ * draws well inside the 100,000 characters the engine draws of it.
  */
 export const LIST_MAX = 28
 
