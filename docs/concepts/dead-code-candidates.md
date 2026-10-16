@@ -40,7 +40,8 @@ may be waiting on a caller nobody has written yet; one whose own test is its
 only caller is finished work that no product path reaches, and it still costs
 review, refactors, and CI time. In a codebase with a thorough test suite, `test_only` is often the larger half of the list.
 
-Test code is recognised by path: test directories at a package root, `__tests__`
+Test code is recognised by path: test and fixture directories at a package root
+(`tests`, `spec`, `e2e`, `fixtures`), `__tests__`, `__fixtures__` and `__mocks__`
 anywhere, `src/test/`, Laravel's `database/factories/`, and the usual test file
 names. A helper there is test support, so it is never reported, even when
 nothing calls it.

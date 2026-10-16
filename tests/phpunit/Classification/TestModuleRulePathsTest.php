@@ -127,6 +127,24 @@ final class TestModuleRulePathsTest extends KnossosTestCase
         assertSame(false, self::isTestCode('src/lib.rs'));
     }
 
+    /**
+     * Code in a fixtures directory is test support: a helper the specs import
+     * (`tools/eval/fixtures/tmp.mjs`) is reached by tests alone because that
+     * is what it is for, not because nothing uses it. `__fixtures__` and
+     * `__mocks__` mean that anywhere; a plain `fixtures` under a source root
+     * may be product code and is left alone, as `tests` there is.
+     */
+    #[Group('classification')]
+    public function testCodeInAFixturesDirectoryIsTestSupport(): void
+    {
+        assertSame(true, self::isTestCode('tools/eval/fixtures/tmp.mjs'));
+        assertSame(true, self::isTestCode('Fixtures/Shop.php'));
+        assertSame(true, self::isTestCode('src/components/__fixtures__/order.ts'));
+        assertSame(true, self::isTestCode('lib/__mocks__/fs.js'));
+        assertSame(false, self::isTestCode('src/fixtures/loader.ts'));
+        assertSame(false, self::isTestCode('app/fixtureset.py'));
+    }
+
     /** @param array<string, mixed> $attributes */
     private static function isTestCode(string $relativePath, array $attributes = []): bool
     {
