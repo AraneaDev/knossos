@@ -16,6 +16,7 @@ import { couplingPair, PEEK_TABS } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { disable, light, wrapper } from './port'
 import type { Cell, Port } from './port'
+import { startMotion } from './motion'
 import { currentInput, currentList } from './render'
 import { cyclesOf, mod } from './state'
 
@@ -69,9 +70,10 @@ async function loadDashboard(io: Port): Promise<void> {
   }
   const now = await io.clock.now()
   const before = await io.state.dashboard.read()
-  // The rows the new snapshot changed light up for a moment once it lands.
+  // The rows the new snapshot changed light up for a moment once it lands, and the pane's motion plays.
   await light(io, flashKeys(before, parsed as Dashboard), now)
   await io.state.dashboard.update(() => parsed)
+  if (parsed.status === 'ok' && before?.status === 'ok' && before.snapshot_id !== parsed.snapshot_id) await startMotion(io, now)
   // A cycle or a policy violation the scan brought: said once, as a toast, unless the person turned that off.
   if (mod.alertsOn) {
     for (const alert of freshAlerts(before, parsed as Dashboard, mod.toasted)) {

@@ -88,8 +88,19 @@ figures as current.
 
 The first row names the project in bold, then where the checkout stands (the
 branch and the short commit, dim; the commit alone on a detached head, as in
-the stills; nothing outside git), the project's languages as small chips, and
-at the right edge the status pill:
+the stills; nothing outside git), the project's languages as small chips, each
+in its own colour, and at the right edge the width gauge and the status pill.
+
+The width gauge says which layout the pane is in (see Layouts by width), where
+its width stands within that layout's span, and the width the next layout
+starts at: `medium ━━━━━━▮─── wide  118/131`. On the widest layout it says
+the width alone. With less room it shrinks to `118 · medium`, and it is the
+first thing the header gives up.
+
+While the live watcher keeps the graph current, the pill starts with a dot
+that breathes for a few seconds when a scan lands and then sits still; while a
+scan runs, a spinner turns in its place. Nothing in the pane moves while the
+graph is idle.
 
 | pill                  | meaning                                                                         |
 | --------------------- | ------------------------------------------------------------------------------- |
@@ -106,7 +117,8 @@ When the leading watcher stops answering, the pill says
 scan lock (the model's `scan_project`, `knossos scan` from a shell), the pill says
 `scanning…` with `another process is scanning (pid 1234)` beside it, and the pane
 offers no rescan of its own until that scan ends. As the pane narrows, the
-language chips go first, then the commit, the branch and the reason.
+width gauge goes first, then the language chips, then the commit, the branch
+and the reason.
 
 In a detail, the first row is the way back instead: `knossos › Hubs ›
 ResultEnvelope`.
@@ -121,11 +133,14 @@ not fit, and always on a narrow pane, the other tabs show only their digit.
 The pane uses all the room it has, in one of three layouts by the columns of
 its body:
 
-| width               | layout                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| narrow, below 80    | one column; each card is a title set into a top rule, with no sides                     |
-| medium, 80 to 130   | one column of framed cards; tables add more columns, such as the file a component is in |
-| wide, more than 130 | a grid of framed cards, two columns to a row, the cards of a row drawn equally tall     |
+| width               | layout                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| narrow, below 80    | one column; each card is a title set into a rule, its rows from the edge           |
+| medium, 80 to 130   | one column of cards, their rows two cells in; tables add columns, such as the file |
+| wide, more than 130 | a grid of cards, two columns to a row, the cards of a row drawn equally tall       |
+
+Every card is its title in Claude's orange, set into a rule across the card,
+with its note at the rule's end; no box closes round it.
 
 On a wide pane, Hubs, Cycles, Issues, Changes, Branch and Churn become master
 and detail: the tab takes the left 55 percent and the marked row's detail
@@ -205,8 +220,8 @@ request to scan a project that has no graph yet.
 ![The Overview tab in Claude Code's light theme, drawn in that theme's own colours](../images/claude-code/overview-light.png)
 
 The pane draws in your Claude Code theme's own colours, so it follows a dark,
-light, daltonized or ANSI theme and a theme you pick in `/config`. Colour
-carries meaning only:
+light, daltonized or ANSI theme and a theme you pick in `/config`. Colour marks
+what matters first, and gives the pane its life within the theme:
 
 - Each boundary keeps one of seven colours wherever it appears, the largest
   boundaries first and declared ones before inferred ones. The colour sits on
@@ -217,13 +232,17 @@ carries meaning only:
   violation.
 - The marked row stands on a faint tint across its card, with its `›` kept for
   a terminal that draws no backgrounds.
+- Card titles stand in Claude's orange, each stat tile's figure in its own hue
+  while nothing is wrong with it, each language chip in its own colour, and the
+  in-degree histogram runs cool to hot, from the fewest dependants to the hubs.
+  None of these hues is a boundary's.
 - Everything else is neutral: names and figures in the text colour, labels and
   units dim, bar tracks fainter still.
 
 ![The Hubs tab with ResultEnvelope's dependencies beside the list, in Claude Code's light theme](../images/claude-code/hubs-detail-light.png)
 
 When a new snapshot lands, the rows whose figures it changed are drawn on a
-cool ground for about three seconds.
+cool ground for about three seconds, and the Overview's bars grow in.
 
 ## Overview
 

@@ -812,6 +812,8 @@ declare module 'claude-code' {
       peek: { shown: Inspected; detail: DetailState } | null
       /** The rows the latest scan changed (`hub:`, `file:`, `tile:`, `boundary:`, `change:` keys), lit until `until` (mod clock, ms). */
       flash: { keys: string[]; until: number } | null
+      /** When the last scan landed (mod clock, ms; null before any) and the frames the pane's motion has drawn since. */
+      motion: { since: number | null; frame: number }
       /** The Churn tab's hotspots, as last read for a commit. */
       churn: ChurnState | null
       /** The Notes tab's notes, as last read for a snapshot, filter and text. */

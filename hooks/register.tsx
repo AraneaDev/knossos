@@ -13,6 +13,8 @@ import { committedSince } from './lib/agent'
 import type { JobState } from './lib/band'
 import type { SessionLedger } from './lib/envelopes'
 import type { Flash } from './lib/flash'
+import { NO_MOTION } from './lib/motion'
+import type { Motion } from './lib/motion'
 import { NO_CHANGES } from './lib/layout'
 import { LIVE_OFF } from './lib/live'
 import { copyCommand, handlersOf, twinTarget } from './mod/actions'
@@ -94,6 +96,7 @@ const peek = atom({ plugin: 'knossos', key: 'peek' } as const, null as { shown: 
 const branch = atom({ plugin: 'knossos', key: 'branch' } as const, null as BranchState | null)
 /** The rows the latest scan changed, lit for a moment after it landed. */
 const flash = atom({ plugin: 'knossos', key: 'flash' } as const, null as Flash | null)
+const motion = atom({ plugin: 'knossos', key: 'motion' } as const, NO_MOTION as Motion)
 /** The Churn tab's hotspots, for the commit they were read at. */
 const churn = atom({ plugin: 'knossos', key: 'churn' } as const, null as ChurnState | null)
 /** The Notes tab's notes, for the snapshot, filter and text they were read for. */
@@ -166,6 +169,7 @@ function portOf($: EngineInterface): Port {
       peek: { read: () => read($, peek), update: change => update($, peek, change) },
       branch: { read: () => read($, branch), update: change => update($, branch, change) },
       flash: { read: () => read($, flash), update: change => update($, flash, change) },
+      motion: { read: () => read($, motion), update: change => update($, motion, change) },
       churn: { read: () => read($, churn), update: change => update($, churn, change) },
       notes: { read: () => read($, notes), update: change => update($, notes, change) },
       rings: { read: () => read($, rings), update: change => update($, rings, change) },

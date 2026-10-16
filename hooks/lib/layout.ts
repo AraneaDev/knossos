@@ -54,6 +54,8 @@ import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLin
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
 import { widthGauge } from './gauge'
+import { dotGlyph, grown, NO_MOTION, spinGlyph } from './motion'
+import type { Motion } from './motion'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
 import { notesArrangement, notesInput, notesItems, notesList } from './notes-view'
@@ -181,6 +183,8 @@ export type PaneInput = {
   notes: NotesInput
   /** The route the path explorer draws instead of a tab or a detail, or null. */
   route: RouteInput | null
+  /** The glyph that moves in the status pill (see {@link pulseOf}), or ''. */
+  pulse: string
 }
 
 /** A refused root the pane offers to allow: the root, the roots file it would join, and where the action stands. */
@@ -277,6 +281,8 @@ export type PaneExtras = {
   note?: NoteState | null
   /** Whether the Changes list holds only the files no test reaches. */
   untestedOnly?: boolean
+  /** When the last scan landed and the frames drawn since: what the pane's motion draws from. */
+  motion?: Motion
 }
 
 /**
@@ -491,6 +497,7 @@ export function paneInput(
   const policy = issues.policy?.evaluated ? issues.policy.total : turn
   const diagnostics = issues.diagnostics === null ? null : issues.diagnostics.errors + issues.diagnostics.warnings
   const lit = litAt(extras.flash ?? null, now)
+  const motion = extras.motion ?? NO_MOTION
   const allowing = allowInput(brief, rescan, allow)
   const route = view.route ?? null
   return {
@@ -509,7 +516,8 @@ export function paneInput(
     items,
     partial: d.hubs_truncated,
     stats: statsOf(d, summary, policy, diagnostics, drift !== null).map(stat => (lit.has(`tile:${stat.key}`) ? { ...stat, lit: true as const } : stat)),
-    overview: overviewData(d, hues),
+    overview: overviewData(d, hues, width => grown(width, motion, now)),
+    pulse: pulseOf(live, rescan, d, refresh, now, motion),
     fileHubs: [...d.fan_in]
       .sort((a, b) => b.dependent_files - a.dependent_files || a.path.localeCompare(b.path))
       .map(f => ({ path: f.path, dependents: f.dependent_files, boundary: f.boundary ?? null, loc: locIn(d.project_root, f.path), top: f.top_dependents ?? [] })),
@@ -678,8 +686,19 @@ export function gitLabel(git: GitHead | undefined): string {
 }
 
 /** The status as a pill: the words on the status colour, in the text set on a fill. No dot: ● means probably dead. */
-function pill(status: PaneStatus): Segment {
-  return { text: ` ${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
+function pill(status: PaneStatus, pulse = ''): Segment {
+  return { text: ` ${pulse === '' ? '' : `${pulse} `}${status.text} `, bg: STATUS_COLOURS[status.tone], color: ON_FILL, bold: true }
+}
+
+/**
+ * What moves in the status pill: a spinner while a scan runs, the live dot
+ * (breathing for a moment after a scan lands) while the watcher keeps a fresh
+ * graph current, and nothing on any other status.
+ */
+function pulseOf(live: LiveState, rescan: RescanState, d: Dashboard, refresh: RefreshState, now: number, motion: Motion): string {
+  if (live.phase === 'scanning' || rescan.phase === 'scanning') return spinGlyph(motion.frame)
+  const status = paneStatus(d, refresh, rescan, now, live)
+  return status.tone === 'ok' && (live.phase === 'live' || live.phase === 'following') && /^(live|following)\b/.test(status.text) ? dotGlyph(motion, now) : ''
 }
 
 /**
@@ -722,26 +741,26 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColu
   }
   // Each layout from the fullest down; the first that fits wins.
   const variants: [Segment[], Segment[]][] = [
-    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(Infinity), ...note, pill(input.status), ...rescan]],
-    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(14), ...note, pill(input.status), ...rescan]],
-    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...note, pill(input.status), ...rescan]],
-    [[...crumbs, ...(away ? [] : where)], [...note, pill(input.status), ...rescan]],
-    [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status), ...rescan]],
-    [crumbs, [...note, pill(input.status), ...rescan]],
-    [crumbs, [...note, pill(input.status), ...rescanKey]],
-    [crumbs, [pill(input.status), ...rescan]],
-    [crumbs, [pill(input.status), ...rescanKey]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(Infinity), ...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(14), ...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(away ? [] : where), ...chipsLead], [...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(away ? [] : where)], [...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [...note, pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [...note, pill(input.status, input.pulse), ...rescanKey]],
+    [crumbs, [pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [pill(input.status, input.pulse), ...rescanKey]],
   ]
   for (const [left, right] of variants) {
     if (segmentsWidth(left) + 1 + segmentsWidth(right) <= columns) return spread('title', left, right, columns)
   }
   // Nothing fits whole: the right side first, then the way back cut from its middle, then the pill's words cut.
   // The rescan label is the first thing given up; its hotkey stays.
-  const right: Segment[] = [pill(input.status), ...rescanKey]
+  const right: Segment[] = [pill(input.status, input.pulse), ...rescanKey]
   const room = columns - 1 - segmentsWidth(right)
   if (room >= Math.min(4, cells(input.project))) return spread('title', cutCrumbs(crumbs, room), right, columns)
   const keep = Math.max(0, columns - 1 - Math.min(4, cells(input.project)))
-  const shortPill: Segment = { ...pill(input.status), text: fit(pill(input.status).text, keep) }
+  const shortPill: Segment = { ...pill(input.status, input.pulse), text: fit(pill(input.status, input.pulse).text, keep) }
   const left = cutCrumbs(crumbs, Math.max(0, columns - 1 - cells(shortPill.text)))
   return spread('title', left, keep >= 4 ? [shortPill, ...rescanKey] : rescanKey, columns)
 }

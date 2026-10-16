@@ -104,6 +104,7 @@ function fakePort(initial: Record<string, unknown>, answers: Record<string, stri
                 timers.push(timer)
                 return { cancel: () => void (timer.cancelled = true) }
             },
+            every: () => ({ cancel: () => undefined }),
         },
         ui: { log: () => undefined, invalidate: () => undefined, toast: (text: string) => void toasts.push(text) },
         session: { root: async () => ROOT, id: async () => SESSION },
@@ -300,6 +301,18 @@ describe('refreshing the dashboard', () => {
         const all = await Promise.all([refreshDashboard(io), refreshDashboard(io), refreshDashboard(io)])
         expect(all).toEqual([true, true, true])
         expect(subs().filter(s => s === 'dashboard')).toHaveLength(2)
+    })
+
+    it('starts the motion when a new snapshot lands on an open pane, and not when the same one is read again', async () => {
+        mod.paneText = 'live'
+        const moved = fakePort({ dashboard: dashboard('s1') }, { dashboard: json(dashboard('s2')) })
+        moved.clock.now = 9_000
+        await refreshDashboard(moved.io)
+        expect(moved.values.get('motion')).toEqual({ since: 9_000, frame: 0 })
+        const same = fakePort({ dashboard: dashboard('s2') }, { dashboard: json(dashboard('s2')) })
+        same.clock.now = 9_000
+        await refreshDashboard(same.io)
+        expect(same.values.get('motion')).toBeUndefined()
     })
 
     it('lights the hub a new snapshot moved', async () => {

@@ -84,6 +84,7 @@ function fakePort(initial: Record<string, unknown> = {}, answers: Record<string,
             }),
         },
     )
+    const everies: number[] = []
     const io = {
         clock: {
             now: async () => now,
@@ -91,6 +92,10 @@ function fakePort(initial: Record<string, unknown> = {}, answers: Record<string,
                 const timer = { at: now + ms, run, cancelled: false }
                 timers.push(timer)
                 return { cancel: () => void (timer.cancelled = true) }
+            },
+            every: () => {
+                everies.push(1)
+                return { cancel: () => undefined }
             },
         },
         ui: { log: () => undefined, invalidate: () => undefined },
@@ -133,6 +138,7 @@ function fakePort(initial: Record<string, unknown> = {}, answers: Record<string,
         values,
         runs,
         spawned,
+        everies,
         streams,
         advance,
         start,
@@ -289,6 +295,16 @@ describe('the watcher stream', () => {
         ch.event({ event: 'snapshot', snapshot_id: 's1' })
         await settle()
         expect(port.ran('dashboard')).toHaveLength(1)
+    })
+
+    it('turns the spinner for a scan the watcher starts, on an open pane', async () => {
+        mod.paneText = 'live'
+        const port = fakePort()
+        const ch = await port.start()
+        expect(port.everies).toEqual([])
+        ch.event({ event: 'scan_started' })
+        await settle()
+        expect(port.everies).toEqual([1])
     })
 
     it("keeps a scan as the session's when its tools ran while it was under way", async () => {

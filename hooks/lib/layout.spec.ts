@@ -29,6 +29,8 @@ import { compact, fitStart, shortName, wrapGroups } from './rows'
 import { LIST_MAX } from './cards'
 import { gitLabel, paneLayout, shrinkRows, statsOf, titleRow } from './layout'
 import { CHIP_BG, languageColour, STAT_HUES, STATUS_COLOURS } from './palette'
+import { dotGlyph, NO_MOTION, spinGlyph } from './motion'
+import type { Motion } from './motion'
 import { chainGroups, cyclesInput } from './cycles'
 import { issueCount, issuesInput, issuesList, superscript } from './views'
 
@@ -1180,6 +1182,32 @@ describe('colour', () => {
   })
 })
 
+describe('motion in the header and the Overview', () => {
+  const in_degree = { buckets: [{ from: 0, to: 0, components: 400 }, { from: 1, to: 5, components: 900 }, { from: 6, to: null, components: 120 }], truncated: false }
+  const fresh = full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 }, in_degree })
+  const at = (live: Parameters<typeof paneInput>[11], motion: Motion, now = 1_100) => paneInput(fresh, brief(), FETCHED, IDLE, view({ tab: 'overview' }), now, true, null, null, undefined, null, live, { motion })
+  const pillText = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!.text
+
+  it('breathes the live dot for a moment after a scan lands, and holds it still after', () => {
+    expect(pillText(at({ phase: 'live' }, { since: 1_000, frame: 1 }))).toMatch(new RegExp(`^ ${dotGlyph({ since: 1_000, frame: 1 }, 1_100)} live · \\d+s $`))
+    expect(pillText(at({ phase: 'live' }, { since: 1_000, frame: 1 }))).not.toBe(pillText(at({ phase: 'live' }, { since: 1_000, frame: 2 })))
+    expect(pillText(at({ phase: 'live' }, NO_MOTION))).toMatch(/^ ◍ live · \d+s $/)
+  })
+
+  it('turns a spinner in the pill while a scan runs, and none on a stale or failed pill', () => {
+    expect(pillText(at({ phase: 'scanning' }, { since: null, frame: 3 }))).toMatch(new RegExp(`^ ${spinGlyph(3)} scanning…`))
+    expect(pillText(paneInput(full(), brief(), FETCHED, IDLE, view(), 0, true))).toBe(' stale 11h ')
+  })
+
+  it('grows the Overview bars in after a scan lands, and draws them whole once it has', () => {
+    const bars = (motion: Motion) => paneRows(at({ phase: 'live' }, motion), 140).filter(r => r.key.split('|').some(k => k.startsWith('degree-'))).map(r => rawText(r).split('━').length)
+    const early = bars({ since: 1_000, frame: 0 })
+    const settled = bars(NO_MOTION)
+    expect(early.reduce((a, b) => a + b, 0)).toBeLessThan(settled.reduce((a, b) => a + b, 0))
+    expect(bars({ since: 1_000, frame: 20 })).toEqual(settled)
+  })
+})
+
 describe('the width gauge in the header', () => {
   it('says the layout the pane is in, and follows it across a bound', () => {
     const at = (columns: number) => rawText(row(paneRows(fullInput(), columns), 'title')!)
@@ -1588,7 +1616,7 @@ describe('the header: the project, where its checkout stands, its languages and 
     const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!
     expect(pill(pane())).toMatchObject({ text: ' stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
     const live = paneInput(full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 } }), brief(), FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }, { git })
-    expect(pill(live)).toMatchObject({ text: ' live · 7s ', bg: 'success' })
+    expect(pill(live)).toMatchObject({ text: ' ◍ live · 7s ', bg: 'success' })
     const failed = paneInput(full(), brief(), FETCHED, { phase: 'failed', reason: 'not an allowed root' }, view(), 0, true, null, null, undefined, null, undefined, { git })
     expect(pill(failed)).toMatchObject({ text: ' scan failed ', bg: 'error' })
     expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}scan failed {3}r: rescan$/)
