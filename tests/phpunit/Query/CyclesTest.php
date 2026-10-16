@@ -345,6 +345,19 @@ final class CyclesTest extends KnossosTestCase
         assertSame([], $filtered->data['bounds']['truncation_reasons']);
     }
 
+    /** More touching cycles than the limit: the largest is kept and the cut is said. */
+    #[Group('cycles')]
+    #[RunInSeparateProcess]
+    public function testTouchingIdsStillReportTheResultLimit(): void
+    {
+        [$pdo, $project, , $node] = $this->largeGraph();
+
+        $result = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($project, limit: 1, touchingIds: [$node(100), $node(5001)]);
+
+        assertSame([array_map($node, range(100, 112))], array_column($result->data['cycles'], 'member_ids'));
+        assertSame(true, in_array('result_limit', $result->data['bounds']['truncation_reasons'], true));
+    }
+
     /**
      * architecture_health flags cycle participants from its own cycle search,
      * which it used to run with its 10,000-node cap: on a graph past that size
