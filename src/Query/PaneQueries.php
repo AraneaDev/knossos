@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use InvalidArgumentException;
-use Knossos\Mcp\ToolErrorMapper;
 use Knossos\Scan\ProjectPathResolver;
 use PDO;
 
@@ -18,9 +17,9 @@ use PDO;
  * tab's `notes`, `note-adopt`, `note-move` and `note-check`
  * ({@see NotesService}).
  *
- * A write that fails for any reason but a refusal answers `error` with the
- * code {@see ToolErrorMapper} gives it, so the pane can tell a scan's lock
- * (`KNOSSOS_DATABASE_BUSY`) from a fault and keep what the person typed.
+ * A write that meets a scan's lock answers `error` with
+ * {@see \Knossos\Store\SqliteBusy::CODE}, so the pane can tell it from a
+ * fault and keep what the person typed.
  *
  * Each answers for the project owning a path, as the other pane commands
  * do; the command around it has already checked that the database exists.
@@ -114,7 +113,7 @@ final readonly class PaneQueries
         } catch (InvalidArgumentException $refused) {
             return ['status' => 'refused', 'reason' => $refused->getMessage()] + $envelope;
         } catch (\Throwable $failed) {
-            return ['status' => 'error', 'code' => ToolErrorMapper::code($failed), 'message' => ToolErrorMapper::publicMessage($failed)] + $envelope;
+            return NotesService::busy($failed) + $envelope;
         }
         $data = $result->data;
 

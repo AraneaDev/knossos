@@ -6,6 +6,7 @@ namespace Knossos\Store;
 
 use PDO;
 use PDOException;
+use Throwable;
 
 /**
  * Recognises the driver error for a contended SQLite write lock, and takes the
@@ -13,6 +14,24 @@ use PDOException;
  */
 final class SqliteBusy
 {
+    /** The code a caller is given for a write that met another process's write lock. */
+    public const CODE = 'KNOSSOS_DATABASE_BUSY';
+
+    /** Said for such a write, a scan's commit most often. */
+    public const MESSAGE = 'The graph database is busy: another process, usually a scan, is writing it. Nothing was changed; retry in a moment.';
+
+    /** Whether a contended write lock is behind this failure, however many layers wrapped it. */
+    public static function anywhere(Throwable $error): bool
+    {
+        for ($cause = $error; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof PDOException && self::is($cause)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Pauses between the retries of BEGIN IMMEDIATE: 200, 400 and 800 ms. */
     private const BACKOFF_MICROSECONDS = [200_000, 400_000, 800_000];
 

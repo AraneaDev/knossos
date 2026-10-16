@@ -6,8 +6,8 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
-use Knossos\Mcp\ToolErrorMapper;
 use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\SqliteBusy;
 use Knossos\Store\SqliteTransactions;
 use PDO;
 use RuntimeException;
@@ -24,10 +24,10 @@ use Throwable;
  * own: it marks the rows of its component `checked`, with its reason.
  *
  * The writes go through {@see AnnotationService}, previewed unless
- * `$execute`. A refusal says why (`refused`); any other failure answers
- * `error` with the code {@see ToolErrorMapper} gives it, so a write that met
- * a scan's lock says `KNOSSOS_DATABASE_BUSY` and the pane keeps what was
- * typed. A move copies the stored note to its new name and removes the old,
+ * `$execute`. A refusal says why (`refused`); a write that met a scan's
+ * lock answers `error` with {@see SqliteBusy::CODE}, so the pane keeps what
+ * was typed and says to retry. Any other failure is thrown, for the command
+ * around it to answer. A move copies the stored note to its new name and removes the old,
  * both by their exact names, in one transaction that takes the write lock
  * first. Adopting and flagging refuse a name the graph resolves to another
  * component, so a note left on a short name is never written over another's.
@@ -290,9 +290,24 @@ final readonly class NotesService
             } catch (InvalidArgumentException $refused) {
                 return ['status' => 'refused', 'reason' => $refused->getMessage()];
             } catch (Throwable $failed) {
-                return ['status' => 'error', 'code' => ToolErrorMapper::code($failed), 'message' => ToolErrorMapper::publicMessage($failed)];
+                return self::busy($failed);
             }
         });
+    }
+
+    /**
+     * The answer for a write that met another process's write lock, or the
+     * failure thrown on when it is anything else.
+     *
+     * @return array{status: string, code: string, message: string}
+     */
+    public static function busy(Throwable $failed): array
+    {
+        if (!SqliteBusy::anywhere($failed)) {
+            throw $failed;
+        }
+
+        return ['status' => 'error', 'code' => SqliteBusy::CODE, 'message' => SqliteBusy::MESSAGE];
     }
 
     /**
