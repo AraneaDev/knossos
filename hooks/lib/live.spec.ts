@@ -67,6 +67,8 @@ describe('the watcher phase', () => {
   it('says the state changed when the phase, a stuck leader, or who else scans did', () => {
     expect(liveChanged({ phase: 'live' }, { phase: 'live' })).toBe(false)
     expect(liveChanged({ phase: 'live' }, { phase: 'scanning' })).toBe(true)
+    // Another host took the lock with the same (null) pid: still news.
+    expect(liveChanged({ phase: 'live', external: { pid: null, host: 'a' } }, { phase: 'live', external: { pid: null, host: 'b' } })).toBe(true)
     expect(liveChanged({ phase: 'following' }, { phase: 'following', stale: true })).toBe(true)
     expect(liveChanged({ phase: 'live' }, { phase: 'live', external: { pid: 1 } })).toBe(true)
     expect(liveChanged({ phase: 'live', external: { pid: 1 } }, { phase: 'live', external: { pid: 2 } })).toBe(true)

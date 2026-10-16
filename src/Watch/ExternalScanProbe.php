@@ -33,11 +33,11 @@ final class ExternalScanProbe
 
     /**
      * @param (Closure(): ?array{pid: ?int, host?: ?string, held_seconds: int})|null $holder who holds the lease, if anyone
-     * @param string|null $localHost this host's name; gethostname() when null
+     * @param string|null $localHost this host's name; the writer lock's when null, so the two agree
      */
     public function __construct(private readonly ?Closure $holder, ?string $localHost = null)
     {
-        $this->localHost = $localHost ?? (string) gethostname();
+        $this->localHost = $localHost ?? ProjectWriterLock::localHost();
     }
 
     /**

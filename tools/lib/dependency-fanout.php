@@ -76,7 +76,7 @@ function withoutJavaScriptCommentsAndTemplates(string $source): string
             }
             continue;
         }
-        if (($state === 'template' || $state === '"' || $state === "'") && $char === '\\') {
+        if ($state === 'template' && $char === '\\') {
             $out .= '  ';
             ++$at;
             continue;

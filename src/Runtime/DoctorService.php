@@ -207,9 +207,10 @@ final readonly class DoctorService
         // No command deletes the row: the schema change it records stays in
         // the database, and hiding that difference would be worse than the warning.
         $checks[$last]['detail'] .= sprintf(
-            '; the database has migrations this checkout does not know (%s): it was used by a newer Knossos. Update this checkout, or point it at its own data directory. If they came from a branch that was dropped, their schema changes stay in the database; once you know they are harmless, clear the warning with %s.',
+            '; the database has migrations this checkout does not know (%s): it was used by a newer Knossos. Update this checkout, or point it at its own data directory. If they came from a branch that was dropped, their schema changes stay in the database; once you know they are harmless, clear the warning by running %s in %s. If such a branch lands later, its migration runs again on the schema it already changed.',
             implode(', ', $unknown),
             implode('; ', array_map(static fn(string $version): string => sprintf("DELETE FROM schema_migrations WHERE version = '%s'", str_replace("'", "''", $version)), $unknown)),
+            $this->databasePath,
         );
     }
 

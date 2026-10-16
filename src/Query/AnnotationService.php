@@ -98,6 +98,12 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
     public function removeAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
     {
         $target = $this->target($projectId, $component, $kind, $value, $author);
+        // A note stored under the name as written, before path names were
+        // normalised (`./src/a.php`), comes off under that name.
+        if ($target['existing'] === null && $target['canonical'] !== $component && ($raw = $this->fetch($projectId, $component, $kind, $author)) !== null) {
+            $target['canonical'] = $component;
+            $target['existing'] = $raw;
+        }
         // Nothing of this author's to remove: say so, in the preview as well,
         // and name the other author's note left standing, so the caller does
         // not take it for gone or try again.
@@ -200,6 +206,9 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             throw new InvalidArgumentException('component must not be empty.');
         }
         $component = self::projectPath($component);
+        if ($component === '') {
+            throw new InvalidArgumentException('component must not be empty.');
+        }
         // Characters, as the schema's maxLength counts them, not bytes.
         if (mb_strlen($value) > 2000) {
             throw new InvalidArgumentException('value must not exceed 2000 characters.');
@@ -285,7 +294,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $parameters = ['project' => $projectId];
         if ($component !== null) {
             $sql .= ' AND a.canonical_name = :name';
-            $parameters['name'] = $component;
+            $parameters['name'] = self::projectPath($component);
         }
         if ($kind !== null) {
             $sql .= ' AND a.kind = :kind';
@@ -330,7 +339,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         $segments = array_values(array_filter(explode('/', $component), static fn(string $segment): bool => $segment !== '.'));
 
-        return $segments === [] ? $component : implode('/', $segments);
+        // `./` alone names nothing: it comes back empty and is refused as an empty component.
+        return trim(implode('/', $segments), '/') === '' ? '' : implode('/', $segments);
     }
 
     /**

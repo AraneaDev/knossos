@@ -94,4 +94,17 @@ final class ExternalScanProbeTest extends KnossosTestCase
             self::events([['pid' => 7, 'host' => 'workstation', 'held_seconds' => 2]], 'workstation'),
         );
     }
+
+    /** Left to itself, the probe names this host the way the writer lock does, so a scan here is never "another host". */
+    #[Group('watch')]
+    public function testItNamesThisHostAsTheWriterLockDoes(): void
+    {
+        $probe = new ExternalScanProbe(static fn(): array => ['pid' => 7, 'host' => \Knossos\Scan\ProjectWriterLock::localHost(), 'held_seconds' => 1]);
+        $events = [];
+        $probe->poll(static function (array $event) use (&$events): void {
+            $events[] = $event;
+        });
+
+        assertSame([['event' => 'external_scan', 'holder_pid' => 7, 'held_seconds' => 1]], $events);
+    }
 }
