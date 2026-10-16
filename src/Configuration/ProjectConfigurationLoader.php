@@ -20,6 +20,9 @@ use Knossos\Scanner\Worker\WorkerExecutionPolicy;
  */
 final class ProjectConfigurationLoader
 {
+    /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
+    public const FRAMEWORKS = ['laravel', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
+
     public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions'];
     public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
 
@@ -105,7 +108,7 @@ final class ProjectConfigurationLoader
         $retention = self::optionalInteger($data, 'snapshot_retention', 0, 20);
         $frameworks = self::stringList($data['frameworks'] ?? [], 'frameworks', 20);
         foreach ($frameworks as $framework) {
-            if (!in_array($framework, ['laravel', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'], true)) {
+            if (!in_array($framework, self::FRAMEWORKS, true)) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: unsupported framework hint ' . $framework . '.');
             }
         }

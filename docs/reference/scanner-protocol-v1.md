@@ -60,7 +60,7 @@ workers leave the field out.
 
 ### `scan`
 
-Accepts a request ID and `params` that carry the project's real root (`root`), the project-relative paths this request must scan (`files`), and the bounds (`limits`: `max_files` and `max_file_bytes`). The core sends only the files that need scanning: a file whose cached contribution is still valid is not sent. The packaged workers receive extra fields for their own language: `frameworks` (PHP, Python and Rust), `config_files` (TypeScript and Rust), `exclusions` (TypeScript and Python), `source_files` (TypeScript, Python and Rust: every discovered file of the language, sorted), and several TypeScript project lists. A worker streams zero or more
+Accepts a request ID and `params` that carry the project's real root (`root`), the project-relative paths this request must scan (`files`), and the bounds (`limits`: `max_files` and `max_file_bytes`). The core sends only the files that need scanning: a file whose cached contribution is still valid is not sent. The packaged workers receive extra fields for their own language: `frameworks` (PHP and Rust), `config_files` (TypeScript and Rust), `exclusions` (TypeScript and Python), `source_files` (TypeScript, Python and Rust: every discovered file of the language, sorted), and several TypeScript project lists. A worker streams zero or more
 `scan/contribution` notifications, and zero or more `scan/input_hashes`
 notifications (below), followed by a final result containing counts.
 

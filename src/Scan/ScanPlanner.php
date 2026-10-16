@@ -127,12 +127,6 @@ final readonly class ScanPlanner
         $started = hrtime(true);
         $laravel = in_array('laravel', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['laravel/framework']);
         $symfony = in_array('symfony', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['symfony/framework-bundle', 'symfony/http-kernel', 'symfony/console', 'symfony/messenger']);
-        $pythonFrameworks = self::detectedFramework(
-            $discovery->units,
-            ['python', 'requirements'],
-            ['fastapi' => 'fastapi', 'django' => 'django', 'flask' => 'flask'],
-            $configuration->frameworks,
-        );
         $rustFrameworks = self::detectedFramework(
             $discovery->units,
             ['cargo'],
@@ -145,10 +139,10 @@ final readonly class ScanPlanner
             // tool_config: the worker reads module aliases from vite, svelte, webpack and
             // vue configs, so editing one must invalidate what was resolved under it.
             'typescript' => $this->configurationHash($discovery->units, ['node', 'typescript', 'tool_config', 'knossos'], $configuration),
-            // 'requirements' is in the hash because detectedFramework() reads
-            // requirements.txt for the Python framework gating above: without
-            // it, adding fastapi to requirements.txt would reuse contributions
-            // scanned with enrichment switched off.
+            // 'requirements' stays in the hash only so cache keys did not move
+            // when the unread Python frameworks field was dropped: the worker
+            // reads pyproject.toml but never requirements.txt, so editing it
+            // costs a Python rescan that changes nothing.
             'python' => $this->configurationHash($discovery->units, ['python', 'requirements', 'knossos'], $configuration),
             // Cargo.toml is now a recorded unit (kind 'cargo'), so editing it
             // invalidates a Rust contribution's cache entry the same way
@@ -171,7 +165,6 @@ final readonly class ScanPlanner
             $configurationMilliseconds,
             $discoveryMilliseconds,
             self::elapsedMilliseconds($started),
-            pythonFrameworks: $pythonFrameworks,
             rustFrameworks: $rustFrameworks,
             gitHead: $gitHead,
             dirtyPaths: $dirtyPaths,
