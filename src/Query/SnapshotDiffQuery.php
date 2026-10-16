@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\SnapshotBounds;
 use PDO;
 
 /**
@@ -190,7 +191,7 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
     {
         // Each column with `+`: ordered by an index, SQLite would walk every project's rows rather than find this one's and sort them.
         $order = $table === 'boundary_memberships' ? '+boundary_id, +node_id' : '+id';
-        $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project ORDER BY %s LIMIT 200001', $table, $order));
+        $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project ORDER BY %s LIMIT %d', $table, $order, SnapshotBounds::MAX_ROWS_PER_TABLE + 1));
         $statement->execute(['project' => $projectId]);
         $rows = $statement->fetchAll();
         if (count($rows) > 200_000) {

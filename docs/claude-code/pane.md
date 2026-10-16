@@ -274,7 +274,7 @@ range, or `no change`. It appears from five retained snapshots on.
 references, which is wider than the dead-code tile, so the two differ by
 design.
 
-A snapshot with more than 200,000 rows in one table is not read whole, so only
+A snapshot with more than 300,000 rows in one table is not read whole, so only
 what a count says is kept of it: components, relationships and diagnostics.
 Its cycles, `gate unreferenced` and max degree are not counted, those rows are
 left out, and the card says so in a line of its own, with the table and its

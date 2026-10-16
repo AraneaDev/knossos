@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use InvalidArgumentException;
+use Knossos\Store\SnapshotBounds;
 use Knossos\Store\SnapshotPayload;
 use PDO;
 
@@ -48,7 +49,7 @@ final readonly class SnapshotGraphReader
     ];
 
     /** The most rows one table of the active graph may hold, as the snapshot diff bounds it. */
-    private const ROW_LIMIT = 500_000;
+    private const ROW_LIMIT = SnapshotBounds::MAX_ROWS_PER_TABLE;
 
     /**
      * Reads through the project's database connection.
