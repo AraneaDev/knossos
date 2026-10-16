@@ -146,8 +146,8 @@ export const mod = {
   watchGen: 0,
   /**
    * Set when the watcher said this project is not its to watch (not allowed,
-   * not scanned) or ended without a word (none offered, as a container
-   * installation): not asked again until a root is allowed.
+   * not scanned) or ended without a word (none offered, as with a wrapper
+   * that has no watch case): not asked again until a root is allowed.
    */
   watchRefused: false,
   /** Restarts of a watcher that ended on its own, since the last one that came up. */

@@ -31,8 +31,8 @@ final class SqliteSnapshotArchive
         private readonly PDO $pdo,
         private readonly SqliteScanLifecycle $lifecycle,
         private readonly array $capturedTables,
-        private readonly int $maxRowsPerTable = 200_000,
-        private readonly int $maxPayloadBytes = 250_000_000,
+        private readonly int $maxRowsPerTable = 500_000,
+        private readonly int $maxPayloadBytes = 1_000_000_000,
     ) {}
 
     /**

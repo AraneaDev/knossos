@@ -115,6 +115,24 @@ final class SharedWatchTest extends KnossosTestCase
         $lock->release();
     }
 
+    /**
+     * A watcher in a container cannot name itself to the session that started
+     * it: its own process id means another process on the host. It reports the
+     * id it is given, the docker client's, so the session stops the right one.
+     */
+    #[Group('watch')]
+    public function testTheEventsCarryTheProcessIdTheWatcherWasGiven(): void
+    {
+        [$pdo, $database, $root] = $this->project();
+        $events = [];
+        (new SharedWatch($pdo, $database, self::repositoryRoot()))->run($root, 1, 0, new CancellationToken(), static function (array $event) use (&$events): void {
+            $events[] = $event;
+        }, null, 2, 4242);
+
+        assertSame('ready', $events[0]['event']);
+        assertSame(4242, $events[0]['pid']);
+    }
+
     #[Group('watch')]
     public function testARootOutsideTheAllowedRootsIsRefusedWithoutWatching(): void
     {

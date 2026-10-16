@@ -48,7 +48,7 @@ final readonly class SnapshotGraphReader
     ];
 
     /** The most rows one table of the active graph may hold, as the snapshot diff bounds it. */
-    private const ROW_LIMIT = 200_000;
+    private const ROW_LIMIT = 500_000;
 
     /**
      * Reads through the project's database connection.

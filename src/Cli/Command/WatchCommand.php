@@ -11,6 +11,7 @@ use Knossos\Cli\ProjectDatabaseLocator;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Watch\SessionLink;
 use Knossos\Watch\SharedWatch;
 use Knossos\Watch\WatchService;
 use Throwable;
@@ -94,16 +95,17 @@ final class WatchCommand implements CliCommand
                 return CliCommand::EXIT_OK;
             }
             $pdo = (new RuntimeFactory($context->installationRoot()))->database($databasePath);
-            // Started by a session: when that process is gone (the watcher was re-parented), stop.
-            $parent = function_exists('posix_getppid') ? posix_getppid() : null;
-            $alive = $parent === null ? null : static fn(): bool => posix_getppid() === $parent;
+            // Started by a session: when that process is gone, stop. In a container
+            // the session is reached through the docker client (see SessionLink).
+            $link = SessionLink::fromEnvironment(getenv(), STDIN);
             (new SharedWatch($pdo, $databasePath, $context->installationRoot()))->run(
                 $root,
                 $context->options->integer($options, 'poll-ms', 1000, 50, 60_000),
                 $context->options->integer($options, 'debounce-ms', 300, 0, 60_000),
                 $context->cancellationToken(true),
                 $emit,
-                $alive,
+                $link->alive,
+                reportedPid: $link->reportedPid,
             );
         } catch (Throwable $error) {
             $emit(['event' => 'error', 'message' => $error->getMessage(), 'retryable' => false]);

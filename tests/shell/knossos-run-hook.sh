@@ -295,6 +295,7 @@ while [ "$#" -gt 0 ]; do
         -e) printf '%s\n' "$2" >> "${0%/*}/env"; shift 2 ;;
         --user=*) printf 'user=%s|' "${1#--user=}"; shift ;;
         --init) printf 'init|' >> "${0%/*}/flags"; shift ;;
+        -i) printf 'interactive|' >> "${0%/*}/flags"; shift ;;
         --name) printf 'name=%s|' "$2" >> "${0%/*}/flags"; shift 2 ;;
         *) break ;;
     esac
@@ -323,6 +324,23 @@ expect_silent_success 'container component-detail with a name that reads as an o
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" component-detail "$STUBS/proj" -x
 expect_output 'container scan runs the rescan command' "img:1|rescan|$ABS_PROJ|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" scan "$STUBS/proj"
+# watch in a container: the same shared watcher, run attached (-i) so the
+# watcher sees its stdin close with the docker client, told the client's id to
+# report, since its own id names another process on the host.
+: > "$STUBS/dockerbin/env"; : > "$STUBS/dockerbin/flags"
+expect_output 'container watch runs the shared watcher on the project' "img:1|watch|$ABS_PROJ|--shared|--poll-ms=1500|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --poll-ms=1500
+if grep -qx 'KNOSSOS_WATCH_ALIVE=stdin' "$STUBS/dockerbin/env" && grep -qx 'KNOSSOS_WATCH_PID=[0-9][0-9]*' "$STUBS/dockerbin/env"; then
+    printf 'ok   %s\n' 'container watch reports the client pid and watches its stdin'
+else
+    printf 'FAIL %s (env %s)\n' 'container watch reports the client pid and watches its stdin' "$(cat "$STUBS/dockerbin/env")"; failures=$((failures + 1))
+fi
+case "$(cat "$STUBS/dockerbin/flags")" in
+    *interactive*init*name=knossos-hook-*|*init*interactive*name=knossos-hook-*) printf 'ok   %s\n' 'container watch runs attached, with --init and a name' ;;
+    *) printf 'FAIL %s (flags %s)\n' 'container watch runs attached, with --init and a name' "$(cat "$STUBS/dockerbin/flags")"; failures=$((failures + 1)) ;;
+esac
+expect_silent_success 'container watch refuses another option' env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --db=/tmp/other.sqlite
+expect_silent_success 'container watch refuses a poll interval that is not a number' env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --poll-ms=1e3
 expect_silent_success 'container scan refuses an option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" scan "$STUBS/proj" --db=/x
 expect_output 'container allow-root grants the root with --execute' "img:1|allow-root|$ABS_PROJ|--execute|--json|" \
@@ -331,8 +349,6 @@ expect_silent_success 'container allow-root refuses an option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" allow-root "$STUBS/proj" --db=/x
 expect_output 'container file-detail passes the file under the project' "img:1|file-detail|$ABS_PROJ/src/A.php|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-detail "$STUBS/proj" src/A.php
-expect_silent_success 'container offers no watcher' \
-    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj"
 expect_silent_success 'container file-detail with an absolute path' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-detail "$STUBS/proj" /etc/passwd
 expect_silent_success 'container component-detail without a name' \
