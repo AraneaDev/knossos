@@ -3,7 +3,7 @@
 #
 # The property under test is the one every other guarantee rests on: the hook
 # may fail to help, and may never cost anything. Each case must exit 0 with
-# empty stdout.
+# empty stdout, except a timeout, which prints one line saying so.
 set -u
 
 HOOK="$(CDPATH='' cd -- "$(dirname -- "$0")/../../hooks/scripts" && pwd)/session-brief.sh"
@@ -43,11 +43,18 @@ chmod +x "$tmp/knossos"
 expect_silent_success "failing binary" \
     env KNOSSOS_BIN="$tmp/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$HOOK"
 
-# Binary writes to stderr and hangs past the timeout.
+# Binary writes to stderr and hangs past the timeout: the one failure that
+# says so, in a single line, because a session that silently lost its brief
+# gives no hint why. stderr still never reaches the output.
 printf '#!/bin/sh\necho boom >&2\nsleep 30\n' > "$tmp/knossos"
 chmod +x "$tmp/knossos"
-expect_silent_success "hanging binary" \
-    env KNOSSOS_BIN="$tmp/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$HOOK"
+output="$(env KNOSSOS_BIN="$tmp/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$HOOK" 2>/dev/null)"
+status=$?
+case $output in
+    "Knossos brief timed out after 3 s; run knossos session-brief /tmp to see why.")
+        [ "$status" -eq 0 ] && printf 'ok   hanging binary says it timed out\n' || { printf 'FAIL hanging binary: status=%s\n' "$status"; failures=$((failures + 1)); } ;;
+    *) printf 'FAIL hanging binary: status=%s output=%s\n' "$status" "$output"; failures=$((failures + 1)) ;;
+esac
 
 # Neither `timeout` nor `gtimeout` is resolvable (PATH emptied), and
 # KNOSSOS_BIN is an absolute path so it is still found without PATH. The
