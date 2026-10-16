@@ -4,7 +4,7 @@ import { SORTS } from '../lib/layout'
 import { handlersOf, PRESSES, pressOf } from './actions'
 import { request } from './loaders'
 import type { Port } from './port'
-import { fieldKey, PANE, reset } from './state'
+import { fieldKey, mod, PANE, reset } from './state'
 import { requestRescan } from './watcher'
 
 // The loaders and the rescan reach the wrapper through timers of their own: here only that they are asked for, and when, matters.
@@ -70,6 +70,15 @@ describe('a press on a tab', () => {
         await port.press('tab:')
         expect(port.view()).toEqual({ ...VIEW, ...before })
         expect(port.log).toEqual([])
+    })
+
+    it('reads the notes again on entering the Notes tab, notes the model wrote meanwhile included', async () => {
+        const port = viewPort({ tab: 'hubs' })
+        const before = mod.notesVersion
+        await port.press('tab:notes')
+        expect(mod.notesVersion).toBe(before + 1)
+        await port.press('tab:hubs')
+        expect(mod.notesVersion).toBe(before + 1)
     })
 
     it('switches the same way from the hidden hotkey twin', async () => {

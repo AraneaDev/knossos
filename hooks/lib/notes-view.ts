@@ -126,7 +126,10 @@ function askRows(ask: NotesAsk | null, columns: number): Row[] {
   if (ask === null) return []
   const label = labelOf(ask.component)
   if (ask.action === 'check') {
-    return [{ key: 'notes-ask', segments: [{ text: `   Flag the note on ${label} for the model; why (optional): `, color: STATUS_COLOURS.warn }, { text: ask.value ?? '', field: { id: 'notes-reason', value: ask.value ?? '', placeholder: 'Enter flags it' } }] }]
+    return [
+      { key: 'notes-ask', segments: [{ text: `   Flag the note on ${label} for the model; why (optional): `, color: STATUS_COLOURS.warn }, { text: ask.value ?? '', field: { id: 'notes-reason', value: ask.value ?? '', placeholder: 'Enter flags it' } }] },
+      { key: 'notes-ask-keys', segments: [{ text: '   ' }, button('notes-no', 'no', 'n'), { text: '  Enter flags it', dim: true }] },
+    ]
   }
   const question = ask.action === 'remove' ? `Remove ${whose(ask.author)} note on ${label}?` : ask.action === 'uncheck' ? `Take back the flag on ${label}?` : `Move the note on ${ask.component} to ${ask.to ?? ''}?`
   return [

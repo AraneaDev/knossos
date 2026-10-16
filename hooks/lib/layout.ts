@@ -879,7 +879,7 @@ const KEY_HELP: [string, string][] = [
   ['m', "in a component's detail: add a note to it; knossos checks it first, and y records it"],
   ['n s x', 'on Hubs: narrow the list (type, then Enter), sort by in, out or cross, clear the narrowing or the in-degree range'],
   ['n s x', "on Notes: narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both"],
-  ['m X g', "on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)"],
+  ['m w g', "on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)"],
   ['r', 'rescan the project now, fresh or not'],
   ['a', 'allow a refused root (asks first)'],
 ]
@@ -945,7 +945,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   if (onTab && input.tab === 'notes' && input.notes.ask === null) {
     const note = notesItems(input.notes)[Math.min(Math.max(0, input.selected), notesItems(input.notes).length - 1)]
     if (note !== undefined && !note.missing) actions.push(button('notes-edit', note.author === 'user' ? 'edit' : 'adopt', 'm'))
-    if (note !== undefined) actions.push(button('notes-remove', 'remove', 'X'))
+    if (note !== undefined) actions.push(button('notes-remove', 'remove', 'w'))
     if (note !== undefined && !note.missing && note.author === 'model') actions.push(button('notes-flag', note.checked ? 'unflag' : 'flag', 'g'))
     actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'))
     if (input.notes.filter !== 'all' || input.notes.text !== '') actions.push(button('notes-clear', 'clear', 'x'))

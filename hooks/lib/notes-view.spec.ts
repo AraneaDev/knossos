@@ -104,6 +104,19 @@ describe('the Notes tab', () => {
     expect(bar).not.toMatch(/narrow|show:|adopt|remove|flag/)
   })
 
+  it('gives every key a digit or a lowercase letter, as the engine takes them, remove on w', () => {
+    const presses = (v: Partial<KnossosView>) => [...footerRows(pane(state(answer()), view(v)), 140, true).bar, ...paneLayout(pane(state(answer()), view(v)), 140, 60).body].flatMap(r => r.segments).flatMap(s => (s.press?.hotkey === undefined ? [] : [s.press]))
+    for (const v of [{ selected: 1 }, { selected: 2 }, { selected: 3, notesAsk: { action: 'remove' as const, component: 'App\\Target', author: 'model' as const, kind: 'note' } }, { selected: 3, notesAsk: { action: 'check' as const, component: 'App\\Target', author: 'model' as const, kind: 'note', value: '' } }]) {
+      for (const p of presses(v)) expect(p.hotkey, p.id).toMatch(/^[0-9a-z]$/)
+    }
+    expect(presses({ selected: 1 }).find(p => p.id === 'notes-remove')?.hotkey).toBe('w')
+  })
+
+  it('offers n to drop the flag question as well as Enter to flag', () => {
+    const body = paneLayout(pane(state(answer()), view({ selected: 3, notesAsk: { action: 'check', component: 'App\\Target', author: 'model', kind: 'note', value: '' } })), 140, 60).body.flatMap(r => r.segments)
+    expect(body.find(s => s.press?.id === 'notes-no')?.press?.hotkey).toBe('n')
+  })
+
   it('reads the answer, refusing one without its groups', () => {
     expect(parseNotes(JSON.stringify(answer()))?.counts.total).toBe(4)
     expect(parseNotes(JSON.stringify({ status: 'ok', counts: {} }))).toBeNull()

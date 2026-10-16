@@ -170,7 +170,7 @@ any other press, a tab or `f`, which then does what it does:
 | `m`         | in a component's detail: add a [note](#a-note-on-a-component)                                          |
 | `n` `s` `x` | on Hubs: narrow the list, sort by in, out or cross degree, clear the narrowing                         |
 | `n` `s` `x` | on [Notes](#notes): narrow by text, show yours, the model's, the stale, missing or flagged, clear both |
-| `m` `X` `g` | on Notes: edit your note or adopt the model's, remove a note, flag the model's note for it to check    |
+| `m` `w` `g` | on Notes: edit your note or adopt the model's, remove a note, flag the model's note for it to check    |
 | `r`         | rescan the project now, fresh or not                                                                   |
 | `a`         | allow a refused root (asks first)                                                                      |
 
@@ -622,7 +622,7 @@ turn, and `x` clears both. On the marked note:
 | --- | ------------------------------------------------------------------------------------------------------------------ |
 | `o` | open its component's detail; on a note on a missing name, open the finder on the old name to pick where it belongs |
 | `m` | edit your note, or adopt the model's: the detail opens with its text in the editor, and saving writes it as yours  |
-| `X` | remove it, yours or the model's, after asking                                                                      |
+| `w` | remove it, yours or the model's, after asking                                                                      |
 | `g` | flag the model's note for the model to check, with a reason if you give one; on a flagged note, take the flag back |
 
 A note you adopt is yours: it wins over the model's and never goes stale, and

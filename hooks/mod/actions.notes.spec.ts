@@ -206,6 +206,34 @@ describe('o on a note on a missing name', () => {
     })
 })
 
+describe('leaving a question or a move', () => {
+    it('drops the move when the finder closes, so a later find opens what it finds', async () => {
+        const port = fakePort({ selected: 0 })
+        await port.press('open')
+        expect(port.view().moving).not.toBeNull()
+        await port.press('find-close')
+        expect(port.view()).toMatchObject({ finding: false, moving: null })
+    })
+
+    it('drops the flag question on n, writing nothing', async () => {
+        const port = fakePort({ selected: 1 }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, rest: [row('App\\Target'), ...NOTES.groups.rest.slice(1)] } } } })
+        await port.press('notes-flag')
+        expect(port.view().notesAsk?.action).toBe('check')
+        await port.press('notes-no')
+        await port.runTimers()
+        expect(port.view().notesAsk).toBeNull()
+        expect(port.runs).toEqual([])
+    })
+})
+
+describe('m on a note of several lines', () => {
+    it('seeds the editor with it on one line, which the wrapper takes', async () => {
+        const port = fakePort({ selected: 1 }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, rest: [row('App\\Target', { value: 'First line.\n\nSecond  paragraph.' }), ...NOTES.groups.rest.slice(1)] } } } })
+        await port.press('notes-edit')
+        expect(port.note()?.value).toBe('First line. Second paragraph.')
+    })
+})
+
 describe("the detail's note while a scan commits", () => {
     it('keeps the text, back at the question, and says to retry', async () => {
         const port = fakePort({ inspect: { name: 'App\\Greeter', label: 'Greeter' }, tab: 'hubs' }, { note: { component: 'App\\Greeter', phase: 'confirming', value: 'be kind', previous: null, reason: null } })

@@ -167,7 +167,8 @@ async function openFinder(io: Port): Promise<void> {
 /** Closes the finder: the tab (or the detail) under it comes back with its marker where it stood. */
 async function closeFinder(io: Port): Promise<void> {
   mod.openWhenFound = false
-  await io.state.view.update((v): KnossosView => (v.finding === true ? { ...v, finding: false, picking: null, selected: mod.findFrom } : v))
+  // A note waiting to move goes back to waiting for o: the finder no longer picks for it.
+  await io.state.view.update((v): KnossosView => (v.finding === true ? { ...v, finding: false, picking: null, moving: null, selected: mod.findFrom } : v))
 }
 
 /** What was typed into the finder, kept at once; the search for it runs after a short pause in the typing. */
@@ -575,6 +576,8 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
     'tab:',
     async (io, rest) => {
       const tab = rest as PaneTab
+      // The model writes notes through MCP, which moves no snapshot: entering the tab reads them again.
+      if (tab === 'notes') mod.notesVersion += 1
       if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
     },
   ],

@@ -91,7 +91,8 @@ export async function editMarked(io: Port): Promise<void> {
   if (n === null) return
   if (n.missing) return say(io, 'o finds where the note belongs first', 'alert')
   // The editor first: the detail draws it once its component is the note's.
-  await io.state.note.update((): NoteState => ({ component: n.component, phase: 'editing', value: n.value, previous: null, reason: null }))
+  // The field and the wrapper take one line: a note of paragraphs is edited as one.
+  await io.state.note.update((): NoteState => ({ component: n.component, phase: 'editing', value: n.value.replace(/\s+/g, ' ').trim(), previous: null, reason: null }))
   focus(io, 'note')
   await showComponent(io, { name: n.component, label: n.label })
 }
