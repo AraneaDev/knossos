@@ -32,7 +32,7 @@ import type { Block, Section } from './cards'
 import { noteOf } from './cards'
 import { timelineRow, untestedText } from './changes'
 import type { ChangesInput, LookAt } from './changes'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, heat, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { BAR_FULL, bar, button, cells, chip, chipWidth, clip, fit, grouped, padEnd, padStart, plural, spaces, SWATCH, tinted, TRACK, wrapGroups, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
@@ -386,7 +386,7 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
           { text: ' ' },
           button(`row:${offset + i}`, labels[i]!),
           { text: spaces(labelWidth - cells(labels[i]!) + 1) },
-          { text: glyphs, color: ACCENT },
+          { text: glyphs, color: heat(i, buckets.length) },
           { text: TRACK.repeat(width - cells(glyphs)), color: FAINT },
           { text: ` ${padStart(counts[i]!, countWidth)}`, color: HEADING },
           ...(i === top ? [{ text: flag, dim: true }] : []),

@@ -4,7 +4,7 @@ import { cardRows } from './cards'
 import { changesInput, lookAtOf, NO_CHANGES } from './changes'
 import { listFor, paneInput, paneLayout } from './layout'
 import { bucketLabel, compositionBlock, concentrationBlock, flowsBlock, healthBlock, overviewData, overviewList, percent, sessionBlock, shares } from './overview'
-import { BOUNDARY_COLOURS, huesOf } from './palette'
+import { BOUNDARY_COLOURS, heat, huesOf, STATUS_COLOURS } from './palette'
 import { cells, rowWidth, tierOf } from './rows'
 import type { Row } from './rows'
 import { plainText, rawText } from './__tests__/plain-text'
@@ -202,14 +202,17 @@ describe('the overview cards', () => {
     expect(rowWidth(narrow.find(r => r.key === 'comp-boundaries')!)).toBe(40)
   })
 
-  it('draws the in-degree histogram in one hue, counts right-aligned, the hubs bucket marked, each bucket a press', () => {
+  it('draws the in-degree histogram shaded cool to hot, counts right-aligned, the hubs bucket marked, each bucket a press', () => {
     const rows = rowsOf(concentrationBlock(data, 5, 1)!, 100)
     const top = rows.find(r => r.key === 'degree-4')!
     expect(plainText(top)).toMatch(/^›◆ 101\+ +━*╸?·+ +26 hubs$/)
     expect(top.tint).toBe('userMessageBackground')
     expect(top.segments.find(s => s.press)?.press).toEqual({ id: 'row:5', label: '101+' })
-    const bars = rows.flatMap(r => r.segments).filter(s => /^[━╸]+$/.test(s.text))
-    expect(new Set(bars.map(s => s.color))).toEqual(new Set(['suggestion']))
+    // Each bucket's bar in its place on the heat scale: the fewest dependants cool, the hubs hot.
+    const barOf = (i: number) => rows.find(r => r.key === `degree-${i}`)!.segments.find(s => /^[━╸]+$/.test(s.text))
+    expect(barOf(0)?.color).toBe(heat(0, 5))
+    expect(barOf(4)?.color).toBe(heat(4, 5))
+    expect(barOf(4)?.color).toBe(STATUS_COLOURS.alert)
     // The counts end in one column.
     const ends = rows.filter(r => /^degree-\d$/.test(r.key)).map(r => rawText(r).search(/\d(?=[^\d,]*$)/))
     expect(new Set(ends).size).toBe(1)

@@ -116,3 +116,12 @@ describe('a delta', () => {
     expect(deltaSegment({ delta: 0 })).toEqual({ text: '±0', dim: true })
   })
 })
+
+describe('a tile\'s hue', () => {
+    it('colours an untoned figure in its hue, and lets a tone win', () => {
+        const at = (stat: Stat) => tileRows([stat], 60, 'medium').flatMap(r => r.segments).find(s => s.text === stat.value)
+        expect(at({ key: 'components', label: 'components', value: '9,008', hue: 'suggestion' })).toMatchObject({ color: 'suggestion' })
+        expect(at({ key: 'cycles', label: 'cycles', value: '2', hue: 'success', tone: 'warn' })).toMatchObject({ color: STATUS_COLOURS.warn })
+    })
+})
+

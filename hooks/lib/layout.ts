@@ -16,7 +16,7 @@ import type { ChangesInput, LookAt } from './changes'
 import { countLabel } from './envelopes'
 import { driftInput, driftList, driftSection, fileDetailArrangement, fileDetailList } from './files'
 import type { DriftInput } from './files'
-import { ACCENT, boundaryLabel, CHIP_BG, declaredOf, FAINT, HEADING, huesOf, ON_FILL, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryLabel, CHIP_BG, declaredOf, FAINT, HEADING, huesOf, languageColour, ON_FILL, STAT_HUES, STATUS_COLOURS } from './palette'
 import type { Hues, Tone } from './palette'
 import {
   baseName,
@@ -395,14 +395,14 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
     ...(d.summary === undefined
       ? []
       : [
-          ...counted(summary[0], 'components', { ...moved('components'), ...series(t => t.components), ...listing('components', figureOf(summary[0])) }),
-          ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', listing('boundaries', figureOf(summary[1]))),
+          ...counted(summary[0], 'components', { hue: STAT_HUES.components, ...moved('components'), ...series(t => t.components), ...listing('components', figureOf(summary[0])) }),
+          ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', { hue: STAT_HUES.boundaries, ...listing('boundaries', figureOf(summary[1])) }),
         ]),
     // Cycles between types only: the ones inside one type show on the Cycles tab alone.
-    { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
-    ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), ...series(t => t.max_degree), ...moved('max_degree') }]),
-    issuesTile(d, policy, diagnostics, listing),
-    { key: 'drifted', label: 'drifted', value: grouped(drifted), ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
+    { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, hue: STAT_HUES.cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
+    ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), hue: STAT_HUES.degree, ...series(t => t.max_degree), ...moved('max_degree') }]),
+    { ...issuesTile(d, policy, diagnostics, listing), hue: STAT_HUES.issues },
+    { key: 'drifted', label: 'drifted', value: grouped(drifted), hue: STAT_HUES.drifted, ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
   ]
 }
 
@@ -709,7 +709,7 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier): Row {
   const where: Segment[] = git === '' || tier === 'narrow' ? [] : [{ text: `  ${git}`, dim: true }]
   const away = input.detail !== null || input.route !== null
   const chips: Segment[] =
-    tier === 'narrow' || away || input.languages === '' ? [] : input.languages.split(' ').flatMap((l): Segment[] => [{ text: ' ' }, { text: ` ${l} `, dim: true, bg: CHIP_BG }])
+    tier === 'narrow' || away || input.languages === '' ? [] : input.languages.split(' ').flatMap((l): Segment[] => [{ text: ' ' }, { text: ` ${l} `, color: languageColour(l), bg: CHIP_BG }])
   const chipsLead: Segment[] = chips.length === 0 ? [] : [{ text: ' ' }, ...chips]
   // Each layout from the fullest down; the first that fits wins.
   const variants: [Segment[], Segment[]][] = [

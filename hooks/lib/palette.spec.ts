@@ -111,7 +111,8 @@ describe('boundaryLabel', () => {
 })
 
 describe('the livelier look', () => {
-    const THEME_KEYS = new Set(['text', 'inverseText', 'inactive', 'subtle', 'suggestion', 'remember', 'success', 'error', 'warning', 'merged', 'claude', 'permission', 'planMode', 'autoAccept', 'ide', ...BOUNDARY_COLOURS])
+    // Theme keys that mean no boundary: a boundary's colour is only ever on its own marks.
+    const THEME_KEYS = new Set(['text', 'inverseText', 'inactive', 'subtle', 'suggestion', 'remember', 'success', 'error', 'warning', 'merged', 'claude', 'permission', 'planMode', 'autoAccept', 'ide', 'bashBorder'])
 
     it('titles cards in the orange Claude Code marks itself with', () => {
         expect(TITLE).toBe('claude')

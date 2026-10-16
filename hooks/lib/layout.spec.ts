@@ -27,7 +27,8 @@ import type { PaneInput, Row } from './layout'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
 import { LIST_MAX } from './cards'
-import { gitLabel, paneLayout, shrinkRows, titleRow } from './layout'
+import { gitLabel, paneLayout, shrinkRows, statsOf, titleRow } from './layout'
+import { CHIP_BG, languageColour, STAT_HUES, STATUS_COLOURS } from './palette'
 import { chainGroups, cyclesInput } from './cycles'
 import { issueCount, issuesInput, issuesList, superscript } from './views'
 
@@ -632,7 +633,7 @@ describe('the header summary', () => {
     expect(row(paneRows(fullInput(), 60), 'summary')).toBeUndefined()
     const title = row(paneRows(fullInput(), 100), 'title')!
     expect(title.segments.filter(s => s.bg === 'userMessageBackground').map(s => s.text)).toEqual([' PHP ', ' JS ', ' RS '])
-    expect(title.segments.find(s => s.text === ' PHP ')?.dim).toBe(true)
+    expect(title.segments.find(s => s.text === ' PHP ')?.color).toBe(languageColour('php'))
     expect(row(paneRows(fullInput(), 60), 'title')!.segments.some(s => s.text === ' PHP ')).toBe(false)
   })
   it('falls back to hubs, cycles and dead code from an older knossos', () => {
@@ -1180,6 +1181,23 @@ describe('colour', () => {
 })
 
 describe('the overview stat tiles', () => {
+  it('gives each tile its hue while nothing is wrong with it, a warning tone still winning', () => {
+    const clean = statsOf(full({ cycles: { count: 0, truncated: false, truncation_reasons: [], largest: [] } }), ['9,008 components', '7 boundaries'], null, null, false)
+    for (const stat of clean) {
+      const key = stat.key === 'boundary' ? 'boundaries' : stat.key
+      if (stat.tone === undefined) expect(stat.hue, stat.key).toBe(STAT_HUES[key as keyof typeof STAT_HUES])
+    }
+    expect(clean.find(s => s.key === 'cycles')!.hue).toBe(STATUS_COLOURS.ok)
+    const tangled = statsOf(full({ cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [] } }), [], null, null, false)
+    expect(tangled.find(s => s.key === 'cycles')!.tone).toBe('warn')
+  })
+
+  it('colours each language chip in the header its own hue on its grey ground', () => {
+    const title = row(paneRows(fullInput({}, full({ summary: { components: 9008, boundaries: 7, boundaries_truncated: false, languages: [{ language: 'php', files: 900 }, { language: 'typescript', files: 300 }] } } as never)), 140), 'title')!
+    const php = title.segments.find(s => s.text.trim() === 'PHP')
+    expect(php).toMatchObject({ color: languageColour('php'), bg: CHIP_BG })
+  })
+
   it('keeps the Issues total a floor when policy or dead-code counts are truncated', () => {
     const tile = (policyTruncated: boolean, deadTruncated: boolean) => {
       const dashboard = full({
@@ -1216,11 +1234,12 @@ describe('the overview stat tiles', () => {
     // 55 dead code, an error and a warning, 7 policy violations and 3 functions over budget.
     expect(figures).toMatch(/^7,878 +│ 2 +│ 2 +│ 161 +│ ✗ 67 +│ 41$/)
     const colour = (text: string) => row(rows, 'tiles-0-value')!.segments.find(s => s.text === text)?.color
-    expect(colour('7,878')).toBe('text')
+    expect(colour('7,878')).toBe(STAT_HUES.components)
     // A policy violation among them is the worst there is.
     expect(colour('✗ 67')).toBe('error')
     expect(colour('41')).toBe('suggestion')
-    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual(['text', 'warning'])
+    // Two figures read 2: the boundaries in their hue, the cycles in the warning their count calls for.
+    expect(row(rows, 'tiles-0-value')!.segments.filter(s => s.text === '2').map(s => s.color)).toEqual([STAT_HUES.boundaries, 'warning'])
     const issues = row(rows, 'tiles-0-label')!.segments.find(s => s.text.startsWith('issues'))
     expect(issues?.press?.id).toBe('stat:issues')
     // Every figure stands at the left edge of its tile, over its label: the rules line up.

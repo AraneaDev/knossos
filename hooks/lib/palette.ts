@@ -44,24 +44,25 @@ export const TITLE = 'claude'
 /**
  * Each stat tile's figure, coloured when nothing is wrong with it: a tone
  * (cycles or issues above zero) still wins. Cycles and issues sit in the
- * success colour at rest, so a clean graph reads clean at a glance.
+ * success colour at rest, so a clean graph reads clean at a glance. No hue
+ * here is a boundary's: those mean a boundary, on its own marks only.
  */
 export const STAT_HUES = {
   components: ACCENT,
-  boundaries: 'blue_FOR_SUBAGENTS_ONLY',
+  boundaries: 'permission',
   cycles: STATUS_COLOURS.ok,
-  degree: 'purple_FOR_SUBAGENTS_ONLY',
+  degree: 'merged',
   issues: STATUS_COLOURS.ok,
-  drifted: 'cyan_FOR_SUBAGENTS_ONLY',
+  drifted: 'ide',
 } as const
 
-/** Each language's chip colour, by its short name. */
+/** Each language's chip colour, by its short name: theme keys no boundary uses. */
 const LANGUAGE_COLOURS: Record<string, string> = {
-  php: 'blue_FOR_SUBAGENTS_ONLY',
-  ts: 'cyan_FOR_SUBAGENTS_ONLY',
-  js: 'yellow_FOR_SUBAGENTS_ONLY',
-  py: 'green_FOR_SUBAGENTS_ONLY',
-  rs: 'orange_FOR_SUBAGENTS_ONLY',
+  php: 'merged',
+  ts: 'ide',
+  js: 'autoAccept',
+  py: 'planMode',
+  rs: 'bashBorder',
 }
 const LANGUAGE_SHORT: Record<string, string> = { typescript: 'ts', javascript: 'js', python: 'py', rust: 'rs' }
 
