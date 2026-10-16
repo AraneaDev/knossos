@@ -72,6 +72,10 @@ export type Row = {
   code?: { source: string; path: string }
   /** The background the whole row is tinted with (the marked row): a card's frame carries it to its inner edge. */
   tint?: string
+  /** The cells a card's gutter lays before the row's own content (two in a medium or wide card); in a row of the wide grid, its left card's. */
+  inset?: number
+  /** In a row of the wide grid, the cells the right card's gutter lays before its row's own content. */
+  insetRight?: number
 }
 
 export const BAR_MIN = 4

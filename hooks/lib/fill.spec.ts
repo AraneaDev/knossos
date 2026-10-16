@@ -3,7 +3,7 @@ import type { BranchDiff, Dashboard, KnossosView, PaneTab } from '../../types'
 import { paneInput, paneLayout, statsOf } from './layout'
 import { rawText } from './__tests__/plain-text'
 import type { Row } from './rows'
-import { tierOf } from './rows'
+import { rowsHeight, tierOf } from './rows'
 
 const ROOT = '/work/app'
 const hub = (i: number) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', boundary: 'core', in_degree: 90 - i, out_degree: i, cross_boundary_degree: 0, dependent_files: 40 - i, path: `src/Hub${i}.php`, line: 3 })
@@ -66,13 +66,6 @@ function interiorGap(body: Row[]): number {
   return longest
 }
 
-/** Blank rows at the foot of the body: what is left when no card took the height. */
-function trailing(body: Row[]): number {
-  let n = 0
-  for (let i = body.length - 1; i >= 0 && blankRow(body[i]!); i--) n++
-  return n
-}
-
 describe('cards fill the height without gaps', () => {
   // A sweep over every width and height: seconds under coverage, so it gets its own bound rather than the default 5 s.
   it('never leaves blank rows between collapsed cards and the cards after them, on any tab', { timeout: 30_000 }, () => {
@@ -88,15 +81,15 @@ describe('cards fill the height without gaps', () => {
     }
   })
 
-  it('gives the height to the framed cards: no blank rows at the foot of a framed pane', () => {
+  it('draws the pane to its full height, the cards above and blank space after them', () => {
     for (const tab of ['issues', 'cycles', 'branch', 'churn'] as PaneTab[]) {
       for (const b of [branch(0), branch(2)]) {
         for (const columns of [60, 80, 100, 130, 140, 200]) {
           if (tierOf(columns) === 'narrow') continue
           for (const height of [40, 60]) {
-            const { body, pinned } = paneLayout(pane(tab, b), columns, height)
+            const { body, footer, pinned } = paneLayout(pane(tab, b), columns, height)
             if (pinned) continue
-            expect(trailing(body), `${tab} ${b.comparison?.hubs.count} ${columns}x${height}`).toBe(0)
+            expect(rowsHeight(body) + footer.length, `${tab} ${b.comparison?.hubs.count} ${columns}x${height}`).toBe(height)
           }
         }
       }

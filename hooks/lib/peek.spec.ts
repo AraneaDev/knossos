@@ -3,7 +3,7 @@ import type { ComponentDetail, Dashboard, KnossosView, PaneTab } from '../../typ
 import { detailInput, paneInput, paneLayout } from './layout'
 import type { DetailInput, PaneInput } from './layout'
 import { plainText, rawText } from './__tests__/plain-text'
-import { rowWidth } from './rows'
+import { rowsHeight, rowWidth } from './rows'
 
 const ROOT = '/work/app'
 const hub = (i: number) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', boundary: i % 2 === 0 ? 'core' : 'tests', in_degree: 300 - i, out_degree: i, cross_boundary_degree: 0, dependent_files: 40 - i, path: `src/Hub${i}.php`, line: 3 })
@@ -46,9 +46,9 @@ describe('master-detail on a wide pane', () => {
   it('keeps the list on the left, its marker on the row the detail is of, and the detail framed beside it', () => {
     const rows = paneLayout(pane(view()), 200, 40).body
     const marked = rows.find(r => r.key.startsWith('hub-1|'))!
-    expect(plainText(marked)).toMatch(/^│ › +C Hub1 /)
+    expect(plainText(marked)).toMatch(/^› +C Hub1 /)
     const head = rows.find(r => r.key.includes('|peek-detail-head'))!
-    expect(rawText(head)).toMatch(/╭─ ◇ Hub1 .*╮ *$/)
+    expect(rawText(head)).toMatch(/── ◇ Hub1 .*── *$/)
     // The detail's presses open what it lists, apart from the tab's rows.
     const presses = rows.flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [s.press.id])))
     expect(presses).toContain('peek:0')
@@ -68,16 +68,14 @@ describe('master-detail on a wide pane', () => {
 })
 
 describe('cards fill their height', () => {
-  it('stretches the last card to the foot of the pane, never leaving blank rows under it', () => {
+  it('draws the pane to its foot, the last card first and blank space after it', () => {
     // A card with a list at the foot: an empty one is a single line, with no frame to stretch.
     const listed = { ...d, complexity_hotspots: [{ path: 'src/Big.php', language: 'php', lines: 900, dependent_files: 12, score: 10_800 }] }
     for (const tab of ['issues', 'cycles', 'changes'] as PaneTab[]) {
       for (const columns of [100, 200]) {
         const { body } = paneLayout(pane(view({ tab }), null, listed), columns, 60)
-        // The row before the gap above the footer is a card's bottom edge (or a stretched grid's).
-        const last = body.at(-1)!
-        expect(rawText(last), `${tab} ${columns}`).toMatch(/╰─+╯/)
-        expect(body.some(r => r.key.startsWith('fill-')), `${tab} ${columns}`).toBe(false)
+        const { footer } = paneLayout(pane(view({ tab }), null, listed), columns, 60)
+        expect(rowsHeight(body) + footer.length, `${tab} ${columns}`).toBe(60)
       }
     }
   })

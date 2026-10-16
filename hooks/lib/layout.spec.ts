@@ -26,6 +26,7 @@ import { paneRows } from './__tests__/pane'
 import type { PaneInput, Row } from './layout'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
+import { LIST_MAX } from './cards'
 import { gitLabel, paneLayout, shrinkRows, titleRow } from './layout'
 import { chainGroups, cyclesInput } from './cycles'
 import { issueCount, issuesInput, issuesList, superscript } from './views'
@@ -1091,10 +1092,10 @@ describe('the pane at every width and height', () => {
       const head = rows.find(r => r.key.endsWith('|concentration-head'))!
       expect(rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), `${columns}`).toBe(left + 2)
       expect(plainText({ key: 'x', segments: head.segments.slice(head.split) })).toMatch(/^Dependency concentration +15 components$/)
-      // The composition and the concentration end on the same row: the shorter is stretched inside its frame.
-      const ends = rows.filter(r => r.key.split('|').includes('composition-end'))
-      expect(ends).toHaveLength(1)
-      expect(ends[0]!.key.split('|')).toContain('concentration-end')
+      // The composition and the concentration end on the same row: the shorter is stretched, never padded.
+      const last = (card: string) => rows.map(r => r.key.split('|').some(k => k.startsWith(card))).lastIndexOf(true)
+      expect(last('composition')).toBeGreaterThan(-1)
+      expect(last('composition')).toBe(last('concentration'))
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
@@ -1421,13 +1422,15 @@ describe('the pane at every width and height, with a large project', () => {
   const at = (over: Partial<KnossosView> = {}) => paneInput(big, brief(), FETCHED, IDLE, view(over), 0, true)
   const shown = (rows: Row[], prefix: string) => rows.filter(r => r.key.split('|').some(k => new RegExp(`^${prefix}-\\d+$`).test(k))).length
   /** Where each column of the wide grid ends: the last row with anything in its left or right half. */
+  // The last row each side of the grid holds of its own cards (their stretch included), not padding for a side that ran out.
   const ends = (rows: Row[]): [number, number] => {
     let left = -1
     let right = -1
     rows.forEach((r, i) => {
       if (r.split === undefined) return
-      if (r.segments.slice(0, r.split).some(s => s.text.trim() !== '')) left = i
-      if (r.segments.slice(r.split).some(s => s.text.trim() !== '')) right = i
+      const [l, rr] = r.key.split('|')
+      if (l !== undefined && !l.startsWith('pad-')) left = i
+      if (rr !== undefined && !rr.startsWith('pad-')) right = i
     })
     return [left, right]
   }
@@ -1450,7 +1453,9 @@ describe('the pane at every width and height, with a large project', () => {
     for (const columns of WIDTHS) {
       const hubs = HEIGHTS.map(h => shown(paneRows(at({ tab: 'hubs' }), columns, h), 'hub'))
       expect(hubs[1], `${columns}`).toBeGreaterThan(hubs[0]!)
-      expect(hubs[2], `${columns}`).toBeGreaterThan(hubs[1]!)
+      // More again, unless the list already reached the most it ever shows.
+      if (hubs[1]! < LIST_MAX) expect(hubs[2], `${columns}`).toBeGreaterThan(hubs[1]!)
+      else expect(hubs[2], `${columns}`).toBe(LIST_MAX)
     }
   })
 
@@ -1569,7 +1574,9 @@ describe('the marked row, tinted across', () => {
       const rows = paneRows(fullInput({ tab: 'hubs', selected: 1 }), columns)
       const marked = row(rows, 'hub-1')!
       expect(plainText(marked).startsWith('›'), `${columns}`).toBe(true)
-      expect(marked.segments.filter(s => s.text !== '' && s.text !== '│').every(s => s.bg === 'userMessageBackground'), `${columns}`).toBe(true)
+      // All but a card's gutter cells, one each side, carry the tint.
+      const inner = columns < 80 ? marked.segments : marked.segments.slice(1, -1)
+      expect(inner.filter(s => s.text !== '').every(s => s.bg === 'userMessageBackground'), `${columns}`).toBe(true)
       expect(row(rows, 'hub-0')!.segments.some(s => s.bg !== undefined), `${columns}`).toBe(false)
       // The tinted part reaches the frame on a framed card, and the pane's edge on a narrow one.
       const raw = rows.find(r => r.key.split('|').includes('hub-1'))!
