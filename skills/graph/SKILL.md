@@ -68,6 +68,10 @@ name: that it could not find it is the gap the next session would hit. Write the
 extend it rather than replace it: the preview shows its text, and a write that
 would drop it is refused unless you pass `replace`.
 
+A `check` annotation is the user asking you to look at a note again, its value
+the reason: verify the note against the code and rewrite it, and your next note
+on that component clears the request.
+
 Keep a note brief: one or two sentences, the evidence in `evidence_paths`, not
 in the text. A path reads best as a one-line arrow chain:
 
