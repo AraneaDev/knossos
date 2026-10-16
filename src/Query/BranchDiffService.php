@@ -109,13 +109,17 @@ final readonly class BranchDiffService
 
     /**
      * The files the branch's commits touched since the merge base: how many,
-     * and those the graph holds, the most depended on first (then the most
-     * lines changed, then by path), with the lines each added and deleted
-     * (zero for a binary file) and its dependents and boundary as the fan-in
-     * map counts them. What is not committed is the Changes tab's. Null when
-     * git cannot say.
+     * each of them (up to {@see self::FILES}, `truncated` past it), the most
+     * depended on first (then the most lines changed, then by path), with
+     * the lines each added and deleted (zero for a binary file), its
+     * dependents and boundary as the fan-in map counts them, and whether the
+     * graph holds it at all; then the same files by boundary, each with the
+     * files its changes reach counted once (`reach`), the most reaching
+     * first and the files outside the graph (boundary null) last, and the
+     * files the whole branch reaches. What is not committed is the Changes
+     * tab's. Null when git cannot say.
      *
-     * @return array{count: int, items: list<array{path: string, added: int, deleted: int, dependents: int, boundary: string|null}>}|null
+     * @return array{count: int, truncated: bool, reach: int, items: list<array{path: string, added: int, deleted: int, dependents: int, boundary: string|null, in_graph: bool}>, boundaries: list<array{boundary: string|null, files: int, added: int, deleted: int, reach: int}>}|null
      */
     private function touched(string $root, string $projectId, string $mergeBase): ?array
     {
@@ -132,15 +136,68 @@ final readonly class BranchDiffService
         }
         $changed = $lines;
         uksort($changed, static fn(string $a, string $b): int => [$lines[$b][0] + $lines[$b][1], $a] <=> [$lines[$a][0] + $lines[$a][1], $b]);
+        $paths = array_slice(array_map('strval', array_keys($changed)), 0, self::FILES);
         $query = new FileFanInQuery($this->pdo);
-        $known = $query->held($projectId, array_slice(array_map('strval', array_keys($changed)), 0, self::FILES));
+        $known = $query->held($projectId, $paths);
+        $held = $known === [] ? [] : $query->forPaths($projectId, $known, 0);
         $items = [];
-        foreach ($known === [] ? [] : $query->forPaths($projectId, $known, 0) as $path => $row) {
-            $items[] = ['path' => $path, 'added' => $lines[$path][0], 'deleted' => $lines[$path][1], 'dependents' => $row['dependent_files'], 'boundary' => $row['boundary']];
+        foreach ($paths as $path) {
+            $row = $held[$path] ?? null;
+            $items[] = ['path' => $path, 'added' => $lines[$path][0], 'deleted' => $lines[$path][1], 'dependents' => $row === null ? 0 : $row['dependent_files'], 'boundary' => $row['boundary'] ?? null, 'in_graph' => $row !== null];
         }
         usort($items, static fn(array $a, array $b): int => [$b['dependents'], $b['added'] + $b['deleted'], $a['path']] <=> [$a['dependents'], $a['added'] + $a['deleted'], $b['path']]);
+        $dependents = $query->dependentsOf($projectId, $known);
 
-        return ['count' => count($lines), 'items' => array_slice($items, 0, self::LIMIT)];
+        return ['count' => count($lines), 'truncated' => count($lines) > self::FILES, 'reach' => self::reachOf($items, $dependents), 'items' => $items, 'boundaries' => self::byBoundary($items, $dependents)];
+    }
+
+    /**
+     * The touched files by boundary: how many, their lines, the files their
+     * changes reach counted once; the most reaching first (then by name),
+     * the files outside the graph last.
+     *
+     * @param list<array{path: string, added: int, deleted: int, dependents: int, boundary: string|null, in_graph: bool}> $items
+     * @param array<string, list<string>> $dependents
+     * @return list<array{boundary: string|null, files: int, added: int, deleted: int, reach: int}>
+     */
+    private static function byBoundary(array $items, array $dependents): array
+    {
+        $groups = [];
+        foreach ($items as $item) {
+            $groups[$item['in_graph'] ? (string) ($item['boundary'] ?? '') : "\0"][] = $item;
+        }
+        $rows = [];
+        foreach ($groups as $key => $group) {
+            $rows[] = [
+                'boundary' => $key === "\0" ? null : ($key === '' ? null : (string) $key),
+                'files' => count($group),
+                'added' => array_sum(array_column($group, 'added')),
+                'deleted' => array_sum(array_column($group, 'deleted')),
+                'reach' => self::reachOf($group, $dependents),
+                'outside' => $key === "\0",
+            ];
+        }
+        usort($rows, static fn(array $a, array $b): int => [$a['outside'], $b['reach'], $a['boundary'] ?? ''] <=> [$b['outside'], $a['reach'], $b['boundary'] ?? '']);
+
+        return array_map(static fn(array $row): array => array_diff_key($row, ['outside' => true]), $rows);
+    }
+
+    /**
+     * The files the changes to `$items` reach, each counted once.
+     *
+     * @param list<array{path: string}> $items
+     * @param array<string, list<string>> $dependents
+     */
+    private static function reachOf(array $items, array $dependents): int
+    {
+        $reached = [];
+        foreach ($items as $item) {
+            foreach ($dependents[$item['path']] ?? [] as $path) {
+                $reached[$path] = true;
+            }
+        }
+
+        return count($reached);
     }
 
     /**

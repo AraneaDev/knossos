@@ -176,6 +176,42 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
     }
 
     /**
+     * Every dependent file of each of `$paths`, by path, each list
+     * alphabetical, over the impact edges {@see self::select()} counts: what
+     * lets a caller count the files a set of paths reaches without counting
+     * one twice. A path nothing depends on is left out.
+     *
+     * @param list<string> $paths
+     * @return array<string, list<string>>
+     */
+    public function dependentsOf(string $projectId, array $paths): array
+    {
+        if ($paths === []) {
+            return [];
+        }
+        $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
+        $sql = <<<SQL
+            SELECT DISTINCT tf.relative_path, sf.relative_path
+              FROM files tf
+              JOIN nodes tn ON tn.file_id = tf.id
+              JOIN edges e ON e.target_id = tn.id
+              JOIN nodes sn ON sn.id = e.source_id
+              JOIN files sf ON sf.id = sn.file_id
+             WHERE tf.project_id = ? AND tf.relative_path IN (%s)
+               AND e.project_id = tf.project_id AND sf.id <> tf.id AND e.kind IN ($kinds)
+               AND {$this->owned('sn')}
+               AND {$this->owned('tn')}
+             ORDER BY tf.relative_path, sf.relative_path
+            SQL;
+        $dependents = [];
+        foreach (ChunkedInQuery::rows($this->pdo, $sql, $paths, [$projectId], self::IMPACT_EDGE_KINDS, \PDO::FETCH_NUM) as [$path, $dependent]) {
+            $dependents[(string) $path][] = (string) $dependent;
+        }
+
+        return $dependents;
+    }
+
+    /**
      * Up to $limit dependent file paths of $path, alphabetical.
      *
      * @return list<string>

@@ -127,16 +127,66 @@ final class BranchDiffServiceTest extends KnossosTestCase
     {
         [$pdo, $root] = $this->repository();
         try {
-            // A file the graph does not hold counts as touched, but is not listed.
+            // A file the graph does not hold is touched too: listed, outside the graph, reaching nothing.
             file_put_contents($root . '/NOTES.md', "notes\n");
             $this->branchWork($pdo, $root);
             $files = (new BranchDiffService($pdo))->diff($root)['files'];
             assertSame(3, $files['count']);
-            assertSame(['src/Core/Greeter.php', 'src/Core/Unused.php'], array_column($files['items'], 'path'));
-            [$greeter, $unused] = $files['items'];
-            assertSame([1, 1, 'Core'], [$greeter['added'], $greeter['deleted'], $greeter['boundary']]);
+            assertSame(['src/Core/Greeter.php', 'src/Core/Unused.php', 'NOTES.md'], array_column($files['items'], 'path'));
+            [$greeter, $unused, $notes] = $files['items'];
+            assertSame([1, 1, 'Core', true], [$greeter['added'], $greeter['deleted'], $greeter['boundary'], $greeter['in_graph']]);
             assertGreaterThanOrEqual(1, $greeter['dependents']);
-            assertSame(['added' => 9, 'deleted' => 0, 'dependents' => 0, 'boundary' => 'Core'], array_diff_key($unused, ['path' => true]));
+            assertSame(['added' => 9, 'deleted' => 0, 'dependents' => 0, 'boundary' => 'Core', 'in_graph' => true], array_diff_key($unused, ['path' => true]));
+            assertSame(['added' => 1, 'deleted' => 0, 'dependents' => 0, 'boundary' => null, 'in_graph' => false], array_diff_key($notes, ['path' => true]));
+            assertSame(false, $files['truncated']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * The touched files by boundary: how many each, their lines, and the
+     * files their changes reach, each counted once; the files outside the
+     * graph last, reaching nothing. The rows add up to the totals.
+     */
+    #[Group('query')]
+    public function testItGroupsTheTouchedFilesByBoundaryWithWhatTheyReach(): void
+    {
+        [$pdo, $root] = $this->repository();
+        try {
+            file_put_contents($root . '/NOTES.md', "notes\n");
+            $this->branchWork($pdo, $root);
+            $files = (new BranchDiffService($pdo))->diff($root)['files'];
+            assertSame(['Core', null], array_column($files['boundaries'], 'boundary'));
+            [$core, $outside] = $files['boundaries'];
+            assertSame([2, 10, 1], [$core['files'], $core['added'], $core['deleted']]);
+            assertSame($files['items'][0]['dependents'], $core['reach']);
+            assertSame(['boundary' => null, 'files' => 1, 'added' => 1, 'deleted' => 0, 'reach' => 0], $outside);
+            assertSame($files['count'], array_sum(array_column($files['boundaries'], 'files')));
+            assertSame($core['reach'], $files['reach']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A branch past the files it lists: each listed one counted in its boundary, the whole still counted, and said to be cut. */
+    #[Group('query')]
+    public function testABranchPastTheFilesItListsSaysSo(): void
+    {
+        [$pdo, $root] = $this->repository();
+        try {
+            @mkdir($root . '/docs/many', 0777, true);
+            for ($i = 0; $i < 320; $i++) {
+                file_put_contents(sprintf('%s/docs/many/n%03d.md', $root, $i), "note {$i}\n");
+            }
+            $this->branchWork($pdo, $root);
+            $files = (new BranchDiffService($pdo))->diff($root)['files'];
+            assertSame(322, $files['count']);
+            assertSame(300, count($files['items']));
+            assertSame(true, $files['truncated']);
+            assertSame(300, array_sum(array_column($files['boundaries'], 'files')));
+            // The files the graph holds sort first: the branch's own source is not lost under its notes.
+            assertSame(['src/Core/Greeter.php', 'src/Core/Unused.php'], array_slice(array_column($files['items'], 'path'), 0, 2));
         } finally {
             $this->removeTempTree($root);
         }
