@@ -10,7 +10,7 @@
  * day it was written. The marker walks the rows in that order; a note on a
  * missing name has no detail to open.
  */
-import type { NoteCounts, NoteRow, Notes, NotesFilter, NotesState } from '../../types'
+import type { NoteCounts, NoteRow, Notes, NotesAsk, NotesFilter, NotesState } from '../../types'
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block } from './cards'
 import { NOTE, SEVERITY, mark } from './marks'
@@ -55,6 +55,8 @@ export type NotesInput = {
   text: string
   /** Whether the field that narrows by text is open (`n`). */
   filtering: boolean
+  /** The write the card asks the person to confirm, or null. */
+  ask: NotesAsk | null
   counts: NoteCounts
   groups: { missing: NoteItem[]; stale: NoteItem[]; rest: NoteItem[] }
   truncated: boolean
@@ -81,8 +83,8 @@ const itemOf = (row: NoteRow): NoteItem => ({
 })
 
 /** The tab's view of the stored answer, with the filter and text the view holds and whether the field is open. */
-export function notesInput(state: NotesState | null, filter: NotesFilter, text: string, filtering: boolean): NotesInput {
-  const base = { warn: false, loading: false, filter, text, filtering, counts: NO_COUNTS, groups: { missing: [], stale: [], rest: [] }, truncated: false }
+export function notesInput(state: NotesState | null, filter: NotesFilter, text: string, filtering: boolean, ask: NotesAsk | null = null): NotesInput {
+  const base = { warn: false, loading: false, filter, text, filtering, ask, counts: NO_COUNTS, groups: { missing: [], stale: [], rest: [] }, truncated: false }
   const answer: Notes | null = state?.answer ?? null
   if (answer === null) {
     return state === null || state.phase === 'loading' ? { ...base, said: 'Reading the notes…', loading: true } : { ...base, said: 'knossos did not answer; the tab asks again with the next snapshot.', warn: true }
@@ -116,6 +118,23 @@ export function countsLine(counts: NoteCounts): string {
 /** The mark a note's row leads with: its component gone, its files changed, or flagged for the model; none otherwise. */
 const markOf = (n: NoteItem): Segment | undefined => (n.missing ? mark(NOTE.missing) : n.stale ? mark(NOTE.stale) : n.checked ? mark(NOTE.flagged) : undefined)
 
+/** Who wrote a note, as the question names them. */
+const whose = (author: 'user' | 'model'): string => (author === 'user' ? 'your' : "the model's")
+
+/** The card's question for a write waiting on the person: what it would do, and y or n (or, to flag, the reason's field). */
+function askRows(ask: NotesAsk | null, columns: number): Row[] {
+  if (ask === null) return []
+  const label = labelOf(ask.component)
+  if (ask.action === 'check') {
+    return [{ key: 'notes-ask', segments: [{ text: `   Flag the note on ${label} for the model; why (optional): `, color: STATUS_COLOURS.warn }, { text: ask.value ?? '', field: { id: 'notes-reason', value: ask.value ?? '', placeholder: 'Enter flags it' } }] }]
+  }
+  const question = ask.action === 'remove' ? `Remove ${whose(ask.author)} note on ${label}?` : ask.action === 'uncheck' ? `Take back the flag on ${label}?` : `Move the note on ${ask.component} to ${ask.to ?? ''}?`
+  return [
+    ...wrapWords(question, Math.max(1, columns - 3)).map((line, i): Row => ({ key: `notes-ask-${i}`, segments: [{ text: `   ${line}`, color: STATUS_COLOURS.warn }] })),
+    { key: 'notes-ask-keys', segments: [{ text: '   ' }, button('notes-yes', 'yes', 'y'), { text: '  ' }, button('notes-no', 'no', 'n')] },
+  ]
+}
+
 /** The fewest rows the list shows, however short the pane. */
 const LIST_MIN = 5
 
@@ -138,7 +157,7 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
         const said = wrapWords(input.said, Math.max(1, columns - 3)).map((line, i): Row => ({ key: `notes-said-${i}`, segments: [{ text: input.warn && i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: line, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] }))
         return { key: 'notes', title, body: said }
       }
-      const head: Row[] = []
+      const head: Row[] = [...askRows(input.ask, columns)]
       if (input.filtering) head.push({ key: 'notes-field', segments: [{ text: '   narrow: ', dim: true }, { text: input.text, field: { id: 'notes-filter', value: input.text, placeholder: 'part of a name or a note' } }] })
       const narrowed = [...(input.filter === 'all' ? [] : [`showing ${input.filter}`]), ...(input.text === '' || input.filtering ? [] : [`narrowed to "${input.text}"`])]
       if (narrowed.length > 0) head.push(dimRow('notes-narrowed', `   ${narrowed.join(' · ')} · ${plural(items.length, 'note', 'notes')}`, columns))

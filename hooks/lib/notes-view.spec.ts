@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, NoteRow, Notes, NotesState } from '../../types'
 import { parseNotes } from './envelopes'
-import { listFor, paneInput, paneLayout, TABS } from './layout'
+import { footerRows, listFor, paneInput, paneLayout, TABS } from './layout'
 import { nextFilter, NOTES_FILTERS } from './notes-view'
 import { plainText } from './__tests__/plain-text'
 
@@ -80,6 +80,28 @@ describe('the Notes tab', () => {
     expect(t).toContain('Many00')
     expect(t).not.toContain('Many79')
     expect(t).toMatch(/\d+ more ↓/)
+  })
+
+  it("offers m, X and g on the marked note: edit the person's, adopt the model's, flag only the model's", () => {
+    const keys = (selected: number) => footerRows(pane(state(answer()), view({ selected })), 140, true).bar.map(plainText).join(' ')
+    expect(keys(1)).toMatch(/adopt.*remove.*flag/)
+    expect(keys(1)).not.toContain('unflag')
+    expect(keys(2)).toMatch(/edit.*remove/)
+    expect(keys(2)).not.toContain('flag')
+    // A note on a missing name has nothing to edit or flag: o finds where it goes.
+    expect(keys(0)).not.toMatch(/adopt|edit|flag/)
+    // A flagged note offers to take the flag back.
+    expect(keys(3)).toContain('unflag')
+  })
+
+  it('asks before a write, in the card, and offers only y and n meanwhile', () => {
+    const asked = (notesAsk: KnossosView['notesAsk']) => text(state(answer()), 100, 60, view({ selected: 3, notesAsk }))
+    expect(asked({ action: 'remove', component: 'App\\Target', author: 'model', kind: 'note' })).toContain("Remove the model's note on Target?")
+    expect(asked({ action: 'move', component: 'App\\Gone', author: 'model', kind: 'note', to: 'App\\Adapter' })).toContain('Move the note on App\\Gone to App\\Adapter?')
+    expect(asked({ action: 'uncheck', component: 'App\\Target', author: 'model', kind: 'note' })).toContain('Take back the flag on Target?')
+    expect(asked({ action: 'check', component: 'App\\Target', author: 'model', kind: 'note', value: 'why' })).toContain('Flag the note on Target for the model; why (optional): why')
+    const bar = footerRows(pane(state(answer()), view({ selected: 3, notesAsk: { action: 'remove', component: 'App\\Target', author: 'model', kind: 'note' } })), 140, true).bar.map(plainText).join(' ')
+    expect(bar).not.toMatch(/narrow|show:|adopt|remove|flag/)
   })
 
   it('reads the answer, refusing one without its groups', () => {

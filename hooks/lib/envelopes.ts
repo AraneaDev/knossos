@@ -1,4 +1,4 @@
-import type { AllowRoot, Annotate, BlastRadius, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
+import type { AllowRoot, Annotate, BlastRadius, NoteWrite, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
 import { printableDeep } from './printable'
 
 // The envelope shapes are written once, in the plugin's contract, and re-exported
@@ -273,6 +273,19 @@ export function parseAnnotate(stdout: string): Annotate | null {
   if (parsed === null || parsed.status !== 'ok') return parsed
   return typeof parsed.component === 'string' && typeof parsed.executed === 'boolean' ? parsed : null
 }
+
+/** A note write's answer from the wrapper's stdout (note-adopt, note-move, note-check, a remove); null for silence or anything unexpected. */
+export function parseNoteWrite(stdout: string): NoteWrite | null {
+  const parsed = parse(stdout, NOTE, [], []) as NoteWrite | null
+  if (parsed === null || parsed.status !== 'ok') return parsed
+  return typeof parsed.executed === 'boolean' ? parsed : null
+}
+
+/** The code a write that met a scan's commit answers with: the pane keeps what was typed and says to retry. */
+export const BUSY_CODE = 'KNOSSOS_DATABASE_BUSY'
+
+/** What the pane says for such a write. */
+export const BUSY_SAID = 'a scan is committing; try again in a moment'
 
 /** Why a rescan did not land, in a few words for the pane's header. */
 export function rescanReason(rescan: Rescan | null): string {

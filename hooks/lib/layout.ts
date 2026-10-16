@@ -55,7 +55,7 @@ import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
-import { notesArrangement, notesInput, notesList } from './notes-view'
+import { notesArrangement, notesInput, notesItems, notesList } from './notes-view'
 import type { NotesInput } from './notes-view'
 import { ringsInput } from './rings'
 import { routeArrangement, routeInput, routeList } from './route'
@@ -534,7 +534,7 @@ export function paneInput(
     branch: branchInput(extras.branch ?? null, d.project_root),
     peek,
     churn: churnInput(extras.churn ?? null, d.project_root),
-    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false)),
+    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null),
     route: route === null ? null : routeInput(extras.route ?? null, route.from, route.to, route.index, d.project_root),
   }
 }
@@ -879,6 +879,7 @@ const KEY_HELP: [string, string][] = [
   ['m', "in a component's detail: add a note to it; knossos checks it first, and y records it"],
   ['n s x', 'on Hubs: narrow the list (type, then Enter), sort by in, out or cross, clear the narrowing or the in-degree range'],
   ['n s x', "on Notes: narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both"],
+  ['m X g', "on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)"],
   ['r', 'rescan the project now, fresh or not'],
   ['a', 'allow a refused root (asks first)'],
 ]
@@ -940,7 +941,12 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
     actions.push(button('filter', 'narrow', 'n'), button('sort', `sort: ${input.sort}`, 's'))
     if (input.filter !== '' || input.degree !== null) actions.push(button('clear', 'clear', 'x'))
   }
-  if (onTab && input.tab === 'notes') {
+  // While the card asks, its own y and n are the keys: nothing else on the tab may take them.
+  if (onTab && input.tab === 'notes' && input.notes.ask === null) {
+    const note = notesItems(input.notes)[Math.min(Math.max(0, input.selected), notesItems(input.notes).length - 1)]
+    if (note !== undefined && !note.missing) actions.push(button('notes-edit', note.author === 'user' ? 'edit' : 'adopt', 'm'))
+    if (note !== undefined) actions.push(button('notes-remove', 'remove', 'X'))
+    if (note !== undefined && !note.missing && note.author === 'model') actions.push(button('notes-flag', note.checked ? 'unflag' : 'flag', 'g'))
     actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'))
     if (input.notes.filter !== 'all' || input.notes.text !== '') actions.push(button('notes-clear', 'clear', 'x'))
   }
