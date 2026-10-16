@@ -74,10 +74,14 @@
           "symfony",
           "django",
           "fastapi",
+          "flask",
           "nextjs",
           "nestjs",
           "react",
-          "vue"
+          "vue",
+          "axum",
+          "actix",
+          "rocket"
         ]
       }
     },

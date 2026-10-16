@@ -484,8 +484,8 @@ TOML);
 
     /**
      * The Python configuration hash covers `requirements.txt` as well as
-     * `pyproject.toml`, so a dependency change rescans the Python files
-     * rather than reusing contributions made against the old manifests.
+     * `pyproject.toml`. The worker never reads requirements.txt; the entry
+     * stays so existing cache keys are unchanged, at the cost of a rescan.
      */
     public function testPrepareRequirementsFileChangesThePythonConfigurationHash(): void
     {

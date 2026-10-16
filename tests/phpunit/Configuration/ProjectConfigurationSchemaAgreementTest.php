@@ -87,6 +87,20 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
         return array_keys($node['properties'] ?? []);
     }
 
+    /** An editor validating knossos.json accepts every framework hint the loader does, and no other. */
+    #[Group('configuration')]
+    public function testTheSchemaListsEveryFrameworkHintTheLoaderAccepts(): void
+    {
+        $schema = json_decode((string) file_get_contents(__DIR__ . '/../../../schemas/project-config-v1.schema.json'), true, flags: JSON_THROW_ON_ERROR);
+        $enum = $schema['properties']['frameworks']['items']['enum'] ?? null;
+        self::assertIsArray($enum);
+        $accepted = ProjectConfigurationLoader::FRAMEWORKS;
+        sort($enum);
+        sort($accepted);
+
+        self::assertSame($accepted, $enum);
+    }
+
     /**
      * The Limits table in the configuration guide lists every limit the loader
      * accepts and nothing else: a key the docs leave out is one nobody finds.

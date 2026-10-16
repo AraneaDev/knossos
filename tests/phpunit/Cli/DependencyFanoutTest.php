@@ -25,6 +25,15 @@ final class DependencyFanoutTest extends KnossosTestCase
         self::assertSame(3, \dependencyFanout('js', $source));
     }
 
+    /** A re-export reads another module as surely as an import does. */
+    #[Group('quality-tools')]
+    public function testJavaScriptReExportsCountAsDependencies(): void
+    {
+        $source = "export { a, b } from \"./x.js\";\nexport * from './y.js';\nexport const c = 1;\n";
+
+        self::assertSame(2, \dependencyFanout('js', $source));
+    }
+
     #[Group('quality-tools')]
     public function testPhpAndPythonCountTheirImportLines(): void
     {

@@ -16,7 +16,7 @@ final class DigQuestionToolsTest extends KnossosTestCase
     {
         $source = (string) file_get_contents(self::repositoryRoot() . '/hooks/mod/dig.ts');
         self::assertSame(1, preg_match('/const QUESTIONS = new Set\(\[(.*?)\]\)/s', $source, $match), 'dig.ts declares no QUESTIONS set.');
-        preg_match_all("/'([a-z_]+)'/", $match[1], $names);
+        preg_match_all("/'([^'\s]+)'/", $match[1], $names);
         $registered = array_column(ToolCatalog::definitions(), 'name');
 
         self::assertNotSame([], $names[1]);

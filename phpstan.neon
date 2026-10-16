@@ -10,6 +10,7 @@ parameters:
     bootstrapFiles:
         - tests/phpunit/Support/Assertions.php
     scanFiles:
+        - tools/lib/dependency-fanout.php
         - tools/lib/php-function-metrics.php
     excludePaths:
         analyse:

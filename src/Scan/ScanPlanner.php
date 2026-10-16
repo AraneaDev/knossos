@@ -139,10 +139,10 @@ final readonly class ScanPlanner
             // tool_config: the worker reads module aliases from vite, svelte, webpack and
             // vue configs, so editing one must invalidate what was resolved under it.
             'typescript' => $this->configurationHash($discovery->units, ['node', 'typescript', 'tool_config', 'knossos'], $configuration),
-            // 'requirements' is in the hash so a dependency change rescans the
-            // Python files: the worker enriches frameworks by what a module
-            // imports, and a dependency change is when those imports start or
-            // stop resolving.
+            // 'requirements' stays in the hash only so cache keys did not move
+            // when the unread Python frameworks field was dropped: the worker
+            // reads pyproject.toml but never requirements.txt, so editing it
+            // costs a Python rescan that changes nothing.
             'python' => $this->configurationHash($discovery->units, ['python', 'requirements', 'knossos'], $configuration),
             // Cargo.toml is now a recorded unit (kind 'cargo'), so editing it
             // invalidates a Rust contribution's cache entry the same way
