@@ -47,9 +47,6 @@ async function moveSelection(io: Port, by: number): Promise<void> {
 /** Opens the row at `index` (the marker's when absent) and leaves the marker there: a component or a file as its detail. */
 async function openRow(io: Port, index?: number): Promise<void> {
   const at = index ?? (await io.state.view.read()).selected
-  // A note on a name the graph no longer holds: the finder looks for where it belongs.
-  const lost = index === undefined && (await io.state.view.read()).finding !== true ? await missingMarked(io) : null
-  if (lost !== null) return startMove(io, lost, openFinderOn)
   const item = (await currentList(io))[at]
   if (item === undefined) return
   // A match opened from the finder closes it: the detail opens over the tab, whose marker stays where it stood.
@@ -178,6 +175,17 @@ async function typeQuery(io: Port, text: string): Promise<void> {
   await io.state.search.update((f): SearchState => ({ ...f, query: text }))
   await io.state.view.update(v => ({ ...v, selected: 0 }))
   requestSearch(io)
+}
+
+/**
+ * `o`: opens the marked row, or, on a note on a name the graph no longer
+ * holds, opens the finder on that name to pick where the note belongs. Apart
+ * from {@link openRow}, which the finder's own search calls once a match
+ * lands, so the search never leads back here.
+ */
+async function openOrMove(io: Port): Promise<void> {
+  const lost = (await io.state.view.read()).finding !== true ? await missingMarked(io) : null
+  return lost === null ? openRow(io) : startMove(io, lost, openFinderOn)
 }
 
 /** Opens the finder with `query` typed in it, looking it up at once. */
@@ -595,7 +603,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['unfold:', (io, _, __, id) => unfoldCycle(io, id)],
   ['down', io => moveSelection(io, 1)],
   ['up', io => moveSelection(io, -1)],
-  ['open', io => openRow(io)],
+  ['open', io => openOrMove(io)],
   ['edit', (io, _, surface) => openEditTarget(io, surface)],
   ['tests', (io, _, surface) => copyTestCommand(io, surface)],
   // The detail's diff: a folded hunk shown whole, the page of hunks moved, and from the panel beside a tab the full detail.
