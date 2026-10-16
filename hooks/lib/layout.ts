@@ -543,7 +543,7 @@ export function paneInput(
     couplings: shownCouplings(boundaries, view, d.snapshot_id ?? null, extras.couplings ?? null),
     lit,
     finder: view.finding === true && extras.search !== undefined && extras.search !== null ? finderInput(extras.search, d.project_root, view.picking?.label ?? null, (view.moving ?? null) !== null) : null,
-    branch: branchInput(extras.branch ?? null, d.project_root),
+    branch: branchInput(extras.branch ?? null, d.project_root, view.folds ?? []),
     peek,
     churn: churnInput(extras.churn ?? null, d.project_root),
     notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null),

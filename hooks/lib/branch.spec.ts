@@ -3,13 +3,27 @@ import type { BranchDiff, Dashboard, KnossosView } from '../../types'
 import { branchCount, branchInput, branchList } from './branch'
 import { paneInput, paneLayout } from './layout'
 import { plainText } from './__tests__/plain-text'
-import { rowWidth } from './rows'
+import { rowsHeight, rowWidth } from './rows'
 
 const ROOT = '/work/app'
 const d = { status: 'ok', path: ROOT, project_root: ROOT, project_id: 'p1', snapshot_id: 's9', freshness: { state: 'fresh', age_seconds: 1, drift_files: 0 }, hubs: [], hubs_truncated: false, hubs_truncation_reasons: [], hotspots: [], dead_code_candidates: 0, dead_code_truncated: false, cycles: { count: 0, truncated: false, truncation_reasons: [], largest: [] }, trend: [], fan_in: [], fan_in_truncated: false } as Dashboard
 const view = (over: Partial<KnossosView> = {}): KnossosView => ({ inspect: null, isBandHidden: false, tab: 'branch', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in', ...over })
 const item = (name: string, boundary: string | null = 'core', kind = 'class') => ({ name, canonical_name: `App\\${name}`, kind, path: `src/${name}.php`, line: 7, boundary })
-const touched = (n: number, count = n + 3) => ({ count, items: Array.from({ length: n }, (_, i) => ({ path: `src/Touched${i}.php`, added: 12 - i, deleted: i, dependents: 40 - i, boundary: 'core' })) })
+/** `n` touched files in core and in http, and three the graph does not hold. */
+const touched = (n: number) => {
+  const inside = Array.from({ length: n }, (_, i) => ({ path: `src/Touched${i}.php`, added: 12 - i, deleted: i, dependents: 40 - i, boundary: i % 2 === 0 ? 'core' : 'http', in_graph: true }))
+  const outside = ['README.md', 'composer.lock', 'docs/x.md'].map(path => ({ path, added: 1, deleted: 0, dependents: 0, boundary: null, in_graph: false }))
+  const of = (b: string) => inside.filter(f => f.boundary === b)
+  const group = (b: string, reach: number) => ({ boundary: b, files: of(b).length, added: of(b).reduce((s, f) => s + f.added, 0), deleted: of(b).reduce((s, f) => s + f.deleted, 0), reach })
+  return {
+    count: n + 3,
+    truncated: false,
+    reach: 61,
+    items: [...inside, ...outside],
+    boundaries: [...(n > 0 ? [group('core', 40)] : []), ...(n > 1 ? [group('http', 33)] : []), { boundary: null, files: 3, added: 3, deleted: 0, reach: 0 }],
+  }
+}
+const none = { crossing: { count: 0, items: [] }, cycles: { count: 0, items: [] }, hubs: { count: 0, items: [] }, dead_code: { count: 0, items: [] }, violations: { count: 0, truncated: false, items: [] } }
 const answer = (over: Partial<BranchDiff> = {}, n = 2): BranchDiff => ({
   status: 'ok',
   branch: 'feat/a-rather-long-branch-name-for-the-pane',
@@ -28,87 +42,112 @@ const answer = (over: Partial<BranchDiff> = {}, n = 2): BranchDiff => ({
   ...over,
 })
 const pane = (a: BranchDiff | null, v = view(), phase: 'loading' | 'done' = 'done') => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, undefined, null, undefined, { branch: { snapshot: 's9', phase, answer: a } })
+const rowsOf = (a: BranchDiff | null, v = view(), columns = 100, height = 60) => paneLayout(pane(a, v), columns, height).body
 const text = (a: BranchDiff | null, columns = 100, phase: 'loading' | 'done' = 'done') => paneLayout(pane(a, view(), phase), columns, 60).body.map(plainText).join('\n')
+const flat = (t: string) => t.replace(/\s+/g, ' ')
 
-describe('the Branch tab', () => {
-  it('says where the comparison stands: the branch, its merge base, and the snapshot compared with', () => {
-    expect(text(answer()).replace(/\s+/g, ' ')).toContain('feat/a-rather-long-branch-name-for-the-pane against main. It left main at fd13714')
-    expect(text(answer()).replace(/\s+/g, ' ')).toContain('Compared with the snapshot taken at the merge base (fd13714, 2026-10-02 15:01 UTC).')
-    const before = text(answer({ base: { snapshot_id: 's0', rev: 'aaaaaaa1', at: '2026-10-01T09:00:00Z', match: 'before', commits: 4 } })).replace(/\s+/g, ' ')
-    expect(before).toContain('nearest snapshot before the merge base (aaaaaaa, 2026-10-01 09:00 UTC, 4 commits earlier)')
+describe('the Branch tab: where it stands', () => {
+  it('names the branch, how far ahead of main it is, and where it left it', () => {
+    const t = flat(text(answer()))
+    expect(t).toContain('feat/a-rather-long-branch-name-for-the-pane against main')
+    expect(t).toContain('153 commits ahead')
+    expect(t).toContain('left main at fd13714')
   })
 
-  it('says plainly when no snapshot near the merge base is kept, partial or not at all', () => {
-    const partial = text(answer({ status: 'no-snapshot', base: { snapshot_id: 's5', rev: '4054d3a2fc', at: '2026-10-04T11:05:02Z', match: 'after', commits: 146 } })).replace(/\s+/g, ' ')
-    expect(partial).toContain('▲ No snapshot near the merge base is retained. Compared with the oldest one after it (4054d3a, 2026-10-04 11:05 UTC), which already holds 146 of the branch\'s 153 commits')
-    const none = text(answer({ status: 'no-snapshot', base: null, comparison: null })).replace(/\s+/g, ' ')
-    expect(none).toContain('No snapshot near the merge base is retained, so there is nothing to compare with.')
-    expect(text(answer({ status: 'on-default', branch: 'main', comparison: null }))).toContain('main is main itself: there is no branch to compare.')
-    expect(text(answer({ status: 'no-git', comparison: null }))).toContain('No git repository')
+  it('says how near the snapshot it compares with is when not at the merge base itself, and plainly when there is none', () => {
+    expect(flat(text(answer()))).not.toContain('Compared with the snapshot taken at the merge base')
+    const before = flat(text(answer({ base: { snapshot_id: 's0', rev: 'aaaaaaa1', at: '2026-10-01T09:00:00Z', match: 'before', commits: 4 } })))
+    expect(before).toContain('nearest snapshot before the merge base (aaaaaaa, 2026-10-01 09:00 UTC, 4 commits earlier)')
+    const partial = flat(text(answer({ status: 'no-snapshot', base: { snapshot_id: 's5', rev: '4054d3a2fc', at: '2026-10-04T11:05:02Z', match: 'after', commits: 146 } })))
+    expect(partial).toContain("▲ No snapshot near the merge base is retained. Compared with the oldest one after it (4054d3a, 2026-10-04 11:05 UTC), which already holds 146 of the branch's 153 commits")
+    expect(flat(text(answer({ status: 'no-snapshot', base: null, comparison: null })))).toContain('No snapshot near the merge base is retained, so there is nothing to compare with.')
+    expect(text(answer({ status: 'on-default', branch: 'main', comparison: null, files: null }))).toContain('main is main itself: there is no branch to compare.')
+    expect(text(answer({ status: 'no-git', comparison: null, files: null }))).toContain('No git repository')
     expect(text(null, 100, 'loading')).toContain('Comparing the branch with its merge base…')
     expect(text(null)).toContain('knossos did not answer')
   })
+})
 
-  it('lists what is new, each component a row that opens, and counts it all on the tab', () => {
-    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer() }, ROOT)
-    expect(branchCount(input)).toBe(6 + 2 + 2 + 2 + 2)
-    expect(branchList(input).slice(0, 10).map(o => o.canonical)).toEqual([
-      'App\\GreeterWithAnUnreasonablyLongName0', 'App\\GreeterWithAnUnreasonablyLongName1', 'App\\A0', 'App\\A1', 'App\\Hub0', 'App\\Hub1', 'App\\Unused0', 'App\\Unused1', 'App\\Core\\Greeter0::greet', 'App\\Core\\Greeter1::greet',
-    ])
-    expect(branchList(input)[4]?.loc).toEqual({ path: `${ROOT}/src/Hub0.php`, line: 7 })
-    const t = text(answer())
-    expect(t).toMatch(/New cross-boundary dependencies +▲ 6/)
-    expect(t).toContain('+4 not listed')
-    expect(t).toMatch(/Hubs that grew +▲ 2/)
-    expect(t).toMatch(/Hub0 .*20 → 31 \+11/)
-    expect(t).toMatch(/↻ 3 A0 → B0 → C0/)
-    const rows = paneLayout(pane(answer(), view({ selected: 4 })), 100, 60).body
-    expect(rows.find(r => r.key.includes('grown-0'))?.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:4')
-    expect(plainText(rows.find(r => r.key.includes('grown-0'))!)).toMatch(/›/)
-    // Nothing new is one line each.
-    const clean = answer({ comparison: { crossing: { count: 0, items: [] }, cycles: { count: 0, items: [] }, hubs: { count: 0, items: [] }, dead_code: { count: 0, items: [] }, violations: null } })
-    expect(text(clean)).toMatch(/New cycles +✓ 0/)
-    expect(text(clean)).not.toContain('New policy violations')
+describe('the Branch tab: did it break anything', () => {
+  it('says so in one line when nothing broke, no card per check', () => {
+    const t = text(answer({ comparison: none }))
+    expect(t).toMatch(/✓ no new cycles +✓ no hubs grew +✓ no dead code +✓ no violations/)
+    for (const old of ['New cycles', 'Hubs that grew', 'New dead code', 'New policy violations', 'New cross-boundary dependencies']) expect(t).not.toContain(old)
+    // A project with no policies has no violations to rule out.
+    expect(text(answer({ comparison: { ...none, violations: null } }))).not.toContain('no violations')
   })
 
-  it('fits every width and height, empty or full', () => {
-    for (const a of [answer({}, 30), answer({}, 0), answer({ status: 'no-snapshot', base: null, comparison: null }), null]) {
-      for (const columns of [40, 60, 80, 100, 130, 140, 200]) {
-        for (const height of [24, 40, 60]) {
-          const { body, footer } = paneLayout(pane(a), columns, height)
-          for (const r of [...body, ...footer]) expect(rowWidth(r), `${columns}x${height} ${r.key}`).toBeLessThanOrEqual(columns)
-        }
-      }
-    }
+  it('heads what it found with how much, then a row each, the worst first, each walked and opening its component', () => {
+    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer() }, ROOT)
+    expect(branchCount(input)).toBe(2 + 2 + 6 + 2 + 2)
+    const t = text(answer())
+    expect(t).toContain('▲ 14 things to look at')
+    // Violations, then cycles, then crossings, then hubs that grew, then dead code.
+    expect(branchList(input).slice(0, 10).map(o => o.canonical)).toEqual([
+      'App\\Core\\Greeter0::greet', 'App\\Core\\Greeter1::greet', 'App\\A0', 'App\\A1', 'App\\GreeterWithAnUnreasonablyLongName0', 'App\\GreeterWithAnUnreasonablyLongName1', 'App\\Hub0', 'App\\Hub1', 'App\\Unused0', 'App\\Unused1',
+    ])
+    expect(t.indexOf('Greeter0')).toBeLessThan(t.indexOf('A0 → B0'))
+    expect(t).toMatch(/Hub0 .*20 → 31 \+11/)
+    // Four of the six crossings were not listed: said, not dropped.
+    expect(t).toContain('+4 more cross-boundary dependencies not listed')
+    const rows = rowsOf(answer(), view({ selected: 6 }))
+    const hub = rows.find(r => r.key.split('|').some(k => k === 'finding-6'))!
+    expect(hub.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:6')
+    expect(plainText(hub)).toMatch(/^›/)
   })
 })
 
-describe('the files the branch touched', () => {
-  const none = { crossing: { count: 0, items: [] }, cycles: { count: 0, items: [] }, hubs: { count: 0, items: [] }, dead_code: { count: 0, items: [] }, violations: null }
-  it('lists them after what is new, each a row that opens as its file, never counted on the tab', () => {
-    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer() }, ROOT)
-    expect(branchCount(input)).toBe(6 + 2 + 2 + 2 + 2)
-    expect(branchList(input).slice(-2)).toEqual([
-      { name: 'src/Touched0.php', canonical: 'src/Touched0.php', loc: { path: `${ROOT}/src/Touched0.php`, line: null }, file: true },
-      { name: 'src/Touched1.php', canonical: 'src/Touched1.php', loc: { path: `${ROOT}/src/Touched1.php`, line: null }, file: true },
-    ])
-    const t = text(answer())
-    expect(t).toMatch(/Files this branch touched +5 files/)
-    expect(t).toMatch(/src\/Touched0\.php .*\+12 −0 +40 deps/)
-    expect(t).toContain('+3 not listed')
-    const rows = paneLayout(pane(answer(), view({ selected: 11 })), 100, 60).body
-    const second = rows.find(r => r.key.includes('branch-files-1'))!
-    expect(second.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:11')
-    expect(plainText(second)).toMatch(/›/)
+describe('the Branch tab: what changed', () => {
+  it('totals the touched files, then a row per boundary, the most reaching first, the files outside the graph last', () => {
+    const t = text(answer({}, 4))
+    expect(t).toMatch(/What changed +7 files +\+45 −6 · reach 61/)
+    const lines = t.split('\n').filter(l => /[▸▾] [■·] /.test(l))
+    expect(lines.map(l => l.match(/(http|core|outside the graph)/)?.[1])).toEqual(['core', 'http', 'outside the graph'])
+    expect(t).toMatch(/core .*2 files +\+22 −2 +40/)
+    expect(t).toMatch(/outside the graph .*3 files +\+3 −0/)
   })
 
-  it('needs no snapshot: with nothing to compare, they are still listed and walked', () => {
-    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ status: 'no-snapshot', base: null, comparison: null }) }, ROOT)
-    expect(branchList(input).map(o => o.canonical)).toEqual(['src/Touched0.php', 'src/Touched1.php'])
-    const rows = paneLayout(pane(answer({ status: 'no-snapshot', base: null, comparison: null })), 100, 60).body
-    expect(rows.find(r => r.key.includes('branch-files-0'))?.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:0')
-    expect(text(answer({ comparison: none, files: { count: 0, items: [] } }))).toMatch(/Files this branch touched +none/)
-    expect(text(answer({ status: 'on-default', branch: 'main', comparison: null, files: null }))).not.toContain('Files this branch touched')
+  it('folds each boundary until it is opened: o on its row opens it, its files then listed and walked under it', () => {
+    const closed = branchInput({ snapshot: 's9', phase: 'done', answer: answer({}, 4) }, ROOT, [])
+    const rows = branchList(closed).filter(o => o.fold !== undefined)
+    expect(rows.map(o => o.fold)).toEqual(['branch:core', 'branch:http', 'branch:'])
+    expect(branchList(closed).some(o => o.file === true)).toBe(false)
+    const open = branchInput({ snapshot: 's9', phase: 'done', answer: answer({}, 4) }, ROOT, ['branch:core'])
+    const walk = branchList(open)
+    const at = walk.findIndex(o => o.fold === 'branch:core')
+    expect(walk.slice(at + 1, at + 3)).toEqual([
+      { name: 'src/Touched0.php', canonical: 'src/Touched0.php', loc: { path: `${ROOT}/src/Touched0.php`, line: null }, file: true },
+      { name: 'src/Touched2.php', canonical: 'src/Touched2.php', loc: { path: `${ROOT}/src/Touched2.php`, line: null }, file: true },
+    ])
+    expect(walk[at + 3]?.fold).toBe('branch:http')
+    const t = paneLayout(pane(answer({}, 4), view({ folds: ['branch:core'] })), 100, 60).body.map(plainText).join('\n')
+    expect(t).toMatch(/src\/Touched0\.php .*\+12 −0 +40 deps/)
+    expect(t).not.toContain('src/Touched1.php')
+  })
+
+  it('lists and walks the touched files with nothing to compare, and from a knossos that groups none', () => {
+    const bare = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ status: 'no-snapshot', base: null, comparison: null }) }, ROOT)
+    expect(branchList(bare).map(o => o.fold)).toEqual(['branch:core', 'branch:http', 'branch:'])
+    // As an older knossos sends it: the files alone, no groups, no reach, no cut.
+    const older = { count: touched(4).count, items: touched(4).items.map(i => ({ path: i.path, added: i.added, deleted: i.deleted, dependents: i.dependents, boundary: i.boundary })) }
+    const old = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ files: older } as never) }, ROOT)
+    expect(old.changed?.groups.map(g => g.name).sort()).toEqual(['core', 'http', null].sort())
+    expect(text(answer({ comparison: none, files: { count: 0, truncated: false, reach: 0, items: [], boundaries: [] } }))).toMatch(/What changed +none/)
+    expect(text(answer({ status: 'on-default', branch: 'main', comparison: null, files: null }))).not.toContain('What changed')
+  })
+})
+
+describe('the Branch tab on the pane', () => {
+  it('fits every width and height, empty or full, and fills the height it has', () => {
+    for (const a of [answer({}, 30), answer({}, 0), answer({ status: 'no-snapshot', base: null, comparison: null }), null]) {
+      for (const columns of [40, 60, 80, 100, 130, 140, 200]) {
+        for (const height of [24, 40, 60]) {
+          const { body, footer } = paneLayout(pane(a, view({ folds: ['branch:core'] })), columns, height)
+          for (const r of [...body, ...footer]) expect(rowWidth(r), `${columns}x${height} ${r.key}`).toBeLessThanOrEqual(columns)
+          if (height >= 40) expect(rowsHeight(body) + footer.length, `${columns}x${height}`).toBe(height)
+        }
+      }
+    }
   })
 
   it('leaves the churn hotspots to the Churn tab', () => {

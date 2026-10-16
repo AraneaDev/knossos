@@ -68,6 +68,8 @@ export type Openable = {
   changed?: true
   /** Opens another tab instead of a detail (an Overview chart's bar): the tab, and how it opens. */
   jump?: Jump
+  /** Heads a group the tab folds (a Branch boundary): `o` folds or unfolds it, by this key in the view's `folds`. */
+  fold?: string
 }
 
 /**

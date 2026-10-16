@@ -117,6 +117,16 @@ describe('opening a row', () => {
         expect(vi.mocked(showComponent).mock.calls[0]![1]).toEqual({ name: 'src/a.ts', label: 'src/a.ts' })
     })
 
+    it('folds and unfolds the group a row heads, keeping the marker on it, and opens nothing', async () => {
+        list([item('core', { fold: 'branch:core', inert: true }), item('http', { fold: 'branch:http', inert: true })])
+        const { io, view } = port({ folds: ['branch:http'] } as Partial<KnossosView>)
+        await press(io, 'row:0')
+        expect(view()).toMatchObject({ selected: 0, folds: ['branch:http', 'branch:core'] })
+        await press(io, 'row:0')
+        expect(view()).toMatchObject({ selected: 0, folds: ['branch:http'] })
+        expect(showComponent).not.toHaveBeenCalled()
+    })
+
     it('switches to the tab a chart bar jumps to, and opens nothing', async () => {
         list([item('bar', { jump: { tab: 'boundaries', selected: 3, degree: { from: 2, to: 9 }, target: 'App\\Core' } })])
         const { io, view } = port({ filtering: true, drift: true } as Partial<KnossosView>)
