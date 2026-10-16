@@ -74,6 +74,15 @@ export function cycleSearchStopped(cycles: { count: number; truncated: boolean; 
   return cycles.truncated && (cycles.count === 0 || (cycles.truncation_reasons ?? []).some(r => SEARCH_STOPS.includes(r)))
 }
 
+/**
+ * The listed cycles between types: what the counts, the toasts and the
+ * session's new cycles go by. A cycle inside one type is listed beside them
+ * on the Cycles tab, and counted apart.
+ */
+export function betweenTypes<C extends { within_type?: boolean }>(largest: C[]): C[] {
+  return largest.filter(c => c.within_type !== true)
+}
+
 /** A count as shown on the pane: "50+" when the producer stopped counting early. */
 export function countLabel(n: number, truncated: boolean): string {
   return truncated ? `${n}+` : `${n}`

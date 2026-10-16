@@ -145,7 +145,13 @@ function is a real self-edge and almost never what someone hunting circular
 imports is looking for. The same goes for a cycle whose members all belong to
 one class, interface, trait or enum, such as a tree walk whose methods call each
 other, and for a self-call inside a reported cycle, which is not listed among
-its relationships. The quality gate's `new_cycles` applies the same rule. An import that only the compiler needs, such as a
+its relationships. The quality gate's `new_cycles` applies the same rule. Pass
+`--within-type` (`within_type` over MCP) to list those one-type cycles of two or
+more members after the others, each marked `within_type: true` with its `type`;
+a symbol that only calls itself stays out, unless self-loops are asked for too,
+and then it is marked the same way. Those cycles have a `--limit` of their own:
+`result_limit` only says that cycles between types were cut, and
+`bounds.within_type_truncated` says whether these were. An import that only the compiler needs, such as a
 TypeScript `import type`, is erased at runtime and does not count, so a loop
 closed only by such imports is not reported. The result says so in its
 `warnings`.

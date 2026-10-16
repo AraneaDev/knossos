@@ -12,7 +12,7 @@
  * rest are said as one count.
  */
 import type { Dashboard } from '../../types'
-import { cycleSearchStopped } from './envelopes'
+import { betweenTypes, cycleSearchStopped } from './envelopes'
 import { shortName } from './rows'
 
 /** One thing to say: its key (said once) and its words. */
@@ -42,9 +42,11 @@ export function freshAlerts(before: Dashboard | null, after: Dashboard, told: Re
   if (before.project_id !== after.project_id || before.snapshot_id === after.snapshot_id) return []
   const alerts: Alert[] = []
   // A listed one is new only against a list that held them all: one past an earlier cut may have been there all along.
-  const cyclesWhole = !before.cycles.truncated && before.cycles.largest.length >= before.cycles.count
-  const had = new Set(before.cycles.largest.map(c => cycleKey(c.members)))
-  const cycles = cyclesWhole ? after.cycles.largest.filter(c => !had.has(cycleKey(c.members))) : []
+  // Only cycles between types: one inside a type is listed, not news.
+  const listedBefore = betweenTypes(before.cycles.largest)
+  const cyclesWhole = !before.cycles.truncated && listedBefore.length >= before.cycles.count
+  const had = new Set(listedBefore.map(c => cycleKey(c.members)))
+  const cycles = cyclesWhole ? betweenTypes(after.cycles.largest).filter(c => !had.has(cycleKey(c.members))) : []
   for (const c of cycles) alerts.push({ key: cycleKey(c.members), text: `knossos: a new dependency cycle of ${c.size}: ${chain(c.members)}` })
   // A count against a search that stopped early is no baseline: what it did not count was not absent.
   if (cycles.length === 0 && !cycleSearchStopped(before.cycles) && after.cycles.count > before.cycles.count) {

@@ -374,6 +374,7 @@ const languagesOf = (d: Dashboard): string => (d.summary?.languages ?? []).map(l
 export function statsOf(d: Dashboard, summary: string[], policy: string | null, diagnostics: number | null, drift: boolean): Stat[] {
   const above = (value: string) => value !== '0'
   const cycles = cycleCount(d.cycles)
+  const within = d.cycles.within_type ?? 0
   const maxDegree = d.trend.at(-1)?.max_degree ?? null
   const drifted = d.freshness.drift_files
   const deltas = d.deltas ?? null
@@ -398,7 +399,17 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
           ...counted(summary[0], 'components', { ...moved('components'), ...series(t => t.components), ...listing('components', figureOf(summary[0])) }),
           ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', listing('boundaries', figureOf(summary[1]))),
         ]),
-    { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
+    {
+      key: 'cycles',
+      label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles',
+      value: cycles,
+      // The cycles inside one type, beside the figure but not in it: they neither warn nor move it.
+      ...(within > 0 ? { aside: ` · ${countLabel(within, d.cycles.within_type_truncated === true)} within one type` } : {}),
+      ...series(t => t.cycles),
+      ...moved('cycles', true),
+      ...(above(cycles) ? { tone: 'warn' as const } : {}),
+      ...listing('cycles', within > 0 ? '1' : cycles),
+    },
     ...(maxDegree === null ? [] : [{ key: 'degree', label: 'max degree', value: String(maxDegree), ...series(t => t.max_degree), ...moved('max_degree') }]),
     issuesTile(d, policy, diagnostics, listing),
     { key: 'drifted', label: 'drifted', value: grouped(drifted), ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },

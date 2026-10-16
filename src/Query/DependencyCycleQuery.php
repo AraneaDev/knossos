@@ -37,10 +37,18 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * the cycles it touches however many others sort ahead of them. Empty means
      * every cycle.
      *
+     * withinType keeps the cycles inside one type ({@see OneTypeCycles}), a
+     * symbol that only calls itself still left out, and marks every cycle:
+     * `within_type`, and `type`, the canonical name of the type it stays
+     * inside (null for one between types). Those come after every cycle
+     * between types under a limit of their own: `result_limit` says only
+     * that cycles between types were cut, and `bounds.within_type_truncated`
+     * whether these were. A self-loop asked for too is one of these.
+     *
      * @param list<string> $edgeKinds
      * @param list<string> $touchingIds
      */
-    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false, array $touchingIds = []): ResultEnvelope
+    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false, array $touchingIds = [], bool $withinType = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         self::assertLimit($limit);
@@ -56,7 +64,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         // between cannot take away a row the search counted on.
         $own = !$this->pdo->inTransaction() && $this->pdo->beginTransaction();
         try {
-            $search = $this->cycleSearch($projectId, $edgeKinds, $confidenceRank, $minConfidence, $limit, $maxNodes, $maxEdges, $deadline, $includeSelfLoops, $touchingIds);
+            $search = $this->cycleSearch($projectId, $edgeKinds, $confidenceRank, $minConfidence, $limit, $maxNodes, $maxEdges, $deadline, $includeSelfLoops, $touchingIds, $withinType);
         } finally {
             if ($own) {
                 $this->pdo->commit();
@@ -84,7 +92,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
                     'limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges,
                     'timeout_ms' => $timeoutMs, 'nodes_examined' => $search['nodes_examined'],
                     'edges_examined' => $search['edges_examined'], 'truncation_reasons' => $truncationReasons,
-                ],
+                ] + ($withinType ? ['within_type_truncated' => $search['within_type_truncated']] : []),
             ],
             $search['evidence'],
             [
@@ -102,9 +110,9 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * @param list<string> $edgeKinds
      * @param array<string, int> $confidenceRank
      * @param list<string> $touchingIds
-     * @return array{nodes_examined: int, edges_examined: int, truncation_reasons: list<string>, cycles: list<array<string, mixed>>, evidence: list<array<string, mixed>>}
+     * @return array{nodes_examined: int, edges_examined: int, truncation_reasons: list<string>, cycles: list<array<string, mixed>>, evidence: list<array<string, mixed>>, within_type_truncated: bool}
      */
-    private function cycleSearch(string $projectId, array $edgeKinds, array $confidenceRank, string $minConfidence, int $limit, int $maxNodes, int $maxEdges, int $deadline, bool $includeSelfLoops, array $touchingIds): array
+    private function cycleSearch(string $projectId, array $edgeKinds, array $confidenceRank, string $minConfidence, int $limit, int $maxNodes, int $maxEdges, int $deadline, bool $includeSelfLoops, array $touchingIds, bool $withinType = false): array
     {
         $graph = $this->cycleSearchGraph($projectId, $edgeKinds, $confidenceRank[$minConfidence], $maxNodes, $maxEdges, $deadline);
         $truncation = new Truncation();
@@ -131,9 +139,9 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
 
             return $members;
         }, $components);
-        // Recursion inside one type is opt-in for the same reason a self-loop is.
-        if (!$includeSelfLoops && $components !== []) {
-            $declaringType = $this->declaringTypes(array_merge(...$components));
+        // Recursion inside one type is opt-in for the same reason a self-loop is; asked for, it is marked.
+        $declaringType = $components !== [] && (!$includeSelfLoops || $withinType) ? $this->declaringTypes(array_merge(...$components)) : [];
+        if (!$includeSelfLoops && !$withinType && $components !== []) {
             $components = array_values(array_filter($components, static fn(array $members): bool => !OneTypeCycles::withinOneType($members, $declaringType)));
         }
         if ($touchingIds !== []) {
@@ -148,19 +156,43 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
                 return false;
             }));
         }
-        usort($components, static fn(array $a, array $b): int => (count($b) <=> count($a)) ?: ($a[0] <=> $b[0]));
+        // Largest first. Asked for, the cycles that stay inside one type (a
+        // self-loop among them) come after every other, under a limit of their
+        // own: they neither cut a cycle between types nor mark that count as cut.
+        $largestFirst = static fn(array $a, array $b): int => (count($b) <=> count($a)) ?: ($a[0] <=> $b[0]);
+        $inside = [];
+        if ($withinType) {
+            $between = [];
+            foreach ($components as $members) {
+                if (count($members) === 1 || OneTypeCycles::withinOneType($members, $declaringType)) {
+                    $inside[] = $members;
+                } else {
+                    $between[] = $members;
+                }
+            }
+            $components = $between;
+            usort($inside, $largestFirst);
+        }
+        usort($components, $largestFirst);
         if (count($components) > $limit) {
             $components = array_slice($components, 0, $limit);
             $truncation->add('result_limit');
         }
+        $insideCut = count($inside) > $limit;
+        $inside = array_slice($inside, 0, $limit);
+        $listed = [...$components, ...$inside];
 
-        $detail = $this->cycleDetails($components, $graph, $confidenceRank, $includeSelfLoops);
+        $detail = $this->cycleDetails($listed, $graph, $confidenceRank, $includeSelfLoops);
         $truncation->add(...$detail['truncation_reasons']);
+        if ($withinType) {
+            $detail['cycles'] = $this->marked($detail['cycles'], count($components), $inside, $declaringType);
+        }
 
         return [
             'nodes_examined' => count($nodeIds), 'edges_examined' => count($graph['edge_ids']),
             'truncation_reasons' => $truncation->reasons(),
             'cycles' => $detail['cycles'], 'evidence' => $detail['evidence'],
+            'within_type_truncated' => $insideCut,
         ];
     }
 
@@ -354,6 +386,34 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         }
 
         return ['cycles' => $cycles, 'evidence' => $evidence, 'truncation_reasons' => $truncationReasons];
+    }
+
+    /**
+     * Each cycle marked: whether it stays inside one type, and that type's
+     * canonical name (null for a cycle between types, and for a self-loop on
+     * a symbol no type declares).
+     *
+     * @param list<array<string, mixed>> $cycles the `$between` cycles between types, then one per `$inside`
+     * @param list<list<string>> $inside member ids of the cycles inside one type
+     * @param array<string, string> $declaringType member id => type id
+     * @return list<array<string, mixed>>
+     */
+    private function marked(array $cycles, int $between, array $inside, array $declaringType): array
+    {
+        $typeIds = [];
+        foreach ($inside as $index => $members) {
+            $typeIds[$between + $index] = $declaringType[$members[0]] ?? null;
+        }
+        $names = $this->rowsByIds('SELECT id, canonical_name FROM nodes WHERE id IN (%s)', array_values(array_unique(array_filter($typeIds, 'is_string'))));
+
+        return array_map(static function (array $cycle, int $index) use ($between, $typeIds, $names): array {
+            $typeId = $typeIds[$index] ?? null;
+
+            return $cycle + [
+                'within_type' => $index >= $between,
+                'type' => $typeId === null ? null : (string) ($names[$typeId]['canonical_name'] ?? $typeId),
+            ];
+        }, $cycles, array_keys($cycles));
     }
 
     /**

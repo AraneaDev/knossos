@@ -3,6 +3,7 @@
  * turn and after a commit, and how a note is delivered.
  */
 import { commitNote, cyclesSinceStart, REFLOG_READ, stillReported } from '../lib/agent'
+import { betweenTypes } from '../lib/envelopes'
 import type { TurnBrief } from '../lib/envelopes'
 import { editNote, fanInIndex, freshViolations, readNote, testsNote, violationKey, violationNote } from '../lib/notes'
 import { declaredOf } from '../lib/palette'
@@ -64,7 +65,7 @@ export async function commitNoteFor(io: Port, loop: string): Promise<string | nu
     .map(([path]) => path)
     .sort()
   const start = await io.state.startCycles.read()
-  const { count, fresh } = cyclesSinceStart(start, d.cycles)
+  const { count, fresh } = cyclesSinceStart(start, { count: d.cycles.count, largest: betweenTypes(d.cycles.largest) })
   const chains = fresh.map(c => `${c.members.slice(0, 4).join(' → ')}${c.members.length > 4 ? ' → …' : ''}`)
   const note = commitNote(mod.enforce ? stillReported(session.violations, session.violation_snapshots, d) : [], untested, { count, chains })
   if (note === null) return null

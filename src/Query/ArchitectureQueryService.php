@@ -200,8 +200,9 @@ final readonly class ArchitectureQueryService
         int $timeoutMs = 1000,
         bool $includeSelfLoops = false,
         array $touchingIds = [],
+        bool $withinType = false,
     ): ResultEnvelope {
-        return $this->services->cycleQueries->dependencyCycles($projectId, $edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $includeSelfLoops, $touchingIds);
+        return $this->services->cycleQueries->dependencyCycles($projectId, $edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $includeSelfLoops, $touchingIds, $withinType);
     }
 
     /**
