@@ -194,8 +194,8 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
         $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project ORDER BY %s LIMIT %d', $table, $order, SnapshotBounds::MAX_ROWS_PER_TABLE + 1));
         $statement->execute(['project' => $projectId]);
         $rows = $statement->fetchAll();
-        if (count($rows) > 200_000) {
-            throw new InvalidArgumentException(sprintf('Active snapshot %s exceeds the 200000-row %s diff limit.', $scanId, $table));
+        if (count($rows) > SnapshotBounds::MAX_ROWS_PER_TABLE) {
+            throw new InvalidArgumentException(sprintf('Active snapshot %s exceeds the %d-row %s diff limit.', $scanId, SnapshotBounds::MAX_ROWS_PER_TABLE, $table));
         }
         return $rows;
     }
