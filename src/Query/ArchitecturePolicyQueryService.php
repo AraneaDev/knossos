@@ -35,6 +35,13 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
     public const DEFAULT_MAX_EDGES = QueryBounds::MAX_EDGES;
 
     /**
+     * Targets a policy may name besides a boundary: `@unassigned` is project
+     * code in no boundary, `@external` is vendor code and builtins (the
+     * `external_*` stand-ins), which never join one.
+     */
+    public const RESERVED_TARGETS = ['@unassigned', '@external'];
+
+    /**
      * Evaluate declared policies, returning each violation with the edge that breaches it.
      *
      * `$sourceFiles` scopes the check to edges whose source component is
@@ -68,8 +75,8 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
         $compiled = [];
         $allKinds = [];
         foreach ($shapes as ['id' => $id, 'from' => $from, 'allow' => $allow, 'deny' => $deny, 'kinds' => $kinds]) {
-            $compiledAllow = array_map(static fn(string $value): string => $value === '@unassigned' ? $value : $references->resolve($value), $allow);
-            $compiledDeny = array_map(static fn(string $value): string => $value === '@unassigned' ? $value : $references->resolve($value), $deny);
+            $compiledAllow = array_map(static fn(string $value): string => in_array($value, self::RESERVED_TARGETS, true) ? $value : $references->resolve($value), $allow);
+            $compiledDeny = array_map(static fn(string $value): string => in_array($value, self::RESERVED_TARGETS, true) ? $value : $references->resolve($value), $deny);
             $compiled[] = [
                 'id' => $id,
                 'from_id' => $references->resolve($from),
@@ -111,7 +118,8 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
             }
             $sourceBoundaryIds = array_column($boundaries[$edge['source_id']] ?? [], 'id');
             $targetBoundaryIds = array_column($boundaries[$edge['target_id']] ?? [], 'id');
-            $effectiveTargets = $targetBoundaryIds === [] ? ['@unassigned'] : $targetBoundaryIds;
+            $effectiveTargets = $targetBoundaryIds !== [] ? $targetBoundaryIds
+                : [str_starts_with((string) $edge['target_kind'], SharedNodeKinds::EXTERNAL_PREFIX) ? '@external' : '@unassigned'];
             foreach ($compiled as $policy) {
                 if (!in_array($policy['from_id'], $sourceBoundaryIds, true) || !in_array($edge['kind'], $policy['edge_kinds'], true)) {
                     continue;

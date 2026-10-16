@@ -14,7 +14,7 @@ use PDO;
  * A policy binds the components of its `from_boundary`, so the files it binds
  * are the files with a component in that boundary (any membership, not only
  * the one the pane labels the file with). Boundary references, which a policy
- * may write as an id or a name, are given as names; `@unassigned` is kept.
+ * may write as an id or a name, are given as names; `@unassigned` and `@external` are kept.
  * Policies that do not validate (as the policy check would reject them) are
  * left out rather than guessed at.
  *
@@ -112,7 +112,7 @@ final readonly class PolicyScope
             return null;
         }
         $names = static fn(string $key): array => array_values(array_unique(array_map(
-            static fn(string $reference): string => $reference === '@unassigned' ? $reference : ($labels->nameOf($reference) ?? $reference),
+            static fn(string $reference): string => in_array($reference, ArchitecturePolicyQueryService::RESERVED_TARGETS, true) ? $reference : ($labels->nameOf($reference) ?? $reference),
             array_values(array_filter(is_array($policy[$key] ?? null) ? $policy[$key] : [], 'is_string')),
         )));
         $deny = $names('deny_targets');

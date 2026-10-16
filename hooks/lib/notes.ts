@@ -63,7 +63,7 @@ export function boundOf(path: string, policy: Partial<PolicyScope> | undefined):
 
 /** One rule in a line: what a boundary may not depend on, or may depend on alone; its edge kinds when it names some. */
 export function ruleText(rule: PolicyRule): string {
-  const name = (b: string) => (b === '@unassigned' ? 'unassigned code' : b)
+  const name = (b: string) => (b === '@unassigned' ? 'unassigned code' : b === '@external' ? 'vendor code' : b)
   const parts = [
     ...(rule.deny.length > 0 ? [`${rule.from} may not depend on ${rule.deny.map(name).join(', ')}`] : []),
     ...(rule.allow.length > 0 ? [`${rule.from} may depend only on itself, ${rule.allow.map(name).join(', ')}`] : []),
