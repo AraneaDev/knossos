@@ -20,7 +20,7 @@ import { noteOf, windowOf, moreRows } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { bar, button, cells, chip, clip, displayName, fit, grouped, padEnd, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapWords } from './rows'
+import { bar, button, cells, chip, clip, displayName, fit, grouped, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -32,8 +32,8 @@ export type BranchLine = { name: string; canonical: string; boundary: string | n
 /** A file the branch touched: the lines it added and deleted, and how many files depend on it. */
 export type BranchFile = { path: string; added: number; deleted: number; dependents: number; loc: Loc | null }
 
-/** A boundary's touched files (`name` null for those outside the graph), their lines, and the files their changes reach. */
-export type BranchGroup = { name: string | null; files: BranchFile[]; count: number; added: number; deleted: number; reach: number; open: boolean }
+/** A boundary's touched files (`name` null for files no boundary claims, `outside` for those the graph does not hold), their lines, and the files their changes reach. */
+export type BranchGroup = { name: string | null; outside: boolean; files: BranchFile[]; count: number; added: number; deleted: number; reach: number; open: boolean }
 
 /** A thing the branch broke, as its row says it; `kind` orders them, the worst first. */
 export type BranchFinding =
@@ -80,8 +80,11 @@ function lineOf(item: BranchItem, root: string | null): BranchLine {
   return { name: displayName({ name: item.name, canonical_name: item.canonical_name, kind: item.kind }), canonical: item.canonical_name, boundary: item.boundary, place: placeOf(item.path, item.line), loc: locIn(root, item.path, item.line) }
 }
 
-/** The fold key of a boundary's group (`branch:` for the files outside the graph). */
-const foldOf = (name: string | null): string => `branch:${name ?? ''}`
+/** The fold key of a group: its boundary, `branch:` for files no boundary claims, and one no boundary name can be for the files outside the graph. */
+const foldOf = (name: string | null, outside: boolean): string => (outside ? 'branch:\u0000outside' : `branch:${name ?? ''}`)
+
+/** How a group is named on its row. */
+const labelOf = (g: Pick<BranchGroup, 'name' | 'outside'>): string => (g.outside ? 'outside the graph' : (g.name ?? 'no boundary'))
 
 /** Where the comparison stands beyond the heading, and whether that is a warning. */
 function standing(answer: BranchDiff): { said: string[]; warn: boolean } {
@@ -105,18 +108,20 @@ function standing(answer: BranchDiff): { said: string[]; warn: boolean } {
 /** The touched files by boundary: the answer's own groups, or, from a knossos that sends none, grouped here (reach unknown, 0). */
 function changedOf(f: NonNullable<BranchDiff['files']>, root: string | null, folds: string[]): NonNullable<BranchInput['changed']> {
   const file = (i: (typeof f.items)[number]): BranchFile => ({ path: i.path, added: i.added, deleted: i.deleted, dependents: i.dependents, loc: locIn(root, i.path) })
-  const inGraph = (i: (typeof f.items)[number]) => i.in_graph !== false
-  const keyOf = (i: (typeof f.items)[number]) => (inGraph(i) ? i.boundary : null)
+  // A file belongs to a group by its boundary and whether the graph holds it: no boundary and outside are two groups.
+  const keyOf = (boundary: string | null, outside: boolean) => (outside ? '\u0000outside' : (boundary ?? ''))
+  const itemKey = (i: (typeof f.items)[number]) => keyOf(i.boundary, i.in_graph === false)
   const sent =
     f.boundaries ??
-    [...new Set(f.items.map(keyOf))].map(name => {
-      const of = f.items.filter(i => keyOf(i) === name)
-      return { boundary: name, files: of.length, added: of.reduce((s, i) => s + i.added, 0), deleted: of.reduce((s, i) => s + i.deleted, 0), reach: 0 }
+    [...new Set(f.items.map(itemKey))].map(key => {
+      const of = f.items.filter(i => itemKey(i) === key)
+      return { boundary: of[0]!.boundary, outside: of[0]!.in_graph === false, files: of.length, added: of.reduce((s, i) => s + i.added, 0), deleted: of.reduce((s, i) => s + i.deleted, 0), reach: 0 }
     })
-  const groups = sent.map(
-    (g): BranchGroup => ({ name: g.boundary, files: f.items.filter(i => keyOf(i) === g.boundary).map(file), count: g.files, added: g.added, deleted: g.deleted, reach: g.reach, open: folds.includes(foldOf(g.boundary)) }),
-  )
-  return { count: f.count, added: f.items.reduce((s, i) => s + i.added, 0), deleted: f.items.reduce((s, i) => s + i.deleted, 0), reach: f.reach ?? 0, truncated: f.truncated === true, groups }
+  const groups = sent.map((g): BranchGroup => {
+    const outside = g.outside === true
+    return { name: g.boundary, outside, files: f.items.filter(i => itemKey(i) === keyOf(g.boundary, outside)).map(file), count: g.files, added: g.added, deleted: g.deleted, reach: g.reach, open: folds.includes(foldOf(g.boundary, outside)) }
+  })
+  return { count: f.count, added: f.added ?? f.items.reduce((s, i) => s + i.added, 0), deleted: f.deleted ?? f.items.reduce((s, i) => s + i.deleted, 0), reach: f.reach ?? 0, truncated: f.truncated === true, groups }
 }
 
 /** The tab's view of the stored comparison; `root` places each component on disk, `folds` names the boundaries opened. */
@@ -149,7 +154,7 @@ export function branchInput(state: BranchState | null, root: string | null, fold
   const counted: [BranchFinding['kind'], number][] = [['policy', c.violations?.count ?? 0], ['cycle', c.cycles.count], ['crossing', c.crossing.count], ['hub', c.hubs.count], ['dead', c.dead_code.count]]
   const unlisted = counted.map(([kind, count]) => ({ kind, count: count - findings.filter(f => f.kind === kind).length })).filter(u => u.count > 0)
   const policies = c.violations !== null
-  const checks = ['no new cycles', 'no hubs grew', 'no dead code', ...(policies ? ['no violations'] : [])]
+  const checks = ['no new cycles', 'no new crossings', 'no hubs grew', 'no dead code', ...(policies ? ['no violations'] : [])]
   const total = counted.reduce((s, [, n]) => s + n, 0)
   return { heading, said, warn, loading, verdict: { state: total === 0 ? 'clean' : 'findings', checks }, findings, unlisted, policies, changed }
 }
@@ -165,11 +170,17 @@ export function branchList(input: BranchInput): Openable[] {
   return [
     ...input.findings.map(f => open(f.line)),
     ...(input.changed?.groups ?? []).flatMap((g): Openable[] => [
-      { name: g.name ?? 'outside the graph', canonical: g.name ?? '', inert: true, fold: foldOf(g.name) },
+      { name: labelOf(g), canonical: g.name ?? '', inert: true, fold: foldOf(g.name, g.outside) },
       ...(g.open ? g.files.map((f): Openable => ({ name: f.path, canonical: f.path, loc: f.loc, file: true })) : []),
     ]),
   ]
 }
+
+/** The cells a group's reach takes at its row's end, and the column title over it. */
+const REACH_CELLS = 6
+
+/** The fewest cells a bar is drawn in: narrower, it gives way. */
+const BAR_MIN = 4
 
 /** The fewest findings the verdict lists, however short the pane. */
 const FINDINGS_MIN = 3
@@ -214,7 +225,8 @@ function findingRow(f: BranchFinding, at: number, selected: number, columns: num
 /** The verdict as rows: all clear on one line, or what to look at, then a row per finding (`limit` of them round the marker) and a line per kind left unlisted. */
 function verdictRows(input: BranchInput, selected: number, columns: number, limit: number, hues: Hues): Row[] {
   if (input.verdict.state === 'clean') {
-    return [{ key: 'branch-verdict', segments: clip(input.verdict.checks.flatMap((c, i): Segment[] => [{ text: i === 0 ? '   ' : '   ' }, { text: `${SEVERITY.ok.glyph} ${c}`, color: STATUS_COLOURS.ok }]), columns) }]
+    // Each check whole, wrapped onto as many lines as the width needs.
+    return wrapGroups('branch-verdict', input.verdict.checks.map((c): Segment[] => [{ text: `${SEVERITY.ok.glyph} ${c}`, color: STATUS_COLOURS.ok }]), columns, 3, 3)
   }
   const count = branchCount(input)
   const head: Row = { key: 'branch-verdict', segments: clip([{ text: '   ' }, { text: `${SEVERITY.warn.glyph} ${plural(count, 'thing', 'things')} to look at`, color: STATUS_COLOURS.warn, bold: true }], columns) }
@@ -224,17 +236,25 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
   return [head, ...rows, ...moreRows('branch-findings-window', window, input.findings.length, columns, 0), ...rest]
 }
 
-/** A boundary's row: its swatch and name, a bar by lines changed, then its files, lines and the files it reaches. */
+/**
+ * A boundary's row: its swatch and name, a bar by lines changed, then its
+ * files, lines and the files it reaches. Narrow, the bar gives way first,
+ * then the file count; the reach the list is sorted by always shows.
+ */
 function groupRow(g: BranchGroup, at: number, selected: number, widest: number, most: number, columns: number, hues: Hues): Row {
-  const label = g.name === null ? 'outside the graph' : g.name
-  const name = fit(label, Math.min(24, Math.max(8, Math.floor(columns / 4))))
+  const name = fit(labelOf(g), widest)
   const lines: Segment[] = [{ text: `+${grouped(g.added)}`, color: STATUS_COLOURS.ok }, { text: ' ' }, { text: `${CHANGE.removed.glyph}${grouped(g.deleted)}`, color: STATUS_COLOURS.alert }]
-  const figures: Segment[] = [{ text: `  ${padStart(plural(g.count, 'file', 'files'), 9)}  `, dim: true }, ...lines, { text: `  ${padStart(g.name === null ? '' : grouped(g.reach), 6)}`, color: g.name === null ? FAINT : undefined }]
-  const room = Math.max(4, columns - 4 - widest - 1 - segmentsWidth(figures) - 2)
-  const glyphs = bar(g.added + g.deleted, most, room)
-  const colour = g.name === null ? FAINT : (boundaryColour(g.name, hues) ?? FAINT)
-  const swatch: Segment = { text: `${g.open ? '▾' : '▸'} `, dim: true }
-  const content: Segment[] = [swatch, ...(g.name === null ? [{ text: '· ', dim: true }] : [{ text: `${SWATCH} `, color: colour }]), button(`row:${at}`, name), { text: spaces(Math.max(1, widest - cells(name) + 1)) }, { text: glyphs, color: colour }, { text: spaces(room - cells(glyphs)) }, ...figures]
+  const reach: Segment = { text: `  ${padStart(g.outside ? '' : grouped(g.reach), REACH_CELLS)}` }
+  const files: Segment = { text: `  ${padStart(plural(g.count, 'file', 'files'), 9)}  `, dim: true }
+  const colour = g.outside ? FAINT : g.name === null ? FAINT : (boundaryColour(g.name, hues) ?? FAINT)
+  const lead: Segment[] = [{ text: `${g.open ? '▾' : '▸'} `, dim: true }, g.outside || g.name === null ? { text: '· ', dim: true } : { text: `${SWATCH} `, color: colour }, button(`row:${at}`, name), { text: spaces(Math.max(1, widest - cells(name) + 1)) }]
+  // What is left for the bar after the marker (4), the lead, the files, the lines and the reach.
+  const room = columns - 4 - segmentsWidth(lead) - segmentsWidth([files, ...lines, reach])
+  const withFiles = room >= BAR_MIN
+  const tail: Segment[] = withFiles ? [files, ...lines, reach] : [{ text: '  ' }, ...lines, reach]
+  const barRoom = columns - 4 - segmentsWidth(lead) - segmentsWidth(tail)
+  const glyphs = barRoom >= BAR_MIN ? bar(g.added + g.deleted, most, barRoom) : ''
+  const content: Segment[] = [...lead, ...(glyphs === '' ? [{ text: spaces(Math.max(0, barRoom)) }] : [{ text: glyphs, color: colour }, { text: spaces(barRoom - cells(glyphs)) }]), ...tail]
   return itemRow(`group-${at}`, at === selected, content, columns)
 }
 
@@ -278,11 +298,12 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
       const total = `${plural(changed.count, 'file', 'files')}  +${grouped(changed.added)} ${CHANGE.removed.glyph}${grouped(changed.deleted)} · reach ${grouped(changed.reach)}${changed.truncated ? ' · first 300 listed' : ''}`
       const section = (body: Row[]): Section => ({ key: 'branch-changed', title: 'What changed', glyph: CARD_ICON['branch-files'], note: noteOf(changed.count === 0 ? 'none' : total), body })
       if (walk.length === 0) return section([])
-      const widest = Math.min(24, Math.max(8, Math.floor(columns / 4)), Math.max(...changed.groups.map(g => cells(g.name ?? 'outside the graph'))))
+      const widest = Math.min(24, Math.max(8, Math.floor(columns / 4)), Math.max(...changed.groups.map(g => cells(labelOf(g)))))
       const most = Math.max(1, ...changed.groups.map(g => g.added + g.deleted))
       const local = selected - at0
       const window = windowOf(walk.length, limit, local >= 0 && local < walk.length ? local : -1)
-      const head: Row = { key: 'branch-changed-head', segments: clip([{ text: `${padEnd('', columns - 7 - 9)}` }, { text: padStart('reach', 7), dim: true }], columns) }
+      // The reach column's title over the figures it heads, both ending at the card's edge.
+      const head: Row = { key: 'branch-changed-head', segments: [{ text: spaces(Math.max(0, columns - REACH_CELLS)) }, { text: padStart('reach', REACH_CELLS), dim: true }] }
       const rows = walk.slice(window.start, window.end).map((r, n) => (r.kind === 'group' ? groupRow(r.g, at0 + window.start + n, selected, widest, most, columns, hues) : fileRow(r.f, at0 + window.start + n, selected, columns)))
       return section([head, ...rows, ...moreRows('branch-changed-window', window, walk.length, columns, at0)])
     },

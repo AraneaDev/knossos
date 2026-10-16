@@ -161,12 +161,30 @@ final class BranchDiffServiceTest extends KnossosTestCase
             [$core, $outside] = $files['boundaries'];
             assertSame([2, 10, 1], [$core['files'], $core['added'], $core['deleted']]);
             assertSame($files['items'][0]['dependents'], $core['reach']);
-            assertSame(['boundary' => null, 'files' => 1, 'added' => 1, 'deleted' => 0, 'reach' => 0], $outside);
+            assertSame(['boundary' => null, 'files' => 1, 'added' => 1, 'deleted' => 0, 'reach' => 0, 'outside' => true], $outside);
             assertSame($files['count'], array_sum(array_column($files['boundaries'], 'files')));
             assertSame($core['reach'], $files['reach']);
         } finally {
             $this->removeTempTree($root);
         }
+    }
+
+    /**
+     * A file the graph holds but no boundary claims is a group of its own,
+     * apart from the files outside the graph: two groups with no boundary,
+     * told apart by `outside`; the most reaching first, the outside last.
+     */
+    #[Group('query')]
+    public function testAFileNoBoundaryClaimsIsGroupedApartFromThoseOutsideTheGraph(): void
+    {
+        $file = static fn(string $path, ?string $boundary, bool $inGraph, int $added): array => ['path' => $path, 'added' => $added, 'deleted' => 0, 'dependents' => 0, 'boundary' => $boundary, 'in_graph' => $inGraph];
+        $items = [$file('src/Core/A.php', 'Core', true, 3), $file('src/Loose.php', null, true, 2), $file('README.md', null, false, 1), $file('src/Core/B.php', 'Core', true, 4)];
+        $byBoundary = new \ReflectionMethod(BranchDiffService::class, 'byBoundary');
+        $groups = $byBoundary->invoke(null, $items, ['src/Loose.php' => ['src/x.php']]);
+        assertSame(
+            [[null, false, 1, 1], ['Core', false, 2, 0], [null, true, 1, 0]],
+            array_map(static fn(array $g): array => [$g['boundary'], $g['outside'], $g['files'], $g['reach']], $groups),
+        );
     }
 
     /** A branch past the files it lists: each listed one counted in its boundary, the whole still counted, and said to be cut. */
@@ -176,8 +194,9 @@ final class BranchDiffServiceTest extends KnossosTestCase
         [$pdo, $root] = $this->repository();
         try {
             @mkdir($root . '/docs/many', 0777, true);
+            // Each note changes more lines than the branch's own source does: the cut still keeps the source.
             for ($i = 0; $i < 320; $i++) {
-                file_put_contents(sprintf('%s/docs/many/n%03d.md', $root, $i), "note {$i}\n");
+                file_put_contents(sprintf('%s/docs/many/n%03d.md', $root, $i), str_repeat("note {$i}\n", 20));
             }
             $this->branchWork($pdo, $root);
             $files = (new BranchDiffService($pdo))->diff($root)['files'];
@@ -185,8 +204,11 @@ final class BranchDiffServiceTest extends KnossosTestCase
             assertSame(300, count($files['items']));
             assertSame(true, $files['truncated']);
             assertSame(300, array_sum(array_column($files['boundaries'], 'files')));
-            // The files the graph holds sort first: the branch's own source is not lost under its notes.
-            assertSame(['src/Core/Greeter.php', 'src/Core/Unused.php'], array_slice(array_column($files['items'], 'path'), 0, 2));
+            // The lines of every touched file, listed or not.
+            assertSame(320 * 20 + 10, $files['added']);
+            // The cut keeps the files the graph holds: the branch's own source is not lost under its notes.
+            $listed = array_column($files['items'], 'path');
+            assertSame(true, in_array('src/Core/Greeter.php', $listed, true) && in_array('src/Core/Unused.php', $listed, true));
         } finally {
             $this->removeTempTree($root);
         }

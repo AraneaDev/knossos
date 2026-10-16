@@ -582,7 +582,7 @@ their changes do not show. On the default branch itself, or without git, the
 card says that instead.
 
 Under that, the verdict. When nothing broke it is one line:
-`✓ no new cycles ✓ no hubs grew ✓ no dead code ✓ no violations` (the last only
+`✓ no new cycles ✓ no new crossings ✓ no hubs grew ✓ no dead code ✓ no violations` (the last only
 when the project declares policies). When something did, it says how many
 things to look at, then a row for each, the worst first: policy violations,
 new cycles, dependencies newly crossing from one boundary into another, hubs at
@@ -596,7 +596,8 @@ base, their lines and how many files their changes reach
 (`7 files +45 −6 · reach 61`), then lists them by boundary: a row for each,
 with a bar for its lines, its files, its lines and the files it reaches, each
 counted once. The boundary that reaches most comes first, the files outside the
-graph (docs, lockfiles) last. `o` on a boundary unfolds its files under it,
+graph (docs, lockfiles) last; files the graph holds that no boundary claims
+form a row of their own, `no boundary`. `o` on a boundary unfolds its files under it,
 each with its lines and dependents, and `o` on a file opens it. It needs no
 snapshot, so it still lists when the comparison cannot be made. Uncommitted
 edits are not in it: the Changes tab has those.

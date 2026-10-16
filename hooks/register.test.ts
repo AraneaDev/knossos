@@ -3076,19 +3076,26 @@ describe('knossos mod', () => {
       // Said plainly: no snapshot near the merge base, and how partial the comparison is.
       expect(text).toContain('No snapshot near the merge base is retained')
       expect(text).toContain("already holds 9 of the branch's 12 commits")
-      expect(titled(text)).toMatch(/New cross-boundary dependencies +▲ 1/)
-      expect(titled(text)).toMatch(/New cycles +✓ 0/)
-      // The files the branch touched, after what is new: each opens as its file.
-      expect(titled(text)).toMatch(/Files this branch touched +4 files/)
-      expect(text).toMatch(/src\/Http\/Router\.php +\+30 −2 +12 deps/)
+      // The verdict first: how many things to look at, then a row each, the worst first.
+      expect(text).toContain('▲ 2 things to look at')
+      // What changed, by boundary, each folded until opened: o on Http's row, then on its file.
+      expect(titled(text)).toMatch(/What changed +4 files/)
+      expect(text).not.toContain('src/Http/Router.php')
       await ui.press({ key: 'row:0' })
       await w.clock.settle()
       expect(w.detailRuns().at(-1)?.at(-1)).toBe('App\\Greeter')
       await ui.press({ key: 'back' })
       await ui.press({ key: 'row:2' })
       await w.clock.settle()
+      expect(drawn((await ui.find({ key: 'pane' }))?.text ?? '')).toMatch(/src\/Http\/Router\.php +\+30 −2 +12 deps/)
+      await ui.press({ key: 'row:3' })
+      await w.clock.settle()
       expect(w.fileRuns().at(-1)?.at(-1)).toBe('src/Http/Router.php')
       await ui.press({ key: 'back' })
+      // o on the boundary again folds it: its file is gone from the tab.
+      await ui.press({ key: 'row:2' })
+      await w.clock.settle()
+      expect(drawn((await ui.find({ key: 'pane' }))?.text ?? '')).not.toContain('src/Http/Router.php')
       await ui.press({ key: 'tab:overview' })
       await ui.unmount()
     }

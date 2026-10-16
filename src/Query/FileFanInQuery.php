@@ -75,9 +75,11 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
         if ($paths === []) {
             return [];
         }
-        $statement = $this->pdo->prepare('SELECT relative_path FROM files WHERE project_id = ? AND relative_path IN (' . implode(',', array_fill(0, count($paths), '?')) . ')');
-        $statement->execute([$projectId, ...$paths]);
-        $held = array_flip(array_map('strval', $statement->fetchAll(\PDO::FETCH_COLUMN)));
+        // Chunked: a branch can touch more paths than one statement binds.
+        $held = [];
+        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT relative_path FROM files WHERE project_id = ? AND relative_path IN (%s)', $paths, [$projectId], [], \PDO::FETCH_NUM) as [$path]) {
+            $held[(string) $path] = true;
+        }
 
         return array_values(array_filter($paths, static fn(string $path): bool => isset($held[$path])));
     }

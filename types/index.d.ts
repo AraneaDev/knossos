@@ -419,9 +419,13 @@ export type BranchDiff = {
   files?: {
     count: number
     truncated?: boolean
+    /** The lines of every touched file, listed or not. */
+    added?: number
+    deleted?: number
     reach?: number
     items: { path: string; added: number; deleted: number; dependents: number; boundary: string | null; in_graph?: boolean }[]
-    boundaries?: { boundary: string | null; files: number; added: number; deleted: number; reach: number }[]
+    /** `outside` for the files the graph does not hold; `boundary` null and not outside for files no boundary claims. */
+    boundaries?: { boundary: string | null; files: number; added: number; deleted: number; reach: number; outside?: boolean }[]
   } | null
 }
 

@@ -20,7 +20,9 @@ const touched = (n: number) => {
     truncated: false,
     reach: 61,
     items: [...inside, ...outside],
-    boundaries: [...(n > 0 ? [group('core', 40)] : []), ...(n > 1 ? [group('http', 33)] : []), { boundary: null, files: 3, added: 3, deleted: 0, reach: 0 }],
+    added: inside.reduce((s, f) => s + f.added, 0) + 3,
+    deleted: inside.reduce((s, f) => s + f.deleted, 0),
+    boundaries: [...(n > 0 ? [{ ...group('core', 40), outside: false }] : []), ...(n > 1 ? [{ ...group('http', 33), outside: false }] : []), { boundary: null, files: 3, added: 3, deleted: 0, reach: 0, outside: true }],
   }
 }
 const none = { crossing: { count: 0, items: [] }, cycles: { count: 0, items: [] }, hubs: { count: 0, items: [] }, dead_code: { count: 0, items: [] }, violations: { count: 0, truncated: false, items: [] } }
@@ -71,7 +73,7 @@ describe('the Branch tab: where it stands', () => {
 describe('the Branch tab: did it break anything', () => {
   it('says so in one line when nothing broke, no card per check', () => {
     const t = text(answer({ comparison: none }))
-    expect(t).toMatch(/✓ no new cycles +✓ no hubs grew +✓ no dead code +✓ no violations/)
+    expect(flat(t)).toMatch(/✓ no new cycles +✓ no new crossings +✓ no hubs grew +✓ no dead code +✓ no violations/)
     for (const old of ['New cycles', 'Hubs that grew', 'New dead code', 'New policy violations', 'New cross-boundary dependencies']) expect(t).not.toContain(old)
     // A project with no policies has no violations to rule out.
     expect(text(answer({ comparison: { ...none, violations: null } }))).not.toContain('no violations')
@@ -110,7 +112,7 @@ describe('the Branch tab: what changed', () => {
   it('folds each boundary until it is opened: o on its row opens it, its files then listed and walked under it', () => {
     const closed = branchInput({ snapshot: 's9', phase: 'done', answer: answer({}, 4) }, ROOT, [])
     const rows = branchList(closed).filter(o => o.fold !== undefined)
-    expect(rows.map(o => o.fold)).toEqual(['branch:core', 'branch:http', 'branch:'])
+    expect(rows.map(o => o.fold)).toEqual(['branch:core', 'branch:http', 'branch:\u0000outside'])
     expect(branchList(closed).some(o => o.file === true)).toBe(false)
     const open = branchInput({ snapshot: 's9', phase: 'done', answer: answer({}, 4) }, ROOT, ['branch:core'])
     const walk = branchList(open)
@@ -127,7 +129,7 @@ describe('the Branch tab: what changed', () => {
 
   it('lists and walks the touched files with nothing to compare, and from a knossos that groups none', () => {
     const bare = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ status: 'no-snapshot', base: null, comparison: null }) }, ROOT)
-    expect(branchList(bare).map(o => o.fold)).toEqual(['branch:core', 'branch:http', 'branch:'])
+    expect(branchList(bare).map(o => o.fold)).toEqual(['branch:core', 'branch:http', 'branch:\u0000outside'])
     // As an older knossos sends it: the files alone, no groups, no reach, no cut.
     const older = { count: touched(4).count, items: touched(4).items.map(i => ({ path: i.path, added: i.added, deleted: i.deleted, dependents: i.dependents, boundary: i.boundary })) }
     const old = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ files: older } as never) }, ROOT)
@@ -155,4 +157,29 @@ describe('the Branch tab on the pane', () => {
     const rows = paneLayout(paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 0, true, null, null, undefined, null, undefined, { branch: { snapshot: 's9', phase: 'done', answer: answer({ comparison: none }) }, churn }), 200, 60).body
     expect(rows.some(r => r.key.includes('churn'))).toBe(false)
   })
+
+  it('keeps the files no boundary claims apart from those outside the graph, each its own row and fold', () => {
+    const loose = { path: 'src/Loose.php', added: 5, deleted: 1, dependents: 3, boundary: null, in_graph: true }
+    const doc = { path: 'README.md', added: 1, deleted: 0, dependents: 0, boundary: null, in_graph: false }
+    const files = { count: 2, truncated: false, reach: 3, added: 6, deleted: 1, items: [loose, doc], boundaries: [{ boundary: null, files: 1, added: 5, deleted: 1, reach: 3, outside: false }, { boundary: null, files: 1, added: 1, deleted: 0, reach: 0, outside: true }] }
+    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ files }) }, ROOT, ['branch:', 'branch:\u0000outside'])
+    const walk = branchList(input).slice(input.findings.length)
+    expect(walk.map(o => o.fold ?? o.canonical)).toEqual(['branch:', 'src/Loose.php', 'branch:\u0000outside', 'README.md'])
+    const t = paneLayout(pane(answer({ files }), view({ folds: ['branch:'] })), 100, 60).body.map(plainText).join('\n')
+    expect(t).toMatch(/no boundary .*1 file .*\+5 −1 +3/)
+    expect(t).toMatch(/outside the graph .*1 file/)
+    expect(t.match(/src\/Loose\.php/g)).toHaveLength(1)
+  })
+
+  it('keeps what a boundary reaches, and every all-clear check, on a narrow pane', () => {
+    const t = paneLayout(pane(answer({ comparison: none }, 4)), 40, 60).body.map(plainText).join('\n')
+    expect(t).toMatch(/core .* 40$/m)
+    for (const check of ['no new cycles', 'no new crossings', 'no hubs grew', 'no dead code', 'no violations']) expect(flat(t)).toContain(check)
+  })
+
+  it('totals the lines of every touched file, those past the listed ones too', () => {
+    const files = { ...touched(2), added: 900, deleted: 40, truncated: true, count: 400 }
+    expect(text(answer({ files }))).toMatch(/What changed +400 files +\+900 −40 · reach 61/)
+  })
 })
+
