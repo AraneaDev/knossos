@@ -34,6 +34,21 @@ final class FileFanInQueryTest extends KnossosTestCase
         );
     }
 
+    /**
+     * Each path's dependent files by path, so a caller can count the files a
+     * set of paths reaches without counting one twice: a.php is depended on
+     * by b.php and c.php, b.php by c.php, so the two together reach two.
+     */
+    #[Group('query')]
+    public function testDependentsOfListsEachPathsDependentFiles(): void
+    {
+        [$pdo, $projectId] = $this->fanInGraph();
+        $dependents = (new FileFanInQuery($pdo))->dependentsOf($projectId, ['a.php', 'b.php', 'd.php']);
+        assertSame(['a.php' => ['b.php', 'c.php'], 'b.php' => ['c.php']], $dependents);
+        assertSame(2, count(array_unique(array_merge(...array_values($dependents)))));
+        assertSame([], (new FileFanInQuery($pdo))->dependentsOf($projectId, []));
+    }
+
     /** The threshold and the cap each cut the list. */
     #[Group('query')]
     public function testTheThresholdAndCapBound(): void

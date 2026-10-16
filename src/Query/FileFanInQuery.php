@@ -75,9 +75,11 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
         if ($paths === []) {
             return [];
         }
-        $statement = $this->pdo->prepare('SELECT relative_path FROM files WHERE project_id = ? AND relative_path IN (' . implode(',', array_fill(0, count($paths), '?')) . ')');
-        $statement->execute([$projectId, ...$paths]);
-        $held = array_flip(array_map('strval', $statement->fetchAll(\PDO::FETCH_COLUMN)));
+        // Chunked: a branch can touch more paths than one statement binds.
+        $held = [];
+        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT relative_path FROM files WHERE project_id = ? AND relative_path IN (%s)', $paths, [$projectId], [], \PDO::FETCH_NUM) as [$path]) {
+            $held[(string) $path] = true;
+        }
 
         return array_values(array_filter($paths, static fn(string $path): bool => isset($held[$path])));
     }
@@ -173,6 +175,42 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
         }
 
         return $boundaries;
+    }
+
+    /**
+     * Every dependent file of each of `$paths`, by path, each list
+     * alphabetical, over the impact edges {@see self::select()} counts: what
+     * lets a caller count the files a set of paths reaches without counting
+     * one twice. A path nothing depends on is left out.
+     *
+     * @param list<string> $paths
+     * @return array<string, list<string>>
+     */
+    public function dependentsOf(string $projectId, array $paths): array
+    {
+        if ($paths === []) {
+            return [];
+        }
+        $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
+        $sql = <<<SQL
+            SELECT DISTINCT tf.relative_path, sf.relative_path
+              FROM files tf
+              JOIN nodes tn ON tn.file_id = tf.id
+              JOIN edges e ON e.target_id = tn.id
+              JOIN nodes sn ON sn.id = e.source_id
+              JOIN files sf ON sf.id = sn.file_id
+             WHERE tf.project_id = ? AND tf.relative_path IN (%s)
+               AND e.project_id = tf.project_id AND sf.id <> tf.id AND e.kind IN ($kinds)
+               AND {$this->owned('sn')}
+               AND {$this->owned('tn')}
+             ORDER BY tf.relative_path, sf.relative_path
+            SQL;
+        $dependents = [];
+        foreach (ChunkedInQuery::rows($this->pdo, $sql, $paths, [$projectId], self::IMPACT_EDGE_KINDS, \PDO::FETCH_NUM) as [$path, $dependent]) {
+            $dependents[(string) $path][] = (string) $dependent;
+        }
+
+        return $dependents;
     }
 
     /**

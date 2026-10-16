@@ -567,40 +567,40 @@ process the earlier ones read `outside`.
 
 ![The Branch tab: what this checkout added against its merge base with main, as new cross-boundary dependencies, hubs that grew, new dead code and the files the branch touched](../images/claude-code/branch.png)
 
-Branch compares the checked-out branch with the snapshot taken where it left
-its default branch.
+Branch answers two things at a glance: what this branch changed against its
+default branch, and whether it broke anything.
 
-**Against the merge base** says how the comparison was made. Git finds the
+**The first card** names the branch against its default branch, how many
+commits ahead it is, and where it left (`left main at fd13714`). Git finds the
 default branch (the one `origin/HEAD` names, else `main` or `master`) and the
-merge base, locally. The tab then compares against a retained snapshot taken
-at that commit, else the nearest one before it, and says how many commits
-earlier that was. When none near the merge base is retained, it says so in the
-warning colour. It then compares against the oldest snapshot taken after the
-merge base, and says how many of the branch's commits that snapshot already
-holds, since their changes do not show. On the default branch itself, or
-without git, the card says that instead.
+merge base, locally. The tab compares against a retained snapshot taken at that
+commit, else the nearest one before it, and then says how many commits earlier
+that was. When none near the merge base is retained, it says so in the warning
+colour, and compares against the oldest snapshot after the merge base,
+saying how many of the branch's commits that snapshot already holds, since
+their changes do not show. On the default branch itself, or without git, the
+card says that instead.
 
-The cards below list what is new since the merge base:
+Under that, the verdict. When nothing broke it is one line:
+`✓ no new cycles ✓ no new crossings ✓ no hubs grew ✓ no dead code ✓ no violations` (the last only
+when the project declares policies). When something did, it says how many
+things to look at, then a row for each, the worst first: policy violations,
+new cycles, dependencies newly crossing from one boundary into another, hubs at
+least ten depend on that more depend on than before (`20 → 31 +11`), and new
+dead code. Past the first eight of a kind it says how many more are not listed.
+Every finding opens its component. The comparison is read when the tab opens
+and again for each new snapshot.
 
-| card                            | what it lists                                                                       |
-| ------------------------------- | ----------------------------------------------------------------------------------- |
-| New cycles                      | cycles whose members did not already form one                                       |
-| New policy violations           | violations whose dependency is new                                                  |
-| New cross-boundary dependencies | dependencies crossing from one boundary into another                                |
-| Hubs that grew                  | components at least ten depend on, that more depend on than before (`0 → 105 +105`) |
-| New dead code                   | components newly unreferenced                                                       |
-
-Each card counts all it found and names the first eight, then `+267 not
-listed`. Every row opens its component. The comparison is read when the tab
-opens and again for each new snapshot.
-
-**Files this branch touched** lists what the branch's commits changed since
-the merge base, the files most depended on first, each with the lines it added
-and deleted and its dependents (`+41 −1  2 deps`). It counts every touched
-file but lists only those the graph holds, so docs and deleted files count
-without a row. It needs no snapshot, so it still lists when the comparison
-cannot be made. Uncommitted edits are not in it: the Changes tab has those.
-Every row opens its file.
+**What changed** totals the files the branch's commits touched since the merge
+base, their lines and how many files their changes reach
+(`7 files +45 −6 · reach 61`), then lists them by boundary: a row for each,
+with a bar for its lines, its files, its lines and the files it reaches, each
+counted once. The boundary that reaches most comes first, the files outside the
+graph (docs, lockfiles) last; files the graph holds that no boundary claims
+form a row of their own, `no boundary`. `o` on a boundary unfolds its files under it,
+each with its lines and dependents, and `o` on a file opens it. It needs no
+snapshot, so it still lists when the comparison cannot be made. Uncommitted
+edits are not in it: the Changes tab has those.
 
 ## Churn
 

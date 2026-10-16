@@ -410,7 +410,23 @@ export type BranchDiff = {
     dead_code: { count: number; items: BranchItem[] }
     violations: { count: number; items: { policy_id: string; source: string; source_kind: string; target: string; target_kind: string }[]; truncated: boolean } | null
   } | null
-  files?: { count: number; items: { path: string; added: number; deleted: number; dependents: number; boundary: string | null }[] } | null
+  /**
+   * The files the branch touched: every one up to the cap (`truncated` past
+   * it), each in or out of the graph, and by boundary with the files each
+   * reaches counted once (`boundary` null for the files outside the graph).
+   * `in_graph`, `truncated`, `reach` and `boundaries` are absent from an older knossos.
+   */
+  files?: {
+    count: number
+    truncated?: boolean
+    /** The lines of every touched file, listed or not. */
+    added?: number
+    deleted?: number
+    reach?: number
+    items: { path: string; added: number; deleted: number; dependents: number; boundary: string | null; in_graph?: boolean }[]
+    /** `outside` for the files the graph does not hold; `boundary` null and not outside for files no boundary claims. */
+    boundaries?: { boundary: string | null; files: number; added: number; deleted: number; reach: number; outside?: boolean }[]
+  } | null
 }
 
 /** The Branch tab's comparison as last read, for the snapshot it was read at; loading until it lands. */
@@ -666,6 +682,8 @@ export type KnossosView = {
   unfolded?: number[]
   /** On the Hubs tab, the in-degree range the list is narrowed to (an Overview bucket's), `to` null for no upper end. */
   degree?: { from: number; to: number | null } | null
+  /** The groups a tab folds that the person opened (`branch:<boundary>`): absent, all folded. */
+  folds?: string[]
   /** Whether the finder is open over the pane (`f`): its field and what it found. */
   finding?: boolean
   /** The component a route starts at, while the finder picks where it ends (`p`). */

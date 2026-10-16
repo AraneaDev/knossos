@@ -66,6 +66,15 @@ async function openRow(io: Port, index?: number): Promise<void> {
     await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target, ...(jump.notesFilter === undefined ? {} : { notesFilter: jump.notesFilter, notesText: '' }) }))
     return
   }
+  // A row that heads a group (a Branch boundary) folds or unfolds it; the marker stays on it.
+  const fold = item.fold
+  if (fold !== undefined) {
+    await io.state.view.update((v): KnossosView => {
+      const open = v.folds ?? []
+      return { ...v, folds: open.includes(fold) ? open.filter(f => f !== fold) : [...open, fold] }
+    })
+    return
+  }
   // A boundary opens nothing: marking it is what spells it out.
   if (item.inert === true) return
   await showComponent(io, { name: item.canonical, label: item.name, ...(item.file === true ? { file: true } : {}), ...(item.changed === true ? { changed: true } : {}) })
