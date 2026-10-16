@@ -30,4 +30,21 @@ final class ToolErrorMapperTest extends KnossosTestCase
         assertSame('KNOSSOS_TOOL_ERROR', ToolErrorMapper::code(new RuntimeException('x')));
         assertSame(true, str_contains($logged, 'SQLSTATE[HY000]'));
     }
+
+    /**
+     * A write that lands while a scan holds the graph's write lock is worth
+     * retrying, and the caller should be told so, not that something
+     * unexpected happened. The driver's own text still stays out of it.
+     */
+    #[Group('mcp')]
+    public function testABusyDatabaseSaysToRetry(): void
+    {
+        $busy = new \PDOException('SQLSTATE[HY000]: General error: 5 database is locked');
+        (new \ReflectionProperty(\PDOException::class, 'code'))->setValue($busy, 'HY000');
+
+        assertSame('KNOSSOS_DATABASE_BUSY', ToolErrorMapper::code($busy));
+        $message = ToolErrorMapper::publicMessage($busy);
+        assertSame(true, str_contains($message, 'retry'));
+        assertSame(false, str_contains($message, 'SQLSTATE'));
+    }
 }
