@@ -10,11 +10,14 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * A model's `booted` or `newFactory` is called by the framework whenever the
- * model is used, so nothing names it and no test reached it: the blast radius
- * listed it untested beside a model its tests use all the time. A framework
- * hook is reached by whatever reaches its class, so it is as tested as the
- * class is. A hook of a class no test uses stays untested.
+ * A model's `newFactory` is called by the framework whenever the model is
+ * used, so nothing names it and no test reached it: the blast radius of its
+ * factory listed it untested beside a model its tests use all the time. A
+ * framework hook is reached by whatever reaches its class, so it is as tested
+ * as the class is. A hook of a class no test uses stays untested.
+ *
+ * The rings around the model itself start from its members, the hooks
+ * included, so a hook shows in the rings of what it uses, its factory here.
  */
 #[Group('query')]
 final class FrameworkHookTestReachTest extends KnossosTestCase
@@ -35,10 +38,28 @@ final class FrameworkHookTestReachTest extends KnossosTestCase
         'app/Models/Invoice.php' => <<<'PHP'
             <?php
             namespace App\Models;
+            use Database\Factories\InvoiceFactory;
             use Illuminate\Database\Eloquent\Model;
             final class Invoice extends Model
             {
                 protected static function booted(): void { static::creating(function (Invoice $invoice): void {}); }
+                protected static function newFactory(): InvoiceFactory { return InvoiceFactory::new(); }
+            }
+            PHP,
+        'database/factories/OrderFactory.php' => <<<'PHP'
+            <?php
+            namespace Database\Factories;
+            final class OrderFactory
+            {
+                public static function new(): self { return new self(); }
+            }
+            PHP,
+        'database/factories/InvoiceFactory.php' => <<<'PHP'
+            <?php
+            namespace Database\Factories;
+            final class InvoiceFactory
+            {
+                public static function new(): self { return new self(); }
             }
             PHP,
         'app/Services/Checkout.php' => <<<'PHP'
@@ -88,10 +109,10 @@ final class FrameworkHookTestReachTest extends KnossosTestCase
 
                 return $marks;
             };
-            $order = $tested('App\\Models\\Order');
-            self::assertTrue($order['booted'] ?? null, 'booted, of a model a test uses');
-            $invoice = $tested('App\\Models\\Invoice');
-            self::assertFalse($invoice['booted'] ?? null, 'booted, of a model no test uses');
+            $order = $tested('Database\\Factories\\OrderFactory');
+            self::assertTrue($order['newFactory'] ?? null, 'newFactory, of a model a test uses');
+            $invoice = $tested('Database\\Factories\\InvoiceFactory');
+            self::assertFalse($invoice['newFactory'] ?? null, 'newFactory, of a model no test uses');
         } finally {
             $this->removeTempTree($root);
         }

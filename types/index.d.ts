@@ -425,17 +425,33 @@ export type ChurnState = { head: string | null; phase: 'loading' | 'done'; answe
 /** One component a ring or a route names. */
 export type RingItem = { name: string; canonical_name: string; kind: string; path?: string | null; line?: number | null; boundary: string | null }
 
+/** How sure a path through the graph is: its weakest edge's confidence. */
+export type Confidence = 'certain' | 'probable' | 'possible'
+
 /**
  * The `blast-radius` subcommand's answer: what depends on one component in
  * rings (one hop, two hops, three and more), each with how many of its
  * components a test reaches, the first few of them (the untested first) and
- * the test files that reach the ring, nearest first.
+ * the test files that reach the ring, nearest first. The members are
+ * impact_analysis's dependants: each item carries its path confidence and,
+ * when the walk reached it through one of the component's members, that
+ * member (`via_member`); each ring counts its members by confidence.
+ * `truncated` is the core's: a bound cut the walk, named in
+ * `truncation_reasons`.
  */
 export type BlastRadius = {
   status: 'ok' | 'not-found' | 'unscanned' | 'error' | 'no-binary'
   component: RingItem | null
-  rings: { hop: number; count: number; tested: number; items: (RingItem & { tested: boolean })[]; tests: { count: number; items: { path: string; hop: number }[] } }[]
+  rings: {
+    hop: number
+    count: number
+    tested: number
+    by_confidence?: Record<Confidence, number>
+    items: (RingItem & { tested: boolean; confidence?: Confidence; via_member?: string | null })[]
+    tests: { count: number; items: { path: string; hop: number }[] }
+  }[]
   truncated: boolean
+  truncation_reasons?: string[]
 }
 
 /** The rings of the component the detail shows, read for its name and snapshot; loading until they land. */

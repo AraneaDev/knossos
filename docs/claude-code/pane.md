@@ -691,13 +691,15 @@ ring.
 
 Each frame's top edge carries its hop and how many components it holds
 (`2 hops · 53`), and on the right either `✓ all tested` or how many no test
-reaches (`▲ 1 untested`, in the warning colour). A component counts as tested
-when a test depends on it, directly or through others the search found. The
-search goes four hops past the last ring for tests alone, so a component near
-the edge counts as tested when its test stands a little further out. When so much
-depends on the component that the search stops before its tests, each
-component it left untested gets a search of its own, out as far as the full
-search would have gone.
+reaches (`▲ 1 untested`, in the warning colour). The rings are impact
+analysis's own dependants, the answer the agent gets from `impact_analysis`:
+the walk starts from the component's members too, so a caller of a static
+method counts, and a framework hook (a model's `newFactory`) is depended on by
+whatever uses its class. A component counts as tested when a test depends on
+it, directly or through others the walk found. The tests are looked for four
+hops past the last ring, so a component near the edge counts as tested when its
+test stands a little further out, and each component no such test reaches gets
+a search of its own.
 
 A call through an interface or a parent class counts for every implementation
 of it, constructing a class counts for its constructor, and using a class counts
@@ -717,8 +719,8 @@ composer:knossos`);
 - the test files that reach the ring, nearest first (`✓ 19 test files:
 McpTest.php, SessionChangesServiceTest.php +17`).
 
-The rings stop at six hops, and the search at ten hops, 1,500 components or two
-seconds. Every named
+The rings stop at six hops, 1,500 components or two seconds, and the tests'
+search at ten hops; the `+` after the count means a bound cut the walk. Every named
 component is a row the marker walks, after the detail's dependencies, and `o`
 opens it as its detail. Below 44 columns the rings are plain lists.
 
