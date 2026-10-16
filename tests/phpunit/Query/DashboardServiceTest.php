@@ -56,6 +56,9 @@ final class DashboardServiceTest extends KnossosTestCase
             assertSame($d['snapshot_id'], $d['trend'][count($d['trend']) - 1]['snapshot_id']);
             assertLessThanOrEqual(10, count($d['cycles']['largest']));
             assertSame(0, $d['cycles']['count']);
+            assertSame(['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0], $d['notes']);
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($projectId, 'App\\Gone', 'note', 'left behind', execute: true);
+            assertSame(['total' => 1, 'missing' => 1, 'stale' => 0, 'flagged' => 0], (new DashboardService($pdo))->dashboard($root, 1)['notes']);
         } finally {
             $this->removeTempTree($root);
         }
@@ -93,6 +96,7 @@ final class DashboardServiceTest extends KnossosTestCase
             assertSame([], $d['hotspots']);
             assertSame(0, $d['dead_code_candidates']);
             assertSame(['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'largest' => []], $d['cycles']);
+            assertSame(['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0], $d['notes']);
             assertSame(false, $d['dead_code_truncated']);
             assertSame(false, $d['fan_in_truncated']);
             assertSame(false, $d['hubs_truncated']);

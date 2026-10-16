@@ -5,15 +5,22 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use InvalidArgumentException;
+use Knossos\Mcp\ToolErrorMapper;
 use Knossos\Scan\ProjectPathResolver;
 use PDO;
 
 /**
  * The architecture pane's reads that look past one component's detail, and
- * its one write: `churn` (the files changed most that much depends on),
+ * its writes: `churn` (the files changed most that much depends on),
  * `blast-radius` (a component's dependents in rings), `path-between` (the
- * routes from one component to another) and `annotate` (a note on a
- * component, previewed unless `execute` says to record it).
+ * routes from one component to another), `annotate` (a note on a
+ * component, previewed unless `execute` says to record it), and the Notes
+ * tab's `notes`, `note-adopt`, `note-move` and `note-check`
+ * ({@see NotesService}).
+ *
+ * A write that fails for any reason but a refusal answers `error` with the
+ * code {@see ToolErrorMapper} gives it, so the pane can tell a scan's lock
+ * (`KNOSSOS_DATABASE_BUSY`) from a fault and keep what the person typed.
  *
  * Each answers for the project owning a path, as the other pane commands
  * do; the command around it has already checked that the database exists.
@@ -23,7 +30,7 @@ use PDO;
 final readonly class PaneQueries
 {
     /** The commands answered here. */
-    public const COMMANDS = ['churn', 'blast-radius', 'path-between', 'annotate'];
+    public const COMMANDS = ['churn', 'blast-radius', 'path-between', 'annotate', 'notes', 'note-adopt', 'note-move', 'note-check'];
 
     /** @param PDO $pdo an existing, migrated graph database */
     public function __construct(private PDO $pdo) {}
@@ -39,6 +46,10 @@ final readonly class PaneQueries
             'blast-radius' => ['component'],
             'path-between' => ['from', 'to'],
             'annotate' => ['component', 'kind', 'value', 'remove', 'author', 'execute'],
+            'notes' => ['filter', 'text'],
+            'note-adopt' => ['component', 'value', 'execute'],
+            'note-move' => ['component', 'to', 'kind', 'author', 'execute'],
+            'note-check' => ['component', 'value', 'remove', 'execute'],
             default => [],
         };
     }
@@ -61,6 +72,10 @@ final readonly class PaneQueries
             'blast-radius' => (new BlastRadiusService($this->pdo))->rings($path, $required('component')),
             'path-between' => (new PathBetweenService($this->pdo))->routes($path, $required('from'), $required('to')),
             'annotate' => $this->annotate($path, $required('component'), $single('kind') ?? 'note', $single('value') ?? '', $flag('remove'), $flag('execute'), $single('author') ?? 'user'),
+            'notes' => (new NotesService($this->pdo))->notes($path, $single('filter') ?? 'all', $single('text') ?? ''),
+            'note-adopt' => (new NotesService($this->pdo))->adopt($path, $required('component'), $single('value'), $flag('execute')),
+            'note-move' => (new NotesService($this->pdo))->move($path, $required('component'), $required('to'), $single('kind') ?? 'note', $single('author') ?? 'user', $flag('execute')),
+            'note-check' => (new NotesService($this->pdo))->check($path, $required('component'), $single('value') ?? '', $flag('remove'), $flag('execute')),
             default => throw new InvalidArgumentException(sprintf('Unknown pane command %s.', $command)),
         };
     }
@@ -97,6 +112,8 @@ final readonly class PaneQueries
                 : $queries->upsertAnnotation($id, $component, $kind, $value, $execute, 'user');
         } catch (InvalidArgumentException $refused) {
             return ['status' => 'refused', 'reason' => $refused->getMessage()] + $envelope;
+        } catch (\Throwable $failed) {
+            return ['status' => 'error', 'code' => ToolErrorMapper::code($failed), 'message' => ToolErrorMapper::publicMessage($failed)] + $envelope;
         }
         $data = $result->data;
 

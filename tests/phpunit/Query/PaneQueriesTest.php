@@ -263,5 +263,53 @@ final class PaneQueriesTest extends KnossosTestCase
         assertSame(['from', 'to'], PaneQueries::options('path-between'));
         assertSame(['component', 'kind', 'value', 'remove', 'author', 'execute'], PaneQueries::options('annotate'));
         assertSame([], PaneQueries::options('churn'));
+        assertSame(['filter', 'text'], PaneQueries::options('notes'));
+        assertSame(['component', 'value', 'execute'], PaneQueries::options('note-adopt'));
+        assertSame(['component', 'to', 'kind', 'author', 'execute'], PaneQueries::options('note-move'));
+        assertSame(['component', 'value', 'remove', 'execute'], PaneQueries::options('note-check'));
+    }
+
+    /** The Notes tab's read and its three writes answer through the pane's command, as the wrapper calls them. */
+    #[Group('query')]
+    public function testTheNotesCommandsAnswerThroughThePane(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $queries = new PaneQueries($pdo);
+            $ask = fn(string $command, array $options): array => $queries->answer($command, $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
+            $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($project, 'App\\Gone', 'note', 'left behind', execute: true);
+
+            $check = $ask('note-check', ['component' => 'App\\Greeter', 'value' => 'still right?', 'execute' => '1']);
+            $adopt = $ask('note-adopt', ['component' => 'App\\Greeter', 'execute' => '1']);
+            $move = $ask('note-move', ['component' => 'App\\Gone', 'to' => 'App\\Caller', 'author' => 'model', 'execute' => '1']);
+            $notes = $ask('notes', ['filter' => 'all']);
+
+            assertSame(['ok', 'ok', 'ok'], [$check['status'], $adopt['status'], $move['status']]);
+            assertSame(['total' => 3, 'missing' => 0, 'stale' => 0, 'flagged' => 1], $notes['counts']);
+            assertSame(['App\\Greeter', 'App\\Caller', 'App\\Greeter'], array_column($notes['groups']['rest'], 'component'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A note that meets a scan's lock answers with the code, so the pane keeps the typed text and says to retry. */
+    #[Group('query')]
+    public function testANoteThatMeetsABusyDatabasePassesItsCode(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $pdo->setAttribute(PDO::ATTR_STATEMENT_CLASS, [\Knossos\Tests\Phpunit\Support\BusyWriteStatement::class, []]);
+            \Knossos\Tests\Phpunit\Support\BusyWriteStatement::$failOn = 'INSERT INTO annotations';
+            $answer = (new PaneQueries($pdo))->answer('annotate', $root, static fn(string $name): ?string => ['component' => 'App\\Greeter', 'value' => 'typed'][$name] ?? null, static fn(string $name): bool => $name === 'execute');
+            \Knossos\Tests\Phpunit\Support\BusyWriteStatement::$failOn = null;
+
+            assertSame(['error', 'KNOSSOS_DATABASE_BUSY'], [$answer['status'], $answer['code']]);
+            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+        } finally {
+            \Knossos\Tests\Phpunit\Support\BusyWriteStatement::$failOn = null;
+            $this->removeTempTree($root);
+        }
     }
 }

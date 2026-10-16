@@ -156,6 +156,8 @@ final readonly class DashboardService
                 'truncation_reasons' => $cycleSearch->data['bounds']['truncation_reasons'],
                 'largest' => array_map(static fn(array $c): array => self::cycle($c, $labels), array_slice($cycles, 0, self::LARGEST_CYCLES)),
             ],
+            // The Overview's line about notes: how many, and how many need the person.
+            'notes' => (new NotesService($this->pdo))->counts($id),
             'trend' => $trend,
             'trend_limit' => $trendLimit,
             'deltas' => self::deltas($trend),
@@ -454,6 +456,7 @@ final readonly class DashboardService
             'snapshot_id' => null, 'freshness' => ['state' => 'unscanned', 'age_seconds' => null, 'drift_files' => 0, 'drifted' => [], 'drifted_truncated' => false],
             'hubs' => [], 'hubs_truncated' => false, 'hubs_truncation_reasons' => [], 'hotspots' => [], 'dead_code_candidates' => 0, 'dead_code_truncated' => false,
             'cycles' => ['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'largest' => []],
+            'notes' => ['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0],
             'trend' => [], 'deltas' => null, 'in_degree' => ['buckets' => [], 'truncated' => false], 'fan_in' => [], 'fan_in_truncated' => false, 'dead_code' => [],
             'boundary_matrix' => ['boundaries' => [], 'members' => [], 'labelled' => 0, 'boundaries_truncated' => false, 'cells' => [], 'forbidden' => [], 'flows' => [], 'edges' => 0, 'truncated' => false, 'truncation_reasons' => []],
         ] + ProjectFindings::none();

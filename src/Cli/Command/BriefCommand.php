@@ -62,8 +62,7 @@ final class BriefCommand implements CliCommand
             'graph-search' => ['db', 'json', 'query'],
             'session-changes' => ['db', 'json', 'since'],
             'boundary-couplings' => ['db', 'json', 'from', 'to'],
-            'churn', 'blast-radius', 'path-between', 'annotate' => ['db', 'json', ...PaneQueries::options($command)],
-            default => ['db', 'json', 'fan-in-threshold', 'boundaries'],
+            default => in_array($command, PaneQueries::COMMANDS, true) ? ['db', 'json', ...PaneQueries::options($command)] : ['db', 'json', 'fan-in-threshold', 'boundaries'],
         };
     }
 
