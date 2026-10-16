@@ -175,7 +175,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         $links = [];
         while (isset($queue[$head])) {
             // No visit bound: only accepted dependants are queued, and at most
-            // $limit (100) are accepted, so at most $limit + 1 states are visited.
+            // $limit are accepted, so at most $limit + 1 states are visited.
             if ($this->now() > $deadline) {
                 $truncation->add('time_limit');
                 break;
@@ -214,7 +214,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
             }
             // The framework calls a hook (`booted`, `newFactory`) whenever its class is used, so nothing names it:
             // what uses the class or one of its members depends on the hook. Which use runs it is a guess.
-            if ($frameworkHooks && $current['kind'] === 'method') {
+            if ($frameworkHooks && $current['kind'] === 'method' && FrameworkHookMethods::isHookName((string) $current['display_name'])) {
                 foreach (FrameworkHookMethods::among($this->pdo, $projectId, [(string) $current['id']]) as $class) {
                     foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated, withMembers: true) as $edge) {
                         if ($edge['source_id'] !== $current['id']) {

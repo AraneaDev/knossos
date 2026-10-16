@@ -48,8 +48,10 @@ final readonly class BlastRadiusService
     /**
      * @param PDO $pdo an existing, migrated graph database
      * @param int $dependents the most dependents read; {@see self::DEPENDENTS} unless a test gives its own
+     * @param int $testSearchMs how long each of the tests' own searches may take; {@see self::TIMEOUT_MS} unless a
+     *                          test gives its own
      */
-    public function __construct(private PDO $pdo, private int $dependents = self::DEPENDENTS) {}
+    public function __construct(private PDO $pdo, private int $dependents = self::DEPENDENTS, private int $testSearchMs = self::TIMEOUT_MS) {}
 
     /**
      * The rings around `$component` in the project owning `$path`; `unscanned`,
@@ -57,13 +59,15 @@ final readonly class BlastRadiusService
      *
      * `truncated` is the core's: a bound (the dependents read, the time, a
      * hub's inbound edges) cut the walk, each named in `truncation_reasons`.
+     * `tests_partial` says the tests' own searches ran out of time, so a
+     * member marked untested may have a test no search reached.
      *
      * @return array<string, mixed>
      */
     public function rings(string $path, string $component): array
     {
         $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'component' => null, 'rings' => [], 'truncated' => false, 'truncation_reasons' => []];
+        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'component' => null, 'rings' => [], 'truncated' => false, 'truncation_reasons' => [], 'tests_partial' => false];
         $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
@@ -98,9 +102,9 @@ final readonly class BlastRadiusService
         $covered = $reached === [] ? [] : array_replace(...array_values($reached));
         // The walk stops at the last ring: each member no test it read reaches gets a search of its own, as far
         // out as the tests' reach.
-        $beyond = $this->testsBeyond($id, $hop, $tests, $covered);
+        [$beyond, $beyondCut] = $this->testsBeyond($id, $hop, $tests, $covered);
         $covered += array_fill_keys(array_keys($beyond), true);
-        $far = $this->testsPastTheWalk($id, $hop, $tests, $out);
+        [$far, $farCut] = $this->testsPastTheWalk($id, $hop, $tests, $out);
         $labels = BoundaryLabels::load($this->pdo, $id)->forNodes([(string) $target['id'], ...$ids]);
         $places = $this->places([...$ids, ...array_keys(array_replace([], ...array_values($beyond))), ...array_keys($far)]);
         $named = fn(string $node): array => ['name' => (string) $places[$node]['display_name'], 'canonical_name' => (string) $places[$node]['canonical_name'], 'kind' => (string) $places[$node]['kind'],
@@ -153,6 +157,7 @@ final readonly class BlastRadiusService
             'rings' => $rings,
             'truncated' => $impact->truncated,
             'truncation_reasons' => $reason === null ? [] : [(string) $reason],
+            'tests_partial' => $beyondCut || $farCut,
         ] + $envelope;
     }
 
@@ -167,13 +172,14 @@ final readonly class BlastRadiusService
      * @param array<string, int> $hop each dependent's hop
      * @param array<string, int> $tests the tests the walk read
      * @param array<string, list<string>> $out the edges the walk read, source to its targets
-     * @return array<string, array{hop: int, rings: array<int, true>}> test id => its hop and rings
+     * @return array{0: array<string, array{hop: int, rings: array<int, true>}>, 1: bool} test id => its hop and
+     *         rings, and whether a search ran out of time
      */
     private function testsPastTheWalk(string $projectId, array $hop, array $tests, array $out): array
     {
         $members = array_diff_key($hop, $tests);
         if ($members === []) {
-            return [];
+            return [[], false];
         }
         $outermost = max($members);
         // What reaches each ring's members, over the edges read backwards.
@@ -202,12 +208,14 @@ final readonly class BlastRadiusService
             $rings = array_keys(array_filter($reaching, static fn(array $seen): bool => isset($seen[(string) $node])));
             $groups[implode(',', $rings)][] = (string) $node;
         }
-        $deadline = hrtime(true) + self::TIMEOUT_MS * 1_000_000;
+        $deadline = hrtime(true) + $this->testSearchMs * 1_000_000;
         $search = new TestReachSearch($this->pdo);
         $far = [];
+        $cut = false;
         foreach ($groups as $rings => $level) {
-            $found = $search->search($projectId, $level, self::DEPTH + self::TEST_REACH - $outermost, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, $deadline)['tests'];
-            foreach ($found as $test => $distance) {
+            $searched = $search->search($projectId, $level, self::DEPTH + self::TEST_REACH - $outermost, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, $deadline);
+            $cut = $cut || $searched['truncation_reasons'] !== [];
+            foreach ($searched['tests'] as $test => $distance) {
                 $test = (string) $test;
                 if (isset($hop[$test])) {
                     continue;
@@ -219,7 +227,7 @@ final readonly class BlastRadiusService
             }
         }
 
-        return $far;
+        return [$far, $cut];
     }
 
     /**
@@ -233,26 +241,29 @@ final readonly class BlastRadiusService
      * @param array<string, int> $hop each dependent's hop
      * @param array<string, int> $tests the tests the walk read
      * @param array<string, true> $covered what those tests reach
-     * @return array<string, array<string, int>> member id => test id => hops from the member
+     * @return array{0: array<string, array<string, int>>, 1: bool} member id => test id => hops from the member, and
+     *         whether the time ran out before every member was searched
      */
     private function testsBeyond(string $projectId, array $hop, array $tests, array $covered): array
     {
-        $deadline = hrtime(true) + self::TIMEOUT_MS * 1_000_000;
+        $deadline = hrtime(true) + $this->testSearchMs * 1_000_000;
         $search = new TestReachSearch($this->pdo);
         $members = array_filter($hop, static fn(int $at, string $node): bool => $at <= self::DEPTH && !isset($tests[$node]) && !isset($covered[$node]), ARRAY_FILTER_USE_BOTH);
         asort($members);
         $beyond = [];
         foreach ($members as $member => $at) {
             if (hrtime(true) > $deadline) {
-                break;
+                return [$beyond, true];
             }
-            $found = $search->search($projectId, [(string) $member], self::DEPTH + self::TEST_REACH - $at, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, $deadline, first: true)['tests'];
-            if ($found !== []) {
-                $beyond[(string) $member] = $found;
+            $searched = $search->search($projectId, [(string) $member], self::DEPTH + self::TEST_REACH - $at, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, $deadline, first: true);
+            if ($searched['tests'] !== []) {
+                $beyond[(string) $member] = $searched['tests'];
+            } elseif ($searched['truncation_reasons'] !== []) {
+                return [$beyond, true];
             }
         }
 
-        return $beyond;
+        return [$beyond, false];
     }
 
     /**

@@ -524,8 +524,9 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         foreach ($terms as $index => $term) {
             $key = 'contains' . $index;
             $params[$key] = '%' . self::like($term) . '%';
-            // An attribute's words, never its name or the scanner's bookkeeping: the raw JSON's LIKE narrows first.
-            $attribute = "(n.attributes_json LIKE :$key ESCAPE '!' AND EXISTS (SELECT 1 FROM json_tree(n.attributes_json) jt WHERE jt.type = 'text' " .
+            // An attribute's words and numbers, never its name, a true or false, or the scanner's bookkeeping: the raw
+            // JSON's LIKE narrows first.
+            $attribute = "(n.attributes_json LIKE :$key ESCAPE '!' AND EXISTS (SELECT 1 FROM json_tree(n.attributes_json) jt WHERE jt.type IN ('text', 'integer', 'real') " .
                 "AND jt.key NOT IN ('scanner', 'scanner_local_id') AND jt.atom LIKE :$key ESCAPE '!'))";
             $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR $attribute " .
                 "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";

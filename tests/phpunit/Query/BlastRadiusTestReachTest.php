@@ -159,4 +159,47 @@ final class BlastRadiusTestReachTest extends KnossosTestCase
         assertSame([['path' => 'tests/FarTest.php', 'hop' => 8]], $two['tests']['items']);
         assertSame([['path' => 'tests/FarTest.php', 'hop' => 8]], $far['tests']['items']);
     }
+
+    /**
+     * When the tests' own searches run out of time, a member they never
+     * reached is not known to be untested: the rings say the tests were
+     * searched only in part. The chain of the first case, with no time for
+     * those searches; given time, they are searched in full.
+     */
+    #[Group('query')]
+    public function testRingsSayTheTestsWereSearchedInPartWhenTheirSearchRanOutOfTime(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $owner = 'php:file:src/Checkout.php';
+        $node = function (string $name, string $path, bool $test = false) use ($repository, $ids, $owner): string {
+            $file = StableId::file($ids['project'], $path);
+            $repository->saveFile($file, $ids['project'], $path, hash('sha256', $path), 20, 1, 'php', '0.1.0', $ids['scan']);
+            $id = StableId::symbol($ids['project'], 'php', 'class', $name);
+            $repository->saveNode($id, $ids['project'], 'php', 'class', $name, substr((string) strrchr('\\' . $name, '\\'), 1), null, $file, 1, 10, 'ast', 'certain', [], $owner, $ids['scan']);
+            if ($test) {
+                $repository->saveClassification(StableId::classification($ids['project'], $id, 'quality.test_module', 'core.test.modules.v1'), $ids['project'], $id, 'quality.test_module', 'derived', 'probable', 'core.test.modules.v1', $file, 1, 10, [], $ids['scan']);
+            }
+            return $id;
+        };
+        $calls = function (string $from, string $to, string $at) use ($repository, $ids, $owner): void {
+            $repository->saveEdge(StableId::edge($ids['project'], 'calls', $from, $to, $at), $ids['project'], 'calls', $from, $to, null, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
+        };
+        $previous = $ids['checkout'];
+        foreach ([1, 2, 3, 4, 5, 6] as $k) {
+            $current = $node("App\\C{$k}", "src/C{$k}.php");
+            $calls($current, $previous, "src/C{$k}.php:5");
+            $previous = $current;
+        }
+        $far = $node('App\\D1', 'src/D1.php');
+        $calls($far, $previous, 'src/D1.php:5');
+        $calls($node('Tests\\ChainTest', 'tests/ChainTest.php', test: true), $far, 'tests/ChainTest.php:5');
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $hurried = (new BlastRadiusService($pdo, testSearchMs: 0))->rings('/workspace/fixture-shop', 'App\\Checkout');
+        $patient = (new BlastRadiusService($pdo))->rings('/workspace/fixture-shop', 'App\\Checkout');
+
+        assertSame([false, true], [$hurried['truncated'], $hurried['tests_partial']]);
+        assertSame([0, 0, 0], array_column($hurried['rings'], 'tested'));
+        assertSame([false, [1, 1, 4]], [$patient['tests_partial'], array_column($patient['rings'], 'tested')]);
+    }
 }

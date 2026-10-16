@@ -56,6 +56,11 @@ describe('the blast radius in a component detail', () => {
     expect(text(state(radius(), 'App\\Other'))).toContain('Reading what depends on it')
   })
 
+  it('says when the tests were searched only in part, so untested may mean not looked at', () => {
+    expect(text(state(radius()))).not.toContain('tests partly searched')
+    expect(text(state({ ...radius(), tests_partial: true }))).toContain('34 dependents, tests apart, tests partly searched')
+  })
+
   it('gives a ring its legend: how many are tested and how many are not', () => {
     expect(text(state(radius()))).toMatch(/✓ 3 tested · ▲ 1 untested/)
   })

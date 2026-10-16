@@ -47,7 +47,8 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      *
      * @param list<string> $edgeKinds
      * @param bool $bothDirections when `from` reaches `to` by no route, look the other way too (within a timeout of
-     *                             its own): the answer then runs from `to` to `from`, and `reversed` says so
+     *                             its own): the answer then runs from `to` to `from`, and `reversed` says so. A
+     *                             forward search a bound cut is answered as it is: it may have had a route left
      */
     public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = self::DEFAULT_TIMEOUT_MS, bool $bothDirections = false): ResultEnvelope
     {
@@ -64,7 +65,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         if (!$bothDirections) {
             return $flow;
         }
-        if ($flow->data['paths'] === []) {
+        if ($flow->data['paths'] === [] && !$flow->truncated) {
             $back = $this->flowBetween($project, $toCandidates[0], $fromCandidates[0], ...$bounds);
             if ($back->data['paths'] !== []) {
                 return $back->withData(['reversed' => true] + $back->data);

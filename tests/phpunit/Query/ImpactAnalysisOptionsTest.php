@@ -15,6 +15,7 @@ use Knossos\Query\StalenessProbe;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
+use Knossos\Tests\Phpunit\Support\QueryCountingStatement;
 use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayNotHasKey;
@@ -176,6 +177,22 @@ final class ImpactAnalysisOptionsTest extends KnossosTestCase
         } finally {
             $this->removeTempTree($root);
         }
+    }
+
+    /**
+     * Only a method named like a framework hook can be one: a walk through
+     * `App\\Target::make` never asks which class declares it or what that
+     * class inherits.
+     */
+    public function testAWalkThroughNoMethodNamedLikeAHookNeverLooksForHooks(): void
+    {
+        [$pdo, , $projectId] = $this->paneAgreementGraph();
+        $pdo->setAttribute(\PDO::ATTR_STATEMENT_CLASS, [QueryCountingStatement::class, []]);
+        QueryCountingStatement::reset();
+
+        (new ImpactAnalysisQuery($pdo))->impactAnalysis($projectId, 'App\\Target');
+
+        assertSame(0, QueryCountingStatement::count("e.kind = 'contains' AND n.kind = 'method'"));
     }
 
     /**

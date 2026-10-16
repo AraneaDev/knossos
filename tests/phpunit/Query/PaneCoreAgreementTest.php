@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\BlastRadiusService;
+use Knossos\Query\FlowQuery;
 use Knossos\Query\GraphSearchService;
 use Knossos\Query\PathBetweenService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -139,5 +140,25 @@ final class PaneCoreAgreementTest extends KnossosTestCase
         $notes = $finder->search($root, 'zebrafish')['notes'];
         assertSame([['App\\Gone', 'model', 'missing']], array_map(static fn(array $row): array => [$row['canonical_name'], $row['author'], $row['component_status']], $notes));
         assertSame('Replaced by the zebrafish adapter.', $notes[0]['text']);
+    }
+
+    /**
+     * A forward search the time cut is no answer that only the other way
+     * joins the two: the core does not reverse it, so neither does the pane.
+     * The clock jumps past the forward search's deadline once it is set.
+     */
+    #[Group('query')]
+    public function testAForwardSearchTheTimeCutIsNotReversed(): void
+    {
+        [$pdo, , $projectId] = $this->paneAgreementGraph();
+        $reads = 0;
+        $clock = static function () use (&$reads): int {
+            return $reads++ === 0 ? 0 : 1_000_000_000_000_000;
+        };
+
+        $flow = (new FlowQuery($pdo, $clock))->explainFlow($projectId, 'App\\Adapter::run', 'App\\User', bothDirections: true);
+
+        assertSame([false, [], true], [$flow->data['reversed'], $flow->data['paths'], $flow->truncated]);
+        assertSame(['time_limit'], $flow->data['bounds']['truncation_reasons']);
     }
 }

@@ -455,6 +455,8 @@ export type BlastRadius = {
   }[]
   truncated: boolean
   truncation_reasons?: string[]
+  /** The tests' own searches ran out of time: a member marked untested may have a test no search reached. */
+  tests_partial?: boolean
 }
 
 /** The rings of the component the detail shows, read for its name and snapshot; loading until they land. */

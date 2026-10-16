@@ -29,8 +29,12 @@ export type RingMember = { name: string; canonical: string; kind: string; bounda
 /** One ring as the detail draws it. */
 export type Ring = { label: string; count: number; tested: number; members: RingMember[]; tests: { count: number; paths: string[] } }
 
-/** The blast radius the detail draws: loading, what to say instead, or the rings. */
-export type RingsInput = { loading: boolean; said: string | null; centre: { name: string; boundary: string | null } | null; rings: Ring[]; truncated: boolean }
+/**
+ * The blast radius the detail draws: loading, what to say instead, or the
+ * rings. `testsPartial` when the tests' own searches ran out of time, so an
+ * untested member may have a test no search reached.
+ */
+export type RingsInput = { loading: boolean; said: string | null; centre: { name: string; boundary: string | null } | null; rings: Ring[]; truncated: boolean; testsPartial?: boolean }
 
 /** The narrowest the rings are drawn as frames: each ring takes four columns of the width. */
 export const RINGS_MIN = 44
@@ -59,6 +63,7 @@ export function ringsInput(state: RingsState | null, name: string, root: string 
       tests: { count: r.tests.count, paths: r.tests.items.map(t => t.path) },
     })),
     truncated: answer.truncated,
+    testsPartial: answer.tests_partial === true,
   }
 }
 
@@ -220,7 +225,7 @@ export function ringsBlock(input: RingsInput, selected: number, offset: number, 
   return {
     key: 'rings',
     make: columns => {
-      const note = noteOf(input.said !== null ? '' : `${grouped(total)}${input.truncated ? '+' : ''} dependents, tests apart`)
+      const note = noteOf(input.said !== null ? '' : `${grouped(total)}${input.truncated ? '+' : ''} dependents, tests apart${input.testsPartial === true ? ', tests partly searched' : ''}`)
       if (input.said !== null) return { key: 'rings', title: 'Blast radius', note, body: wrapWords(input.said, Math.max(1, columns - 3)).map((line, i) => dimRow(`rings-said-${i}`, `   ${line}`, columns)) }
       if (total === 0) return { key: 'rings', title: 'Blast radius', note, body: [dimRow('rings-none', '   Nothing depends on it: a change here reaches no other component.', columns)] }
       const body = columns >= RINGS_MIN ? ringRows(input, columns, selected, offset, hues) : ringLists(input, columns, selected, offset, hues)

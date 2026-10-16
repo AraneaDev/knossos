@@ -33,6 +33,16 @@ final class SearchMatchingTest extends KnossosTestCase
         assertSame([], $search->searchArchitecture($projectId, '_')->data['results']);
     }
 
+    public function testANumberAnAttributeHoldsMatchesButATrueOrFalseDoesNot(): void
+    {
+        [$pdo, $projectId] = $this->graph(['App\\Server' => ['port' => 8080, 'ratio' => 0.75], 'App\\Flagged' => ['final' => true]]);
+        $search = ArchitectureQueryService::forDatabase($pdo);
+
+        assertSame(['App\\Server'], array_column($search->searchArchitecture($projectId, '8080')->data['results'], 'canonical_name'));
+        assertSame(['App\\Server'], array_column($search->searchArchitecture($projectId, '0.75')->data['results'], 'canonical_name'));
+        assertSame([], $search->searchArchitecture($projectId, 'true')->data['results']);
+    }
+
     public function testANameStartingWithTheQueryRanksAheadOfOneHoldingItFurtherIn(): void
     {
         [$pdo, $projectId] = $this->graph(['App\\Ggree' => [], 'App\\Greeter' => []]);
