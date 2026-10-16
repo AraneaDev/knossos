@@ -17,6 +17,11 @@
  *
  * Below {@link DIAGRAM_MIN} columns the diagram gives way to the chain as
  * text (`↻ a → b → c → ↻`) and a member a row.
+ *
+ * A cycle whose members are all in one type (methods that call each other)
+ * is listed after the others, under a `Within one type` line, named by its
+ * type; the count counts only the cycles between types and says how many
+ * are inside one type beside it.
  */
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
@@ -27,19 +32,22 @@ import type { Dashboard } from '../../types'
 import { countLabel } from './envelopes'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { blank, button, cells, chip, clip, displayName, fit, MARK, plural, SWATCH, tableRow, tinted, wrapGroups } from './rows'
+import { blank, button, cells, chip, clip, displayName, fit, MARK, plural, shortName, SWATCH, tableRow, tinted, wrapGroups } from './rows'
 import type { Row, Segment, Tier } from './rows'
 import type { Openable } from './views'
 import { CARD_ICON } from './marks'
 
 export type CycleNode = { name: string; canonical: string; boundary: string | null }
-export type CycleLine = { size: number; nodes: CycleNode[]; more: number }
+/** `type` names the one type a cycle's members are all in; absent for a cycle between types. */
+export type CycleLine = { size: number; nodes: CycleNode[]; more: number; type?: string }
 /**
- * The cycles, largest first, and the ones the person unfolded (by index).
- * `stopped` names the bounds a search hit before it found any cycle: empty
- * when the search found some or ran to the end.
+ * The cycles, largest first (those between types, then those inside one),
+ * and the ones the person unfolded (by index). `count` counts the cycles
+ * between types, `within` the ones inside one type. `stopped` names the
+ * bounds a search hit before it found any cycle: empty when the search
+ * found some or ran to the end.
  */
-export type CyclesInput = { count: string; cycles: CycleLine[]; unfolded: number[]; stopped?: string[] }
+export type CyclesInput = { count: string; cycles: CycleLine[]; unfolded: number[]; stopped?: string[]; within?: number }
 
 /** The most boxes a cycle shows before its middle folds, per tier. */
 export const FOLD_AT: Record<Tier, number> = { narrow: 6, medium: 10, wide: 16 }
@@ -60,9 +68,10 @@ export function cyclesInput(d: Pick<Dashboard, 'cycles'>, unfolded: number[] = [
     stopped: d.cycles.truncated && d.cycles.count === 0 ? d.cycles.truncation_reasons : [],
     cycles: d.cycles.largest.map(c => {
       const nodes = c.nodes?.map(n => ({ name: displayName(n), canonical: n.canonical_name, boundary: n.boundary })) ?? c.members.map(name => ({ name, canonical: name, boundary: null }))
-      return { size: c.size, nodes, more: Math.max(0, c.size - nodes.length) }
+      return { size: c.size, nodes, more: Math.max(0, c.size - nodes.length), ...(c.within_type === true ? { type: c.type ?? nodes[0]?.canonical.split('::')[0] ?? '' } : {}) }
     }),
     unfolded,
+    within: d.cycles.within_type ?? 0,
   }
 }
 
@@ -83,7 +92,13 @@ function chainOf(cycle: CycleLine): string {
   return `${names.join(' → ')}${cycle.more > 0 ? ` → … (+${cycle.more} more)` : names.length > 0 ? ` → ${names[0]}` : ''}`
 }
 
-const askOf = (cycle: CycleLine): string => `Using the Knossos graph, how could I break this dependency cycle: ${chainOf(cycle)}? Name the edge to cut and what would have to move.`
+const askOf = (cycle: CycleLine): string =>
+  cycle.type === undefined
+    ? `Using the Knossos graph, how could I break this dependency cycle: ${chainOf(cycle)}? Name the edge to cut and what would have to move.`
+    : `Using the Knossos graph, the methods of ${cycle.type} call each other in a cycle: ${chainOf(cycle)}. Is this recursion intended, or should it be untangled?`
+
+/** How a cycle is named in the list: `cycle N`, or the short name of the one type it is inside. */
+const nameOf = (cycle: CycleLine, i: number): string => (cycle.type === undefined ? `cycle ${i + 1}` : shortName(cycle.type))
 
 /**
  * What the marker walks on the Cycles tab: each cycle's members (each opens
@@ -93,7 +108,7 @@ const askOf = (cycle: CycleLine): string => `Using the Knossos graph, how could 
 export function cyclesList(input: CyclesInput): Openable[] {
   return input.cycles.flatMap((cycle, i) => [
     ...cycle.nodes.map((n): Openable => ({ name: n.name, canonical: n.canonical, ask: askOf(cycle) })),
-    { name: `cycle ${i + 1}`, canonical: cycle.nodes[0]?.canonical ?? '', inert: true, copy: chainOf(cycle), ask: askOf(cycle) },
+    { name: nameOf(cycle, i), canonical: cycle.nodes[0]?.canonical ?? '', inert: true, copy: chainOf(cycle), ask: askOf(cycle) },
   ])
 }
 
@@ -181,17 +196,28 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
   const offsets = cycleOffsets(input)
   const list: Block = {
     key: 'cycles',
-    grow: { length: shown, min: CYCLES_MIN },
+    // The line over the cycles inside one type is a row too.
+    grow: { length: shown + (input.cycles.some(c => c.type !== undefined) ? 1 : 0), min: CYCLES_MIN },
     make: (columns, limit) => {
       const stopped = input.stopped ?? []
       // The bounds as words, the way the rest of the pane speaks: `time_limit` reads `time limit`.
       const empty = stopped.length > 0 ? ['incomplete', ...stopped.map(r => r.replaceAll('_', ' '))].join(' · ') : 'none'
-      const note = shown === 0 ? empty : `${input.count}${String(shown) === input.count ? '' : ` · ${shown} shown`} · largest first`
+      const within = input.within ?? 0
+      const inside = input.cycles.findIndex(c => c.type !== undefined)
+      // Every one listed: as many between types as counted, and as many inside one type.
+      const whole = String(inside < 0 ? shown : inside) === input.count && shown - (inside < 0 ? shown : inside) === within
+      const counted = `${input.count}${within > 0 ? ` · ${within} within one type` : ''}`
+      const note = shown === 0 ? (within > 0 ? counted : empty) : `${counted}${whole ? '' : ` · ${shown} shown`} · largest first`
       const section = (body: Row[]): Section => ({ key: 'cycles', title: shown > 1 ? 'All cycles' : 'Cycles', note: noteOf(note), body })
       // A search cut short has not shown there are none, so it does not say so.
       if (shown === 0) return section([{ key: 'cycles-none', segments: [{ text: stopped.length > 0 ? '   Search stopped early; none found before it did.' : '   No dependency cycles.', dim: true }] }])
-      const window = windowOf(shown, limit, marked?.index ?? -1)
-      const rows = input.cycles.slice(window.start, window.end).map((cycle, n) => cycleLine(cycle, window.start + n, offsets[window.start + n]!, marked?.index === window.start + n, columns, hues))
+      // The line over the cycles inside one type takes a row of the window.
+      const window = windowOf(shown, inside < 0 ? limit : limit - 1, marked?.index ?? -1)
+      const rows = input.cycles.slice(window.start, window.end).flatMap((cycle, n) => {
+        const i = window.start + n
+        const line = cycleLine(cycle, i, offsets[i]!, marked?.index === i, columns, hues)
+        return i === Math.max(inside, window.start) && cycle.type !== undefined ? [{ key: 'cycles-within', segments: clip([{ text: '   Within one type', dim: true }], columns) }, line] : [line]
+      })
       return section([...rows, ...moreRows('cycles-window', window, shown, columns, i => offsets[i] ?? 0)])
     },
   }
@@ -204,7 +230,7 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
 /** A cycle's line in the list: the marker, its name (a press that marks its first member), its size and its boundary. */
 function cycleLine(cycle: CycleLine, i: number, offset: number, on: boolean, columns: number, hues: Hues): Row {
   const home = homeBoundary(cycle)
-  const head: Segment[] = [{ text: on ? '›' : ' ', color: ACCENT, bold: true }, { text: '  ' }, button(`mark:${offset}`, `cycle ${i + 1}`), { text: ` · ${plural(cycle.size, 'member', 'members')}`, dim: true }]
+  const head: Segment[] = [{ text: on ? '›' : ' ', color: ACCENT, bold: true }, { text: '  ' }, button(`mark:${offset}`, nameOf(cycle, i)), { text: ` · ${plural(cycle.size, 'member', 'members')}`, dim: true }]
   if (home !== null) head.push({ text: ' · ', dim: true }, ...chip(home, hues))
   const others = boundariesOf(cycle).filter(b => b !== home)
   if (others.length > 0) head.push({ text: ` +${others.length} ${others.length === 1 ? 'boundary' : 'boundaries'}`, dim: true })
@@ -221,14 +247,14 @@ function cycleSection(input: CyclesInput, index: number, offset: number, local: 
   const spans = boundariesOf(cycle)
   const coloured = spans.length > 1
   const crossings = cycle.nodes.filter((n, j) => crosses(n, cycle.nodes[(j + 1) % cycle.nodes.length])).length
-  const note = noteOf([plural(cycle.size, 'member', 'members'), ...(crossings > 0 ? [`crosses ${plural(spans.length, 'boundary', 'boundaries')}`] : [])].join(' · '))
+  const note = noteOf([plural(cycle.size, 'member', 'members'), ...(cycle.type === undefined ? [] : ['within one type']), ...(crossings > 0 ? [`crosses ${plural(spans.length, 'boundary', 'boundaries')}`] : [])].join(' · '))
   const legend: Row[] = []
   if (coloured) {
     const groups: Segment[][] = spans.filter(b => boundaryColour(b, hues) !== undefined).map(b => chip(b, hues))
     if (crossings > 0) groups.push([{ text: CROSSING.across, color: STATUS_COLOURS.warn }, { text: ' crosses a boundary', dim: true }])
     legend.push(...wrapGroups('cycle-legend', groups, columns, 2), blank('cycle-legend-gap'))
   }
-  const section = (body: Row[]): Section => ({ key: 'cycle-diagram', title: `Cycle ${index + 1}`, note, body: [...legend, ...body] })
+  const section = (body: Row[]): Section => ({ key: 'cycle-diagram', title: cycle.type === undefined ? `Cycle ${index + 1}` : shortName(cycle.type), note, body: [...legend, ...body] })
   if (columns < DIAGRAM_MIN) return section(chainRows(cycle, offset, local, columns, hues, coloured))
   const shown = shownOf(cycle, index, input, columns, tier, local)
   const nodes: DiagramNode[] = shown.map((s): DiagramNode => {

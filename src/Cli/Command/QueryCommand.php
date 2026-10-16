@@ -54,7 +54,7 @@ final class QueryCommand implements CliCommand
             'file-metrics' => ['db', 'json', 'path', 'language', 'sort-by', 'order', 'limit', 'offset'],
             'explain-flow' => ['db', 'json', 'max-depth', 'max-paths', 'edge-kind', 'min-confidence', 'timeout-ms'],
             'impact-analysis' => ['db', 'json', 'max-depth', 'limit', 'edge-kind', 'min-confidence', 'timeout-ms'],
-            'dependency-cycles' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'max-nodes', 'max-edges', 'timeout-ms', 'include-self-loops'],
+            'dependency-cycles' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'max-nodes', 'max-edges', 'timeout-ms', 'include-self-loops', 'within-type'],
             'architecture-health' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'max-nodes', 'max-edges', 'timeout-ms', 'include-external', 'include-tests', 'candidate-confidence', 'candidate-offset', 'candidate-timeout'],
             'check-architecture' => ['db', 'json', 'policies', 'min-confidence', 'limit', 'max-edges', 'timeout-ms'],
             'suggest-location' => ['db', 'json', 'limit', 'max-members', 'max-edges', 'timeout-ms', 'ranking-mode'],
@@ -283,7 +283,7 @@ final class QueryCommand implements CliCommand
     private function dependencyCycles(array $p, array $o, CliCommandContext $c): int
     {
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos dependency-cycles <path|project-id> [options]'), $c);
-        $result = $this->queries($c)->dependencyCycles($project, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 20, 1, 100), $c->options->integer($o, 'max-nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES), $c->options->integer($o, 'max-edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->flag($o, 'include-self-loops'));
+        $result = $this->queries($c)->dependencyCycles($project, $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'limit', 20, 1, 100), $c->options->integer($o, 'max-nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES), $c->options->integer($o, 'max-edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES), $c->options->integer($o, 'timeout-ms', 1000, 1, 5000), $c->options->flag($o, 'include-self-loops'), withinType: $c->options->flag($o, 'within-type'));
         return $this->result($result, $o, $c);
     }
 

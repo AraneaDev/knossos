@@ -129,8 +129,14 @@ export type Dashboard = {
     count: number
     truncated: boolean
     truncation_reasons: string[]
-    /** `nodes` and `nodes_truncated` are optional: a knossos older than the mod sends names only. */
-    largest: { size: number; members: string[]; nodes?: CycleNode[]; nodes_truncated?: boolean }[]
+    /** The cycles whose members are all in one type, which `count` leaves out. Absent from an older knossos. */
+    within_type?: number
+    /**
+     * `nodes` and `nodes_truncated` are optional: a knossos older than the mod
+     * sends names only. `within_type` marks a cycle inside one type, `type`
+     * names that type; both absent from an older knossos.
+     */
+    largest: { size: number; members: string[]; nodes?: CycleNode[]; nodes_truncated?: boolean; within_type?: boolean; type?: string | null }[]
   }
   /**
    * Oldest first, ending at the active snapshot. `dead_code` (the candidates

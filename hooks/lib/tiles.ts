@@ -29,10 +29,11 @@ export type StatTone = 'warn' | 'alert' | 'accent'
  * `delta` is how the figure moved since the previous snapshot; `worse` says
  * the figure is a status (cycles, dead code, diagnostics), so a rise is drawn
  * in its warning colour and a fall in its success colour; a figure that is
- * not a status keeps its delta dim.
+ * not a status keeps its delta dim. `aside` is a second, lesser figure
+ * drawn dim after the first (` · 2 within one type`).
  */
 /** `lit` while the latest scan has just moved the figure: drawn on the flash ground for a moment. */
-export type Stat = { key: string; label: string; value: string; tone?: StatTone; trend?: number[]; press?: string; delta?: number; worse?: 'up'; lit?: true }
+export type Stat = { key: string; label: string; value: string; aside?: string; tone?: StatTone; trend?: number[]; press?: string; delta?: number; worse?: 'up'; lit?: true }
 
 /** A trend is drawn only with this many points, and only when it moves. */
 export const TREND_MIN_POINTS = 5
@@ -70,11 +71,14 @@ export function deltaSegment(stat: Pick<Stat, 'delta' | 'worse'>): Segment | nul
   return { text, color: d > 0 ? STATUS_COLOURS.warn : STATUS_COLOURS.ok }
 }
 
-/** A figure and its delta, a space apart. */
+/** A figure, its aside and its delta, the delta a space apart. */
 function figureWidth(stat: Stat): number {
   const delta = deltaSegment(stat)
-  return cells(stat.value) + (delta === null ? 0 : 1 + cells(delta.text))
+  return cells(stat.value) + cells(stat.aside ?? '') + (delta === null ? 0 : 1 + cells(delta.text))
 }
+
+/** A tile's aside as a segment, dim; none without one. */
+const asideOf = (stat: Stat): Segment[] => (stat.aside === undefined ? [] : [{ text: stat.aside, dim: true }])
 
 /** The fewest cells a tile needs: its label, or its figure with its delta. */
 const need = (stat: Stat): number => Math.max(cells(stat.label), figureWidth(stat))
@@ -109,7 +113,7 @@ function share(widths: number[], extra: number): number[] {
 /** A tile's figure line: the figure and its delta, then its trend against the slot's right edge when there is room for five points. */
 function figureLine(stat: Stat, width: number): Segment[] {
   const delta = deltaSegment(stat)
-  const lead: Segment[] = [figure(stat), ...(delta === null ? [] : [{ text: ' ' }, delta])]
+  const lead: Segment[] = [figure(stat), ...asideOf(stat), ...(delta === null ? [] : [{ text: ' ' }, delta])]
   const used = figureWidth(stat)
   const room = width - used - 1
   if (!moves(stat.trend) || room < TREND_MIN_POINTS) return [...lead, { text: spaces(width - used) }]
@@ -145,7 +149,8 @@ function lineRows(stats: Stat[], width: number): Row[] {
   const groups = stats
     .map((s): Segment[] => {
       const delta = deltaSegment(s)
-      return [figure(s), { text: ' ' }, label(s, cells(s.label)), ...(delta === null ? [] : [{ text: ' ' }, delta]), ...(moves(s.trend) ? [{ text: ` ${sparkline(s.trend.slice(-8))}`, color: ACCENT }] : [])]
+      // Here the aside follows the label: `1 cycle · 2 within one type`.
+      return [figure(s), { text: ' ' }, label(s, cells(s.label)), ...asideOf(s), ...(delta === null ? [] : [{ text: ' ' }, delta]), ...(moves(s.trend) ? [{ text: ` ${sparkline(s.trend.slice(-8))}`, color: ACCENT }] : [])]
     })
   return wrapGroups('tiles-line', groups, width, 3, 0)
 }

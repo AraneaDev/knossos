@@ -28,6 +28,13 @@ const dash = (over: Partial<Dashboard> = {}): Dashboard =>
   }) as Dashboard
 
 describe('alerts for what a scan brought', () => {
+  it('says nothing of a cycle inside one type: it is listed, never counted as a new cycle', () => {
+    const within = { size: 2, members: ['App\\Walk::a', 'App\\Walk::b'], within_type: true, type: 'App\\Walk' }
+    const before = dash()
+    const after = dash({ cycles: { count: 1, truncated: false, truncation_reasons: [], within_type: 1, largest: [cycle('App\\A', 'App\\B'), within] } })
+    expect(freshAlerts(before, after, new Set()).filter(a => a.text.includes('cycle'))).toEqual([])
+  })
+
   it('says a new cycle and a new policy violation, by their short names', () => {
     const after = dash({ snapshot_id: 's2', cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [cycle('App\\A', 'App\\B'), cycle('App\\X\\Router', 'App\\Y\\Handler', 'App\\Z\\Store')] }, policy: { status: 'evaluated', total: 2, truncated: false, truncation_reasons: [], items: [violation(0), violation(1)] } })
     expect(freshAlerts(dash(), after).map(a => a.text)).toEqual(['knossos: a new dependency cycle of 3: Router → Handler → Store → Router', 'knossos: a new policy violation (core-stays-out): Greeter1::greet → Caller1'])

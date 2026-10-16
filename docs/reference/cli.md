@@ -49,7 +49,7 @@ Usage:
   knossos dependency-cycles <path|project-id> [--edge-kind=KIND] [--limit=N]
                             [--min-confidence=LEVEL] [--max-nodes=N]
                             [--max-edges=N] [--timeout-ms=N]
-                            [--include-self-loops] [--json]
+                            [--include-self-loops] [--within-type] [--json]
   knossos architecture-health <path|project-id> [--edge-kind=KIND] [--limit=N]
                               [--min-confidence=LEVEL] [--max-nodes=N]
                               [--max-edges=N] [--timeout-ms=N] [--include-external]

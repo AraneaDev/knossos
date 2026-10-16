@@ -91,6 +91,35 @@ final class OneTypeCycleTest extends KnossosTestCase
         self::assertSame([false, true], array_column($cycles, 'within_type'));
     }
 
+    /** The CLI takes it as `--within-type`, as the MCP tool takes `within_type`. */
+    #[Group('cli')]
+    public function testTheCliTakesWithinType(): void
+    {
+        $path = sys_get_temp_dir() . '/knossos-within-type-' . bin2hex(random_bytes(6)) . '.sqlite';
+        try {
+            $pdo = \Knossos\Store\SqliteConnection::open($path);
+            (new \Knossos\Store\MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+            [, $repository, $ids] = $this->storeFixture(pdo: $pdo);
+            $this->graph($repository, $ids, $ids['scan'], withinType: true);
+            $repository->completeScan($ids['project'], $ids['scan']);
+            unset($pdo, $repository);
+            $context = new \Knossos\Cli\CliCommandContext(new \Knossos\Cli\CliOptionParser(), new \Knossos\Cli\CliInputLoader(), new \Knossos\Runtime\RuntimeFactory(self::repositoryRoot()), $path);
+
+            ob_start();
+            try {
+                $status = (new \Knossos\Cli\Command\QueryCommand())->run('dependency-cycles', [$ids['project']], ['within-type' => [''], 'json' => ['']], $context);
+            } finally {
+                $output = (string) ob_get_clean();
+            }
+
+            self::assertSame(0, $status);
+            $cycles = json_decode($output, true, flags: JSON_THROW_ON_ERROR)['data']['cycles'];
+            self::assertSame([false, true], array_column($cycles, 'within_type'));
+        } finally {
+            @unlink($path);
+        }
+    }
+
     /**
      * The dashboard reads every cycle and counts them apart: `count` the
      * cycles between types, which the tile, the toasts and the gate go by,

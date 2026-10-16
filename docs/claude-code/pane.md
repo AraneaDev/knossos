@@ -235,7 +235,10 @@ Overview measures the project; the lists are on the other tabs.
 dead code, diagnostics, policy and drifted. Beside a figure, how it moved since
 the snapshot retained before this one (`▲1,788`, `▼1`, `±0`). A figure that
 deviates is coloured: cycles and diagnostics above zero in the warning colour,
-policy violations in the error colour, drifted files in the accent. A tile
+policy violations in the error colour, drifted files in the accent. The cycles
+figure counts cycles between types only; when some cycles stay inside one type,
+the tile says how many beside it, dim (`0 · 2 within one type`), and they
+neither warn nor move the figure. A tile
 draws its trend as a sparkline when it has room and five or more snapshots
 move. `dead code` counts the candidates the Issues tab lists and has no delta.
 The `drifted` label is a button that lists the drifted files, as `d` does. The
@@ -406,7 +409,12 @@ note says how many members it has.
 - Below 50 columns, the drawing becomes the chain as text and a member a row.
 
 **All cycles** lists the ten largest, each with its member count and the
-boundary most of its members are in.
+boundary most of its members are in. After them, under a `Within one type` line,
+come the cycles whose members all belong to one class, such as a tree walk whose
+methods call each other: each is named by its type (`Walk · 3 members`) and
+draws and opens like any other. The note counts them apart (`1 · 2 within one
+type`); only the cycles between types count towards the tile, the toasts, the
+commit note and the quality gate.
 
 `j` and `k` walk the members box by box in reading order, then on to the next
 cycle. `o` opens a member, `c` copies it, and `q` asks Claude how to break the
