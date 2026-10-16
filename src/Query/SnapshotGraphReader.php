@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Closure;
 use InvalidArgumentException;
+use Knossos\Store\SnapshotBounds;
 use Knossos\Store\SnapshotPayload;
 use PDO;
 
@@ -48,7 +50,7 @@ final readonly class SnapshotGraphReader
     ];
 
     /** The most rows one table of the active graph may hold, as the snapshot diff bounds it. */
-    private const ROW_LIMIT = 200_000;
+    private const ROW_LIMIT = SnapshotBounds::MAX_ROWS_PER_TABLE;
 
     /**
      * Reads through the project's database connection.
@@ -118,6 +120,57 @@ final readonly class SnapshotGraphReader
     public function archivedTablesById(string $scanId, array $tables): array
     {
         return $this->readStored($scanId, array_fill_keys($tables, null));
+    }
+
+    /**
+     * Each row of one archived table, every column, handed to `$sink` as it is
+     * read, so a caller that keeps only what it needs of each row never holds
+     * the table. A payload that can only be decoded whole still is, and its
+     * rows are then handed over one by one.
+     *
+     * @param Closure(array<string, mixed>): void $sink
+     */
+    public function eachArchivedRow(string $scanId, string $table, Closure $sink): void
+    {
+        // An object, so the reads below see the count the sink keeps.
+        $emitted = new \stdClass();
+        $emitted->rows = 0;
+        $counting = static function (array $row) use ($emitted, $sink): void {
+            ++$emitted->rows;
+            $sink($row);
+        };
+        $columns = [$table => null];
+        $blob = $this->payloadBlob($scanId);
+        if ($blob !== null) {
+            try {
+                $read = fread($blob, strlen(self::PREFIX)) === self::PREFIX && $this->streamed(self::pieces($blob), $columns, $counting) !== null;
+            } finally {
+                fclose($blob);
+            }
+            if ($read) {
+                return;
+            }
+        }
+        // A stream that broke off after handing over rows cannot be read again
+        // without handing them over twice.
+        if ($emitted->rows > 0) {
+            throw new InvalidArgumentException(sprintf('Snapshot archive payload is invalid: %s', $scanId));
+        }
+        $statement = $this->pdo->prepare('SELECT payload_json FROM scan_snapshots WHERE scan_id = :scan');
+        $statement->execute(['scan' => $scanId]);
+        $stored = $statement->fetchColumn();
+        if (!is_string($stored)) {
+            throw new InvalidArgumentException(sprintf('Snapshot facts are not retained: %s', $scanId));
+        }
+        if (str_starts_with($stored, self::PREFIX) && $this->streamed(self::slices($stored), $columns, $counting) !== null) {
+            return;
+        }
+        if ($emitted->rows > 0) {
+            throw new InvalidArgumentException(sprintf('Snapshot archive payload is invalid: %s', $scanId));
+        }
+        foreach ($this->decodedWhole($stored, $scanId, $columns)[$table] as $row) {
+            $sink($row);
+        }
     }
 
     /** Whether the stored payload is one the bounded read takes apart, rather than one decoded whole. */
@@ -282,9 +335,10 @@ final readonly class SnapshotGraphReader
      *
      * @param iterable<string> $pieces the stored text after its prefix
      * @param array<string, list<string>|null> $columns
+     * @param (Closure(array<string, mixed>): void)|null $sink takes each kept row instead of the result
      * @return array<string, list<array<string, mixed>>>|null
      */
-    private function streamed(iterable $pieces, array $columns): ?array
+    private function streamed(iterable $pieces, array $columns, ?Closure $sink = null): ?array
     {
         $inflate = @inflate_init(ZLIB_ENCODING_GZIP);
         if ($inflate === false) {
@@ -299,12 +353,12 @@ final readonly class SnapshotGraphReader
             $carry = substr($text, $whole);
             $compressed = base64_decode(substr($text, 0, $whole), true);
             $chunk = $compressed === false ? false : @inflate_add($inflate, $compressed, ZLIB_SYNC_FLUSH);
-            if ($chunk === false || !$this->take($state, $chunk, $facts, $columns)) {
+            if ($chunk === false || !$this->take($state, $chunk, $facts, $columns, $sink)) {
                 return null;
             }
         }
         $chunk = $carry === '' ? @inflate_add($inflate, '', ZLIB_FINISH) : false;
-        if ($chunk === false || !$this->take($state, $chunk, $facts, $columns)) {
+        if ($chunk === false || !$this->take($state, $chunk, $facts, $columns, $sink)) {
             return null;
         }
 
@@ -319,8 +373,9 @@ final readonly class SnapshotGraphReader
      * @param array{phase: string, table: ?string, buffer: string} $state
      * @param array<string, list<array<string, mixed>>> $facts
      * @param array<string, list<string>|null> $columns the tables to keep, each with its columns or null for all
+     * @param (Closure(array<string, mixed>): void)|null $sink takes each kept row instead of `$facts`
      */
-    private function take(array &$state, string $chunk, array &$facts, array $columns): bool
+    private function take(array &$state, string $chunk, array &$facts, array $columns, ?Closure $sink = null): bool
     {
         $buffer = $state['buffer'] . $chunk;
         $at = 0;
@@ -356,7 +411,12 @@ final readonly class SnapshotGraphReader
                             return false;
                         }
                         $kept = $columns[$state['table']];
-                        $facts[$state['table']][] = $kept === null ? $row : self::kept((string) $state['table'], $row, $kept);
+                        $row = $kept === null ? $row : self::kept((string) $state['table'], $row, $kept);
+                        if ($sink !== null) {
+                            $sink($row);
+                        } else {
+                            $facts[$state['table']][] = $row;
+                        }
                     }
                 } else {
                     break;

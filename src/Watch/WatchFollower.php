@@ -121,7 +121,7 @@ final readonly class WatchFollower
     private function following(?string $snapshot, bool $stale): array
     {
         $owner = WatchLock::owner($this->lockDir, $this->projectId);
-        $parent = function_exists('posix_getppid') ? posix_getppid() : null;
+        $parent = SessionLink::sessionProcess();
         return [
             'event' => 'following',
             'owner_pid' => isset($owner['pid']) ? (int) $owner['pid'] : null,

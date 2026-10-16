@@ -61,6 +61,8 @@ final readonly class SessionBriefRenderer
         $sections = [
             $this->section('Rules', $brief->rules),
             $this->section('Notes', $brief->notes),
+            // After Notes, so a tight budget drops this line before the notes themselves.
+            $this->section('Orphaned', self::missingNotes($brief->missingNotes)),
         ];
         if ($brief->state === 'fresh') {
             $sections[] = $this->section('Entry', $brief->entryPoints);
@@ -221,6 +223,25 @@ final readonly class SessionBriefRenderer
             $seconds >= 3_600 => intdiv($seconds, 3_600) . 'h',
             default => max(1, intdiv($seconds, 60)) . 'm',
         };
+    }
+
+    /**
+     * One line naming the notes a rename or a move left behind, or none.
+     *
+     * @return list<string>
+     */
+    private static function missingNotes(int $count): array
+    {
+        if ($count === 0) {
+            return [];
+        }
+
+        return [sprintf(
+            '%d note%s on a component the graph no longer has; list_annotations marks %s missing.',
+            $count,
+            $count === 1 ? ' sits' : 's sit',
+            $count === 1 ? 'it' : 'them',
+        )];
     }
 
     /**

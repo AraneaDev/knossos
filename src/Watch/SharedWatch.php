@@ -63,11 +63,15 @@ final readonly class SharedWatch
      *
      * @param callable(array<string, mixed>): void $emit
      * @param (Closure(): bool)|null $alive
+     * @param int|null $reportedPid the process id the session should signal,
+     *   when it is not this one: a watcher in a container is reached through
+     *   the docker client that started it, and its own id names another process
      */
-    public function run(string $path, int $pollMs, int $debounceMs, CancellationToken $cancellation, callable $emit, ?Closure $alive = null, ?int $maxPolls = null): void
+    public function run(string $path, int $pollMs, int $debounceMs, CancellationToken $cancellation, callable $emit, ?Closure $alive = null, ?int $maxPolls = null, ?int $reportedPid = null): void
     {
         // Who is watching: the session that started this process signals it by this id when it ends.
-        $emit = static fn(array $event) => $emit(in_array($event['event'] ?? null, ['ready', 'leading', 'following'], true) ? $event + ['pid' => getmypid()] : $event);
+        $pid = $reportedPid ?? SessionLink::ownProcess();
+        $emit = static fn(array $event) => $emit(in_array($event['event'] ?? null, ['ready', 'leading', 'following'], true) ? $event + ['pid' => $pid] : $event);
         [$allowed, $project, $refusal] = (new ScanTarget($this->pdo, $this->databasePath))->resolve(realpath($path) ?: $path);
         if ($project === null) {
             $emit(['event' => 'refused'] + ($refusal ?? ['status' => 'unscanned']));

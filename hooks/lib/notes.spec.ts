@@ -56,6 +56,10 @@ describe('ruleText', () => {
   it('says what a boundary may not depend on, or may depend on alone', () => {
     expect(ruleText(RULES[1]!)).toBe('core may not depend on php-worker, tests')
     expect(ruleText(RULES[2]!)).toBe('edge may depend only on itself, core, unassigned code (calls)')
+    // Vendor code has a target of its own, said in words like unassigned code.
+    expect(ruleText({ ...RULES[2]!, allow: ['core', '@external'], deny: ['@external'] })).toBe(
+      'edge may not depend on vendor code; edge may depend only on itself, core, vendor code (calls)',
+    )
   })
 })
 

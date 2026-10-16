@@ -23,6 +23,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  packages: read # pulls the dependency images quality.yml publishes
 
 # One run per branch. A second push cancels the first, because whoever pushed
 # again has already answered the question the running job was asked. The runs
@@ -83,8 +84,45 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Build pinned quality image
+      # The push to main that cut this release publishes the dependency images
+      # under the same key (tools/quality-deps-key leaves out the version
+      # lines a release changes), so the gate reuses them and adds only this
+      # commit's source, as every lane does. When they are not there yet (that
+      # run's image job is still going, or failed) the gate builds both from
+      # nothing, as it always did.
+      - name: Key the dependency images
         if: ${{ steps.release.outputs.release_created }}
+        id: key
+        run: tools/dependency-image-key | tee -a "$GITHUB_OUTPUT"
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check for the dependency images
+        if: ${{ steps.release.outputs.release_created }}
+        id: published
+        env:
+          QUALITY_DEPS: ${{ steps.key.outputs.quality }}
+          RUNTIME_DEPS: ${{ steps.key.outputs.runtime }}
+        run: |
+          if docker buildx imagetools inspect "$QUALITY_DEPS" >/dev/null 2>&1 \
+            && docker buildx imagetools inspect "$RUNTIME_DEPS" >/dev/null 2>&1; then
+            echo 'reuse=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'reuse=false' >> "$GITHUB_OUTPUT"
+            echo 'a dependency image is not published yet; building both'
+          fi
+      - uses: ./.github/actions/quality-image
+        if: ${{ steps.release.outputs.release_created && steps.published.outputs.reuse == 'true' }}
+        with:
+          quality-deps: ${{ steps.key.outputs.quality }}
+          runtime-deps: ${{ steps.key.outputs.runtime }}
+          runtime: "true"
+          registry: "true"
+      - name: Build pinned quality image
+        if: ${{ steps.release.outputs.release_created && steps.published.outputs.reuse != 'true' }}
         run: docker build --target quality -t knossos:quality .
 
       # The same versioned profile that gates every PR, run against the release
@@ -98,6 +136,7 @@ jobs:
         run: |
           docker run --name knossos-quality -e KNOSSOS_QUALITY_CONTAINER=1 \
             -e KNOSSOS_PHPUNIT_IN_COVERAGE=1 \
+            -e KNOSSOS_RUNTIME_IMAGE_GIVEN=1 \
             -e KNOSSOS_GATE_REPO=/workspace \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD:/workspace:ro" \
@@ -106,7 +145,9 @@ jobs:
       - name: Verify the released runtime image reports its version
         if: ${{ steps.release.outputs.release_created }}
         run: |
-          docker build --target runtime -t knossos:release .
+          # The release lane left knossos:quality-runtime behind, built from
+          # this commit either way; that is the image being released.
+          docker tag knossos:quality-runtime knossos:release
           docker run --rm knossos:release version --json
           docker run --rm knossos:release doctor --json
 

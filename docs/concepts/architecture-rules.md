@@ -19,8 +19,15 @@ active static graph. A policy names its source boundary, and each target, by
 stable ID, by exact name, or by any name the boundary has had, and declares
 allowed and/or forbidden target boundaries.
 Internal dependencies within the source boundary are implicitly allowed unless
-that boundary is explicitly denied. Use `@unassigned` to match targets without
-boundary membership.
+that boundary is explicitly denied. Two reserved targets match code outside
+every boundary: `@unassigned` is the project's own code that no boundary holds,
+and `@external` is vendor code and language builtins, which never join a
+boundary, including the npm packages the TypeScript worker records. Before
+0.32 vendor code counted as `@unassigned`, so a policy written then may need
+`@external` beside it: an allow list that should let a boundary call its
+libraries names `@external`, and a deny list that should keep a boundary off
+vendor code names `@external` too, since `@unassigned` alone no longer matches
+it.
 
 A policy takes these fields and no others: `id` (required, unique, at most 100
 bytes), `from_boundary` (required), `allow_targets`, `deny_targets` (at least

@@ -134,7 +134,25 @@ final readonly class SessionBriefService
             // is not there, which is exactly the case this has to catch.
             is_dir($queried),
             $rootStatus['roots_file'],
+            $this->missingNotes($projectId),
         );
+    }
+
+    /**
+     * How many notes sit on a name no node in the active graph carries.
+     *
+     * Notes are keyed by name, so a rename or a move leaves them behind;
+     * `list_annotations` marks each one `missing`.
+     */
+    private function missingNotes(string $projectId): int
+    {
+        $statement = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM annotations a WHERE a.project_id = :project AND a.kind = 'note' AND a.value <> '' " .
+            'AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name)',
+        );
+        $statement->execute(['project' => $projectId]);
+
+        return (int) $statement->fetchColumn();
     }
 
     /**

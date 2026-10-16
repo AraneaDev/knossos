@@ -20,6 +20,13 @@ use Knossos\Scanner\Worker\WorkerExecutionPolicy;
  */
 final class ProjectConfigurationLoader
 {
+    /**
+     * Names a policy gives targets of their own: `@unassigned` is project code
+     * in no boundary, `@external` vendor code and builtins. No boundary may
+     * take one, or a policy naming it would mean something else.
+     */
+    public const RESERVED_BOUNDARY_NAMES = ['@unassigned', '@external'];
+
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
     public const FRAMEWORKS = ['laravel', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
@@ -118,6 +125,9 @@ final class ProjectConfigurationLoader
             self::knownKeys($boundary, self::BOUNDARY_KEYS, 'boundary');
             if (!is_string($boundary['name'] ?? null) || $boundary['name'] === '') {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: boundary name must be non-empty.');
+            }
+            if (in_array($boundary['name'], self::RESERVED_BOUNDARY_NAMES, true)) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: boundary name ' . $boundary['name'] . ' is reserved for policy targets.');
             }
             if (isset($seenBoundaryNames[$boundary['name']])) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: duplicate boundary name ' . $boundary['name'] . '.');

@@ -81,8 +81,11 @@ shows a note renders them.
 
 A result marks one of your notes `stale` when a file it rests on changed. Check
 it against the code, then re-record it (that confirms it), correct it, or
-remove it. A note by a person (`author: user`) is theirs: never rewrite or
-remove it, and never write through the pane's own command (`knossos annotate`).
+remove it. `list_annotations` marks a note `component_status: missing` when no
+component carries its name any more, after a rename or a move: write it again
+on the new name and remove the old one. A note by a person (`author: user`) is
+theirs: never rewrite or remove it, and never write through the pane's own
+command (`knossos annotate`).
 
 Worth writing:
 

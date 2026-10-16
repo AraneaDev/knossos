@@ -274,7 +274,7 @@ range, or `no change`. It appears from five retained snapshots on.
 references, which is wider than the dead-code tile, so the two differ by
 design.
 
-A snapshot with more than 200,000 rows in one table is not read whole, so only
+A snapshot with more than 300,000 rows in one table is not read whole, so only
 what a count says is kept of it: components, relationships and diagnostics.
 Its cycles, `gate unreferenced` and max degree are not counted, those rows are
 left out, and the card says so in a line of its own, with the table and its
@@ -504,7 +504,7 @@ time in its note (`since 2026-10-04 09:14`). A session that began among the
 older scans the ledger keeps merged lists what changed after it and says its
 start is approximate.
 
-With no watcher (switched off, or a container install), the tab adds up what
+With no watcher (switched off), the tab adds up what
 the session's own turn briefs reported, and says so. That list keeps at most
 500 files and 500 tests, and says `partial` past that.
 
@@ -861,7 +861,9 @@ scan it finishes reloads the pane.
   mod, and stops itself once the process that started it is gone. One that
   ends on its own is started again after 30 seconds, then 60, then 90. After
   three restarts in a row it stays off; the count starts over once a watcher
-  comes up and leads or follows. A container install offers no watcher.
+  comes up and leads or follows. A container install runs the watcher in a
+  container of its own, attached to the docker client, so it stops when the
+  client is stopped or goes away.
 - **Stuck scans.** Each scan may run five minutes. Past that it is stopped,
   and killed three seconds later. A follower reports the leader as stuck when
   its heartbeat is more than a minute old.

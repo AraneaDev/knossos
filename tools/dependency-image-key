@@ -1,0 +1,26 @@
+#!/bin/sh
+# Names the two dependency images for today, one `name=value` per line:
+# `refresh` (the apt refresh build argument), `quality` and `runtime` (their
+# registry references). quality.yml publishes them under these names, and the
+# release gate reuses them, so both must name them the same way.
+#
+# The date refreshes the apt layers daily. A security fix Debian publishes
+# later that day would still miss the image already built under today's key,
+# and the release lane's scan would fail on it until midnight, so the key also
+# carries a stamp of the security archive's package index: a new security
+# release is a new key the same day. A stamp that cannot be read leaves the
+# date alone in charge. KNOSSOS_SECURITY_STAMP stands in for the stamp, so a
+# test needs no network.
+set -eu
+cd "$(dirname "$0")/.."
+if [ "${KNOSSOS_SECURITY_STAMP+set}" = set ]; then
+    security=$KNOSSOS_SECURITY_STAMP
+else
+    security=$(curl -fsSL --max-time 20 https://deb.debian.org/debian-security/dists/trixie-security/InRelease \
+        | awk '$3 == "main/binary-amd64/Packages.xz" && !found { found = 1; print substr($1, 1, 12) }') || security=
+fi
+refresh="$(date -u +%F)-${security:-unstamped}"
+key="$(tools/quality-deps-key)-$refresh"
+printf 'refresh=%s\n' "$refresh"
+printf 'quality=ghcr.io/araneadev/knossos:quality-deps-%s\n' "$key"
+printf 'runtime=ghcr.io/araneadev/knossos:runtime-deps-%s\n' "$key"

@@ -1325,7 +1325,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         [$dbPath, $projectId, $boundaryId, , $cleanup] = $this->richPopulatedTestDatabase();
         $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
         file_put_contents($policiesFile, json_encode([
-            ['id' => 'pol1', 'from_boundary' => $boundaryId, 'allow_targets' => ['@unassigned']],
+            // Vendor code is @external, not @unassigned: an allow list admits both.
+            ['id' => 'pol1', 'from_boundary' => $boundaryId, 'allow_targets' => ['@unassigned', '@external']],
         ]));
         try {
             $context = new CliCommandContext(

@@ -142,6 +142,26 @@ final class SessionBriefServiceTest extends KnossosTestCase
         assertSame(5, count($notes));
     }
 
+    /** A note on a name the graph no longer has is counted, so the session that wrote it can move it. */
+    #[Group('query')]
+    public function testTheBriefCountsNotesWhoseComponentIsGone(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
+        $insert = $pdo->prepare(
+            'INSERT INTO annotations(project_id, canonical_name, kind, value, created_at, updated_at) ' .
+            "VALUES(:p, :n, 'note', 'x', '2026-09-01T12:00:00+00:00', '2026-09-01T12:00:00+00:00')",
+        );
+        $insert->execute(['p' => $ids['project'], 'n' => 'App\\Checkout']);
+        $insert->execute(['p' => $ids['project'], 'n' => 'App\\RenamedAway']);
+
+        $service = new SessionBriefService($pdo);
+
+        assertSame(1, $service->gather($root)->missingNotes);
+        assertContains('1 note sits on a component the graph no longer has', $service->brief($root));
+    }
+
     #[Group('query')]
     public function testNotesAreCappedNewestFirstAndOnlyOfKindNote(): void
     {

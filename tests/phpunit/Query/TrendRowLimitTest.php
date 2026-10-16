@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
+use Knossos\Store\SnapshotBounds;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\DashboardService;
 use Knossos\Store\SnapshotPayload;
@@ -29,7 +30,7 @@ final class TrendRowLimitTest extends KnossosTestCase
         try {
             $scan = (string) $pdo->query("SELECT active_scan_id FROM projects WHERE id = '{$projectId}'")->fetchColumn();
             $pdo->prepare(
-                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 200001) "
+                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < " . (SnapshotBounds::MAX_ROWS_PER_TABLE + 1) . ") "
                 . "INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, origin, confidence, owner_key, last_scan_id) "
                 . "SELECT 'bulk-' || x, :project, 'php', 'function', 'bulk' || x, 'bulk' || x, 'ast', 'certain', 'bulk', :scan FROM n",
             )->execute(['project' => $projectId, 'scan' => $scan]);
@@ -38,7 +39,7 @@ final class TrendRowLimitTest extends KnossosTestCase
             $series = ArchitectureQueryService::forDatabase($pdo)->architectureTrends($projectId, 2)->data['series'];
             $active = array_values(array_filter($series, static fn(array $p): bool => ($p['active'] ?? false) === true))[0];
             assertSame([false, true], [$active['complete'], $active['partial']]);
-            assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => 200000], $active['reason']);
+            assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => SnapshotBounds::MAX_ROWS_PER_TABLE], $active['reason']);
             // What COUNT(*) says without reading the rows; what needs the graph itself is not counted.
             assertSame($rows, $active['counts']['components']);
             assertSame(['cycles' => null, 'max_degree' => null, 'error_diagnostics' => 0, 'warning_diagnostics' => 0, 'unreferenced_candidates' => null], $active['metrics']);
@@ -47,7 +48,7 @@ final class TrendRowLimitTest extends KnossosTestCase
             assertSame('ok', $dashboard['status']);
             $point = array_values(array_filter($dashboard['trend'], static fn(array $p): bool => $p['snapshot_id'] === $scan))[0];
             assertSame(['cycles' => null, 'max_degree' => null, 'dead_code' => null, 'diagnostics' => 0, 'components' => $rows], array_intersect_key($point, array_flip(['cycles', 'max_degree', 'dead_code', 'diagnostics', 'components'])));
-            assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => 200000], $dashboard['trend_limit']);
+            assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => SnapshotBounds::MAX_ROWS_PER_TABLE], $dashboard['trend_limit']);
         } finally {
             $this->removeTempTree($root);
         }

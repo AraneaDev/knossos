@@ -5,6 +5,7 @@
 #        knossos-run-container.sh component-detail <project-dir> <name>
 #        knossos-run-container.sh file-detail <project-dir> <file>
 #        knossos-run-container.sh scan <project-dir>
+#        knossos-run-container.sh watch <project-dir> [--poll-ms=N]
 #        knossos-run-container.sh allow-root <root>
 #        knossos-run-container.sh session-changes <project-dir> --since=<snapshot>
 #        knossos-run-container.sh session-head <project-dir>
@@ -113,6 +114,8 @@ case "$SUBCOMMAND" in
     # A git log of the last 30 days, a search out from one component, two route searches, a note.
     churn|blast-radius|path-between|annotate) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     allow-root) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
+    # The live watcher runs until the session stops it.
+    watch) LIMIT=0 ;;
     session-changes|session-head|session-diff|boundary-couplings) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     *) exit 0 ;;
 esac
@@ -217,6 +220,15 @@ if [ "$SUBCOMMAND" = boundary-couplings ]; then
     case "$2" in --to=) exit 0 ;; --to=*) ;; *) exit 0 ;; esac
     is_text_line "$1" 520 && is_text_line "$2" 520 || exit 0
 fi
+# watch takes at most its poll interval, in milliseconds: an option such as
+# `--db=...` would point it at another graph.
+if [ "$SUBCOMMAND" = watch ]; then
+    [ "$#" -le 1 ] || exit 0
+    if [ "$#" -eq 1 ]; then
+        case "$1" in --poll-ms=*[!0-9]* | --poll-ms=) exit 0 ;; --poll-ms=*) ;; *) exit 0 ;; esac
+    fi
+    set -- --shared "$@"
+fi
 # allow-root takes nothing but the root, and always writes: the pane runs it
 # only after the person confirmed, so a preview would answer a question nobody
 # asked. An option such as `--db=...` would grant the root in another file.
@@ -282,6 +294,25 @@ esac
 # without it the name falls back to the process id alone.
 NAME_SUFFIX=$(date +%s 2>/dev/null) || NAME_SUFFIX=''
 NAME="knossos-hook-$$${NAME_SUFFIX:+-$NAME_SUFFIX}"
+# The watcher replaces this shell with the docker client, so the session
+# stopping the child it holds stops the client, which forwards the signal. The
+# watcher inside cannot tell that the session is gone by its parent (that is
+# the container's init) nor name itself by its own id (that is another process
+# on the host), so it is told the client's id, which exec makes this shell's,
+# and the session's, this shell's parent, which is what a local watcher sees as
+# its own parent; it runs attached: when the client goes, its stdin closes and
+# it stops.
+if [ "$SUBCOMMAND" = watch ]; then
+    exec docker run --rm -i --init --name "$NAME" \
+        -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
+        -e "KNOSSOS_WATCH_PID=$$" \
+        -e "KNOSSOS_WATCH_SESSION=$PPID" \
+        -e KNOSSOS_WATCH_ALIVE=stdin \
+        -v "$PROJECT_DIR:$PROJECT_DIR:ro" \
+        -v "$DATA:/data" \
+        "$IMAGE" watch "$TARGET" "$@" 2>/dev/null
+fi
+
 if TIMEOUT_BIN="$(find_timeout)"; then
     OUTPUT="$("$TIMEOUT_BIN" -k 2 "$LIMIT" docker run --rm --init --name "$NAME" ${USER_ARG:+"$USER_ARG"} \
         -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
