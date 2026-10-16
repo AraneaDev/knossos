@@ -62,27 +62,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      # Lowercased because a registry reference must be.
-      #
-      # The date refreshes the apt layers daily. A security fix Debian
-      # publishes later that day would still miss the image already built
-      # under today's key, and the release lane's scan would fail on it until
-      # midnight, so the key also carries a stamp of the security archive's
-      # package index: a new security release is a new key the same day. A
-      # stamp that cannot be read leaves the date alone in charge.
+      # Lowercased because a registry reference must be. tools/dependency-image-key
+      # says why the key carries the date and the security archive's stamp; the
+      # release gate keys the images the same way to reuse them.
       - name: Key the dependency images
         id: key
         run: |
-          security=$(curl -fsSL --max-time 20 https://deb.debian.org/debian-security/dists/trixie-security/InRelease \
-            | awk '$3 == "main/binary-amd64/Packages.xz" && !found { found = 1; print substr($1, 1, 12) }') || security=
-          refresh="$(date -u +%F)-${security:-unstamped}"
-          key="$(tools/quality-deps-key)-$refresh"
-          {
-            echo "refresh=$refresh"
-            echo "quality=ghcr.io/araneadev/knossos:quality-deps-$key"
-            echo "runtime=ghcr.io/araneadev/knossos:runtime-deps-$key"
-          } >> "$GITHUB_OUTPUT"
-          printf 'dependency key: %s\n' "$key"
+          tools/dependency-image-key | tee -a "$GITHUB_OUTPUT"
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: ${{ env.REGISTRY_ROUTE == 'true' }}
         with:
