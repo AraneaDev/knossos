@@ -47,12 +47,29 @@ final class ExternalPolicyTargetTest extends KnossosTestCase
         self::assertSame(['App\\Worker'], $this->violatedTargets($unassigned->data['violations']));
     }
 
+    /** An npm package the TypeScript worker imports is a node of kind `package` marked external, and vendor code all the same. */
+    #[Group('query')]
+    public function testAnExternalPackageImportIsExternalToo(): void
+    {
+        [$queries, $ids, $backend, $repository] = $this->fixture(complete: false);
+        $react = StableId::symbol($ids['project'], 'typescript', 'package', 'react');
+        $repository->saveNode($react, $ids['project'], 'typescript', 'package', 'react', 'react', null, $ids['file'], 1, 1, 'ast', 'certain', ['external' => true], 'typescript:file:src/app.ts', $ids['scan']);
+        $repository->saveEdge(StableId::edge($ids['project'], 'imports', $ids['checkout'], $react, 'react'), $ids['project'], 'imports', $ids['checkout'], $react, $ids['file'], 2, 2, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $result = $queries->checkArchitecture($ids['project'], [
+            ['id' => 'backend-allow', 'from_boundary' => $backend, 'allow_targets' => [$backend, '@external'], 'edge_kinds' => ['calls', 'imports']],
+        ]);
+
+        self::assertSame(['App\\Worker'], $this->violatedTargets($result->data['violations']));
+    }
+
     /**
      * Checkout (in Backend) calls Invoice (Backend too), App\Worker (in no boundary) and a vendor class.
      *
-     * @return array{ArchitectureQueryService, array<string, string>, string}
+     * @return array{ArchitectureQueryService, array<string, string>, string, \Knossos\Store\GraphRepository}
      */
-    private function fixture(): array
+    private function fixture(bool $complete = true): array
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
         $worker = StableId::symbol($ids['project'], 'php', 'class', 'App\\Worker');
@@ -66,9 +83,11 @@ final class ExternalPolicyTargetTest extends KnossosTestCase
         $repository->saveBoundary($backend, $ids['project'], 'Backend', ['path_prefix' => 'src'], 'explicit', $ids['scan']);
         $repository->saveBoundaryMembership($backend, $ids['project'], $ids['checkout'], $ids['scan']);
         $repository->saveBoundaryMembership($backend, $ids['project'], $ids['invoice'], $ids['scan']);
-        $repository->completeScan($ids['project'], $ids['scan']);
+        if ($complete) {
+            $repository->completeScan($ids['project'], $ids['scan']);
+        }
 
-        return [ArchitectureQueryService::forDatabase($pdo), $ids, $backend];
+        return [ArchitectureQueryService::forDatabase($pdo), $ids, $backend, $repository];
     }
 
     /**

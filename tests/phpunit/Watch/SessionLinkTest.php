@@ -58,12 +58,41 @@ final class SessionLinkTest extends KnossosTestCase
         self::assertNull(SessionLink::fromEnvironment(['KNOSSOS_WATCH_ALIVE' => 'stdin'], $read)->alive);
     }
 
+    /**
+     * Two sessions decide whether they are the same one by the process that
+     * started each watcher. In a container that is init for every watcher, so
+     * the hook names the session from outside, and the watcher's own id is
+     * the docker client's, as everywhere else it is reported.
+     */
+    #[Group('watch')]
+    public function testInAContainerTheSessionAndTheWatcherAreTheOnesTheHookNamed(): void
+    {
+        $container = ['KNOSSOS_WATCH_PID' => '4242', 'KNOSSOS_WATCH_SESSION' => '777', 'KNOSSOS_WATCH_ALIVE' => 'stdin'];
+
+        self::assertSame(777, SessionLink::sessionProcess($container));
+        self::assertSame(4242, SessionLink::ownProcess($container));
+        self::assertSame(function_exists('posix_getppid') ? posix_getppid() : null, SessionLink::sessionProcess([]));
+        self::assertSame(getmypid(), SessionLink::ownProcess([]));
+    }
+
+    /** A process id handed to a watcher on the host is not trusted: the pane would signal whatever it names. */
+    #[Group('watch')]
+    public function testOnTheHostAHandedPidIsIgnored(): void
+    {
+        $host = ['KNOSSOS_WATCH_PID' => '4242', 'KNOSSOS_WATCH_SESSION' => '777'];
+
+        self::assertNull(SessionLink::fromEnvironment($host, STDIN)->reportedPid);
+        self::assertSame(getmypid(), SessionLink::ownProcess($host));
+        self::assertSame(function_exists('posix_getppid') ? posix_getppid() : null, SessionLink::sessionProcess($host));
+    }
+
     /** Anything but a plain positive number is no process id. */
     #[Group('watch')]
     public function testAPidThatIsNotAPlainNumberIsIgnored(): void
     {
         foreach (['', '0', '1', '-5', '12a', ' 7'] as $value) {
-            self::assertNull(SessionLink::fromEnvironment(['KNOSSOS_WATCH_PID' => $value], STDIN)->reportedPid, var_export($value, true));
+            [$read] = self::pipe();
+            self::assertNull(SessionLink::fromEnvironment(['KNOSSOS_WATCH_PID' => $value, 'KNOSSOS_WATCH_ALIVE' => 'stdin'], $read)->reportedPid, var_export($value, true));
         }
     }
 

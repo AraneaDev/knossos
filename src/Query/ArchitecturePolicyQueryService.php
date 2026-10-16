@@ -37,7 +37,8 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
     /**
      * Targets a policy may name besides a boundary: `@unassigned` is project
      * code in no boundary, `@external` is vendor code and builtins (the
-     * `external_*` stand-ins), which never join one.
+     * `external_*` stand-ins, and packages a worker marks external, such as an
+     * npm import), which never join one.
      */
     public const RESERVED_TARGETS = ['@unassigned', '@external'];
 
@@ -119,7 +120,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
             $sourceBoundaryIds = array_column($boundaries[$edge['source_id']] ?? [], 'id');
             $targetBoundaryIds = array_column($boundaries[$edge['target_id']] ?? [], 'id');
             $effectiveTargets = $targetBoundaryIds !== [] ? $targetBoundaryIds
-                : [str_starts_with((string) $edge['target_kind'], SharedNodeKinds::EXTERNAL_PREFIX) ? '@external' : '@unassigned'];
+                : [str_starts_with((string) $edge['target_kind'], SharedNodeKinds::EXTERNAL_PREFIX) || (int) $edge['target_external'] === 1 ? '@external' : '@unassigned'];
             foreach ($compiled as $policy) {
                 if (!in_array($policy['from_id'], $sourceBoundaryIds, true) || !in_array($edge['kind'], $policy['edge_kinds'], true)) {
                     continue;
@@ -295,7 +296,9 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
         $statement = $this->pdo->prepare(
             'SELECT e.id, e.kind, e.source_id, e.target_id, e.confidence, e.origin, e.start_line, e.end_line, ' .
             'f.relative_path, source.kind AS source_kind, source.canonical_name AS source_name, ' .
-            'target.kind AS target_kind, target.canonical_name AS target_name FROM edges e ' .
+            'target.kind AS target_kind, target.canonical_name AS target_name, ' .
+            // An npm package the TypeScript worker imports is a `package` node marked external, vendor code all the same.
+            "json_extract(target.attributes_json, '$.external') AS target_external FROM edges e " .
             'JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
             'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? ' .
             sprintf('AND e.kind IN (%s) ', $placeholders($kinds)) .

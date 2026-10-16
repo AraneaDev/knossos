@@ -22,8 +22,12 @@ Internal dependencies within the source boundary are implicitly allowed unless
 that boundary is explicitly denied. Two reserved targets match code outside
 every boundary: `@unassigned` is the project's own code that no boundary holds,
 and `@external` is vendor code and language builtins, which never join a
-boundary. An allow list that should let a boundary call its libraries names
-`@external`; one that names only `@unassigned` no longer admits them.
+boundary, including the npm packages the TypeScript worker records. Before
+0.32 vendor code counted as `@unassigned`, so a policy written then may need
+`@external` beside it: an allow list that should let a boundary call its
+libraries names `@external`, and a deny list that should keep a boundary off
+vendor code names `@external` too, since `@unassigned` alone no longer matches
+it.
 
 A policy takes these fields and no others: `id` (required, unique, at most 100
 bytes), `from_boundary` (required), `allow_targets`, `deny_targets` (at least

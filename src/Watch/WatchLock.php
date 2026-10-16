@@ -71,8 +71,9 @@ final class WatchLock
      */
     public function write(array $state): void
     {
-        $parent = function_exists('posix_getppid') ? posix_getppid() : null;
-        $text = json_encode(['pid' => getmypid(), 'parent_pid' => $parent, 'heartbeat' => time()] + $state, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        // As a session sees them: from a container, the ids the hook named.
+        $parent = SessionLink::sessionProcess();
+        $text = json_encode(['pid' => SessionLink::ownProcess(), 'parent_pid' => $parent, 'heartbeat' => time()] + $state, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
         $temporary = $this->statePath . '.' . getmypid() . '.tmp';
         if ($text !== false && @file_put_contents($temporary, $text) !== false && !@rename($temporary, $this->statePath)) {
             @unlink($temporary);

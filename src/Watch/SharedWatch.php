@@ -70,7 +70,7 @@ final readonly class SharedWatch
     public function run(string $path, int $pollMs, int $debounceMs, CancellationToken $cancellation, callable $emit, ?Closure $alive = null, ?int $maxPolls = null, ?int $reportedPid = null): void
     {
         // Who is watching: the session that started this process signals it by this id when it ends.
-        $pid = $reportedPid ?? getmypid();
+        $pid = $reportedPid ?? SessionLink::ownProcess();
         $emit = static fn(array $event) => $emit(in_array($event['event'] ?? null, ['ready', 'leading', 'following'], true) ? $event + ['pid' => $pid] : $event);
         [$allowed, $project, $refusal] = (new ScanTarget($this->pdo, $this->databasePath))->resolve(realpath($path) ?: $path);
         if ($project === null) {

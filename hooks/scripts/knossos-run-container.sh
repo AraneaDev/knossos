@@ -299,11 +299,14 @@ NAME="knossos-hook-$$${NAME_SUFFIX:+-$NAME_SUFFIX}"
 # watcher inside cannot tell that the session is gone by its parent (that is
 # the container's init) nor name itself by its own id (that is another process
 # on the host), so it is told the client's id, which exec makes this shell's,
-# and runs attached: when the client goes, its stdin closes and it stops.
+# and the session's, this shell's parent, which is what a local watcher sees as
+# its own parent; it runs attached: when the client goes, its stdin closes and
+# it stops.
 if [ "$SUBCOMMAND" = watch ]; then
     exec docker run --rm -i --init --name "$NAME" \
         -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
         -e "KNOSSOS_WATCH_PID=$$" \
+        -e "KNOSSOS_WATCH_SESSION=$PPID" \
         -e KNOSSOS_WATCH_ALIVE=stdin \
         -v "$PROJECT_DIR:$PROJECT_DIR:ro" \
         -v "$DATA:/data" \

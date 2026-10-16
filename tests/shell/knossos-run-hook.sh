@@ -330,7 +330,7 @@ expect_output 'container scan runs the rescan command' "img:1|rescan|$ABS_PROJ|-
 : > "$STUBS/dockerbin/env"; : > "$STUBS/dockerbin/flags"
 expect_output 'container watch runs the shared watcher on the project' "img:1|watch|$ABS_PROJ|--shared|--poll-ms=1500|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --poll-ms=1500
-if grep -qx 'KNOSSOS_WATCH_ALIVE=stdin' "$STUBS/dockerbin/env" && grep -qx 'KNOSSOS_WATCH_PID=[0-9][0-9]*' "$STUBS/dockerbin/env"; then
+if grep -qx 'KNOSSOS_WATCH_ALIVE=stdin' "$STUBS/dockerbin/env" && grep -qx 'KNOSSOS_WATCH_PID=[0-9][0-9]*' "$STUBS/dockerbin/env" && grep -qx 'KNOSSOS_WATCH_SESSION=[0-9][0-9]*' "$STUBS/dockerbin/env"; then
     printf 'ok   %s\n' 'container watch reports the client pid and watches its stdin'
 else
     printf 'FAIL %s (env %s)\n' 'container watch reports the client pid and watches its stdin' "$(cat "$STUBS/dockerbin/env")"; failures=$((failures + 1))
