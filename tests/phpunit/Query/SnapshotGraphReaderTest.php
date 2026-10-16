@@ -211,11 +211,10 @@ final class SnapshotGraphReaderTest extends KnossosTestCase
             $fetched = new SnapshotGraphReader($pdo, blobReads: false);
             assertSame(null, (new \ReflectionMethod($fetched, 'payloadBlob'))->invoke($fetched, $scan));
             assertSame($reader->archivedById($scan), $fetched->archivedById($scan));
-            assertSame($reader->archivedTablesById($scan, ['edges']), $fetched->archivedTablesById($scan, ['edges']));
-            assertSame(true, $reader->isStreamable($scan));
+            assertSame(self::rowsOf($reader, $scan, 'edges'), self::rowsOf($fetched, $scan, 'edges'));
             $whole = json_decode(SnapshotPayload::decode($stored), true, 512, JSON_THROW_ON_ERROR)['facts'];
             foreach (['nodes', 'edges', 'boundary_memberships'] as $table) {
-                assertSame($whole[$table], $reader->archivedTablesById($scan, [$table])[$table], $table);
+                assertSame($whole[$table], self::rowsOf($reader, $scan, $table), $table);
             }
         } finally {
             $this->removeTempTree($root);
@@ -332,5 +331,20 @@ final class SnapshotGraphReaderTest extends KnossosTestCase
         assertSame(null, $gone);
         assertSame('Snapshot facts are not retained: scan_null', $error?->getMessage());
         assertSame([], $warnings);
+    }
+
+    /**
+     * Every row of one archived table, as eachArchivedRow hands them over.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function rowsOf(SnapshotGraphReader $reader, string $scan, string $table): array
+    {
+        $rows = [];
+        $reader->eachArchivedRow($scan, $table, static function (array $row) use (&$rows): void {
+            $rows[] = $row;
+        });
+
+        return $rows;
     }
 }
