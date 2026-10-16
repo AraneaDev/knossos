@@ -329,6 +329,10 @@ export const SHOTS = {
         press("8"),
         wait("churn", String.raw`Churn hotspots`),
     ]),
+    notes: pane("notes", [
+        press("9"),
+        wait("notes", String.raw`\d+ notes?( ·|$)`),
+    ]),
     finder: pane("finder", find(FIXTURE.hubLetters, "hub")),
     route: pane("route", [
         ...find(FIXTURE.routeFrom, "routeFrom"),

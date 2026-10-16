@@ -43,6 +43,13 @@ export const REACH = {
   unused: m('∅', 'nothing reaches it', 'dim', 'unused'),
 } as const
 
+/** What a note on the Notes tab needs from the person: its component gone, its files changed, the model asked to look. */
+export const NOTE = {
+  missing: m('▲', 'on a name the graph no longer holds', 'warn', 'missing'),
+  stale: m('≈', 'its files changed since it was written', 'warn', 'stale'),
+  flagged: m('?', 'flagged for the model to check', 'accent', 'flagged'),
+} as const
+
 /** How a file moved, and a scan on the session's timeline. */
 export const CHANGE = {
   added: m('+', 'added', 'ok'),

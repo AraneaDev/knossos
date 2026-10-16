@@ -7,6 +7,7 @@ import type { AllowState, DiffFold, Inspected, KnossosView, NoteState, PaneTab, 
 import { diffPage, diffView } from '../lib/diff'
 import { parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
 import { askPrompt, editTarget, locOf, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
+import { nextFilter } from '../lib/notes-view'
 import { editorCommand } from '../lib/rows'
 import type { Loc } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
@@ -322,6 +323,7 @@ async function pressPane(io: Port, id: string, surface?: RenderSurface): Promise
   await request(io, 'branch')
   await request(io, 'peek')
   await request(io, 'churn')
+  await request(io, 'notes')
 }
 
 /** A press in the detail beside the tab (`peek:N`): opens what it lists as the detail itself. */
@@ -594,6 +596,9 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['keys', viewing(v => ({ ...v, showKeys: !v.showKeys }))],
   ['keys-close', viewing(v => ({ ...v, showKeys: false }))],
   ['filter', io => openFilter(io)],
+  ['notes-narrow', io => openNotesFilter(io)],
+  ['notes-filter', viewing(v => ({ ...v, notesFilter: nextFilter(v.notesFilter ?? 'all'), selected: 0 }))],
+  ['notes-clear', viewing(v => ({ ...v, notesFilter: 'all', notesText: '', filtering: false, selected: 0 }))],
   ['clear', viewing(v => ({ ...v, filter: '', filtering: false, degree: null, selected: 0 }))],
   ['sort', viewing(v => ({ ...v, sort: SORTS[(SORTS.indexOf(v.sort) + 1) % SORTS.length] ?? 'in', selected: 0 }))],
   ['rescan', io => requestRescan(io)],
@@ -626,14 +631,32 @@ async function pressAction(io: Port, id: string, surface?: RenderSurface): Promi
   return PRESSES.get(press.key)!(io, press.rest, surface, id)
 }
 
-/** Into the field `field` (the finder's, a note's, the hubs filter's): what was typed, kept at once. */
+/** Into the field `field` (the finder's, a note's, the hubs filter's, the Notes tab's): what was typed, kept at once. */
 function typeInto(io: Port, field: string, text: string): Promise<void> {
-  return field === 'find' ? typeQuery(io, text) : field === 'note' ? typeNote(io, text) : typeFilter(io, text)
+  return field === 'find' ? typeQuery(io, text) : field === 'note' ? typeNote(io, text) : field === 'notes-filter' ? typeNotesFilter(io, text) : typeFilter(io, text)
 }
 
 /** Enter in the field `field`. */
 function submitFrom(io: Port, field: string, text: string): Promise<void> {
-  return field === 'find' ? submitQuery(io, text) : field === 'note' ? submitNote(io, text) : submitFilter(io, text)
+  return field === 'find' ? submitQuery(io, text) : field === 'note' ? submitNote(io, text) : field === 'notes-filter' ? submitNotesFilter(io, text) : submitFilter(io, text)
+}
+
+/** Opens the field that narrows the Notes tab by text, and moves the focus into it once it is drawn. */
+async function openNotesFilter(io: Port): Promise<void> {
+  await io.state.view.update((v): KnossosView => ({ ...v, tab: 'notes', filtering: true }))
+  focusField(io, 'notes-filter')
+}
+
+/** The Notes tab's text as typed: the list is read again for it, the marker back at the top. */
+async function typeNotesFilter(io: Port, text: string): Promise<void> {
+  await io.state.view.update(v => ({ ...v, notesText: text, selected: 0 }))
+  await request(io, 'notes')
+}
+
+/** Enter in the Notes tab's field: keep the text (an empty one clears it) and close the field. */
+async function submitNotesFilter(io: Port, text: string): Promise<void> {
+  await io.state.view.update(v => ({ ...v, notesText: text.trim(), filtering: false, selected: 0 }))
+  await request(io, 'notes')
 }
 
 /** What the pane's elements do, for the pane drawn through `io`: each action's failure (a teardown under it) is swallowed. */

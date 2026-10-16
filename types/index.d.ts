@@ -144,6 +144,8 @@ export type Dashboard = {
   fan_in: FanIn[]
   fan_in_truncated: boolean
   // Optional from here on: a knossos older than the mod sends none of them.
+  /** How many notes the project holds, and how many need the person: the Overview's line about them. */
+  notes?: NoteCounts
   /** The first dead-code candidates; `dead_code_candidates` counts them all. */
   dead_code?: DeadCode[]
   summary?: Summary
@@ -518,8 +520,52 @@ export type DiffState = { name: string; rev: string; snapshot: string | null; ph
  */
 export type DiffFold = { name: string; rev: string; snapshot: string | null; open: number[]; from: number }
 
-/** The pane's tabs, in their hotkey order (1 to 8). */
-export type PaneTab = 'overview' | 'hubs' | 'boundaries' | 'cycles' | 'issues' | 'changes' | 'branch' | 'churn'
+/** The pane's tabs, in their hotkey order (1 to 9). */
+export type PaneTab = 'overview' | 'hubs' | 'boundaries' | 'cycles' | 'issues' | 'changes' | 'branch' | 'churn' | 'notes'
+
+/** What the Notes tab narrows to: every note, the person's, the model's, the stale, those on a missing name, the flagged. */
+export type NotesFilter = 'all' | 'yours' | 'model' | 'stale' | 'missing' | 'flagged'
+
+/**
+ * One annotation as the Notes tab lists it: its component and whether the
+ * graph still holds it, who wrote it, its kind and text, when, whether a
+ * model note's files changed since (`stale`, with why) and whether the
+ * person flagged it for the model (`checked`, with the reason).
+ */
+export type NoteRow = {
+  component: string
+  kind: string
+  author: 'user' | 'model'
+  value: string
+  updated_at: string
+  component_status: 'present' | 'missing'
+  stale: boolean
+  stale_reason: string | null
+  checked: boolean
+  check_reason: string | null
+}
+
+/** How many notes the project holds, and how many need the person: on a missing name, stale, flagged. */
+export type NoteCounts = { total: number; missing: number; stale: number; flagged: number }
+
+/**
+ * The `notes` subcommand's answer: every note, grouped so what needs the
+ * person comes first (missing, then stale, then the rest, the person's
+ * before the model's), narrowed by `filter` and `text`; the counts never
+ * narrow. `refused` with why for a filter it does not know.
+ */
+export type Notes = {
+  status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'
+  filter?: NotesFilter
+  text?: string
+  groups: { missing: NoteRow[]; stale: NoteRow[]; rest: NoteRow[] }
+  counts: NoteCounts
+  truncated: boolean
+  reason?: string
+}
+
+/** The Notes tab's answer as last read, for the snapshot, filter and text it was read for (and `version`, moved by each write); loading until it lands. */
+export type NotesState = { snapshot: string | null; filter: NotesFilter; text: string; version: number; phase: 'loading' | 'done'; answer: Notes | null }
 
 /** How a file this session touched stands now: the last turn that named it decides. */
 export type TouchStatus = 'changed' | 'added' | 'deleted'
@@ -616,6 +662,9 @@ export type KnossosView = {
   picking?: Inspected | null
   /** The route on show, from one component to another, instead of a tab or a detail; `back` is what `b` returns to. */
   route?: { from: Inspected; to: Inspected; index: number; back: Inspected | null } | null
+  /** On the Notes tab, what the list is narrowed to (absent: every note) and the text it holds (absent: none). */
+  notesFilter?: NotesFilter
+  notesText?: string
 }
 
 /** The `scan` subcommand's answer: an incremental rescan the person asked for from the pane. */
@@ -745,6 +794,8 @@ declare module 'claude-code' {
       flash: { keys: string[]; until: number } | null
       /** The Churn tab's hotspots, as last read for a commit. */
       churn: ChurnState | null
+      /** The Notes tab's notes, as last read for a snapshot, filter and text. */
+      notes: NotesState | null
       /** The blast radius of the component the detail shows. */
       rings: RingsState | null
       /** The route the path explorer draws. */

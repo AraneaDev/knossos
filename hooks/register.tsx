@@ -7,7 +7,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AllowState, BranchState, ChurnState, CouplingState, DetailState, DiffFold, DiffState, Feedback, GitHead, Inspected, KnossosView, LiveState, NoteState, RefreshState, RescanState, RingsState, RouteState, SearchState, SessionChanges, SessionRev } from '../types'
+import type { AllowState, BranchState, ChurnState, CouplingState, DetailState, DiffFold, DiffState, Feedback, GitHead, Inspected, KnossosView, LiveState, NotesState, NoteState, RefreshState, RescanState, RingsState, RouteState, SearchState, SessionChanges, SessionRev } from '../types'
 import { begin, counts, finish } from './lib/activity'
 import { committedSince } from './lib/agent'
 import type { JobState } from './lib/band'
@@ -96,6 +96,8 @@ const branch = atom({ plugin: 'knossos', key: 'branch' } as const, null as Branc
 const flash = atom({ plugin: 'knossos', key: 'flash' } as const, null as Flash | null)
 /** The Churn tab's hotspots, for the commit they were read at. */
 const churn = atom({ plugin: 'knossos', key: 'churn' } as const, null as ChurnState | null)
+/** The Notes tab's notes, for the snapshot, filter and text they were read for. */
+const notes = atom({ plugin: 'knossos', key: 'notes' } as const, null as NotesState | null)
 /** The blast radius of the component the detail shows, for its name and snapshot. */
 const rings = atom({ plugin: 'knossos', key: 'rings' } as const, null as RingsState | null)
 /** The route the path explorer draws, for its two ends and snapshot. */
@@ -165,6 +167,7 @@ function portOf($: EngineInterface): Port {
       branch: { read: () => read($, branch), update: change => update($, branch, change) },
       flash: { read: () => read($, flash), update: change => update($, flash, change) },
       churn: { read: () => read($, churn), update: change => update($, churn, change) },
+      notes: { read: () => read($, notes), update: change => update($, notes, change) },
       rings: { read: () => read($, rings), update: change => update($, rings, change) },
       route: { read: () => read($, route), update: change => update($, route, change) },
       note: { read: () => read($, note), update: change => update($, note, change) },

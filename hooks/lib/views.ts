@@ -298,9 +298,9 @@ export function detailList(detail: DetailInput): Openable[] {
 }
 
 /** An issue row's columns: its main text, then the boundary, then the place. */
-type EntrySpec = { main: number; boundary: number; place: number }
+export type EntrySpec = { main: number; boundary: number; place: number }
 /** One issue row: `need` is how wide its main text is uncut; `loc` makes its place a link. */
-type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
+export type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
@@ -309,7 +309,7 @@ type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: n
  * boundary goes first, then the place; the main text keeps at least
  * {@link MAIN_MIN}.
  */
-function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
+export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
   const placeNeed = Math.min(Math.max(12, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
   // A boundary is a chip: its swatch and a space before its label.
   const longest = Math.max(0, ...entries.map(e => cells(boundaryLabel(e.boundary ?? null, hues))))
@@ -322,7 +322,8 @@ function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): Ent
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
 }
 
-function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Row {
+/** One issue row, its columns fitted by {@link entrySpec}; the marked one on the selection's tint. */
+export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Row {
   const main = e.main(spec.main)
   const used = main.reduce((n, s) => n + cells(s.text), 0)
   const segments: Segment[] = [

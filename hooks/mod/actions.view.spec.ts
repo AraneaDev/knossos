@@ -79,6 +79,27 @@ describe('a press on a tab', () => {
     })
 })
 
+describe('the Notes tab', () => {
+    it('cycles what it shows on s, the marker back at the top, and back to every note after the flagged', async () => {
+        const port = viewPort({ tab: 'notes', selected: 4 })
+        await port.press('notes-filter')
+        expect(port.view()).toMatchObject({ notesFilter: 'yours', selected: 0 })
+        for (const next of ['model', 'stale', 'missing', 'flagged', 'all']) {
+            await port.press('notes-filter')
+            expect(port.view().notesFilter).toBe(next)
+        }
+    })
+
+    it('opens its own field on n, never the Hubs filter, and clears both on x', async () => {
+        const port = viewPort({ tab: 'notes', filter: 'hub text' })
+        await port.press('notes-narrow')
+        expect(port.view()).toMatchObject({ tab: 'notes', filtering: true, filter: 'hub text' })
+        await port.press('notes-filter')
+        await port.press('notes-clear')
+        expect(port.view()).toMatchObject({ notesFilter: 'all', notesText: '', filtering: false, filter: 'hub text' })
+    })
+})
+
 describe('drift', () => {
     it('turns on and off again, the marker back at the top each time', async () => {
         const port = viewPort({ selected: 5 })
@@ -261,7 +282,7 @@ describe("a press through the pane's handlers", () => {
         handlersOf(port.io).press('next:2')
         await settle()
         expect(port.view().selected).toBe(2)
-        expect(port.log).toEqual(['update:view', 'request:couplings', 'request:branch', 'request:peek', 'request:churn'])
+        expect(port.log).toEqual(['update:view', 'request:couplings', 'request:branch', 'request:peek', 'request:churn', 'request:notes'])
         for (const call of vi.mocked(request).mock.calls) expect(call[0]).toBe(port.io)
     })
 
@@ -271,6 +292,6 @@ describe("a press through the pane's handlers", () => {
         handlersOf(port.io).press('nope')
         await settle()
         expect(port.view()).toEqual(VIEW)
-        expect(port.log).toEqual(['request:couplings', 'request:branch', 'request:peek', 'request:churn'])
+        expect(port.log).toEqual(['request:couplings', 'request:branch', 'request:peek', 'request:churn', 'request:notes'])
     })
 })

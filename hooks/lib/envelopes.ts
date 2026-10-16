@@ -1,4 +1,4 @@
-import type { AllowRoot, Annotate, BlastRadius, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
+import type { AllowRoot, Annotate, BlastRadius, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
 import { printableDeep } from './printable'
 
 // The envelope shapes are written once, in the plugin's contract, and re-exported
@@ -212,6 +212,21 @@ export function parseBranchDiff(stdout: string): BranchDiff | null {
     c.dead_code.items.every(isPlaced) &&
     (c.violations === null || (typeof c.violations === 'object' && Array.isArray(c.violations.items)))
   return placed ? parsed : null
+}
+
+const NOTES = new Set(['ok', 'refused', 'unscanned', 'error', 'no-binary'])
+
+/** Whether every row of a notes group carries what the tab draws. */
+const noteRows = (rows: unknown): boolean =>
+  Array.isArray(rows) && rows.every(r => isObject(r) && ['component', 'value', 'author', 'kind', 'updated_at'].every(k => typeof (r as Record<string, unknown>)[k] === 'string'))
+
+/** The Notes tab's notes from the wrapper's stdout; null for silence or anything unexpected (a group without its rows). */
+export function parseNotes(stdout: string): Notes | null {
+  const parsed = parse(stdout, NOTES, [], ['groups', 'counts']) as Notes | null
+  if (parsed === null || parsed.status !== 'ok') return parsed === null ? null : { ...parsed, groups: { missing: [], stale: [], rest: [] }, counts: { total: 0, missing: 0, stale: 0, flagged: 0 }, truncated: false }
+  const g = parsed.groups
+  const counted = ['total', 'missing', 'stale', 'flagged'].every(k => typeof (parsed.counts as Record<string, unknown>)[k] === 'number')
+  return noteRows(g.missing) && noteRows(g.stale) && noteRows(g.rest) && counted ? { ...parsed, truncated: parsed.truncated === true } : null
 }
 
 const CHURN = new Set(['ok', 'no-git', 'unreadable', 'unscanned', 'error', 'no-binary'])
