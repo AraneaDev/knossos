@@ -32,9 +32,15 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * max_nodes counts only the nodes that take part in a selected edge, so a
      * symbol nothing depends on and that depends on nothing never uses it up.
      *
+     * touchingIds keeps only the cycles with a member among those node ids, and
+     * does so before limit applies, so a caller asking about one change gets
+     * the cycles it touches however many others sort ahead of them. Empty means
+     * every cycle.
+     *
      * @param list<string> $edgeKinds
+     * @param list<string> $touchingIds
      */
-    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false): ResultEnvelope
+    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false, array $touchingIds = []): ResultEnvelope
     {
         $project = $this->project($projectId);
         self::assertLimit($limit);
@@ -50,7 +56,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         // between cannot take away a row the search counted on.
         $own = !$this->pdo->inTransaction() && $this->pdo->beginTransaction();
         try {
-            $search = $this->cycleSearch($projectId, $edgeKinds, $confidenceRank, $minConfidence, $limit, $maxNodes, $maxEdges, $deadline, $includeSelfLoops);
+            $search = $this->cycleSearch($projectId, $edgeKinds, $confidenceRank, $minConfidence, $limit, $maxNodes, $maxEdges, $deadline, $includeSelfLoops, $touchingIds);
         } finally {
             if ($own) {
                 $this->pdo->commit();
@@ -95,9 +101,10 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      *
      * @param list<string> $edgeKinds
      * @param array<string, int> $confidenceRank
+     * @param list<string> $touchingIds
      * @return array{nodes_examined: int, edges_examined: int, truncation_reasons: list<string>, cycles: list<array<string, mixed>>, evidence: list<array<string, mixed>>}
      */
-    private function cycleSearch(string $projectId, array $edgeKinds, array $confidenceRank, string $minConfidence, int $limit, int $maxNodes, int $maxEdges, int $deadline, bool $includeSelfLoops): array
+    private function cycleSearch(string $projectId, array $edgeKinds, array $confidenceRank, string $minConfidence, int $limit, int $maxNodes, int $maxEdges, int $deadline, bool $includeSelfLoops, array $touchingIds): array
     {
         $graph = $this->cycleSearchGraph($projectId, $edgeKinds, $confidenceRank[$minConfidence], $maxNodes, $maxEdges, $deadline);
         $truncation = new Truncation();
@@ -128,6 +135,18 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         if (!$includeSelfLoops && $components !== []) {
             $declaringType = $this->declaringTypes(array_merge(...$components));
             $components = array_values(array_filter($components, static fn(array $members): bool => !OneTypeCycles::withinOneType($members, $declaringType)));
+        }
+        if ($touchingIds !== []) {
+            $touching = array_fill_keys($touchingIds, true);
+            $components = array_values(array_filter($components, static function (array $members) use ($touching): bool {
+                foreach ($members as $id) {
+                    if (isset($touching[$id])) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }));
         }
         usort($components, static fn(array $a, array $b): int => (count($b) <=> count($a)) ?: ($a[0] <=> $b[0]));
         if (count($components) > $limit) {

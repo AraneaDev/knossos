@@ -188,6 +188,7 @@ final readonly class ArchitectureQueryService
      * {@see DependencyCycleQuery::dependencyCycles()}
      *
      * @param list<string> $edgeKinds
+     * @param list<string> $touchingIds
      */
     public function dependencyCycles(
         string $projectId,
@@ -198,8 +199,9 @@ final readonly class ArchitectureQueryService
         int $maxEdges = QueryBounds::MAX_EDGES,
         int $timeoutMs = 1000,
         bool $includeSelfLoops = false,
+        array $touchingIds = [],
     ): ResultEnvelope {
-        return $this->services->cycleQueries->dependencyCycles($projectId, $edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $includeSelfLoops);
+        return $this->services->cycleQueries->dependencyCycles($projectId, $edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $includeSelfLoops, $touchingIds);
     }
 
     /**

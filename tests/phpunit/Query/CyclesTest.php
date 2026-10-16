@@ -304,8 +304,8 @@ final class CyclesTest extends KnossosTestCase
      * that has two.
      *
      * Run in a process of its own, like the other large-graph tests: what the
-     * graph leaves behind in the heap would otherwise count against the 128 MB
-     * of every test after it.
+     * graph leaves behind in the heap would otherwise count against the memory
+     * limit of every test after it.
      */
     #[Group('cycles')]
     #[RunInSeparateProcess]
@@ -327,6 +327,22 @@ final class CyclesTest extends KnossosTestCase
         assertSame(true, str_starts_with($result->summary, 'Found 2 dependency cycle components.'));
         // The fixture's own two nodes and their edge are part of the graph too.
         assertSame($nodes + 2, $result->data['bounds']['nodes_examined']);
+    }
+
+    /** A cycle the caller cares about is found even when it sorts past the limit. */
+    #[Group('cycles')]
+    #[RunInSeparateProcess]
+    public function testTouchingIdsKeepOnlyThoseCyclesBeforeTheLimit(): void
+    {
+        [$pdo, $project, , $node] = $this->largeGraph();
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $unfiltered = $queries->dependencyCycles($project, limit: 1)->data['cycles'];
+        assertSame(array_map($node, range(100, 112)), $unfiltered[0]['member_ids']);
+
+        $filtered = $queries->dependencyCycles($project, limit: 1, touchingIds: [$node(5001)]);
+        assertSame([array_map($node, range(5000, 5002))], array_column($filtered->data['cycles'], 'member_ids'));
+        assertSame([], $filtered->data['bounds']['truncation_reasons']);
     }
 
     /**

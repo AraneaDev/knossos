@@ -51,6 +51,64 @@ final class ReviewDiffTest extends KnossosTestCase
         assertSame(true, $hasPolicyEvidence);
     }
 
+    /** The cycle a change touches is reported however many larger cycles elsewhere sort ahead of it. */
+    #[Group('query')]
+    public function testATouchingCycleBehindAHundredOthersIsReported(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        // Checkout -> Invoice exists; the back edge closes a two-member cycle in the changed file.
+        self::copyRow($pdo, 'edges', $ids['edge'], ['id' => 'edge:back', 'source_id' => $ids['invoice'], 'target_id' => $ids['checkout']]);
+        // 101 three-member cycles in another file sort ahead of it by size.
+        self::copyRow($pdo, 'files', $ids['file'], ['id' => 'file:other', 'relative_path' => 'src/Other.php']);
+        for ($cycle = 0; $cycle < 101; ++$cycle) {
+            for ($member = 0; $member < 3; ++$member) {
+                self::copyRow($pdo, 'nodes', $ids['invoice'], ['id' => "node:o:{$cycle}:{$member}", 'canonical_name' => "App\\Other{$cycle}x{$member}", 'display_name' => "Other{$cycle}x{$member}", 'file_id' => 'file:other', 'parent_id' => null]);
+            }
+            for ($member = 0; $member < 3; ++$member) {
+                self::copyRow($pdo, 'edges', $ids['edge'], ['id' => "edge:o:{$cycle}:{$member}", 'source_id' => "node:o:{$cycle}:{$member}", 'target_id' => 'node:o:' . $cycle . ':' . (($member + 1) % 3), 'file_id' => 'file:other']);
+            }
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff($ids['project'], files: ['src/Checkout.php']);
+
+        $cycles = $result->data['cycles_touching_change']['cycles'];
+        assertSame(1, count($cycles));
+        $members = $cycles[0]['member_ids'];
+        sort($members);
+        $expected = [$ids['checkout'], $ids['invoice']];
+        sort($expected);
+        assertSame($expected, $members);
+    }
+
+    /** A change that touches no component touches no cycle, whatever cycles the project has. */
+    #[Group('query')]
+    public function testAChangeTouchingNoComponentReportsNoCycles(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        self::copyRow($pdo, 'edges', $ids['edge'], ['id' => 'edge:back', 'source_id' => $ids['invoice'], 'target_id' => $ids['checkout']]);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff($ids['project'], files: ['docs/notes.md']);
+
+        assertSame([], $result->data['change']['direct_components'] ?? []);
+        assertSame('evaluated', $result->data['cycles_touching_change']['status']);
+        assertSame([], $result->data['cycles_touching_change']['cycles']);
+    }
+
+    /**
+     * Inserts a copy of one row with some columns replaced.
+     *
+     * @param array<string, string|null> $replace
+     */
+    private static function copyRow(\PDO $pdo, string $table, string $id, array $replace): void
+    {
+        $statement = $pdo->prepare(sprintf('SELECT * FROM %s WHERE id = ?', $table));
+        $statement->execute([$id]);
+        $row = array_replace((array) $statement->fetch(\PDO::FETCH_ASSOC), $replace);
+        $pdo->prepare(sprintf('INSERT INTO %s (%s) VALUES (%s)', $table, implode(', ', array_keys($row)), implode(', ', array_fill(0, count($row), '?'))))->execute(array_values($row));
+    }
+
     #[Group('query')]
     public function testMissingConfigYieldsNotEvaluatedSectionsNotErrors(): void
     {
