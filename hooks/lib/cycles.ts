@@ -32,7 +32,7 @@ import type { Dashboard } from '../../types'
 import { countLabel } from './envelopes'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { blank, button, cells, chip, clip, displayName, fit, MARK, plural, shortName, SWATCH, tableRow, tinted, wrapGroups } from './rows'
+import { blank, button, cells, chip, clip, displayName, fit, lastSegment, MARK, plural, SWATCH, tableRow, tinted, wrapGroups } from './rows'
 import type { Row, Segment, Tier } from './rows'
 import type { Openable } from './views'
 import { CARD_ICON } from './marks'
@@ -69,7 +69,7 @@ export function cyclesInput(d: Pick<Dashboard, 'cycles'>, unfolded: number[] = [
     stopped: d.cycles.truncated && d.cycles.count === 0 ? d.cycles.truncation_reasons : [],
     cycles: d.cycles.largest.map(c => {
       const nodes = c.nodes?.map(n => ({ name: displayName(n), canonical: n.canonical_name, boundary: n.boundary })) ?? c.members.map(name => ({ name, canonical: name, boundary: null }))
-      return { size: c.size, nodes, more: Math.max(0, c.size - nodes.length), ...(c.within_type === true ? { type: c.type ?? nodes[0]?.canonical.split('::')[0] ?? '' } : {}) }
+      return { size: c.size, nodes, more: Math.max(0, c.size - nodes.length), ...(c.within_type === true ? { type: c.type ?? nodes[0]?.canonical ?? '' } : {}) }
     }),
     unfolded,
     within: d.cycles.within_type ?? 0,
@@ -100,7 +100,7 @@ const askOf = (cycle: CycleLine): string =>
     : `Using the Knossos graph, the methods of ${cycle.type} call each other in a cycle: ${chainOf(cycle)}. Is this recursion intended, or should it be untangled?`
 
 /** How a cycle is named in the list: `cycle N`, or the short name of the one type it is inside. */
-const nameOf = (cycle: CycleLine, i: number): string => (cycle.type === undefined ? `cycle ${i + 1}` : shortName(cycle.type))
+const nameOf = (cycle: CycleLine, i: number): string => (cycle.type === undefined ? `cycle ${i + 1}` : lastSegment(cycle.type))
 
 /**
  * What the marker walks on the Cycles tab: each cycle's members (each opens
@@ -258,7 +258,7 @@ function cycleSection(input: CyclesInput, index: number, offset: number, local: 
     if (crossings > 0) groups.push([{ text: CROSSING.across, color: STATUS_COLOURS.warn }, { text: ' crosses a boundary', dim: true }])
     legend.push(...wrapGroups('cycle-legend', groups, columns, 2), blank('cycle-legend-gap'))
   }
-  const section = (body: Row[]): Section => ({ key: 'cycle-diagram', title: cycle.type === undefined ? `Cycle ${index + 1}` : shortName(cycle.type), note, body: [...legend, ...body] })
+  const section = (body: Row[]): Section => ({ key: 'cycle-diagram', title: cycle.type === undefined ? `Cycle ${index + 1}` : lastSegment(cycle.type), note, body: [...legend, ...body] })
   if (columns < DIAGRAM_MIN) return section(chainRows(cycle, offset, local, columns, hues, coloured))
   const shown = shownOf(cycle, index, input, columns, tier, local)
   const nodes: DiagramNode[] = shown.map((s): DiagramNode => {
