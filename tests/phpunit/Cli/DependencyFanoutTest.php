@@ -41,4 +41,17 @@ final class DependencyFanoutTest extends KnossosTestCase
         self::assertSame(2, \dependencyFanout('py', "import os\nfrom typing import Any\nx = 1\n"));
         self::assertSame(0, \dependencyFanout('rs', "use std::io;\n"));
     }
+
+    /**
+     * An import that only appears in a comment or inside a template literal is
+     * no dependency, and an apostrophe in a comment between the bindings does
+     * not hide the one that is.
+     */
+    #[Group('quality-tools')]
+    public function testImportsInCommentsAndTemplateLiteralsDoNotCount(): void
+    {
+        $source = "/*\nimport a from \"./x.js\";\n*/\nconst t = `\nimport b from \"./y.js\";\n`;\nimport {\n    c, // don't drop this\n    d,\n} from \"./z.js\";\n// import e from \"./w.js\";\n";
+
+        self::assertSame(1, \dependencyFanout('js', $source));
+    }
 }

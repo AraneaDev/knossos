@@ -55,6 +55,11 @@ describe('the watcher phase', () => {
     expect(seen).toEqual({ phase: 'live', external: { pid: 1234 } })
     expect(liveAfter({ event: 'snapshot', snapshot_id: 's2' }, seen)).toEqual({ phase: 'live', external: { pid: 1234 } })
     expect(liveAfter({ event: 'external_scan_ended' }, seen)).toEqual({ phase: 'live' })
+    // A writer on another host, a container among them, is named by its host: its pid means nothing here.
+    expect(liveAfter({ event: 'external_scan', holder_pid: null, holder_host: 'f3a9c2e1b7d0', held_seconds: 1 }, { phase: 'live' })).toEqual({
+      phase: 'live',
+      external: { pid: null, host: 'f3a9c2e1b7d0' },
+    })
     expect(liveAfter({ event: 'stopped' }, seen)).toEqual({ phase: 'off' })
     // A lease an older knossos took names no process; a follower whose leader is stuck can still see another scan.
     expect(liveAfter({ event: 'external_scan', holder_pid: null }, { phase: 'following', stale: true })).toEqual({ phase: 'following', stale: true, external: { pid: null } })
@@ -62,6 +67,8 @@ describe('the watcher phase', () => {
   it('says the state changed when the phase, a stuck leader, or who else scans did', () => {
     expect(liveChanged({ phase: 'live' }, { phase: 'live' })).toBe(false)
     expect(liveChanged({ phase: 'live' }, { phase: 'scanning' })).toBe(true)
+    // Another host took the lock with the same (null) pid: still news.
+    expect(liveChanged({ phase: 'live', external: { pid: null, host: 'a' } }, { phase: 'live', external: { pid: null, host: 'b' } })).toBe(true)
     expect(liveChanged({ phase: 'following' }, { phase: 'following', stale: true })).toBe(true)
     expect(liveChanged({ phase: 'live' }, { phase: 'live', external: { pid: 1 } })).toBe(true)
     expect(liveChanged({ phase: 'live', external: { pid: 1 } }, { phase: 'live', external: { pid: 2 } })).toBe(true)

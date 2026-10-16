@@ -1321,6 +1321,7 @@ describe('the live watcher in the header', () => {
   it('says scanning, and who, while another process holds the scan lock, and offers no rescan then', () => {
     expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'live', external: { pid: 1234 } })).toEqual({ tone: 'warn', text: 'scanning…', note: 'another process is scanning (pid 1234)' })
     expect(paneStatus(dash(), FETCHED, IDLE, 0, { phase: 'following', external: { pid: null } })).toEqual({ tone: 'warn', text: 'scanning… · stale 11h', note: 'another process is scanning' })
+    expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'live', external: { pid: null, host: 'f3a9c2e1b7d0' } })).toEqual({ tone: 'warn', text: 'scanning…', note: 'another host is scanning (f3a9c2e1b7d0, a container or another machine)' })
     const drifted = dash({ freshness: { state: 'stale', age_seconds: 5, drift_files: 3 } })
     expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live', external: { pid: 1234 } }).canRescan).toBe(false)
   })

@@ -613,6 +613,10 @@ final class DoctorServiceTest extends KnossosTestCase
         $this->assertSame('warning', $check['status']);
         $this->assertStringContainsString('999_from_the_future', $check['detail']);
         $this->assertStringContainsString('newer Knossos', $check['detail']);
+        // A branch that applied it and was then dropped leaves the row behind; the warning says how to clear it.
+        $this->assertStringContainsString("DELETE FROM schema_migrations WHERE version = '999_from_the_future'", $check['detail']);
+        // Which database, since a shell without KNOSSOS_DATA_DIR opens another one.
+        $this->assertStringContainsString(':memory:', $check['detail']);
     }
 
     /** A migration the checkout has but the database lacks is an error that names it. */

@@ -87,14 +87,17 @@ export function liveAfter(event: WatchEvent, current: LiveState): LiveState {
     phase === 'off' || event.event === 'external_scan_ended'
       ? undefined
       : event.event === 'external_scan'
-        ? { pid: typeof event.holder_pid === 'number' ? event.holder_pid : null }
+        ? {
+            pid: typeof event.holder_pid === 'number' ? event.holder_pid : null,
+            ...(typeof event.holder_host === 'string' && event.holder_host !== '' ? { host: event.holder_host } : {}),
+          }
         : current.external
   return { phase, ...(stale ? { stale: true as const } : {}), ...(external === undefined ? {} : { external }) }
 }
 
 /** Whether the header has anything new to show: the phase, a stuck leader, or who else scans changed. */
 export function liveChanged(before: LiveState, after: LiveState): boolean {
-  return after.phase !== before.phase || after.stale !== before.stale || after.external?.pid !== before.external?.pid || (after.external === undefined) !== (before.external === undefined)
+  return after.phase !== before.phase || after.stale !== before.stale || after.external?.pid !== before.external?.pid || after.external?.host !== before.external?.host || (after.external === undefined) !== (before.external === undefined)
 }
 
 /** The snapshot an event says the graph is at, or null when it says none. */

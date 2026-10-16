@@ -49,6 +49,38 @@ final class AnnotationsTest extends KnossosTestCase
         assertSame(true, str_contains(implode(' ', $unknown->warnings), 'not found'));
     }
 
+    /** `./src/a.php` and `src/a.php` name one file, so they hold one note. */
+    #[Group('query')]
+    public function testADotSlashPathIsStoredAsTheProjectPath(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+
+        $queries->upsertAnnotation($ids['project'], './src/Checkout.php', 'note', 'first', execute: true);
+        $queries->upsertAnnotation($ids['project'], 'src/./Checkout.php', 'note', 'second', execute: true, replace: true);
+
+        $rows = $pdo->query('SELECT canonical_name, value FROM annotations')->fetchAll(\PDO::FETCH_ASSOC);
+        assertSame([['canonical_name' => 'src/Checkout.php', 'value' => 'second']], $rows);
+    }
+
+    /** The list filter reads a path the same way, and a note stored under ./ before that still comes off. */
+    #[Group('query')]
+    public function testADotSlashPathFindsAndRemovesTheNoteEitherWay(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->upsertAnnotation($ids['project'], 'src/Checkout.php', 'note', 'kept', execute: true);
+        $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) VALUES(:p, './src/Old.php', 'note', 'old', 'model', '[]', 't', 't')")->execute(['p' => $ids['project']]);
+
+        assertSame(['src/Checkout.php'], array_column($queries->listAnnotations($ids['project'], component: './src/Checkout.php')->data['annotations'], 'canonical_name'));
+        $removed = $queries->removeAnnotation($ids['project'], './src/Old.php', 'note', execute: true);
+        assertSame(true, $removed->data['executed']);
+        assertSame(['src/Checkout.php'], $pdo->query('SELECT canonical_name FROM annotations')->fetchAll(\PDO::FETCH_COLUMN));
+        assertThrows(static fn() => $queries->upsertAnnotation($ids['project'], './', 'note', 'x', execute: true), \InvalidArgumentException::class);
+    }
+
     /** A note's limit is 2,000 characters: 2,000 CJK characters (6,000 bytes) fit, one more does not. */
     #[Group('query')]
     public function testANoteIsMeasuredInCharactersNotBytes(): void

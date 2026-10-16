@@ -100,7 +100,7 @@ final readonly class ProjectWriterLock
     private function tryAcquire(string $projectId): ProjectWriterLease
     {
         $now = $this->clock === null ? time() : ($this->clock)();
-        $token = sprintf('%d@%s:%s', getmypid(), self::host(), bin2hex(random_bytes(16)));
+        $token = sprintf('%d@%s:%s', getmypid(), self::localHost(), bin2hex(random_bytes(16)));
         try {
             // BEGIN IMMEDIATE is inside the try: on a contended WAL database this is
             // exactly where SQLITE_BUSY surfaces, and it must be translated too.
@@ -150,7 +150,7 @@ final readonly class ProjectWriterLock
     private function abandoned(string $token): bool
     {
         return preg_match('/^(\d+)@(.+):[0-9a-f]{32}$/', $token, $holder) === 1
-            && $holder[2] === self::host()
+            && $holder[2] === self::localHost()
             && !($this->alive)((int) $holder[1]);
     }
 
@@ -170,7 +170,7 @@ final readonly class ProjectWriterLock
     }
 
     /** This host's name as a lease records it. */
-    private static function host(): string
+    public static function localHost(): string
     {
         $host = gethostname();
         return $host === false || $host === '' ? 'unknown' : $host;

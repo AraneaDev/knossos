@@ -113,7 +113,11 @@ if TIMEOUT_BIN="$(find_timeout)"; then
     if [ "$STATUS" -ne 0 ]; then
         "$TIMEOUT_BIN" 2 docker rm -f "$NAME" >/dev/null 2>&1
         # As in session-brief.sh, a brief cut off by the bound says so in one line.
-        [ "$STATUS" -eq 124 ] && printf "Knossos brief timed out after 10 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
+        # 124 from GNU timeout and gtimeout, 143 from BusyBox (see session-brief.sh),
+        # and 137 from either when the client ignored the TERM and -k killed it.
+        if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ] || { [ "$STATUS" -eq 143 ] && "$TIMEOUT_BIN" --help 2>&1 | grep -q BusyBox; }; then
+            printf "Knossos brief timed out after 10 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
+        fi
         exit 0
     fi
 else

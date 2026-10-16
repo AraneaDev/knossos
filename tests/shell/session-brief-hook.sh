@@ -62,6 +62,38 @@ case $output in
     *) printf 'FAIL hanging binary: status=%s output=%s\n' "$status" "$output"; failures=$((failures + 1)) ;;
 esac
 
+# BusyBox `timeout` exits 143 when it fires, not 124: the same line is printed.
+# A brief that exits 143 by itself under GNU `timeout` (which passes the
+# status through) did not time out, and stays silent. The project is a
+# directory of its own: the hook drops PATH entries inside the project, and
+# /tmp would hold the stand-ins.
+mkdir -p "$tmp/busybox" "$tmp/gnu"
+cat > "$tmp/busybox/timeout" <<'STUB'
+#!/bin/sh
+if [ "$1" = --help ]; then echo "BusyBox v1.36.1 multi-call binary."; exit 1; fi
+exit 143
+STUB
+cat > "$tmp/gnu/timeout" <<'STUB'
+#!/bin/sh
+if [ "$1" = --help ]; then echo "Usage: timeout [OPTION] DURATION COMMAND"; exit 0; fi
+shift
+exec "$@"
+STUB
+printf '#!/bin/sh\nexit 143\n' > "$tmp/knossos"
+chmod +x "$tmp/busybox/timeout" "$tmp/gnu/timeout" "$tmp/knossos"
+TIMED_PROJ="$(mktemp -d)"
+TIMED_REAL="$(CDPATH='' cd -P -- "$TIMED_PROJ" && pwd -P)"
+busybox_output="$(env KNOSSOS_BIN="$tmp/knossos" PATH="$tmp/busybox:$PATH" CLAUDE_PROJECT_DIR="$TIMED_PROJ" sh "$HOOK" 2>/dev/null)"
+if [ "$busybox_output" = "Knossos brief timed out after 3 s; run knossos session-brief '$TIMED_REAL' to see why." ]; then
+    printf 'ok   %s\n' 'a BusyBox timeout says it timed out'
+else
+    printf 'FAIL %s: output=%s\n' 'a BusyBox timeout says it timed out' "$busybox_output"
+    failures=$((failures + 1))
+fi
+expect_silent_success "a brief that exits 143 itself under GNU timeout" \
+    env KNOSSOS_BIN="$tmp/knossos" PATH="$tmp/gnu:$PATH" CLAUDE_PROJECT_DIR="$TIMED_PROJ" sh "$HOOK"
+rm -rf "$TIMED_PROJ"
+
 # Neither `timeout` nor `gtimeout` is resolvable (PATH emptied), and
 # KNOSSOS_BIN is an absolute path so it is still found without PATH. The
 # fallback path runs the binary unbounded, so use a binary that fails fast
@@ -123,8 +155,15 @@ STUB
 chmod +x "$BOX/killer/timeout"
 : > "$BOX/bin/removed"
 container_output="$(env PATH="$BOX/killer:$BOX/bin:$PATH" CLAUDE_PROJECT_DIR="$BOX/proj" sh "$BOX/hook.sh" 2>/dev/null)"
+# A client that ignored the TERM is killed 2 s later, and timeout then exits 137: still a timeout.
+sed 's/exit 124; fi/exit 137; fi/' "$BOX/killer/timeout" > "$BOX/killer/timeout.137"
+mkdir -p "$BOX/killer137"
+cp "$BOX/killer/timeout.137" "$BOX/killer137/timeout"
+chmod +x "$BOX/killer137/timeout"
+killed_output="$(env PATH="$BOX/killer137:$BOX/bin:$PATH" CLAUDE_PROJECT_DIR="$BOX/proj" sh "$BOX/hook.sh" 2>/dev/null)"
 container_proj="$(CDPATH='' cd -P -- "$BOX/proj" && pwd -P)"
 if [ "$container_output" = "Knossos brief timed out after 10 s; run knossos session-brief '$container_proj' to see why." ]; then printf 'ok   %s\n' 'timed-out container hook says it timed out'; else printf 'FAIL %s: output=%s\n' 'timed-out container hook says it timed out' "$container_output"; failures=$((failures + 1)); fi
+if [ "$killed_output" = "Knossos brief timed out after 10 s; run knossos session-brief '$container_proj' to see why." ]; then printf 'ok   %s\n' 'a container client killed after its bound says it timed out'; else printf 'FAIL %s: output=%s\n' 'a container client killed after its bound says it timed out' "$killed_output"; failures=$((failures + 1)); fi
 if grep -q '^rm -f knossos-hook-' "$BOX/bin/removed"; then printf 'ok   %s\n' 'timed-out container hook is removed'; else printf 'FAIL %s\n' 'timed-out container hook is removed'; failures=$((failures + 1)); fi
 if grep -qx 'kill-after=2 limit=10' "$BOX/killer/calls"; then printf 'ok   %s\n' 'timed-out container hook client is killed 2 s after its 10 s limit'; else printf 'FAIL %s (calls %s)\n' 'timed-out container hook client is killed 2 s after its 10 s limit' "$(cat "$BOX/killer/calls" 2>/dev/null)"; failures=$((failures + 1)); fi
 if grep -qx 'bounded=2 docker' "$BOX/killer/calls"; then printf 'ok   %s\n' 'container hook removal is bounded at 2 s'; else printf 'FAIL %s (calls %s)\n' 'container hook removal is bounded at 2 s' "$(cat "$BOX/killer/calls" 2>/dev/null)"; failures=$((failures + 1)); fi

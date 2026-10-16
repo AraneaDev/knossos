@@ -155,7 +155,10 @@ The default bounds cover the whole graph of most projects: `max_nodes`
 relationship, and `max_edges` defaults to 500,000. The search reads bare
 endpoint pairs first and loads names, files and lines only for the cycles it
 reports, so a graph of tens of thousands of relationships is searched well
-inside the default `timeout_ms` of one second. When a bound does stop the
+inside the default `timeout_ms` of one second: Knossos's own 84,000
+relationships take about 0.3 s. Past roughly 250,000 the one second runs out
+before `max_edges` does, so such a graph meets `time_limit` first; pass a
+larger `timeout_ms` (up to 5,000) for a complete answer. When a bound does stop the
 search, the summary names it, and the Claude Code pane shows the count as `?`
 rather than `0+` when nothing was found before the stop. A cycle that runs
 through an edge whose node no longer exists, which only a graph written before
