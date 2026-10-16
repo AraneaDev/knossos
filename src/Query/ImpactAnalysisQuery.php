@@ -42,20 +42,8 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      * @param bool $rings add `rings`: the dependants counted one hop out, two, and further, tests apart
      * @param bool $links add `links`: every edge the walk read, as `[source id, target id]`, rediscoveries included
      */
-    public function impactAnalysis(
-        string $projectId,
-        string $symbol,
-        int $maxDepth = 6,
-        int $limit = 100,
-        array $edgeKinds = [],
-        string $minConfidence = 'possible',
-        int $timeoutMs = 1000,
-        ?int $deadline = null,
-        bool $seedMembers = true,
-        bool $frameworkHooks = true,
-        bool $rings = false,
-        bool $links = false,
-    ): ResultEnvelope {
+    public function impactAnalysis(string $projectId, string $symbol, int $maxDepth = 6, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000, ?int $deadline = null, bool $seedMembers = true, bool $frameworkHooks = true, bool $rings = false, bool $links = false): ResultEnvelope
+    {
         $project = $this->project($projectId);
         if ($maxDepth < 1 || $maxDepth > 8) {
             throw new InvalidArgumentException('max_depth must be between 1 and 8.');
