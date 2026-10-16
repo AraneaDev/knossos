@@ -60,7 +60,6 @@ final class ScanRequestBuilder
             }
             $request['source_files'] = self::sourceFiles($files);
         } elseif ($descriptor->key === 'python') {
-            $request['frameworks'] = $plan->preparation->pythonFrameworks;
             // Which modules have contributions of their own, which name what
             // those modules re-export, so an importer need not.
             $request['source_files'] = self::sourceFiles($files);

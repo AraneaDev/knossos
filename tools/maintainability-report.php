@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/lib/dependency-fanout.php';
 require_once __DIR__ . '/lib/php-function-metrics.php';
 
 $root = dirname(__DIR__);
@@ -32,13 +33,7 @@ foreach (array_keys($paths) as $path) {
         'py' => preg_match_all('/\b(?:if|elif|for|while|case|except)\b|\band\b|\bor\b/', $source),
         default => 0,
     };
-    $dependencyPattern = match ($extension) {
-        'php' => '/^use\s+[^;]+;/m',
-        'js' => '/^import\s+.+?from\s+["\'][^"\']+["\'];?$/m',
-        'py' => '/^(?:from\s+\S+\s+import|import\s+)\s*.+$/m',
-        default => '/(?!)^/',
-    };
-    $dependencies = preg_match_all($dependencyPattern, (string) file_get_contents($path));
+    $dependencies = dependencyFanout($extension, (string) file_get_contents($path));
     $files[$relative] = ['language' => $extension, 'lines' => count($lines), 'logical_lines' => count($logical), 'decision_points' => $decisions, 'dependency_fanout' => $dependencies];
     if ($extension === 'php') {
         $functions = array_merge($functions, phpFunctionMetrics((string) file_get_contents($path), $relative));

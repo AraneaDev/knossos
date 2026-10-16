@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Classification\TestModuleRule;
+
 /**
  * Which components architecture reporting is about.
  *
@@ -27,7 +29,7 @@ namespace Knossos\Query;
 final readonly class ReportableComponent
 {
     /** The role classifiers give to test modules and their members. */
-    public const TEST_ROLE = 'quality.test_module';
+    public const TEST_ROLE = TestModuleRule::ROLE;
 
     /**
      * Roles whose members something outside the graph reaches: a router, a
