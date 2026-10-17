@@ -19,10 +19,19 @@ is the short version.
 
 - [The plugin](claude-code/plugin.md): how do I install, point, update and
   remove the Claude Code plugin?
-- [The pane](claude-code/pane/index.md): what do the band, each tab and each overlay
-  of the pane show, and which keys drive them?
-- [Notes for the model](claude-code/agent-notes.md): what does the mod tell the
-  model, when, and in which words?
+- [The pane](claude-code/pane/index.md): how do I open the pane, read its
+  header and layouts, and which keys and settings drive it?
+- [The band](claude-code/pane/band.md): what does the line above the prompt
+  say after a turn?
+- [The tabs](claude-code/pane/tabs.md): what does each of the nine tabs show?
+- [Notes on components](claude-code/pane/notes.md): how do I read, write,
+  confirm and find the notes, yours and the model's?
+- [Details, routes and the finder](claude-code/pane/details.md): what opens
+  from a row, and how do I find a component by name?
+- [Live updates](claude-code/pane/live.md): how do the pane and the band
+  follow the code, and what shows before there is a graph?
+- [Messages for the model](claude-code/agent-notes.md): what does the mod tell
+  the model, when, and in which words?
 - [Session brief](claude-code/session-brief.md): what does a session see when
   it starts, and how is each verdict chosen?
 - [The routing skill](claude-code/skill.md): which questions does the skill
@@ -42,6 +51,11 @@ is the short version.
   scan store, and how far can I trust each fact?
 - [From request to handler](concepts/request-to-handler.md): how does a
   `fetch` or `route()` call reach the route and handler that serve it?
+
+## Guides
+
+What to ask the graph for one kind of task, through the MCP tools or the CLI.
+
 - [Finding components](guides/finding-components.md): how do I find a
   project, a component, its relations and every place a symbol is used?
 - [Structure analysis](guides/structure-analysis.md): what depends on this,
