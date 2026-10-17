@@ -288,6 +288,8 @@ export async function stageGraph(
     }
     await scan();
     await copy(stage, notesFrom, worktree);
+    // Again, now the notes are in: a note on a file no worker scans makes that file a component only in a scan.
+    await scan();
     return stage;
 }
 

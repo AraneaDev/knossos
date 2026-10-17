@@ -574,7 +574,8 @@ describe("stageGraph", () => {
                 },
             });
             expect(path.dirname(stage)).toBe(root);
-            expect(scans).toHaveLength(2);
+            // The base, HEAD, and HEAD again once the notes are in: a note on a file no worker scans makes that file a component only in a scan.
+            expect(scans).toHaveLength(3);
             // After the scans the worktree is a project, and the checkout's notes are copied onto it, in the stage only.
             expect(copied).toEqual([[stage, "/home/me/knossos", "/w/knossos"]]);
             for (const scan of scans) {
