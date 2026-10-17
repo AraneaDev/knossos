@@ -26,7 +26,7 @@
 relationships between them, each with the file and line that proves it. In Claude Code,
 `/knossos` opens that graph as a live pane beside your session, and the agent gets a short note
 at the moment it reads, edits or commits a file that matters: how much depends on it, which
-rules bind it, and which tests reach it. The same graph answers 35 MCP tools and a CLI, for
+rules bind it, and which tests reach it. The same graph answers 36 MCP tools and a CLI, for
 Claude Code, Codex or any MCP client.
 
 Facts that static analysis cannot prove are labelled with their confidence and origin.
@@ -46,19 +46,21 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
 
 ## Features
 
-- **The pane**: `/knossos` opens the project's architecture beside your session on eight tabs
-  (Overview, Hubs, Boundaries, Cycles, Issues, Changes, Branch and Churn), with a detail for
-  every component and file, its blast radius as rings, and the route between any two components
+- **The pane**: `/knossos` opens the project's architecture beside your session on nine tabs
+  (Overview, Hubs, Boundaries, Cycles, Issues, Changes, Branch, Churn and Notes), with a detail
+  for every component and file, its blast radius as rings, and the route between any two
+  components
 - **The band**: after a turn that edited files, one line above the prompt says how far the
   change reaches: the files, their dependents, the tests that reach them, the boundaries hit
-- **Notes for the agent**: when the agent reads a heavily depended-on or policed file, edits
+- **Notes on components**: facts worth keeping, yours and the agent's, kept across rescans. The
+  Notes tab shows them as a tree of where they live, says which went stale, and finds the one
+  whose component you forgot. Your note wins over the agent's
+- **Messages for the agent**: when the agent reads a heavily depended-on or policed file, edits
   one, ends a turn or makes a commit, it gets one short line about what that file or change
-  carries. Each note is said once and never blocks a tool call
-- **`file_context`**: one tool call for a file's boundary and the rules that bind it, its
-  dependents, the tests that reach it and its latest commits
-- **35 MCP tools**: impact analysis, call sites, flows between components, cycles, hubs,
-  dead-code candidates, change review, test impact, snapshots and trends. Every tool except
-  `server_info` has an equivalent CLI command
+  carries. Each is said once and never blocks a tool call
+- **36 MCP tools**: impact analysis, call sites, flows between components, cycles, hubs,
+  dead-code candidates, change review, test impact, one file's context, snapshots and trends.
+  Every tool except `server_info` has an equivalent CLI command
 - **Evidence on every fact**: each relationship points back to a file and a line, and a path is
   only as confident as its weakest edge
 - **4 languages**: PHP (with Laravel and Symfony), TypeScript and JavaScript, Python and Rust,
@@ -66,7 +68,7 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
 - **Architecture rules and budgets**: boundary policies that say which part may depend on
   which, and quality budgets checked against a reviewed baseline, with SARIF for CI
 - **A live watcher**: one per project, shared by your sessions, rescans as files change, so the
-  pane and the notes follow edits made by anyone
+  pane and the messages follow edits made by anyone
 - **Session brief and routing skill**: each session starts knowing whether the graph is fresh,
   the project's rules and recorded notes, and which questions to bring to the graph
 - **Safety model**: scanning never runs project code, the server reads only allowed roots, and
@@ -75,10 +77,7 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
 ## Installation
 
 You need PHP 8.3 or newer with JSON, PDO and PDO SQLite, Node 24 or newer, Python 3.11 or newer,
-Composer 2 and Git. Cargo 1.82 or newer is optional and adds Rust scanning. Without PHP on the
-host, use [Docker](docs/get-started/installation.md#docker).
-
-### Claude Code
+Composer 2 and Git. Cargo 1.82 or newer is optional and adds Rust scanning.
 
 Clone the repository, then run the installer from the project you want to scan first:
 
@@ -92,7 +91,7 @@ It installs the worker dependencies, creates the data directory `~/.knossos` wit
 that allows this project, scans it, and registers the MCP server with Claude Code at user scope.
 Re-run it from another project to add that one.
 
-Then install the plugin, which carries the pane, the notes, the session brief and the routing
+Then install the plugin, which carries the pane, the messages, the session brief and the routing
 skill. Its hooks run the `knossos` of the checkout that installed the plugin (falling back to
 the one on your path), and must read the data directory your server uses:
 
@@ -102,58 +101,14 @@ knossos install-agent-plugin                                        # preview
 knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 ```
 
-Start a new session. The brief appears at its start, and `/knossos` opens the pane. Updating,
-removing and trying the plugin for one session are in [the plugin guide](docs/claude-code/plugin.md).
+Start a new session. The brief appears at its start, and `/knossos` opens the pane.
 
-### Codex
-
-Register the server with pinned data and roots paths:
-
-```sh
-codex mcp add knossos \
-    --env KNOSSOS_DATA_DIR="$HOME/.knossos" \
-    --env KNOSSOS_ROOTS_FILE="$HOME/.knossos/roots.json" \
-    -- /absolute/path/to/knossos/tools/mcp-serve
-```
-
-A Codex plugin in this checkout adds the routing skill. The pane and the notes are Claude Code
-hooks and do not run in Codex. Both steps, and a Docker variant, are in
-[Codex and other MCP clients](docs/agents/clients.md#codex).
-
-### Any MCP client
-
-Any client that uses the common `mcpServers` stdio shape takes this entry. Keep every path
-absolute:
-
-```json
-{
-    "mcpServers": {
-        "knossos": {
-            "command": "/absolute/path/to/knossos/tools/mcp-serve",
-            "env": {
-                "KNOSSOS_DATA_DIR": "/absolute/knossos-data",
-                "KNOSSOS_ROOTS_FILE": "/absolute/knossos-data/roots.json"
-            }
-        }
-    }
-}
-```
-
-The roots file is the allow-list, re-read on every request, so granting another project needs
-no restart: `knossos allow-root /absolute/path --execute`.
-
-### Installation pitfalls
-
-- **Pin the data directory.** Without `KNOSSOS_DATA_DIR`, each caller falls back to
-  `<cwd>/.knossos`, and the server, the CLI and the plugin can each read a different graph of
-  the same project without a warning.
-- **Build the right Docker stage.** `docker build --target runtime`; a plain `docker build`
-  produces the CI `quality` stage.
-- **No `-t` on Docker stdio.** Use `-i` alone, because terminal framing corrupts the stream.
-- **Mount projects at the same path.** In Docker, mount each project at its host path and pass
-  that path to `--allow-root`.
-
-Each one, with the fix, is in [installation pitfalls](docs/get-started/installation.md#installation-pitfalls).
+- **Codex or another MCP client**: [Codex and other MCP clients](docs/agents/clients.md). The
+  pane and the messages are Claude Code hooks; every other client gets the MCP tools.
+- **No PHP on the host**: [Running Knossos in Docker](docs/operate/container.md).
+- **When it does not start**: [installation pitfalls](docs/get-started/installation.md#installation-pitfalls),
+  such as an unpinned data directory that gives the server and the plugin two different graphs.
+- **Updating, removing, or trying the plugin for one session**: [the plugin guide](docs/claude-code/plugin.md).
 
 ## Quick start
 
@@ -166,7 +121,12 @@ knossos allow-root /absolute/path/to/project --execute
 knossos scan /absolute/path/to/project
 ```
 
-Then, in a Claude Code session in that project, type `/knossos`. The pane opens on Overview:
+In a Claude Code session in that project, type `/knossos` to open the pane, then ask the agent a
+structural question, such as "what breaks if I change `UserRepository`, and which tests would
+tell me?". The routing skill sends it to the graph. A first scan with real output is in
+[first scan](docs/get-started/first-scan.md#a-worked-example).
+
+## The pane
 
 ![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](docs/images/claude-code/overview.png)
 
@@ -188,72 +148,38 @@ and its diff.
 
 ![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](docs/images/claude-code/branch.png)
 
-Branch: what this branch added against its merge base, from new boundary crossings to new dead
-code.
+Branch: whether this branch broke anything against main, then what it changed by boundary.
+
+![The Notes tab: 109 notes as a tree of the boundaries they live in, each in its colour with its count, the one holding the newest note open on its folders and notes, each with its author, first line and date](docs/images/claude-code/notes.png)
+
+Notes: every note on the project, yours and the agent's, by where it lives.
 
 ![The finder over the pane: ResultEnv typed, 20 matches listed with ResultEnvelope marked first](docs/images/claude-code/finder.png)
 
 The finder: `f`, a few letters of a name, and Enter opens that component.
 
-Then ask the agent a structural question, such as "what breaks if I change `UserRepository`, and
-which tests would tell me?". The routing skill sends it to the graph. Every
-tab and key is in [the pane guide](docs/claude-code/pane/index.md), and a first scan with real output
-is in [first scan](docs/get-started/first-scan.md#a-worked-example).
+![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](docs/images/claude-code/band.png)
+
+The band: after a turn that edited files, how far the change reaches, with the pane shut.
+
+Every tab, key and setting is in [the pane guide](docs/claude-code/pane/index.md).
 
 ## What your agent gets
 
-Four notes, each one line, each said once at the moment it helps:
-
-| note     | fires                                                                                                                          |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Read     | after a Read of a heavily depended-on or policed file                                                                          |
-| edit     | after an edit of a heavily depended-on file the Read note missed                                                               |
-| turn end | after a turn that edited files, once it is scanned: the boundary violations it introduced and the tests that reach its changes |
-| commit   | after a commit, on what the session's changes leave behind                                                                     |
-
-After a commit, for example:
+Four messages, each one line, each said once at the moment it helps: after a Read of a heavily
+depended-on or policed file, after an edit of one the Read missed, at the end of a turn that
+edited files (the boundary violations it introduced and the tests that reach its changes), and
+after a commit, on what the session's changes leave behind:
 
 ```text
 knossos: this session's changes carry 1 changed file no test reaches (src/Kernel.php); 1 dependency cycle new since the session began (Router → Kernel). Check them before you push.
 ```
 
-And the agent can ask about one file with `file_context` before it edits it, in one call
-instead of a grep for its callers. The answer's `data.file`, shortened (the declared rules
-that bind the file arrive beside it, in `data.policies`):
+Before an edit, `file_context` gives one file's boundary and the rules that bind it, its
+dependents, the tests that reach it and its latest commits, in one call instead of a grep for
+its callers. Every message and its limits are in [messages for the model](docs/claude-code/agent-notes.md).
 
-```json
-{
-    "path": "src/Result/ResultEnvelope.php",
-    "boundary": "core",
-    "dependents": {
-        "count": 48,
-        "top": [
-            "tests/phpunit/Result/ResultEnvelopeTest.php",
-            "src/Mcp/ToolService.php",
-            "..."
-        ]
-    },
-    "tests": {
-        "items": [
-            {
-                "path": "tests/phpunit/Mcp/BoundaryLegendTest.php",
-                "distance": 1
-            },
-            "..."
-        ],
-        "more": true
-    },
-    "commits": [
-        {
-            "rev": "4e7027a",
-            "subject": "feat(quality): enforce docstring coverage, ..."
-        }
-    ]
-}
-```
-
-Every note, its exact wording and its limits are in [notes for the model](docs/claude-code/agent-notes.md).
-Over MCP, in any client, the 35 tools answer questions such as:
+Over MCP, in any client, the 36 tools answer questions such as:
 
 - What depends, directly or transitively, on `UserRepository`?
 - What are the exact call sites of `ScannerClient::scan`?
@@ -262,7 +188,7 @@ Over MCP, in any client, the 35 tools answer questions such as:
 - Which test files exercise the blast radius of this diff?
 - Where would a refunds feature fit the existing structure?
 
-Each group of tools has its own page, linked from the [docs index](docs/README.md), and every
+Each group of tools has its own guide, linked from the [docs index](docs/README.md), and every
 schema is in the [MCP tool reference](docs/reference/mcp-tools.md).
 
 ## CLI and CI
@@ -291,7 +217,7 @@ and the [CLI reference](docs/reference/cli.md).
 | Language                                         | Extraction                                                                                         | Framework enrichment                                                               |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | PHP 8.3 or newer                                 | Declarations, inheritance, calls, construction, types, injection                                   | [Laravel](docs/languages/php-laravel.md), [Symfony](docs/languages/php-symfony.md) |
-| TypeScript/JavaScript                            | Compiler symbol resolution, imports, calls, types, project references, Vue/Svelte/Astro components | [Next.js, React, Vue, stores, endpoints](docs/languages/typescript.md)             |
+| TypeScript/JavaScript                            | Compiler symbol resolution, imports, calls, types, project references, Vue/Svelte/Astro components | [Next.js, NestJS, React, Vue, stores, endpoints](docs/languages/typescript.md)     |
 | Python 3.11 or newer                             | Standard-library AST in an isolated interpreter; manifests, packages, calls, routes                | [FastAPI, Django, Flask, Celery](docs/languages/python.md)                         |
 | Rust 1.82 or newer, optional on a native install | `syn` parsing; Cargo manifests, cross-file impls, routes; never invokes cargo/rustc                | [Details and limits](docs/languages/rust.md)                                       |
 
