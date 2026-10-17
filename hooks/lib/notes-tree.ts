@@ -11,8 +11,16 @@
  */
 import type { NoteItem } from './notes-view'
 
-/** A component's own name: what follows the last `\`, `::`, `.`, `/` or `#` (a symbol in a TypeScript file) of its full one. */
-export const labelOf = (component: string): string => component.split(/\\|::|\/|#|(?<=\w)\.(?=\w)/).filter(p => p !== '').at(-1) ?? component
+/** Whether a component's name is a project path (a file component): it has a `/` and no symbol after a `#`. */
+const isPath = (component: string): boolean => component.includes('/') && !component.includes('#') && !component.includes('\\') && !component.includes('::')
+
+/**
+ * A component's own name: a path's file name (`fixtures.py`, its extension
+ * kept), else what follows the last `\`, `::`, `.`, `/` or `#` (a symbol in
+ * a TypeScript file) of its full one.
+ */
+export const labelOf = (component: string): string =>
+  isPath(component) ? (component.split('/').filter(p => p !== '').at(-1) ?? component) : (component.split(/\\|::|\/|#|(?<=\w)\.(?=\w)/).filter(p => p !== '').at(-1) ?? component)
 
 /** One walked line of the tree. `fold` is the key `o` flips in the view's folds, and `contrary` the opposite one it replaces. */
 export type TreeLine =
@@ -21,8 +29,8 @@ export type TreeLine =
   | { kind: 'folder'; boundary: string | null; path: string; count: number; open: boolean; fold: string }
   | { kind: 'note'; item: NoteItem }
 
-/** How a note is named: a file note by its path, anything else by its short name. */
-export const noteName = (item: NoteItem): string => (item.path !== null && item.component === item.path ? item.path : item.label)
+/** How a note is named: a file note by its path, the file there or gone, anything else by its short name. */
+export const noteName = (item: NoteItem): string => ((item.path !== null && item.component === item.path) || isPath(item.component) ? item.component : item.label)
 
 /** The boundary that holds the newest note (null for the notes with none), opened first; null for no notes. */
 export function firstOpen(items: NoteItem[]): string | null {
