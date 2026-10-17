@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.32.0](https://github.com/AraneaDev/knossos/compare/v0.31.0...v0.32.0) (2026-10-17)
+
+
+### Features
+
+* [@external](https://github.com/external) policies, orphaned notes, container watcher, larger snapshots ([#333](https://github.com/AraneaDev/knossos/issues/333)) ([6e2698e](https://github.com/AraneaDev/knossos/commit/6e2698ea312c3d4cfdfd4cc3173e75d2762bb1ee))
+* a Branch tab that says first whether the branch broke anything ([#344](https://github.com/AraneaDev/knossos/issues/344)) ([05464bb](https://github.com/AraneaDev/knossos/commit/05464bb1e48838515a03ab45cc342ca159d9b814))
+* a livelier, Claude Code native look for the pane, with a width gauge ([#343](https://github.com/AraneaDev/knossos/issues/343)) ([0e54027](https://github.com/AraneaDev/knossos/commit/0e540270447fdec396976ef19a39f49870e796b9))
+* a Notes tab in the pane ([#338](https://github.com/AraneaDev/knossos/issues/338)) ([09d749c](https://github.com/AraneaDev/knossos/commit/09d749c4ab7e2d6abc53a939c8e49aaa5aaec6ec))
+* a Notes tab you can read as a tree of where the notes live ([#345](https://github.com/AraneaDev/knossos/issues/345)) ([c11f972](https://github.com/AraneaDev/knossos/commit/c11f9722cc85cdd74b2ea4720093fcf81d7d0414))
+* let the person flag a note for the model, and give the pane notes commands ([#337](https://github.com/AraneaDev/knossos/issues/337)) ([5abd857](https://github.com/AraneaDev/knossos/commit/5abd857aca9d06b52d7ecef37ce60e6e6bdc034a))
+* show the cycles inside one type on the Cycles tab, counted apart ([#340](https://github.com/AraneaDev/knossos/issues/340)) ([f74d289](https://github.com/AraneaDev/knossos/commit/f74d289a7d2e74cc47a1b806827e4364ea993c3e))
+
+
+### Fixes
+
+* a click on a file's place opens its detail instead of a file:// link ([#347](https://github.com/AraneaDev/knossos/issues/347)) ([ecfeb90](https://github.com/AraneaDev/knossos/commit/ecfeb90a3b10beda1a388314e8712c0269f007bd))
+* a Notes tab that fills the pane, keeps its colours and lines up, under quieter titles ([#346](https://github.com/AraneaDev/knossos/issues/346)) ([847aee4](https://github.com/AraneaDev/knossos/commit/847aee4bdbf6ecd767a721fb361daa06d65ba75b))
+* budget the pane by the text the engine draws, not its tree serialized ([#342](https://github.com/AraneaDev/knossos/issues/342)) ([2f32a05](https://github.com/AraneaDev/knossos/commit/2f32a05e0cd8994348a03c8d981bd2a02d680499))
+* clear the dead code Knossos reports on itself ([#339](https://github.com/AraneaDev/knossos/issues/339)) ([1f8dde4](https://github.com/AraneaDev/knossos/commit/1f8dde4f2a7f74c0d8d0b8fd2ae7c3af4a81406a))
+* close the minors left from the notes re-read ([#335](https://github.com/AraneaDev/knossos/issues/335)) ([3e6a0fa](https://github.com/AraneaDev/knossos/commit/3e6a0fa9cca91304c41bc0bc8691f6f3902ab901))
+* keep the cycles inside one type off the Overview tile, and name them by their type ([#341](https://github.com/AraneaDev/knossos/issues/341)) ([bd3c8ce](https://github.com/AraneaDev/knossos/commit/bd3c8cef5b7c81268fef5667632c0aaada47d1f7))
+* let a turn's brief wait out a scan the watcher is running instead of failing ([#349](https://github.com/AraneaDev/knossos/issues/349)) ([c6da7a6](https://github.com/AraneaDev/knossos/commit/c6da7a6fad7becf5a5c24ec79f87e29207f8fd8f))
+* raise the query edge cap and check every cycle a change touches ([#329](https://github.com/AraneaDev/knossos/issues/329)) ([1f89979](https://github.com/AraneaDev/knossos/commit/1f89979597681e0cce60ec7585d907c6d258b8f0))
+* say what was silent: unknown migrations and a timed-out brief ([#332](https://github.com/AraneaDev/knossos/issues/332)) ([d4995f0](https://github.com/AraneaDev/knossos/commit/d4995f0f81c88640bf0ff19736f07f7cc0ae499b))
+* the Python scanner follows a visitor's dispatch, a test's path-loaded fixture and a class's __init__ ([#348](https://github.com/AraneaDev/knossos/issues/348)) ([c26af05](https://github.com/AraneaDev/knossos/commit/c26af053669e3892f27ff566e570407e97d7cc86))
+
+
+### Refactoring
+
+* answer the pane's rings, routes and finder with the core queries ([#336](https://github.com/AraneaDev/knossos/issues/336)) ([efe5244](https://github.com/AraneaDev/knossos/commit/efe5244a0c6e29e950638c901457c6bad227a66b))
+
 ## [0.31.0](https://github.com/AraneaDev/knossos/compare/v0.30.0...v0.31.0) (2026-10-15)
 
 
