@@ -2170,7 +2170,7 @@ describe('knossos mod', () => {
     const ui = await mountPane($)
     expect(await ui.find({ key: 'help-0' })).toBeUndefined()
     await ui.press({ key: 'keys' })
-    expect((await ui.find({ key: 'help-0' }))?.text).toMatch(/1–8 +switch tabs/)
+    expect((await ui.find({ key: 'help-0' }))?.text).toMatch(/1–9 +switch tabs/)
     await ui.press({ key: 'keys' })
     expect(await ui.find({ key: 'help-0' })).toBeUndefined()
     await ui.unmount()

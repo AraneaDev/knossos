@@ -374,11 +374,13 @@ describe('paneRows', () => {
 
   it('shows the key help on request', () => {
     const rows = paneRows(input({ showKeys: true }), 60)
-    expect(textOf(rows)).toMatch(/1–8 +switch tabs \(or click one\)/)
+    // As many tabs as the pane has, and every key the Notes tab offers.
+    expect(textOf(rows)).toMatch(/1–9 +switch tabs \(or click one\)/)
+    expect(textOf(rows)).toMatch(/ v +on Notes: say a stale note of the model's/)
     expect(textOf(rows)).toMatch(/ q +ask Claude about the marked row/)
     // One key a line, the key in the accent; a long action wraps under its own column.
     const keyOf = (r: Row) => r.segments.find(seg => seg.color === 'suggestion')
-    expect(keyOf(row(rows, 'help-0')!)).toMatchObject({ text: '1–8    ', color: 'suggestion' })
+    expect(keyOf(row(rows, 'help-0')!)).toMatchObject({ text: '1–9    ', color: 'suggestion' })
     expect(rows.filter(r => r.key.includes('help-')).every(r => keyOf(r)?.text.length === 7)).toBe(true)
     expect(textOf(paneRows(input(), 60))).not.toContain('switch tabs')
   })

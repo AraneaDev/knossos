@@ -899,7 +899,7 @@ function componentRows(prefix: string, items: Item[], selected: number, spec: Ta
 
 /** The keys and what each does, for the key list. */
 const KEY_HELP: [string, string][] = [
-  ['1–8', 'switch tabs (or click one)'],
+  [`1–${TABS.length}`, 'switch tabs (or click one)'],
   ['j k', 'move the marker (or Tab, or a click)'],
   ['o', 'open the marked row: a component or a file shows what depends on it, an Overview bar the tab it counts'],
   ['e', "open the marked row's file in your editor"],
@@ -916,6 +916,7 @@ const KEY_HELP: [string, string][] = [
   ['n s x', 'on Hubs: narrow the list (type, then Enter), sort by in, out or cross, clear the narrowing or the in-degree range'],
   ['n s x', "on Notes: narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both"],
   ['m w g', "on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)"],
+  ['v', "on Notes: say a stale note of the model's is still true, so it rests on its files as they are now"],
   ['r', 'rescan the project now, fresh or not'],
   ['a', 'allow a refused root (asks first)'],
 ]
