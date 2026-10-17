@@ -49,9 +49,9 @@ export const FIXTURE = {
     // The boundary pair the Boundaries tab marks first: the tests boundary of knossos.json and the
     // namespace boundary it depends on most.
     boundaryPair: "tests → Scanner",
-    // The first row of the Cycles tab's list, drawn with the first cycle's diagram once the
-    // cycles have loaded. Not the diagram's "back to the start": a short cycle has no room for it.
-    cycleDrawn: "cycle 1 · ",
+    // The first cycle's diagram title, drawn once the cycles have loaded. This graph has no
+    // cycle between types, only ones within one type, so the first is one of those.
+    cycleDrawn: "members · within one type",
     // The Issues tab's Over budget rule: max_php_function_lines in maintainability-budgets.json.
     overBudget: "functions over 205 lines",
     // The small file the hero's turn edits, and the line the edit goes above.
@@ -153,7 +153,8 @@ const openPane = (columns, beat = true) => [
 ];
 
 /** A row the marker stands on, naming `name`. */
-const marked = (name) => String.raw`›\s+${lit(name)}\s`;
+/** A row the marker stands on, by its name: a one-glyph mark before the name (a kind letter, a change's `~`) is optional. */
+export const marked = (name) => String.raw`›\s*(?:\S\s+)?${lit(name)}\s`;
 
 /** The finder's field: `f` opens it with the keys in it, checked before typing, so a word can never reach the prompt. */
 const find = (text, fixture, delayMs = 0) => [
@@ -192,7 +193,7 @@ const hubDetail = (theme) =>
         theme === "light" ? "hubs-detail-light" : "hubs-detail",
         [
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
-            press("2", String.raw`›\s+StableId\s`),
+            press("2", marked("StableId")),
             press("j"),
             press("j"),
             press("j"),
@@ -220,7 +221,7 @@ export const SHOTS = {
             ...openPane(PANE[160]),
             hold(1000),
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
-            press("2", String.raw`›\s+StableId\s`),
+            press("2", marked("StableId")),
             press("j"),
             press("j"),
             press("j"),

@@ -11,6 +11,7 @@ import {
     shown,
 } from "./shoot.mjs";
 import {
+    marked,
     COMMAND_LIST,
     COMMAND_LISTED,
     NEVER_SHOWN,
@@ -281,7 +282,8 @@ describe("keepPartial", () => {
 });
 
 describe("the slash command list", () => {
-    const rows = (text) => text.split("\n").filter((l) => new RegExp(COMMAND_LIST).test(l));
+    const rows = (text) =>
+        text.split("\n").filter((l) => new RegExp(COMMAND_LIST).test(l));
     it("is read with its selected row marked or not, and never from the prompt", () => {
         const open =
             "  ❯ /knossos                    Toggle the Knossos architecture pane\n    /knossos:graph              (Knossos) Use when\n";
@@ -293,7 +295,27 @@ describe("the slash command list", () => {
         expect(new RegExp(COMMAND_LIST, "m").test(prompt)).toBe(false);
         expect(new RegExp(COMMAND_LISTED, "m").test(prompt)).toBe(false);
         expect(new RegExp(COMMAND_LISTED, "m").test(open)).toBe(true);
-        expect(new RegExp(COMMAND_LISTED, "m").test(open.replace("❯", " "))).toBe(true);
-        expect(new RegExp(COMMAND_LISTED, "m").test("❯ /knossos \n")).toBe(false);
+        expect(
+            new RegExp(COMMAND_LISTED, "m").test(open.replace("❯", " ")),
+        ).toBe(true);
+        expect(new RegExp(COMMAND_LISTED, "m").test("❯ /knossos \n")).toBe(
+            false,
+        );
+    });
+});
+
+describe("a marked row", () => {
+    it("matches the name after the marker, with or without a one-glyph mark before it", () => {
+        const re = new RegExp(marked("StableId"), "m");
+        expect(re.test("  ›  C StableId                 ■ Store")).toBe(true);
+        expect(re.test("  ›  StableId                   ■ Store")).toBe(true);
+        // A change's mark sits against the marker.
+        expect(
+            new RegExp(marked("hooks/lib/paths.ts"), "m").test(
+                "  ›~ hooks/lib/paths.ts ■ hooks",
+            ),
+        ).toBe(true);
+        expect(re.test("  ›  C StableIdMap              ■ Store")).toBe(false);
+        expect(re.test("     C StableId                 ■ Store")).toBe(false);
     });
 });
