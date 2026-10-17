@@ -14,7 +14,7 @@ import type { NoteItem } from '../lib/notes-view'
 import { request, showComponent } from './loaders'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
-import { fieldKey, mod, PANE } from './state'
+import { fieldKey, mod, revealThenFocus } from './state'
 
 /** The wrapper bounds the notes commands at 15 s. */
 const WRITE_TIMEOUT_MS = 20_000
@@ -29,9 +29,9 @@ async function marked(io: Port): Promise<NoteItem | null> {
 /** The question the tab asks, put up or dropped. */
 const ask = (io: Port, question: NotesAsk | null): Promise<unknown> => io.state.view.update((v): KnossosView => ({ ...v, notesAsk: question }))
 
-/** Moves the focus into the field `id` once it is drawn. */
+/** Moves the focus into the field `id` once it is drawn, scrolled into view first. */
 function focus(io: Port, id: string): void {
-  io.clock.after(0, () => void io.ui.focus({ requestId: PANE, key: fieldKey(id) }).catch(() => undefined))
+  io.clock.after(0, () => void revealThenFocus(io, fieldKey(id)).catch(() => undefined))
 }
 
 /** `X`: asks to remove the marked note, the person's or the model's. */

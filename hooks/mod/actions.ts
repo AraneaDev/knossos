@@ -17,7 +17,7 @@ import { disable, say, wrapper } from './port'
 import type { Port } from './port'
 import { currentInput, currentList } from './render'
 import type { Handlers } from './render'
-import { fieldKey, mod, PANE } from './state'
+import { fieldKey, mod, PANE, revealThenFocus } from './state'
 import { requestRescan, scanSafely } from './watcher'
 import type { ProcessRunResult, RenderSurface } from 'claude-code'
 
@@ -144,8 +144,9 @@ async function openRelated(io: Port, index: number): Promise<void> {
  * so it runs on a timer, never inside the press or a render.
  */
 function focusField(io: Port, id: string): void {
-  io.clock.after(0, () => void io.ui.focus({ requestId: PANE, key: fieldKey(id) }).catch(() => undefined))
+  io.clock.after(0, () => void revealThenFocus(io, fieldKey(id)).catch(() => undefined))
 }
+
 
 /** Opens the hubs filter's field and moves the focus into it once it is drawn. */
 async function openFilter(io: Port): Promise<void> {
@@ -435,6 +436,8 @@ async function previewNote(io: Port, component: string, value: string): Promise<
     if (parsed?.status === 'ok' && parsed.executed === false) return { ...n, phase: 'confirming', previous: parsed.previous ?? null }
     return { ...n, phase: 'failed', reason: parsed?.status === 'refused' ? (parsed.reason ?? 'it refused') : 'it said nothing' }
   })
+  // The question closes the detail: scrolled into view once it is drawn, wherever the detail stands.
+  io.clock.after(0, () => void io.ui.scroll({ in: PANE, to: { key: 'note-answers' } }).catch(() => undefined))
 }
 
 /**

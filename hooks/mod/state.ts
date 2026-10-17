@@ -4,7 +4,7 @@
  * than one of them needs, and the few helpers that touch only that state.
  * Nothing here reaches the engine.
  */
-import type { PluginOptions, Timer } from 'claude-code'
+import type { EngineInterface, PluginOptions, Timer } from 'claude-code'
 
 import type { Dashboard, SessionChanges } from '../../types'
 import { noActivity } from '../lib/activity'
@@ -27,6 +27,16 @@ export const PANE = 'knossos'
  * the next drawing drops the Button the keyboard goes back to the prompt.
  */
 export const fieldKey = (id: string): string => `field:${id}`
+
+/**
+ * Scrolls the element `key` into the pane's window, then focuses it: a field
+ * at the end of a long detail is otherwise below the window, and what is
+ * typed goes elsewhere. A scroll the engine refuses still focuses.
+ */
+export async function revealThenFocus(io: { ui: Pick<EngineInterface['ui'], 'scroll' | 'focus'> }, key: string): Promise<void> {
+  await io.ui.scroll({ in: PANE, to: { key } }).catch(() => undefined)
+  await io.ui.focus({ requestId: PANE, key })
+}
 
 /** The fan-in threshold when the options give none the dashboard command accepts. */
 const DEFAULT_THRESHOLD = 20

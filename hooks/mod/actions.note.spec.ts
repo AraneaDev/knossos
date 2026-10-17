@@ -39,6 +39,9 @@ function fakePort(initial: Record<string, unknown> = {}) {
     const runs: string[][] = []
     const answers: string[] = []
     const focused: unknown[] = []
+    // Scrolls and focuses in the order they were asked for.
+    const moves: string[] = []
+    const scrolled: unknown[] = []
     const state = new Proxy(
         {},
         {
@@ -53,7 +56,12 @@ function fakePort(initial: Record<string, unknown> = {}) {
     )
     const io = {
         clock: { now: async () => 1_000, after: (_ms: number, run: () => void) => (timers.push(run), { cancel: () => undefined }) },
-        ui: { focus: async (args: unknown) => (focused.push(args), {}), log: () => undefined, invalidate: () => undefined },
+        ui: {
+            focus: async (args: unknown) => (focused.push(args), moves.push('focus'), {}),
+            scroll: async (args: unknown) => (scrolled.push(args), moves.push('scroll'), {}),
+            log: () => undefined,
+            invalidate: () => undefined,
+        },
         session: { root: async () => '/session/root' },
         plugin: { root: '/plugin' },
         process: {
@@ -87,7 +95,7 @@ function fakePort(initial: Record<string, unknown> = {}) {
         await settle()
     }
     const note = () => values.get('note') as NoteState | null
-    return { io, values, timers, runs, answers, focused, press, type, submit, runTimers, note }
+    return { io, values, timers, runs, answers, focused, scrolled, moves, press, type, submit, runTimers, note }
 }
 
 const editing = (over: Partial<NoteState> = {}): NoteState => ({ component: 'App\\Greeter', phase: 'editing', value: '', previous: null, reason: null, ...over })
@@ -122,6 +130,9 @@ describe('opening a note', () => {
         expect(port.note()).toEqual({ component: 'App\\Model\\Greeter', phase: 'editing', value: 'keep it small', previous: null, reason: null })
         await port.runTimers()
         expect(port.focused).toEqual([{ requestId: PANE, key: fieldKey('note') }])
+        // The field closes a long detail: it is scrolled into view before it takes the keys.
+        expect(port.scrolled).toEqual([{ in: PANE, to: { key: fieldKey('note') } }])
+        expect(port.moves).toEqual(['scroll', 'focus'])
     })
 
     it('falls back to the inspected name and an empty value without a stored detail', async () => {
@@ -221,6 +232,9 @@ describe("the note's preview", () => {
     it('asks for a yes, holding what it would replace', async () => {
         const port = await previewed(answer({ status: 'ok', component: 'App\\Greeter', executed: false, previous: 'old' }))
         expect(port.note()).toEqual(confirming({ previous: 'old' }))
+        // The question and its answers are scrolled into view, wherever the detail stands.
+        await port.runTimers()
+        expect(port.scrolled).toContainEqual({ in: PANE, to: { key: 'note-answers' } })
     })
 
     it('asks for a yes with nothing replaced when the component had no note', async () => {

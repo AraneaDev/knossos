@@ -127,6 +127,7 @@ function portOf($: EngineInterface): Port {
       toast: text => $.ui.toast(text),
       copy: args => $.ui.copy(args),
       focus: args => $.ui.focus(args),
+      scroll: args => $.ui.scroll(args),
       panes: () => $.ui.panes(),
       invalidate: event => $.ui.invalidate(event),
       open: args => $.ui.open(args),
