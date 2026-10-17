@@ -140,7 +140,7 @@ describe('notes on a component detail', () => {
   const presses = (n: NoteState | null) => rows(n).flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
 
   it('offers m to add one, and says there is none yet', () => {
-    expect(said(null)).toMatch(/Notes\n {3}No notes on StableId yet\./)
+    expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\./)
     expect(presses(null)).toContain('note=m')
   })
 

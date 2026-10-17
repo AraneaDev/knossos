@@ -26,7 +26,6 @@ import { paneRows } from './__tests__/pane'
 import type { PaneInput, Row } from './layout'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
-import { LIST_MAX } from './cards'
 import { gitLabel, paneLayout, shrinkRows, statsOf, titleRow } from './layout'
 import { CHIP_BG, languageColour, STAT_HUES, STATUS_COLOURS } from './palette'
 import { dotGlyph, NO_MOTION, spinGlyph } from './motion'
@@ -920,7 +919,7 @@ describe('the detail view', () => {
     // Nineteen use it and two are listed: the rest as one box.
     expect(raw).toContain('│ +17 more')
     expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies · used by 19 · uses 2 +edges$/)
-    expect(textOf(rows)).toMatch(/Notes\n {3}note: Read-only: it never scans\./)
+    expect(textOf(rows)).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\./)
   })
   it("marks an agent's note apart from the person's, the person's first", () => {
     const answer = detailAnswer({
@@ -929,7 +928,7 @@ describe('the detail view', () => {
         { kind: 'note', value: 'Reached from the dashboard tab only.', author: 'model' },
       ],
     })
-    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
   })
   it("keeps a note's line breaks and spacing, so a short ASCII sketch survives", () => {
     const answer = detailAnswer({
@@ -997,7 +996,7 @@ describe('the detail view', () => {
     const old = detailAnswer({ used_by: { count: 1, truncated: false, names: ['Kernel'] }, uses: { count: 0, truncated: false, names: [] } })
     expect(paneRows(detailPane(old), 60).map(rawText).join('\n')).toMatch(/│ Kernel +├─+╮/)
     const text = textOf(paneRows(detailPane(old), 40))
-    expect(text).toMatch(/Used by · 1\n› {2}Kernel/)
+    expect(text).toMatch(/Used by · 1\n *\n› {2}Kernel/)
     expect(text).not.toMatch(/█/)
   })
 })
@@ -1067,8 +1066,10 @@ describe('the pane at every width and height', () => {
     expect(shown(paneRows(input({ tab: 'hubs' }, many), 100, 8), 'hub')).toBe(5)
     expect(tall.length).toBeLessThanOrEqual(40)
     expect(textOf(tall)).toMatch(new RegExp(`${40 - shown(tall, 'hub')} more ↓`))
-    // However tall the pane, a list stops at 28 rows and says how many more.
-    expect(shown(paneRows(input({ tab: 'hubs' }, many), 100, 200), 'hub')).toBe(28)
+    // A pane tall enough shows every hub, and says no more.
+    const whole = paneRows(input({ tab: 'hubs' }, many), 100, 200)
+    expect(shown(whole, 'hub')).toBe(40)
+    expect(textOf(whole)).not.toMatch(/more ↓/)
   })
 
   it('scrolls a list to the marker: the marked hub is drawn, with how many are above it', () => {
@@ -1525,9 +1526,8 @@ describe('the pane at every width and height, with a large project', () => {
     for (const columns of WIDTHS) {
       const hubs = HEIGHTS.map(h => shown(paneRows(at({ tab: 'hubs' }), columns, h), 'hub'))
       expect(hubs[1], `${columns}`).toBeGreaterThan(hubs[0]!)
-      // More again, unless the list already reached the most it ever shows.
-      if (hubs[1]! < LIST_MAX) expect(hubs[2], `${columns}`).toBeGreaterThan(hubs[1]!)
-      else expect(hubs[2], `${columns}`).toBe(LIST_MAX)
+      // More again: no cap stops a list short of the pane's foot.
+      expect(hubs[2], `${columns}`).toBeGreaterThan(hubs[1]!)
     }
   })
 

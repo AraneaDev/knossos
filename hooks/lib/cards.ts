@@ -79,8 +79,9 @@ export function figures(text: string): Segment[] {
 }
 
 /**
- * A card's top edge: the title, in Claude's orange (and the subtitle, while
- * it fits), set into a rule across the card, the note before its end. As
+ * A card's top edge: the title in bold, after its glyph in Claude's orange
+ * (and the subtitle, while it fits), set into a rule across the card, the
+ * note before its end. As
  * the width shrinks the subtitle goes, then the note, then the title is cut.
  * No box closes around the card: the rule and the colour carry it.
  */
@@ -91,7 +92,7 @@ export function topRow(section: Section, width: number): Row {
   const glyph = section.glyph ?? GLYPHS[section.key]
   const mark: Segment[] = glyph === undefined ? [] : [{ text: `${glyph} `, color: TITLE }]
   const build = (subtitle: boolean, withNote: boolean, titleWidth = cells(section.title)): Segment[] | null => {
-    const title: Segment[] = [...mark, { text: fit(section.title, titleWidth).replace(/ …$/, '…'), bold: true, color: TITLE }, ...(subtitle && section.subtitle ? [{ text: ` · ${section.subtitle}`, dim: true }] : [])]
+    const title: Segment[] = [...mark, { text: fit(section.title, titleWidth).replace(/ …$/, '…'), bold: true, color: HEADING }, ...(subtitle && section.subtitle ? [{ text: ` · ${section.subtitle}`, dim: true }] : [])]
     const right: Segment[] = withNote && note.length > 0 ? [{ text: ' ' }, ...note, { text: ` ${close}`, color: FRAME }] : [{ text: close, color: FRAME }]
     const fill = width - cells(lead) - segmentsWidth(title) - 1 - segmentsWidth(right)
     if (fill < 1) return null
@@ -103,7 +104,7 @@ export function topRow(section: Section, width: number): Row {
   const segments = build(true, true) ?? build(false, true) ?? cut ?? build(false, false)
   if (segments !== null) return { key: `${section.key}-head`, segments }
   // Too narrow for the rule: the title alone, cut.
-  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: TITLE }] }
+  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: HEADING }] }
 }
 
 /**
@@ -136,10 +137,11 @@ export function cardRows(section: Section, width: number, tier: Tier): Row[] {
     return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width)]
   }
   if (section.bare === true) return section.body.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
-  const head = topRow(section, width)
-  if (tier === 'narrow') return [head, ...section.body.map(row => bareRow(row, width))]
+  // A blank row under the title, so the title stands apart from what it heads.
+  const head = [topRow(section, width), ...(section.body.length > 0 ? [{ key: `${section.key}-under`, segments: [{ text: spaces(width) }] }] : [])]
+  if (tier === 'narrow') return [...head, ...section.body.map(row => bareRow(row, width))]
   const body = section.body.map(row => (row.code !== undefined ? row : framedRow(row, width)))
-  return [head, ...body]
+  return [...head, ...body]
 }
 
 /** Cards stacked, each after a blank row. */
@@ -217,19 +219,47 @@ export type Block = { key: string; grow?: { length: number; min: number; late?: 
 export const LIST_SOFT = 10
 
 /**
- * The most rows a list grows to however tall the pane: past it the list says
- * `n more ↓` and scrolls to the marker. It keeps the text a tall, wide pane
- * draws well inside the 100,000 characters the engine draws of it.
+ * Grows each list toward `most(i)` rows while `spare()` stays at or above
+ * zero: each in turn takes its share of the spare rows at once, halving the
+ * step when that does not fit and doubling it while growing costs nothing (a
+ * list beside a taller card), so a tall pane costs a few builds of each card
+ * rather than one a row.
  */
-export const LIST_MAX = 28
+function growLists(limits: number[], most: (i: number) => number, spare: () => number): void {
+  let grew = true
+  while (grew) {
+    grew = false
+    const open = limits.map((_, i) => i).filter(i => limits[i]! < most(i))
+    // An even share of the round's spare rows each, so the lists split the height as they would a row at a time.
+    const share = Math.floor(spare() / Math.max(1, open.length))
+    for (const i of open) {
+      let step = Math.max(1, Math.min(most(i) - limits[i]!, share))
+      while (step >= 1) {
+        const before = spare()
+        limits[i]! += step
+        const after = spare()
+        if (after < 0) {
+          limits[i]! -= step
+          step = Math.floor(step / 2)
+          continue
+        }
+        grew = true
+        // Free rows: the list grew beside a taller card, so it may take more at once.
+        if (after < before || limits[i]! >= most(i)) break
+        step = Math.min(step * 2, most(i) - limits[i]!)
+      }
+    }
+  }
+}
 
 /**
  * Cards stacked in `width`, each list as long as `budget` rows allow: every
  * list starts at its minimum, then each in turn takes one more row while the
  * whole still fits, up to {@link LIST_SOFT}; then the late cards grow the
- * same way, within `lateBudget` too; then the lists take what is left, up to
- * {@link LIST_MAX}. A
- * short pane shows the minimums and scrolls.
+ * same way, within `lateBudget` too; then the lists take what is left. A
+ * short pane shows the minimums and scrolls. The text a tall, wide pane draws
+ * is held under the engine's bound when it is drawn (`TEXT_BUDGET` in
+ * hooks/mod/render.tsx), which gives rows back.
  */
 export function fitBlocks(blocks: Block[], width: number, tier: Tier, budget: number, lateBudget = budget): Row[] {
   const inner = cardInner(width, tier)
@@ -249,20 +279,14 @@ export function fitBlocks(blocks: Block[], width: number, tier: Tier, budget: nu
   const phases: { late: boolean; cap: number; within: number }[] = [
     { late: false, cap: LIST_SOFT, within: budget },
     { late: true, cap: Number.POSITIVE_INFINITY, within: Math.min(budget, lateBudget) },
-    { late: false, cap: LIST_MAX, within: budget },
+    { late: false, cap: Number.POSITIVE_INFINITY, within: budget },
   ]
   for (const phase of phases) {
-    let grew = true
-    while (grew) {
-      grew = false
-      for (let i = 0; i < blocks.length; i++) {
-        const grow = blocks[i]!.grow
-        if (grow === undefined || (grow.late === true) !== phase.late || limits[i]! >= Math.min(grow.length, phase.cap)) continue
-        limits[i]!++
-        if (total() <= phase.within) grew = true
-        else limits[i]!--
-      }
+    const most = (i: number): number => {
+      const grow = blocks[i]!.grow
+      return grow === undefined || (grow.late === true) !== phase.late ? limits[i]! : Math.min(grow.length, phase.cap)
     }
+    growLists(limits, most, () => phase.within - total())
   }
   const sections = blocks.map((b, i) => b.make(inner, limits[i]!)).filter((s): s is Section => s !== null)
   return stackRows(sections, width, tier)
@@ -377,17 +401,8 @@ export function gridRows(grid: Block[][], width: number, tier: Tier, budget: num
   const lineHeight = (start: number, count: number): number => Math.max(0, ...Array.from({ length: count }, (_, j) => rowsOf(start + j).length))
   const starts = placed.map((_, n) => placed.slice(0, n).reduce((sum, p) => sum + p.line.length, 0))
   const total = () => placed.reduce((sum, p, n) => sum + 1 + lineHeight(starts[n]!, p.line.length), 0)
-  for (const cap of [LIST_SOFT, LIST_MAX]) {
-    let grew = true
-    while (grew) {
-      grew = false
-      blocks.forEach(({ block }, i) => {
-        if (block.grow === undefined || limits[i]! >= Math.min(block.grow.length, cap)) return
-        limits[i]!++
-        if (total() <= budget) grew = true
-        else limits[i]!--
-      })
-    }
+  for (const cap of [LIST_SOFT, Number.POSITIVE_INFINITY]) {
+    growLists(limits, i => (blocks[i]!.block.grow === undefined ? limits[i]! : Math.min(blocks[i]!.block.grow!.length, cap)), () => budget - total())
   }
   // Filling the height: the rows of cards side by side share what is left evenly (the last one alone when there are none),
   // so the cards end at the pane's foot rather than above blank space, and no one row stands hollow.

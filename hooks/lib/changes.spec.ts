@@ -209,7 +209,7 @@ describe('changesInput and changesList', () => {
 
 describe('changesRows', () => {
   it('says what will show before anything changed', () => {
-    expect(textOf(changesRows(changesInput(NO_CHANGES, ROOT), 0, 60))).toMatch(/Changes this session\n {3}Nothing yet. The files Claude edits show here/)
+    expect(textOf(changesRows(changesInput(NO_CHANGES, ROOT), 0, 60))).toMatch(/Changes this session\n *\n {3}Nothing yet. The files Claude edits show here/)
   })
   it('draws files with their marks, each pressable to its detail, the tests, and the command', () => {
     const rows = changesRows(changesInput(session(), ROOT), 1, 90)
