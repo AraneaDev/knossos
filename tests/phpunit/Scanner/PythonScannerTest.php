@@ -2195,6 +2195,236 @@ PYTHON);
         ], $overrides);
     }
 
+    /**
+     * `ast.NodeVisitor.visit` dispatches to `visit_<Node>` through `getattr`,
+     * so no call names a hook. A call that reaches a visitor's inherited
+     * `visit`, on itself or on an instance, is a probable call of each hook
+     * the visitor declares; `generic_visit` adds nothing `visit` has not
+     * reached, and a class that is no visitor dispatches nothing.
+     */
+    #[Group('python-scanner')]
+    public function testPythonWorkerLinksAVisitorsVisitToItsHooks(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-py-dispatch-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/visitors.py' => implode("\n", [
+                'import ast',
+                '',
+                'class Collector(ast.NodeVisitor):',
+                '    def collect(self, tree):',
+                '        self.visit(tree)',
+                '    def visit_Call(self, node):',
+                '        self.generic_visit(node)',
+                '    def visit_Name(self, node):',
+                '        return node',
+                '    def helper(self):',
+                '        return 1',
+                '',
+                'class Plain:',
+                '    def visit_Call(self, node):',
+                '        return node',
+                '    def run(self, tree):',
+                '        self.visit(tree)',
+                '',
+                'def scan(tree):',
+                '    Collector().visit(tree)',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/visitors.py']]), false);
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $hooks = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls' && str_contains($edge->targetReference, '::visit_')) {
+                    $hooks[] = [$edge->sourceReference, $edge->targetReference, $edge->confidence->value];
+                }
+            }
+        }
+        sort($hooks);
+
+        self::assertSame([
+            ['py:function:app.visitors.scan', 'py:method:app.visitors.Collector::visit_Call', 'probable'],
+            ['py:function:app.visitors.scan', 'py:method:app.visitors.Collector::visit_Name', 'probable'],
+            ['py:method:app.visitors.Collector::collect', 'py:method:app.visitors.Collector::visit_Call', 'probable'],
+            ['py:method:app.visitors.Collector::collect', 'py:method:app.visitors.Collector::visit_Name', 'probable'],
+        ], $hooks);
+    }
+
+    /**
+     * A pytest fixture in a conftest.py that loads a project file by path
+     * (`importlib.util.spec_from_file_location` on a path built from
+     * `__file__`) hands the tests that take it that module: `tool.helper()` in
+     * a test calls the loaded file's `helper`. The conftest is read for the
+     * test's sake, so it is recorded among the test's reads. A fixture that
+     * loads nothing names no module.
+     */
+    #[Group('python-scanner')]
+    public function testPythonWorkerResolvesAModuleAConftestFixtureLoadsByPath(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-py-fixture-' . bin2hex(random_bytes(6));
+        mkdir($root . '/tests', 0o755, true);
+        mkdir($root . '/bin', 0o755, true);
+        $files = [
+            'bin/tool.py' => "def helper():\n    return 1\n",
+            'tests/conftest.py' => implode("\n", [
+                'import importlib.util',
+                'from pathlib import Path',
+                '',
+                'import pytest',
+                '',
+                'TOOL_PATH = Path(__file__).resolve().parents[1] / "bin" / "tool.py"',
+                '',
+                'def _load():',
+                '    spec = importlib.util.spec_from_file_location("tool", TOOL_PATH)',
+                '    module = importlib.util.module_from_spec(spec)',
+                '    spec.loader.exec_module(module)',
+                '    return module',
+                '',
+                '@pytest.fixture(scope="session")',
+                'def tool():',
+                '    return _load()',
+                '',
+                '@pytest.fixture',
+                'def other():',
+                '    return 1',
+                '',
+            ]),
+            'tests/test_tool.py' => implode("\n", [
+                'def test_helper(tool):',
+                '    assert tool.helper() == 1',
+                '',
+                'def test_other(other):',
+                '    assert other.helper() == 1',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]), false);
+            $client->shutdown();
+        } finally {
+            foreach (array_keys($files) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/tests');
+            @rmdir($root . '/bin');
+            @rmdir($root);
+        }
+
+        $helper = null;
+        $calls = [];
+        $reads = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'function' && $node->displayName === 'helper') {
+                    $helper = $node->localId;
+                }
+            }
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls' && str_contains($edge->sourceReference, 'test_tool')) {
+                    $calls[] = [substr($edge->sourceReference, (int) strrpos($edge->sourceReference, '.') + 1), $edge->targetReference];
+                }
+            }
+            if (str_ends_with($contribution->ownerKey, 'tests/test_tool.py')) {
+                $reads = array_keys($contribution->reads ?? []);
+            }
+        }
+
+        self::assertNotNull($helper);
+        self::assertSame([['test_helper', $helper]], array_values(array_filter($calls, static fn(array $call): bool => str_ends_with($call[1], 'helper'))));
+        self::assertContains('tests/conftest.py', $reads);
+    }
+
+    /**
+     * Calling a class runs the `__init__` it declares, so the call reaches
+     * that method too, whether the class is imported or the caller's own. A
+     * class that declares none is no call to an `__init__` nothing declares.
+     */
+    #[Group('python-scanner')]
+    public function testPythonWorkerLinksAClassCallToTheInitItDeclares(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-py-init-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/models.py' => implode("\n", [
+                'class Engine:',
+                '    def __init__(self):',
+                '        self.on = True',
+                '',
+                'class Bare:',
+                '    pass',
+                '',
+            ]),
+            'app/main.py' => implode("\n", [
+                'from app.models import Bare, Engine',
+                '',
+                'class Local:',
+                '    def __init__(self):',
+                '        self.ready = True',
+                '',
+                'def build():',
+                '    Engine()',
+                '    Bare()',
+                '',
+                'def make():',
+                '    return Local()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]), false);
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $inits = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls' && str_ends_with($edge->targetReference, '::__init__')) {
+                    $inits[] = [$edge->sourceReference, $edge->targetReference];
+                }
+            }
+        }
+        sort($inits);
+
+        self::assertSame([
+            ['py:function:app.main.build', 'py:method:app.models.Engine::__init__'],
+            ['py:function:app.main.make', 'py:method:app.main.Local::__init__'],
+        ], $inits);
+    }
+
     #[Group('python-scanner')]
     public function testAFunctionReadOffItsModuleAsAValueIsReferenced(): void
     {
