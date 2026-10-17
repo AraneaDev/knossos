@@ -63,7 +63,7 @@ function fakePort(view: Partial<KnossosView> = {}, initial: Record<string, unkno
     )
     const io = {
         clock: { now: async () => 1_000, after: (_ms: number, run: () => void) => (timers.push(run), { cancel: () => undefined }) },
-        ui: { focus: async (args: unknown) => (focused.push(args), {}), log: () => undefined, invalidate: () => undefined },
+        ui: { focus: async (args: unknown) => (focused.push(args), {}), scroll: async () => ({}), log: () => undefined, invalidate: () => undefined },
         session: { root: async () => ROOT },
         plugin: { root: '/plugin' },
         process: {

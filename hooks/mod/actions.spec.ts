@@ -50,7 +50,7 @@ describe('opening a field', () => {
     const cell = <T>(value: T) => ({ read: async () => value, update: async (change: (v: T) => T) => void (value = change(value)) })
     const io = {
       clock: { after: (_ms: number, run: () => void) => void timers.push(run) },
-      ui: { focus: async (args: unknown) => (focused.push(args), {}) },
+      ui: { focus: async (args: unknown) => (focused.push(args), {}), scroll: async () => ({}) },
       state: { view: cell(VIEW), detail: cell(null), note: cell(null) },
     } as unknown as Port
     return { io, timers, focused }
@@ -62,7 +62,8 @@ describe('opening a field', () => {
     // Not inside the press: the call waits for the drawing that brings the field.
     expect(focused).toEqual([])
     for (const run of timers) run()
-    await Promise.resolve()
+    // The field is scrolled into view first, then focused.
+    for (let i = 0; i < 5; i++) await Promise.resolve()
     expect(focused).toEqual([{ requestId: PANE, key: fieldKey(id) }])
     expect(fieldKey(id)).not.toBe(id)
     expect(pressOf(fieldKey(id))).toBeNull()

@@ -40,7 +40,7 @@ type Engine = EngineInterface
  */
 export type Port = {
   clock: Pick<Engine['clock'], 'now' | 'after' | 'every'>
-  ui: Pick<Engine['ui'], 'log' | 'toast' | 'copy' | 'focus' | 'panes' | 'invalidate' | 'open' | 'close'>
+  ui: Pick<Engine['ui'], 'log' | 'toast' | 'copy' | 'focus' | 'scroll' | 'panes' | 'invalidate' | 'open' | 'close'>
   session: Pick<Engine['session'], 'root' | 'id' | 'append'>
   process: Pick<Engine['process'], 'run' | 'spawn'>
   fs: Pick<Engine['fs'], 'stat'>

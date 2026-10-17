@@ -39,7 +39,7 @@ function viewPort(view: Partial<KnossosView> = {}, extra: { note?: unknown; allo
     )
     const io = {
         clock: { after: (_ms: number, run: () => void) => (timers.push(run), { cancel: () => undefined }) },
-        ui: { focus: async (args: unknown) => (focused.push(args), {}) },
+        ui: { focus: async (args: unknown) => (focused.push(args), {}), scroll: async () => ({}) },
         state,
     } as unknown as Port
     const press = async (id: string) => {
@@ -247,7 +247,8 @@ describe('the plain view switches', () => {
         expect(port.focused).toEqual([])
         expect(port.timers).toHaveLength(1)
         port.timers[0]!()
-        await Promise.resolve()
+        // The field is scrolled into view first, then focused.
+        for (let i = 0; i < 5; i++) await Promise.resolve()
         expect(port.focused).toEqual([{ requestId: PANE, key: fieldKey('filter') }])
     })
 
