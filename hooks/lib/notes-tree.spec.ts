@@ -30,6 +30,17 @@ const items = [
 ]
 
 describe('the notes as a tree', () => {
+  it('names a file note on a file that is gone by its path, never by its extension', () => {
+    const gone = note('workers/python/bin/knossos_python/fixtures.py', { label: labelOf('workers/python/bin/knossos_python/fixtures.py'), path: null, missing: true })
+    expect(noteName(gone)).toBe('workers/python/bin/knossos_python/fixtures.py')
+    expect(labelOf('workers/python/bin/knossos_python/fixtures.py')).toBe('fixtures.py')
+    expect(labelOf('.github/workflows/quality.yml')).toBe('quality.yml')
+    // A dotted module name and a symbol keep their own last part.
+    expect(labelOf('workers.python.bin.knossos_python.module_index.ProjectModuleIndex::_declare')).toBe('_declare')
+    expect(labelOf('hooks/lib/envelopes.ts#betweenTypes')).toBe('betweenTypes')
+    expect(labelOf('App\\Query\\Cache')).toBe('Cache')
+  })
+
   it('names a file note by its path and a symbol by its short name', () => {
     expect(noteName(items[2]!)).toBe('hooks/lib/layout.ts')
     expect(noteName(items[0]!)).toBe('Cache')
