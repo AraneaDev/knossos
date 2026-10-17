@@ -222,10 +222,13 @@ final readonly class NotesService
     {
         $statement = $this->pdo->prepare(
             'SELECT a.canonical_name, a.kind, a.value, a.author, a.basis_json, a.updated_at, ' .
-            "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status, " .
+            // A note on a scanned file is on the file, present while the scan holds it.
+            'CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) ' .
+            "OR EXISTS (SELECT 1 FROM files f WHERE f.project_id = a.project_id AND f.relative_path = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status, " .
             "(SELECT c.value FROM annotations c WHERE c.project_id = a.project_id AND c.canonical_name = a.canonical_name AND c.kind = :check AND c.author = 'user') AS check_reason, " .
-            // Where it lives: the file its component is in (the first by path); its boundary is that file's label, below.
-            '(SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1) AS path, ' .
+            // Where it lives: the file its component is in (the first by path), or the scanned file it is on; its boundary is that file's label, below.
+            'COALESCE((SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1), ' .
+            '(SELECT f.relative_path FROM files f WHERE f.project_id = a.project_id AND f.relative_path = a.canonical_name)) AS path, ' .
             // A file no worker scans (NamedFiles) has no file row: it lives at its own name.
             "(SELECT n.id FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name AND n.kind = 'file' AND n.file_id IS NULL LIMIT 1) AS unread " .
             'FROM annotations a WHERE a.project_id = :project AND a.kind <> :check ORDER BY a.canonical_name, a.kind, a.author LIMIT ' . (self::MAX_ROWS + 1),

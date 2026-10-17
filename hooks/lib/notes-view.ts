@@ -136,7 +136,8 @@ export const notesList = (input: NotesInput): Openable[] =>
     if (line.kind === 'boundary') return { name: line.name ?? 'no boundary', canonical: line.name ?? '', inert: true, fold: line.fold, contrary: line.contrary }
     if (line.kind === 'folder') return { name: `${line.path}/`, canonical: line.path, inert: true, fold: line.fold }
     const n = line.item
-    return { name: noteName(n), canonical: n.component, ...(n.missing ? { inert: true as const } : {}), ask: `What is the ${n.author === 'user' ? 'person' : 'model'}'s note on ${n.component} about, and does it still hold?` }
+    // A note on a file opens that file's detail.
+    return { name: noteName(n), canonical: n.component, ...(n.missing ? { inert: true as const } : {}), ...(n.path !== null && n.component === n.path ? { file: true } : {}), ask: `What is the ${n.author === 'user' ? 'person' : 'model'}'s note on ${n.component} about, and does it still hold?` }
   })
 
 /** The Overview's line and the card's note: how many notes, and how many need the person. */

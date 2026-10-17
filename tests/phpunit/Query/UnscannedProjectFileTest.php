@@ -35,6 +35,31 @@ final class UnscannedProjectFileTest extends KnossosTestCase
         }
     }
 
+    /**
+     * A note on a file a worker scans lives on the file itself: no warning
+     * that it becomes a component (it never does), none that it was not
+     * found, and it is present, not missing, wherever notes are listed.
+     */
+    #[Group('query')]
+    public function testANoteOnAScannedFileIsKeptOnTheFileAndPresent(): void
+    {
+        [$pdo, $projectId, $root] = $this->seedProjectWithFiles(['src/A.php']);
+        try {
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+
+            $result = $queries->upsertAnnotation($projectId, 'src/A.php', 'note', 'the entry', execute: true);
+
+            self::assertSame('src/A.php', $result->data['component']);
+            $warnings = implode(' ', $result->warnings);
+            self::assertStringNotContainsString('becomes a file component', $warnings);
+            self::assertStringNotContainsString('not found', $warnings);
+            $listed = $queries->listAnnotations($projectId, 'src/A.php')->data['annotations'];
+            self::assertSame(['present'], array_column($listed, 'component_status'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** A name that is no file keeps the old warning. */
     #[Group('query')]
     public function testANoteOnAMissingNameKeepsTheNotFoundWarning(): void
