@@ -181,12 +181,12 @@ Hubs: the most depended-on components, with the marked one's neighbourhood besid
 
 Cycles: each dependency cycle drawn as boxes, from its first member back to the start.
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 28 tests that reach it, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 31 tests that reach it, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
 
 Changes: every file changed since the session began, its dependents, the tests that reach it,
 and its diff.
 
-![The Branch tab: what this checkout added against its merge base with main, as new cross-boundary dependencies, hubs that grew, new dead code and the files the branch touched](docs/images/claude-code/branch.png)
+![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](docs/images/claude-code/branch.png)
 
 Branch: what this branch added against its merge base, from new boundary crossings to new dead
 code.

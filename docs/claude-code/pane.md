@@ -368,7 +368,7 @@ still: here `ResultEnvelope`, used by 89 and using 15.
 
 ## Boundaries
 
-![The Boundaries tab past twelve boundaries: all 29 listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Scanner flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
+![The Boundaries tab past twelve boundaries: all 29 listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
 
 **The heat map** shows how much each boundary depends on each other one. Rows
 are where a dependency starts, columns where it lands. The axes are lettered,
@@ -479,7 +479,7 @@ longest function.
 
 ## Changes
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 28 tests that reach it, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 31 tests that reach it, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
 
 Changes lists everything that changed in the project since the session began,
 whoever changed it: the session's own turns and subagents, your editor, a
@@ -572,7 +572,7 @@ process the earlier ones read `outside`.
 
 ## Branch
 
-![The Branch tab: what this checkout added against its merge base with main, as new cross-boundary dependencies, hubs that grew, new dead code and the files the branch touched](../images/claude-code/branch.png)
+![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](../images/claude-code/branch.png)
 
 Branch answers two things at a glance: what this branch changed against its
 default branch, and whether it broke anything.
@@ -635,6 +635,8 @@ Without git the tab says so.
 
 The Notes tab is every note in the project, yours and the model's, as a tree of
 where each lives, with the ones that need you first.
+
+![The Notes tab: 109 notes as a tree of the boundaries they live in, each in its colour with its count, the one holding the newest note open on its folders and notes, each with its author, first line and date](../images/claude-code/notes.png)
 
 **Needs you** lists a note on a name the graph no longer holds (`▲`: its
 component was renamed or moved, and the note sits on the old name) and a model
