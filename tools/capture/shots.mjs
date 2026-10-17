@@ -48,7 +48,7 @@ export const FIXTURE = {
     routeFrom: "ServeCommand::run",
     // The boundary pair the Boundaries tab marks first: the tests boundary of knossos.json and the
     // namespace boundary it depends on most.
-    boundaryPair: "tests → Scanner",
+    boundaryPair: "tests → Query",
     // The first cycle's diagram title, drawn once the cycles have loaded. This graph has no
     // cycle between types, only ones within one type, so the first is one of those.
     cycleDrawn: "members · within one type",
