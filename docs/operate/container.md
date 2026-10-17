@@ -1,7 +1,7 @@
 # Running Knossos in Docker
 
 The Docker distribution supplies the matched PHP, Node, Python, Composer, SQLite, and
-Knossos versions. The scanned project does not need either runtime installed on
+Knossos versions. The scanned project needs none of these runtimes installed on
 the host.
 
 The image runs as unprivileged `www-data`, pins base-image digests and worker
@@ -26,9 +26,10 @@ docker run --rm -i \
   knossos:dev scan /workspace --json
 ```
 
-The eventual `scan_project` path inside the container is `/workspace`. The host path
-means nothing there. `--network none` is recommended because scanning is local and never
-needs dependency installation or network access.
+For a one-off scan like this, the project's path inside the container is
+`/workspace`, and the host path means nothing there. `--network none` is
+recommended because scanning is local and never needs dependency installation or
+network access.
 
 An agent cannot infer that mapping, so ask the server: `server_info` reports the
 roots it can actually reach and sets `containerised: true`, and a rejected path
@@ -41,15 +42,38 @@ volume (`/data/roots.json`) and must name container paths. Adding a project
 still means adding a mount, which is a `docker run` change: the file saves
 the restart and leaves the mount to you.
 
-An MCP client can use `docker` as its server command and pass the `run` arguments
-above. The `-i` flag is required for MCP standard-input/output transport. Avoid
-`-t`: terminal framing can interfere with protocol messages.
+## As an MCP server
 
-For MCP, replace the final command with:
+An agent passes the paths it sees on the host, so for MCP mount each project at
+its own host path rather than at `/workspace`: then the path the agent sends is
+the path the server reads. Use `docker` as the server command, keep stdin open
+with `-i`, and leave out `-t`, because terminal framing corrupts the NDJSON:
 
-```sh
-knossos:dev serve --allow-root=/workspace
+```json
+{
+    "mcpServers": {
+        "knossos": {
+            "command": "docker",
+            "args": [
+                "run",
+                "--rm",
+                "-i",
+                "--network",
+                "none",
+                "--mount",
+                "type=bind,source=/absolute/project,target=/absolute/project,readonly",
+                "--mount",
+                "type=volume,source=knossos-data,target=/data",
+                "knossos:dev",
+                "serve",
+                "--allow-root=/absolute/project"
+            ]
+        }
+    }
+}
 ```
+
+The image always carries a built Rust worker.
 
 Native installation remains supported for lower startup overhead and easier
 integration with very large local workspaces. Both distributions use the same

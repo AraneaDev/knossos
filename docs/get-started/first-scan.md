@@ -161,7 +161,7 @@ Where you use the graph decides what you set up next.
   shows how to open it.
 
 - **You use another agent or a script.** Register the MCP server as described
-  in [installation](installation.md#native-stdio-repository-checkout) and read
+  for your client in [Codex and other MCP clients](../agents/clients.md) and read
   [agent integration](../agents/agent-integration.md) for the tools an agent
   calls first. The full list is in
   [the MCP tool reference](../reference/mcp-tools.md).
