@@ -48,10 +48,10 @@ export const FIXTURE = {
     routeFrom: "ServeCommand::run",
     // The boundary pair the Boundaries tab marks first: the tests boundary of knossos.json and the
     // namespace boundary it depends on most.
-    boundaryPair: "tests → Scanner",
-    // The first row of the Cycles tab's list, drawn with the first cycle's diagram once the
-    // cycles have loaded. Not the diagram's "back to the start": a short cycle has no room for it.
-    cycleDrawn: "cycle 1 · ",
+    boundaryPair: "tests → Query",
+    // The first cycle's diagram title, drawn once the cycles have loaded. This graph has no
+    // cycle between types, only ones within one type, so the first is one of those.
+    cycleDrawn: "members · within one type",
     // The Issues tab's Over budget rule: max_php_function_lines in maintainability-budgets.json.
     overBudget: "functions over 205 lines",
     // The small file the hero's turn edits, and the line the edit goes above.
@@ -153,7 +153,8 @@ const openPane = (columns, beat = true) => [
 ];
 
 /** A row the marker stands on, naming `name`. */
-const marked = (name) => String.raw`›\s+${lit(name)}\s`;
+/** A row the marker stands on, by its name: a one-glyph mark before the name (a kind letter, a change's `~`) is optional. */
+export const marked = (name) => String.raw`›\s*(?:\S\s+)?${lit(name)}\s`;
 
 /** The finder's field: `f` opens it with the keys in it, checked before typing, so a word can never reach the prompt. */
 const find = (text, fixture, delayMs = 0) => [
@@ -192,13 +193,14 @@ const hubDetail = (theme) =>
         theme === "light" ? "hubs-detail-light" : "hubs-detail",
         [
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
-            press("2", String.raw`›\s+StableId\s`),
+            press("2", marked("StableId")),
             press("j"),
             press("j"),
             press("j"),
             wait(
                 "hub detail",
-                String.raw`${marked(FIXTURE.hub)}[\s\S]*Dependencies · used by`,
+                // Both on screen, in either order: the detail beside the list starts at its own height.
+                String.raw`^(?=[\s\S]*${marked(FIXTURE.hub)})(?=[\s\S]*Dependencies · used by)`,
                 { fixture: "hub" },
             ),
         ],
@@ -220,7 +222,7 @@ export const SHOTS = {
             ...openPane(PANE[160]),
             hold(1000),
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
-            press("2", String.raw`›\s+StableId\s`),
+            press("2", marked("StableId")),
             press("j"),
             press("j"),
             press("j"),
@@ -280,7 +282,7 @@ export const SHOTS = {
                 { timeoutMs: 60000, fixture: "edited" },
             ),
             wait("from this session", THIS_SESSION, { timeoutMs: 60000 }),
-            wait("fresh", String.raw`● live`, { timeoutMs: 60000 }),
+            wait("fresh", String.raw`◍ live`, { timeoutMs: 60000 }),
             still("changes-diff"),
             // The band takes the turn's figures once the turn is over; it shows with the pane shut.
             { do: "resize", size: SIZES.hero },
@@ -314,8 +316,8 @@ export const SHOTS = {
         "branch",
         [
             press("7"),
-            // Not the head card's title: it is drawn while the comparison still loads.
-            wait("branch", String.raw`Files this branch touched`, {
+            // Not the head card's title: it is drawn while the comparison still loads. The verdict is drawn with it.
+            wait("branch", String.raw`✓ no new cycles|\d+ things? to look at`, {
                 timeoutMs: 60000,
             }),
         ],
@@ -331,7 +333,7 @@ export const SHOTS = {
     ]),
     notes: pane("notes", [
         press("9"),
-        wait("notes", String.raw`\d+ notes?( ·|$)`),
+        wait("notes", String.raw`[1-9][\d,]* notes?\b`),
     ]),
     finder: pane("finder", find(FIXTURE.hubLetters, "hub")),
     route: pane("route", [

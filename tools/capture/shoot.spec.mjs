@@ -30,6 +30,7 @@ import {
     playShot,
     promptReady,
     stageGraph,
+    copyNotes,
     submit,
     throwawayWorktree,
 } from "./shoot.mjs";
@@ -501,6 +502,49 @@ describe("throwawayWorktree", () => {
     });
 });
 
+describe("copyNotes", () => {
+    it("copies every note of one project onto another in the stage's database, keeping any the target has", async () => {
+        const { DatabaseSync } = await import("node:sqlite");
+        const root = await mkdtemp(path.join(os.tmpdir(), "notes-"));
+        try {
+            const file = path.join(root, "knossos.sqlite");
+            const db = new DatabaseSync(file);
+            db.exec(
+                "CREATE TABLE projects (id TEXT PRIMARY KEY, root_realpath TEXT)",
+            );
+            db.exec(
+                "CREATE TABLE annotations (project_id TEXT, canonical_name TEXT, kind TEXT, value TEXT, author TEXT, created_at TEXT, updated_at TEXT, basis_json TEXT, PRIMARY KEY (project_id, canonical_name, kind, author))",
+            );
+            db.exec(
+                "INSERT INTO projects VALUES ('p-real', '" +
+                    root +
+                    "'), ('p-copy', '" +
+                    path.join(root, "copy") +
+                    "')",
+            );
+            db.exec(
+                "INSERT INTO annotations VALUES ('p-real', 'App\\A', 'note', 'About A.', 'model', 't0', 't1', '[]'), ('p-real', 'App\\B', 'note', 'Mine.', 'user', 't0', 't1', NULL), ('p-copy', 'App\\A', 'note', 'Kept.', 'model', 't2', 't3', '[]')",
+            );
+            db.close();
+            await copyNotes(root, root, path.join(root, "copy"));
+            const after = new DatabaseSync(file, { readOnly: true });
+            const rows = after
+                .prepare(
+                    "SELECT canonical_name, author, value FROM annotations WHERE project_id = 'p-copy' ORDER BY canonical_name",
+                )
+                .all()
+                .map((r) => [r.canonical_name, r.author, r.value]);
+            after.close();
+            expect(rows).toEqual([
+                ["App\\A", "model", "Kept."],
+                ["App\\B", "user", "Mine."],
+            ]);
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
+
 describe("stageGraph", () => {
     it("scans the worktree into a stage of its own, never the real data dir", async () => {
         const root = await mkdtemp(path.join(os.tmpdir(), "stage-"));
@@ -509,12 +553,15 @@ describe("stageGraph", () => {
         await writeFile(path.join(source, "roots.json"), '{"roots":["/a"]}');
         const scans = [];
         const gits = [];
+        const copied = [];
         try {
             const stage = await stageGraph("/w/knossos", {
                 source,
                 realDataDir: source,
                 tmpRoot: root,
                 base: true,
+                notesFrom: "/home/me/knossos",
+                copyNotes: async (...args) => void copied.push(args),
                 runScan: async (args, options) =>
                     scans.push({ args, env: options.env }),
                 runGit: async (_dir, ...args) => {
@@ -528,6 +575,8 @@ describe("stageGraph", () => {
             });
             expect(path.dirname(stage)).toBe(root);
             expect(scans).toHaveLength(2);
+            // After the scans the worktree is a project, and the checkout's notes are copied onto it, in the stage only.
+            expect(copied).toEqual([[stage, "/home/me/knossos", "/w/knossos"]]);
             for (const scan of scans) {
                 expect(scan.args).toEqual([
                     "scan",

@@ -70,7 +70,7 @@ import type { FinderInput } from './finder'
 import type { Flash } from './flash'
 import { cycleCount, cycleSteps, cyclesArrangement, cyclesInput, cyclesList, unfoldPress } from './cycles'
 import type { CyclesInput } from './cycles'
-import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInput, issuesList, locIn, superscript } from './views'
+import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInput, issuesList, locIn, noteFooterRows, superscript } from './views'
 import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, cardInner, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
@@ -951,6 +951,8 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   const actions: Segment[] = []
   if (input.showKeys) return keysFooter(input, columns, scrolled)
   if (input.finder !== null) return finderFooter(input, columns, hasList)
+  const noting = input.detail?.note ?? null
+  if (input.detail?.notable === true && input.detail.component !== null && noting !== null && noting.phase !== 'failed') return noteFooter(input.detail.component.name, noting, columns)
   const onTab = input.detail === null && input.route === null && !input.driftOpen
   if (input.detail !== null || input.route !== null) moves.push(button('back', 'back', 'b'))
   // On Cycles the marker walks the boxes the diagram draws, which only the width decides: the keys name the row they move to.
@@ -988,7 +990,6 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   // From a component's own detail, a route to any other component (the finder picks where it ends).
   if (input.route === null && input.detail?.component !== null && input.detail?.component !== undefined && input.detail.file === undefined) actions.push(button('route', 'route to…', 'p'))
   // A note on the component, from the footer: the notes card ends a long detail, so its own button may be scrolled away.
-  const noting = input.detail?.note ?? null
   if (input.route === null && input.detail?.notable === true && (noting === null || noting.phase === 'failed')) actions.push(button('note', 'note', 'm'))
   actions.push(button('find', 'find', 'f'), button('keys', 'keys', 'h'))
   const pad = padOf(tier)
@@ -1038,6 +1039,12 @@ function finderFooter(input: PaneInput, columns: number, hasList: boolean): { ba
   const right = joinGroups(actions.map(k => [{ ...k, dim: true }]))
   const lines = segmentsWidth(left) + 2 + segmentsWidth(right) <= inner ? [spread('keys', left, right, inner)] : [...(moves.length > 0 ? wrapGroups('keys', moves.map(k => [{ ...k, dim: true }]), inner) : []), ...wrapGroups(moves.length > 0 ? 'keys-actions' : 'keys', actions.map(k => [{ ...k, dim: true }]), inner)]
   return { bar: lines.map(row => padded(row, pad, columns, BAR_BG)) }
+}
+
+/** The footer while a note is under way: the note's field or question in place of the keys, always on screen. */
+function noteFooter(name: string, note: NoteInput, columns: number): { bar: Row[] } {
+  const pad = padOf(tierOf(columns))
+  return { bar: noteFooterRows(name, note, Math.max(1, columns - 2 * pad)).map(row => padded(row, pad, columns, BAR_BG)) }
 }
 
 /**

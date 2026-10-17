@@ -143,8 +143,8 @@ async function openRelated(io: Port, index: number): Promise<void> {
  * ({@link fieldKey}): the call waits for the drawing that brings the field,
  * so it runs on a timer, never inside the press or a render.
  */
-function focusField(io: Port, id: string): void {
-  io.clock.after(0, () => void revealThenFocus(io, fieldKey(id)).catch(() => undefined))
+function focusField(io: Port, id: string, reveal = true): void {
+  io.clock.after(0, () => void (reveal ? revealThenFocus(io, fieldKey(id)) : io.ui.focus({ requestId: PANE, key: fieldKey(id) })).catch(() => undefined))
 }
 
 
@@ -402,7 +402,8 @@ async function startNote(io: Port): Promise<void> {
   // The person's own note, never an agent's: saving writes the person's.
   const existing = stored?.detail?.component?.annotations?.find(a => a.kind === 'note' && a.author !== 'model')?.value ?? ''
   await io.state.note.update((): NoteState => ({ component, phase: 'editing', value: existing, previous: null, reason: null }))
-  focusField(io, 'note')
+  // The note's field is in the footer, always on screen: nothing to scroll to.
+  focusField(io, 'note', false)
 }
 
 /** What was typed into the note's field, kept as it is typed. */
@@ -436,8 +437,6 @@ async function previewNote(io: Port, component: string, value: string): Promise<
     if (parsed?.status === 'ok' && parsed.executed === false) return { ...n, phase: 'confirming', previous: parsed.previous ?? null }
     return { ...n, phase: 'failed', reason: parsed?.status === 'refused' ? (parsed.reason ?? 'it refused') : 'it said nothing' }
   })
-  // The question closes the detail: scrolled into view once it is drawn, wherever the detail stands.
-  io.clock.after(0, () => void io.ui.scroll({ in: PANE, to: { key: 'note-answers' } }).catch(() => undefined))
 }
 
 /**

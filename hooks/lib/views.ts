@@ -641,25 +641,39 @@ function notesBlock(name: string, annotations: { kind: string; value: string; au
       if (annotations.length === 0) body.push(dimRow('note-none', `   No notes on ${name} yet.`, columns))
       if (!notable) return { key: 'notes', title: 'Notes', body }
       const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - MARK)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(MARK) }, { text: line, ...style }] }))
-      const keys = note?.keys !== false
       if (note === null || note.phase === 'failed') {
         if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
         // The person's own note: an agent's beside it is not theirs to change here.
         const own = annotations.some(a => a.kind === 'note' && a.author !== 'model')
         body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note-card', own ? 'change the note' : 'add a note', undefined, { dim: true })] })
-      } else if (note.phase === 'editing') {
-        body.push(blank('note-gap'), { key: 'note-field', segments: [{ text: '   note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] })
-        body.push(dimRow('note-field-keys', '   Enter checks it with knossos; nothing is written yet.', columns))
-      } else if (note.phase === 'previewing' || note.phase === 'saving') {
-        body.push(blank('note-gap'), dimRow('note-busy', note.phase === 'saving' ? '   recording…' : '   checking with knossos…', columns))
-      } else {
-        const replaces = note.previous === null ? '' : ` It replaces: "${note.previous}"`
-        body.push(blank('note-gap'), ...said('note-ask', `Record this note on ${name}? "${note.value}"${replaces}`, { color: ACCENT }))
-        body.push({ key: 'note-answers', segments: [{ text: spaces(MARK) }, button('note-yes', 'record', keys ? 'y' : undefined, { dim: false }), { text: '   ' }, button('note-no', 'cancel', keys ? 'n' : undefined, { dim: true })] })
       }
+      // A note under way is taken in the footer (noteFooterRows), where a long detail cannot scroll it away.
       return { key: 'notes', title: 'Notes', body }
     },
   }
+}
+
+/**
+ * A note under way on the component `name`, as the footer draws it: the
+ * field while it is typed, a line while knossos checks or records it, and
+ * the question with its answers before it is recorded. `width` is the
+ * footer's inner width. The answers' keys are left to a question that holds
+ * y and n meanwhile (`keys` false).
+ */
+export function noteFooterRows(name: string, note: NoteInput, width: number): Row[] {
+  const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, width)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: line, ...style }] }))
+  if (note.phase === 'editing') {
+    return [
+      { key: 'note-field', segments: [{ text: 'note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] },
+      ...said('note-field-keys', 'Enter checks it with knossos; nothing is written yet.', { dim: true }),
+    ]
+  }
+  if (note.phase === 'previewing' || note.phase === 'saving') return said('note-busy', note.phase === 'saving' ? 'recording…' : 'checking with knossos…', { dim: true })
+  const replaces = note.previous === null ? '' : ` It replaces: "${note.previous}"`
+  return [
+    ...said('note-ask', `Record this note on ${name}? "${note.value}"${replaces}`, { color: ACCENT }),
+    { key: 'note-answers', segments: [button('note-yes', 'record', note.keys ? 'y' : undefined, { dim: false }), { text: '   ' }, button('note-no', 'cancel', note.keys ? 'n' : undefined, { dim: true })] },
+  ]
 }
 
 /** One neighbour as the neighbourhood draws it: its name, boundary, edge count and the press that opens it. */
