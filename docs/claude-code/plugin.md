@@ -5,7 +5,7 @@ One plugin brings Knossos into Claude Code. It carries:
 - the [session brief](session-brief.md), injected when a session starts;
 - the [routing skill](skill.md), which says which questions to bring to the
   graph;
-- the [mod](pane.md): the band, the pane, the live watcher, and the
+- the [mod](pane/index.md): the band, the pane, the live watcher, and the
   [notes for the model](agent-notes.md).
 
 You install it from the same checkout that runs your Knossos server, because
@@ -105,7 +105,7 @@ claude --plugin-dir /home/me/knossos/.plugin
 
 That loads the plugin straight from `.plugin/`, which
 `install-agent-plugin --execute` writes. This is how the stills on the
-[pane page](pane.md) were captured, in a Claude Code configuration of their
+[pane page](pane/index.md) were captured, in a Claude Code configuration of their
 own. Use it where the plugin is not also installed, so it loads once.
 
 ## What `.plugin/` holds

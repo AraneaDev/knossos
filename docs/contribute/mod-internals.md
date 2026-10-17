@@ -4,7 +4,7 @@ The mod is one hooks module, `hooks/register.tsx`, and the files it imports
 from the plugin. Claude Code loads them together. An install copies each one
 by name, and an install over an earlier one prunes what it no longer ships. This
 page is for you if you want to change the pane or the notes. To use the mod,
-start at the [pane guide](../claude-code/pane.md).
+start at the [pane guide](../claude-code/pane/index.md).
 
 ## Layout
 

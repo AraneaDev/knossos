@@ -1,6 +1,6 @@
 # Notes for the model
 
-The [Claude Code mod](pane.md) tells the model a few facts at the moment they
+The [Claude Code mod](pane/index.md) tells the model a few facts at the moment they
 help, so it keeps to the architecture while it works. There are four notes,
 each one short and said once. For one file's context on demand, the model
 calls the MCP server's [`file_context`](#one-files-context) tool.
@@ -15,7 +15,7 @@ calls the MCP server's [`file_context`](#one-files-context) tool.
 No note costs a process of its own: the figures come from the last dashboard
 load and the turn's brief. `agentNotes` turns every note off, and
 `enforcePolicies` turns off the policy part of the turn-end and commit notes
-(see [settings](pane.md#settings)).
+(see [settings](pane/index.md#settings)).
 
 ## The Read note
 
@@ -76,7 +76,7 @@ quiet file in a policed boundary gets no edit note.
 ## The turn-end note
 
 After a turn that edited files, the mod scans the project (see
-[what it writes](pane.md#what-it-writes)) and the turn's brief says what the
+[what it writes](pane/index.md#what-it-writes)) and the turn's brief says what the
 turn did. The model then reads one note before its next step, with up to two
 parts.
 
@@ -148,7 +148,7 @@ first. The note leaves out:
 - a test an earlier note already named;
 - a file no runner runs, such as a helper or a fixture.
 
-The command is chosen as on the [Changes tab](pane.md#changes). Tests the
+The command is chosen as on the [Changes tab](pane/tabs.md#changes). Tests the
 command names itself (PHPUnit, pytest, and Vitest or Jest scripts) are not
 listed again. Tests run by package (`go test`, `cargo test`) are listed, at
 most five, then `and N more`. A JavaScript test whose runner the nearest

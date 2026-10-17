@@ -157,7 +157,7 @@ Where you use the graph decides what you set up next.
 - **You work in Claude Code.** Install [the plugin](../claude-code/plugin.md).
   It injects a [session brief](../claude-code/session-brief.md) at the start of
   each session and adds the architecture pane, where you browse hubs, cycles,
-  boundaries and the diff of a turn. [The pane page](../claude-code/pane.md)
+  boundaries and the diff of a turn. [The pane page](../claude-code/pane/index.md)
   shows how to open it.
 
 - **You use another agent or a script.** Register the MCP server as described

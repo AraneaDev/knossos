@@ -19,7 +19,7 @@ is the short version.
 
 - [The plugin](claude-code/plugin.md): how do I install, point, update and
   remove the Claude Code plugin?
-- [The pane](claude-code/pane.md): what do the band, each tab and each overlay
+- [The pane](claude-code/pane/index.md): what do the band, each tab and each overlay
   of the pane show, and which keys drive them?
 - [Notes for the model](claude-code/agent-notes.md): what does the mod tell the
   model, when, and in which words?

@@ -197,7 +197,7 @@ The finder: `f`, a few letters of a name, and Enter opens that component.
 
 Then ask the agent a structural question, such as "what breaks if I change `UserRepository`, and
 which tests would tell me?". The routing skill sends it to the graph. Every
-tab and key is in [the pane guide](docs/claude-code/pane.md), and a first scan with real output
+tab and key is in [the pane guide](docs/claude-code/pane/index.md), and a first scan with real output
 is in [first scan](docs/get-started/first-scan.md#a-worked-example).
 
 ## What your agent gets
