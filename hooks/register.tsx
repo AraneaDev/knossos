@@ -15,7 +15,8 @@ import type { SessionLedger } from './lib/envelopes'
 import type { Flash } from './lib/flash'
 import { NO_MOTION } from './lib/motion'
 import type { Motion } from './lib/motion'
-import { NO_CHANGES } from './lib/layout'
+import { wheelMove } from './lib/cards'
+import { NO_CHANGES, withScrollsKept } from './lib/layout'
 import { LIVE_OFF } from './lib/live'
 import { copyCommand, handlersOf, twinTarget } from './mod/actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
@@ -145,7 +146,8 @@ function portOf($: EngineInterface): Port {
       brief: { read: () => read($, brief), update: change => update($, brief, change) },
       dashboard: { read: () => read($, dashboard), update: change => update($, dashboard, change) },
       job: { read: () => read($, job), update: change => update($, job, change) },
-      view: { read: () => read($, view), update: change => update($, view, change) },
+      // A move of the marker, the tab or what is open lets the wheel's windows go (withScrollsKept).
+      view: { read: () => read($, view), update: change => update($, view, v => withScrollsKept(v, change(v))) },
       detail: { read: () => read($, detail), update: change => update($, detail, change) },
       refresh: { read: () => read($, refresh), update: change => update($, refresh, change) },
       rescan: { read: () => read($, rescan), update: change => update($, rescan, change) },
@@ -331,11 +333,21 @@ export const register: Register = (on, options) => {
     const index = typeof element === 'string' && element.startsWith('row:') ? Number(element.slice(4)) : Number.NaN
     if (moved.deny === undefined && Number.isInteger(index)) {
       const io = portOf($)
-      await update($, view, v => (v.selected === index ? v : { ...v, selected: index, target: undefined }))
+      await update($, view, v => (v.selected === index ? v : withScrollsKept(v, { ...v, selected: index, target: undefined })))
       await request(io, 'couplings')
       await request(io, 'peek')
     }
     return moved
+  })
+
+  // The wheel over a list longer than its window scrolls that list, the marker left where it is; anywhere else the page scrolls.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    if (e.origin.kind !== 'person' || e.pointer === undefined) return next(e)
+    // At a list's end, or over none, the page takes the wheel, as a browser hands it on.
+    const moved = wheelMove(mod.paneRows, mod.paneOffset, e.pointer, e.by)
+    if (moved === null) return next(e)
+    await update($, view, v => ({ ...v, scrolls: { ...(v.scrolls ?? {}), [moved.key]: moved.start } }))
+    return {}
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

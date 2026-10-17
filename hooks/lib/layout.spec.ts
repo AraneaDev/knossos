@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ComponentDetail, Dashboard, DetailState, KnossosView, PaneTab, TurnBrief } from '../../types'
 import {
+  withScrollsKept,
   allowInput,
   allowRows,
   askPrompt,
@@ -1072,6 +1073,25 @@ describe('the pane at every width and height', () => {
     const whole = paneRows(input({ tab: 'hubs' }, many), 100, 200)
     expect(shown(whole, 'hub')).toBe(40)
     expect(textOf(whole)).not.toMatch(/more ↓/)
+  })
+
+  it('keeps the scrolled windows while the view stands, and lets them go once the marker, the tab or what is open moves', () => {
+    const at: KnossosView = { inspect: null, isBandHidden: false, tab: 'hubs', selected: 3, showKeys: false, filter: '', filtering: false, sort: 'in', scrolls: { hubs: 20 } }
+    // A redraw, a fold or a filter keystroke leaves the window where the wheel put it.
+    expect(withScrollsKept(at, { ...at, showKeys: true }).scrolls).toEqual({ hubs: 20 })
+    expect(withScrollsKept(at, { ...at, scrolls: { hubs: 25 } }).scrolls).toEqual({ hubs: 25 })
+    for (const moved of [{ selected: 4 }, { tab: 'issues' as const }, { inspect: { name: 'App\\A', label: 'A' } }, { finding: true }, { drift: true } as Partial<KnossosView>]) {
+      expect(withScrollsKept(at, { ...at, ...moved }).scrolls, JSON.stringify(moved)).toBeUndefined()
+    }
+  })
+
+  it('shows the hubs from where the wheel scrolled them, the marker left where it was', () => {
+    const rows = paneRows(input({ tab: 'hubs', selected: 0, scrolls: { hubs: 20 } }, many), 100, 24)
+    expect(row(rows, 'hub-20')).toBeDefined()
+    expect(row(rows, 'hub-0')).toBeUndefined()
+    expect(textOf(rows)).toMatch(/20 above ↑ · \d+ more ↓/)
+    // Every row of the card says which list it is and what window it shows.
+    expect(row(rows, 'hub-20')!.lists).toEqual([expect.objectContaining({ key: 'hubs', start: 20, length: 40 })])
   })
 
   it('scrolls a list to the marker: the marked hub is drawn, with how many are above it', () => {

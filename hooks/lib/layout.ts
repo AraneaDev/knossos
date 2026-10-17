@@ -71,7 +71,7 @@ import type { Flash } from './flash'
 import { cycleCount, cycleSteps, cyclesArrangement, cyclesInput, cyclesList, unfoldPress } from './cycles'
 import type { CyclesInput } from './cycles'
 import { detailArrangement, detailList, issueCount, issuesArrangement, issuesInput, issuesList, locIn, noteFooterRows, superscript } from './views'
-import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, cardInner, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, windowOf } from './cards'
+import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, cardInner, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, scrolledTo, shownOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
 import { RANKING, SEVERITY, kindLegend, legend } from './marks'
@@ -126,6 +126,8 @@ export type PaneInput = {
   languages: string
   tab: PaneTab
   selected: number
+  /** The first item the wheel scrolled each list to, by its card's key (see {@link scrolledTo}). */
+  scrolls: Readonly<Record<string, number>>
   showKeys: boolean
   /** Whether plain Buttons are drawn as text (`1: label`): the terminal. Elsewhere they are native. */
   terminal: boolean
@@ -513,6 +515,7 @@ export function paneInput(
     languages: languagesOf(d),
     tab: view.tab,
     selected: view.selected,
+    scrolls: view.scrolls ?? {},
     showKeys: view.showKeys,
     terminal,
     items,
@@ -1080,7 +1083,7 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
   return {
     key: 'hubs',
     grow: { length: list.length, min: HUBS_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const rows: Row[] = []
       if (input.filtering) {
         rows.push({ key: 'filter-row', segments: [{ text: '   filter: ', dim: true }, { text: input.filter, field: { id: 'filter', value: input.filter, placeholder: 'part of a name' } }] })
@@ -1100,8 +1103,8 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
       if (list.length === 0) return section([...rows, dimRow('hubs-none', input.filter === '' ? (range === null ? '   none' : '   none of the listed hubs is in this range') : `   no hub matches "${input.filter}"`, columns)])
       const spec = componentSpec(list, columns, true, input.hues, tier)
       const local = selected < list.length ? selected : -1
-      const window = windowOf(list.length, limit, local)
-      return section([...rows, ...componentRows('hub', list, selected, spec, true, input.hues, input.sort, 0, window, columns, input.lit), ...moreRows('hub-window', window, list.length, columns, 0)])
+      const window = windowOf(list.length, limit, local, scrolled)
+      return { ...section([...rows, ...componentRows('hub', list, selected, spec, true, input.hues, input.sort, 0, window, columns, input.lit), ...moreRows('hub-window', window, list.length, columns, 0)]), window: shownOf(window, list.length) }
     },
   }
 }
@@ -1169,9 +1172,9 @@ function fileHubsBlock(files: FileHub[], selected: number, offset: number, tier:
   return {
     key: 'files',
     grow: { length: files.length, min: FILES_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const local = selected - offset
-      const window = windowOf(files.length, limit, local >= 0 && local < files.length ? local : -1)
+      const window = windowOf(files.length, limit, local >= 0 && local < files.length ? local : -1, scrolled)
       const shared = sharedBoundary(files)
       const labels = shared === null ? files.map(f => boundaryLabel(f.boundary, hues)) : []
       const spec = tableSpec(columns, files.map(f => f.path), labels, [numberWidth('', files.map(f => f.dependents), tier)], 56, { tier })
@@ -1182,7 +1185,7 @@ function fileHubsBlock(files: FileHub[], selected: number, offset: number, tier:
         return tableRow(`files-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, path: true, selected: offset + i === selected, press: `row:${offset + i}`, preview, lit: lit.has(`file:${f.path}`) }, spec, hues)
       })
       const said = [shared === null ? '' : `all in ${boundaryLabel(shared, hues)}`, note, 'dependent files'].filter(t => t !== '').join(' · ')
-      return { key: 'files', title: 'Files most depended on', note: noteOf(said), body: [...body, ...moreRows('files-window', window, files.length, columns, offset)] }
+      return { key: 'files', title: 'Files most depended on', note: noteOf(said), body: [...body, ...moreRows('files-window', window, files.length, columns, offset)], window: shownOf(window, files.length) }
     },
   }
 }
@@ -1229,15 +1232,15 @@ function fileListBlock(key: string, title: string, note: string, files: { path: 
   return {
     key,
     grow: { length: files.length, min: SECONDARY_MIN },
-    make: (columns, limit) => {
-      const window = windowOf(files.length, limit)
-      const shown = files.slice(0, window.end)
+    make: (columns, limit, scrolled) => {
+      const window = windowOf(files.length, limit, -1, scrolled)
+      const shown = files.slice(window.start, window.end)
       const spec = tableSpec(columns, shown.map(f => f.path), [], titles.map((t, i) => numberWidth(t, shown.map(f => f.values[i] ?? 0), tier)), 56, { tier })
       const max = Math.max(0, ...files.map(f => f.bar))
       const body: Row[] = [tableHead(`${key}-cols`, spec, { name: 'file', boundary: '', numbers: titles })]
-      shown.forEach((f, i) => body.push(tableRow(`${key}-${i}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)))
+      shown.forEach((f, n) => body.push(tableRow(`${key}-${window.start + n}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)))
       body.push(...moreRows(`${key}-window`, window, files.length, columns))
-      return { key, title, note: noteOf(note), body }
+      return { key, title, note: noteOf(note), body, window: shownOf(window, files.length) }
     },
   }
 }
@@ -1300,28 +1303,28 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
     rows.push(...fillColumn(fitBlocks([keysBlock()], width, tier, room()), width, room(), tier))
   } else if (input.finder !== null) {
     // The finder stands in for the tab or the detail while it is open; closing it puts them back as they were.
-    rows.push(...fillColumn(fitBlocks([finderBlock(input.finder, selected, tier, input.hues)], width, tier, room()), width, room(), tier))
+    rows.push(...fillColumn(fitBlocks(scrolledTo({ left: [finderBlock(input.finder, selected, tier, input.hues)] }, input.scrolls).left, width, tier, room()), width, room(), tier))
   } else if (input.route !== null) {
-    rows.push(...arrange(routeArrangement(input.route, selected, input.hues), width, room(), true))
+    rows.push(...arrange(scrolledTo(routeArrangement(input.route, selected, input.hues), input.scrolls), width, room(), true))
   } else if (input.detail !== null) {
-    rows.push(...arrange(detailOf(input.detail, tier, input.hues, selected), width, room(), true))
+    rows.push(...arrange(scrolledTo(detailOf(input.detail, tier, input.hues, selected), input.scrolls), width, room(), true))
   } else {
     // Listed under the tabs, the drifted files hold the marker; the tab below shows none. They take a third of the room.
     const drift = input.drift
     if (input.driftOpen && drift !== null) {
       const min = Math.max(3, Math.floor(room() / 3))
-      rows.push(...fitBlocks([{ key: 'drift', grow: { length: drift.items.length, min }, make: (cards, limit) => driftSection(drift, cards, limit, input.hues, selected) }], width, tier, 0))
+      rows.push(...fitBlocks([{ key: 'drift', grow: { length: drift.items.length, min }, make: (cards, limit) => driftSection(drift, cards, limit, input.hues, selected, input.scrolls.drift) }], width, tier, 0))
     }
     const tabSelected = input.driftOpen ? -1 : selected
     const peek = input.driftOpen ? null : peekShown(input, tier)
     if (peek === null) {
-      rows.push(...arrange(tabArrangement(input, tabSelected, tier), width, room(), true))
+      rows.push(...arrange(scrolledTo(tabArrangement(input, tabSelected, tier), input.scrolls), width, room(), true))
     } else {
       // Wide, master-detail: the tab on the left, the marked row's detail beside it, both to the pane's foot.
       // Each panel is one framed column, as a medium pane draws it, whatever its own width.
       const [left, right] = gridColumns(width, PEEK_SPLIT)
       const height = Math.max(0, room())
-      const master = fillColumn(arrange(tabArrangement(input, tabSelected, PANEL), left, height, true, PANEL), left, height, PANEL, 'stretch-m')
+      const master = fillColumn(arrange(scrolledTo(tabArrangement(input, tabSelected, PANEL), input.scrolls), left, height, true, PANEL), left, height, PANEL, 'stretch-m')
       const detail = fillColumn(peekRows(peek, right, height, input.hues), right, master.length, PANEL, 'stretch-d')
       rows.push(...besideRows(master.length >= detail.length ? master : fillColumn(master, left, detail.length, PANEL, 'stretch-m'), detail, left))
     }
@@ -1331,6 +1334,27 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
   const fill = height - rowsHeight(body) - footer.length
   if (fill >= 0) return { body: [...body, ...Array.from({ length: fill }, (_, i) => blank(`fill-${i}`))], footer, pinned: false }
   return { body, footer, pinned: true }
+}
+
+/**
+ * `after`, keeping the windows the wheel scrolled (`scrolls`) only while the
+ * view stands as it was: once the marker moves, the tab changes, or a
+ * detail, a route, the finder or the drifted files open or close, each list
+ * goes back to the window round the marker.
+ */
+export function withScrollsKept(before: KnossosView, after: KnossosView): KnossosView {
+  if (after.scrolls === undefined) return after
+  const stood =
+    before.selected === after.selected &&
+    before.tab === after.tab &&
+    before.inspect?.name === after.inspect?.name &&
+    (before.route ?? null) === (after.route ?? null) &&
+    (before.finding ?? false) === (after.finding ?? false) &&
+    (before.drift ?? false) === (after.drift ?? false)
+  if (stood) return after
+  const rest = { ...after }
+  delete rest.scrolls
+  return rest
 }
 
 /** The tabs whose marked row shows its detail beside the list on a wide pane. */

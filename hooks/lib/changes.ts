@@ -35,7 +35,7 @@ import {
   wrapWords,
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
-import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
+import { NOTE_ROOM, moreRows, noteOf, windowOf, shownOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -476,15 +476,15 @@ const TESTS_MIN = 3
  * files.
  */
 export function changesArrangement(input: ChangesInput, selected: number, tier: Tier, hues: Hues = NO_HUES, lit: ReadonlySet<string> = new Set()): Arrangement {
-  const files: Block = { key: 'changes', grow: { length: listedFiles(input).length, min: FILES_MIN }, make: (columns, limit) => filesSection(input, selected, columns, limit, tier, hues, lit) }
+  const files: Block = { key: 'changes', grow: { length: listedFiles(input).length, min: FILES_MIN }, make: (columns, limit, scrolled) => filesSection(input, selected, columns, limit, tier, hues, lit, scrolled) }
   if (input.files.length === 0) return { left: [files] }
-  const tests: Block = { key: 'tests', grow: { length: input.tests.length, min: TESTS_MIN }, make: (columns, limit) => testsSection(input, columns, limit, hues) }
+  const tests: Block = { key: 'tests', grow: { length: input.tests.length, min: TESTS_MIN }, make: (columns, limit, scrolled) => testsSection(input, columns, limit, hues, scrolled) }
   // Wide, the two side by side on the grid, equally tall.
   return { left: [files], right: [tests], rows: [[files, tests]], split: 0.5 }
 }
 
 /** The changed files' card, its list `limit` rows long around the marker. */
-function filesSection(input: ChangesInput, selected: number, columns: number, limit: number, tier: Tier, hues: Hues, lit: ReadonlySet<string>): Section {
+function filesSection(input: ChangesInput, selected: number, columns: number, limit: number, tier: Tier, hues: Hues, lit: ReadonlySet<string>, scrolled?: number): Section {
   const rows: Row[] = []
   const said = (key: string, text: string) => wrapWords(text, Math.max(1, columns - 3)).forEach((line, i) => rows.push(dimRow(`${key}-${i}`, `   ${line}`, columns)))
   const title = 'Changes this session'
@@ -533,7 +533,7 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
     segments: [...head.segments, ...(tested === 0 ? [] : [{ text: ` ${padStart('tests', TESTS_WIDTH)}`, dim: true }]), ...(origin === 0 ? [] : [{ text: ` ${padEnd('from', ORIGIN_WIDTH)}`, dim: true }])],
   })
   const listed = listedFiles(input)
-  const window = windowOf(listed.length, limit, selected)
+  const window = windowOf(listed.length, limit, selected, scrolled)
   listed.slice(window.start, window.end).forEach((f, n) => {
     const i = window.start + n
     const line = tableRow(`change-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, selected: i === selected, mark: statusMark(f.status), path: true, press: `row:${i}`, lit: lit.has(`change:${f.path}`) }, spec, hues)
@@ -541,7 +541,7 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
     return rows.push(added.length === 0 ? line : { ...line, segments: [...line.segments, ...(line.tint === undefined ? added : tinted(added, line.tint))] })
   })
   rows.push(...moreRows('changes-more', window, listed.length, columns, 0))
-  return { key: 'changes', title, note: noteOf(note), body: rows }
+  return { key: 'changes', title, note: noteOf(note), body: rows, window: shownOf(window, listed.length) }
 }
 
 /** The cells the Changes tab's tests column takes: its title, `▲ none` and a count. */
@@ -564,7 +564,7 @@ const originCell = (origin: 'session' | 'outside'): Segment =>
   origin === 'session' ? { text: padEnd(ORIGIN_LABELS.session, ORIGIN_WIDTH), color: ACCENT } : { text: padEnd(ORIGIN_LABELS.outside, ORIGIN_WIDTH), dim: true }
 
 /** The tests that reach the changes, nearest first, `limit` of them, and the command that runs them all. */
-function testsSection(input: ChangesInput, columns: number, limit: number, hues: Hues): Section {
+function testsSection(input: ChangesInput, columns: number, limit: number, hues: Hues, scrolled?: number): Section {
   const count = `${grouped(input.tests.length)}${input.truncated ? '+' : ''}`
   const title = 'Tests that reach these changes'
   if (input.tests.length === 0) {
@@ -573,11 +573,11 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
     const warn: Segment = input.untested > 0 ? button('untested-none', said, undefined, { color: STATUS_COLOURS.warn }) : { text: said, color: STATUS_COLOURS.warn }
     return { key: 'tests', title, body: [{ key: 'tests-none', segments: [{ text: '   ' }, warn] }] }
   }
-  const window = windowOf(input.tests.length, limit)
-  const shown = input.tests.slice(0, window.end)
+  const window = windowOf(input.tests.length, limit, -1, scrolled)
+  const shown = input.tests.slice(window.start, window.end)
   const spec = { ...tableSpec(columns, shown.map(t => t.path), [], [numberWidth('hops', shown.map(t => t.distance))], PATH_MAX), bar: 0 }
   const rows: Row[] = [tableHead('tests-cols', spec, { name: 'test', boundary: '', numbers: ['hops'] })]
-  shown.forEach((t, i) => rows.push(tableRow(`test-${i}`, { name: t.path, boundary: null, values: [t.distance], max: 0, path: true, opens: t.loc }, spec, hues)))
+  shown.forEach((t, n) => rows.push(tableRow(`test-${window.start + n}`, { name: t.path, boundary: null, values: [t.distance], max: 0, path: true, opens: t.loc }, spec, hues)))
   rows.push(...moreRows('tests-more', window, input.tests.length, columns))
   if (input.command !== null) {
     rows.push(blank('gap-command'))
@@ -585,5 +585,5 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
       rows.push({ key: `command-${i}`, segments: [{ text: i === 0 ? '   $ ' : '     ', dim: true }, { text: line, color: HEADING }] }),
     )
   }
-  return { key: 'tests', title, subtitle: count, note: noteOf('nearest first'), body: rows }
+  return { key: 'tests', title, subtitle: count, note: noteOf('nearest first'), body: rows, window: shownOf(window, input.tests.length) }
 }

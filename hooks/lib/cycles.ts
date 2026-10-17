@@ -23,7 +23,7 @@
  * type; the count counts only the cycles between types and says how many
  * are inside one type beside it.
  */
-import { moreRows, noteOf, windowOf } from './cards'
+import { moreRows, noteOf, windowOf, shownOf as windowShown } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { CROSSING, cycleDiagram, DIAGRAM_MIN } from './diagram'
 export { DIAGRAM_MIN } from './diagram'
@@ -201,7 +201,7 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
   const list: Block = {
     key: 'cycles',
     grow: { length: shown + header, min: CYCLES_MIN + header },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const stopped = input.stopped ?? []
       // The bounds as words, the way the rest of the pane speaks: `time_limit` reads `time limit`.
       const empty = stopped.length > 0 ? ['incomplete', ...stopped.map(r => r.replaceAll('_', ' '))].join(' · ') : 'none'
@@ -215,14 +215,14 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
       // A search cut short has not shown there are none, so it does not say so.
       if (shown === 0) return section([{ key: 'cycles-none', segments: [{ text: stopped.length > 0 ? '   Search stopped early; none found before it did.' : '   No dependency cycles.', dim: true }] }])
       // The line over the cycles inside one type takes a row of the window, once they are in it.
-      const reach = windowOf(shown, limit, marked?.index ?? -1)
-      const window = inside >= 0 && reach.end > inside ? windowOf(shown, limit - 1, marked?.index ?? -1) : reach
+      const reach = windowOf(shown, limit, marked?.index ?? -1, scrolled)
+      const window = inside >= 0 && reach.end > inside ? windowOf(shown, limit - 1, marked?.index ?? -1, scrolled) : reach
       const rows = input.cycles.slice(window.start, window.end).flatMap((cycle, n) => {
         const i = window.start + n
         const line = cycleLine(cycle, i, offsets[i]!, marked?.index === i, columns, hues)
         return i === Math.max(inside, window.start) && cycle.type !== undefined ? [{ key: 'cycles-within', segments: clip([{ text: '   Within one type', dim: true }], columns) }, line] : [line]
       })
-      return section([...rows, ...moreRows('cycles-window', window, shown, columns, i => offsets[i] ?? 0)])
+      return { ...section([...rows, ...moreRows('cycles-window', window, shown, columns, i => offsets[i] ?? 0)]), window: windowShown(window, shown) }
     },
   }
   if (marked === null || input.cycles[marked.index] === undefined) return { left: [list] }

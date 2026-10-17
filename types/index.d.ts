@@ -687,6 +687,8 @@ export type KnossosView = {
   degree?: { from: number; to: number | null } | null
   /** The groups a tab folds that the person opened (`branch:<boundary>`): absent, all folded. */
   folds?: string[]
+  /** The first item the wheel scrolled each list's window to, by its card's key; absent, each window follows the marker. */
+  scrolls?: Record<string, number>
   /** Whether the finder is open over the pane (`f`): its field and what it found. */
   finding?: boolean
   /** The component a route starts at, while the finder picks where it ends (`p`). */

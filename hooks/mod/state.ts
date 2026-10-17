@@ -12,6 +12,7 @@ import { betweenTypes, cycleSearchStopped } from '../lib/envelopes'
 import type { Activity } from '../lib/activity'
 import { watchPollMsOf } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
+import type { Row } from '../lib/rows'
 import type { Dig } from './dig'
 
 /** The pane's id, as the engine opens and draws it. */
@@ -89,6 +90,9 @@ export const mod = {
   bandText: null as string | null,
   /** The pane's header status as last drawn, or null when the pane drew none: the age tick compares against it too. */
   paneText: null as string | null,
+  /** The pane's body rows as last drawn, and the first row its window showed: the wheel finds the list under the pointer in them. */
+  paneRows: [] as readonly Row[],
+  paneOffset: 0,
   /** Whether the pane last drew its no-figures state: the age tick retries a failed load while it shows. */
   emptyShown: false,
   /** When the last dashboard load started (mod clock, ms). */
