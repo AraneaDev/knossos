@@ -32,6 +32,63 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      */
     public const AUTHORS = ['user', 'model'];
     /**
+     * Rest a model note on its files as they are now, previewing unless
+     * executing: the note was looked at and is still true. Only its basis
+     * changes; its text, its date and the person's {@see self::CHECK} on the
+     * component stay as they were. A component with no model note of `$kind`
+     * is refused.
+     */
+    public function confirmAnnotation(string $projectId, string $component, string $kind = 'note', bool $execute = false): ResultEnvelope
+    {
+        $stored = $this->pdo->prepare("SELECT basis_json FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = 'model'");
+        $stored->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind]);
+        $basis = $stored->fetchColumn();
+        if ($basis === false) {
+            throw new InvalidArgumentException(sprintf('%s holds no model %s to confirm.', $component, $kind));
+        }
+        $target = $this->target($projectId, $component, $kind, '', 'model');
+        $fresh = $this->confirmedBasis($projectId, $component, (string) $basis);
+        if ($fresh === []) {
+            throw new InvalidArgumentException(sprintf('%s rests on no file, so there is nothing to confirm its note against.', $component));
+        }
+        if (!$execute) {
+            return $this->preview($projectId, $target, $kind, 'confirm', ['value' => (string) ($target['existing']['value'] ?? '')]);
+        }
+        $this->pdo->prepare("UPDATE annotations SET basis_json = :basis WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = 'model'")
+            ->execute(['basis' => json_encode($fresh, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'project' => $projectId, 'name' => $component, 'kind' => $kind]);
+
+        return $this->executed($projectId, $target, $kind, 'confirm', 'Confirmed', $this->fetch($projectId, $component, $kind, 'model'));
+    }
+
+    /**
+     * The files a confirmed note rests on, hashed as they are now: the
+     * component's own, and each file it cited that the scan or the disk still
+     * holds, up to {@see self::MAX_EVIDENCE_PATHS} of those. A cited file gone
+     * from both was looked past by the person who confirmed it.
+     *
+     * @return list<array{path: string, hash: string}>
+     */
+    private function confirmedBasis(string $projectId, string $component, string $stored): array
+    {
+        $own = array_column($this->basis($projectId, $component, []), 'path');
+        $root = (string) $this->project($projectId)['root_realpath'];
+        $scanned = $this->pdo->prepare('SELECT 1 FROM files WHERE project_id = :project AND relative_path = :path');
+        $cited = [];
+        foreach (json_decode($stored, true) ?: [] as $entry) {
+            $path = is_array($entry) ? ($entry['path'] ?? null) : null;
+            if (!is_string($path) || in_array($path, $own, true) || in_array($path, $cited, true)) {
+                continue;
+            }
+            $scanned->execute(['project' => $projectId, 'path' => $path]);
+            if ($scanned->fetchColumn() !== false || ProjectFileHash::current($root, $path) !== null) {
+                $cited[] = $path;
+            }
+        }
+
+        return $this->basis($projectId, $component, array_slice($cited, 0, self::MAX_EVIDENCE_PATHS));
+    }
+
+    /**
      * Record or replace a durable annotation, previewing unless executing.
      *
      * A model note is not replaced by different text unless `$replace` says

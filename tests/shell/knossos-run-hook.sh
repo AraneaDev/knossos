@@ -243,6 +243,11 @@ expect_output 'note-check takes the flag back' "note-check|$ABS_PROJ|--component
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --remove --execute
 expect_silent_success 'note-check refuses a reason and a remove' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value=x --remove
 expect_silent_success 'note-check refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --db=/tmp/x
+# note-confirm: the component, --execute last, nothing else.
+expect_output 'note-confirm confirms a note' "note-confirm|$ABS_PROJ|--component=A|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --execute
+expect_silent_success 'note-confirm refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --value=x
+expect_silent_success 'note-confirm refuses no component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --execute
 
 # watch: the live watcher, `knossos watch --shared`, with at most its poll interval.
 expect_output 'watch runs the shared watcher on the project' "watch|$ABS_PROJ|--shared|--poll-ms=1500|" \
@@ -424,6 +429,8 @@ expect_silent_success 'container note-move refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-move "$STUBS/proj" --component=A --to=B --db=/tmp/x
 expect_output 'container note-check flags the note' "img:1|note-check|$ABS_PROJ|--component=A|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-check "$STUBS/proj" --component=A --execute
+expect_output 'container note-confirm confirms the note' "img:1|note-confirm|$ABS_PROJ|--component=A|--execute|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-confirm "$STUBS/proj" --component=A --execute
 expect_output 'container path-between passes both ends' "img:1|path-between|$ABS_PROJ|--from=A|--to=B|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" path-between "$STUBS/proj" --from=A --to=B
 expect_output 'container blast-radius passes the component' "img:1|blast-radius|$ABS_PROJ|--component=A|--json|" \

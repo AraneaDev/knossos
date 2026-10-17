@@ -14,7 +14,7 @@ use PDO;
  * `blast-radius` (a component's dependents in rings), `path-between` (the
  * routes from one component to another), `annotate` (a note on a
  * component, previewed unless `execute` says to record it), and the Notes
- * tab's `notes`, `note-adopt`, `note-move` and `note-check`
+ * tab's `notes`, `note-adopt`, `note-move`, `note-check` and `note-confirm`
  * ({@see NotesService}).
  *
  * A write that meets a scan's lock answers `error` with
@@ -29,7 +29,7 @@ use PDO;
 final readonly class PaneQueries
 {
     /** The commands answered here. */
-    public const COMMANDS = ['churn', 'blast-radius', 'path-between', 'annotate', 'notes', 'note-adopt', 'note-move', 'note-check'];
+    public const COMMANDS = ['churn', 'blast-radius', 'path-between', 'annotate', 'notes', 'note-adopt', 'note-move', 'note-check', 'note-confirm'];
 
     /** @param PDO $pdo an existing, migrated graph database */
     public function __construct(private PDO $pdo) {}
@@ -49,6 +49,7 @@ final readonly class PaneQueries
             'note-adopt' => ['component', 'value', 'execute'],
             'note-move' => ['component', 'to', 'kind', 'author', 'execute'],
             'note-check' => ['component', 'value', 'remove', 'execute'],
+            'note-confirm' => ['component', 'execute'],
             default => [],
         };
     }
@@ -75,6 +76,7 @@ final readonly class PaneQueries
             'note-adopt' => (new NotesService($this->pdo))->adopt($path, $required('component'), $single('value'), $flag('execute')),
             'note-move' => (new NotesService($this->pdo))->move($path, $required('component'), $required('to'), $single('kind') ?? 'note', $single('author') ?? 'user', $flag('execute')),
             'note-check' => (new NotesService($this->pdo))->check($path, $required('component'), $single('value') ?? '', $flag('remove'), $flag('execute')),
+            'note-confirm' => (new NotesService($this->pdo))->confirm($path, $required('component'), execute: $flag('execute')),
             default => throw new InvalidArgumentException(sprintf('Unknown pane command %s.', $command)),
         };
     }

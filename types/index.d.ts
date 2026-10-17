@@ -569,6 +569,9 @@ export type NoteRow = {
   stale_reason: string | null
   checked: boolean
   check_reason: string | null
+  /** The file its component is in and that component's boundary; absent from an older knossos, null for a missing name. */
+  path?: string | null
+  boundary?: string | null
 }
 
 /** How many notes the project holds, and how many need the person: on a missing name, stale, flagged. */
@@ -700,7 +703,8 @@ export type KnossosView = {
 }
 
 /** A write on the Notes tab waiting for the person: removing a note, flagging it for the model or taking that back, moving it. */
-export type NotesAsk = { action: 'remove' | 'check' | 'uncheck' | 'move'; component: string; author: 'user' | 'model'; kind: string; to?: string; value?: string }
+/** A note write from the Notes tab: `confirm` (v, still true) is made at once; the others are asked first. */
+export type NotesAsk = { action: 'remove' | 'check' | 'uncheck' | 'move' | 'confirm'; component: string; author: 'user' | 'model'; kind: string; to?: string; value?: string }
 
 /** What a note write from the pane answered: done, refused with why, or an error with its code (`KNOSSOS_DATABASE_BUSY` while a scan commits). */
 export type NoteWrite = { status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'; executed?: boolean; reason?: string; code?: string; message?: string }

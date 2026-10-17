@@ -267,6 +267,7 @@ final class PaneQueriesTest extends KnossosTestCase
         assertSame(['component', 'value', 'execute'], PaneQueries::options('note-adopt'));
         assertSame(['component', 'to', 'kind', 'author', 'execute'], PaneQueries::options('note-move'));
         assertSame(['component', 'value', 'remove', 'execute'], PaneQueries::options('note-check'));
+        assertSame(['component', 'execute'], PaneQueries::options('note-confirm'));
     }
 
     /** The Notes tab's read and its three writes answer through the pane's command, as the wrapper calls them. */
@@ -285,8 +286,10 @@ final class PaneQueriesTest extends KnossosTestCase
             $adopt = $ask('note-adopt', ['component' => 'App\\Greeter', 'execute' => '1']);
             $move = $ask('note-move', ['component' => 'App\\Gone', 'to' => 'App\\Caller', 'author' => 'model', 'execute' => '1']);
             $notes = $ask('notes', ['filter' => 'all']);
+            $confirm = $ask('note-confirm', ['component' => 'App\\Caller']);
 
-            assertSame(['ok', 'ok', 'ok'], [$check['status'], $adopt['status'], $move['status']]);
+            assertSame(['ok', 'ok', 'ok', 'ok'], [$check['status'], $adopt['status'], $move['status'], $confirm['status']]);
+            assertSame(['confirm', false], [$confirm['action'], $confirm['executed']]);
             // The moved model note keeps what it was written against, so it reads stale until the model looks.
             assertSame(['total' => 3, 'missing' => 0, 'stale' => 1, 'flagged' => 1], $notes['counts']);
             assertSame(['App\\Caller'], array_column($notes['groups']['stale'], 'component'));

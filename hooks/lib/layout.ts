@@ -58,7 +58,7 @@ import { dotGlyph, grown, NO_MOTION, spinGlyph } from './motion'
 import type { Motion } from './motion'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
-import { notesArrangement, notesInput, notesItems, notesList } from './notes-view'
+import { confirmable, markedNote, notesArrangement, notesInput, notesList } from './notes-view'
 import type { NotesInput } from './notes-view'
 import { ringsInput } from './rings'
 import { routeArrangement, routeInput, routeList } from './route'
@@ -546,7 +546,7 @@ export function paneInput(
     branch: branchInput(extras.branch ?? null, d.project_root, view.folds ?? []),
     peek,
     churn: churnInput(extras.churn ?? null, d.project_root),
-    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null),
+    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null, view.folds ?? []),
     route: route === null ? null : routeInput(extras.route ?? null, route.from, route.to, route.index, d.project_root),
   }
 }
@@ -976,10 +976,12 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   }
   // While the card asks, its own y and n are the keys: nothing else on the tab may take them.
   if (onTab && input.tab === 'notes' && input.notes.ask === null) {
-    const note = notesItems(input.notes)[Math.min(Math.max(0, input.selected), notesItems(input.notes).length - 1)]
+    // On a boundary's or a folder's row there is no note: o folds it, and nothing else applies.
+    const note = markedNote(input.notes, input.selected) ?? undefined
     if (note !== undefined && !note.missing) actions.push(button('notes-edit', note.author === 'user' ? 'edit' : 'adopt', 'm'))
     if (note !== undefined) actions.push(button('notes-remove', 'remove', 'w'))
     if (note !== undefined && !note.missing && note.author === 'model') actions.push(button('notes-flag', note.checked ? 'unflag' : 'flag', 'g'))
+    if (note !== undefined && confirmable(note)) actions.push(button('notes-confirm', 'still true', 'v'))
     actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'))
     if (input.notes.filter !== 'all' || input.notes.text !== '') actions.push(button('notes-clear', 'clear', 'x'))
   }
