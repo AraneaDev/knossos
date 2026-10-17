@@ -220,9 +220,8 @@ final readonly class NotesService
             'SELECT a.canonical_name, a.kind, a.value, a.author, a.basis_json, a.updated_at, ' .
             "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status, " .
             "(SELECT c.value FROM annotations c WHERE c.project_id = a.project_id AND c.canonical_name = a.canonical_name AND c.kind = :check AND c.author = 'user') AS check_reason, " .
-            // Where it lives: the file its component is in, and that component's boundary, the first of each by name.
-            '(SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1) AS path, ' .
-            '(SELECT b.name FROM nodes n JOIN boundary_memberships bm ON bm.node_id = n.id JOIN boundaries b ON b.id = bm.boundary_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY b.name LIMIT 1) AS boundary ' .
+            // Where it lives: the file its component is in (the first by path); its boundary is that file's label, below.
+            '(SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1) AS path ' .
             'FROM annotations a WHERE a.project_id = :project AND a.kind <> :check ORDER BY a.canonical_name, a.kind, a.author LIMIT ' . (self::MAX_ROWS + 1),
         );
         $statement->execute(['project' => $projectId, 'check' => AnnotationService::CHECK]);
@@ -230,6 +229,9 @@ final readonly class NotesService
         $truncated = count($rows) > self::MAX_ROWS;
         $rows = array_slice($rows, 0, self::MAX_ROWS);
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
+        // Each file's own boundary, as the fan-in map and the Branch tab label it: the most specific, never one spanning the repository.
+        $paths = array_values(array_unique(array_filter(array_map(static fn(array $row): ?string => $row['path'] === null ? null : (string) $row['path'], $rows), 'is_string')));
+        $labels = $paths === [] ? [] : BoundaryLabels::load($this->pdo, $projectId)->forFiles($projectId, $paths);
 
         return [array_map(static fn(array $row, ?string $reason): array => [
             'component' => (string) $row['canonical_name'],
@@ -243,7 +245,7 @@ final readonly class NotesService
             'checked' => $row['check_reason'] !== null,
             'check_reason' => $row['check_reason'] === null ? null : (string) $row['check_reason'],
             'path' => $row['path'] === null ? null : (string) $row['path'],
-            'boundary' => $row['boundary'] === null ? null : (string) $row['boundary'],
+            'boundary' => $row['path'] === null ? null : ($labels[(string) $row['path']] ?? null),
         ], $rows, $reasons), $truncated];
     }
 

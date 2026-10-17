@@ -703,7 +703,8 @@ export type KnossosView = {
 }
 
 /** A write on the Notes tab waiting for the person: removing a note, flagging it for the model or taking that back, moving it. */
-export type NotesAsk = { action: 'remove' | 'check' | 'uncheck' | 'move'; component: string; author: 'user' | 'model'; kind: string; to?: string; value?: string }
+/** A note write from the Notes tab: `confirm` (v, still true) is made at once; the others are asked first. */
+export type NotesAsk = { action: 'remove' | 'check' | 'uncheck' | 'move' | 'confirm'; component: string; author: 'user' | 'model'; kind: string; to?: string; value?: string }
 
 /** What a note write from the pane answered: done, refused with why, or an error with its code (`KNOSSOS_DATABASE_BUSY` while a scan commits). */
 export type NoteWrite = { status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'; executed?: boolean; reason?: string; code?: string; message?: string }

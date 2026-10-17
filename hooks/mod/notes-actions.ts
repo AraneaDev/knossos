@@ -9,7 +9,7 @@
  */
 import type { KnossosView, NoteState, NotesAsk } from '../../types'
 import { BUSY_CODE, BUSY_SAID, parseNoteWrite } from '../lib/envelopes'
-import { labelOf, notesInput, notesItems } from '../lib/notes-view'
+import { labelOf, markedNote, notesInput } from '../lib/notes-view'
 import type { NoteItem } from '../lib/notes-view'
 import { request, showComponent } from './loaders'
 import { disable, say, wrapper } from './port'
@@ -23,8 +23,7 @@ const WRITE_TIMEOUT_MS = 20_000
 async function marked(io: Port): Promise<NoteItem | null> {
   const v = await io.state.view.read()
   if (v.tab !== 'notes' || v.inspect !== null) return null
-  const items = notesItems(notesInput(await io.state.notes.read(), v.notesFilter ?? 'all', v.notesText ?? '', false))
-  return items[Math.min(Math.max(0, v.selected), items.length - 1)] ?? null
+  return markedNote(notesInput(await io.state.notes.read(), v.notesFilter ?? 'all', v.notesText ?? '', false, null, v.folds ?? []), v.selected)
 }
 
 /** The question the tab asks, put up or dropped. */
@@ -104,6 +103,7 @@ function argsOf(q: NotesAsk): { sub: string; args: string[] } {
   if (q.action === 'remove') return { sub: 'annotate', args: [`--component=${q.component}`, '--remove', ...author, ...kind, '--execute'] }
   if (q.action === 'check') return { sub: 'note-check', args: [`--component=${q.component}`, ...(q.value === undefined || q.value === '' ? [] : [`--value=${q.value}`]), '--execute'] }
   if (q.action === 'uncheck') return { sub: 'note-check', args: [`--component=${q.component}`, '--remove', '--execute'] }
+  if (q.action === 'confirm') return { sub: 'note-confirm', args: [`--component=${q.component}`, '--execute'] }
   return { sub: 'note-move', args: [`--component=${q.component}`, `--to=${q.to ?? ''}`, ...author, ...kind, '--execute'] }
 }
 
@@ -112,7 +112,20 @@ function doneSaid(q: NotesAsk): string {
   if (q.action === 'remove') return `✓ removed the note on ${labelOf(q.component)}`
   if (q.action === 'check') return `✓ flagged ${labelOf(q.component)} for the model`
   if (q.action === 'uncheck') return `✓ took the flag back on ${labelOf(q.component)}`
+  if (q.action === 'confirm') return `✓ the note on ${labelOf(q.component)} is still true`
   return `✓ moved the note to ${labelOf(q.to ?? '')}`
+}
+
+/**
+ * `v`: the marked stale note of the model's is still true. Made at once, on a
+ * timer, never inside the press: it changes no text and no flag, and the
+ * next change to its files makes it stale again.
+ */
+export async function confirmMarked(io: Port): Promise<void> {
+  const n = await marked(io)
+  if (n === null || n.missing || !n.stale || n.author !== 'model') return
+  const q: NotesAsk = { action: 'confirm', component: n.component, author: 'model', kind: n.kind }
+  io.clock.after(0, () => void write(io, q).catch(() => undefined))
 }
 
 /** `y` on the tab's question: the write is made on a timer, never inside the press. */

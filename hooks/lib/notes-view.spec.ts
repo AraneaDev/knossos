@@ -14,9 +14,12 @@ const answer = (over: Partial<Notes> = {}): Notes => ({
   filter: 'all',
   text: '',
   groups: {
-    missing: [row('App\\Gone', { component_status: 'missing' })],
-    stale: [row('App\\Chain1', { stale: true, stale_reason: 'written before src/Chain1.php changed' })],
-    rest: [row('App\\User', { author: 'user', value: 'Mine.' }), row('App\\Target', { checked: true, check_reason: 'still per request?' })],
+    missing: [row('App\\Gone', { component_status: 'missing', updated_at: '2026-10-16T10:00:00Z' })],
+    stale: [row('App\\Chain1', { stale: true, stale_reason: 'written before src/Chain1.php changed', path: 'src/Chain1.php', boundary: 'core', updated_at: '2026-10-16T10:01:00Z' })],
+    rest: [
+      row('App\\User', { author: 'user', value: 'Mine.', path: 'src/User.php', boundary: 'core', updated_at: '2026-10-16T10:02:00Z' }),
+      row('App\\Target', { checked: true, check_reason: 'still per request?', path: 'src/Target.php', boundary: 'core', updated_at: '2026-10-16T10:03:00Z' }),
+    ],
   },
   counts: { total: 4, missing: 1, stale: 1, flagged: 1 },
   truncated: false,
@@ -40,26 +43,54 @@ describe('the Notes tab', () => {
     expect(text(state({ ...none, counts: { total: 4, missing: 1, stale: 1, flagged: 1 } }))).toContain('No note matches')
   })
 
-  it('lists the missing first, then the stale, then the rest, each with its mark, author and first line', () => {
-    const t = text(state(answer()))
-    const at = (s: string) => t.indexOf(s)
-    expect(at('Gone')).toBeGreaterThan(-1)
-    expect(at('Gone')).toBeLessThan(at('Chain1'))
-    expect(at('Chain1')).toBeLessThan(at('User'))
-    expect(at('User')).toBeLessThan(at('Target'))
+  it('puts what needs the person first, then the notes by where they live, each with its author and first line, stale marked quietly', () => {
+    const t = text(state(answer()), 100, 60, view({ selected: 2 }))
+    const needs = t.indexOf('Needs you')
+    expect(needs).toBeGreaterThan(-1)
+    expect(t.indexOf('Gone')).toBeGreaterThan(needs)
     expect(t).toMatch(/▲ Gone .*model .*What App\\Gone does\./)
-    expect(t).toMatch(/≈ Chain1 .*model/)
-    expect(t).toMatch(/User .*you .*Mine\./)
     expect(t).toMatch(/\? Target .*model/)
-    expect(t).not.toContain('A second line.')
+    // Then the tree: the boundary holding the newest note open, its folder, its notes newest first.
+    expect(t).toMatch(/▾ .*core +3/)
+    expect(t).toMatch(/▾ src\/ +3/)
+    expect(t.lastIndexOf('Target')).toBeLessThan(t.indexOf('User'))
+    expect(t.indexOf('User')).toBeLessThan(t.indexOf('Chain1'))
+    expect(t).toMatch(/Chain1 .*model .*≈$/m)
+    expect(t).toMatch(/User .*you .*Mine\./)
+    expect(t).not.toContain('Stale: written before their files changed')
     expect(t).toContain('4 notes · 1 missing · 1 stale · 1 flagged')
   })
 
-  it('walks every row in that order; a missing note is no detail to open', () => {
+  it('walks what needs the person, then each boundary, folder and note; a group folds on o, a missing note opens nothing', () => {
     const list = listFor(pane(state(answer())))
-    expect(list.map(i => i.canonical)).toEqual(['App\\Gone', 'App\\Chain1', 'App\\User', 'App\\Target'])
+    expect(list.map(i => i.fold ?? i.canonical)).toEqual(['App\\Gone', 'App\\Target', 'notes:b:core', 'notes:f:core:src', 'App\\Target', 'App\\User', 'App\\Chain1', 'notes:b:'])
     expect(list[0]?.inert).toBe(true)
-    expect(list[2]?.inert).toBeUndefined()
+    expect(list[5]?.inert).toBeUndefined()
+    expect(list[2]?.inert).toBe(true)
+    // Folded, the boundary's folder and notes leave the walk.
+    expect(listFor(pane(state(answer()), view({ folds: ['notes:b:core'] }))).map(i => i.fold ?? i.canonical)).toEqual(['App\\Gone', 'App\\Target', 'notes:b:core', 'notes:b:'])
+  })
+
+  it('shows the marked note whole under the tree: where it lives, who wrote it, when, why it is stale, and all its text', () => {
+    const t = text(state(answer()), 100, 60, view({ selected: 6 }))
+    expect(t).toContain('A second line.')
+    expect(t).toMatch(/src\/Chain1\.php .*core/)
+    expect(t).toContain('written before src/Chain1.php changed')
+    expect(t).toMatch(/model · 2026-10-16/)
+    // On a boundary's row, no note is shown whole.
+    expect(text(state(answer()), 100, 60, view({ selected: 2 }))).not.toContain('A second line.')
+  })
+
+  it('fills the height it has with the tree', () => {
+    for (const height of [40, 60]) {
+      const { body, footer } = paneLayout(pane(state(answer()), view({ selected: 6 })), 120, height)
+      expect(body.reduce((n, r) => n + (r.code === undefined ? 1 : 0), 0) + footer.length).toBe(height)
+    }
+  })
+
+  it('opens every group while narrowed by text, so every match shows', () => {
+    const list = listFor(pane(state(answer({ text: 'App' })), view({ notesText: 'App', folds: ['notes:b:core'] })))
+    expect(list.filter(i => i.fold === undefined).map(i => i.canonical)).toContain('App\\Chain1')
   })
 
   it('cycles its filter through every one and back, and says which it shows', () => {
@@ -84,36 +115,45 @@ describe('the Notes tab', () => {
 
   it("offers m, X and g on the marked note: edit the person's, adopt the model's, flag only the model's", () => {
     const keys = (selected: number) => footerRows(pane(state(answer()), view({ selected })), 140, true).bar.map(plainText).join(' ')
-    expect(keys(1)).toMatch(/adopt.*remove.*flag/)
-    expect(keys(1)).not.toContain('unflag')
-    expect(keys(2)).toMatch(/edit.*remove/)
-    expect(keys(2)).not.toContain('flag')
+    expect(keys(6)).toMatch(/adopt.*remove.*flag/)
+    expect(keys(6)).not.toContain('unflag')
+    expect(keys(5)).toMatch(/edit.*remove/)
+    expect(keys(5)).not.toContain('flag')
     // A note on a missing name has nothing to edit or flag: o finds where it goes.
     expect(keys(0)).not.toMatch(/adopt|edit|flag/)
     // A flagged note offers to take the flag back.
-    expect(keys(3)).toContain('unflag')
+    expect(keys(4)).toContain('unflag')
+    // A boundary's row is no note: nothing to edit, remove or flag.
+    expect(keys(2)).not.toMatch(/adopt|edit|remove|flag/)
+  })
+
+  it('offers v on a stale note of the model\'s, to say it is still true, and on no other', () => {
+    const press = (selected: number) => footerRows(pane(state(answer()), view({ selected })), 140, true).bar.flatMap(r => r.segments).find(s => s.press?.id === 'notes-confirm')?.press
+    expect(press(6)).toMatchObject({ hotkey: 'v' })
+    expect(plainText(footerRows(pane(state(answer()), view({ selected: 6 })), 140, true).bar[0]!)).toContain('still true')
+    for (const other of [0, 4, 5, 2]) expect(press(other), `${other}`).toBeUndefined()
   })
 
   it('asks before a write, in the card, and offers only y and n meanwhile', () => {
-    const asked = (notesAsk: KnossosView['notesAsk']) => text(state(answer()), 100, 60, view({ selected: 3, notesAsk }))
+    const asked = (notesAsk: KnossosView['notesAsk']) => text(state(answer()), 100, 60, view({ selected: 4, notesAsk }))
     expect(asked({ action: 'remove', component: 'App\\Target', author: 'model', kind: 'note' })).toContain("Remove the model's note on Target?")
     expect(asked({ action: 'move', component: 'App\\Gone', author: 'model', kind: 'note', to: 'App\\Adapter' })).toContain('Move the note on App\\Gone to App\\Adapter?')
     expect(asked({ action: 'uncheck', component: 'App\\Target', author: 'model', kind: 'note' })).toContain('Take back the flag on Target?')
     expect(asked({ action: 'check', component: 'App\\Target', author: 'model', kind: 'note', value: 'why' })).toContain('Flag the note on Target for the model; why (optional): why')
-    const bar = footerRows(pane(state(answer()), view({ selected: 3, notesAsk: { action: 'remove', component: 'App\\Target', author: 'model', kind: 'note' } })), 140, true).bar.map(plainText).join(' ')
+    const bar = footerRows(pane(state(answer()), view({ selected: 4, notesAsk: { action: 'remove', component: 'App\\Target', author: 'model', kind: 'note' } })), 140, true).bar.map(plainText).join(' ')
     expect(bar).not.toMatch(/narrow|show:|adopt|remove|flag/)
   })
 
   it('gives every key a digit or a lowercase letter, as the engine takes them, remove on w', () => {
     const presses = (v: Partial<KnossosView>) => [...footerRows(pane(state(answer()), view(v)), 140, true).bar, ...paneLayout(pane(state(answer()), view(v)), 140, 60).body].flatMap(r => r.segments).flatMap(s => (s.press?.hotkey === undefined ? [] : [s.press]))
-    for (const v of [{ selected: 1 }, { selected: 2 }, { selected: 3, notesAsk: { action: 'remove' as const, component: 'App\\Target', author: 'model' as const, kind: 'note' } }, { selected: 3, notesAsk: { action: 'check' as const, component: 'App\\Target', author: 'model' as const, kind: 'note', value: '' } }]) {
+    for (const v of [{ selected: 6 }, { selected: 5 }, { selected: 4, notesAsk: { action: 'remove' as const, component: 'App\\Target', author: 'model' as const, kind: 'note' } }, { selected: 4, notesAsk: { action: 'check' as const, component: 'App\\Target', author: 'model' as const, kind: 'note', value: '' } }]) {
       for (const p of presses(v)) expect(p.hotkey, p.id).toMatch(/^[0-9a-z]$/)
     }
-    expect(presses({ selected: 1 }).find(p => p.id === 'notes-remove')?.hotkey).toBe('w')
+    expect(presses({ selected: 6 }).find(p => p.id === 'notes-remove')?.hotkey).toBe('w')
   })
 
   it('offers n to drop the flag question as well as Enter to flag', () => {
-    const body = paneLayout(pane(state(answer()), view({ selected: 3, notesAsk: { action: 'check', component: 'App\\Target', author: 'model', kind: 'note', value: '' } })), 140, 60).body.flatMap(r => r.segments)
+    const body = paneLayout(pane(state(answer()), view({ selected: 4, notesAsk: { action: 'check', component: 'App\\Target', author: 'model', kind: 'note', value: '' } })), 140, 60).body.flatMap(r => r.segments)
     expect(body.find(s => s.press?.id === 'notes-no')?.press?.hotkey).toBe('n')
   })
 

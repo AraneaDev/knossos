@@ -12,7 +12,7 @@ import { editorCommand } from '../lib/rows'
 import type { Loc } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { request, requestDetail, showComponent } from './loaders'
-import { askFlag, askMove, askRemove, confirm as confirmNotes, editMarked, missingMarked, startMove, submitReason, typeReason } from './notes-actions'
+import { askFlag, askMove, askRemove, confirm as confirmNotes, confirmMarked, editMarked, missingMarked, startMove, submitReason, typeReason } from './notes-actions'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
 import { currentInput, currentList } from './render'
@@ -639,6 +639,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['notes-edit', io => editMarked(io)],
   ['notes-remove', io => askRemove(io)],
   ['notes-flag', io => askFlag(io)],
+  ['notes-confirm', io => confirmMarked(io)],
   ['notes-yes', io => confirmNotes(io)],
   ['notes-no', viewing(v => ({ ...v, notesAsk: null }))],
   ['notes-move:', (io, rest) => askMove(io, rest)],

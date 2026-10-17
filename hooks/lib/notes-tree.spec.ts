@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstOpen, notesTree, noteName } from './notes-tree'
+import { firstOpen, labelOf, notesTree, noteName } from './notes-tree'
 import type { NoteItem } from './notes-view'
 
 const note = (component: string, over: Partial<NoteItem> = {}): NoteItem => ({
@@ -33,6 +33,8 @@ describe('the notes as a tree', () => {
   it('names a file note by its path and a symbol by its short name', () => {
     expect(noteName(items[2]!)).toBe('hooks/lib/layout.ts')
     expect(noteName(items[0]!)).toBe('Cache')
+    // A symbol in a TypeScript file by its own name, after the file's `#`.
+    expect(noteName(note('hooks/lib/envelopes.ts#betweenTypes', { label: labelOf('hooks/lib/envelopes.ts#betweenTypes'), path: 'hooks/lib/envelopes.ts' }))).toBe('betweenTypes')
   })
 
   it('opens first the boundary that holds the newest note', () => {
@@ -49,6 +51,9 @@ describe('the notes as a tree', () => {
   })
 
   it('lists boundaries by name, the notes with none last, each folded but the first open one, its folders open', () => {
+    // By the name a person reads, not the boundary's kind before it.
+    const kinds = notesTree([note('A\\x', { boundary: 'namespace:Knossos\\Boundary' }), note('B\\y', { boundary: 'hooks' })], [], false)
+    expect(kinds.filter(l => l.kind === 'boundary').map(l => (l.kind === 'boundary' ? l.name : null))).toEqual(['namespace:Knossos\\Boundary', 'hooks'])
     const lines = notesTree(items, [], false)
     expect(lines.filter(l => l.kind === 'boundary').map(l => (l.kind === 'boundary' ? [l.name, l.count, l.open] : null))).toEqual([
       ['hooks', 1, true],

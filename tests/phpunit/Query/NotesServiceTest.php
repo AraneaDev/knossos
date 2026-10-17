@@ -121,12 +121,28 @@ final class NotesServiceTest extends KnossosTestCase
     /** Each note says where it lives: the file its component is in and that file's boundary; a note on a missing name, nowhere. */
     public function testEachNoteSaysWhereItLives(): void
     {
-        [$pdo, $root] = $this->notesGraph();
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        // A boundary that holds every component sorts first by name, and says nothing about where a file sits.
+        $scan = (string) $pdo->query("SELECT active_scan_id FROM projects WHERE id = '{$projectId}'")->fetchColumn();
+        $repository = new \Knossos\Store\SqliteGraphRepository($pdo);
+        $wide = \Knossos\Store\StableId::boundary($projectId, 'aaa-everything', 'inferred');
+        $repository->saveBoundary($wide, $projectId, 'aaa-everything', [], 'inferred', $scan);
+        foreach ($pdo->query("SELECT id FROM nodes WHERE project_id = '{$projectId}'")->fetchAll(PDO::FETCH_COLUMN) as $node) {
+            $repository->saveBoundaryMembership($wide, $projectId, (string) $node, $scan);
+        }
+        // And one that holds Target's file alone, sorting after it: the label a person reads it by.
+        $own = \Knossos\Store\StableId::boundary($projectId, 'zzz-target', 'explicit');
+        $repository->saveBoundary($own, $projectId, 'zzz-target', [], 'explicit', $scan);
+        foreach ($pdo->query("SELECT n.id FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = '{$projectId}' AND f.relative_path = 'src/App/Target.php'")->fetchAll(PDO::FETCH_COLUMN) as $node) {
+            $repository->saveBoundaryMembership($own, $projectId, (string) $node, $scan);
+        }
         $groups = (new NotesService($pdo))->notes($root)['groups'];
         $all = array_merge(...array_values($groups));
         $by = array_column($all, null, 'component');
         assertSame('src/App/Target.php', $by['App\\Target']['path']);
-        assertSame(true, array_key_exists('boundary', $by['App\\Target']));
+        // The file's own boundary, as the fan-in map and the Branch tab label it: the most specific, not the first by name.
+        $label = \Knossos\Query\BoundaryLabels::load($pdo, $projectId)->forFiles($projectId, ['src/App/Target.php'])['src/App/Target.php'] ?? null;
+        assertSame($label, $by['App\\Target']['boundary']);
         assertSame([null, null], [$by['App\\Gone']['path'], $by['App\\Gone']['boundary']]);
     }
 

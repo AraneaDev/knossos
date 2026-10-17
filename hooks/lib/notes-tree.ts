@@ -10,6 +10,9 @@
  */
 import type { NoteItem } from './notes-view'
 
+/** A component's own name: what follows the last `\`, `::`, `.`, `/` or `#` (a symbol in a TypeScript file) of its full one. */
+export const labelOf = (component: string): string => component.split(/\\|::|\/|#|(?<=\w)\.(?=\w)/).filter(p => p !== '').at(-1) ?? component
+
 /** One walked line of the tree. `fold` is the key `o` flips in the view's folds. */
 export type TreeLine =
   | { kind: 'needs'; item: NoteItem }
@@ -40,9 +43,10 @@ export function notesTree(items: NoteItem[], folds: string[], searching: boolean
   if (items.length === 0) return []
   const flipped = new Set(folds)
   const first = firstOpen(items)
-  const needs = items.filter(i => i.missing || i.checked).sort(newestFirst).map((item): TreeLine => ({ kind: 'needs', item }))
-  // Boundaries by name, the notes with none last.
-  const names = [...new Set(items.map(i => i.boundary))].sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
+  // A note whose component is gone first, then one flagged for the model, each newest first.
+  const needs = items.filter(i => i.missing || i.checked).sort((a, b) => Number(b.missing) - Number(a.missing) || newestFirst(a, b)).map((item): TreeLine => ({ kind: 'needs', item }))
+  // Boundaries by the name a person reads (`Boundary` for `namespace:Knossos\Boundary`), the notes with none last.
+  const names = [...new Set(items.map(i => i.boundary))].sort((a, b) => (a === null ? 1 : b === null ? -1 : labelOf(a).localeCompare(labelOf(b))))
   const lines: TreeLine[] = [...needs]
   for (const name of names) {
     const inside = items.filter(i => i.boundary === name)
