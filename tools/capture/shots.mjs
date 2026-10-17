@@ -281,7 +281,7 @@ export const SHOTS = {
                 { timeoutMs: 60000, fixture: "edited" },
             ),
             wait("from this session", THIS_SESSION, { timeoutMs: 60000 }),
-            wait("fresh", String.raw`● live`, { timeoutMs: 60000 }),
+            wait("fresh", String.raw`◍ live`, { timeoutMs: 60000 }),
             still("changes-diff"),
             // The band takes the turn's figures once the turn is over; it shows with the pane shut.
             { do: "resize", size: SIZES.hero },
