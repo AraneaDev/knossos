@@ -102,10 +102,11 @@ export const BOUNDARY_COLOURS = [
 
 /**
  * Each boundary's colour by its full name (the project's largest
- * boundaries, largest first), and the labels that had to be told apart
- * (`labels`, by full name; see {@link labelsOf}).
+ * boundaries, largest first), the labels that had to be told apart
+ * (`labels`, by full name; see {@link labelsOf}), and the names the project
+ * declared (`declared`): a declared name may look inferred (`ns:Cli`).
  */
-export type Hues = ReadonlyMap<string, string> & { readonly labels?: ReadonlyMap<string, string> }
+export type Hues = ReadonlyMap<string, string> & { readonly labels?: ReadonlyMap<string, string>; readonly declared?: ReadonlySet<string> }
 export const NO_HUES: Hues = new Map()
 
 /** Whether a boundary was inferred: its name carries the source it came from (`namespace:`, `module:`). */
@@ -135,8 +136,9 @@ export function huesOf(d: Pick<Dashboard, 'boundaries' | 'boundary_matrix'>): Hu
   const declared = declaredOf(d)
   const rank = (name: string) => (declared.has(name) ? 0 : 1)
   const order = [...sizes.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name)
-  const hues: Map<string, string> & { labels?: ReadonlyMap<string, string> } = new Map(order.slice(0, BOUNDARY_COLOURS.length).map((name, i) => [name, BOUNDARY_COLOURS[i]!]))
+  const hues: Map<string, string> & { labels?: ReadonlyMap<string, string>; declared?: ReadonlySet<string> } = new Map(order.slice(0, BOUNDARY_COLOURS.length).map((name, i) => [name, BOUNDARY_COLOURS[i]!]))
   hues.labels = labelsOf([...order, ...declared])
+  hues.declared = declared
   return hues
 }
 
@@ -183,7 +185,7 @@ function hash(text: string): number {
 export function boundaryColour(name: string | null | undefined, hues: Hues = NO_HUES): string | undefined {
   if (name === null || name === undefined || name === '') return undefined
   const own = hues.get(name)
-  if (own !== undefined || inferred(name)) return own
+  if (own !== undefined || (inferred(name) && hues.declared?.has(name) !== true)) return own
   return BOUNDARY_COLOURS[hash(name) % BOUNDARY_COLOURS.length]
 }
 

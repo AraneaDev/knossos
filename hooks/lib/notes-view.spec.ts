@@ -89,6 +89,25 @@ describe('the Notes tab', () => {
     }
   })
 
+  it('names a file note by its file name under its folder, and by its path where no folder stands over it', () => {
+    const file = row('hooks/lib/paths.ts', { path: 'hooks/lib/paths.ts', boundary: 'core', checked: true, check_reason: 'still?', updated_at: '2026-10-16T10:04:00Z' })
+    const t = text(state(answer({ groups: { ...answer().groups, rest: [file, ...answer().groups.rest] } })), 120, 60)
+    expect(t).toMatch(/^ *\? hooks\/lib\/paths\.ts /m)
+    expect(t).toMatch(/^ *▾ hooks\/lib\/ +1$/m)
+    // In the tree, after the flag's mark: the file name alone.
+    expect(t).toMatch(/^ ?\?? {6,}paths\.ts +model/m)
+    expect(t).not.toMatch(/^ ?\?? {6,}hooks\/lib\/paths\.ts +model/m)
+  })
+
+  it('lines its notes up in columns: the author, then the text, at the same place on every row', () => {
+    const long = row('App\\Deep\\AVeryLongComponentName', { author: 'user', value: 'Long.', path: 'src/Deep/AVeryLongComponentName.php', boundary: 'core', updated_at: '2026-10-16T10:05:00Z' })
+    const t = text(state(answer({ groups: { ...answer().groups, rest: [long, ...answer().groups.rest] } })), 120, 60)
+    const notes = t.split('\n').filter(l => / (model|you) {2,}\S/.test(l))
+    expect(notes.length).toBeGreaterThanOrEqual(5)
+    expect(new Set(notes.map(l => l.search(/ (model|you) /))).size).toBe(1)
+    expect(new Set(notes.map(l => l.search(/(?<=(model|you) +)\S/))).size).toBe(1)
+  })
+
   it('opens every group while narrowed by text, so every match shows', () => {
     const list = listFor(pane(state(answer({ text: 'App' })), view({ notesText: 'App', folds: ['notes:b-:core'] })))
     expect(list.filter(i => i.fold === undefined).map(i => i.canonical)).toContain('App\\Chain1')

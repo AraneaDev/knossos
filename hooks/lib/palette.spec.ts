@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { ACCENT, BOUNDARY_COLOURS, FAINT, HEADING, SECONDARY, STATUS_COLOURS, STAT_HUES, TITLE, boundaryColour, boundaryLabel, declaredOf, heat, huesOf, languageColour } from './palette'
 
 describe('boundaryColour', () => {
+  it('gives a declared boundary past the first eight its own colour, even one named like an inferred one', () => {
+    const items = ['tests', 'core', 'ns:Query', 'typescript-worker', 'rust-worker', 'python-worker', 'ns:Scan', 'tooling', 'ns:Cli'].map((name, i) => ({ name, members: 100 - i, source: 'explicit' }))
+    const hues = huesOf({ boundaries: { items, declared: items.map(b => b.name) } } as never)
+    expect(hues.has('ns:Cli')).toBe(false)
+    expect(boundaryColour('ns:Cli', hues)).toBeDefined()
+    // An inferred one past the first eight stays neutral.
+    expect(boundaryColour('module:hooks', hues)).toBeUndefined()
+  })
+
   it('is one of the palette, and the same for the same name every time', () => {
     const colour = boundaryColour('core')
     expect(BOUNDARY_COLOURS).toContain(colour)
