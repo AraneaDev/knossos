@@ -8,7 +8,6 @@ use Closure;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Scan\{ProjectScanService, ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
-use Knossos\Store\ScanBusyException;
 use PDO;
 use Throwable;
 
@@ -30,10 +29,12 @@ final readonly class TurnBriefService
     /** Dependents listed per changed file. */
     private const TOP_DEPENDENTS = 5;
 
-    /** How often a scan another writer holds the project for is tried, and how long to wait between tries. */
-    private const BUSY_ATTEMPTS = 5;
-
-    private const BUSY_WAIT_MS = 1000;
+    /**
+     * How long a scan another writer holds the project for is waited out: the
+     * live watcher scanning the same edit can take far longer than a few
+     * seconds on a large project, and the mod gives the brief a minute.
+     */
+    private const BUSY_WAIT_MS = 40_000;
 
     /** Tests listed in the brief, enforced by testImpact()'s own limit. */
     private const MAX_TESTS = 20;
@@ -54,6 +55,7 @@ final readonly class TurnBriefService
         private int $policyTimeoutMs = 5000,
         private int $policyMaxEdges = ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES,
         private ?Closure $clock = null,
+        private ?Closure $sleep = null,
     ) {}
 
     /**
@@ -153,21 +155,12 @@ final readonly class TurnBriefService
     }
 
     /**
-     * The project's write lease; one another writer holds is waited out a
-     * few times before it counts as a failure.
+     * The project's write lease; one another writer holds is waited out for
+     * up to {@see self::BUSY_WAIT_MS} before it counts as a failure.
      */
     private function lease(string $projectId): ProjectWriterLease
     {
-        for ($attempt = 1; ; ++$attempt) {
-            try {
-                return (new ProjectWriterLock($this->pdo))->acquire($projectId);
-            } catch (ScanBusyException $busy) {
-                if ($attempt >= self::BUSY_ATTEMPTS) {
-                    throw $busy;
-                }
-                usleep(self::BUSY_WAIT_MS * 1000);
-            }
-        }
+        return (new ProjectWriterLock($this->pdo, sleep: $this->sleep))->acquire($projectId, self::BUSY_WAIT_MS);
     }
 
     /**
