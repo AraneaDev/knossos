@@ -30,7 +30,7 @@ is the short version.
   from a row, and how do I find a component by name?
 - [Live updates](claude-code/pane/live.md): how do the pane and the band
   follow the code, and what shows before there is a graph?
-- [Messages for the model](claude-code/agent-notes.md): what does the mod tell
+- [Messages for the model](claude-code/model-messages.md): what does the mod tell
   the model, when, and in which words?
 - [Session brief](claude-code/session-brief.md): what does a session see when
   it starts, and how is each verdict chosen?

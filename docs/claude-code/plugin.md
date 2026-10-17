@@ -6,7 +6,7 @@ One plugin brings Knossos into Claude Code. It carries:
 - the [routing skill](skill.md), which says which questions to bring to the
   graph;
 - the [mod](pane/index.md): the band, the pane, the live watcher, and the
-  [notes for the model](agent-notes.md).
+  [messages for the model](model-messages.md).
 
 You install it from the same checkout that runs your Knossos server, because
 the plugin ships no binary of its own: its hooks run the `knossos` already on

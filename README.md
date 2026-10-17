@@ -177,7 +177,7 @@ knossos: this session's changes carry 1 changed file no test reaches (src/Kernel
 
 Before an edit, `file_context` gives one file's boundary and the rules that bind it, its
 dependents, the tests that reach it and its latest commits, in one call instead of a grep for
-its callers. Every message and its limits are in [messages for the model](docs/claude-code/agent-notes.md).
+its callers. Every message and its limits are in [messages for the model](docs/claude-code/model-messages.md).
 
 Over MCP, in any client, the 36 tools answer questions such as:
 

@@ -189,9 +189,9 @@ note says how many members it has.
 boundary most of its members are in. After them, under a `Within one type` line,
 come the cycles whose members all belong to one class, such as a tree walk whose
 methods call each other: each is named by its type (`Walk · 3 members`) and
-draws and opens like any other. The note counts them apart (`1 · 2 within one
+draws and opens like any other. The heading counts them apart (`1 · 2 within one
 type`); only the cycles between types count towards the tile, the toasts, the
-commit note and the quality gate.
+model's message after a commit and the quality gate.
 
 `j` and `k` walk the members box by box in reading order, then on to the next
 cycle. `o` opens a member, `c` copies it, and `q` asks Claude how to break the

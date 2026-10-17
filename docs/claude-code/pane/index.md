@@ -10,8 +10,8 @@ that puts the graph on screen while a session works. You get three things:
 - **The live watcher**, which rescans the project as files change, so the band
   and the pane follow the code whoever edits it.
 
-The mod also tells the model a few facts at the moment they help. Those notes
-are on their own page: [notes for the model](../agent-notes.md).
+The mod also tells the model a few facts at the moment they help. Those messages
+are on their own page: [messages for the model](../model-messages.md).
 
 The mod never blocks an edit, never starts a turn on its own and never scans
 inside a hook. When something it needs is missing, it stays quiet.
@@ -221,17 +221,17 @@ cool ground for about three seconds, and the Overview's bars grow in.
 The settings appear in Claude Code's plugin configuration under the plugin's
 name:
 
-| setting           | default                 | what it does                                                               |
-| ----------------- | ----------------------- | -------------------------------------------------------------------------- |
-| `enabled`         | `true`                  | turns the band, the notes and the pane on or off                           |
-| `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a note, 1 to 100,000       |
-| `agentNotes`      | `true`                  | gives the model its [notes](../agent-notes.md); the toast on an edit stays |
-| `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                         |
-| `openPaneOnStart` | `false`                 | opens the pane when a session starts                                       |
-| `watch`           | `true`                  | runs the live watcher                                                      |
-| `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds        |
-| `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once              |
-| `editor`          | `code -g {file}:{line}` | the command `e` runs, `{file}` and `{line}` filled in                      |
+| setting           | default                 | what it does                                                                     |
+| ----------------- | ----------------------- | -------------------------------------------------------------------------------- |
+| `enabled`         | `true`                  | turns the band, the messages and the pane on or off                              |
+| `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a message, 1 to 100,000          |
+| `agentNotes`      | `true`                  | gives the model its [messages](../model-messages.md); the toast on an edit stays |
+| `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                               |
+| `openPaneOnStart` | `false`                 | opens the pane when a session starts                                             |
+| `watch`           | `true`                  | runs the live watcher                                                            |
+| `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds              |
+| `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once                    |
+| `editor`          | `code -g {file}:{line}` | the command `e` runs, `{file}` and `{line}` filled in                            |
 
 ## What it writes
 
