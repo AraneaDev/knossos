@@ -1,6 +1,8 @@
 # Live updates
 
-How the pane and the band keep up with the code: the live watcher, the drifted files, the toasts for new cycles and violations, and what the pane shows before there is a graph.
+How the pane and the band keep up with the code: the live watcher, the drifted
+files, the toasts for new cycles and violations, and what the pane shows before
+there is a graph.
 
 ## Drifted files
 
@@ -16,12 +18,6 @@ Drifted since the snapshot                                 3
  + hooks/lib/files.ts
    src/Query/DashboardService.php                  core
 ```
-
-`r: rescan` sits beside the pill whenever no scan is running, whatever the
-pill says. On a narrow pane the label is the first thing to give way, before
-the reason beside the pill; `r` still rescans. It runs an incremental scan under the same rules as a turn's, with
-`scanning…` and the age of the figures on show meanwhile. A rescan that fails
-turns the pill to `● scan failed`, says why beside it, and keeps the figures.
 
 ## Toasts for new cycles and violations
 

@@ -1,6 +1,7 @@
 # The pane's tabs
 
-Nine tabs, each a view of the graph: `1` to `9`, or `tab` and `shift+tab`.
+Nine tabs, each a view of the graph: `1`–`9` switches between them, or a
+click on one.
 
 ## Overview
 

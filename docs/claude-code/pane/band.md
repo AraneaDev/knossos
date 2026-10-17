@@ -1,9 +1,5 @@
 # The band above the prompt
 
-After a turn that edited files, one line above the prompt says what the turn changed and how far that reaches.
-
-## The band
-
 ![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](../../images/claude-code/band.png)
 
 After a turn that edited files, one line above the prompt sums up the turn:

@@ -1,6 +1,8 @@
 # Notes on components
 
-Notes are facts about a component worth keeping: yours, written in the pane, and the model's, written through the MCP server. The Notes tab lists them all; `m` on a component's detail writes one.
+Notes are facts about a component worth keeping: yours, written in the pane, and
+the model's, written through the MCP server. The Notes tab lists them all; `m`
+on a component's detail writes one.
 
 ## Notes
 

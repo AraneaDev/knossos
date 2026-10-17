@@ -5,7 +5,7 @@ that puts the graph on screen while a session works. You get three things:
 
 - **The band**, one line above the prompt after a turn that edited files: what
   the turn changed and how far that reaches.
-- **The pane**, which `/knossos` opens: the project's architecture on eight
+- **The pane**, which `/knossos` opens: the project's architecture on nine
   tabs, with a detail for every component and file.
 - **The live watcher**, which rescans the project as files change, so the band
   and the pane follow the code whoever edits it.
@@ -86,6 +86,12 @@ colour. Issues and Changes carry their counts as superscript badges
 (`Issues³`, `Changes¹`), and Branch carries what it found. Where the names do
 not fit, and always on a narrow pane, the other tabs show only their digit.
 
+`r: rescan` sits beside the pill whenever no scan is running, whatever the
+pill says. On a narrow pane the label is the first thing to give way, before
+the reason beside the pill; `r` still rescans. It runs an incremental scan under the same rules as a turn's, with
+`scanning…` and the age of the figures on show meanwhile. A rescan that fails
+turns the pill to `● scan failed`, says why beside it, and keeps the figures.
+
 ### Layouts by width
 
 The pane uses all the room it has, in one of three layouts by the columns of
@@ -101,7 +107,7 @@ Every card is its title in bold after a glyph in Claude's orange, set into a
 rule across the card, with its note at the rule's end and a blank row under it;
 no box closes round it.
 
-On a wide pane, Hubs, Cycles, Issues, Changes, Branch and Churn become master
+On a wide pane, Hubs, Cycles, Issues, Changes, Branch, Churn and Notes become master
 and detail: the tab takes the left 55 percent and the marked row's detail
 stands beside it. Moving the marker looks the new row up after a short pause,
 so holding `j` is one lookup. A row with nothing to show (a boundary, a
@@ -151,6 +157,7 @@ any other press, a tab or `f`, which then does what it does:
 | `n` `s` `x` | on Hubs: narrow the list, sort by in, out or cross degree, clear the narrowing                                 |
 | `n` `s` `x` | on [Notes](notes.md#notes): narrow by text, show yours, the model's, the stale, missing or flagged, clear both |
 | `m` `w` `g` | on Notes: edit your note or adopt the model's, remove a note, flag the model's note for it to check            |
+| `v`         | on Notes: say a stale note of the model's is still true                                                        |
 | `r`         | rescan the project now, fresh or not                                                                           |
 | `a`         | allow a refused root (asks first)                                                                              |
 
@@ -214,17 +221,17 @@ cool ground for about three seconds, and the Overview's bars grow in.
 The settings appear in Claude Code's plugin configuration under the plugin's
 name:
 
-| setting           | default                 | what it does                                                                |
-| ----------------- | ----------------------- | --------------------------------------------------------------------------- |
-| `enabled`         | `true`                  | turns the band, the notes and the pane on or off                            |
-| `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a note, 1 to 100,000        |
-| `agentNotes`      | `true`                  | gives the model its [notes](../agent-notes.md); the toast on an edit stays  |
-| `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                          |
-| `openPaneOnStart` | `false`                 | opens the pane when a session starts                                        |
-| `watch`           | `true`                  | runs the live watcher                                                       |
-| `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds         |
-| `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once               |
-| `editor`          | `code -g {file}:{line}` | the command `e` and a click on a place run, `{file}` and `{line}` filled in |
+| setting           | default                 | what it does                                                               |
+| ----------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `enabled`         | `true`                  | turns the band, the notes and the pane on or off                           |
+| `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a note, 1 to 100,000       |
+| `agentNotes`      | `true`                  | gives the model its [notes](../agent-notes.md); the toast on an edit stays |
+| `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                         |
+| `openPaneOnStart` | `false`                 | opens the pane when a session starts                                       |
+| `watch`           | `true`                  | runs the live watcher                                                      |
+| `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds        |
+| `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once              |
+| `editor`          | `code -g {file}:{line}` | the command `e` runs, `{file}` and `{line}` filled in                      |
 
 ## What it writes
 

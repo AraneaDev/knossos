@@ -1,6 +1,7 @@
 # Details, routes and the finder
 
-What opens from a row: a component's or a file's detail, its blast radius, a route between two components, the finder, and the diff of a changed file.
+What opens from a row: a component's or a file's detail, its blast radius, a
+route between two components, the finder, and the diff of a changed file.
 
 ## A component's detail
 
