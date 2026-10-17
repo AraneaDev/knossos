@@ -8,6 +8,7 @@ use Knossos\Discovery\AllowedRoots;
 use Knossos\Query\LedgeredScanner;
 use Knossos\Scan\ScanLedger;
 use Knossos\Query\TurnBriefService;
+use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -337,6 +338,33 @@ final class TurnBriefServiceTest extends KnossosTestCase
         } finally {
             $this->removeTempTree($root);
             $this->removeTempTree($other);
+        }
+    }
+
+    /**
+     * A scan another writer holds the project for (the live watcher scanning
+     * the same edit) is waited out, however many tries that takes within the
+     * wait, and the brief then reports as usual rather than failing.
+     */
+    #[Group('query')]
+    public function testAScanAnotherWriterHoldsIsWaitedOutAndTheBriefStillReports(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $held = (new ProjectWriterLock($pdo))->acquire($projectId);
+            $tries = 0;
+            // The other writer finishes on the tenth pause: more than any fixed handful of tries.
+            $sleep = static function (int $ms) use (&$tries, $held): void {
+                if (++$tries === 10) {
+                    $held->release();
+                }
+            };
+            $brief = (new TurnBriefService($pdo, ':memory:', self::repositoryRoot(), sleep: $sleep))->brief($root);
+            assertSame('ok', $brief['status']);
+            assertSame(10, $tries);
+        } finally {
+            $this->removeTempTree($root);
         }
     }
 
