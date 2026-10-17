@@ -673,7 +673,6 @@ describe('the issues tab', () => {
     expect(text).toContain('+34 not listed')
   })
 
-
   for (const columns of WIDTHS) {
     it(`fits ${columns} columns`, () => {
       widthsFit(paneRows(fullInput({ tab: 'issues' }), columns), columns)
@@ -1020,9 +1019,12 @@ describe('tables packed to the left', () => {
     expect(rowWidth(head)).toBe(100)
     expect(rowWidth(row(rows, 'hub-0')!)).toBe(100)
   })
-  it('makes every place on the Issues tab a link to its file and line', () => {
+  it("makes every place on the Issues tab open its file's detail", () => {
     const rows = paneRows(fullInput({ tab: 'issues' }), 90)
-    expect(row(rows, 'dead-0')!.segments.find(seg => seg.link)?.link).toEqual({ path: '/work/Knossos-MCP/workers/php/src/FactCollector.php', line: 108 })
+    const place = row(rows, 'dead-0')!.segments.find(seg => seg.press?.id.startsWith('file:'))
+    expect(place?.press).toMatchObject({ id: 'file:/work/Knossos-MCP/workers/php/src/FactCollector.php' })
+    expect(place?.dim).toBe(true)
+    expect(rows.some(r => r.segments.some(seg => 'link' in seg))).toBe(false)
     // A hotspot or a file over budget is a row: it opens as the file's detail, and `e` opens it at its longest function.
     expect(row(rows, 'hot-0')!.segments.find(seg => seg.press)?.press).toEqual({ id: 'row:5', label: 'workers/typescript/src/scanner.js' })
     const listed = listFor(fullInput({ tab: 'issues' }))

@@ -193,9 +193,9 @@ any other press, a tab or `f`, which then does what it does:
 Escape cannot be caught by a pane (it hands the keyboard back to the prompt),
 so `b` is the way back.
 
-**Opening a file.** Every `file:line` the pane shows is a link. A ctrl- or
-cmd-click opens it as a link in one of Claude's replies would. A plain click,
-or `e`, runs the `editor` [setting](#settings), `code -g {file}:{line}` unless
+**Opening a file.** Every `file:line` the pane shows opens that file's detail
+when you click it. `e` opens the file in your editor instead: it runs the
+`editor` [setting](#settings), `code -g {file}:{line}` unless
 you set another, which VS Code and its forks answer (`idea --line {line}
 {file}` for IntelliJ, `"/opt/Sublime Text/subl" {file}:{line}` for a program
 whose path has spaces). When the command fails, the pane copies `path:line` to
@@ -311,7 +311,7 @@ forbids has its bar in the error colour and says `× forbidden`. `o` on a flow
 opens its cell on Boundaries.
 
 On a tall pane, the rows left over go to two more lists: the complexity
-hotspots and the files most depended on, each a link to its file.
+hotspots and the files most depended on, each opening its file's detail.
 
 **Notes**: one line, how many notes the project holds and how many need you
 (`142 notes · 3 missing · 5 stale · 1 flagged`). `o` on it opens the
@@ -704,8 +704,8 @@ one.
 ## A file's detail
 
 A file opens as its detail from Hubs, Changes, Churn, the drifted files, the
-finder and another file's detail. It heads with the file's name, its
-boundary, its path (a link), language and size.
+finder, another file's detail and a click on any `file:line`. It heads with
+the file's name, its boundary, its path, language and size.
 
 - **Dependencies** draws its neighbourhood as a component's is, each file by
   its name: the ten files that depend on it most, with how many relationships

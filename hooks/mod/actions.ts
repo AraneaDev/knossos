@@ -6,7 +6,7 @@
 import type { AllowState, DiffFold, Inspected, KnossosView, NoteState, PaneTab, RescanState, SearchState } from '../../types'
 import { diffPage, diffView } from '../lib/diff'
 import { BUSY_CODE, BUSY_SAID, parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
-import { askPrompt, editTarget, locOf, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
+import { askPrompt, editTarget, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
 import { nextFilter } from '../lib/notes-view'
 import { editorCommand } from '../lib/rows'
 import type { Loc } from '../lib/layout'
@@ -101,10 +101,12 @@ async function openLocation(io: Port, loc: Loc, surface?: RenderSurface): Promis
   io.ui.toast(`knossos ran "${command.join(' ')}" to open the file. Set another editor command with ${EDITOR_SETTING}.`)
 }
 
-/** A press on a `file:` link the pane drew: opens its place. */
-async function openLink(io: Port, href: string, surface?: RenderSurface): Promise<void> {
-  const loc = locOf(href)
-  if (loc !== null) await openLocation(io, loc, surface)
+/** A press on a place (`file:` and the file's absolute path): the detail of that file, named by its path in the project. */
+async function openFile(io: Port, path: string): Promise<void> {
+  const root = (await io.state.dashboard.read())?.project_root ?? null
+  if (root === null || !path.startsWith(`${root}/`)) return
+  const relative = path.slice(root.length + 1)
+  await showComponent(io, { name: relative, label: relative, file: true })
 }
 
 /** `e`: opens the file of what the detail shows, else of the marked row, whatever list the marker is in. */
@@ -590,6 +592,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
       if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
     },
   ],
+  ['file:', (io, rest) => openFile(io, rest)],
   ['find', io => openFinder(io)],
   ['find-close', io => closeFinder(io)],
   ['target', io => moveCell(io, null)],
@@ -711,6 +714,5 @@ export function handlersOf(io: Port): Handlers {
     press: (id, surface) => void pressPane(io, id, surface).catch(() => undefined),
     type: (field, value) => void typeInto(io, field, value).catch(() => undefined),
     submit: (field, value) => void submitFrom(io, field, value).catch(() => undefined),
-    link: (href, surface) => void openLink(io, href, surface).catch(() => undefined),
   }
 }

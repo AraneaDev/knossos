@@ -93,9 +93,9 @@ describe('spare height on the Overview', () => {
     }
     // A short pane keeps its charts and leaves them out.
     expect(overview(100, 24).some(r => r.key.includes('hotspots-head'))).toBe(false)
-    // Rows a person follows by clicking (a link to the file), never walked by the marker.
+    // Rows whose file a click opens as its detail, never walked by the marker.
     const row = overview(200, 80).find(r => r.key.includes('hotspots-0'))!
-    expect(row.segments.some(s => s.link !== undefined)).toBe(true)
-    expect(row.segments.some(s => s.press !== undefined)).toBe(false)
+    expect(row.segments.some(s => s.press?.id.startsWith('file:') === true)).toBe(true)
+    expect(row.segments.some(s => s.press?.id.startsWith('row:') === true)).toBe(false)
   })
 })

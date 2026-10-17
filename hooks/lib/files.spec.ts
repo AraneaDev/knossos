@@ -119,7 +119,8 @@ describe('a file detail', () => {
     const raw = rows.map(rawText).join('\n')
     expect(plainText(row(rows, 'detail-head')!)).toMatch(/^Router\.php +■ Http$/)
     expect(plainText(row(rows, 'detail-place')!)).toBe('src/Http/Router.php · PHP · 240 lines')
-    expect(row(rows, 'detail-place')!.segments.find(s => s.link)!.link).toEqual({ path: `${ROOT}/src/Http/Router.php`, line: null })
+    // The file's own detail: its path is where the person already is, so it opens nothing.
+    expect(row(rows, 'detail-place')!.segments.some(s => s.press !== undefined || 'link' in s)).toBe(false)
     expect(text).toMatch(/Dependencies · used by 14 · uses 1 +edges/)
     // The dependents' boundaries in the project's colour order: declared ones first.
     expect(plainText(row(rows, 'deps-reach')!)).toBe('   reaching ■ Http ■ Core ■ tests')

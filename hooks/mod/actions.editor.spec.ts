@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RenderSurface } from 'claude-code'
 import { FEEDBACK_MS } from '../lib/layout'
-import { fileHref } from '../lib/rows'
 import { copyCommand, handlersOf, PRESSES, pressOf } from './actions'
 import type { Port } from './port'
 import { currentInput } from './render'
@@ -24,7 +23,11 @@ function port(run: Run, copy: Copy = vi.fn(async () => ({ isCopied: true }))) {
         process: { run: vi.fn(run) },
         ui: { copy: vi.fn(copy), toast: (text: string) => void toasts.push(text) },
         clock: { now: async () => NOW },
-        state: { feedback: { read: async () => feedback, update: async (change: (v: unknown) => unknown) => void (feedback = change(feedback)) } },
+        state: {
+            feedback: { read: async () => feedback, update: async (change: (v: unknown) => unknown) => void (feedback = change(feedback)) },
+            // The press path reads the view first (a key list open closes on any press).
+            view: { read: async () => ({ showKeys: false }), update: async () => undefined },
+        },
     } as unknown as Port
     return { io, run: io.process.run as unknown as ReturnType<typeof vi.fn>, copy: io.ui.copy as unknown as ReturnType<typeof vi.fn>, feedback: () => feedback, toasts }
 }
@@ -47,10 +50,16 @@ beforeEach(() => {
     mod.editor = undefined
 })
 
-describe('a press on a file: link', () => {
+/** `e` on a detail that shows `loc`, as the pane dispatches the press: without waiting for it, from `surface`. */
+const editing = (io: Port, surface: RenderSurface | undefined, loc: { path: string; line: number | null } = PLACE) => {
+    vi.mocked(currentInput).mockResolvedValue({ tab: 'hubs', detail: { component: { name: 'A', canonical: 'App\\A', loc } }, finder: null, route: null, drift: null, driftOpen: false, selected: 0 } as never)
+    return handlersOf(io).press('edit', surface)
+}
+
+describe('e on a place: the editor', () => {
     it('opens path:line in the editor with a ten-second limit, says so, and copies nothing', async () => {
         const { io, run, copy, feedback } = port(exited(0))
-        handlersOf(io).link(fileHref(PLACE), SURFACE)
+        editing(io, SURFACE)
         await settle()
         expect(run).toHaveBeenCalledTimes(1)
         expect(run).toHaveBeenCalledWith(['code', '-g', '/work/app/src/A.php:12'], { timeoutMs: 10_000 })
@@ -58,16 +67,16 @@ describe('a press on a file: link', () => {
         expect(feedback()).toEqual({ text: '✓ opened in editor', tone: 'ok', until: NOW + FEEDBACK_MS })
     })
 
-    it('opens a path with no line as the path alone, its encoded characters decoded', async () => {
+    it('opens a path with no line as the path alone, spaces and brackets as they are', async () => {
         const { io, run } = port(exited(0))
-        handlersOf(io).link('file:///work/my%20app/src/B%28x%29.php', SURFACE)
+        editing(io, SURFACE, { path: '/work/my app/src/B(x).php', line: null })
         await settle()
         expect(run).toHaveBeenCalledWith(['code', '-g', '/work/my app/src/B(x).php'], { timeoutMs: 10_000 })
     })
 
     it('copies path:line to the surface the press came from when the editor exits non-zero, and says the path was copied', async () => {
         const { io, copy, feedback } = port(exited(1))
-        handlersOf(io).link(fileHref(PLACE), SURFACE)
+        editing(io, SURFACE)
         await settle()
         expect(copy).toHaveBeenCalledTimes(1)
         expect(copy).toHaveBeenCalledWith({ text: '/work/app/src/A.php:12', surface: SURFACE })
@@ -78,7 +87,7 @@ describe('a press on a file: link', () => {
         const { io, copy, feedback } = port(async () => {
             throw Object.assign(new Error('spawn code ENOENT'), { code: 'ENOENT' })
         })
-        handlersOf(io).link(fileHref(PLACE), SURFACE)
+        editing(io, SURFACE)
         await settle()
         expect(copy).toHaveBeenCalledWith({ text: '/work/app/src/A.php:12', surface: SURFACE })
         expect(feedback()).toEqual({ text: '✗ code did not start · path copied', tone: 'alert', until: NOW + FEEDBACK_MS })
@@ -86,7 +95,7 @@ describe('a press on a file: link', () => {
 
     it('says only how the editor failed when the clipboard refuses too', async () => {
         const { io, feedback } = port(exited(127), async () => ({ isCopied: false, reason: 'no clipboard' }))
-        handlersOf(io).link(fileHref(PLACE), SURFACE)
+        editing(io, SURFACE)
         await settle()
         expect(feedback()).toEqual({ text: '✗ code exited 127', tone: 'alert', until: NOW + FEEDBACK_MS })
     })
@@ -94,12 +103,12 @@ describe('a press on a file: link', () => {
     it('runs the editor command the plugin is set to, and says where to set it when it fails', async () => {
         mod.editor = 'idea --line {line} {file}'
         const opened = port(exited(0))
-        handlersOf(opened.io).link(fileHref(PLACE), SURFACE)
+        editing(opened.io, SURFACE)
         await settle()
         expect(opened.run).toHaveBeenCalledWith(['idea', '--line', '12', '/work/app/src/A.php'], { timeoutMs: 10_000 })
         expect(opened.toasts).toEqual([])
         const failed = port(exited(2))
-        handlersOf(failed.io).link(fileHref(PLACE), SURFACE)
+        editing(failed.io, SURFACE)
         await settle()
         expect(failed.feedback()).toMatchObject({ text: '✗ idea exited 2 · path copied', tone: 'alert' })
         expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with /plugin configure knossos@knossos.'])
@@ -107,30 +116,18 @@ describe('a press on a file: link', () => {
 
     it('names no surface at all to the clipboard when the press came from none', async () => {
         const { io, copy } = port(exited(1))
-        handlersOf(io).link(fileHref(PLACE), undefined)
+        editing(io, undefined)
         await settle()
         const args = copy.mock.calls[0]![0] as Record<string, unknown>
         expect(args).toEqual({ text: '/work/app/src/A.php:12' })
         expect(Object.hasOwn(args, 'surface')).toBe(false)
     })
 
-    it.each(['http://example.com/src/A.php#L12', 'https://work/app/src/A.php', 'garbage', '', 'file://relative/path.php', 'file:///work/app/%E0%A4%A.php'])(
-        'does nothing for %j, which names no place',
-        async href => {
-            const { io, run, copy, feedback } = port(exited(0))
-            handlersOf(io).link(href, SURFACE)
-            await settle()
-            expect(run).not.toHaveBeenCalled()
-            expect(copy).not.toHaveBeenCalled()
-            expect(feedback()).toBeNull()
-        },
-    )
-
     it('swallows an editor command that throws outright, leaving the footer as it was', async () => {
         const { io, run, feedback } = port(() => {
             throw new Error('process API gone')
         })
-        expect(handlersOf(io).link(fileHref(PLACE), SURFACE)).toBeUndefined()
+        expect(editing(io, SURFACE)).toBeUndefined()
         await settle()
         expect(run).toHaveBeenCalledTimes(1)
         expect(feedback()).toBeNull()
@@ -140,7 +137,7 @@ describe('a press on a file: link', () => {
         const { io, copy, feedback } = port(exited(1), async () => {
             throw new Error('surface torn down')
         })
-        expect(handlersOf(io).link(fileHref(PLACE), SURFACE)).toBeUndefined()
+        expect(editing(io, SURFACE)).toBeUndefined()
         await settle()
         expect(copy).toHaveBeenCalledTimes(1)
         expect(feedback()).toBeNull()

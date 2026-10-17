@@ -77,7 +77,7 @@ import type { DetailInput, IssuesInput, NoteInput, Openable } from './views'
 import { RANKING, SEVERITY, kindLegend, legend } from './marks'
 
 // Everything the specs and the render hook draw with, from one module.
-export { bar, button, cells, displayName, fileHref, fit, linkMarkdown, locOf, locText, rowWidth, tableSpec, tierOf, wrapWords } from './rows'
+export { bar, button, cells, displayName, fit, locText, rowWidth, tableSpec, tierOf, wrapWords } from './rows'
 export type { Field, Loc, Press, Preview, Row, Segment, TableSpec, Tier } from './rows'
 export { DEFAULT_ROWS, paneHeight } from './cards'
 export type { DetailInput, FileView, Openable } from './views'
@@ -1225,7 +1225,7 @@ function fileListBlock(key: string, title: string, note: string, files: { path: 
       const spec = tableSpec(columns, shown.map(f => f.path), [], titles.map((t, i) => numberWidth(t, shown.map(f => f.values[i] ?? 0), tier)), 56, { tier })
       const max = Math.max(0, ...files.map(f => f.bar))
       const body: Row[] = [tableHead(`${key}-cols`, spec, { name: 'file', boundary: '', numbers: titles })]
-      shown.forEach((f, i) => body.push(tableRow(`${key}-${i}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, link: f.loc }, spec, hues)))
+      shown.forEach((f, i) => body.push(tableRow(`${key}-${i}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)))
       body.push(...moreRows(`${key}-window`, window, files.length, columns))
       return { key, title, note: noteOf(note), body }
     },

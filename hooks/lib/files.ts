@@ -132,7 +132,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
       key: 'detail',
       title: baseName(f.path),
       note: own,
-      body: [{ key: 'detail-place', segments: [...pathSegments(f.path, Math.max(1, columns - cells(tail)), f.loc), { text: tail, dim: true }].filter(s => s.text !== '') }],
+      body: [{ key: 'detail-place', segments: [...pathSegments(f.path, Math.max(1, columns - cells(tail))), { text: tail, dim: true }].filter(s => s.text !== '') }],
     }),
   }
 
