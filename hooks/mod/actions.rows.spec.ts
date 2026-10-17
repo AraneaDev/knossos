@@ -90,6 +90,27 @@ describe('moving the marker', () => {
     })
 })
 
+describe("a file's place", () => {
+    const at = (root: string | null) => {
+        const { io } = port()
+        ;(io.state as unknown as Record<string, unknown>).dashboard = { read: async () => (root === null ? null : { project_root: root }) }
+        return io
+    }
+    beforeEach(() => vi.mocked(showComponent).mockClear())
+
+    it("opens the file's detail by its project path", async () => {
+        await press(at('/work/app'), 'file:/work/app/src/Http/Router.php')
+        expect(showComponent).toHaveBeenCalledExactlyOnceWith(expect.anything(), { name: 'src/Http/Router.php', label: 'src/Http/Router.php', file: true })
+    })
+
+    it('opens nothing for a file outside the project, or before the dashboard is read', async () => {
+        await press(at('/work/app'), 'file:/elsewhere/a.php')
+        await press(at('/work/app'), 'file:/work/application/a.php')
+        await press(at(null), 'file:/work/app/a.php')
+        expect(showComponent).not.toHaveBeenCalled()
+    })
+})
+
 describe('opening a row', () => {
     it('marks the pressed row and opens a plain component as the detail, with no file or changed flag', async () => {
         list([item('A'), item('B'), item('Greeter')])

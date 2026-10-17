@@ -56,7 +56,7 @@ export type Preview = { key: string; rows: Row[]; width: number }
  * that is drawn out of sight: it exists only so its `press.hotkey` keeps
  * working. `preview` hangs a hover card off the segment's row.
  */
-export type Segment = { text: string; color?: string; dim?: boolean; bold?: boolean; bg?: string; press?: Press; field?: Field; cell?: Cell; link?: Loc; hidden?: true; preview?: Preview }
+export type Segment = { text: string; color?: string; dim?: boolean; bold?: boolean; bg?: string; press?: Press; field?: Field; cell?: Cell; hidden?: true; preview?: Preview }
 /**
  * One line of the pane. Consecutive rows with the same `raster` key form a
  * grid the terminal may draw as one `Raster`; every surface can draw their
@@ -216,10 +216,10 @@ export const pathText = (path: string, width: number): string => {
   return dir + base
 }
 
-/** A path as two segments fitted to `width`: its directory dim, its file name in `style` (a link to `loc` when given). */
-export function pathSegments(path: string, width: number, loc: Loc | null = null, style: Omit<Segment, 'text' | 'link'> = {}): Segment[] {
+/** A path as two segments fitted to `width`: its directory dim, its file name in `style` (opening the file's detail when `loc` is given). */
+export function pathSegments(path: string, width: number, loc: Loc | null = null, style: Omit<Segment, 'text' | 'press'> = {}): Segment[] {
   const { dir, base } = pathParts(path, width)
-  return [{ text: dir, dim: true }, linked(base, loc, style)].filter(s => s.text !== '')
+  return [{ text: dir, dim: true }, opensFile(base, loc, style)].filter(s => s.text !== '')
 }
 
 /** A directory (ending in `/`) in at most `room` cells, cut in its middle: by whole folders while they fit, else by characters. */
@@ -312,42 +312,12 @@ function splitCommand(text: string): string[] | null {
   return parts
 }
 
-/** A path segment percent-encoded, with the characters `encodeURIComponent` keeps that a Markdown link target cannot: `( ) ! ' *`. */
-const encodeSegment = (segment: string): string => encodeURIComponent(segment).replace(/[!'()*]/g, ch => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`)
+/** The press that opens a file's detail: the file's absolute path follows it. */
+export const FILE_PRESS = 'file:'
 
-/**
- * The `file:` URL a link opens: the path percent-encoded, the line as a
- * `#L<n>` fragment, as Claude Code writes links to a line in its own replies.
- * Parentheses are encoded too, so an unbalanced `)` cannot end a Markdown
- * link's target early.
- */
-export function fileHref(loc: Loc): string {
-  const path = loc.path.split('/').map(encodeSegment).join('/')
-  return `file://${path}${loc.line === null ? '' : `#L${loc.line}`}`
-}
-
-/** The place a `file:` URL from {@link fileHref} names; null for anything else. */
-export function locOf(href: string): Loc | null {
-  if (!href.startsWith('file://')) return null
-  const hash = href.indexOf('#')
-  const rest = hash < 0 ? href.slice(7) : href.slice(7, hash)
-  const line = hash < 0 ? null : (/^#L(\d+)$/.exec(href.slice(hash))?.[1] ?? null)
-  try {
-    const path = decodeURIComponent(rest)
-    return path.startsWith('/') ? { path, line: line === null ? null : Number(line) } : null
-  } catch {
-    return null
-  }
-}
-
-/** Markdown text that draws `text` literally as a link to `loc`: every character markdown would read escaped. */
-export function linkMarkdown(text: string, loc: Loc): string {
-  return `[${text.replace(/[\\`*_{}[\]()<>#+\-.!|~]/g, ch => `\\${ch}`)}](${fileHref(loc)})`
-}
-
-/** A segment drawing `text` as a link to `loc`, or as plain text when there is no place. */
-export function linked(text: string, loc: Loc | null, style: Omit<Segment, 'text' | 'link'> = {}): Segment {
-  return loc === null || text === '' ? { ...style, text } : { ...style, text, link: loc }
+/** A segment drawing `text` as a press that opens the detail of `loc`'s file, or as plain text when there is no place. */
+export function opensFile(text: string, loc: Loc | null, style: Omit<Segment, 'text' | 'press'> = {}): Segment {
+  return loc === null || text === '' ? { ...style, text } : { ...style, text, press: { id: `${FILE_PRESS}${loc.path}`, label: text } }
 }
 
 /** A whole cell of a bar, and its left half. */
@@ -614,8 +584,8 @@ export type TableLine = {
   press?: string
   /** The name is a path: drawn in two tones and cut in its directory, never its file name (see {@link pathParts}). */
   path?: boolean
-  /** Where the name's file is: the name is drawn as a link to it. */
-  link?: Loc | null
+  /** Where the name's file is: pressing the name opens that file's detail. */
+  opens?: Loc | null
   /** The one-cell mark before the name, when not the hotspot mark. */
   mark?: Segment
   /** The number column the list is sorted by: the others are drawn dim beside it. */
@@ -639,10 +609,10 @@ export type TableLine = {
  */
 export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hues = NO_HUES): Row {
   const style = boundaryStyle(line.boundary, hues)
-  // A path in two tones, its directory dim and its file name in the text tone; only the file name is pressed or followed.
+  // A path in two tones, its directory dim and its file name in the text tone; only the file name is pressed.
   const parts = line.path === true ? pathParts(line.name, spec.name) : { dir: '', base: fit(line.name, spec.name) }
   // The press keeps the whole name as its label; the Button draws only the cells laid out for it (`pressLabel`).
-  const named = line.press === undefined ? linked(parts.base, line.link ?? null) : { ...button(line.press, parts.base), press: { id: line.press, label: line.name } }
+  const named = line.press === undefined ? opensFile(parts.base, line.opens ?? null) : { ...button(line.press, parts.base), press: { id: line.press, label: line.name } }
   const segments: Segment[] = [
     { text: line.selected ? '›' : ' ', color: ACCENT, bold: true },
     line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : { text: ' ' }),
@@ -666,7 +636,7 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
     segments.push(line.sorted === undefined || line.sorted === i ? { text, color: HEADING } : { text, dim: true })
   })
   // Files are left-aligned and cut from the front: a column of them reads down the file names.
-  if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, linked(fitStart(line.place ?? '', spec.place ?? 0), line.placeLoc ?? null, { dim: true }))
+  if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, opensFile(fitStart(line.place ?? '', spec.place ?? 0), line.placeLoc ?? null, { dim: true }))
   const kept = segments.filter(s => s.text !== '')
   if (line.selected) return { key, segments: tinted(kept, SELECTED_BG), tint: SELECTED_BG }
   return line.lit === true ? { key, segments: tinted(kept, FLASH_BG), tint: FLASH_BG } : { key, segments: kept }

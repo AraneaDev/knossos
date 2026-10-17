@@ -122,7 +122,7 @@ function fakePort(cells: Record<string, unknown> = {}) {
     return { io, logs, reads }
 }
 
-const act: Handlers = { press: () => undefined, type: () => undefined, submit: () => undefined, link: () => undefined }
+const act: Handlers = { press: () => undefined, type: () => undefined, submit: () => undefined }
 
 type Node = { type: string; props: Record<string, unknown> & { children?: unknown }; key: string | null }
 
@@ -276,7 +276,7 @@ describe('drawPane: a graph', () => {
 })
 
 describe('drawPane: surfaces', () => {
-    it('hangs no hover cards and no links on mobile', async () => {
+    it('hangs no hover cards on mobile, and draws no text field there', async () => {
         const { io } = fakePort()
         const tree = await drawPane(io, mobileElements as never, 'mobile', { bodyColumns: 100 }, act)
         const nodes = nodesOf(tree)
@@ -286,7 +286,7 @@ describe('drawPane: surfaces', () => {
         expect(textOf(tree)).toContain('Component0')
     })
 
-    it('hangs at most eight hover cards after the rows where the surface has a pointer, and links the places', async () => {
+    it("hangs at most eight hover cards after the rows where the surface has a pointer, and makes the places open their files", async () => {
         const { io } = fakePort()
         const tree = (await drawPane(io, elements as never, 'desktop', { bodyColumns: 100 }, act)) as unknown as Node
         const top = children(tree)
@@ -297,7 +297,8 @@ describe('drawPane: surfaces', () => {
         const firstCard = top.findIndex(isCard)
         expect(top.slice(firstCard).every(isCard)).toBe(true)
         for (const card of cards) expect((card.props.hover as { scope: string }).scope).toMatch(/^knossos:/)
-        expect(nodesOf(tree).some(n => n.type === 'Markdown')).toBe(true)
+        expect(nodesOf(tree).some(n => n.type === 'Button' && JSON.stringify(n.props).includes('.php'))).toBe(true)
+        expect(nodesOf(tree).some(n => n.type === 'Markdown')).toBe(false)
     })
 
     it('draws the Boundaries heat map on the terminal as one Raster instead of a Box per row', async () => {
@@ -384,7 +385,7 @@ describe('drawPane: the budget is the text the engine draws', () => {
 const longHubs = (n: number, extra: number) => hubs(n).map(h => ({ ...h, name: `${h.name}${'x'.repeat(extra)}`, canonical_name: `${h.canonical_name}${'x'.repeat(extra)}` }))
 
 describe('drawPane: the tree budget', () => {
-    it('drops the hover cards and most links before it gives up rows', async () => {
+    it("drops the hover cards and most places' presses before it gives up rows", async () => {
         // The rows a 40-row window lists when nothing weighs on it.
         const listed = new Set(textOf(await drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns: 120, scroll: { offset: 0, bodyRows: 40 } }, act)).match(/Component\d+/g)).size
         const at = async (bodyColumns: number) => drawPane(fakePort({ dashboard: dashboard({ hubs: hubs(300) }) }).io, elements as never, 'desktop', { bodyColumns, scroll: { offset: 0, bodyRows: 40 } }, act)
@@ -402,8 +403,9 @@ describe('drawPane: the tree budget', () => {
         const tree = await at(over)
         expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
         expect(nodesOf(tree).filter(isCard)).toEqual([])
-        // Only the marked row keeps its links, and every row is still listed.
-        expect(nodesOf(tree).filter(n => n.type === 'Markdown').length).toBeLessThanOrEqual(1)
+        // Only the marked row's place still opens its file, and every row is still listed.
+        const places = nodesOf(tree).filter(n => n.type === 'Button' && /\.php(:\d+)?$/.test(String(n.props.label ?? '')))
+        expect(places.length).toBeLessThanOrEqual(1)
         expect(new Set(textOf(tree).match(/Component\d+/g)).size).toBe(listed)
         expect(textOf(tree)).not.toContain('Too large to draw here')
     })

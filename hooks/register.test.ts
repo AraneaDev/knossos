@@ -3381,34 +3381,38 @@ describe('knossos mod', () => {
     await ui.unmount()
   })
   for (const editor of ['opens', 'missing'] as const) {
-    test(`a file:line is a link: a click opens it in the editor, or copies it where no editor answers (${editor})`, async ($, on) => {
-      const w = world(on, { dashboard: [{ stdout: issuesDashboard() }], editor })
+    test(`a file:line opens its file's detail, and e opens it in the editor, or copies it where no editor answers (${editor})`, async ($, on) => {
+      const w = world(on, { dashboard: [{ stdout: issuesDashboard() }], file: [{ stdout: fileDetailOf('src/Http/Router.php') }], editor })
       await $.session.start(START)
       await w.clock.settle()
       for (const surface of ['terminal', 'desktop'] as const) {
         const ui = await mountPane($, surface)
         await ui.press({ key: 'tab:issues' })
-        const links = await ui.findAll({ type: 'Markdown' })
-        const hrefs = links.map(l => /\]\((file:[^)]*)\)/.exec(String(l.props.text))?.[1])
+        // No place is a link any more: each is a Button that opens its file.
+        expect(await ui.findAll({ type: 'Markdown' })).toEqual([])
+        const places = (await ui.findAll({ type: 'Button' })).map(b => String(b.key)).filter(k => k.startsWith('file:'))
         // The violation's place, the diagnostic's and the dead code's; a hotspot is a row that opens its file's detail.
-        expect(hrefs).toEqual(['file:///repo/src/Core/Kernel.php#L12', 'file:///repo/src/Broken.php#L9', 'file:///repo/src/Http/Router.php#L40'])
-        const dead = links[2]!
-        await ui.press({ key: String(dead.key), link: { href: 'file:///repo/src/Http/Router.php#L40' } })
+        expect(places).toEqual(['file:/repo/src/Core/Kernel.php', 'file:/repo/src/Broken.php', 'file:/repo/src/Http/Router.php'])
+        const before = w.editorRuns().length
+        await ui.press({ key: 'file:/repo/src/Http/Router.php' })
         await w.clock.settle()
-        expect(w.editorRuns().at(-1)).toEqual(['code', '-g', '/repo/src/Http/Router.php:40'])
+        expect((await ui.find({ key: 'detail-head' }))?.text).toContain('Router.php')
+        expect(w.editorRuns()).toHaveLength(before)
+        await ui.press({ key: 'back' })
+        await w.clock.settle()
+        // e opens the marked row's place in the editor: the first violation.
+        await ui.press({ key: 'edit' })
+        await w.clock.settle()
+        expect(w.editorRuns().at(-1)).toEqual(['code', '-g', '/repo/src/Core/Kernel.php:12'])
         if (editor === 'opens') {
           expect(await said(ui)).toBe('✓ opened in editor')
         } else {
-          expect(w.copies.at(-1)).toEqual({ text: '/repo/src/Http/Router.php:40', surface })
+          expect(w.copies.at(-1)).toEqual({ text: '/repo/src/Core/Kernel.php:12', surface })
           // The footer says how the command failed; a toast names it and where to set another.
           expect(await said(ui)).toBe('✗ code did not start · path copied')
           expect((await ui.findAll({ type: 'Text', text: '✗ code did not start · path copied' })).map(t => t.props.color)).toContain('error')
           expect(String(w.toasts.at(-1))).toContain('/plugin configure knossos@knossos')
         }
-        // e opens the marked row's place: the first violation.
-        await ui.press({ key: 'edit' })
-        await w.clock.settle()
-        expect(w.editorRuns().at(-1)).toEqual(['code', '-g', '/repo/src/Core/Kernel.php:12'])
         await ui.press({ key: 'tab:overview' })
         await ui.unmount()
       }
@@ -3416,21 +3420,26 @@ describe('knossos mod', () => {
     })
   }
 
-  test("the detail's place is a link, and e opens it", async ($, on) => {
-    const w = world(on, { dashboard: [{ stdout: paneDashboard() }], detail: [{ stdout: fullDetailOf('Router') }] })
+  test("the detail's place opens its file's detail, and e opens it in the editor", async ($, on) => {
+    const w = world(on, { dashboard: [{ stdout: paneDashboard() }], detail: [{ stdout: fullDetailOf('Router') }], file: [{ stdout: fileDetailOf('src/Http/Router.php') }] })
     await $.session.start(START)
     await w.clock.settle()
     const ui = await mountPane($)
     await ui.press({ key: 'tab:hubs' })
     await ui.press({ key: 'row:0' })
     await w.clock.settle()
-    // The file's name is the link, its directory dim beside it.
-    const place = await ui.find({ type: 'Markdown' })
-    expect(place?.props.text).toBe('[Router\\.php:3](file:///repo/src/Http/Router.php#L3)')
+    // The file's name is the press, its directory dim beside it.
+    const place = await ui.find({ type: 'Button', key: 'file:/repo/src/Http/Router.php' })
+    expect(place?.props.label).toBe('Router.php:3')
     expect((await ui.findAll({ type: 'Text' })).some(t => t.text.endsWith('src/Http/'))).toBe(true)
     await ui.press({ key: 'edit' })
     await w.clock.settle()
     expect(w.editorRuns()).toEqual([['code', '-g', '/repo/src/Http/Router.php:3']])
+    await ui.press({ key: 'file:/repo/src/Http/Router.php' })
+    await w.clock.settle()
+    expect((await ui.find({ key: 'detail-head' }))?.text).toContain('Router.php')
+    // In the file's own detail its path opens nothing.
+    expect(await ui.find({ type: 'Button', key: 'file:/repo/src/Http/Router.php' })).toBeUndefined()
     await ui.unmount()
   })
 

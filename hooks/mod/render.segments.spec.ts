@@ -114,7 +114,7 @@ function fakePort(cells: Record<string, unknown> = {}) {
 
 /** Handlers that record each call, so a test can press what the pane drew and see what it asked for. */
 function spies() {
-    return { press: vi.fn(), type: vi.fn(), submit: vi.fn(), link: vi.fn() } satisfies Handlers
+    return { press: vi.fn(), type: vi.fn(), submit: vi.fn() } satisfies Handlers
 }
 
 type Node = { type: string; props: Record<string, unknown> & { children?: unknown }; key: string | null }
@@ -281,17 +281,15 @@ describe('drawPane: presses', () => {
     })
 })
 
-describe('drawPane: links and code', () => {
-    it("draws a row's file:line as a Markdown link whose plain click opens its href, from the surface it came from", async () => {
+describe('drawPane: places and code', () => {
+    it("draws a row's file:line as a Button whose press opens that file's detail, from the surface it came from", async () => {
         const act = spies()
         const tree = await drawPane(fakePort(), elements as never, 'desktop', { bodyColumns: 100 }, act)
-        const links = nodesOf(tree).filter(n => n.type === 'Markdown')
-        expect(links.length).toBeGreaterThan(0)
-        const link = links[0]!
-        expect(link.props.text).toMatch(/\]\(file:/)
-        ;(link.props.onLinkPress as (l: { href: string }, p: { surface: string }) => void)({ href: 'file:///work/app/src/C0.php#L3' }, { surface: 'desktop' })
-        expect(act.link).toHaveBeenCalledExactlyOnceWith('file:///work/app/src/C0.php#L3', 'desktop')
-        expect(act.press).not.toHaveBeenCalled()
+        expect(nodesOf(tree).filter(n => n.type === 'Markdown')).toEqual([])
+        const place = nodesOf(tree).find(n => n.type === 'Button' && String(n.props.label ?? '').length > 0 && typeof n.props.onPress === 'function' && JSON.stringify(n.props).includes('C0.php'))
+        expect(place).toBeDefined()
+        ;(place!.props.onPress as (p: { surface: string }) => void)({ surface: 'desktop' })
+        expect(act.press).toHaveBeenCalledExactlyOnceWith('file:/work/app/src/C0.php', 'desktop')
     })
 
     it("draws a landed diff's hunk as a Code element in a column Box as wide as the pane", async () => {

@@ -31,7 +31,7 @@ import {
   fitStart,
   pathSegments,
   grouped,
-  linked,
+  opensFile,
   MARK,
   numberWidth,
   placeOf,
@@ -342,7 +342,7 @@ export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Ro
     segments.push({ text: ' ' }, ...chipped, { text: spaces(spec.boundary - segmentsWidth(chipped)) })
   }
   // Places are left-aligned: a column of file names reads down its left edge.
-  if (spec.place > 0) segments.push({ text: ' ' }, linked(fitStart(e.place, spec.place), e.loc ?? null, { dim: true }))
+  if (spec.place > 0) segments.push({ text: ' ' }, opensFile(fitStart(e.place, spec.place), e.loc ?? null, { dim: true }))
   const kept = segments.filter(s => s.text !== '')
   return e.selected === true ? { key, segments: tinted(kept, SELECTED_BG), tint: SELECTED_BG } : { key, segments: kept }
 }

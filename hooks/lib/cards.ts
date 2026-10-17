@@ -151,14 +151,14 @@ export function stackRows(sections: Section[], width: number, tier: Tier): Row[]
 
 const blankRow = (key: string): Row => ({ key, segments: [{ text: ' ' }] })
 
-/** Whether a row holds something a person presses, types in or follows: such a row cannot be drawn as raster cells. */
-const interactive = (row: Row): boolean => row.segments.some(s => s.press !== undefined || s.field !== undefined || s.link !== undefined)
+/** Whether a row holds something a person presses or types in: such a row cannot be drawn as raster cells. */
+const interactive = (row: Row): boolean => row.segments.some(s => s.press !== undefined || s.field !== undefined)
 
 /**
  * Two columns of rows side by side: the left padded to `leftWidth`, a gap,
  * then the right; the shorter column ends in blank space. A heat map's
- * raster block stays one only while no row it shares holds a press, a field
- * or a link: those would be lost in a grid of cells, so the block is drawn
+ * raster block stays one only while no row it shares holds a press or a
+ * field: those would be lost in a grid of cells, so the block is drawn
  * as text instead.
  */
 export function besideRows(left: Row[], right: Row[], leftWidth: number, gap = GRID_GAP): Row[] {

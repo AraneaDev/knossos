@@ -577,7 +577,7 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
   const shown = input.tests.slice(0, window.end)
   const spec = { ...tableSpec(columns, shown.map(t => t.path), [], [numberWidth('hops', shown.map(t => t.distance))], PATH_MAX), bar: 0 }
   const rows: Row[] = [tableHead('tests-cols', spec, { name: 'test', boundary: '', numbers: ['hops'] })]
-  shown.forEach((t, i) => rows.push(tableRow(`test-${i}`, { name: t.path, boundary: null, values: [t.distance], max: 0, path: true, link: t.loc }, spec, hues)))
+  shown.forEach((t, i) => rows.push(tableRow(`test-${i}`, { name: t.path, boundary: null, values: [t.distance], max: 0, path: true, opens: t.loc }, spec, hues)))
   rows.push(...moreRows('tests-more', window, input.tests.length, columns))
   if (input.command !== null) {
     rows.push(blank('gap-command'))

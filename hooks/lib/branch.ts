@@ -20,7 +20,7 @@ import { noteOf, windowOf, moreRows } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { bar, button, cells, chip, clip, displayName, fit, grouped, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
+import { bar, button, cells, chip, clip, displayName, fit, grouped, opensFile, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -218,7 +218,7 @@ function findingRow(f: BranchFinding, at: number, selected: number, columns: num
           ? [mark(SEVERITY.warn), { text: ' ' }, ...named(f.line, press, half, hues), { text: ' → ', dim: true }, ...chip(f.target.boundary, hues), { text: ` ${fit(f.target.name, Math.max(1, room - half - 8 - cells(f.target.boundary ?? '')))}` }]
           : f.kind === 'hub'
             ? [mark(SEVERITY.warn), { text: ' ' }, ...named(f.line, press, room - 16, hues), { text: `  ${grouped(f.before)} → ${grouped(f.after)} `, dim: true }, { text: `+${grouped(f.after - f.before)}`, color: STATUS_COLOURS.warn }]
-            : [mark(SEVERITY.warn), { text: ' ' }, ...named(f.line, press, Math.max(8, room - 2 - Math.min(cells(f.line.place), Math.floor(room / 3))), hues), ...(f.line.place === '' ? [] : [{ text: '  ' }, { text: fit(f.line.place, Math.max(4, Math.floor(room / 3))), dim: true, ...(f.line.loc === null ? {} : { link: f.line.loc }) }])]
+            : [mark(SEVERITY.warn), { text: ' ' }, ...named(f.line, press, Math.max(8, room - 2 - Math.min(cells(f.line.place), Math.floor(room / 3))), hues), ...(f.line.place === '' ? [] : [{ text: '  ' }, opensFile(fit(f.line.place, Math.max(4, Math.floor(room / 3))), f.line.loc, { dim: true })])]
   return itemRow(`finding-${at}`, at === selected, content, columns)
 }
 

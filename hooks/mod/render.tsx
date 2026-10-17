@@ -4,15 +4,15 @@
  * within the engine's bounds. Drawing reads state but acts on nothing: what
  * a press does is handed in ({@link Handlers}).
  */
-import type { Elements, PressedLink, RenderElement, RenderNode, RenderSurface, UiPressArgument } from 'claude-code'
+import type { Elements, RenderElement, RenderNode, RenderSurface, UiPressArgument } from 'claude-code'
 
 import { bandModel } from '../lib/band'
 import { diffView } from '../lib/diff'
-import { allowInput, detailInput, emptyRows, fileDetailInput, fit, linkMarkdown, listFor, noGraphOf, paneHeight, paneInput, paneLayout, rowWidth, shrinkRows, tierOf } from '../lib/layout'
+import { allowInput, detailInput, emptyRows, fileDetailInput, fit, listFor, noGraphOf, paneHeight, paneInput, paneLayout, rowWidth, shrinkRows, tierOf } from '../lib/layout'
 import type { Openable, PaneInput, Preview, Row, Segment } from '../lib/layout'
 import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
 import { rasterOf, rasterTheme } from '../lib/raster'
-import { cells, dimRow, pressLabel, rowsHeight, textStyle } from '../lib/rows'
+import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
 import { shownChanges } from './port'
 import type { Port } from './port'
 import { fieldKey, mod } from './state'
@@ -28,7 +28,6 @@ export type Handlers = {
   press: (id: string, surface?: RenderSurface) => void
   type: (field: string, value: string) => void
   submit: (field: string, value: string) => void
-  link: (href: string, surface?: RenderSurface) => void
 }
 
 /** Everything the pane draws, from state; null when there is no dashboard to draw. */
@@ -72,9 +71,9 @@ export async function currentList(io: Port): Promise<Openable[]> {
 const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 64)
 
 /**
- * One segment as an element: a pressable segment is a plain Button, a
- * segment with a place a Markdown link to its `file:` URL (where `links`),
- * a field an Input, any other a Text. A Button or a link with a background
+ * One segment as an element: a pressable segment is a plain Button (a
+ * place opens its file's detail), a field an Input, any other a Text. A
+ * Button with a background
  * (the open tab, the marked row) stands in a Box of that colour, which they
  * cannot take themselves. `scope` joins the segment to its row's hover card.
  *
@@ -84,7 +83,7 @@ const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 
  * the whole name its press may carry, so it takes exactly the cells the
  * layout gave it; one on a tint stands in a Box of that tint and width, and
  * a field's Box takes the rest of its row (`room`). Off the terminal a
- * Button, a link and a field are the surface's own, whose width the pane
+ * Button and a field are the surface's own, whose width the pane
  * cannot know in cells: the row's width and overflow clip them at its edge.
  *
  * The engine draws a pane's first 100,000 characters of text (see
@@ -92,12 +91,12 @@ const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 
  * Box is keyed only where a key is needed (a tint, a hidden twin), so a tall
  * pane stays a light tree to diff.
  */
-function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Segment, i: number, links: boolean, terminal: boolean, room: number, scope?: string) {
-  const { Box, Button, Markdown, Text } = ui
+function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Segment, i: number, terminal: boolean, room: number, scope?: string) {
+  const { Box, Button, Text } = ui
   // Every surface but mobile has a text field; there the filter is shown as text.
   const Input = 'Input' in ui ? ui.Input : undefined
   const hover = scope === undefined ? {} : { hover: { scope } }
-  const native = s.press !== undefined || s.field !== undefined || (s.link !== undefined && links)
+  const native = s.press !== undefined || s.field !== undefined
   const width = s.field !== undefined && Input !== undefined ? Math.max(1, room) : cells(s.text)
   const sized = !native || terminal ? { width } : {}
   // The marked row's Button or link keeps its `-bg` Box: that Box is what carries the tint.
@@ -143,17 +142,6 @@ function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Se
       />,
     )
   }
-  if (s.link && links) {
-    return ground(
-      `${row.key}-link-${i}`,
-      <Markdown
-        key={`${row.key}-link-${i}`}
-        text={linkMarkdown(s.text, s.link)}
-        {...(s.dim ? { dimColor: true } : {})}
-        onLinkPress={(link: PressedLink, pressed: UiPressArgument) => act.link(link.href, pressed.surface)}
-      />,
-    )
-  }
   return (
     <Text wrap="truncate-end" {...textStyle(s)} {...hover}>
       {s.text}
@@ -167,11 +155,12 @@ function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Se
  * nor widen the pane. A row that hangs a hover card joins only the name the
  * card is about to the card's group: the pointer on that name shows it.
  *
- * A link is the surface's own: ctrl- or cmd-click opens it as a link in a
- * reply would, and a plain click (`onLinkPress`) opens it in the editor.
+ * Without `places` (a lean tree, off the marked row) a place that opens its
+ * file's detail is drawn as text: each Button weighs on the engine's bounds.
  */
-function drawRow(act: Handlers, ui: Elements[RenderSurface], row: Row, columns: number, terminal: boolean, links = false, hovers = false) {
+function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns: number, terminal: boolean, places = true, hovers = false) {
   const { Box, Code } = ui
+  const row = places ? line : { ...line, segments: line.segments.map(({ press, ...s }) => (press === undefined || press.id.startsWith(FILE_PRESS) ? s : { ...s, press })) }
   // A change's hunks: the engine's own diff, gutters, markers and colours as Claude Code draws them.
   if (row.code !== undefined) {
     return (
@@ -185,9 +174,9 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], row: Row, columns: 
   // The name the card is about joins its group: resting the pointer on it shows the card.
   const scoped = (i: number) => (preview !== undefined && i === at ? scopeOf(preview) : undefined)
   const { Text } = ui
-  // A run of plain text (no press, field or link, no hover group) is one Text that cuts at the row's edge,
+  // A run of plain text (no press or field, no hover group) is one Text that cuts at the row's edge,
   // its styled pieces nested in it and the rest bare strings: a tall pane stays far inside the engine's bounds.
-  const plain = (s: Segment): boolean => s.press === undefined && s.field === undefined && !(s.link !== undefined && links)
+  const plain = (s: Segment): boolean => s.press === undefined && s.field === undefined
   const drawn: RenderNode[] = []
   let x = 0
   for (let i = 0; i < row.segments.length; i++) {
@@ -198,13 +187,13 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], row: Row, columns: 
       while (next < row.segments.length && plain(row.segments[next]!) && row.segments[next]!.bg === undefined && /^ *$/.test(row.segments[next]!.text)) next++
       const trailing = row.segments.slice(next).reduce((n, t) => n + (t.hidden === true ? 0 : cells(t.text)), 0)
       const room = Math.max(1, columns - x - trailing)
-      drawn.push(drawSegment(act, ui, row, s, i, links, terminal, room, scoped(i)))
+      drawn.push(drawSegment(act, ui, row, s, i, terminal, room, scoped(i)))
       x += room
       i = next - 1
       continue
     }
     if (!plain(s)) {
-      drawn.push(drawSegment(act, ui, row, s, i, links, terminal, columns - x, scoped(i)))
+      drawn.push(drawSegment(act, ui, row, s, i, terminal, columns - x, scoped(i)))
       x += s.hidden === true ? 0 : cells(s.text)
       continue
     }
@@ -338,14 +327,13 @@ function drawCards(ui: Elements[RenderSurface], rows: Row[], columns: number) {
  */
 function drawRows(act: Handlers, ui: Elements[RenderSurface], surface: RenderSurface, themeName: string, rows: Row[], columns: number, lean = false) {
   const terminal = surface === 'terminal'
-  const links = surface !== 'mobile'
-  // Lean (a tree near the engine's bounds): no hover cards, and only the marked row's places are links.
+  // Lean (a tree near the engine's bounds): no hover cards, and only the marked row's places open their files.
   const hovers = surface !== 'mobile' && !lean
   const drawn = []
   for (let i = 0; i < rows.length; i++) {
     const block = rows[i]!.raster
     if (!terminal || block === undefined) {
-      drawn.push(drawRow(act, ui, rows[i]!, columns, terminal, links && (!lean || rows[i]!.tint === SELECTED_BG), hovers))
+      drawn.push(drawRow(act, ui, rows[i]!, columns, terminal, !lean || rows[i]!.tint === SELECTED_BG, hovers))
       continue
     }
     let end = i
@@ -404,7 +392,7 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
 /**
  * The architecture pane, for a pane `bodyColumns` wide scrolled as `scroll`
  * says. The engine draws only a tree's first 100,000 characters of text: past {@link TEXT_BUDGET} the
- * pane drops its hover cards and most links, then gives its lists fewer
+ * pane drops its hover cards and most places' presses, then gives its lists fewer
  * rows, until it fits; past it even at {@link SHORT_ROWS}, one line says so.
  */
 export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {

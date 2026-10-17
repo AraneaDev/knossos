@@ -5,7 +5,7 @@ import { changesRows } from './__tests__/tabs'
 import { editTarget, paneInput } from './layout'
 import { paneRows } from './__tests__/pane'
 import { findRow, plainText } from './__tests__/plain-text'
-import { fileHref, linkMarkdown, locOf, rowWidth } from './rows'
+import { rowWidth } from './rows'
 import type { Row } from './rows'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
@@ -287,27 +287,6 @@ describe('look at now', () => {
     }
     // The tab carries how many files were touched.
     expect(plainText(paneRows(pane, 90).find(r => r.key === 'tabs')!)).toContain(' Changes³ ')
-  })
-})
-
-describe('file links', () => {
-  it('round-trips a place through its file: URL, spaces and all', () => {
-    const loc = { path: '/work/my app/src/A#1.php', line: 12 }
-    expect(fileHref(loc)).toBe('file:///work/my%20app/src/A%231.php#L12')
-    expect(locOf(fileHref(loc))).toEqual(loc)
-    expect(locOf(fileHref({ path: '/a/b.ts', line: null }))).toEqual({ path: '/a/b.ts', line: null })
-    expect(locOf('https://example.com/a')).toBeNull()
-    expect(locOf('file://relative/x')).toBeNull()
-  })
-  it('escapes what markdown would read in the label', () => {
-    expect(linkMarkdown('my_file*.php:3', { path: '/a/my_file*.php', line: 3 })).toBe('[my\\_file\\*\\.php:3](file:///a/my_file%2A.php#L3)')
-  })
-  it('encodes every character that would end or break a link target, an unbalanced ) among them', () => {
-    const loc = { path: "/work/a)b/(c)/it's!.php", line: 4 }
-    expect(fileHref(loc)).toBe('file:///work/a%29b/%28c%29/it%27s%21.php#L4')
-    expect(locOf(fileHref(loc))).toEqual(loc)
-    const target = /\]\((.*)\)$/.exec(linkMarkdown('x', loc))?.[1] ?? ''
-    expect(target).not.toMatch(/[()\s<>]/)
   })
 })
 
