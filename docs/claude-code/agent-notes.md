@@ -220,7 +220,8 @@ rules whose source is that boundary, how many files depend on it and the
 closest five, the tests that reach it, and its three latest commits. A project
 file Knossos does not scan, such as a CI script or a workflow, answers with
 status `not_scanned` and its latest commits; a note on such a file makes it a
-file component on the next scan. The
+file component on the next scan. A note on a file Knossos does scan stays on
+the file, and the Notes tab files it under that file and its boundary. The
 [MCP tool reference](../reference/mcp-tools.md#file_context) has its input and
 output.
 

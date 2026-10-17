@@ -313,17 +313,28 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         $canonical = $matches === [] ? $component : (string) $matches[0]['canonical_name'];
         $warnings = [];
-        if ($matches === [] && ProjectFile::exists((string) $project['root_realpath'], $component)) {
+        // A file a worker scans: the note lives on the file itself, which is no component and needs none.
+        $onScannedFile = $matches === [] && $this->scannedFile($projectId, $component);
+        if ($matches === [] && !$onScannedFile && ProjectFile::exists((string) $project['root_realpath'], $component)) {
             // A noted project file becomes a file component on the next scan
             // (NamedFiles), so "not found" would send the caller looking for a typo.
             $warnings[] = sprintf('%s is a project file, not a component yet: the annotation is kept, and the file becomes a file component on the next scan.', $component);
-        } elseif ($matches === []) {
+        } elseif ($matches === [] && !$onScannedFile) {
             $warning = 'Component not found in the current graph; the annotation is kept anyway (dynamic or upcoming symbol?).';
             $near = array_slice(array_column($this->resolve($projectId, $component), 'canonical_name'), 0, 5);
             $warnings[] = $near === [] ? $warning : $warning . ' Did you mean: ' . implode(', ', $near) . '?';
         }
 
         return ['project' => $project, 'canonical' => $canonical, 'warnings' => $warnings, 'existing' => $this->fetch($projectId, $canonical, $kind, $author)];
+    }
+
+    /** Whether the active scan holds `$path` as a file: a note on it lives on the file. */
+    private function scannedFile(string $projectId, string $path): bool
+    {
+        $file = $this->pdo->prepare('SELECT 1 FROM files WHERE project_id = :project AND relative_path = :path');
+        $file->execute(['project' => $projectId, 'path' => $path]);
+
+        return $file->fetchColumn() !== false;
     }
 
     /**
@@ -382,7 +393,9 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             throw new InvalidArgumentException('kind must be one of: ' . implode(', ', self::KINDS) . '.');
         }
         $sql = 'SELECT a.canonical_name, a.kind, a.value, a.author, a.created_at, a.updated_at, a.basis_json, ' .
-            "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status " .
+            // A note on a scanned file is on the file, present while the scan holds it.
+            'CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) ' .
+            "OR EXISTS (SELECT 1 FROM files f WHERE f.project_id = a.project_id AND f.relative_path = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status " .
             'FROM annotations a WHERE a.project_id = :project';
         $parameters = ['project' => $projectId];
         if ($component !== null) {

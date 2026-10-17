@@ -168,6 +168,19 @@ final class NotesServiceTest extends KnossosTestCase
         assertSame(['hooks/scripts/run.sh', 'scripts'], [$by['hooks/scripts/run.sh']['path'], $by['hooks/scripts/run.sh']['boundary']]);
     }
 
+    /** A note on a file a worker scans is present, filed under that file and its boundary. */
+    public function testANoteOnAScannedFileIsPresentUnderThatFile(): void
+    {
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, 'src/App/Target.php', 'note', 'The file.', 'user', '2026-10-16T12:00:00Z', '2026-10-16T12:00:00Z')")->execute([$projectId]);
+
+        $answer = (new NotesService($pdo))->notes($root);
+        $row = array_column(array_merge(...array_values($answer['groups'])), null, 'component')['src/App/Target.php'];
+
+        self::assertSame(['present', 'src/App/Target.php'], [$row['component_status'], $row['path']]);
+        self::assertNotContains('src/App/Target.php', self::names($answer['groups']['missing']));
+    }
+
     /**
      * Confirming a stale note rests it on its files as they are now and
      * changes nothing else: not its text, not when it was written, not its

@@ -108,6 +108,13 @@ describe('the Notes tab', () => {
     expect(new Set(notes.map(l => l.search(/(?<=(model|you) +)\S/))).size).toBe(1)
   })
 
+  it("opens a note on a file as that file's detail", () => {
+    const file = row('src/A.php', { path: 'src/A.php', boundary: 'core', updated_at: '2026-10-16T10:09:00Z' })
+    const list = listFor(pane(state(answer({ groups: { ...answer().groups, rest: [file, ...answer().groups.rest] } }))))
+    expect(list.find(i => i.canonical === 'src/A.php')).toMatchObject({ file: true })
+    expect(list.find(i => i.canonical === 'App\\User')?.file).toBeUndefined()
+  })
+
   it('opens every group while narrowed by text, so every match shows', () => {
     const list = listFor(pane(state(answer({ text: 'App' })), view({ notesText: 'App', folds: ['notes:b-:core'] })))
     expect(list.filter(i => i.fold === undefined).map(i => i.canonical)).toContain('App\\Chain1')
