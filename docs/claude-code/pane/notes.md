@@ -4,6 +4,9 @@ Notes are facts about a component worth keeping: yours, written in the pane, and
 the model's, written through the MCP server. The Notes tab lists them all; `m`
 on a component's detail writes one.
 
+How an agent writes, reads and confirms them through the MCP server is in
+[component annotations](../../agents/agent-integration.md#component-annotations).
+
 ## Notes
 
 The Notes tab is every note in the project, yours and the model's, as a tree of
