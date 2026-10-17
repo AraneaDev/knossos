@@ -14,6 +14,11 @@ Boundaries are explained in [the graph and its evidence](../concepts/graph-and-e
 
 ## Boundary policies
 
+![The Boundaries tab past twelve boundaries: all of them listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
+
+In the pane, the Boundaries tab lists every boundary, what it depends on and
+what depends on it, and draws the dependencies behind a flow between two.
+
 `check_architecture` evaluates explicit boundary dependency rules against the
 active static graph. A policy names its source boundary, and each target, by
 stable ID, by exact name, or by any name the boundary has had, and declares

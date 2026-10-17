@@ -75,6 +75,10 @@ quiet file in a policed boundary gets no edit note.
 
 ## The turn-end note
 
+![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](../images/claude-code/band.png)
+
+The person sees the same turn as the band above the prompt.
+
 After a turn that edited files, the mod scans the project (see
 [what it writes](pane/index.md#what-it-writes)) and the turn's brief says what the
 turn did. The model then reads one note before its next step, with up to two

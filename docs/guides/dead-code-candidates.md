@@ -20,6 +20,11 @@ counted before `limit` slices the list. `knossos dead-code` prints each
 candidate's confidence beside its reachability, ends with the same split, and
 returns it as `by_confidence` with `--json`.
 
+![The Issues tab on this repository: the policy violation, diagnostic, line-budget and dead-code cards, each headed by its count, above the complexity hotspots ranked by lines times dependents](../images/claude-code/issues.png)
+
+In the pane, the Issues tab lists the candidates beside the other findings, the
+probable ones marked apart from the possible.
+
 ## Reachability
 
 Two components can both be unreachable from anything a user can open and still
