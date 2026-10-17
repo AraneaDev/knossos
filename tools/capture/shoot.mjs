@@ -229,8 +229,11 @@ const knossosBin = path.join(REPO, "bin", "knossos");
  * A copy of the real graph in a fresh dir under `tmpRoot`, with the worktree
  * allowed and freshly scanned into it, for each session to copy in turn.
  * With `base`, the commit where HEAD left the default branch is scanned
- * first, so the Branch tab has a snapshot to compare with. `realDataDir` is
- * only ever read: the stage is refused inside it before anything is made.
+ * first, so the Branch tab has a snapshot to compare with. Before any scan,
+ * the notes of the checkout at `notesFrom` move onto the worktree in the
+ * stage, so the Notes tab shows them: a project is its root path, and the
+ * worktree's is new. `realDataDir` is only ever read: the stage is refused
+ * inside it before anything is made.
  */
 export async function stageGraph(
     worktree,
@@ -239,6 +242,7 @@ export async function stageGraph(
         realDataDir = REAL_DATA,
         tmpRoot = os.tmpdir(),
         base = false,
+        notesFrom = REPO,
         runGit = git,
         runScan = (args, options) => run(knossosBin, args, options),
     } = {},
@@ -264,6 +268,10 @@ export async function stageGraph(
     );
     roots.roots = [...new Set([...(roots.roots ?? []), worktree])];
     await writeFile(rootsFile, `${JSON.stringify(roots, null, 4)}\n`);
+    await runScan(["move-project", notesFrom, worktree, "--execute"], {
+        env,
+        maxBuffer: 64 * 1024 * 1024,
+    });
     const scan = () =>
         runScan(["scan", worktree, "--snapshot-retention=5"], {
             env,
@@ -709,7 +717,12 @@ export async function submit(session, step, runStep, { attempts = 3 } = {}) {
         for (const sub of step.steps) await runStep(sub);
         await sleep(300);
         seen = await snap(session);
-        why = promptReady(seen, await cursor(session), step.expect, step.absent);
+        why = promptReady(
+            seen,
+            await cursor(session),
+            step.expect,
+            step.absent,
+        );
         if (why === null) {
             await send(session, "Enter");
             return;

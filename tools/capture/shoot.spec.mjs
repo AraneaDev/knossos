@@ -515,6 +515,7 @@ describe("stageGraph", () => {
                 realDataDir: source,
                 tmpRoot: root,
                 base: true,
+                notesFrom: "/home/me/knossos",
                 runScan: async (args, options) =>
                     scans.push({ args, env: options.env }),
                 runGit: async (_dir, ...args) => {
@@ -527,8 +528,16 @@ describe("stageGraph", () => {
                 },
             });
             expect(path.dirname(stage)).toBe(root);
-            expect(scans).toHaveLength(2);
-            for (const scan of scans) {
+            // The checkout's notes move onto the worktree first, so its Notes tab shows them; only in the stage.
+            expect(scans[0].args).toEqual([
+                "move-project",
+                "/home/me/knossos",
+                "/w/knossos",
+                "--execute",
+            ]);
+            expect(scans[0].env.KNOSSOS_DATA_DIR).toBe(stage);
+            expect(scans).toHaveLength(3);
+            for (const scan of scans.slice(1)) {
                 expect(scan.args).toEqual([
                     "scan",
                     "/w/knossos",

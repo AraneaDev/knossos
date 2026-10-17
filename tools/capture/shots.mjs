@@ -332,7 +332,7 @@ export const SHOTS = {
     ]),
     notes: pane("notes", [
         press("9"),
-        wait("notes", String.raw`\d+ notes?( ·|$)`),
+        wait("notes", String.raw`[1-9][\d,]* notes?\b`),
     ]),
     finder: pane("finder", find(FIXTURE.hubLetters, "hub")),
     route: pane("route", [
