@@ -19,6 +19,7 @@ from .ast_helpers import (
     top_level_declarations,
 )
 from .exclusions import RESOLUTION_ALLOWED_EXCLUDED, Exclusions
+from .fixtures import path_loading_fixtures
 from .safe_io import (
     S_IFMT,
     S_IFREG,
@@ -126,6 +127,10 @@ class ProjectModuleIndex:
         # The project class each function or method returns, by its ref, as
         # its return annotation names it (:meth:`return_type`).
         self._returns: dict[str, str] = {}
+        # Each conftest.py looked for: its fixtures that load a module by path, and what reading it cost.
+        self._conftests: dict[str, tuple[dict[str, str], set[str]]] = {}
+        # The project classes that declare their own ``__init__``, by ref (:meth:`initialiser`).
+        self._initialised: set[str] = set()
 
     @property
     def prefixes(self) -> list[tuple[str, ...]]:
@@ -464,6 +469,64 @@ class ProjectModuleIndex:
         self._record_walk(walked, None)
         return False
 
+    def path_loaded_fixtures(self, relative: str) -> dict[str, str]:
+        """The fixtures a test module at ``relative`` can take that load a project file by path, with its module.
+
+        pytest hands a test the fixtures of every ``conftest.py`` from the root
+        down to the test's own directory, the nearest one winning
+        (:func:`path_loading_fixtures` reads each). Every conftest looked for
+        is recorded as read by the open scope, found or not.
+        """
+        directory = PurePosixPath(relative).parent
+        fixtures: dict[str, str] = {}
+        for folder in reversed([directory, *directory.parents]):
+            fixtures.update(self._conftest_fixtures((folder / "conftest.py").as_posix()))
+        return fixtures
+
+    def _conftest_fixtures(self, relative: str) -> dict[str, str]:
+        """The path-loading fixtures of the conftest at ``relative``, memoised; its reads are named each time."""
+        cached = self._conftests.get(relative)
+        if cached is None:
+            self.open_scope()
+            try:
+                fixtures = self._read_conftest(relative)
+            finally:
+                keys = self.close_scope()
+            cached = (fixtures, keys)
+            self._conftests[relative] = cached
+        self._note(cached[1])
+        return cached[0]
+
+    def _read_conftest(self, relative: str) -> dict[str, str]:
+        """Read the conftest at ``relative``, recording probe and read, for its fixtures by the module each loads."""
+        path = self.root / relative
+        self._hash_found = False
+        try:
+            present = self._is_project_file(path)
+        finally:
+            self._hash_found = True
+        if not present:
+            return {}
+        walked = walk_path(path)
+        location = self._in_root_file(walked)
+        try:
+            source = None if location is None else read_bounded(location, self.max_bytes)
+        except OSError:
+            source = None
+        if source is None or len(source) > self.max_bytes:
+            self._record_walk(walked, None)
+            return {}
+        self._record_walk(walked, hashlib.sha256(source).hexdigest())
+        try:
+            tree = ast.parse(source)
+        except (SyntaxError, ValueError, RecursionError):
+            return {}
+        modules: dict[str, str] = {}
+        for name, loaded in path_loading_fixtures(tree, PurePosixPath(relative)).items():
+            if loaded.suffix == ".py" and self._is_project_file(self.root / loaded):
+                modules[name] = self.module_for(loaded.as_posix())
+        return modules
+
     def module_declarations(self, module: str) -> dict[str, str]:
         """The top-level declarations of ``module``, memoised, named as read by whatever asked.
 
@@ -581,6 +644,15 @@ class ProjectModuleIndex:
         location = location or name
         declarations = top_level_declarations(tree, name)
         self._protocols |= declared_protocols(tree, name)
+        self._initialised |= {
+            ref("class", f"{name}.{child.name}")
+            for child in module_statements(tree)
+            if isinstance(child, ast.ClassDef)
+            and any(
+                isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__"
+                for item in child.body
+            )
+        }
         self._cache[key or name] = declarations
         self._add_reexports(tree, location, is_package, declarations)
         imported = self._add_instances(tree, location, is_package, declarations, name)
@@ -650,6 +722,12 @@ class ProjectModuleIndex:
                         held = returned(member)
                         if held is not None:
                             self._returns[ref("method", f"{name}.{child.name}::{member.name}")] = held
+
+    def initialiser(self, target: str) -> str | None:
+        """The ``__init__`` a call of the class ``target`` runs, when its module was read and the class declares one."""
+        if target not in self._initialised:
+            return None
+        return ref("method", f"{target.removeprefix('py:class:')}::__init__")
 
     def return_type(self, target: str) -> str | None:
         """The project class the function or method ``target`` returns, once its module was read."""

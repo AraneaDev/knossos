@@ -162,6 +162,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # Classes deriving from the standard library's AST visitor, whose
         # `visit_<Node>` hooks it dispatches to by name.
         self.ast_visitors: set[str] = set()
+        # The modules the conftest fixtures over a test module load by path, read when a test function first asks.
+        self.fixture_modules: dict[str, str] | None = None
         self.serves_app = False
         self.module_id = ref("module", self.name)
         self.facts = PythonFactAccumulator(relative)
@@ -506,6 +508,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # An import inside the function binds its names in the function only.
         # Restored in place: the framework enrichers hold this same mapping.
         outer_aliases = dict(self.aliases)
+        self.bind_fixture_modules(node)
         self.generic_visit(node)
         self.aliases.clear()
         self.aliases.update(outer_aliases)
@@ -518,6 +521,25 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.local_function_scopes.pop()
         self.containers.pop()
 
+    def bind_fixture_modules(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Bind each parameter of a test function that takes a path-loading fixture to the module it loads.
+
+        Only in a module pytest collects (``test_*.py``, ``*_test.py``):
+        there a parameter named after a fixture is that fixture's value, and
+        a fixture that loads a file by path hands over that file's module
+        (:meth:`ProjectModuleIndex.path_loaded_fixtures`).
+        """
+        stem = PurePosixPath(self.relative).stem
+        if not (stem.startswith("test_") or stem.endswith("_test")):
+            return
+        if self.fixture_modules is None:
+            self.fixture_modules = self.index.path_loaded_fixtures(self.relative)
+        arguments = node.args
+        for argument in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]:
+            module = self.fixture_modules.get(argument.arg)
+            if module is not None:
+                self.aliases[argument.arg] = ref("module", module)
+
     def is_ast_visitor_base(self, base: ast.expr) -> bool:
         """Whether a base names the standard library's ``ast.NodeVisitor`` or ``ast.NodeTransformer``."""
         name = dotted(base)
@@ -525,6 +547,33 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if target is None or self.index.module_file("ast") is not None:
             return False
         return target.split(":", 2)[-1] in {"ast.NodeVisitor", "ast.NodeTransformer"}
+
+    def implied_calls(self, target: str | None, node: ast.Call) -> None:
+        """The calls a call of ``target`` makes that no source names: a class's ``__init__``, a visitor's hooks."""
+        # Calling a class runs the `__init__` it declares.
+        initialiser = self.index.initialiser(target) if target and target.startswith("py:class:") else None
+        if initialiser is not None:
+            self.facts.add_edge("calls", self.current(), initialiser, node)
+        for hook in self.dispatched_hooks(target):
+            self.facts.add_edge(
+                "calls", self.current(), hook, node, {"dispatch": "ast.NodeVisitor"}, confidence="probable"
+            )
+
+    def dispatched_hooks(self, target: str | None) -> list[str]:
+        """The ``visit_<Node>`` hooks a call of an AST visitor's inherited ``visit`` reaches.
+
+        ``ast.NodeVisitor.visit`` looks the hook up by the node's type through
+        ``getattr``, so no call names one: the call may reach each hook the
+        visitor declares. A visitor that declares its own ``visit`` decides
+        itself what it calls.
+        """
+        if target is None or not target.startswith("py:method:") or not target.endswith("::visit"):
+            return []
+        owner = target.removeprefix("py:method:").rsplit("::", 1)[0]
+        methods = self.class_methods.get(owner, frozenset())
+        if owner not in self.ast_visitors or "visit" in methods:
+            return []
+        return [ref("method", f"{owner}::{name}") for name in sorted(methods) if name.startswith("visit_")]
 
     def overrides_supertype_member(self, name: str, owner: str, decorators: list[str]) -> bool:
         """Whether a method fulfils a supertype's member, by the source's word or by dispatch.
@@ -1175,6 +1224,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # Calling an instance (`repo()`) names no declaration of its own.
         if target and not target.startswith("py:instance:"):
             self.facts.add_edge("calls", self.current(), target, node)
+        self.implied_calls(target, node)
         self.fastapi.enrich_call(node, name)
         self.flask.enrich_call(node, name)
         self.django.enrich_call(node, name)
