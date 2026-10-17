@@ -366,6 +366,6 @@ export const SHOTS = {
         // Recording the note draws the detail again from its top.
         hold(1500),
         press("End"),
-        wait("note kept", String.raw`^ *change the note *$`),
+        wait("note kept", String.raw`change the note`),
     ]),
 };
