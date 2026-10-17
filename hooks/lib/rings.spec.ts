@@ -145,8 +145,8 @@ describe('notes on a component detail', () => {
   it('offers m to add one in the footer, where it is never scrolled away, and says there is none yet', () => {
     expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\./)
     expect(footerPresses(null)).toContain('note=m')
-    // The card's own button is a click, not a second m.
-    expect(presses(null)).toContain('note')
+    // The card's own button is a click under a key of its own (two Buttons may not share one), not a second m.
+    expect(presses(null)).toContain('note-card')
     expect(presses(null)).not.toContain('note=m')
     // While a note is under way the field and its question have the keys.
     for (const phase of ['editing', 'confirming'] as const) expect(footerPresses(note({ phase }))).not.toContain('note=m')

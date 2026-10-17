@@ -646,7 +646,7 @@ function notesBlock(name: string, annotations: { kind: string; value: string; au
         if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
         // The person's own note: an agent's beside it is not theirs to change here.
         const own = annotations.some(a => a.kind === 'note' && a.author !== 'model')
-        body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note', own ? 'change the note' : 'add a note', undefined, { dim: true })] })
+        body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note-card', own ? 'change the note' : 'add a note', undefined, { dim: true })] })
       } else if (note.phase === 'editing') {
         body.push(blank('note-gap'), { key: 'note-field', segments: [{ text: '   note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] })
         body.push(dimRow('note-field-keys', '   Enter checks it with knossos; nothing is written yet.', columns))
