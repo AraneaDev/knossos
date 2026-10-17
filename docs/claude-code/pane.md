@@ -830,19 +830,20 @@ know and cannot see by reading the code (see
 yours: it is recorded with the author `user`, which an agent's note never
 overwrites.
 
-1. A field opens in the **Notes** card, holding the component's note when it
-   has one. Nothing is written by typing.
+1. A field opens in the footer, holding the component's note when it has one,
+   so it is on screen however long the detail and wherever it is scrolled.
+   Nothing is written by typing.
 2. Enter has knossos check the note without writing it. An empty field drops
    it.
-3. The card asks `Record this note on ResultEnvelope? "…"`, and says what it
+3. The footer asks `Record this note on ResultEnvelope? "…"`, and says what it
    replaces.
 4. Only `y` (or the `record` button) writes it; `n` cancels.
 
 A refusal, such as an ambiguous name or a note over 2,000 bytes, is said in the
 card: `✗ knossos did not record it: …`. A note that meets a scan's commit stays
 at the question with its text, and the footer says to try again in a moment.
-Once recorded, the detail is read again so the note shows, and the button reads
-`m: change the note`.
+Once recorded, the detail is read again so the note shows in the **Notes**
+card, and its button reads `change the note`.
 
 ## The diff since the session began
 

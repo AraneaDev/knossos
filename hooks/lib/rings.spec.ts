@@ -152,23 +152,33 @@ describe('notes on a component detail', () => {
     for (const phase of ['editing', 'confirming'] as const) expect(footerPresses(note({ phase }))).not.toContain('note=m')
   })
 
-  it('takes the note in a field, asks before recording it, and says what it replaces', () => {
-    const field = rows(note()).flatMap(r => r.segments).find(s => s.field !== undefined)
+  const footer = (n: NoteState | null, columns = 100) => paneLayout(pane(null, view(), n), columns, 80).footer
+  const footerSaid = (n: NoteState | null, columns = 100) => footer(n, columns).map(plainText).join('\n')
+
+  it('takes the note in a field in the footer, asks there before recording it, and says what it replaces', () => {
+    // In the footer, where neither a long detail nor its scroll can hide it; the card only lists the notes.
+    const field = footer(note()).flatMap(r => r.segments).find(s => s.field !== undefined)
     expect(field?.field).toEqual({ id: 'note', value: 'Keep it pure', placeholder: 'what to remember about StableId' })
-    expect(said(note())).toContain('Enter checks it with knossos; nothing is written yet.')
-    expect(said(note({ phase: 'previewing' }))).toContain('checking with knossos…')
-    const asked = said(note({ phase: 'confirming', previous: 'Pure: no I/O.' }))
+    expect(rows(note()).flatMap(r => r.segments).some(s => s.field !== undefined)).toBe(false)
+    expect(footerSaid(note())).toContain('Enter checks it with knossos; nothing is written yet.')
+    expect(footerSaid(note({ phase: 'previewing' }))).toContain('checking with knossos…')
+    const asked = footerSaid(note({ phase: 'confirming', previous: 'Pure: no I/O.' }))
     expect(asked.replace(/\s+/g, ' ')).toContain('Record this note on StableId? "Keep it pure" It replaces: "Pure: no I/O."')
-    expect(presses(note({ phase: 'confirming' }))).toEqual(expect.arrayContaining(['note-yes=y', 'note-no=n']))
+    expect(footerPresses(note({ phase: 'confirming' }))).toEqual(expect.arrayContaining(['note-yes=y', 'note-no=n']))
+    expect(said(note({ phase: 'confirming' }))).not.toContain('Record this note')
     expect([...presses(note({ phase: 'confirming' })), ...footerPresses(note({ phase: 'confirming' }))]).not.toContain('note=m')
-    expect(said(note({ phase: 'saving' }))).toContain('recording…')
+    expect(footerSaid(note({ phase: 'saving' }))).toContain('recording…')
+    // A failure is said in the card, and m is offered again.
     expect(said(note({ phase: 'failed', reason: 'kind must be one of: note.' }))).toContain('✗ knossos did not record it: kind must be one of: note.')
     expect(footerPresses(note({ phase: 'failed' }))).toContain('note=m')
+    // Every footer row fits, however narrow.
+    for (const columns of [40, 60, 100, 200]) for (const r of footer(note({ phase: 'confirming', previous: 'x'.repeat(300) }), columns)) expect(rowWidth(r), `${columns}`).toBeLessThanOrEqual(columns)
   })
 
   it('answers by press alone while the allow-root question holds y and n', () => {
     const allowing = paneInput(d, { status: 'not-allowed', path: ROOT, refused_root: ROOT, roots_file: null } as never, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 0, true, shown, { phase: 'confirming', root: ROOT, reason: null }, undefined, null, undefined, { note: note({ phase: 'confirming' }) })
-    const keys = paneLayout(allowing, 100, 80).body.flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
+    const laid = paneLayout(allowing, 100, 80)
+    const keys = [...laid.body, ...laid.footer].flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
     expect(keys).toEqual(expect.arrayContaining(['allow-yes=y', 'note-yes', 'note-no']))
   })
 

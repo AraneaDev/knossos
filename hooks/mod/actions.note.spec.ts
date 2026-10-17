@@ -130,9 +130,8 @@ describe('opening a note', () => {
         expect(port.note()).toEqual({ component: 'App\\Model\\Greeter', phase: 'editing', value: 'keep it small', previous: null, reason: null })
         await port.runTimers()
         expect(port.focused).toEqual([{ requestId: PANE, key: fieldKey('note') }])
-        // The field closes a long detail: it is scrolled into view before it takes the keys.
-        expect(port.scrolled).toEqual([{ in: PANE, to: { key: fieldKey('note') } }])
-        expect(port.moves).toEqual(['scroll', 'focus'])
+        // The field is in the footer, always on screen: focused, never scrolled to.
+        expect(port.scrolled).toEqual([])
     })
 
     it('falls back to the inspected name and an empty value without a stored detail', async () => {
@@ -232,9 +231,9 @@ describe("the note's preview", () => {
     it('asks for a yes, holding what it would replace', async () => {
         const port = await previewed(answer({ status: 'ok', component: 'App\\Greeter', executed: false, previous: 'old' }))
         expect(port.note()).toEqual(confirming({ previous: 'old' }))
-        // The question and its answers are scrolled into view, wherever the detail stands.
+        // The question is in the footer, always on screen: nothing is scrolled.
         await port.runTimers()
-        expect(port.scrolled).toContainEqual({ in: PANE, to: { key: 'note-answers' } })
+        expect(port.scrolled).toEqual([])
     })
 
     it('asks for a yes with nothing replaced when the component had no note', async () => {
