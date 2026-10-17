@@ -42,19 +42,19 @@ is the short version.
   scan store, and how far can I trust each fact?
 - [From request to handler](concepts/request-to-handler.md): how does a
   `fetch` or `route()` call reach the route and handler that serve it?
-- [Finding components](concepts/finding-components.md): how do I find a
+- [Finding components](guides/finding-components.md): how do I find a
   project, a component, its relations and every place a symbol is used?
-- [Structure analysis](concepts/structure-analysis.md): what depends on this,
+- [Structure analysis](guides/structure-analysis.md): what depends on this,
   how does A reach B, where are the cycles and hubs, and where does new code
   belong?
-- [Dead-code candidates](concepts/dead-code-candidates.md): what does
+- [Dead-code candidates](guides/dead-code-candidates.md): what does
   `architecture_health` report as unreferenced or reached only by tests, and
   what does it exclude first?
-- [Reviewing a change](concepts/change-review.md): what does this diff put at
+- [Reviewing a change](guides/change-review.md): what does this diff put at
   risk, and which tests reach it?
-- [Declared rules and budgets](concepts/architecture-rules.md): how do I make
+- [Declared rules and budgets](guides/architecture-rules.md): how do I make
   architectural intent something a build can fail on?
-- [Scan history](concepts/history.md): what changed between two scans, and how
+- [Scan history](guides/history.md): what changed between two scans, and how
   have the metrics moved?
 
 ## Languages
@@ -139,5 +139,5 @@ help text and schemas they come from, never the Markdown.
   why NestJS got static enrichment before Next.js and Express.
 - [ADR 0004: Serve MCP 2026-07-28 alongside 2025-11-25](adr/0004-protocol-2026-07-28.md):
   how one dispatcher serves two protocol revisions.
-- [CI and editor examples](examples/): GitHub Actions, GitLab CI and VS Code
+- [CI and editor examples](examples): GitHub Actions, GitLab CI and VS Code
   task recipes, used by the integration guide.

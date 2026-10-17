@@ -283,7 +283,7 @@ knossos watch /absolute/path/to/project
 
 Exit code `0` means every evaluated gate passed, `1` that a gate failed, and `2` that the result
 could not be evaluated. See [CI and editor integration](docs/operate/ci-editor-integration.md),
-[rules and budgets](docs/concepts/architecture-rules.md), [watch mode](docs/operate/watch-mode.md)
+[rules and budgets](docs/guides/architecture-rules.md), [watch mode](docs/operate/watch-mode.md)
 and the [CLI reference](docs/reference/cli.md).
 
 ## Supported languages

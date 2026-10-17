@@ -135,7 +135,7 @@ knossos: the boundary-policy check was truncated; run check_architecture to see 
 ```
 
 The full mechanics of policies are in
-[declared rules and budgets](../concepts/architecture-rules.md).
+[declared rules and budgets](../guides/architecture-rules.md).
 
 ### How the tests part is worked out
 

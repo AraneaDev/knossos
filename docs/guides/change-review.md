@@ -4,7 +4,7 @@ Four tools answer "what does this change put at risk?" at different widths.
 Start with `review_diff`. Reach for `changed_files_impact` when you want its
 impact part on its own, and for `test_impact` and `change_impact` when you want
 the tests or the Git history. They rest on the graph described in
-[the graph and its evidence](graph-and-evidence.md).
+[the graph and its evidence](../concepts/graph-and-evidence.md).
 
 | Tool                   | CLI                    | Answers                                                      |
 | ---------------------- | ---------------------- | ------------------------------------------------------------ |

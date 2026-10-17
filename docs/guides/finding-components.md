@@ -9,7 +9,7 @@ Knossos's own graph. Pass `refresh_if_stale: false` to prevent that on one call;
 has the rest.
 Every one returns the shared [response envelope](../reference/response-envelopes.md).
 What the components, edges and evidence in the answers are is explained in
-[the graph and its evidence](graph-and-evidence.md).
+[the graph and its evidence](../concepts/graph-and-evidence.md).
 
 | Tool                   | CLI                    | Answers                                             |
 | ---------------------- | ---------------------- | --------------------------------------------------- |

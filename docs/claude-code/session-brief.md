@@ -92,7 +92,7 @@ line describes the ancestor.
 **Rules**: the boundary policies from `knossos.json` on disk, so a policy edited
 since the last scan is still the one CI enforces. `core -x-> tests` means core
 may not depend on tests; `edge --> only core` means edge may depend only on
-core. See [declared rules and budgets](../concepts/architecture-rules.md).
+core. See [declared rules and budgets](../guides/architecture-rules.md).
 
 **Notes**: up to five `note` annotations, the newest first, as
 `{component}: {note}`. These are what earlier sessions wrote down with

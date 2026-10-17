@@ -4,8 +4,8 @@ A frontend that calls `/api/orders/42` and the controller that serves it live in
 different files, often in different languages. Knossos joins the two. A request
 made in code ends at an `endpoint` node, a route is a `route` node, and a
 `resolves_to` edge from the first to the second lets
-[`explain_flow`](structure-analysis.md) and
-[`impact_analysis`](structure-analysis.md) follow a request from the code that
+[`explain_flow`](../guides/structure-analysis.md) and
+[`impact_analysis`](../guides/structure-analysis.md) follow a request from the code that
 makes it, through the route, into its handler:
 
 ```text

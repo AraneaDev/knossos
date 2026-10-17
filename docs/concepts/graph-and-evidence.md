@@ -5,7 +5,7 @@ every fact in it points back at a file and a line. This page explains what a
 scan puts in that graph, how to read the evidence, confidence and origin that
 come with each fact, what a static scan cannot prove, and what it never does to
 your project. Which question each tool answers is on the pages that follow,
-starting with [structure analysis](structure-analysis.md).
+starting with [structure analysis](../guides/structure-analysis.md).
 
 ## What a scan produces
 
@@ -21,7 +21,7 @@ your project. You get these kinds of fact:
 | Boundary   | A named group of components, either declared by you or inferred from the project's manifests and namespaces.                                    |
 | Role       | A classification of one component, such as `quality.test_module` or `application.service`, with the rule that assigned it.                      |
 | Diagnostic | A warning or error about the scan itself: a file too large, a symlink skipped, a syntax error.                                                  |
-| Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](history.md).                                         |
+| Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](../guides/history.md).                                         |
 
 A project file no worker reads, such as a shell script or a CI tool, is a
 component of kind `file` once something names it: a `launches` edge from code
@@ -43,7 +43,7 @@ A component is identified by its language, kind and canonical name, so the same
 symbol keeps the same ID across rescans. An edge is an occurrence, not a
 summary: its ID includes the place in the source where the relationship was
 written. Two calls from one method to the same target, on different lines, are
-two edges. That is why [`list_usages`](finding-components.md#list-usages) can
+two edges. That is why [`list_usages`](../guides/finding-components.md#list-usages) can
 list call sites one by one.
 
 `contains` edges record structure only: a class holds its methods.
@@ -72,7 +72,7 @@ project already says about itself: one per manifest of a Cargo, Composer, Node o
 Every boundary carries a `source` of `explicit` or `inferred`, so an inferred
 grouping is never mistaken for a decision someone made. A component can sit in
 more than one boundary. `list_boundaries` shows them, and
-[declared rules](architecture-rules.md) are written against them.
+[declared rules](../guides/architecture-rules.md) are written against them.
 
 ![The Boundaries tab past twelve boundaries: all 29 listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Scanner flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
 
@@ -154,7 +154,7 @@ Knossos labels the limits instead of hiding them:
   and dead-code results say they are candidates only.
 - **Absence proves nothing.** A flow query with no path returns an empty list.
   An unreferenced component is a candidate, and a component the scan could not
-  type is demoted to `possible`. See [dead-code candidates](dead-code-candidates.md).
+  type is demoted to `possible`. See [dead-code candidates](../guides/dead-code-candidates.md).
 - **Bounds.** Every walk has limits on depth, nodes, edges and time. Hitting
   one sets `truncated` and names the reason in `bounds`, so a partial answer
   never passes for a complete one.
@@ -193,13 +193,13 @@ The scan treats your project as untrusted input:
 Configuration and text files such as manifests, HTML files and READMEs are read
 as text to find the paths they name, never executed. Git is only run read-only,
 for the commit a scan matches and for the change signals in
-[change review](change-review.md).
+[change review](../guides/change-review.md).
 
 ## Where to go next
 
-- [Structure analysis](structure-analysis.md) walks the graph: impact, flow,
+- [Structure analysis](../guides/structure-analysis.md) walks the graph: impact, flow,
   cycles, hotspots and placement.
-- [Finding components](finding-components.md) is the read surface.
-- [Declared rules and budgets](architecture-rules.md) turns boundaries into
+- [Finding components](../guides/finding-components.md) is the read surface.
+- [Declared rules and budgets](../guides/architecture-rules.md) turns boundaries into
   checks.
-- [Scan history](history.md) compares one snapshot with another.
+- [Scan history](../guides/history.md) compares one snapshot with another.

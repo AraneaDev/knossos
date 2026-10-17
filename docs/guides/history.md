@@ -2,7 +2,7 @@
 
 Every successful rescan archives the graph it replaced, so you can compare
 architecture over time instead of only inspecting the present. A snapshot is
-one complete scan; [the graph and its evidence](graph-and-evidence.md) describes
+one complete scan; [the graph and its evidence](../concepts/graph-and-evidence.md) describes
 what it holds. Three tools read the history.
 
 | Tool                  | CLI                   | Answers                                          |

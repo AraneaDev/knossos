@@ -220,7 +220,7 @@ Issues gathers what needs fixing, one card each, in the order a pane this wide s
   (`functions over 205 lines` in this repository) and reads `✓ 0` when no file breaks it, and
   `no maintainability-budgets.json` without the file.
 - **Dead code**: the first fifty dead-code candidates. `◇` marks one only tests
-  reach. See [dead-code candidates](../../concepts/dead-code-candidates.md).
+  reach. See [dead-code candidates](../../guides/dead-code-candidates.md).
 - **Complexity hotspots**: files ranked by their lines times their dependent
   files, with a bar of that product beside the two figures.
 

@@ -3,7 +3,7 @@
 Five tools walk the graph instead of listing it: what depends on a symbol, how
 one component reaches another, which modules are tangled, where the structural
 hotspots are, and where new code belongs. What the graph holds, and how far to
-trust each fact, is on [the graph and its evidence](graph-and-evidence.md).
+trust each fact, is on [the graph and its evidence](../concepts/graph-and-evidence.md).
 Full input schemas are in the [MCP tool reference](../reference/mcp-tools.md).
 
 | Tool                  | CLI                   | Answers                                                     |
@@ -106,7 +106,7 @@ count (`routes_to`, `calls`, `dispatches`, `handles`, `listens_to`,
 `uses_middleware`, `calls_endpoint`, `resolves_to` and `launches`), so a link through
 `extends` or `implements` is not a path. The two endpoint kinds are what carry a
 path from a caller's `fetch` or `route()` call to the
-handler that serves it, as [from request to handler](request-to-handler.md)
+handler that serves it, as [from request to handler](../concepts/request-to-handler.md)
 describes.
 
 A call through an interface or a parent class lands on that method, while an
