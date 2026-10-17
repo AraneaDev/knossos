@@ -316,8 +316,8 @@ export const SHOTS = {
         "branch",
         [
             press("7"),
-            // Not the head card's title: it is drawn while the comparison still loads.
-            wait("branch", String.raw`Files this branch touched`, {
+            // Not the head card's title: it is drawn while the comparison still loads. The verdict is drawn with it.
+            wait("branch", String.raw`✓ no new cycles|\d+ things? to look at`, {
                 timeoutMs: 60000,
             }),
         ],
