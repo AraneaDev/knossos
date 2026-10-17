@@ -229,10 +229,10 @@ const knossosBin = path.join(REPO, "bin", "knossos");
  * A copy of the real graph in a fresh dir under `tmpRoot`, with the worktree
  * allowed and freshly scanned into it, for each session to copy in turn.
  * With `base`, the commit where HEAD left the default branch is scanned
- * first, so the Branch tab has a snapshot to compare with. Before any scan,
- * the notes of the checkout at `notesFrom` move onto the worktree in the
- * stage, so the Notes tab shows them: a project is its root path, and the
- * worktree's is new. `realDataDir` is only ever read: the stage is refused
+ * first, so the Branch tab has a snapshot to compare with. After the scans
+ * the notes of the checkout at `notesFrom` are copied onto the worktree's
+ * project in the stage (`copyNotes`), so the Notes tab shows them.
+ * `realDataDir` is only ever read: the stage is refused
  * inside it before anything is made.
  */
 export async function stageGraph(
@@ -243,6 +243,7 @@ export async function stageGraph(
         tmpRoot = os.tmpdir(),
         base = false,
         notesFrom = REPO,
+        copyNotes: copy = copyNotes,
         runGit = git,
         runScan = (args, options) => run(knossosBin, args, options),
     } = {},
@@ -268,10 +269,6 @@ export async function stageGraph(
     );
     roots.roots = [...new Set([...(roots.roots ?? []), worktree])];
     await writeFile(rootsFile, `${JSON.stringify(roots, null, 4)}\n`);
-    await runScan(["move-project", notesFrom, worktree, "--execute"], {
-        env,
-        maxBuffer: 64 * 1024 * 1024,
-    });
     const scan = () =>
         runScan(["scan", worktree, "--snapshot-retention=5"], {
             env,
@@ -290,7 +287,40 @@ export async function stageGraph(
         await runGit(worktree, "checkout", "--quiet", "--detach", head);
     }
     await scan();
+    await copy(stage, notesFrom, worktree);
     return stage;
+}
+
+/**
+ * Copies the notes of the project at `from` onto the project at `to`, in the
+ * graph at `dataDir`: a project is its root path, so the worktree's starts
+ * with none. A note the target already has is kept. Only ever a stage.
+ */
+export async function copyNotes(dataDir, from, to) {
+    const { DatabaseSync } = await import("node:sqlite");
+    const real = (dir) => realpath(dir).catch(() => path.resolve(dir));
+    const [source, target] = await Promise.all([real(from), real(to)]);
+    const db = new DatabaseSync(path.join(dataDir, "knossos.sqlite"));
+    try {
+        const id = (root) =>
+            db
+                .prepare("SELECT id FROM projects WHERE root_realpath = ?")
+                .get(root)?.id;
+        const [fromId, toId] = [id(source), id(target)];
+        if (fromId === undefined || toId === undefined) return;
+        const columns = db
+            .prepare("PRAGMA table_info(annotations)")
+            .all()
+            .map((c) => c.name);
+        const picked = columns
+            .map((c) => (c === "project_id" ? "?" : c))
+            .join(", ");
+        db.prepare(
+            `INSERT OR IGNORE INTO annotations (${columns.join(", ")}) SELECT ${picked} FROM annotations WHERE project_id = ?`,
+        ).run(toId, fromId);
+    } finally {
+        db.close();
+    }
 }
 
 /**
