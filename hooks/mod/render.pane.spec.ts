@@ -122,7 +122,7 @@ function fakePort(cells: Record<string, unknown> = {}) {
     return { io, logs, reads }
 }
 
-const act: Handlers = { press: () => undefined, type: () => undefined, submit: () => undefined, link: () => undefined }
+const act: Handlers = { press: () => undefined, type: () => undefined, submit: () => undefined }
 
 type Node = { type: string; props: Record<string, unknown> & { children?: unknown }; key: string | null }
 
