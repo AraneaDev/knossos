@@ -2,7 +2,7 @@
 
 Every successful rescan archives the graph it replaced, so you can compare
 architecture over time instead of only inspecting the present. A snapshot is
-one complete scan; [the graph and its evidence](graph-and-evidence.md) describes
+one complete scan; [the graph and its evidence](../concepts/graph-and-evidence.md) describes
 what it holds. Three tools read the history.
 
 | Tool                  | CLI                   | Answers                                          |
@@ -76,7 +76,7 @@ component has the same kind and display name. Candidates are labelled
 `possible` and name the heuristic (`exact_kind_and_display_name`). They are
 navigation hints that assert no identity.
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 28 tests that reach it, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 31 tests that reach it, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
 
 Only complete archives can be diffed. Oversized or unavailable retained facts
 return an explicit error instead of silently comparing partial data. Static

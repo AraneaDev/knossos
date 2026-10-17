@@ -7,7 +7,7 @@ inbound edge among the selected edge kinds. It returns one page of them;
 `--reachability=unreferenced|test-only` to narrow it, and ends with what it
 left out (annotated, suppressed, reached by convention).
 
-These are **candidates, not findings**. They rest on what [the graph and its evidence](graph-and-evidence.md) can and cannot see. A zero in-degree is only the absence of static evidence: reflection, configuration, templates, registry
+These are **candidates, not findings**. They rest on what [the graph and its evidence](../concepts/graph-and-evidence.md) can and cannot see. A zero in-degree is only the absence of static evidence: reflection, configuration, templates, registry
 arrays, callbacks, dispatch tables, and framework conventions all reference code
 without leaving a statically visible edge. The tool says so in its own
 `warnings`, and every candidate carries a `reachability`, a `confidence` and a
@@ -19,6 +19,11 @@ same split is in `bounds.candidates_probable` and `bounds.candidates_possible`, 
 counted before `limit` slices the list. `knossos dead-code` prints each
 candidate's confidence beside its reachability, ends with the same split, and
 returns it as `by_confidence` with `--json`.
+
+![The Issues tab on this repository: the policy violation, diagnostic, line-budget and dead-code cards, each headed by its count, above the complexity hotspots ranked by lines times dependents](../images/claude-code/issues.png)
+
+In the pane, the Issues tab lists the candidates beside the other findings, the
+probable ones marked apart from the possible.
 
 ## Reachability
 

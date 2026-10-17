@@ -1,23 +1,23 @@
-# Notes for the model
+# Messages for the model
 
-The [Claude Code mod](pane.md) tells the model a few facts at the moment they
-help, so it keeps to the architecture while it works. There are four notes,
+The [Claude Code mod](pane/index.md) tells the model a few facts at the moment they
+help, so it keeps to the architecture while it works. There are four messages,
 each one short and said once. For one file's context on demand, the model
 calls the MCP server's [`file_context`](#one-files-context) tool.
 
-| note                           | fires                                                                     | arrives                                 |
-| ------------------------------ | ------------------------------------------------------------------------- | --------------------------------------- |
-| [Read](#the-read-note)         | after a Read of a heavily depended-on or policed file                     | after the file's contents               |
-| [edit](#the-edit-note)         | after an edit of a file at the fan-in threshold that the Read note missed | after the edit's result, and as a toast |
-| [turn end](#the-turn-end-note) | after a turn that edited files, once it is scanned                        | as a message before the next step       |
-| [commit](#the-commit-note)     | after a Bash call that made a commit                                      | after the command's output              |
+| message                               | fires                                                                        | arrives                                 |
+| ------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------- |
+| [Read](#the-read-message)             | after a Read of a heavily depended-on or policed file                        | after the file's contents               |
+| [edit](#the-edit-message)             | after an edit of a file at the fan-in threshold that the Read message missed | after the edit's result, and as a toast |
+| [turn end](#the-turn-end-message)     | after a turn that edited files, once it is scanned                           | as a message before the next step       |
+| [commit](#the-message-after-a-commit) | after a Bash call that made a commit                                         | after the command's output              |
 
-No note costs a process of its own: the figures come from the last dashboard
-load and the turn's brief. `agentNotes` turns every note off, and
-`enforcePolicies` turns off the policy part of the turn-end and commit notes
-(see [settings](pane.md#settings)).
+No message costs a process of its own: the figures come from the last dashboard
+load and the turn's brief. `agentNotes` turns every message off, and
+`enforcePolicies` turns off the policy part of the turn-end message and the one after a commit
+(see [settings](pane/index.md#settings)).
 
-## The Read note
+## The Read message
 
 When the model Reads a file with at least `fanInThreshold` dependent files (20
 by default), or a file in a boundary a declared policy binds, it reads one line
@@ -42,7 +42,7 @@ boundary and its rules, and a quiet file there after that gets nothing:
 knossos: src/Cli/Quiet.php is in core. Policy: core may not depend on php-worker, tests.
 ```
 
-What the note names:
+What the message names:
 
 - Only a declared boundary, or one a rule binds. A file in an inferred boundary
   only, or in none, gets its count alone.
@@ -51,14 +51,14 @@ unassigned code`. A rule limited to some dependency kinds names them in
   brackets: `(calls)`.
 - The rules come with the dashboard. A boundary declared by path prefix binds
   every file under that prefix. A boundary placed by namespace lists its files,
-  at most 2,000. When that list stops before it reaches the file, the note says
+  at most 2,000. When that list stops before it reaches the file, the message says
   so rather than imply there are no rules:
 
 ```text
 knossos: lib/Late.php: rules may bind this file; run check_architecture.
 ```
 
-## The edit note
+## The edit message
 
 An Edit, Write or NotebookEdit of a file with at least `fanInThreshold`
 dependent files that the model was not told about on Read adds one line. Claude
@@ -69,15 +69,19 @@ a toast, even with `agentNotes` off:
 knossos: src/Router.php has 41 dependent files across 3 boundaries; run test_impact before finishing.
 ```
 
-The note counts the dependents' boundaries, and says `across N boundaries`
+The message counts the dependents' boundaries, and says `across N boundaries`
 only when there is more than one. Only the fan-in threshold triggers it: a
-quiet file in a policed boundary gets no edit note.
+quiet file in a policed boundary gets no edit message.
 
-## The turn-end note
+## The turn-end message
+
+![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](../images/claude-code/band.png)
+
+The person sees the same turn as the band above the prompt.
 
 After a turn that edited files, the mod scans the project (see
-[what it writes](pane.md#what-it-writes)) and the turn's brief says what the
-turn did. The model then reads one note before its next step, with up to two
+[what it writes](pane/index.md#what-it-writes)) and the turn's brief says what the
+turn did. The model then reads one message before its next step, with up to two
 parts.
 
 **Policy violations the turn introduced**, when the project declares boundary
@@ -94,7 +98,7 @@ knossos: this turn introduced 1 boundary-policy violation. Fix it before finishi
 knossos: 2 tests reach this turn's changes. Run: vendor/bin/phpunit --filter '(DashboardServiceTest|TurnBriefServiceTest)'
 ```
 
-When both have something to say they arrive as one note, the violations first.
+When both have something to say they arrive as one message, the violations first.
 
 ### How the policy part is worked out
 
@@ -106,20 +110,20 @@ violation is reported once a session.
 
 - The count is per violating dependency, so one call can count twice: once for
   the class, once for the method.
-- The note lists at most ten violations, then `- …and 2 more (run review_diff)`.
+- The message lists at most ten violations, then `- …and 2 more (run review_diff)`.
 - Only files the turn edited with Edit, Write or NotebookEdit count. A branch
   checkout, a formatter or a shell command never adds to the verdict, so
   switching branches does not hand the model a branch's worth of violations.
 - When the scan ledger cannot account for every scan since the turn began (a
   scan that was not recorded, or one older than the ledger keeps), or an entry
   was cut because it changed more than 2,000 files (a branch switch), the brief
-  still names the turn's files but leaves the policy unevaluated, and the note
+  still names the turn's files but leaves the policy unevaluated, and the message
   has no policy part. See
   [the scan ledger](../contribute/mod-internals.md#scan-ledger).
 - The check walks only the dependencies of the components declared in the
   edited files, so its cost follows the edit. It stops at 100 violations, at
   its edge budget, or after five seconds. When it stops early, the count is a
-  bound and the note says so:
+  bound and the message says so:
 
 ```text
 knossos: this turn introduced 3 boundary-policy violations (check was truncated; run check_architecture). Fix them before finishing:
@@ -127,7 +131,7 @@ knossos: this turn introduced 3 boundary-policy violations (check was truncated;
 - …and 2 more (run review_diff)
 ```
 
-A truncated check that found nothing still sends a note, once a session,
+A truncated check that found nothing still sends a message, once a session,
 because the turn's violations may be past the cap:
 
 ```text
@@ -135,20 +139,20 @@ knossos: the boundary-policy check was truncated; run check_architecture to see 
 ```
 
 The full mechanics of policies are in
-[declared rules and budgets](../concepts/architecture-rules.md).
+[declared rules and budgets](../guides/architecture-rules.md).
 
 ### How the tests part is worked out
 
 The brief names at most twenty tests that reach the turn's changes, nearest
-first. The note leaves out:
+first. The message leaves out:
 
 - a test the turn already ran after its last edit: a Bash command that runs its
   runner and names the test, a directory holding it, or no test at all (the
   whole suite, such as `vendor/bin/phpunit` or `npm run test:mod`);
-- a test an earlier note already named;
+- a test an earlier message already named;
 - a file no runner runs, such as a helper or a fixture.
 
-The command is chosen as on the [Changes tab](pane.md#changes). Tests the
+The command is chosen as on the [Changes tab](pane/tabs.md#changes). Tests the
 command names itself (PHPUnit, pytest, and Vitest or Jest scripts) are not
 listed again. Tests run by package (`go test`, `cargo test`) are listed, at
 most five, then `and N more`. A JavaScript test whose runner the nearest
@@ -156,10 +160,10 @@ most five, then `and N more`. A JavaScript test whose runner the nearest
 runner may not be the project's. When the session sits below the project's
 root, the command starts with `cd <project root> &&`.
 
-## The commit note
+## The message after a commit
 
 When a Bash call in any loop made a commit in the project's repository, the
-call's result carries one note. It says what this session's changes leave
+call's result carries one message. It says what this session's changes leave
 behind, as far as the graph knows:
 
 ```text
@@ -178,8 +182,8 @@ Up to three parts, each naming at most five items:
   cycle is named only when the graph listed every cycle it held when the
   session began; otherwise only the count that grew is said.
 
-The note speaks of the session's changes, since a commit need not hold them
-all. Nothing to say, no note. The same note is said once per
+The message speaks of the session's changes, since a commit need not hold them
+all. Nothing to say, no message. The same message is said once per
 loop.
 
 A commit is told by the project's HEAD. The mod reads it (`git rev-parse`)
@@ -200,16 +204,16 @@ what the command printed decides.
 
 ## Limits
 
-- Each file is noted once per session and per agent. A subagent gets its own
-  notes, since what the main loop read was never in its context.
-- At most three notes follow tool results in one turn of a loop, the commit
-  note included. A Read or edit note held back by that cap is said at the next
+- Each file is named once per session and per agent. A subagent gets its own
+  messages, since what the main loop read was never in its context.
+- At most three messages follow tool results in one turn of a loop, the
+  one after a commit included. A Read or edit message held back by that cap is said at the next
   Read or edit of the file.
-- A turn ends with at most one note.
-- A note that fails leaves the tool result as it was, and one line in the debug
-  log. A turn-end note the session refuses is written to the debug log, so a
-  lost note is never silent.
-- A new session in the same process (after `/clear`) starts the notes over:
+- A turn ends with at most one message.
+- A message that fails leaves the tool result as it was, and one line in the debug
+  log. A turn-end message the session refuses is written to the debug log, so a
+  lost message is never silent.
+- A new session in the same process (after `/clear`) starts the messages over:
   its model never read the old ones.
 
 ## One file's context

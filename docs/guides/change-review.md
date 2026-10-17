@@ -4,7 +4,7 @@ Four tools answer "what does this change put at risk?" at different widths.
 Start with `review_diff`. Reach for `changed_files_impact` when you want its
 impact part on its own, and for `test_impact` and `change_impact` when you want
 the tests or the Git history. They rest on the graph described in
-[the graph and its evidence](graph-and-evidence.md).
+[the graph and its evidence](../concepts/graph-and-evidence.md).
 
 | Tool                   | CLI                    | Answers                                                      |
 | ---------------------- | ---------------------- | ------------------------------------------------------------ |
@@ -19,6 +19,11 @@ timeout, and stdout/stderr byte caps. None modifies the worktree, index, refs,
 or repository configuration. See the
 [HTTP threat model](../operate/http-threat-model.md#git-subprocesses) for
 the exact hardening.
+
+![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](../images/claude-code/branch.png)
+
+In Claude Code, the pane's Branch tab gives this review for the branch you are
+on, against main, at a glance.
 
 ## Review diff
 
@@ -203,6 +208,11 @@ the summary says how many of how many test files you are seeing. Reaching
 attached reminding you this is a lower bound.
 
 ## Git change signals and time-aware impact
+
+![The Churn tab: a scatter of commits in the last 30 days against dependents, and the churn hotspots ranked by commits times dependents](../images/claude-code/churn.png)
+
+In the pane, the Churn tab plots the files that change often against how much
+depends on them.
 
 `change_impact` starts with the same bounded reverse static dependency analysis
 as `impact_analysis`, then reads recent Git history for the impacted components'

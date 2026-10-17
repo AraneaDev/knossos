@@ -9,7 +9,7 @@ import { printableDeep } from './printable'
 
 export const LIVE_OFF: LiveState = { phase: 'off' }
 
-/** The poll interval when none is set: measured on a 650-file project, see docs/claude-code/pane.md. */
+/** The poll interval when none is set: measured on a 650-file project, see docs/claude-code/pane/live.md. */
 export const DEFAULT_WATCH_POLL_MS = 1_000
 /** The shortest and longest poll interval the option accepts. */
 export const MIN_WATCH_POLL_MS = 250

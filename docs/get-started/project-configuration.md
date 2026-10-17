@@ -3,7 +3,7 @@
 A `knossos.json` in the root of a project tells Knossos what to skip, where the
 boundaries are, which rules to check and how much a scan may spend. Every scan
 reads it, from the CLI, the MCP server or the watcher. You need one when the
-defaults scan too much, or when you want [boundaries and policies](../concepts/architecture-rules.md)
+defaults scan too much, or when you want [boundaries and policies](../guides/architecture-rules.md)
 that belong to the repository and not to whoever scans it.
 
 Use either `knossos.json` or `knossos.jsonc`. Keeping both is an error.
@@ -165,7 +165,7 @@ results are rebuilt.
 
 A policy has an `id`, a `from_boundary`, and at least one of `allow_targets` or
 `deny_targets`, each a list of boundary names. An optional `edge_kinds` list
-limits it to some relationship kinds. [Architecture rules](../concepts/architecture-rules.md)
+limits it to some relationship kinds. [Architecture rules](../guides/architecture-rules.md)
 explains how they are checked.
 
 ### Quality budgets
@@ -173,7 +173,7 @@ explains how they are checked.
 The supported keys are `new_cycles`, `boundary_violations`, `error_diagnostics`,
 `warning_diagnostics`, `hub_degree_growth`, `unreferenced_candidates` and
 `public_surface_changes`. Each is a count the quality gate tolerates against a
-baseline snapshot. See [change review](../concepts/change-review.md).
+baseline snapshot. See [change review](../guides/change-review.md).
 
 ### Dead-code suppressions
 
