@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arrange, BALANCE_SLACK, balanceColumns, besideRows, cardInner, cardRows, DEFAULT_ROWS, equalColumns, figures, fitBlocks, GLYPHS, gridColumns, gridRows, LIST_MAX, LIST_SOFT, moreRows, paneHeight, topRow, windowOf } from './cards'
+import { arrange, BALANCE_SLACK, balanceColumns, besideRows, cardInner, cardRows, DEFAULT_ROWS, equalColumns, figures, fitBlocks, GLYPHS, gridColumns, gridRows, LIST_SOFT, moreRows, paneHeight, topRow, windowOf } from './cards'
 import { issueGrid } from './views'
 import type { Block, Section } from './cards'
 import { rawText } from './__tests__/plain-text'
@@ -138,9 +138,25 @@ describe('lists sized to the height', () => {
       expect(shown).toBeGreaterThanOrEqual(last)
       last = shown
     }
-    // However tall the pane, a list stops at LIST_MAX rows: the engine bounds the tree it takes.
-    expect(last).toBe(LIST_MAX)
+    // However tall the pane, a long list fills it: the drawn-text budget, not a row cap, bounds what the engine takes.
+    const rows = fitBlocks([listBlock('a', 200, 3)], 80, 'medium', 100)
+    expect(items(rows, 'a').length).toBeGreaterThan(80)
+    expect(rows.length).toBeLessThanOrEqual(100)
   })
+  it('fill a tall pane in a few builds of each card, not one per row', () => {
+    for (const fit of [(b: Block[]) => fitBlocks(b, 80, 'medium', 400), (b: Block[]) => gridRows([b], 160, 'wide', 400)]) {
+      let builds = 0
+      const counted = (block: Block): Block => ({ ...block, make: (columns, limit) => (builds++, block.make(columns, limit)) })
+      builds = 0
+      const rows = fit([counted(listBlock('a', 1000, 3)), counted(listBlock('b', 1000, 3))])
+      expect(items(rows, 'a').length + items(rows, 'b').length).toBeGreaterThan(300)
+      expect(builds).toBeLessThan(120)
+    }
+    // Stacked, the two lists still split the height evenly.
+    const rows = fitBlocks([listBlock('a', 1000, 3), listBlock('b', 1000, 3)], 80, 'medium', 400)
+    expect(Math.abs(items(rows, 'a').length - items(rows, 'b').length)).toBeLessThanOrEqual(1)
+  })
+
   it('share the rows between the lists in turn, each stopping at its length', () => {
     const rows = fitBlocks([listBlock('a', 4, 2), listBlock('b', 100, 2)], 60, 'narrow', 40)
     expect(items(rows, 'a')).toHaveLength(4)

@@ -217,19 +217,47 @@ export type Block = { key: string; grow?: { length: number; min: number; late?: 
 export const LIST_SOFT = 10
 
 /**
- * The most rows a list grows to however tall the pane: past it the list says
- * `n more ↓` and scrolls to the marker. It keeps the text a tall, wide pane
- * draws well inside the 100,000 characters the engine draws of it.
+ * Grows each list toward `most(i)` rows while `spare()` stays at or above
+ * zero: each in turn takes its share of the spare rows at once, halving the
+ * step when that does not fit and doubling it while growing costs nothing (a
+ * list beside a taller card), so a tall pane costs a few builds of each card
+ * rather than one a row.
  */
-export const LIST_MAX = 28
+function growLists(limits: number[], most: (i: number) => number, spare: () => number): void {
+  let grew = true
+  while (grew) {
+    grew = false
+    const open = limits.map((_, i) => i).filter(i => limits[i]! < most(i))
+    // An even share of the round's spare rows each, so the lists split the height as they would a row at a time.
+    const share = Math.floor(spare() / Math.max(1, open.length))
+    for (const i of open) {
+      let step = Math.max(1, Math.min(most(i) - limits[i]!, share))
+      while (step >= 1) {
+        const before = spare()
+        limits[i]! += step
+        const after = spare()
+        if (after < 0) {
+          limits[i]! -= step
+          step = Math.floor(step / 2)
+          continue
+        }
+        grew = true
+        // Free rows: the list grew beside a taller card, so it may take more at once.
+        if (after < before || limits[i]! >= most(i)) break
+        step = Math.min(step * 2, most(i) - limits[i]!)
+      }
+    }
+  }
+}
 
 /**
  * Cards stacked in `width`, each list as long as `budget` rows allow: every
  * list starts at its minimum, then each in turn takes one more row while the
  * whole still fits, up to {@link LIST_SOFT}; then the late cards grow the
- * same way, within `lateBudget` too; then the lists take what is left, up to
- * {@link LIST_MAX}. A
- * short pane shows the minimums and scrolls.
+ * same way, within `lateBudget` too; then the lists take what is left. A
+ * short pane shows the minimums and scrolls. The text a tall, wide pane draws
+ * is held under the engine's bound when it is drawn (`TEXT_BUDGET` in
+ * hooks/mod/render.tsx), which gives rows back.
  */
 export function fitBlocks(blocks: Block[], width: number, tier: Tier, budget: number, lateBudget = budget): Row[] {
   const inner = cardInner(width, tier)
@@ -249,20 +277,14 @@ export function fitBlocks(blocks: Block[], width: number, tier: Tier, budget: nu
   const phases: { late: boolean; cap: number; within: number }[] = [
     { late: false, cap: LIST_SOFT, within: budget },
     { late: true, cap: Number.POSITIVE_INFINITY, within: Math.min(budget, lateBudget) },
-    { late: false, cap: LIST_MAX, within: budget },
+    { late: false, cap: Number.POSITIVE_INFINITY, within: budget },
   ]
   for (const phase of phases) {
-    let grew = true
-    while (grew) {
-      grew = false
-      for (let i = 0; i < blocks.length; i++) {
-        const grow = blocks[i]!.grow
-        if (grow === undefined || (grow.late === true) !== phase.late || limits[i]! >= Math.min(grow.length, phase.cap)) continue
-        limits[i]!++
-        if (total() <= phase.within) grew = true
-        else limits[i]!--
-      }
+    const most = (i: number): number => {
+      const grow = blocks[i]!.grow
+      return grow === undefined || (grow.late === true) !== phase.late ? limits[i]! : Math.min(grow.length, phase.cap)
     }
+    growLists(limits, most, () => phase.within - total())
   }
   const sections = blocks.map((b, i) => b.make(inner, limits[i]!)).filter((s): s is Section => s !== null)
   return stackRows(sections, width, tier)
@@ -377,17 +399,8 @@ export function gridRows(grid: Block[][], width: number, tier: Tier, budget: num
   const lineHeight = (start: number, count: number): number => Math.max(0, ...Array.from({ length: count }, (_, j) => rowsOf(start + j).length))
   const starts = placed.map((_, n) => placed.slice(0, n).reduce((sum, p) => sum + p.line.length, 0))
   const total = () => placed.reduce((sum, p, n) => sum + 1 + lineHeight(starts[n]!, p.line.length), 0)
-  for (const cap of [LIST_SOFT, LIST_MAX]) {
-    let grew = true
-    while (grew) {
-      grew = false
-      blocks.forEach(({ block }, i) => {
-        if (block.grow === undefined || limits[i]! >= Math.min(block.grow.length, cap)) return
-        limits[i]!++
-        if (total() <= budget) grew = true
-        else limits[i]!--
-      })
-    }
+  for (const cap of [LIST_SOFT, Number.POSITIVE_INFINITY]) {
+    growLists(limits, i => (blocks[i]!.block.grow === undefined ? limits[i]! : Math.min(blocks[i]!.block.grow!.length, cap)), () => budget - total())
   }
   // Filling the height: the rows of cards side by side share what is left evenly (the last one alone when there are none),
   // so the cards end at the pane's foot rather than above blank space, and no one row stands hollow.
