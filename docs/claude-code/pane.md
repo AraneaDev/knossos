@@ -139,8 +139,9 @@ its body:
 | medium, 80 to 130   | one column of cards, their rows two cells in; tables add columns, such as the file |
 | wide, more than 130 | a grid of cards, two columns to a row, the cards of a row drawn equally tall       |
 
-Every card is its title in Claude's orange, set into a rule across the card,
-with its note at the rule's end; no box closes round it.
+Every card is its title in bold after a glyph in Claude's orange, set into a
+rule across the card, with its note at the rule's end and a blank row under it;
+no box closes round it.
 
 On a wide pane, Hubs, Cycles, Issues, Changes, Branch and Churn become master
 and detail: the tab takes the left 55 percent and the marked row's detail
@@ -149,7 +150,7 @@ so holding `j` is one lookup. A row with nothing to show (a boundary, a
 chart's bar) leaves the tab alone. On a narrower pane, `o` opens a row's
 detail in place of the tab.
 
-Lists size themselves to the pane's height, up to 28 rows each. A list cut
+Lists size themselves to the pane's height and fill it. A list cut
 short ends in `24 more ↓` (and `3 above ↑` once the marker has moved down it),
 and moving the marker scrolls it. Each part of that line is a button that moves
 the marker onto the nearest row it counts, the last above or the first below,
@@ -232,7 +233,7 @@ what matters first, and gives the pane its life within the theme:
   violation.
 - The marked row stands on a faint tint across its card, with its `›` kept for
   a terminal that draws no backgrounds.
-- Card titles stand in Claude's orange, each stat tile's figure in its own hue
+- Card glyphs stand in Claude's orange, each stat tile's figure in its own hue
   while nothing is wrong with it, each language chip in its own colour, and the
   in-degree histogram runs cool to hot, from the fewest dependants to the hubs.
   None of these hues is a boundary's.

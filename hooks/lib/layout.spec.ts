@@ -919,7 +919,7 @@ describe('the detail view', () => {
     // Nineteen use it and two are listed: the rest as one box.
     expect(raw).toContain('│ +17 more')
     expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies · used by 19 · uses 2 +edges$/)
-    expect(textOf(rows)).toMatch(/Notes\n {3}note: Read-only: it never scans\./)
+    expect(textOf(rows)).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\./)
   })
   it("marks an agent's note apart from the person's, the person's first", () => {
     const answer = detailAnswer({
@@ -928,7 +928,7 @@ describe('the detail view', () => {
         { kind: 'note', value: 'Reached from the dashboard tab only.', author: 'model' },
       ],
     })
-    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
   })
   it("keeps a note's line breaks and spacing, so a short ASCII sketch survives", () => {
     const answer = detailAnswer({
@@ -996,7 +996,7 @@ describe('the detail view', () => {
     const old = detailAnswer({ used_by: { count: 1, truncated: false, names: ['Kernel'] }, uses: { count: 0, truncated: false, names: [] } })
     expect(paneRows(detailPane(old), 60).map(rawText).join('\n')).toMatch(/│ Kernel +├─+╮/)
     const text = textOf(paneRows(detailPane(old), 40))
-    expect(text).toMatch(/Used by · 1\n› {2}Kernel/)
+    expect(text).toMatch(/Used by · 1\n *\n› {2}Kernel/)
     expect(text).not.toMatch(/█/)
   })
 })

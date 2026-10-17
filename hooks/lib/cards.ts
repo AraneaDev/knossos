@@ -79,8 +79,9 @@ export function figures(text: string): Segment[] {
 }
 
 /**
- * A card's top edge: the title, in Claude's orange (and the subtitle, while
- * it fits), set into a rule across the card, the note before its end. As
+ * A card's top edge: the title in bold, after its glyph in Claude's orange
+ * (and the subtitle, while it fits), set into a rule across the card, the
+ * note before its end. As
  * the width shrinks the subtitle goes, then the note, then the title is cut.
  * No box closes around the card: the rule and the colour carry it.
  */
@@ -91,7 +92,7 @@ export function topRow(section: Section, width: number): Row {
   const glyph = section.glyph ?? GLYPHS[section.key]
   const mark: Segment[] = glyph === undefined ? [] : [{ text: `${glyph} `, color: TITLE }]
   const build = (subtitle: boolean, withNote: boolean, titleWidth = cells(section.title)): Segment[] | null => {
-    const title: Segment[] = [...mark, { text: fit(section.title, titleWidth).replace(/ …$/, '…'), bold: true, color: TITLE }, ...(subtitle && section.subtitle ? [{ text: ` · ${section.subtitle}`, dim: true }] : [])]
+    const title: Segment[] = [...mark, { text: fit(section.title, titleWidth).replace(/ …$/, '…'), bold: true, color: HEADING }, ...(subtitle && section.subtitle ? [{ text: ` · ${section.subtitle}`, dim: true }] : [])]
     const right: Segment[] = withNote && note.length > 0 ? [{ text: ' ' }, ...note, { text: ` ${close}`, color: FRAME }] : [{ text: close, color: FRAME }]
     const fill = width - cells(lead) - segmentsWidth(title) - 1 - segmentsWidth(right)
     if (fill < 1) return null
@@ -103,7 +104,7 @@ export function topRow(section: Section, width: number): Row {
   const segments = build(true, true) ?? build(false, true) ?? cut ?? build(false, false)
   if (segments !== null) return { key: `${section.key}-head`, segments }
   // Too narrow for the rule: the title alone, cut.
-  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: TITLE }] }
+  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: HEADING }] }
 }
 
 /**
@@ -136,10 +137,11 @@ export function cardRows(section: Section, width: number, tier: Tier): Row[] {
     return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width)]
   }
   if (section.bare === true) return section.body.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
-  const head = topRow(section, width)
-  if (tier === 'narrow') return [head, ...section.body.map(row => bareRow(row, width))]
+  // A blank row under the title, so the title stands apart from what it heads.
+  const head = [topRow(section, width), ...(section.body.length > 0 ? [{ key: `${section.key}-under`, segments: [{ text: spaces(width) }] }] : [])]
+  if (tier === 'narrow') return [...head, ...section.body.map(row => bareRow(row, width))]
   const body = section.body.map(row => (row.code !== undefined ? row : framedRow(row, width)))
-  return [head, ...body]
+  return [...head, ...body]
 }
 
 /** Cards stacked, each after a blank row. */
