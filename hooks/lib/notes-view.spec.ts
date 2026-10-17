@@ -3,6 +3,7 @@ import type { Dashboard, KnossosView, NoteRow, Notes, NotesState } from '../../t
 import { parseNotes } from './envelopes'
 import { footerRows, listFor, paneInput, paneLayout, TABS } from './layout'
 import { nextFilter, NOTES_FILTERS } from './notes-view'
+import { ACCENT } from './palette'
 import { plainText } from './__tests__/plain-text'
 
 const ROOT = '/work/app'
@@ -63,12 +64,12 @@ describe('the Notes tab', () => {
 
   it('walks what needs the person, then each boundary, folder and note; a group folds on o, a missing note opens nothing', () => {
     const list = listFor(pane(state(answer())))
-    expect(list.map(i => i.fold ?? i.canonical)).toEqual(['App\\Gone', 'App\\Target', 'notes:b:core', 'notes:f:core:src', 'App\\Target', 'App\\User', 'App\\Chain1', 'notes:b:'])
+    expect(list.map(i => i.fold ?? i.canonical)).toEqual(['App\\Gone', 'App\\Target', 'notes:b-:core', 'notes:f:core:src', 'App\\Target', 'App\\User', 'App\\Chain1', 'notes:b+:'])
     expect(list[0]?.inert).toBe(true)
     expect(list[5]?.inert).toBeUndefined()
     expect(list[2]?.inert).toBe(true)
     // Folded, the boundary's folder and notes leave the walk.
-    expect(listFor(pane(state(answer()), view({ folds: ['notes:b:core'] }))).map(i => i.fold ?? i.canonical)).toEqual(['App\\Gone', 'App\\Target', 'notes:b:core', 'notes:b:'])
+    expect(listFor(pane(state(answer()), view({ folds: ['notes:b-:core'] }))).map(i => i.fold ?? i.canonical)).toEqual(['App\\Gone', 'App\\Target', 'notes:b+:core', 'notes:b+:'])
   })
 
   it('shows the marked note whole under the tree: where it lives, who wrote it, when, why it is stale, and all its text', () => {
@@ -89,8 +90,21 @@ describe('the Notes tab', () => {
   })
 
   it('opens every group while narrowed by text, so every match shows', () => {
-    const list = listFor(pane(state(answer({ text: 'App' })), view({ notesText: 'App', folds: ['notes:b:core'] })))
+    const list = listFor(pane(state(answer({ text: 'App' })), view({ notesText: 'App', folds: ['notes:b-:core'] })))
     expect(list.filter(i => i.fold === undefined).map(i => i.canonical)).toContain('App\\Chain1')
+  })
+
+  it('marks the hit in each line of a note while narrowed by text, in any case', () => {
+    const body = paneLayout(pane(state(answer({ text: 'TARGET' })), view({ notesText: 'TARGET' })), 120, 60).body
+    const hits = body.flatMap(r => r.segments).filter(s => s.bold === true && s.color === ACCENT)
+    expect(hits.map(s => s.text)).toContain('Target')
+    expect(paneLayout(pane(state(answer())), 120, 60).body.flatMap(r => r.segments).some(s => s.bold === true && s.text === 'Target')).toBe(false)
+  })
+
+  it('opens every group under a filter too, since what it narrowed to is what the person came for', () => {
+    const stale = answer({ filter: 'stale', groups: { missing: [], stale: answer().groups.stale, rest: [] }, counts: { total: 4, missing: 1, stale: 1, flagged: 1 } })
+    const list = listFor(pane(state(stale), view({ notesFilter: 'stale', folds: ['notes:b-:core'] })))
+    expect(list.filter(i => i.fold === undefined).map(i => i.canonical)).toEqual(['App\\Chain1'])
   })
 
   it('cycles its filter through every one and back, and says which it shows', () => {
@@ -132,6 +146,17 @@ describe('the Notes tab', () => {
     expect(press(6)).toMatchObject({ hotkey: 'v' })
     expect(plainText(footerRows(pane(state(answer()), view({ selected: 6 })), 140, true).bar[0]!)).toContain('still true')
     for (const other of [0, 4, 5, 2]) expect(press(other), `${other}`).toBeUndefined()
+  })
+
+  it('offers v only on a plain note that rests on a file, and says so only there', () => {
+    // Chain1, stale, is the note at 6: as another kind, and resting on no file.
+    const as = (over: Partial<NoteRow>) => answer({ groups: { ...answer().groups, stale: [{ ...answer().groups.stale[0]!, ...over }] } })
+    const offered = (a: Notes) => footerRows(pane(state(a), view({ selected: 6 })), 140, true).bar.flatMap(r => r.segments).some(s => s.press?.id === 'notes-confirm')
+    expect(offered(as({ kind: 'intentional' }))).toBe(false)
+    const unfiled = as({ stale_reason: 'rests on no scanned file' })
+    expect(offered(unfiled)).toBe(false)
+    expect(text(state(unfiled), 100, 60, view({ selected: 6 }))).not.toContain('v says it is still true')
+    expect(text(state(answer()), 100, 60, view({ selected: 6 }))).toContain('v says it is still true')
   })
 
   it('asks before a write, in the card, and offers only y and n meanwhile', () => {

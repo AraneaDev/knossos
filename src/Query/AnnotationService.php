@@ -47,14 +47,10 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             throw new InvalidArgumentException(sprintf('%s holds no model %s to confirm.', $component, $kind));
         }
         $target = $this->target($projectId, $component, $kind, '', 'model');
-        // The same files as before, hashed as they are now: the component's own, and the evidence it cited.
-        $paths = [];
-        foreach (json_decode((string) $basis, true) ?: [] as $entry) {
-            if (is_array($entry) && is_string($entry['path'] ?? null)) {
-                $paths[] = $entry['path'];
-            }
+        $fresh = $this->confirmedBasis($projectId, $component, (string) $basis);
+        if ($fresh === []) {
+            throw new InvalidArgumentException(sprintf('%s rests on no file, so there is nothing to confirm its note against.', $component));
         }
-        $fresh = $this->basis($projectId, $component, array_slice($paths, 0, self::MAX_EVIDENCE_PATHS));
         if (!$execute) {
             return $this->preview($projectId, $target, $kind, 'confirm', ['value' => (string) ($target['existing']['value'] ?? '')]);
         }
@@ -62,6 +58,34 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             ->execute(['basis' => json_encode($fresh, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'project' => $projectId, 'name' => $component, 'kind' => $kind]);
 
         return $this->executed($projectId, $target, $kind, 'confirm', 'Confirmed', $this->fetch($projectId, $component, $kind, 'model'));
+    }
+
+    /**
+     * The files a confirmed note rests on, hashed as they are now: the
+     * component's own, and each file it cited that the scan or the disk still
+     * holds, up to {@see self::MAX_EVIDENCE_PATHS} of those. A cited file gone
+     * from both was looked past by the person who confirmed it.
+     *
+     * @return list<array{path: string, hash: string}>
+     */
+    private function confirmedBasis(string $projectId, string $component, string $stored): array
+    {
+        $own = array_column($this->basis($projectId, $component, []), 'path');
+        $root = (string) $this->project($projectId)['root_realpath'];
+        $scanned = $this->pdo->prepare('SELECT 1 FROM files WHERE project_id = :project AND relative_path = :path');
+        $cited = [];
+        foreach (json_decode($stored, true) ?: [] as $entry) {
+            $path = is_array($entry) ? ($entry['path'] ?? null) : null;
+            if (!is_string($path) || in_array($path, $own, true) || in_array($path, $cited, true)) {
+                continue;
+            }
+            $scanned->execute(['project' => $projectId, 'path' => $path]);
+            if ($scanned->fetchColumn() !== false || ProjectFileHash::current($root, $path) !== null) {
+                $cited[] = $path;
+            }
+        }
+
+        return $this->basis($projectId, $component, array_slice($cited, 0, self::MAX_EVIDENCE_PATHS));
     }
 
     /**

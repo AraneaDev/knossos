@@ -151,7 +151,7 @@ describe('X on the Notes tab', () => {
 describe('g on the Notes tab', () => {
     it("takes a reason for flagging the model's note, and Enter flags it", async () => {
         // Plain has no place, so it lives under no boundary, opened here: 0 Target (flagged), 1 core, 2 src/, 3 Target, 4 Mine, 5 no boundary, 6 its folder, 7 Plain.
-        const port = fakePort({ selected: 7, folds: ['notes:b:'] }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, missing: [], rest: [row('App\\Plain'), ...NOTES.groups.rest] } } } })
+        const port = fakePort({ selected: 7, folds: ['notes:b+:'] }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, missing: [], rest: [row('App\\Plain'), ...NOTES.groups.rest] } } } })
         await port.press('notes-flag')
         expect(port.view().notesAsk).toEqual({ action: 'check', component: 'App\\Plain', author: 'model', kind: 'note', value: '' })
         await port.runTimers()
@@ -228,7 +228,7 @@ describe('leaving a question or a move', () => {
 
     it('drops the flag question on n, writing nothing', async () => {
         // An unplaced, unflagged Target: 0 Gone, 1 core, 2 src/, 3 Mine, 4 no boundary (opened), 5 its folder, 6 Gone, 7 Target.
-        const port = fakePort({ selected: 7, folds: ['notes:b:'] }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, rest: [row('App\\Target'), ...NOTES.groups.rest.slice(1)] } } } })
+        const port = fakePort({ selected: 7, folds: ['notes:b+:'] }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, rest: [row('App\\Target'), ...NOTES.groups.rest.slice(1)] } } } })
         await port.press('notes-flag')
         expect(port.view().notesAsk?.action).toBe('check')
         await port.press('notes-no')
@@ -240,7 +240,7 @@ describe('leaving a question or a move', () => {
 
 describe('m on a note of several lines', () => {
     it('seeds the editor with it on one line, which the wrapper takes', async () => {
-        const port = fakePort({ selected: 7, folds: ['notes:b:'] }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, rest: [row('App\\Target', { value: 'First line.\n\nSecond  paragraph.' }), ...NOTES.groups.rest.slice(1)] } } } })
+        const port = fakePort({ selected: 7, folds: ['notes:b+:'] }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, rest: [row('App\\Target', { value: 'First line.\n\nSecond  paragraph.' }), ...NOTES.groups.rest.slice(1)] } } } })
         await port.press('notes-edit')
         expect(port.note()?.value).toBe('First line. Second paragraph.')
     })
@@ -268,6 +268,16 @@ describe('v on the Notes tab', () => {
         expect(port.runs).toEqual([['sh', RUN, 'note-confirm', ROOT, '--component=App\\Old', '--execute']])
         expect(request).toHaveBeenCalledWith(port.io, 'notes')
         expect(port.said()).toBe('✓ the note on Old is still true')
+    })
+
+    it('does nothing on a stale note of another kind, nor on one that rests on no file', async () => {
+        for (const over of [{ kind: 'intentional' }, { stale_reason: 'rests on no scanned file' }]) {
+            const stale = row('App\\Old', { stale: true, stale_reason: 'written before src/Old.php changed', path: 'src/Old.php', boundary: 'core', updated_at: '2026-10-16T11:03:00Z', ...over })
+            const port = fakePort({ selected: 4 }, { notes: { ...STATE, answer: { ...NOTES, groups: { ...NOTES.groups, stale: [stale] } } } })
+            await port.press('notes-confirm')
+            await port.runTimers()
+            expect(port.runs, JSON.stringify(over)).toEqual([])
+        }
     })
 
     it('does nothing on a note that is not stale, nor on a group\'s row', async () => {

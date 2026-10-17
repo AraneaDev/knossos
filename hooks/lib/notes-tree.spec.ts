@@ -47,7 +47,7 @@ describe('the notes as a tree', () => {
     const needs = lines.filter(l => l.kind === 'needs').map(l => (l.kind === 'needs' ? l.item.component : ''))
     expect(needs).toEqual(['App\\Gone', 'App\\Store\\Db'])
     // They stay in the tree too, under where they live.
-    expect(notesTree(items, ['notes:b:Store'], false).some(l => l.kind === 'note' && l.item.component === 'App\\Store\\Db')).toBe(true)
+    expect(notesTree(items, ['notes:b+:Store'], false).some(l => l.kind === 'note' && l.item.component === 'App\\Store\\Db')).toBe(true)
   })
 
   it('lists boundaries by name, the notes with none last, each folded but the first open one, its folders open', () => {
@@ -67,18 +67,38 @@ describe('the notes as a tree', () => {
   })
 
   it('flips a group from its default by its key: a closed boundary opens, an open folder closes', () => {
-    const lines = notesTree(items, ['notes:b:Query', 'notes:f:Query:src/Query'], false)
+    const lines = notesTree(items, ['notes:b+:Query', 'notes:f:Query:src/Query'], false)
     const query = lines.slice(lines.findIndex(l => l.kind === 'boundary' && l.name === 'Query'))
-    expect(query[0]).toMatchObject({ open: true, fold: 'notes:b:Query' })
+    expect(query[0]).toMatchObject({ open: true, fold: 'notes:b-:Query' })
     expect(query[1]).toMatchObject({ kind: 'folder', path: 'src/Query', open: false, fold: 'notes:f:Query:src/Query' })
     expect(query[2]).toMatchObject({ kind: 'folder', path: 'src/Query/Drift', open: true })
     expect(query[3]).toMatchObject({ kind: 'note', item: { component: 'App\\Query\\Drift\\Probe' } })
     // The first open boundary closes the same way.
-    expect(notesTree(items, ['notes:b:hooks'], false).find(l => l.kind === 'boundary' && l.name === 'hooks')).toMatchObject({ open: false })
+    expect(notesTree(items, ['notes:b-:hooks'], false).find(l => l.kind === 'boundary' && l.name === 'hooks')).toMatchObject({ open: false })
+  })
+
+  it('keeps a boundary as the person left it when the newest note moves elsewhere', () => {
+    // Query opened by hand, hooks closed by hand: the line's key says which way, and the opposite key it replaces.
+    const lines = notesTree(items, ['notes:b+:Query', 'notes:b-:hooks'], false)
+    expect(lines.find(l => l.kind === 'boundary' && l.name === 'Query')).toMatchObject({ open: true, fold: 'notes:b-:Query', contrary: 'notes:b+:Query' })
+    expect(lines.find(l => l.kind === 'boundary' && l.name === 'hooks')).toMatchObject({ open: false, fold: 'notes:b+:hooks', contrary: 'notes:b-:hooks' })
+    // The model writes a newer note in Query: it stays open, and hooks stays closed.
+    const moved = [...items, note('App\\Query\\New', { path: 'src/Query/New.php', updated: '2026-10-17T09:00:00Z' })]
+    expect(notesTree(moved, ['notes:b+:Query'], false).find(l => l.kind === 'boundary' && l.name === 'Query')).toMatchObject({ open: true })
+    expect(notesTree(moved, ['notes:b-:hooks'], false).find(l => l.kind === 'boundary' && l.name === 'hooks')).toMatchObject({ open: false })
+    // And Query, now first, closes by hand the same way.
+    expect(notesTree(moved, ['notes:b-:Query'], false).find(l => l.kind === 'boundary' && l.name === 'Query')).toMatchObject({ open: false })
+  })
+
+  it('puts a note on no file straight under its boundary, with no folder row', () => {
+    const lines = notesTree(items, ['notes:b+:'], false)
+    const none = lines.slice(lines.findIndex(l => l.kind === 'boundary' && l.name === null) + 1)
+    expect(none).toHaveLength(1)
+    expect(none[0]).toMatchObject({ kind: 'note', item: { component: 'App\\Gone' } })
   })
 
   it('opens every group while searching, so every match shows', () => {
-    const lines = notesTree(items, ['notes:b:hooks'], true)
+    const lines = notesTree(items, ['notes:b-:hooks'], true)
     expect(lines.filter(l => (l.kind === 'boundary' || l.kind === 'folder') && !l.open)).toEqual([])
     expect(lines.filter(l => l.kind === 'note')).toHaveLength(items.length)
   })

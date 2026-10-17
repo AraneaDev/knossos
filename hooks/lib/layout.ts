@@ -58,7 +58,7 @@ import { dotGlyph, grown, NO_MOTION, spinGlyph } from './motion'
 import type { Motion } from './motion'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
-import { markedNote, notesArrangement, notesInput, notesList } from './notes-view'
+import { confirmable, markedNote, notesArrangement, notesInput, notesList } from './notes-view'
 import type { NotesInput } from './notes-view'
 import { ringsInput } from './rings'
 import { routeArrangement, routeInput, routeList } from './route'
@@ -981,7 +981,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
     if (note !== undefined && !note.missing) actions.push(button('notes-edit', note.author === 'user' ? 'edit' : 'adopt', 'm'))
     if (note !== undefined) actions.push(button('notes-remove', 'remove', 'w'))
     if (note !== undefined && !note.missing && note.author === 'model') actions.push(button('notes-flag', note.checked ? 'unflag' : 'flag', 'g'))
-    if (note !== undefined && !note.missing && note.author === 'model' && note.stale) actions.push(button('notes-confirm', 'still true', 'v'))
+    if (note !== undefined && confirmable(note)) actions.push(button('notes-confirm', 'still true', 'v'))
     actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'))
     if (input.notes.filter !== 'all' || input.notes.text !== '') actions.push(button('notes-clear', 'clear', 'x'))
   }

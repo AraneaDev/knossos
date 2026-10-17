@@ -9,7 +9,7 @@
  */
 import type { KnossosView, NoteState, NotesAsk } from '../../types'
 import { BUSY_CODE, BUSY_SAID, parseNoteWrite } from '../lib/envelopes'
-import { labelOf, markedNote, notesInput } from '../lib/notes-view'
+import { confirmable, labelOf, markedNote, notesInput } from '../lib/notes-view'
 import type { NoteItem } from '../lib/notes-view'
 import { request, showComponent } from './loaders'
 import { disable, say, wrapper } from './port'
@@ -123,7 +123,7 @@ function doneSaid(q: NotesAsk): string {
  */
 export async function confirmMarked(io: Port): Promise<void> {
   const n = await marked(io)
-  if (n === null || n.missing || !n.stale || n.author !== 'model') return
+  if (n === null || !confirmable(n)) return
   const q: NotesAsk = { action: 'confirm', component: n.component, author: 'model', kind: n.kind }
   io.clock.after(0, () => void write(io, q).catch(() => undefined))
 }

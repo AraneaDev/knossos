@@ -70,7 +70,7 @@ async function openRow(io: Port, index?: number): Promise<void> {
   const fold = item.fold
   if (fold !== undefined) {
     await io.state.view.update((v): KnossosView => {
-      const open = v.folds ?? []
+      const open = (v.folds ?? []).filter(f => f !== item.contrary)
       return { ...v, folds: open.includes(fold) ? open.filter(f => f !== fold) : [...open, fold] }
     })
     return

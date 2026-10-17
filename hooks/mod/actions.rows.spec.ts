@@ -127,6 +127,13 @@ describe('opening a row', () => {
         expect(showComponent).not.toHaveBeenCalled()
     })
 
+    it('drops the contrary key a fold replaces, so a group never holds both directions', async () => {
+        list([item('core', { fold: 'notes:b-:core', contrary: 'notes:b+:core', inert: true })])
+        const { io, view } = port({ folds: ['branch:http', 'notes:b+:core'] } as Partial<KnossosView>)
+        await press(io, 'row:0')
+        expect(view()).toMatchObject({ selected: 0, folds: ['branch:http', 'notes:b-:core'] })
+    })
+
     it('switches to the tab a chart bar jumps to, and opens nothing', async () => {
         list([item('bar', { jump: { tab: 'boundaries', selected: 3, degree: { from: 2, to: 9 }, target: 'App\\Core' } })])
         const { io, view } = port({ filtering: true, drift: true } as Partial<KnossosView>)

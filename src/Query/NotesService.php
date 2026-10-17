@@ -189,7 +189,11 @@ final readonly class NotesService
      */
     public function confirm(string $path, string $component, string $kind = 'note', bool $execute = false): array
     {
-        return $this->write($path, static fn(ArchitectureQueryService $queries, string $projectId): array => self::answered($queries->confirmAnnotation($projectId, $component, $kind, $execute)->data, 'confirm'));
+        return $this->write($path, static function (ArchitectureQueryService $queries, string $projectId) use ($component, $kind, $execute): array {
+            self::assertNamesItself($queries, $projectId, $component);
+
+            return self::answered($queries->confirmAnnotation($projectId, $component, $kind, $execute)->data, 'confirm');
+        });
     }
 
     /**
@@ -221,7 +225,9 @@ final readonly class NotesService
             "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status, " .
             "(SELECT c.value FROM annotations c WHERE c.project_id = a.project_id AND c.canonical_name = a.canonical_name AND c.kind = :check AND c.author = 'user') AS check_reason, " .
             // Where it lives: the file its component is in (the first by path); its boundary is that file's label, below.
-            '(SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1) AS path ' .
+            '(SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1) AS path, ' .
+            // A file no worker scans (NamedFiles) has no file row: it lives at its own name.
+            "(SELECT n.id FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name AND n.kind = 'file' AND n.file_id IS NULL LIMIT 1) AS unread " .
             'FROM annotations a WHERE a.project_id = :project AND a.kind <> :check ORDER BY a.canonical_name, a.kind, a.author LIMIT ' . (self::MAX_ROWS + 1),
         );
         $statement->execute(['project' => $projectId, 'check' => AnnotationService::CHECK]);
@@ -231,7 +237,12 @@ final readonly class NotesService
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
         // Each file's own boundary, as the fan-in map and the Branch tab label it: the most specific, never one spanning the repository.
         $paths = array_values(array_unique(array_filter(array_map(static fn(array $row): ?string => $row['path'] === null ? null : (string) $row['path'], $rows), 'is_string')));
-        $labels = $paths === [] ? [] : BoundaryLabels::load($this->pdo, $projectId)->forFiles($projectId, $paths);
+        $unread = array_values(array_filter(array_map(static fn(array $row): ?string => $row['path'] === null && $row['unread'] !== null ? (string) $row['unread'] : null, $rows), 'is_string'));
+        [$labels, $unreadLabels] = [[], []];
+        if ($paths !== [] || $unread !== []) {
+            $boundaries = BoundaryLabels::load($this->pdo, $projectId);
+            [$labels, $unreadLabels] = [$paths === [] ? [] : $boundaries->forFiles($projectId, $paths), $unread === [] ? [] : $boundaries->forNodes($unread)];
+        }
 
         return [array_map(static fn(array $row, ?string $reason): array => [
             'component' => (string) $row['canonical_name'],
@@ -244,9 +255,28 @@ final readonly class NotesService
             'stale_reason' => $reason,
             'checked' => $row['check_reason'] !== null,
             'check_reason' => $row['check_reason'] === null ? null : (string) $row['check_reason'],
-            'path' => $row['path'] === null ? null : (string) $row['path'],
-            'boundary' => $row['path'] === null ? null : ($labels[(string) $row['path']] ?? null),
-        ], $rows, $reasons), $truncated];
+        ] + self::placed($row, $labels, $unreadLabels), $rows, $reasons), $truncated];
+    }
+
+    /**
+     * Where a note's row lives: the file its component is in and that file's
+     * boundary; for a file no worker scans, its own name and its node's.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, string> $labels by path
+     * @param array<string, string> $unreadLabels by node id
+     * @return array{path: ?string, boundary: ?string}
+     */
+    private static function placed(array $row, array $labels, array $unreadLabels): array
+    {
+        if ($row['path'] !== null) {
+            return ['path' => (string) $row['path'], 'boundary' => $labels[(string) $row['path']] ?? null];
+        }
+        if ($row['unread'] !== null) {
+            return ['path' => (string) $row['canonical_name'], 'boundary' => $unreadLabels[(string) $row['unread']] ?? null];
+        }
+
+        return ['path' => null, 'boundary' => null];
     }
 
     /** Whether a row passes the tab's filter. @param array<string, mixed> $row */

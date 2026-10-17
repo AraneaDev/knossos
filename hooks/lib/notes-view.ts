@@ -14,7 +14,7 @@ import type { NoteCounts, NoteRow, Notes, NotesAsk, NotesFilter, NotesState } fr
 import { moreRows, noteOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { CARD_ICON, NOTE, SEVERITY, mark } from './marks'
-import { boundaryLabel, NO_HUES, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryLabel, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { button, cells, chip, clip, dimRow, fit, grouped, plural, segmentsWidth, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
@@ -110,10 +110,16 @@ export function notesInput(state: NotesState | null, filter: NotesFilter, text: 
     counts: answer.counts,
     groups,
     truncated: answer.truncated === true,
-    // Narrowed by text, every group is open, so every match shows.
-    walk: notesTree([...groups.missing, ...groups.stale, ...groups.rest], folds, text !== ''),
+    // Narrowed by text or a filter, every group is open, so every match shows.
+    walk: notesTree([...groups.missing, ...groups.stale, ...groups.rest], folds, text !== '' || filter !== 'all'),
   }
 }
+
+/** The stale reason of a note no file backs (`AnnotationNotes::staleReason`): confirming it would rest it on nothing. */
+const ON_NO_FILE = 'rests on no scanned file'
+
+/** Whether `v` can say a note is still true: a stale plain note of the model's on a name the graph holds, resting on a file. */
+export const confirmable = (n: NoteItem): boolean => n.author === 'model' && n.kind === 'note' && n.stale && !n.missing && n.staleReason !== ON_NO_FILE
 
 /** The note the marker stands on, or null on a boundary's or a folder's row (or with nothing listed). */
 export function markedNote(input: NotesInput, selected: number): NoteItem | null {
@@ -127,7 +133,7 @@ export const notesItems = (input: NotesInput): NoteItem[] => [...input.groups.mi
 /** The rows the tab walks: a note opens its component's detail, except one on a name the graph no longer holds; a group folds. */
 export const notesList = (input: NotesInput): Openable[] =>
   input.walk.map((line): Openable => {
-    if (line.kind === 'boundary') return { name: line.name ?? 'no boundary', canonical: line.name ?? '', inert: true, fold: line.fold }
+    if (line.kind === 'boundary') return { name: line.name ?? 'no boundary', canonical: line.name ?? '', inert: true, fold: line.fold, contrary: line.contrary }
     if (line.kind === 'folder') return { name: `${line.path}/`, canonical: line.path, inert: true, fold: line.fold }
     const n = line.item
     return { name: noteName(n), canonical: n.component, ...(n.missing ? { inert: true as const } : {}), ask: `What is the ${n.author === 'user' ? 'person' : 'model'}'s note on ${n.component} about, and does it still hold?` }
@@ -166,7 +172,14 @@ const LIST_MIN = 5
 const DETAIL_LINES = 12
 
 /** A note's row: its mark (missing, flagged), its name, who wrote it, its kind when not a plain note, its first line; stale as a quiet `≈` at its end, then its day. */
-function noteEntry(n: NoteItem, at: number, selected: number, indent: number): Entry {
+/** A line with the first hit of `text` in it marked, in any case; the line alone when it holds none. */
+function withHit(line: string, text: string): Segment[] {
+  const at = text === '' ? -1 : line.toLowerCase().indexOf(text.toLowerCase())
+  if (at < 0) return [{ text: line }]
+  return [{ text: line.slice(0, at) }, { text: line.slice(at, at + text.length), color: ACCENT, bold: true }, { text: line.slice(at + text.length) }].filter(s => s.text !== '')
+}
+
+function noteEntry(n: NoteItem, at: number, selected: number, indent: number, text: string): Entry {
   const who = n.author === 'user' ? 'you' : 'model'
   const kind = n.kind === 'note' ? '' : ` ${n.kind}`
   const name = noteName(n)
@@ -177,7 +190,7 @@ function noteEntry(n: NoteItem, at: number, selected: number, indent: number): E
     ...(mark0 === undefined ? {} : { mark: mark0 }),
     place: `${n.date}${n.stale ? ` ${NOTE.stale.glyph}` : ''}`,
     need: lead + cells(n.line),
-    main: width => [{ text: ' '.repeat(indent) }, button(`row:${at}`, fit(name, Math.max(1, width - 8 - indent))), { text: `  ${who}${kind}  `, dim: true }, { text: fit(n.line, Math.max(0, width - lead)) }],
+    main: width => [{ text: ' '.repeat(indent) }, button(`row:${at}`, fit(name, Math.max(1, width - 8 - indent))), { text: `  ${who}${kind}  `, dim: true }, ...withHit(fit(n.line, Math.max(0, width - lead)), text)],
   }
 }
 
@@ -196,7 +209,7 @@ function detailSection(n: NoteItem, columns: number, hues: Hues): Section {
   const place: Row = { key: 'notes-detail-place', segments: clip([{ text: '   ' }, { text: n.path ?? 'on a name the graph no longer holds', dim: n.path === null }, ...(n.boundary === null ? [] : [{ text: '  ' }, ...chip(n.boundary, hues)])], columns) }
   const why: Row[] = [
     ...(n.missing ? [{ text: 'Its component is gone: o finds where the note goes.', tone: STATUS_COLOURS.alert }] : []),
-    ...(n.stale && n.staleReason !== null ? [{ text: `Stale: ${n.staleReason}. v says it is still true.`, tone: STATUS_COLOURS.warn }] : []),
+    ...(n.stale && n.staleReason !== null ? [{ text: `Stale: ${n.staleReason}.${confirmable(n) ? ' v says it is still true.' : ''}`, tone: STATUS_COLOURS.warn }] : []),
     ...(n.checked ? [{ text: `Flagged for the model${n.checkReason !== null && n.checkReason !== '' ? `: ${n.checkReason}` : '.'}`, tone: STATUS_COLOURS.warn }] : []),
   ].flatMap((w, i) => wrapWords(w.text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `notes-detail-why-${i}-${j}`, segments: [{ text: `   ${part}`, color: w.tone }] })))
   const lines = n.value.split('\n').flatMap((para, i) => (para.trim() === '' ? [''] : wrapWords(para, Math.max(1, columns - 3)).map(part => part)).map((part, j) => ({ part, key: `${i}-${j}` })))
@@ -234,7 +247,7 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
         return { key: 'notes', title, note, body: [...head, ...wrapWords(empty, Math.max(1, columns)).map((line, i) => dimRow(`notes-none-${i}`, line, columns))] }
       }
       const entries: Entry[] = walk.map((line, i) =>
-        line.kind === 'needs' ? noteEntry(line.item, i, selected, 0) : line.kind === 'note' ? noteEntry(line.item, i, selected, 6) : groupEntry(line, i, selected, hues),
+        line.kind === 'needs' ? noteEntry(line.item, i, selected, 0, input.text) : line.kind === 'note' ? noteEntry(line.item, i, selected, 6, input.text) : groupEntry(line, i, selected, hues),
       )
       const spec = entrySpec(columns, entries, hues)
       const needs = walk.findIndex(l => l.kind === 'needs')

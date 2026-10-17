@@ -70,6 +70,8 @@ export type Openable = {
   jump?: Jump
   /** Heads a group the tab folds (a Branch boundary): `o` folds or unfolds it, by this key in the view's `folds`. */
   fold?: string
+  /** The opposite key `fold` replaces (a Notes boundary set open replaces the one that set it closed). */
+  contrary?: string
 }
 
 /**
