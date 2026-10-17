@@ -139,9 +139,17 @@ describe('notes on a component detail', () => {
   const said = (n: NoteState | null, columns = 100) => rows(n, columns).map(plainText).join('\n')
   const presses = (n: NoteState | null) => rows(n).flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
 
-  it('offers m to add one, and says there is none yet', () => {
+  const footerPresses = (n: NoteState | null) =>
+    paneLayout(pane(null, view(), n), 100, 80).footer.flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
+
+  it('offers m to add one in the footer, where it is never scrolled away, and says there is none yet', () => {
     expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\./)
-    expect(presses(null)).toContain('note=m')
+    expect(footerPresses(null)).toContain('note=m')
+    // The card's own button is a click under a key of its own (two Buttons may not share one), not a second m.
+    expect(presses(null)).toContain('note-card')
+    expect(presses(null)).not.toContain('note=m')
+    // While a note is under way the field and its question have the keys.
+    for (const phase of ['editing', 'confirming'] as const) expect(footerPresses(note({ phase }))).not.toContain('note=m')
   })
 
   it('takes the note in a field, asks before recording it, and says what it replaces', () => {
@@ -152,10 +160,10 @@ describe('notes on a component detail', () => {
     const asked = said(note({ phase: 'confirming', previous: 'Pure: no I/O.' }))
     expect(asked.replace(/\s+/g, ' ')).toContain('Record this note on StableId? "Keep it pure" It replaces: "Pure: no I/O."')
     expect(presses(note({ phase: 'confirming' }))).toEqual(expect.arrayContaining(['note-yes=y', 'note-no=n']))
-    expect(presses(note({ phase: 'confirming' }))).not.toContain('note=m')
+    expect([...presses(note({ phase: 'confirming' })), ...footerPresses(note({ phase: 'confirming' }))]).not.toContain('note=m')
     expect(said(note({ phase: 'saving' }))).toContain('recording…')
     expect(said(note({ phase: 'failed', reason: 'kind must be one of: note.' }))).toContain('✗ knossos did not record it: kind must be one of: note.')
-    expect(presses(note({ phase: 'failed' }))).toContain('note=m')
+    expect(footerPresses(note({ phase: 'failed' }))).toContain('note=m')
   })
 
   it('answers by press alone while the allow-root question holds y and n', () => {
