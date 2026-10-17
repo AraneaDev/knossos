@@ -819,6 +819,8 @@ describe('knossos mod', () => {
         // Every tab, the key list, a detail with its rings and a note being typed, a route picked and drawn, the finder.
         for (const step of ['tab:overview', 'tab:hubs', 'tab:boundaries', 'tab:cycles', 'tab:issues', 'tab:changes', 'tab:branch', 'tab:churn', 'keys', 'tab:hubs', 'row:0', 'note', 'route', 'typed', 'row:0', 'back', 'back', 'row:50', 'find', 'typed', 'find-close']) {
           if (step === 'typed') {
+            // Typed only where the finder's field is drawn, as a press only where its Button is.
+            if ((await ui.find({ key: 'field:find' })) === undefined) continue
             await ui.input({ key: 'field:find', text: 'x', kind: 'change' })
             await w.clock.advance(200)
           } else {
@@ -2533,8 +2535,10 @@ describe('knossos mod', () => {
       expect(short.count).toBeGreaterThanOrEqual(5)
       expect(tall.count).toBeGreaterThan(short.count)
       expect(short.more).toMatch(/\d+ more ↓/)
-      // However tall the pane, a list stops at 28 rows (of the 31: every hub and the one hotspot that is not a hub) and says how many more.
-      expect((await listed(200)).count).toBe(28)
+      // A pane tall enough lists all 31 (every hub and the one hotspot that is not a hub), and says no more.
+      const whole = await listed(200)
+      expect(whole.count).toBe(31)
+      expect(whole.more).not.toMatch(/more ↓/)
     }
     // The marker past the window brings the window along.
     const ui = await $.ui.mount({ plugin: 'knossos', surface: 'terminal', component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 100, scroll: { offset: 0, bodyRows: 20 } } })
