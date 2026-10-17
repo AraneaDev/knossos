@@ -117,7 +117,7 @@ help text and schemas they come from, never the Markdown.
   how do I run them locally?
 - [Coverage policy](contribute/coverage.md): which coverage floors apply, and
   where are they measured?
-- [Maintainability ratchets](contribute/maintainability.md): which budgets keep
+- [Maintainability ratchets](contribute/quality.md#maintainability-ratchets): which budgets keep
   the code from growing worse?
 - [Adversarial testing](contribute/adversarial-testing.md): which property,
   fuzz, differential and mutation tests guard the trust boundaries?

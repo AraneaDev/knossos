@@ -21,7 +21,7 @@ your project. You get these kinds of fact:
 | Boundary   | A named group of components, either declared by you or inferred from the project's manifests and namespaces.                                    |
 | Role       | A classification of one component, such as `quality.test_module` or `application.service`, with the rule that assigned it.                      |
 | Diagnostic | A warning or error about the scan itself: a file too large, a symlink skipped, a syntax error.                                                  |
-| Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](../guides/history.md).                                         |
+| Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](../guides/history.md).                               |
 
 A project file no worker reads, such as a shell script or a CI tool, is a
 component of kind `file` once something names it: a `launches` edge from code
