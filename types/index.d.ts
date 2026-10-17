@@ -569,6 +569,9 @@ export type NoteRow = {
   stale_reason: string | null
   checked: boolean
   check_reason: string | null
+  /** The file its component is in and that component's boundary; absent from an older knossos, null for a missing name. */
+  path?: string | null
+  boundary?: string | null
 }
 
 /** How many notes the project holds, and how many need the person: on a missing name, stale, flagged. */

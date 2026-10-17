@@ -38,11 +38,16 @@ export type NoteItem = {
   value: string
   line: string
   date: string
+  /** When it was written, whole: what orders the tree's notes and picks the boundary opened first. */
+  updated: string
   missing: boolean
   stale: boolean
   staleReason: string | null
   checked: boolean
   checkReason: string | null
+  /** The file its component is in (a file note's own path), and that component's boundary; null when knossos does not say. */
+  path: string | null
+  boundary: string | null
 }
 
 /** The Notes tab's view of the answer. */
@@ -75,11 +80,14 @@ const itemOf = (row: NoteRow): NoteItem => ({
   value: row.value,
   line: row.value.split('\n')[0]?.trim() ?? '',
   date: row.updated_at.slice(0, 10),
+  updated: row.updated_at,
   missing: row.component_status === 'missing',
   stale: row.stale,
   staleReason: row.stale_reason,
   checked: row.checked,
   checkReason: row.check_reason,
+  path: row.path ?? null,
+  boundary: row.boundary ?? null,
 })
 
 /** The tab's view of the stored answer, with the filter and text the view holds and whether the field is open. */
