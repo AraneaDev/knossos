@@ -158,6 +158,12 @@ and the list follows. A list the marker does not walk (the tests that reach the
 changes) keeps it as text. A pane too short for even a few rows scrolls as a
 whole.
 
+The mouse wheel over a list cut short scrolls that list, as a browser does:
+the marker stays where it is and may scroll out of view, and each list keeps
+its own place. Moving the marker (`j`, `k`, a click), switching tab or opening
+a detail brings every list back to the marker. Over a list that shows whole,
+at a list's end, or anywhere else, the wheel scrolls the pane.
+
 ### Keys
 
 Every key is also a button, so a click works as well. The footer bar at the

@@ -10,7 +10,7 @@
 import type { Dashboard, DetailState, Drifted, FileDetail, Inspected } from '../../types'
 import { rankIn, reachRows, statusMark } from './changes'
 import { diffBlock } from './diff'
-import { moreRows, noteOf, windowOf } from './cards'
+import { moreRows, noteOf, windowOf, shownOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { fileDetailLines } from './envelopes'
 import { boundaryLabel, NO_HUES } from './palette'
@@ -178,18 +178,18 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
   const compBlock: Block = {
     key: 'comps',
     grow: { length: comps.items.length, min: LIST_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const spec = countedSpec(columns, comps.items.map(c => c.name), [], comps.items.map(c => c.usedBy), tier)
       const rows: Row[] = []
       if (comps.items.length === 0) rows.push(dimRow('comps-none', '   none', columns))
       const max = Math.max(0, ...comps.items.map(c => c.usedBy))
-      const window = windowOf(comps.items.length, limit, selected >= offset ? selected - offset : -1)
+      const window = windowOf(comps.items.length, limit, selected >= offset ? selected - offset : -1, scrolled)
       comps.items.slice(window.start, window.end).forEach((c, n) => {
         const i = offset + window.start + n
         rows.push(tableRow(`comp-${window.start + n}`, { name: c.name, boundary: null, values: [c.usedBy], max, selected: i === selected, press: `row:${i}` }, spec, hues))
       })
       rows.push(...moreRows('comps-window', window, comps.items.length, columns, offset), ...moreRow('comps-more', comps.count, comps.items.length, columns))
-      return { key: 'comps', title: 'Declares', subtitle: plural(comps.count, 'component', 'components'), note: noteOf(comps.items.length > 0 ? 'used by' : ''), body: rows }
+      return { key: 'comps', title: 'Declares', subtitle: plural(comps.count, 'component', 'components'), note: noteOf(comps.items.length > 0 ? 'used by' : ''), body: rows, window: shownOf(window, comps.items.length) }
     },
   }
   return { top: [head], left: [reached, compBlock], bottom: diff, order: [head, reached, ...diff, compBlock] }
@@ -215,15 +215,15 @@ export const driftList = (drift: DriftInput): Openable[] => drift.items.map(i =>
  * its own boundary, `limit` of them around the marker, then how many more
  * there are.
  */
-export function driftSection(drift: DriftInput, columns: number, limit: number, hues: Hues = NO_HUES, selected = -1): Section {
+export function driftSection(drift: DriftInput, columns: number, limit: number, hues: Hues = NO_HUES, selected = -1, scrolled?: number): Section {
   const spec = { ...tableSpec(columns, drift.items.map(i => i.path), drift.items.map(i => boundaryLabel(i.boundary)), [], PATH_MAX), bar: 0 }
   const note = drift.truncated && drift.count <= drift.items.length ? `${drift.count}+` : String(drift.count)
-  const window = windowOf(drift.items.length, limit, selected)
+  const window = windowOf(drift.items.length, limit, selected, scrolled)
   const rows: Row[] = drift.items
     .slice(window.start, window.end)
     .map((i, n) =>
       tableRow(`drift-${window.start + n}`, { name: i.path, boundary: i.boundary, values: [], max: 0, selected: window.start + n === selected, mark: statusMark(i.change), path: true, press: `row:${window.start + n}` }, spec, hues),
     )
   rows.push(...moreRows('drift-window', window, drift.items.length, columns, 0), ...moreRow('drift-more', drift.count, drift.items.length, columns))
-  return { key: 'drift', title: 'Drifted since the snapshot', note: noteOf(note), body: rows }
+  return { key: 'drift', title: 'Drifted since the snapshot', note: noteOf(note), body: rows, window: shownOf(window, drift.items.length) }
 }

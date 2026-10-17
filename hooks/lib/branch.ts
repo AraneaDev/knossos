@@ -16,7 +16,7 @@
  */
 import type { BranchDiff, BranchItem, BranchState } from '../../types'
 import { stamp } from './changes'
-import { noteOf, windowOf, moreRows } from './cards'
+import { noteOf, windowOf, moreRows, shownOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
@@ -294,18 +294,18 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
   const list: Block = {
     key: 'branch-changed',
     grow: { length: walk.length, min: CHANGED_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const total = `${plural(changed.count, 'file', 'files')}  +${grouped(changed.added)} ${CHANGE.removed.glyph}${grouped(changed.deleted)} · reach ${grouped(changed.reach)}${changed.truncated ? ' · first 300 listed' : ''}`
       const section = (body: Row[]): Section => ({ key: 'branch-changed', title: 'What changed', glyph: CARD_ICON['branch-files'], note: noteOf(changed.count === 0 ? 'none' : total), body })
       if (walk.length === 0) return section([])
       const widest = Math.min(24, Math.max(8, Math.floor(columns / 4)), Math.max(...changed.groups.map(g => cells(labelOf(g)))))
       const most = Math.max(1, ...changed.groups.map(g => g.added + g.deleted))
       const local = selected - at0
-      const window = windowOf(walk.length, limit, local >= 0 && local < walk.length ? local : -1)
+      const window = windowOf(walk.length, limit, local >= 0 && local < walk.length ? local : -1, scrolled)
       // The reach column's title over the figures it heads, both ending at the card's edge.
       const head: Row = { key: 'branch-changed-head', segments: [{ text: spaces(Math.max(0, columns - REACH_CELLS)) }, { text: padStart('reach', REACH_CELLS), dim: true }] }
       const rows = walk.slice(window.start, window.end).map((r, n) => (r.kind === 'group' ? groupRow(r.g, at0 + window.start + n, selected, widest, most, columns, hues) : fileRow(r.f, at0 + window.start + n, selected, columns)))
-      return section([head, ...rows, ...moreRows('branch-changed-window', window, walk.length, columns, at0)])
+      return { ...section([head, ...rows, ...moreRows('branch-changed-window', window, walk.length, columns, at0)]), window: shownOf(window, walk.length) }
     },
   }
   return { left: [head, list] }

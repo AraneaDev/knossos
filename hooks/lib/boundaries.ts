@@ -24,7 +24,7 @@ import type { Hues } from './palette'
 import { HEAT_KEYS } from './raster'
 import { blank, button, cells, dimRow, displayName, fit, grouped, numberWidth, padEnd, placeOf, spaces, SWATCH, tableHead, tableRow, tableSpec, wrapGroups } from './rows'
 import type { Row, Segment, TableSpec, Tier } from './rows'
-import { moreRows, noteOf, windowOf } from './cards'
+import { moreRows, noteOf, windowOf, shownOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { pairColumns, pairDiagram } from './diagram'
 import type { Openable } from './views'
@@ -234,11 +234,11 @@ const PER_TITLES = ['comps', 'in', 'out']
 const perValues = (b: BoundaryLine) => [b.members, b.in, b.out]
 
 /** Each boundary on its own row, pressable: its letter and name, a bar of its components, then components, in and out; `limit` of them around the marked one. */
-function perBoundaryRows(input: BoundariesInput, selected: number, columns: number, limit: number, tier: Tier, hues: Hues, lit: ReadonlySet<string> = new Set()): Row[] {
+function perBoundaryRows(input: BoundariesInput, selected: number, columns: number, limit: number, tier: Tier, hues: Hues, lit: ReadonlySet<string> = new Set(), scrolled?: number): { rows: Row[]; window: { start: number; shown: number; length: number } } {
   const { spec, names } = perBoundarySpec(input, columns, tier)
   const max = Math.max(0, ...input.boundaries.map(b => b.members))
-  const window = windowOf(input.boundaries.length, limit, selected)
-  return [
+  const window = windowOf(input.boundaries.length, limit, selected, scrolled)
+  const rows = [
     tableHead('bounds-cols', spec, { name: 'boundary', boundary: '', numbers: PER_TITLES }),
     ...input.boundaries
       .slice(window.start, window.end)
@@ -247,6 +247,7 @@ function perBoundaryRows(input: BoundariesInput, selected: number, columns: numb
       ),
     ...moreRows('bounds-window', window, input.boundaries.length, columns, 0),
   ]
+  return { rows, window: shownOf(window, input.boundaries.length) }
 }
 
 /**
@@ -474,7 +475,10 @@ export function boundariesArrangement(input: BoundariesInput | null, tier: Tier,
   const per: Block = {
     key: 'bounds-list',
     grow: { length: input.boundaries.length, min: PER_MIN },
-    make: (columns, limit) => ({ key: 'bounds-list', title: listed ? 'Boundaries' : 'Per boundary', note: noteOf(note), body: perBoundaryRows(input, marked, columns, limit, tier, hues, lit) }),
+    make: (columns, limit, scrolled) => {
+      const { rows, window } = perBoundaryRows(input, marked, columns, limit, tier, hues, lit, scrolled)
+      return { key: 'bounds-list', title: listed ? 'Boundaries' : 'Per boundary', note: noteOf(note), body: rows, window }
+    },
   }
   const focus: Block = { key: 'focus', make: columns => focusSection(input, marked, columns, hues, cell) }
   const coupling: Block[] = cell === null ? [] : [{ key: 'coupling', make: columns => couplingSection(input, cell, couplings, columns, hues) }]

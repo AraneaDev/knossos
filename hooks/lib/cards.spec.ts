@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arrange, BALANCE_SLACK, balanceColumns, besideRows, cardInner, cardRows, DEFAULT_ROWS, equalColumns, figures, fitBlocks, GLYPHS, gridColumns, gridRows, LIST_SOFT, moreRows, paneHeight, topRow, windowOf } from './cards'
+import { arrange, BALANCE_SLACK, balanceColumns, besideRows, cardInner, cardRows, DEFAULT_ROWS, equalColumns, figures, fitBlocks, GLYPHS, gridColumns, gridRows, LIST_SOFT, moreRows, paneHeight, scrolledTo, topRow, wheelMove, wheelTarget, windowOf } from './cards'
 import { issueGrid } from './views'
 import type { Block, Section } from './cards'
 import { rawText } from './__tests__/plain-text'
@@ -178,6 +178,12 @@ describe('lists sized to the height', () => {
     expect(windowOf(10, 20)).toEqual({ start: 0, end: 10 })
     expect(windowOf(10, 4)).toEqual({ start: 0, end: 4 })
     expect(windowOf(10, 4, 6)).toEqual({ start: 3, end: 7 })
+    // A start the wheel scrolled to wins over the marker, held inside the list.
+    expect(windowOf(10, 4, 0, 5)).toEqual({ start: 5, end: 9 })
+    expect(windowOf(10, 4, 9, 2)).toEqual({ start: 2, end: 6 })
+    expect(windowOf(10, 4, 0, 99)).toEqual({ start: 6, end: 10 })
+    expect(windowOf(10, 4, 0, -3)).toEqual({ start: 0, end: 4 })
+    expect(windowOf(3, 4, 0, 2)).toEqual({ start: 0, end: 3 })
     expect(windowOf(10, 4, 9)).toEqual({ start: 6, end: 10 })
   })
 })
@@ -452,4 +458,91 @@ describe('a card under a rule', () => {
             expect(rows.every(r => rowWidth(r) === 60)).toBe(true)
         })
     }
+})
+
+describe('a list the wheel scrolls', () => {
+  /** A list block that windows by the start it is handed, and says which window it shows. */
+  const scrollable = (key: string, length: number): Block => ({
+    key,
+    grow: { length, min: 3 },
+    make: (columns, limit, scrolled) => {
+      const window = windowOf(length, limit, 0, scrolled)
+      const body = Array.from({ length: window.end - window.start }, (_, n) => line(`${key}-${window.start + n}`, `item ${window.start + n}`))
+      return { key, title: key, body, window: { start: window.start, shown: window.end - window.start, length } }
+    },
+  })
+
+  it("hands each card the start the view holds for its key, and no other card's", () => {
+    const arrangement = scrolledTo({ left: [scrollable('a', 50), scrollable('b', 50)] }, { a: 20 })
+    const rows = fitBlocks(arrangement.left, 80, 'medium', 30)
+    expect(rows.some(r => r.key === 'a-20')).toBe(true)
+    expect(rows.some(r => r.key === 'a-0')).toBe(false)
+    expect(rows.some(r => r.key === 'b-0')).toBe(true)
+  })
+
+  it("tags every row of a card that windows a list with the list's span and window", () => {
+    const section = scrollable('a', 50).make(76, 5, 10)!
+    const rows = cardRows(section, 80, 'medium')
+    expect(rows.length).toBeGreaterThan(5)
+    for (const r of rows) expect(r.lists, r.key).toEqual([{ key: 'a', from: 0, to: 80, start: 10, shown: 5, length: 50 }])
+    // A card with no list window carries none.
+    expect(cardRows({ key: 'c', title: 'C', body: [line('c-0', 'x')] }, 80, 'medium').every(r => r.lists === undefined)).toBe(true)
+  })
+
+  it("keeps each side's span when two cards stand side by side, the right one's moved past the left and the gap", () => {
+    const left = cardRows(scrollable('a', 50).make(36, 3, 0)!, 40, 'medium')
+    const right = cardRows(scrollable('b', 50).make(36, 3, 7)!, 40, 'medium')
+    const rows = besideRows(left, right, 40)
+    expect(rows[2]!.lists).toEqual([
+      { key: 'a', from: 0, to: 40, start: 0, shown: 3, length: 50 },
+      { key: 'b', from: 42, to: 82, start: 7, shown: 3, length: 50 },
+    ])
+  })
+})
+
+describe('the list under the wheel', () => {
+  const span = (key: string, from: number, to: number, start = 0, shown = 5, length = 20) => ({ key, from, to, start, shown, length })
+  const rows: Row[] = [
+    { key: 'title', segments: [{ text: 'x' }] },
+    { key: 'a-0', segments: [{ text: 'x' }], lists: [span('a', 0, 40), span('b', 42, 82)] },
+    { key: 'diff', segments: [], code: { source: '@@ -1 +1 @@\n-a\n+b', path: 'a.ts' } },
+    { key: 'c-0', segments: [{ text: 'x' }], lists: [span('c', 0, 80, 3)] },
+  ]
+
+  it('finds the list whose card covers the cell under the pointer, rows counted as drawn', () => {
+    expect(wheelTarget(rows, 1, 10)).toEqual(span('a', 0, 40))
+    expect(wheelTarget(rows, 1, 50)).toEqual(span('b', 42, 82))
+    // The diff takes a row per line but its header: two, so the row after it is drawn at 4.
+    expect(wheelTarget(rows, 4, 0)).toEqual(span('c', 0, 80, 3))
+  })
+
+  it('finds none in the gap between cards, over a row of no list, or past the rows', () => {
+    expect(wheelTarget(rows, 1, 41)).toBeNull()
+    expect(wheelTarget(rows, 0, 5)).toBeNull()
+    expect(wheelTarget(rows, 3, 5)).toBeNull()
+    expect(wheelTarget(rows, 99, 5)).toBeNull()
+    expect(wheelTarget(rows, -1, 5)).toBeNull()
+  })
+})
+
+describe('a wheel tick', () => {
+  const rows: Row[] = [
+    { key: 'a-0', segments: [{ text: 'x' }], lists: [{ key: 'a', from: 0, to: 80, start: 4, shown: 5, length: 20 }] },
+    { key: 'b-0', segments: [{ text: 'x' }], lists: [{ key: 'b', from: 0, to: 80, start: 0, shown: 5, length: 5 }] },
+  ]
+
+  it("moves the window of the list under the pointer by the tick, held inside the list, counting the window's offset", () => {
+    expect(wheelMove(rows, 0, { row: 0, column: 3 }, 1)).toEqual({ key: 'a', start: 5 })
+    expect(wheelMove(rows, 0, { row: 0, column: 3 }, -3)).toEqual({ key: 'a', start: 1 })
+    expect(wheelMove(rows, 0, { row: 0, column: 3 }, 99)).toEqual({ key: 'a', start: 15 })
+    // Scrolled one row down the page, the pointer's first row is the second row drawn.
+    expect(wheelMove(rows, 1, { row: -1, column: 3 }, 1)).toEqual({ key: 'a', start: 5 })
+  })
+
+  it('leaves the tick to the page over a list that fits, at a list end, or over no list', () => {
+    expect(wheelMove(rows, 0, { row: 1, column: 3 }, 1)).toBeNull()
+    expect(wheelMove([{ ...rows[0]!, lists: [{ key: 'a', from: 0, to: 80, start: 15, shown: 5, length: 20 }] }], 0, { row: 0, column: 3 }, 1)).toBeNull()
+    expect(wheelMove(rows, 0, { row: 0, column: 3 }, 0)).toBeNull()
+    expect(wheelMove(rows, 0, { row: 7, column: 3 }, 1)).toBeNull()
+  })
 })

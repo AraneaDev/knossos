@@ -76,7 +76,17 @@ export type Row = {
   inset?: number
   /** In a row of the wide grid, the cells the right card's gutter lays before its row's own content. */
   insetRight?: number
+  /** The lists the wheel can scroll whose card this row belongs to, each over the cells it covers (see {@link ListSpan}). */
+  lists?: ListSpan[]
 }
+
+/**
+ * A card's list as the wheel finds it under the pointer: the card's key,
+ * the cells `from` (inclusive) to `to` (exclusive) the card covers in the
+ * row, and the window it shows: its first item, how many it shows, and how
+ * many there are.
+ */
+export type ListSpan = { key: string; from: number; to: number; start: number; shown: number; length: number }
 
 export const BAR_MIN = 4
 

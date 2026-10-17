@@ -9,7 +9,7 @@
  */
 import { diffBlock } from './diff'
 import type { DiffView } from './diff'
-import { NOTE_ROOM, moreRows, noteOf, windowOf } from './cards'
+import { NOTE_ROOM, moreRows, noteOf, shownOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, Inspected, NotesFilter, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
@@ -421,16 +421,16 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
    * A list of entries `limit` long around the marker (`local`: its index in this list), with what is above and below;
    * `walk` is its first entry's place in the marker's walk, absent for a list the marker does not walk.
    */
-  const listed = (key: string, entries: Entry[], columns: number, limit: number, local: number, walk?: number): Row[] => {
+  const listed = (key: string, entries: Entry[], columns: number, limit: number, local: number, walk?: number, scrolled?: number): { body: Row[]; window: Section['window'] } => {
     const spec = entrySpec(columns, entries, hues)
-    const window = windowOf(entries.length, limit, local)
-    return [...entries.slice(window.start, window.end).map((e, n) => entryRow(`${key}-${window.start + n}`, e, spec, hues)), ...moreRows(`${key}-window`, window, entries.length, columns, walk)]
+    const window = windowOf(entries.length, limit, local, scrolled)
+    return { body: [...entries.slice(window.start, window.end).map((e, n) => entryRow(`${key}-${window.start + n}`, e, spec, hues)), ...moreRows(`${key}-window`, window, entries.length, columns, walk)], window: shownOf(window, entries.length) }
   }
 
   const policyBlock: Block = {
     key: 'policy',
     grow: { length: violationEntries.length, min: ISSUES_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const verdict: Segment[] =
         policy === null
           ? [{ text: 'not reported', dim: true }]
@@ -439,15 +439,15 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
             : policy.count === 0
               ? [mark(SEVERITY.ok, ' 0')]
               : [mark(SEVERITY.error, ` ${policy.total}`)]
-      const body = listed('pol', violationEntries, columns, limit, selected < diagOffset ? selected : -1, 0)
+      const { body, window } = listed('pol', violationEntries, columns, limit, selected < diagOffset ? selected : -1, 0, scrolled)
       if (policy !== null && policy.evaluated && policy.count > violations.length) body.push(dimRow('pol-more', `   +${policy.count - violations.length} not listed`, columns))
-      return { key: 'policy', title: 'Policy violations', note: verdict, body, empty: 'none' }
+      return { key: 'policy', title: 'Policy violations', note: verdict, body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
   const diagBlock: Block = {
     key: 'diag',
     grow: { length: diagEntries.length, min: ISSUES_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const counts =
         d === null
           ? 'not reported'
@@ -455,36 +455,36 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
             ? `${SEVERITY.ok.glyph} 0`
             : legend([[SEVERITY.error, d.errors], [SEVERITY.warn, d.warnings], [SEVERITY.note, d.infos]])
       const local = selected - diagOffset
-      const body = listed('diag', diagEntries, columns, limit, local >= 0 && local < diagEntries.length ? local : -1, diagOffset)
+      const { body, window } = listed('diag', diagEntries, columns, limit, local >= 0 && local < diagEntries.length ? local : -1, diagOffset, scrolled)
       // Only the first errors and warnings come listed; notes are counted, never listed.
       if (d !== null && d.errors + d.warnings > d.items.length) body.push(dimRow('diag-more', `   +${d.errors + d.warnings - d.items.length} not listed`, columns))
-      return { key: 'diag', title: 'Diagnostics', note: noteOf(counts), body, empty: 'none' }
+      return { key: 'diag', title: 'Diagnostics', note: noteOf(counts), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
   const deadBlock: Block = {
     key: 'dead',
     grow: { length: deadEntries.length, min: ISSUES_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       // The probable and test-only counts beside the total, so the card does not read as that much dead code.
       const sure =
         dead.total === '0' ? '' : ((key: string) => (key === '' ? '' : ` · ${key}`))(legend([[CERTAINTY.probable, dead.probable ?? 0], [REACH.testsOnly, dead.testOnly ?? 0]]))
       const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
-      const body = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset)
+      const { body, window } = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset, scrolled)
       // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
       const kinds = kindLegend(dead.items.map(c => c.kind))
       const keyed = kinds === '' ? deadNote : `${deadNote} · ${kinds}`
       const told = cells('Dead code') + cells(keyed) + NOTE_ROOM <= columns ? keyed : deadNote
-      return { key: 'dead', title: 'Dead code', note: noteOf(told), body, empty: 'none' }
+      return { key: 'dead', title: 'Dead code', note: noteOf(told), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
   const spotOffset = offset + dead.items.length
   const hotBlock: Block = {
     key: 'hotspots',
     grow: { length: issues.hotspots.length, min: ISSUES_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const list = issues.hotspots
       const local = selected - spotOffset
-      const window = windowOf(list.length, limit, local >= 0 && local < list.length ? local : -1)
+      const window = windowOf(list.length, limit, local >= 0 && local < list.length ? local : -1, scrolled)
       const shown = list.slice(window.start, window.end)
       // The bar draws the score (lines times dependents); the two figures it is made of stand beside it.
       const spec = tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth('deps', shown.map(f => f.dependents), tier)], 56, { tier })
@@ -495,7 +495,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
         body.push(tableRow(`hot-${i}`, { name: f.path, boundary: null, values: [f.lines, f.dependents], barValue: f.score, max, path: true, press: `row:${spotOffset + i}`, selected: spotOffset + i === selected }, spec, hues))
       })
       body.push(...moreRows('hot-window', window, list.length, columns, spotOffset))
-      return { key: 'hotspots', title: 'Complexity hotspots', note: noteOf(list.length > 0 ? 'lines × dependents' : ''), body, empty: 'none' }
+      return { key: 'hotspots', title: 'Complexity hotspots', note: noteOf(list.length > 0 ? 'lines × dependents' : ''), body, empty: 'none', window: shownOf(window, list.length) }
     },
   }
   const budget = issues.budget
@@ -503,14 +503,14 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const budgetBlock: Block = {
     key: 'budget',
     grow: { length: budget?.files.length ?? 0, min: ISSUES_MIN },
-    make: (columns, limit) => {
+    make: (columns, limit, scrolled) => {
       const title = 'Over budget'
       if (budget === undefined) return { key: 'budget', title, note: noteOf('not reported'), body: [], empty: 'not reported' }
       if (budget === null) return { key: 'budget', title, note: [{ text: 'no maintainability-budgets.json', dim: true }], body: [], empty: 'none' }
       const rule = `functions over ${budget.max} lines`
       if (budget.files.length === 0) return { key: 'budget', title, note: [mark(SEVERITY.ok, ' 0'), { text: ` ${rule}`, dim: true }], body: [], empty: 'none' }
       const local = selected - overOffset
-      const window = windowOf(budget.files.length, limit, local >= 0 && local < budget.files.length ? local : -1)
+      const window = windowOf(budget.files.length, limit, local >= 0 && local < budget.files.length ? local : -1, scrolled)
       const shown = budget.files.slice(window.start, window.end)
       const spec = { ...tableSpec(columns, shown.map(f => f.path), [], [numberWidth('over', shown.map(f => f.functions), tier), numberWidth('longest', shown.map(f => f.longest), tier)], 56, { tier }), bar: 0 }
       const body: Row[] = [tableHead('budget-cols', spec, { name: 'file', boundary: '', numbers: ['over', 'longest'] })]
@@ -520,7 +520,7 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       })
       body.push(...moreRows('budget-window', window, budget.files.length, columns, overOffset))
       if (budget.total > budget.files.length) body.push(dimRow('budget-more', `   +${budget.total - budget.files.length} not listed`, columns))
-      return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none' }
+      return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none', window: shownOf(window, budget.files.length) }
     },
   }
   return { left: [policyBlock, diagBlock, budgetBlock], right: [deadBlock, hotBlock], rows: issueGrid([policyBlock, diagBlock, deadBlock, hotBlock, budgetBlock]) }

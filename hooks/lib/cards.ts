@@ -20,7 +20,7 @@
  */
 import { FAINT, HEADING, TITLE } from './palette'
 import { cells, clip, dimRow, fit, rowsHeight, rowWidth, segmentsWidth, spaces, tierOf, tinted } from './rows'
-import type { Row, Segment, Tier } from './rows'
+import type { ListSpan, Row, Segment, Tier } from './rows'
 import { CARD_ICON } from './marks'
 
 /**
@@ -32,7 +32,18 @@ import { CARD_ICON } from './marks'
  * and its note (or, without one, that word) set into a rule
  * (`── ! Policy violations ───── ✓ 0 ──`), at every tier.
  */
-export type Section = { key: string; title: string; subtitle?: string; note?: Segment[]; body: Row[]; bare?: true; glyph?: string; empty?: string }
+export type Section = {
+  key: string
+  title: string
+  subtitle?: string
+  note?: Segment[]
+  body: Row[]
+  bare?: true
+  glyph?: string
+  empty?: string
+  /** The window of the list the card shows, for the wheel to scroll: its first item, how many show, how many there are. */
+  window?: { start: number; shown: number; length: number }
+}
 
 /**
  * The mark before each kind of card's title, drawn dim: one glyph per kind
@@ -131,6 +142,13 @@ function bareRow(row: Row, width: number): Row {
 
 /** A card's rows at `width`: its top edge, its rows (framed where the tier frames them) and, framed, its bottom edge. */
 export function cardRows(section: Section, width: number, tier: Tier): Row[] {
+  const rows = cardRowsOf(section, width, tier)
+  // Every row of a card that windows a list carries it, so the wheel over any of them scrolls the list.
+  const span = section.window === undefined ? undefined : { key: section.key, from: 0, to: width, ...section.window }
+  return span === undefined ? rows : rows.map(row => ({ ...row, lists: [span] }))
+}
+
+function cardRowsOf(section: Section, width: number, tier: Tier): Row[] {
   if (section.body.length === 0 && section.empty !== undefined) {
     // Its note says how it stands when it has one (`✓ 0`); else the word.
     const note = section.note !== undefined && section.note.length > 0 ? section.note : [{ text: section.empty, dim: true }]
@@ -171,19 +189,59 @@ export function besideRows(left: Row[], right: Row[], leftWidth: number, gap = G
     const head = [...(l?.segments ?? []), { text: spaces(leftWidth - used + gap) }].filter(s => s.text !== '')
     const raster = l?.raster ?? r?.raster
     const insets = { ...(l?.inset === undefined ? {} : { inset: l.inset }), ...(r?.inset === undefined ? {} : { insetRight: r.inset }) }
-    out.push({ key, segments: [...head, ...(r?.segments ?? [])], split: head.length, ...insets, ...(raster === undefined ? {} : { raster }) })
+    // Each side's lists where they stand in the joined row: the right one's past the left column and the gap.
+    const lists = [...(l?.lists ?? []), ...(r?.lists ?? []).map(span => ({ ...span, from: span.from + leftWidth + gap, to: span.to + leftWidth + gap }))]
+    out.push({ key, segments: [...head, ...(r?.segments ?? [])], split: head.length, ...insets, ...(raster === undefined ? {} : { raster }), ...(lists.length === 0 ? {} : { lists }) })
   }
   const textual = new Set(out.filter(row => row.raster !== undefined && interactive(row)).map(row => row.raster))
-  return out.map(row => (row.raster !== undefined && textual.has(row.raster) ? { key: row.key, segments: row.segments, split: row.split, ...(row.inset === undefined ? {} : { inset: row.inset }), ...(row.insetRight === undefined ? {} : { insetRight: row.insetRight }) } : row))
+  return out.map(row => (row.raster !== undefined && textual.has(row.raster) ? { key: row.key, segments: row.segments, split: row.split, ...(row.inset === undefined ? {} : { inset: row.inset }), ...(row.insetRight === undefined ? {} : { insetRight: row.insetRight }), ...(row.lists === undefined ? {} : { lists: row.lists }) } : row))
 }
 
-/** The first and one-past-last index of a list `length` long shown `limit` at a time, the marked one (`selected`, local; -1 for none) inside. */
-export function windowOf(length: number, limit: number, selected = -1): { start: number; end: number } {
+/**
+ * The first and one-past-last index of a list `length` long shown `limit` at
+ * a time: from `scrolled`, the first row the wheel moved the window to, held
+ * inside the list; else the marked one (`selected`, local; -1 for none)
+ * inside.
+ */
+export function windowOf(length: number, limit: number, selected = -1, scrolled?: number): { start: number; end: number } {
   const n = Math.max(1, limit)
   if (length <= n) return { start: 0, end: length }
-  const start = selected < n ? 0 : Math.min(selected - n + 1, length - n)
+  const start = scrolled !== undefined ? Math.min(Math.max(0, scrolled), length - n) : selected < n ? 0 : Math.min(selected - n + 1, length - n)
   return { start, end: start + n }
 }
+
+/**
+ * The list the wheel is over: in `rows` as drawn (a diff element takes a row
+ * for each of its lines), the card's list at row `row`, cell `column`; null
+ * over no list (a row of none, the gap between cards, past the rows).
+ */
+export function wheelTarget(rows: readonly Row[], row: number, column: number): ListSpan | null {
+  if (row < 0) return null
+  let at = 0
+  for (const r of rows) {
+    const tall = rowsHeight([r])
+    if (row < at + tall) return r.lists?.find(span => column >= span.from && column < span.to) ?? null
+    at += tall
+  }
+  return null
+}
+
+/**
+ * Where a wheel tick of `by` rows moves a list: the list under the pointer
+ * (`pointer.row` in the window that shows the drawn rows from `offset`) and
+ * the first item its window shows next, held inside the list. Null when the
+ * page takes the tick instead: over no list, a list that shows whole, or a
+ * list already at the end the tick moves toward.
+ */
+export function wheelMove(rows: readonly Row[], offset: number, pointer: { row: number; column: number }, by: number): { key: string; start: number } | null {
+  const span = wheelTarget(rows, offset + pointer.row, pointer.column)
+  if (span === null || span.length <= span.shown) return null
+  const start = Math.min(Math.max(0, span.start + by), span.length - span.shown)
+  return start === span.start ? null : { key: span.key, start }
+}
+
+/** A window as its card reports it to the wheel (`Section.window`): its first item, how many it shows, of how many. */
+export const shownOf = (window: { start: number; end: number }, length: number): { start: number; shown: number; length: number } => ({ start: window.start, shown: window.end - window.start, length })
 
 /**
  * The line under a list cut to a window: how many are above and how many
@@ -213,7 +271,28 @@ export function moreRows(key: string, window: { start: number; end: number }, le
  * makes null. A `late` card (a chart that scales up a step at a time) takes
  * only the rows the lists leave.
  */
-export type Block = { key: string; grow?: { length: number; min: number; late?: true }; make: (inner: number, limit: number) => Section | null }
+export type Block = { key: string; grow?: { length: number; min: number; late?: true }; make: (inner: number, limit: number, scrolled?: number) => Section | null }
+
+/**
+ * `arrangement` with each card handed the first item the wheel scrolled its
+ * list to (`scrolls`, by the card's key), for {@link windowOf}; a card
+ * the view holds none for windows round the marker.
+ */
+export function scrolledTo(arrangement: Arrangement, scrolls: Readonly<Record<string, number>>): Arrangement {
+  if (Object.keys(scrolls).length === 0) return arrangement
+  const each = (blocks: Block[] | undefined): Block[] | undefined =>
+    blocks?.map(block => (scrolls[block.key] === undefined ? block : { ...block, make: (inner: number, limit: number) => block.make(inner, limit, scrolls[block.key]) }))
+  return {
+    ...arrangement,
+    left: each(arrangement.left)!,
+    ...(arrangement.top === undefined ? {} : { top: each(arrangement.top)! }),
+    ...(arrangement.right === undefined ? {} : { right: each(arrangement.right)! }),
+    ...(arrangement.float === undefined ? {} : { float: each(arrangement.float)! }),
+    ...(arrangement.bottom === undefined ? {} : { bottom: each(arrangement.bottom)! }),
+    ...(arrangement.order === undefined ? {} : { order: each(arrangement.order)! }),
+    ...(arrangement.rows === undefined ? {} : { rows: arrangement.rows.map(line => each(line)!) }),
+  }
+}
 
 /** How long a list grows before the late cards (the charts) take their rows: past it, lists take the rest. */
 export const LIST_SOFT = 10

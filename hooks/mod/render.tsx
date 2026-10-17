@@ -429,6 +429,9 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
   const draw = (rows: number, lean: boolean): RenderElement => {
     const laidOut = paneLayout(input, columns, rows, offset)
     used = rowsHeight(laidOut.body.filter(r => !r.key.startsWith('fill-'))) + laidOut.footer.length
+    // Kept for the wheel: the last layout drawn is the one on screen.
+    mod.paneRows = laidOut.body
+    mod.paneOffset = offset
     if (!laidOut.pinned) {
       return (
         <Box key={key} flexDirection="column">
