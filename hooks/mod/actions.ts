@@ -660,8 +660,8 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['allow-no', io => io.state.allow.update((a): AllowState => (a.phase === 'confirming' ? { phase: 'idle', root: null, reason: null } : a))],
 ])
 
-/** Ids that do what another does: a tab's hidden hotkey twin, the drift line's second button, the Cycles moves and folds, and the untested count beside `u`. */
-const SAME_AS: Readonly<Record<string, string>> = { 'tabkey:': 'tab:', drifted: 'drift', 'prev:': 'next:', 'mark:': 'next:', 'fold:': 'unfold:', 'untested-row': 'untested', 'untested-none': 'untested' }
+/** Ids that do what another does: a tab's hidden hotkey twin, the drift line's second button, the Cycles moves and folds, the untested count beside `u`, and the notes card's button beside the footer's `m`. */
+const SAME_AS: Readonly<Record<string, string>> = { 'tabkey:': 'tab:', drifted: 'drift', 'prev:': 'next:', 'mark:': 'next:', 'fold:': 'unfold:', 'untested-row': 'untested', 'untested-none': 'untested', 'note-card': 'note' }
 
 /** Which entry of {@link PRESSES} a press on `id` runs, and what follows the colon; null for an id that does nothing. */
 export function pressOf(id: string): { key: string; rest: string } | null {

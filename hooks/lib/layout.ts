@@ -987,6 +987,9 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   }
   // From a component's own detail, a route to any other component (the finder picks where it ends).
   if (input.route === null && input.detail?.component !== null && input.detail?.component !== undefined && input.detail.file === undefined) actions.push(button('route', 'route to…', 'p'))
+  // A note on the component, from the footer: the notes card ends a long detail, so its own button may be scrolled away.
+  const noting = input.detail?.note ?? null
+  if (input.route === null && input.detail?.notable === true && (noting === null || noting.phase === 'failed')) actions.push(button('note', 'note', 'm'))
   actions.push(button('find', 'find', 'f'), button('keys', 'keys', 'h'))
   const pad = padOf(tier)
   const inner = Math.max(1, columns - 2 * pad)
