@@ -23,6 +23,7 @@
 #        knossos-run-container.sh note-adopt <project-dir> --component=<name> [--value=<note>] [--execute]
 #        knossos-run-container.sh note-move <project-dir> --component=<name> --to=<name> [--author=user|model] [--kind=<kind>] [--execute]
 #        knossos-run-container.sh note-check <project-dir> --component=<name> [--value=<reason> | --remove] [--execute]
+#        knossos-run-container.sh note-confirm <project-dir> --component=<name> [--execute]
 #
 # Emitted by `knossos install-agent-plugin --out`, with __KNOSSOS_IMAGE__ and
 # __KNOSSOS_DATA__ substituted at emit time. Not used in place.
@@ -119,7 +120,7 @@ case "$SUBCOMMAND" in
     # A git log of the last 30 days, a search out from one component, two route searches, a note.
     churn|blast-radius|path-between|annotate) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     # The Notes tab: every note read with its staleness, or one note written.
-    notes|note-adopt|note-move|note-check) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
+    notes|note-adopt|note-move|note-check|note-confirm) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     allow-root) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     # The live watcher runs until the session stops it.
     watch) LIMIT=0 ;;
@@ -273,6 +274,14 @@ if [ "$SUBCOMMAND" = note-check ]; then
     from=2
     case "${2:-}" in --value=*) is_text_line "$2" 2008 || exit 0; from=3 ;; --remove) from=3 ;; esac
     in_order "$from" e "$@" || exit 0
+fi
+# note-confirm takes the component and, last, `--execute`: the note's text and
+# its flag stay as they are, so nothing else is asked of it.
+if [ "$SUBCOMMAND" = note-confirm ]; then
+    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || exit 0
+    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
+    is_text_line "$1" 520 || exit 0
+    in_order 2 e "$@" || exit 0
 fi
 # scan takes nothing but the project: an option such as `--db=...` would point the write at another graph.
 if [ "$SUBCOMMAND" = scan ]; then

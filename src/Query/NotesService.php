@@ -181,6 +181,18 @@ final readonly class NotesService
     }
 
     /**
+     * The person's word that `$component`'s model note is still true: the
+     * note rests on its files as they are now, and nothing else about it
+     * changes (see {@see AnnotationService::confirmAnnotation()}).
+     *
+     * @return array<string, mixed>
+     */
+    public function confirm(string $path, string $component, string $kind = 'note', bool $execute = false): array
+    {
+        return $this->write($path, static fn(ArchitectureQueryService $queries, string $projectId): array => self::answered($queries->confirmAnnotation($projectId, $component, $kind, $execute)->data, 'confirm'));
+    }
+
+    /**
      * Refuse `$component` when a write on it would land on another
      * component: the annotation service resolves a name no component holds
      * by the names the graph shows (`Target` for `App\Target`), so a note
@@ -207,7 +219,10 @@ final readonly class NotesService
         $statement = $this->pdo->prepare(
             'SELECT a.canonical_name, a.kind, a.value, a.author, a.basis_json, a.updated_at, ' .
             "CASE WHEN EXISTS (SELECT 1 FROM nodes n WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name) THEN 'present' ELSE 'missing' END AS component_status, " .
-            "(SELECT c.value FROM annotations c WHERE c.project_id = a.project_id AND c.canonical_name = a.canonical_name AND c.kind = :check AND c.author = 'user') AS check_reason " .
+            "(SELECT c.value FROM annotations c WHERE c.project_id = a.project_id AND c.canonical_name = a.canonical_name AND c.kind = :check AND c.author = 'user') AS check_reason, " .
+            // Where it lives: the file its component is in, and that component's boundary, the first of each by name.
+            '(SELECT f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY f.relative_path LIMIT 1) AS path, ' .
+            '(SELECT b.name FROM nodes n JOIN boundary_memberships bm ON bm.node_id = n.id JOIN boundaries b ON b.id = bm.boundary_id WHERE n.project_id = a.project_id AND n.canonical_name = a.canonical_name ORDER BY b.name LIMIT 1) AS boundary ' .
             'FROM annotations a WHERE a.project_id = :project AND a.kind <> :check ORDER BY a.canonical_name, a.kind, a.author LIMIT ' . (self::MAX_ROWS + 1),
         );
         $statement->execute(['project' => $projectId, 'check' => AnnotationService::CHECK]);
@@ -227,6 +242,8 @@ final readonly class NotesService
             'stale_reason' => $reason,
             'checked' => $row['check_reason'] !== null,
             'check_reason' => $row['check_reason'] === null ? null : (string) $row['check_reason'],
+            'path' => $row['path'] === null ? null : (string) $row['path'],
+            'boundary' => $row['boundary'] === null ? null : (string) $row['boundary'],
         ], $rows, $reasons), $truncated];
     }
 

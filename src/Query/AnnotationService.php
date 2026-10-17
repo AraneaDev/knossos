@@ -32,6 +32,39 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      */
     public const AUTHORS = ['user', 'model'];
     /**
+     * Rest a model note on its files as they are now, previewing unless
+     * executing: the note was looked at and is still true. Only its basis
+     * changes; its text, its date and the person's {@see self::CHECK} on the
+     * component stay as they were. A component with no model note of `$kind`
+     * is refused.
+     */
+    public function confirmAnnotation(string $projectId, string $component, string $kind = 'note', bool $execute = false): ResultEnvelope
+    {
+        $stored = $this->pdo->prepare("SELECT basis_json FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = 'model'");
+        $stored->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind]);
+        $basis = $stored->fetchColumn();
+        if ($basis === false) {
+            throw new InvalidArgumentException(sprintf('%s holds no model %s to confirm.', $component, $kind));
+        }
+        $target = $this->target($projectId, $component, $kind, '', 'model');
+        // The same files as before, hashed as they are now: the component's own, and the evidence it cited.
+        $paths = [];
+        foreach (json_decode((string) $basis, true) ?: [] as $entry) {
+            if (is_array($entry) && is_string($entry['path'] ?? null)) {
+                $paths[] = $entry['path'];
+            }
+        }
+        $fresh = $this->basis($projectId, $component, array_slice($paths, 0, self::MAX_EVIDENCE_PATHS));
+        if (!$execute) {
+            return $this->preview($projectId, $target, $kind, 'confirm', ['value' => (string) ($target['existing']['value'] ?? '')]);
+        }
+        $this->pdo->prepare("UPDATE annotations SET basis_json = :basis WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = 'model'")
+            ->execute(['basis' => json_encode($fresh, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'project' => $projectId, 'name' => $component, 'kind' => $kind]);
+
+        return $this->executed($projectId, $target, $kind, 'confirm', 'Confirmed', $this->fetch($projectId, $component, $kind, 'model'));
+    }
+
+    /**
      * Record or replace a durable annotation, previewing unless executing.
      *
      * A model note is not replaced by different text unless `$replace` says

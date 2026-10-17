@@ -110,6 +110,7 @@ Usage:
   knossos note-move [path] --component=NAME --to=NAME [--kind=KIND] [--author=user|model]
                     [--execute] [--db=FILE] [--json]
   knossos note-check [path] --component=NAME [--value=TEXT] [--remove] [--execute]
+  knossos note-confirm [path] --component=NAME [--execute]
                      [--db=FILE] [--json]
   knossos session-head [path] [--json]
   knossos session-diff [path] --rev=SHA --file=PATH [--json]

@@ -457,6 +457,12 @@ final readonly class ArchitectureQueryService
     }
 
     /** {@see AnnotationService::removeAnnotation()} */
+    /** {@see AnnotationService::confirmAnnotation()} */
+    public function confirmAnnotation(string $projectId, string $component, string $kind = 'note', bool $execute = false): ResultEnvelope
+    {
+        return $this->services->annotationQueries->confirmAnnotation($projectId, $component, $kind, $execute);
+    }
+
     public function removeAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
     {
         return $this->services->annotationQueries->removeAnnotation($projectId, $component, $kind, $value, $execute, $author);

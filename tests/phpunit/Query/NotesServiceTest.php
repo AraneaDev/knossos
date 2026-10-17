@@ -118,6 +118,49 @@ final class NotesServiceTest extends KnossosTestCase
         assertSame($before, self::all($pdo, $projectId));
     }
 
+    /** Each note says where it lives: the file its component is in and that file's boundary; a note on a missing name, nowhere. */
+    public function testEachNoteSaysWhereItLives(): void
+    {
+        [$pdo, $root] = $this->notesGraph();
+        $groups = (new NotesService($pdo))->notes($root)['groups'];
+        $all = array_merge(...array_values($groups));
+        $by = array_column($all, null, 'component');
+        assertSame('src/App/Target.php', $by['App\\Target']['path']);
+        assertSame(true, array_key_exists('boundary', $by['App\\Target']));
+        assertSame([null, null], [$by['App\\Gone']['path'], $by['App\\Gone']['boundary']]);
+    }
+
+    /**
+     * Confirming a stale note rests it on its files as they are now and
+     * changes nothing else: not its text, not when it was written, not its
+     * author, and not the person's flag on it.
+     */
+    public function testConfirmingAStaleNoteClearsItAndKeepsItsTextDateAndFlag(): void
+    {
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $service = new NotesService($pdo);
+        $service->check($root, 'App\\Chain1', 'still true?', execute: true);
+        $before = self::row($service->notes($root), 'App\\Chain1');
+        assertSame(true, $before['stale']);
+
+        $preview = $service->confirm($root, 'App\\Chain1');
+        assertSame([false, true], [$preview['executed'], self::row($service->notes($root), 'App\\Chain1')['stale']]);
+
+        $answer = $service->confirm($root, 'App\\Chain1', execute: true);
+        $after = self::row($service->notes($root), 'App\\Chain1');
+        assertSame(['ok', 'confirm', true], [$answer['status'], $answer['action'], $answer['executed']]);
+        assertSame(false, $after['stale']);
+        assertSame([$before['value'], $before['updated_at'], $before['author'], true], [$after['value'], $after['updated_at'], $after['author'], $after['checked']]);
+        assertSame(['still true?'], self::stored($pdo, $projectId, 'App\\Chain1', 'user', 'check'));
+    }
+
+    /** Only a model note rests on files, so only a model note is confirmed; a name with none is refused. */
+    public function testConfirmingRefusesANameWithNoModelNote(): void
+    {
+        [$pdo, $root] = $this->notesGraph();
+        assertSame('refused', (new NotesService($pdo))->confirm($root, 'App\\User', execute: true)['status']);
+    }
+
     public function testFlaggingWritesThePersonsCheckAndClearingRemovesIt(): void
     {
         [$pdo, $root, $projectId] = $this->notesGraph();
@@ -257,6 +300,17 @@ final class NotesServiceTest extends KnossosTestCase
     private static function names(array $rows): array
     {
         return array_map(static fn(array $row): string => (string) $row['component'], $rows);
+    }
+
+    /** @param array<string, mixed> $answer @return array<string, mixed> the row of `$component`'s model note */
+    private static function row(array $answer, string $component): array
+    {
+        foreach (array_merge(...array_values($answer['groups'])) as $row) {
+            if ($row['component'] === $component && $row['author'] === 'model') {
+                return $row;
+            }
+        }
+        throw new \RuntimeException("no model note on {$component}");
     }
 
     /** @return list<string> the values stored on a component by an author */
