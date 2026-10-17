@@ -4,7 +4,7 @@ The mod is one hooks module, `hooks/register.tsx`, and the files it imports
 from the plugin. Claude Code loads them together. An install copies each one
 by name, and an install over an earlier one prunes what it no longer ships. This
 page is for you if you want to change the pane or the notes. To use the mod,
-start at the [pane guide](../claude-code/pane.md).
+start at the [pane guide](../claude-code/pane/index.md).
 
 ## Layout
 
@@ -18,7 +18,7 @@ start at the [pane guide](../claude-code/pane.md).
 | `port.ts`    | how the other modules reach Claude Code                                |
 | `loaders.ts` | the dashboard and every read keyed to what the pane shows              |
 | `watcher.ts` | the live watcher, the scans, and whose change a scan took in           |
-| `agent.ts`   | the notes for the model                                                |
+| `agent.ts`   | the messages for the model                                             |
 | `actions.ts` | what a press on the pane does                                          |
 | `render.tsx` | what the band and the pane draw                                        |
 | `session.ts` | start-up, the age tick, the end of a turn or a session, and `/knossos` |
@@ -135,7 +135,7 @@ nodes and under 16 deep.
 
 ## Scan ledger
 
-The turn brief, the Changes tab and the commit note all need to know what a
+The turn brief, the Changes tab and the model's message after a commit all need to know what a
 scan changed, even when another writer scanned the edits first: the live
 watcher, the pane's rescan, another session. The `scan_ledger` table records
 that, in `src/Scan/ScanLedger.php`.
@@ -185,7 +185,7 @@ scan since the turn began (one was not recorded, or is older than a span's
 5,000 keys reach), or the chain passes a cut entry, the turn brief still names
 the files but reports the policy as `not_evaluated`. The
 model's note then has no policy part (see
-[notes for the model](../claude-code/agent-notes.md#how-the-policy-part-is-worked-out)).
+[messages for the model](../claude-code/model-messages.md#how-the-policy-part-is-worked-out)).
 
 ## The tests
 

@@ -76,7 +76,7 @@ A cross-file reference resolves when the declaration is in the same scan
 request. Anything else stays an explicit unresolved or external fact.
 
 Some code is never called or imported by name. The scanner marks it, so it stays
-off the [dead-code candidates](../concepts/dead-code-candidates.md) list:
+off the [dead-code candidates](../guides/dead-code-candidates.md) list:
 
 - A module with a shebang, or with an `if __name__ == "__main__":` guard, is
   `executable`. So is a module that builds a served app at module level:

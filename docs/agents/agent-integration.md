@@ -177,7 +177,8 @@ write access.
 
 Use `annotate_component` to record a durable judgment on a component and
 `list_annotations` to read it back. Annotations are the one part of the graph
-that comes from a person or an agent and not from a scan.
+that comes from a person or an agent and not from a scan. A person reads and
+writes them in the pane: see [notes on components](../claude-code/pane/notes.md).
 
 Every annotation records its author. A note written in the pane is the
 person's (`user`); one written through `annotate_component` or the
@@ -202,7 +203,8 @@ files the agent names in `evidence_paths`. When one of them has changed or is
 gone, the note is `stale`, with a `stale_reason` such as `written before
 documents/views.py changed`; a note no scanned file backs at all reads `rests
 on no scanned file`. A note on a project file no worker reads, by its path,
-rests on that file: it makes the file a `file` component at the next scan. Re-recording the note confirms it against the code as it
+rests on that file: it makes the file a `file` component at the next scan. A
+note on a file a worker does scan, by its path, stays on that file. Re-recording the note confirms it against the code as it
 is now; removing it is the other way out. A person's note is never stale.
 `evidence_paths` reads a path as `file_context` does: project-relative,
 `./`-led, or absolute under the project root. A file no scan reads, such as a

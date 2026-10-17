@@ -100,7 +100,7 @@ contribution, and the earliest evidence is kept.
 ### Code nothing calls by name
 
 These get an attribute, so they stay off the
-[dead-code candidates](../concepts/dead-code-candidates.md) list:
+[dead-code candidates](../guides/dead-code-candidates.md) list:
 
 - A crate-root `fn main` marks its module `executable`. Manifest entry-point
   classification can additionally mark every node from an exact binary path with

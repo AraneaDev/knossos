@@ -119,43 +119,15 @@ A rejected path reports the roots in force and the file to add it to.
 
 ## Docker
 
-Docker is the reproducible distribution and needs no host PHP or Node.
+Docker is the reproducible distribution and needs no host PHP or Node:
 
 ```sh
 docker build --target runtime -t knossos:dev .
 docker run --rm knossos:dev doctor --json
 ```
 
-Use an absolute source path, mount it read-only, keep `/data` in a separate
-volume, disable networking, and keep stdin open for MCP with `-i`. Leave out
-`-t`, because terminal framing corrupts the NDJSON:
-
-```json
-{
-    "mcpServers": {
-        "knossos": {
-            "command": "docker",
-            "args": [
-                "run",
-                "--rm",
-                "-i",
-                "--network",
-                "none",
-                "--mount",
-                "type=bind,source=/absolute/project,target=/absolute/project,readonly",
-                "--mount",
-                "type=volume,source=knossos-data,target=/data",
-                "knossos:dev",
-                "serve",
-                "--allow-root=/absolute/project"
-            ]
-        }
-    }
-}
-```
-
-The image always carries a built Rust worker. For compose files, volumes and
-the HTTP profile, see [the container guide](../operate/container.md).
+[Running Knossos in Docker](../operate/container.md) has the MCP configuration,
+where to mount each project, compose files, volumes and the HTTP profile.
 
 ## Native stdio (repository checkout)
 
@@ -192,9 +164,6 @@ the grant is a file you inspect and no tool the caller can invoke on itself.
 Knossos never writes it during normal operation; only `tools/install` and
 `knossos allow-root --execute` do. Keep it owned by the user running the server.
 If the boundary must be fixed, omit the file and pass `--allow-root` only.
-
-Any MCP client that uses the common `mcpServers` stdio convention accepts this
-shape; see [Codex and other MCP clients](../agents/clients.md).
 
 ## Codex and other MCP clients
 
@@ -277,7 +246,8 @@ repository.
 
 ## Operating safely
 
-- Scanning never installs dependencies, executes project code or boots Laravel.
+- Scanning never installs dependencies, executes project code or boots a
+  framework.
 - Preconfigure every allowed root before you hand the server to an agent.
 - Prefer read-only source mounts and `--network none`.
 - Back up the database when agents annotate components. The graph rebuilds

@@ -51,7 +51,7 @@ tools/install-hooks
 
 ### Previewing the Claude Code pane
 
-`tools/pane-preview.mjs` draws the [Claude Code mod](docs/claude-code/pane.md)'s
+`tools/pane-preview.mjs` draws the [Claude Code mod](docs/claude-code/pane/index.md)'s
 pane as PNGs, the way a terminal shows it, so a layout change can be judged without a live
 session. It lays the pane out with the mod's own functions over this repository's graph. It
 needs Node.js with TypeScript type stripping (Node 24 or newer), `rsvg-convert`, and the

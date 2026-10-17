@@ -10,9 +10,14 @@ one change set.
 Both read their declarations from files you check in, so the rules live beside
 the code they govern. `knossos.json` holds them directly, as `policies` and
 `quality_budgets`; see [project configuration](../get-started/project-configuration.md).
-Boundaries are explained in [the graph and its evidence](graph-and-evidence.md#boundaries-and-roles).
+Boundaries are explained in [the graph and its evidence](../concepts/graph-and-evidence.md#boundaries-and-roles).
 
 ## Boundary policies
+
+![The Boundaries tab past twelve boundaries: all of them listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
+
+In the pane, the Boundaries tab lists every boundary, what it depends on and
+what depends on it, and draws the dependencies behind a flow between two.
 
 `check_architecture` evaluates explicit boundary dependency rules against the
 active static graph. A policy names its source boundary, and each target, by

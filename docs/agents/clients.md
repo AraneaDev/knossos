@@ -72,7 +72,7 @@ directory and reaches a different graph from each checkout:
 Placement differs per client, so keep the command and the argument array
 unchanged. Do not add `-t` to a Docker command, because terminal framing
 corrupts the NDJSON. The Docker form of this entry is under
-[Docker](../get-started/installation.md#docker).
+[Docker](../operate/container.md#as-an-mcp-server).
 
 The roots file is the allow-list, re-read on every request, so granting another
 project needs no restart:
