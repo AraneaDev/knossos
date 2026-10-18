@@ -153,9 +153,3 @@ export function cardCells(box, cell) {
 export function cardPixels(place, cell) {
     return { top: place.row * cell.height, left: place.column * cell.width };
 }
-
-/** A frame as the pane's HTML: its body, then its footer, then its cards' layer. */
-export function drawFrame(frame) {
-    const html = (entries) => entries.map((e) => e.html).join("");
-    return `<div class="pane-body">${html(drawRows(frame.body))}</div><div class="pane-footer">${html(drawRows(frame.footer))}</div><div class="cards">${html(drawCards([...frame.body, ...frame.footer]))}</div>`;
-}

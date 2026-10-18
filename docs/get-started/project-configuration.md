@@ -39,6 +39,7 @@ Unknown keys are an error. These are the keys:
 | `policies`               | up to 50 objects                | Architecture rules between boundaries.                        |
 | `quality_budgets`        | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                     |
 | `dead_code_suppressions` | up to 200 strings               | Components to leave out of the dead-code candidates.          |
+| `web_roots`              | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
 
 ### Ignores
 
@@ -183,6 +184,33 @@ candidates, and `bounds.suppressed_candidates` reports how many were. A bare
 `"*"` suppresses every candidate in the project, so do not commit it. To mark
 one component as a false positive without editing the file, use
 [an annotation](../agents/agent-integration.md#component-annotations).
+
+### Web roots
+
+An HTML page names a script by URL, and the page cannot say which folder the
+server serves that URL from. Discovery works it out when exactly one scanned
+file fits (see
+[dead-code candidates](../guides/dead-code-candidates.md#how-an-html-pages-scripts-are-resolved)).
+When it cannot, name the mapping:
+
+```json
+{
+    "version": 1,
+    "web_roots": {
+        "/static/": "web/public/"
+    }
+}
+```
+
+Each key is a URL path prefix that starts and ends with `/`. Each value is a
+project-relative folder that ends with `/` and does not climb out of the
+project. A root URL in a page that starts with a key resolves under its folder,
+so `/static/app.mjs` names `web/public/app.mjs`. When two keys match, the
+longer one wins. A mapped URL whose file is not in the scan is reported as a
+warning; it is never looked for anywhere else.
+
+`web_roots` is new in Knossos 0.33.0. An older Knossos rejects a configuration
+that uses it with `PROJECT_CONFIG_UNKNOWN_KEY`.
 
 ## Precedence
 

@@ -50,6 +50,7 @@ final readonly class TreeFingerprint
             $configuration->ignores,
             $configuration->maxFiles ?? 100_000,
             $configuration->maxFileBytes ?? 2_000_000,
+            webRoots: $configuration->webRoots,
         )))->discover($root);
         $result = [];
         foreach ($discovery->files as $file) {

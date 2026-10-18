@@ -7,28 +7,12 @@ import {
     cardPixels,
     cardSeat,
     drawCards,
-    drawFrame,
     drawRows,
     patchPlan,
     rowHtml,
 } from "./public/draw.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-/** A frame of ready `body` rows, in the dark theme. */
-const frameOf = (body, footer = []) => ({
-    type: "frame",
-    body,
-    footer,
-    pinned: false,
-    theme: "dark",
-    colours: {
-        ground: "#1e1e1e",
-        text: "#ffffff",
-        card: "#373737",
-        suggestion: "#b1b9f9",
-    },
-});
 
 /** A ready segment: its text in no look of its own unless given one. */
 const seg = (text, more = {}) => ({ text, look: {}, ...more });
@@ -174,10 +158,13 @@ describe("cards", () => {
                 html: '<div class="card" data-card="card-0" style="width:30ch"><div class="line">Router</div><div class="line">12 dependents</div></div>',
             },
         ]);
-        const html = drawFrame(frameOf(rows));
-        expect(html).toMatch(
-            /<div class="cards"><div class="card" data-card="card-0"/,
-        );
+        // The page puts rows and cards in separate containers, so the card
+        // is in no row's HTML.
+        expect(
+            drawRows(rows)
+                .map((e) => e.html)
+                .join(""),
+        ).not.toContain('class="card"');
     });
 
     it("turns a segment's box, a card's box and the window into cells for the shared rule, and its cell back into pixels", () => {
@@ -237,17 +224,23 @@ describe("patchPlan", () => {
     });
 });
 
-describe("drawFrame", () => {
-    it("draws the body, then the footer, each in its own place", () => {
-        const html = drawFrame(
-            frameOf(
-                [{ key: "b", segments: [seg("body")] }],
-                [{ key: "f", segments: [seg("foot")] }],
-            ),
-        );
-        expect(html).toBe(
-            '<div class="pane-body"><div class="row" data-key="b"><span>body</span></div></div><div class="pane-footer"><div class="row" data-key="f"><span>foot</span></div></div><div class="cards"></div>',
-        );
+describe("drawRows", () => {
+    it("draws the body and the footer as rows of their own, with no card where none hangs", () => {
+        const body = [{ key: "b", segments: [seg("body")] }];
+        const footer = [{ key: "f", segments: [seg("foot")] }];
+        expect(drawRows(body)).toEqual([
+            {
+                key: "b",
+                html: '<div class="row" data-key="b"><span>body</span></div>',
+            },
+        ]);
+        expect(drawRows(footer)).toEqual([
+            {
+                key: "f",
+                html: '<div class="row" data-key="f"><span>foot</span></div>',
+            },
+        ]);
+        expect(drawCards([...body, ...footer])).toEqual([]);
     });
 });
 

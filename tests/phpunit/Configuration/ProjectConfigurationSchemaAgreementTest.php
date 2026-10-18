@@ -118,4 +118,52 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
 
         assertSame($accepted, $documented);
     }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function webRoots(): iterable
+    {
+        yield 'a folder' => ['/static/', 'web/public/'];
+        yield 'the root folder' => ['/', './'];
+        yield 'a key without its leading slash' => ['static/', 'web/'];
+        yield 'a key without its trailing slash' => ['/static', 'web/'];
+        yield 'an absolute folder' => ['/static/', '/srv/www/'];
+        yield 'a drive letter' => ['/static/', 'C:/www/'];
+        yield 'a parent traversal' => ['/static/', 'web/../../etc/'];
+        yield 'a backslash traversal' => ['/static/', 'web\\..\\..\\etc/'];
+        yield 'a leading backslash traversal' => ['/static/', '..\\etc/'];
+        yield 'a folder without its trailing slash' => ['/static/', 'web/public'];
+        yield 'a NUL byte' => ['/static/', "web\0public/"];
+    }
+
+    /**
+     * The schema accepts exactly the `web_roots` entries the loader does,
+     * values as well as keys: an editor that blesses `web\..\..\etc/` would
+     * pass a file the loader then refuses.
+     */
+    #[DataProvider('webRoots')]
+    #[Group('configuration')]
+    public function testTheSchemaAndTheLoaderAgreeOnAWebRoot(string $prefix, string $folder): void
+    {
+        $schema = json_decode((string) file_get_contents(__DIR__ . '/../../../schemas/project-config-v1.schema.json'), true, flags: JSON_THROW_ON_ERROR);
+        $roots = $schema['properties']['web_roots'];
+        $schemaAccepts = preg_match('~' . $roots['propertyNames']['pattern'] . '~u', $prefix) === 1
+            && preg_match('~' . $roots['additionalProperties']['pattern'] . '~u', $folder) === 1;
+
+        $root = sys_get_temp_dir() . '/knossos-web-roots-agreement-' . bin2hex(random_bytes(6));
+        mkdir($root, 0o755, true);
+        try {
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'web_roots' => [$prefix => $folder]], JSON_THROW_ON_ERROR));
+            try {
+                ProjectConfigurationLoader::load($root, [$root]);
+                $loaderAccepts = true;
+            } catch (\Knossos\Discovery\DiscoveryException) {
+                $loaderAccepts = false;
+            }
+        } finally {
+            @unlink($root . '/knossos.json');
+            @rmdir($root);
+        }
+
+        assertSame($loaderAccepts, $schemaAccepts, sprintf('loader %s, schema %s', $loaderAccepts ? 'accepts' : 'rejects', $schemaAccepts ? 'accepts' : 'rejects'));
+    }
 }
