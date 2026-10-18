@@ -13,7 +13,7 @@ export default [
     js.configs.recommended,
     ...tseslint.configs.recommended.map((config) => ({
         ...config,
-        files: ["hooks/**/*.{ts,tsx}"],
+        files: ["hooks/**/*.{ts,tsx}", "web/**/*.ts"],
     })),
     {
         files: ["tools/*.mjs"],

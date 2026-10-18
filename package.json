@@ -5,12 +5,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint:js": "eslint workers/typescript/bin workers/typescript/src hooks tools/lint-md.mjs tools/lint-md.spec.mjs tools/capture tools/eval",
+    "lint:js": "eslint workers/typescript/bin workers/typescript/src hooks tools/lint-md.mjs tools/lint-md.spec.mjs tools/capture tools/eval web",
     "format:check": "prettier --check \"**/*.{js,json,jsonc,yaml,yml,md}\"",
     "format:write": "prettier --write \"**/*.{js,json,jsonc,yaml,yml,md}\"",
     "lint:md": "node tools/lint-md.mjs",
     "test:mod": "vitest run --config vitest.config.mjs",
-    "typecheck:mod": "tsc -p hooks/tsconfig.json && tsc -p hooks/tsconfig.spec.json"
+    "typecheck:mod": "tsc -p hooks/tsconfig.json && tsc -p hooks/tsconfig.spec.json && tsc -p web/tsconfig.json"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

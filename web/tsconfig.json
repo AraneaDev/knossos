@@ -1,0 +1,10 @@
+{
+  "extends": "../hooks/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest"],
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["../hooks/engine.d.ts", "**/*.ts"],
+  "exclude": ["public/**"]
+}
