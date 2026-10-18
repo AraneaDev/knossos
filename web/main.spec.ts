@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
@@ -50,8 +50,19 @@ function main(dir: string, env: Record<string, string>, extra: string[] = []) {
   return { child, line, exited, out: () => out }
 }
 
-/** Whether a process whose command line holds `mark` runs. */
+/** Whether a process whose command line holds `mark` runs. The quality image has no pgrep, so /proc is read where it exists. */
 function alive(mark: string): boolean {
+  if (existsSync('/proc/self/cmdline')) {
+    for (const pid of readdirSync('/proc')) {
+      if (!/^\d+$/.test(pid)) continue
+      try {
+        if (readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').join(' ').includes(`sleep ${mark}`)) return true
+      } catch {
+        // The process ended between the listing and the read.
+      }
+    }
+    return false
+  }
   try {
     execFileSync('pgrep', ['-f', `sleep ${mark}`])
     return true
