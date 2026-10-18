@@ -43,6 +43,7 @@ final readonly class CliCommandSet
             new PluginCommand($version),
             new MaintenanceCommand(),
             new ServeCommand(),
+            new WebCommand(),
         ];
     }
 }
