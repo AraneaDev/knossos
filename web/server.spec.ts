@@ -255,7 +255,7 @@ describe('startServer', () => {
     const { url, token } = await started()
     const base = url.slice(0, url.indexOf('?'))
     expect((await get(`${base}?t=${token}`)).body).toContain('<main id="view">')
-    expect((await get(`${base}static/draw.mjs?t=${token}`)).body).toContain('export function drawFrame')
+    expect((await get(`${base}static/draw.mjs?t=${token}`)).body).toContain('export function patchPlan')
     expect((await get(`${base}static/missing.mjs?t=${token}`)).status).toBe(404)
     expect((await get(`${base}elsewhere?t=${token}`)).status).toBe(404)
   })

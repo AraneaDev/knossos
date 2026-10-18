@@ -1634,30 +1634,34 @@ TOML);
             '</body></html>',
             '',
         ]));
+        mkdir($this->root . '/frontend/public', 0700, true);
+        mkdir($this->root . '/frontend/src', 0700, true);
+        file_put_contents($this->root . '/frontend/public/config.js', "window.config = {};\n");
+        file_put_contents($this->root . '/frontend/src/main.tsx', "export {};\n");
 
         $discoverer = new ProjectDiscoverer(new DiscoveryConfig([$this->root]));
         $result = $discoverer->discover($this->root);
 
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
-        // `/config.js` is root-absolute against the WEB root, which a bundler
-        // serves out of `public/` or `static/`. Every reading is offered; the
-        // ones naming no emitted file match nothing downstream.
+        // Recorded as written, with its line: which file `/config.js` names
+        // depends on the rest of the scan, which the reader does not see.
         assertSame([
-            'frontend/config.js',
-            'frontend/public/config.js',
-            'frontend/static/config.js',
-            'frontend/src/main.tsx',
-            'frontend/public/src/main.tsx',
-            'frontend/static/src/main.tsx',
-        ], $units[0]->metadata['entry_points']);
+            ['url' => '/config.js', 'line' => 4],
+            ['url' => '/src/main.tsx', 'line' => 6],
+        ], $units[0]->metadata['script_refs']);
+        // `/config.js` is served out of `public/`, which a bundler serves at
+        // the web root; `/src/main.tsx` is the file beside the page. Each
+        // names exactly one scanned file, so neither is reported.
+        assertSame(['frontend/public/config.js', 'frontend/src/main.tsx'], $units[0]->metadata['entry_points']);
+        assertSame([], $result->diagnostics);
     }
 
     /**
      * The icon and stylesheet links in the same shell are not code, so nothing
-     * about them should reach the entry-point list — the extension guard in
-     * {@see \Knossos\Discovery\Manifest\ManifestPaths::entryPointPath()} is what keeps them out, and a
-     * reader that scraped every `href` would defeat it.
+     * about them should reach the script references: the reader reads only
+     * script tags and modulepreload links, and one that scraped every `href`
+     * would put ordinary prose links through the same suppression.
      */
     public function testDiscoverIgnoresNonScriptReferencesInHtml(): void
     {
@@ -1673,7 +1677,9 @@ TOML);
 
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
+        assertSame([], $units[0]->metadata['script_refs']);
         assertSame([], $units[0]->metadata['entry_points']);
+        assertSame([], $result->diagnostics);
     }
 
     /**
@@ -1688,15 +1694,41 @@ TOML);
             '<script src=b.js></script>',
             '',
         ]));
+        file_put_contents($this->root . '/a.js', "export {};\n");
 
         $discoverer = new ProjectDiscoverer(new DiscoveryConfig([$this->root]));
         $result = $discoverer->discover($this->root);
 
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
-        // Relative sources are anchored to the file's own directory and get no
-        // web-root readings: they are already project-relative.
-        assertSame(['a.js', 'b.js'], $units[0]->metadata['entry_points']);
+        assertSame([
+            ['url' => './a.js', 'line' => 1],
+            ['url' => 'b.js', 'line' => 2],
+        ], $units[0]->metadata['script_refs']);
+        // A relative source names the file beside the page and nothing else;
+        // `b.js` is not in the scan, so it is reported rather than guessed.
+        assertSame(['a.js'], $units[0]->metadata['entry_points']);
+        assertSame(['DISCOVERY_HTML_SCRIPT_UNRESOLVED'], array_map(static fn($diagnostic): string => $diagnostic->code, $result->diagnostics));
+        self::assertStringContainsString('index.html:2 loads b.js', $result->diagnostics[0]->message);
+    }
+
+    /**
+     * A page loading `tsc` output loads what its source compiles to. The
+     * output is left out of the scan beside its source, so the page's
+     * reference lands on the source instead of being reported as missing.
+     */
+    public function testDiscoverResolvesAPageScriptBuiltFromTypeScriptToItsSource(): void
+    {
+        file_put_contents($this->root . '/index.html', "<script type=\"module\" src=\"./main.js\"></script>\n");
+        file_put_contents($this->root . '/main.ts', "export const start = (): void => {};\n");
+        file_put_contents($this->root . '/main.js', "export const start = () => { };\n//# sourceMappingURL=main.js.map\n");
+
+        $result = (new ProjectDiscoverer(new DiscoveryConfig([$this->root])))->discover($this->root);
+
+        $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
+        self::assertNotContains('main.js', array_map(static fn(DiscoveredFile $file): string => $file->relativePath, $result->files));
+        assertSame(['main.ts'], $units[0]->metadata['entry_points']);
+        assertSame([], $result->diagnostics);
     }
 
     /**

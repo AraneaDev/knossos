@@ -65,6 +65,27 @@ final class SourceClassifier
     }
 
     /**
+     * The TypeScript sources `tsc` would compile a JavaScript path from, in
+     * the order tried: `.ts` and `.tsx` for `.js` and `.jsx`, `.mts` for
+     * `.mjs`, `.cts` for `.cjs`; none for any other path.
+     *
+     * @return list<string>
+     */
+    public static function compiledFrom(string $relativePath): array
+    {
+        if (preg_match('/^(.*)\.(js|jsx|mjs|cjs)$/', $relativePath, $stem) !== 1) {
+            return [];
+        }
+        $sources = match ($stem[2]) {
+            'mjs' => ['mts'],
+            'cjs' => ['cts'],
+            default => ['ts', 'tsx'],
+        };
+
+        return array_map(static fn(string $source): string => $stem[1] . '.' . $source, $sources);
+    }
+
+    /**
      * Whether a JavaScript file is `tsc` output beside its TypeScript source:
      * a same-named `.ts` or `.tsx` (`.mts` for `.mjs`, `.cts` for `.cjs`)
      * exists, and the file ends with the source-map comment the compiler
@@ -75,17 +96,9 @@ final class SourceClassifier
      */
     public static function isCompiledSibling(string $relativePath, string $absolutePath, callable $exists): bool
     {
-        if (preg_match('/^(.*)\.(js|jsx|mjs|cjs)$/', $relativePath, $stem) !== 1) {
-            return false;
-        }
-        $sources = match ($stem[2]) {
-            'mjs' => ['mts'],
-            'cjs' => ['cts'],
-            default => ['ts', 'tsx'],
-        };
         $sibling = false;
-        foreach ($sources as $source) {
-            $sibling = $sibling || $exists($stem[1] . '.' . $source);
+        foreach (self::compiledFrom($relativePath) as $source) {
+            $sibling = $sibling || $exists($source);
         }
         if (!$sibling) {
             return false;

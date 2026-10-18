@@ -135,6 +135,45 @@ TOML);
         }
     }
 
+    /**
+     * `web_roots` in knossos.json reaches discovery: the page's root URL
+     * resolves under the mapped folder, where the heuristic alone would see
+     * two candidates and resolve neither.
+     */
+    public function testPrepareResolvesHtmlScriptsThroughConfiguredWebRoots(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-planner-web-roots-' . bin2hex(random_bytes(6));
+        mkdir($root . '/web/public', 0700, true);
+        mkdir($root . '/static', 0700, true);
+        try {
+            file_put_contents($root . '/web/public/index.html', "<script type=\"module\" src=\"/static/app.mjs\"></script>\n");
+            file_put_contents($root . '/web/public/app.mjs', "export const start = () => {};\n");
+            file_put_contents($root . '/static/app.mjs', "export const start = () => {};\n");
+            $planner = new ScanPlanner($this->createSchema(), [$root]);
+            $page = static fn(ScanPreparation $preparation) => array_values(array_filter(
+                $preparation->discovery->units,
+                static fn($unit): bool => $unit->kind === 'html',
+            ))[0];
+
+            $unmapped = $planner->prepare($root, null, null, null, 'auto', 0, null);
+            assertSame([], $page($unmapped)->metadata['entry_points']);
+            assertSame(['DISCOVERY_HTML_SCRIPT_AMBIGUOUS'], array_map(static fn($diagnostic): string => $diagnostic->code, $unmapped->discovery->diagnostics));
+
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'web_roots' => ['/static/' => 'web/public/']], JSON_THROW_ON_ERROR));
+            $mapped = $planner->prepare($root, null, null, null, 'auto', 0, null);
+            assertSame(['web/public/app.mjs'], $page($mapped)->metadata['entry_points']);
+            assertSame([], $mapped->discovery->diagnostics);
+        } finally {
+            foreach (['knossos.json', 'web/public/index.html', 'web/public/app.mjs', 'static/app.mjs'] as $file) {
+                @unlink($root . '/' . $file);
+            }
+            @rmdir($root . '/web/public');
+            @rmdir($root . '/web');
+            @rmdir($root . '/static');
+            @rmdir($root);
+        }
+    }
+
     public function testFinalizeReturnsFullModeWhenNoExistingProject(): void
     {
         $pdo = $this->createSchema();

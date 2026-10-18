@@ -9,27 +9,103 @@ use Knossos\Discovery\Manifest\ManifestPaths;
 /**
  * Derives the entry points that need more than one unit, or the file list, to
  * see: the sources behind published build output, classes a config names,
- * the files in directories a framework loads, and glob patterns matched
- * against discovered files.
+ * the files in directories a framework loads, glob patterns matched against
+ * discovered files, and the scripts an HTML page loads.
  */
 final class EntryPointResolver
 {
     /**
      * The units with the cross-unit entry points added, the passes run in a
      * fixed order: build-output sources, class names, loaded directories,
-     * globs.
+     * globs, HTML scripts.
      *
      * @param list<ProjectUnit> $units sorted by kind and config path
      * @param list<DiscoveredFile> $files sorted by path
+     * @param array<string, string> $webRoots URL prefix => project folder, from `knossos.json`
+     * @param list<DiscoveryDiagnostic> $diagnostics appended to with the script references no single file answers to
+     * @param array<string, list<string>> $compiled `tsc` output discovery left out beside its source => the sources it is built from
      * @return list<ProjectUnit>
      */
-    public static function resolve(array $units, array $files): array
+    public static function resolve(array $units, array $files, array $webRoots = [], array &$diagnostics = [], array $compiled = []): array
     {
         $units = self::withBuildOutputSources($units);
         $units = self::withClassNameEntryPoints($units);
         $units = self::withLoadedDirectoryEntryPoints($units, $files);
+        $units = self::withGlobEntryPoints($units, $files);
 
-        return self::withGlobEntryPoints($units, $files);
+        return self::withHtmlScriptEntryPoints($units, $files, $webRoots, $diagnostics, $compiled);
+    }
+
+    /**
+     * Set, on each HTML unit, the scanned files its script references name,
+     * and report each local reference that names none or several.
+     *
+     * The page records what it asked for ({@see Manifest\HtmlManifest});
+     * only here, with the file list, can that be turned into files, and only
+     * a file in the scan can be an entry point. A miss is a warning and
+     * never an error: a page loading a script the scan cannot place must not
+     * fail a scan or a gate.
+     *
+     * @param list<ProjectUnit> $units
+     * @param list<DiscoveredFile> $files
+     * @param array<string, string> $webRoots
+     * @param list<DiscoveryDiagnostic> $diagnostics
+     * @param array<string, list<string>> $compiled
+     * @return list<ProjectUnit>
+     */
+    private static function withHtmlScriptEntryPoints(array $units, array $files, array $webRoots, array &$diagnostics, array $compiled): array
+    {
+        $scanned = [];
+        foreach ($files as $file) {
+            $scanned[$file->relativePath] = true;
+        }
+        $resolved = [];
+        foreach ($units as $unit) {
+            $refs = $unit->metadata['script_refs'] ?? null;
+            if ($unit->kind !== 'html' || !is_array($refs)) {
+                $resolved[] = $unit;
+                continue;
+            }
+            $paths = [];
+            foreach ($refs as $ref) {
+                if (!is_array($ref) || !is_string($ref['url'] ?? null) || !is_int($ref['line'] ?? null)) {
+                    continue;
+                }
+                $result = HtmlScriptResolver::resolve($unit->configPath, $ref['url'], $scanned, $webRoots, $compiled);
+                if (is_string($result)) {
+                    $paths[$result] = true;
+                } elseif ($result !== null) {
+                    $diagnostics[] = self::scriptMiss($unit->configPath, $ref['url'], $ref['line'], $result);
+                }
+            }
+            $paths = array_map(strval(...), array_keys($paths));
+            sort($paths, SORT_STRING);
+            $resolved[] = new ProjectUnit($unit->kind, $unit->configPath, $unit->contentHash, [
+                ...$unit->metadata,
+                'entry_points' => $paths,
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /** The warning for one script reference no single scanned file answers to. */
+    private static function scriptMiss(string $page, string $url, int $line, HtmlScriptMiss $miss): DiscoveryDiagnostic
+    {
+        $where = sprintf('%s:%d loads %s', $page, $line, $url);
+        $message = match ($miss->reason) {
+            'ambiguous' => sprintf('%s, which matches more than one scanned file (%s); map its URL prefix to one folder with web_roots in knossos.json.', $where, implode(', ', $miss->candidates)),
+            'mapped-missing' => sprintf('%s, which web_roots maps to %s, and that is not a scanned file.', $where, implode(', ', $miss->candidates)),
+            'outside' => sprintf('%s, which points above the project root.', $where),
+            default => sprintf('%s, which matches no scanned file; if the server maps its URL prefix to a folder, name it with web_roots in knossos.json.', $where),
+        };
+
+        return new DiscoveryDiagnostic(
+            'warning',
+            $miss->reason === 'ambiguous' ? 'DISCOVERY_HTML_SCRIPT_AMBIGUOUS' : 'DISCOVERY_HTML_SCRIPT_UNRESOLVED',
+            $message,
+            $page,
+        );
     }
 
     /**

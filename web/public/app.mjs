@@ -164,6 +164,16 @@ export function createPage(o) {
     return page;
 }
 
+/**
+ * What a view is handed: the page's token, the drawing module, and the rule
+ * Claude Code places a card with.
+ *
+ * @typedef {object} ViewOptions
+ * @property {string} token
+ * @property {typeof import("./draw.mjs")} draw
+ * @property {Function} cardPlace
+ */
+
 /** The views the hash names, by name: each draws into the page's one view container. */
 const VIEWS = { pane: paneView };
 
@@ -278,7 +288,12 @@ function patcher(container, patchPlan) {
     };
 }
 
-/** The pane: the frames drawn into `root`, the person's keys, presses, typing, focus and wheel sent back. */
+/**
+ * The pane: the frames drawn into `root`, the person's keys, presses, typing, focus and wheel sent back.
+ *
+ * @param {HTMLElement} root
+ * @param {ViewOptions} options
+ */
 function paneView(root, { token, draw: drawn, cardPlace }) {
     const light = matchMedia("(prefers-color-scheme: light)");
     const theme = () => (light.matches ? "light" : "dark");

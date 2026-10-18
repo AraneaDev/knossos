@@ -14,7 +14,12 @@ import {
     sourcePathTarget,
     unwrapParentheses,
 } from "./module-entry.js";
-import { normalize, realSourcePath, relativeInside } from "./project-paths.js";
+import {
+    belowNodeModules,
+    normalize,
+    realSourcePath,
+    relativeInside,
+} from "./project-paths.js";
 import {
     globBase,
     globContext,
@@ -24,6 +29,58 @@ import {
     relativeGlob,
 } from "./syntax-predicates.js";
 import { reference } from "./typescript-fact-utils.js";
+
+/**
+ * The file path a template literal handed to `import()` starts with, or null.
+ *
+ * `` import(`./draw.mjs${query}`) `` loads `./draw.mjs` whatever the query
+ * is: the text before the first `${` names the file, and what follows only
+ * decorates the URL. A `?` or `#` written into the head starts that
+ * decoration too, so `` `./draw.mjs?v=${n}` `` names `./draw.mjs`. The head
+ * counts only when it is a relative path (`./`, `../`) ending in a file name
+ * with an extension, so `` `${base}/x.js` ``, `` `./dir/${name}.js` `` and an
+ * absolute `` `/x.js${q}` `` stay unresolved. The HTML reader in the PHP core
+ * reads a page's inline scripts by the same head rule
+ * (src/Discovery/Manifest/InlineScriptImports.php) with one difference: it
+ * keeps a `/...` head, because a page's URLs are root-relative and the core
+ * resolves them against the page's web roots, where an absolute path in a
+ * module names a file on disk outside any project.
+ */
+export function templateImportHead(argument) {
+    const text = ts.isNoSubstitutionTemplateLiteral(argument)
+        ? argument.text
+        : ts.isTemplateExpression(argument)
+          ? argument.head.text
+          : null;
+    const head = text?.replace(/[?#].*$/s, "") ?? null;
+    return head !== null &&
+        /^\.{1,2}\/(?:[^/]*\/)*[^/]+\.[A-Za-z0-9]+$/.test(head)
+        ? head
+        : null;
+}
+
+/** A JavaScript extension => the TypeScript sources a specifier naming it resolves to first. */
+const TYPESCRIPT_SOURCES = {
+    ".js": [".ts", ".tsx"],
+    ".jsx": [".tsx"],
+    ".mjs": [".mts"],
+    ".cjs": [".cts"],
+};
+
+/**
+ * The files a template head names, in the order the compiler resolves a
+ * string specifier: `./draw.js` is `draw.ts` or `draw.tsx` when one exists
+ * (NodeNext and bundler resolution name the output a source compiles to),
+ * then `draw.js` itself. No other suffix is tried.
+ */
+function templateHeadCandidates(head) {
+    const extension = path.extname(head);
+    const stem = head.slice(0, -extension.length);
+    return [
+        ...(TYPESCRIPT_SOURCES[extension] ?? []).map((source) => stem + source),
+        head,
+    ];
+}
 
 /** Adds the edges of imports no static import declaration names. */
 export class DynamicImportCollector {
@@ -106,6 +163,40 @@ export class DynamicImportCollector {
             if (source !== null && target !== null && source !== target)
                 this.context.addEdge("references", source, target, element);
         }
+    }
+
+    /**
+     * The `imports` edge of `` import(`./draw.mjs${query}`) ``.
+     *
+     * The compiler binds no module to a template, so its head
+     * ({@link templateImportHead}) is resolved to the file it names exactly:
+     * no extension is guessed, since the head already ends in one.
+     */
+    templateImport(node) {
+        if (
+            node.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+            node.arguments.length !== 1
+        )
+            return;
+        const head = templateImportHead(node.arguments[0]);
+        const file =
+            head === null
+                ? undefined
+                : templateHeadCandidates(head)
+                      .map((name) => this.context.sourceFileNamed(name, [""]))
+                      .find((found) => found !== undefined);
+        const relative =
+            file === undefined
+                ? null
+                : relativeInside(this.context.root, file.fileName);
+        if (relative !== null && !belowNodeModules(relative))
+            this.context.addEdge(
+                "imports",
+                this.context.currentSource() ?? this.context.moduleId,
+                reference("module", relative),
+                node,
+                { dynamic: true, type_only: false },
+            );
     }
 
     /**

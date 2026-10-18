@@ -206,8 +206,8 @@ project-relative path, so a token naming something no scanner emitted never
 matches anything. Files that do match are classified `application.entry_point`
 (rule `core.manifest.entrypoints.v1`).
 
-Discovery also reads every `.html` file for its `<script src>` attributes,
-every `README` for the paths it hands to an interpreter (`node scripts/x.mjs`,
+Discovery also reads every `.html` file for the scripts it loads (see
+[below](#how-an-html-pages-scripts-are-resolved)), every `README` for the paths it hands to an interpreter (`node scripts/x.mjs`,
 `python3 tools/y.py`), every `.yml`/`.yaml` and `.neon` file, Dockerfile and shell script (`.sh`, `.bash`) for
 tokens shaped like a source path, and every tool config module for the keys
 naming files the tool loads. A shell script's path is also read from the
@@ -219,11 +219,9 @@ the file it was copied from. A single-page
 application is entered through its HTML shell, a Compose file mounts a config
 by path, and Vitest loads `setupFiles` before every test; none of those is an
 import, so each named file carried an in-degree of zero while being the reason
-the thing runs. A root-absolute `src` names the web root, so `public/` and
-`static/` readings are offered alongside the plain one, and YAML is tokenised
-as text rather than parsed. Both are loose on purpose and safe for the same
-reason the Composer script tokenising is: a token that names no file any
-scanner emitted matches nothing. A tool config is the exception and is read
+the thing runs. YAML is tokenised as text rather than parsed. That is loose on
+purpose and safe for the same reason the Composer script tokenising is: a token
+that names no file any scanner emitted matches nothing. A tool config is the exception and is read
 key by key, because it names files to exclude as well as files to load, and an
 excluded path is exactly the kind that turns out to be dead. Its keys include Vite's
 `ssr`, Cypress's `pluginsFile` and `supportFile` (and their defaults, from `cypress.json`),
@@ -238,6 +236,62 @@ handler the host actually executes is left looking dead. The manifest settles
 which of the two runs on the runtime's authority rather than the type checker's.
 
 A script the manifest does not name stays reportable, which is the useful signal: a developer tool wired into nothing.
+
+### How an HTML page's scripts are resolved
+
+A browser front end is entered from its page, and nothing in the project
+imports the module the page loads. Discovery reads each `.html` and `.htm`
+file in the scan for every local script it loads:
+
+- `<script src="...">`, classic or `type="module"`, in any quoting and case;
+- `<link rel="modulepreload" href="...">`;
+- in an inline `<script>`, `import ... from "..."`, `import "..."`,
+  `export ... from "..."` and `import("...")`, where a template literal counts
+  by its text before the first `${`, so
+  ``import(`/static/app.mjs${location.search}`)`` loads `/static/app.mjs`.
+
+A script tag inside an HTML comment, inside a `<template>`, `<textarea>`,
+`<title>`, `<xmp>`, `<noscript>`, `<style>`, `<iframe>`, `<noembed>` or
+`<noframes>`, or anywhere after `<plaintext>`, a custom element such as
+`<script-loader>`, and an import inside a string or comment of an inline
+script, load nothing. The query and fragment are dropped.
+Remote URLs, `data:` and `blob:` URLs, package names such as `react`, and
+files no scanner reads (`.css`, `.json`) are ignored without a word.
+
+Each reference then has to name exactly one scanned file:
+
+- A relative URL (`app.mjs`, `./app.mjs`, `../lib/x.js`) is read from the
+  page's folder.
+- A root URL (`/static/app.mjs`) is read through
+  [`web_roots`](../get-started/project-configuration.md#web-roots) when one of
+  its prefixes matches, and never any other way then.
+- Otherwise a root URL is looked for in the page's folder without its first
+  segment, so `/static/app.mjs` from `web/public/index.html` finds
+  `web/public/app.mjs` when a server mounts that folder at `/static/`. The full
+  path is looked for under the page's folder, each folder above it up to the
+  project root, and the `public/` and `static/` folders in each. The first
+  segment is dropped beside the page only, so `/assets/main.js` from
+  `apps/admin/index.html` never lands on an unrelated `main.js` higher up.
+- A `..` in the URL is applied first, so `/static/../x.js` is `/x.js` and cannot
+  climb out of a mapped folder.
+- A page that loads `tsc` output (`main.js` beside `main.ts`, which the scan
+  leaves out) names the TypeScript source.
+
+A file found this way is classified `application.entry_point` with the page as
+`named_by`, so it and everything only it reaches stop being candidates. A
+module that file loads with ``import(`./draw.mjs${query}`)`` is reached too:
+the TypeScript worker follows a template literal by its text before the first
+`${`, without any `?` or `#` part, when that text is a relative path ending in
+a file name. It names that exact file, or, for a `.js`, `.jsx`, `.mjs` or
+`.cjs` name, the TypeScript source it is built from when one exists, as a
+string specifier would; and it leaves `` `./${name}.mjs` `` and an
+absolute `` `/x.mjs${q}` `` unresolved. When no
+file matches, or more than one does, nothing is guessed: the reference adds no
+entry point and the scan reports a warning naming the page, the line, the URL
+and the reason, with code `DISCOVERY_HTML_SCRIPT_UNRESOLVED` or
+`DISCOVERY_HTML_SCRIPT_AMBIGUOUS`. To settle an ambiguous one, map its URL
+prefix to a folder with `web_roots`. A warning never fails a scan, and a
+quality gate counts it under `warning_diagnostics`, not `error_diagnostics`.
 
 ### Why tool configuration is excluded
 

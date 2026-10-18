@@ -60,8 +60,7 @@ final class YamlPaths
      * bind mount is relative to the compose file's own directory; a CI
      * workflow's `run:` step executes with the repository root as its working
      * directory. Both readings are offered for every token and the one naming
-     * no emitted file falls away, which is the same bargain {@see HtmlManifest::webRootReadings()}
-     * strikes with a bundler's asset directories. A caller that knows of other
+     * no emitted file falls away. A caller that knows of other
      * working directories, as a shell script's `cd` names them, adds them.
      *
      * @param list<string> $extraAnchors project-relative directories to read a path from as well

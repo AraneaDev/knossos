@@ -118,6 +118,7 @@ final readonly class ScanPlanner
             // repository's trees. A gitless project compares them against
             // nothing, so its default is arbitrary.
             gitObjectHash: $gitHead !== null && strlen($gitHead) === 64 ? 'sha256' : 'sha1',
+            webRoots: $configuration->webRoots,
         )))->discover($root);
         $discoveryMilliseconds = self::elapsedMilliseconds($started);
         // Derived from the bytes the walk just read, against the commit
