@@ -57,6 +57,21 @@ describe('webPort', () => {
     await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
   })
 
+  it('ends a quiet child at once when the reader stops while it waits', async () => {
+    const io = portOver(fakeHub())
+    const pidFile = join(scratch(), 'pid')
+    const stream = io.process.spawn({ argv: ['sh', '-c', `echo $$ > ${pidFile}; echo one; exec sleep 30`] })
+    expect((await stream.next()).value).toEqual({ stream: 'stdout', text: 'one\n' })
+    // The reader waits for a line that never comes, as the watcher's loop does between events.
+    const pending = stream.next()
+    const pid = Number(readFileSync(pidFile, 'utf8'))
+    const stopped = Date.now()
+    await stream.return(undefined)
+    expect(Date.now() - stopped).toBeLessThan(1_000)
+    expect(() => process.kill(pid, 0)).toThrow()
+    expect((await pending).done).toBe(true)
+  })
+
   it('keeps the store in its file, for the next port on it', async () => {
     const file = join(scratch(), 'deep', 'store.json')
     await portOver(fakeHub(), file).store.set('baselines', { web: { since: 's1' } })

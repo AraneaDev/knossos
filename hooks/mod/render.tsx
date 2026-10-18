@@ -10,11 +10,10 @@ import { bandModel } from '../lib/band'
 import { fit, paneHeight, paneLayout, rowWidth, shrinkRows } from '../lib/layout'
 import type { Preview, Row, Segment } from '../lib/layout'
 import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
-import { isBusy, spun } from '../lib/motion'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
 import type { Port } from './port'
-import { noteSpinners, paneSource } from './frame'
+import { noteSpinners, paneSource, spunRow } from './frame'
 import type { Handlers } from './input'
 import { fieldKey, mod } from './state'
 
@@ -110,7 +109,7 @@ function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Se
  */
 function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns: number, terminal: boolean, places = true, hovers = false) {
   const { Box, Code } = ui
-  const spinning = spunRow(line)
+  const spinning = spunRow(line, mod.spinFrame)
   const row = places ? spinning : { ...spinning, segments: spinning.segments.map(({ press, ...s }) => (press === undefined || press.id.startsWith(FILE_PRESS) ? s : { ...s, press })) }
   // A change's hunks: the engine's own diff, gutters, markers and colours as Claude Code draws them.
   if (row.code !== undefined) {
@@ -160,12 +159,6 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns:
       {drawn}
     </Box>
   )
-}
-
-/** `row` with its spinners turned to the frame the pane draws (see `noteSpinners`, which also keeps the frames going while one shows). */
-function spunRow(row: Row): Row {
-  if (!row.segments.some(s => isBusy(s.text))) return row
-  return { ...row, segments: row.segments.map(s => (isBusy(s.text) ? { ...s, text: spun(s.text, mod.spinFrame) } : s)) }
 }
 
 /**

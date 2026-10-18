@@ -7,11 +7,10 @@
  */
 import { paneLayout } from '../hooks/lib/layout'
 import type { Row } from '../hooks/lib/layout'
-import { spun } from '../hooks/lib/motion'
 import { HEAT_KEYS, rasterTheme } from '../hooks/lib/raster'
 import { themeColour } from '../hooks/lib/themes'
 import type { WebTheme } from '../hooks/lib/themes'
-import { noteSpinners, paneSource } from '../hooks/mod/frame'
+import { noteSpinners, paneSource, spunRow } from '../hooks/mod/frame'
 import type { Port } from '../hooks/mod/port'
 import { mod } from '../hooks/mod/state'
 
@@ -52,9 +51,6 @@ function coloursOf(keys: Set<string>, theme: WebTheme): Record<string, string> {
   }
   return colours
 }
-
-/** `rows` with every line that says something is on its way at the motion's current frame. */
-const spunRows = (rows: Row[]): Row[] => rows.map(row => (row.segments.some(s => spun(s.text, mod.spinFrame) !== s.text) ? { ...row, segments: row.segments.map(s => ({ ...s, text: spun(s.text, mod.spinFrame) })) } : row))
 
 export class Hub {
   /** The theme the pages last asked for: what the port's config reports. */
@@ -142,7 +138,13 @@ export class Hub {
     page.dirty = false
     page.last = Date.now()
     try {
-      const frame = await (this.queue = this.queue.then(() => this.frameOf(page)).catch(() => null))
+      // A layout that throws leaves the page on its last frame; the server's terminal is told why.
+      const frame = await (this.queue = this.queue
+        .then(() => this.frameOf(page))
+        .catch((error: unknown) => {
+          this.io?.ui.log(`knossos web: laying the pane out failed: ${error instanceof Error ? error.message : String(error)}`)
+          return null
+        }))
       if (frame !== null && this.pages.get(id) === page) {
         page.rows = frame.body
         page.send(frame)
@@ -161,8 +163,8 @@ export class Hub {
     const source = await paneSource(io, columns, false)
     const laid = source.kind === 'pane' ? paneLayout(source.input, columns, rows, 0) : { body: source.kind === 'empty' ? source.rows : [], footer: [], pinned: false }
     await noteSpinners(io, [...laid.body, ...laid.footer])
-    const body = spunRows(laid.body)
-    const footer = spunRows(laid.footer)
+    const body = laid.body.map(row => spunRow(row, mod.spinFrame))
+    const footer = laid.footer.map(row => spunRow(row, mod.spinFrame))
     return { type: 'frame', body, footer, pinned: laid.pinned, theme: page.theme, colours: coloursOf(keysOf([...body, ...footer]), page.theme) }
   }
 }

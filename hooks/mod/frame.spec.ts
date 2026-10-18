@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Row } from '../lib/layout'
-import { busy, NO_MOTION } from '../lib/motion'
-import { noteSpinners, paneSource } from './frame'
+import { busy, NO_MOTION, spinGlyph } from '../lib/motion'
+import { noteSpinners, paneSource, spunRow } from './frame'
 import { currentInput } from './input'
 import type { Port } from './port'
 import { mod, reset } from './state'
@@ -106,5 +106,16 @@ describe('noteSpinners', () => {
     await noteSpinners(io, [row('done')])
     expect(mod.paneBusy).toBe(false)
     expect(timers).toHaveLength(0)
+  })
+})
+
+describe('spunRow', () => {
+  it('turns only the busy segments to the frame, and leaves a row with none as it is', () => {
+    const row: Row = { key: 'r', segments: [{ text: busy('reading') }, { text: 'done', color: 'text' }] }
+    const turned = spunRow(row, 3)
+    expect(turned.segments[0]!.text).toBe(`${spinGlyph(3)} reading`)
+    expect(turned.segments[1]).toBe(row.segments[1])
+    const still: Row = { key: 's', segments: [{ text: 'idle' }] }
+    expect(spunRow(still, 3)).toBe(still)
   })
 })

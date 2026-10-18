@@ -11,15 +11,18 @@
  *   { id, kind: 'resize', cols, rows }
  *   { id, kind: 'theme', theme }            'dark' or 'light'
  *
- * `id` names the page (one per browser tab). The token comes as `t` in the
- * query or, after the page itself was loaded with it, as a cookie, so the
- * page's own files load without it in their URLs.
+ * `id` names the page (one per browser tab). Every request carries the
+ * token, as `t` in the query (the page, its files, the event stream) or in
+ * the `X-Knossos-Token` header (the inputs); never in a cookie, which any
+ * other server on 127.0.0.1 would share. An input is JSON (so a page of
+ * another origin cannot send one without asking first) and, when the
+ * browser names its origin, comes from this server's own.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { dirname, extname, join, normalize } from 'node:path'
+import { dirname, extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { WebTheme } from '../hooks/lib/themes'
@@ -41,6 +44,9 @@ const MAX_BODY = 64 * 1024
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public')
 const TYPES: Record<string, string> = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png' }
 
+/** An error's message, for the log. */
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
 const themeOf = (value: unknown): WebTheme => (value === 'light' ? 'light' : 'dark')
 /** A page's size in cells, kept to what the layout can draw. */
 const sizeOf = (cols: unknown, rows: unknown): Size => ({ columns: clamp(Number(cols), 20, 500, 100), rows: clamp(Number(rows), 5, 300, 40) })
@@ -52,10 +58,17 @@ function tokenMatches(given: string | null | undefined, token: string): boolean 
   return timingSafeEqual(Buffer.from(given), Buffer.from(token))
 }
 
-/** The token a request carries: in its query, else in its cookie. */
+/** The token a request carries: in its query, else in its header. */
 function tokenOf(req: IncomingMessage, url: URL): string | null {
-  const cookie = /(?:^|;\s*)knossos=([^;]+)/.exec(req.headers.cookie ?? '')
-  return url.searchParams.get('t') ?? cookie?.[1] ?? null
+  const header = req.headers['x-knossos-token']
+  return url.searchParams.get('t') ?? (typeof header === 'string' ? header : null)
+}
+
+/** Why an input is refused (its status), or null: it must be JSON, and from this server's own origin when the browser names one. */
+function refusal(req: IncomingMessage, origin: string): number | null {
+  if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return 415
+  const from = req.headers.origin
+  return from === undefined || from === origin ? null : 403
 }
 
 /** A request's body as JSON; null when it is too large or not JSON. */
@@ -96,14 +109,14 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
     if (following) return
     following = true
     void followHead(io)
-      .catch(() => false)
+      .catch((error: unknown) => io.ui.log(`knossos web: reading the checkout's commit failed: ${messageOf(error)}`))
       .finally(() => (following = false))
   }
   const storeFile = join(o.dataDir, 'web', `${createHash('sha256').update(o.root).digest('hex').slice(0, 16)}.json`)
   const io = webPort({ root: o.root, pluginRoot: o.pluginRoot, storeFile, hub, env: { ...process.env, KNOSSOS_DATA_DIR: o.dataDir }, heard: follow })
   hub.attach(io)
   const act = handlersOf(io)
-  const ready = startUp(io, false).catch(() => undefined)
+  const ready = startUp(io, false).catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
   const headPoll = setInterval(follow, HEAD_POLL_MS)
   const streams = new Set<ServerResponse>()
 
@@ -148,12 +161,18 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
   }
 
   /** The page itself, or one of its files; nothing outside its directory. */
-  async function file(res: ServerResponse, path: string, cookie?: string): Promise<void> {
-    const at = normalize(join(PUBLIC, path))
-    if (!at.startsWith(PUBLIC + '/')) return void res.writeHead(404).end()
+  async function file(res: ServerResponse, path: string): Promise<void> {
+    let named: string
+    try {
+      named = decodeURIComponent(path)
+    } catch {
+      return void res.writeHead(404).end()
+    }
+    const at = normalize(join(PUBLIC, named))
+    if (!at.startsWith(PUBLIC + sep)) return void res.writeHead(404).end()
     const content = await readFile(at).catch(() => null)
     if (content === null) return void res.writeHead(404).end()
-    res.writeHead(200, { 'content-type': TYPES[extname(at)] ?? 'application/octet-stream', 'cache-control': 'no-store', ...(cookie === undefined ? {} : { 'set-cookie': cookie }) })
+    res.writeHead(200, { 'content-type': TYPES[extname(at)] ?? 'application/octet-stream', 'cache-control': 'no-store' })
     res.end(content)
   }
 
@@ -171,15 +190,25 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
     hub.connect(id, sizeOf(url.searchParams.get('cols'), url.searchParams.get('rows')), send, themeOf(url.searchParams.get('theme')))
   }
 
+  let origin = ''
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    // The URLs carry the token: no page they lead to is told where it came from.
+    res.setHeader('referrer-policy', 'no-referrer')
     if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403).end()
-    if (req.method === 'GET' && url.pathname === '/') return void file(res, 'index.html', `knossos=${token}; HttpOnly; SameSite=Strict; Path=/`)
+    if (req.method === 'GET' && url.pathname === '/') return void file(res, 'index.html')
     if (req.method === 'GET' && url.pathname.startsWith('/static/')) return void file(res, url.pathname.slice('/static/'.length))
     if (req.method === 'GET' && url.pathname === '/events') return events(res, url)
     if (req.method === 'POST' && url.pathname === '/input') {
+      const refused = refusal(req, origin)
+      if (refused !== null) return void res.writeHead(refused).end()
       return void bodyOf(req).then(async body => {
-        const done = body === null ? false : await input(body).catch(() => false)
+        if (body === null) return void res.writeHead(400).end()
+        const done = await input(body).catch((error: unknown) => {
+          io.ui.log(`knossos web: an input (${String(body.kind)}) failed: ${messageOf(error)}`)
+          return null
+        })
+        if (done === null) return void res.writeHead(500).end()
         if (typeof done === 'object') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(done))
         res.writeHead(done ? 204 : 400).end()
       })
@@ -192,6 +221,7 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
   })
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
+  origin = `http://127.0.0.1:${port}`
 
   return {
     url: `http://127.0.0.1:${port}/?t=${token}`,

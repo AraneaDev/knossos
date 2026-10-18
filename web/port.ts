@@ -44,7 +44,8 @@ function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv): Promise
 
 /**
  * A child read piece by piece as it prints, as the watcher reads one: the
- * child starts at once, and stopping the read (`return()`) ends it.
+ * child starts at once, and stopping the read (`return()`) ends it, even
+ * while a read waits on it.
  */
 function spawned(argv: string[], env: NodeJS.ProcessEnv, heard: () => void): AsyncGenerator<Piece, void> {
   const child = spawn(argv[0]!, argv.slice(1), { env, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -72,7 +73,10 @@ function spawned(argv: string[], env: NodeJS.ProcessEnv, heard: () => void): Asy
     done = true
     nudge()
   })
-  return (async function* () {
+  const end = () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+  }
+  const pieces = (async function* () {
     try {
       for (;;) {
         const piece = queue.shift()
@@ -84,9 +88,28 @@ function spawned(argv: string[], env: NodeJS.ProcessEnv, heard: () => void): Asy
       }
       if (failed !== null) throw failed
     } finally {
-      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+      end()
     }
   })()
+  // A generator takes return() only after the read it waits on, which a quiet child never ends: the child is ended first, and its close ends that read.
+  return {
+    next: () => pieces.next(),
+    return: value => {
+      end()
+      return pieces.return(value)
+    },
+    throw: error => {
+      end()
+      return pieces.throw(error)
+    },
+    [Symbol.asyncIterator]() {
+      return this
+    },
+    [Symbol.asyncDispose]: async () => {
+      end()
+      await pieces.return()
+    },
+  }
 }
 
 /** The store's file read back: an object of keys, or empty when it is missing or unreadable. */

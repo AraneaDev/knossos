@@ -1,10 +1,18 @@
 import { request } from 'node:http'
 import type { IncomingMessage } from 'node:http'
 import { networkInterfaces } from 'node:os'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
 import type { Frame } from './hub'
 import { startServer } from './server'
+
+// A wheel whose handler throws: what the server answers for an internal failure.
+vi.mock('../hooks/mod/actions', async original => ({
+  ...(await original<typeof import('../hooks/mod/actions')>()),
+  wheelScrolled: vi.fn(async () => {
+    throw new Error('boom')
+  }),
+}))
 
 type Running = Awaited<ReturnType<typeof startServer>>
 let running: Running | null = null
@@ -35,10 +43,10 @@ function get(url: string): Promise<{ status: number; body: string }> {
   })
 }
 
-/** A POST of `body` as JSON; its status. */
-function post(url: string, body: unknown): Promise<number> {
+/** A POST of `body` as JSON (or with `headers` of its own); its status. */
+function post(url: string, body: unknown, headers: Record<string, string> = { 'content-type': 'application/json' }): Promise<number> {
   return new Promise((resolve, reject) => {
-    const req = request(url, { method: 'POST', headers: { 'content-type': 'application/json' } }, res => {
+    const req = request(url, { method: 'POST', headers }, res => {
       res.resume()
       res.on('end', () => resolve(res.statusCode ?? 0))
     })
@@ -92,6 +100,48 @@ describe('startServer', () => {
     expect((await get(`${base}events?t=wrong&id=a&cols=80&rows=30`)).status).toBe(403)
     expect(await post(`${base}input`, { id: 'a', kind: 'press', press: 'tab:hubs' })).toBe(403)
     expect((await get(`${base}?t=${token}`)).status).not.toBe(403)
+  })
+
+  it('takes the token in its header, never a cookie, and tells no page where it came from', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const json = { 'content-type': 'application/json' }
+    expect(await post(`${base}input`, { id: 'a', kind: 'press', press: 'tab:hubs' }, { ...json, 'x-knossos-token': token })).toBe(204)
+    expect(await post(`${base}input`, { id: 'a', kind: 'press', press: 'tab:hubs' }, { ...json, cookie: `knossos=${token}` })).toBe(403)
+    const page = await new Promise<IncomingMessage>(resolve => request(`${base}?t=${token}`, resolve).end())
+    page.resume()
+    expect(page.headers['set-cookie']).toBeUndefined()
+    expect(page.headers['referrer-policy']).toBe('no-referrer')
+  })
+
+  it("refuses an input that is not JSON or comes from another page's origin", async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const press = { id: 'a', kind: 'press', press: 'tab:hubs' }
+    expect(await post(`${base}input?t=${token}`, press, { 'content-type': 'text/plain' })).toBe(415)
+    expect(await post(`${base}input?t=${token}`, press, { 'content-type': 'application/json', origin: 'http://127.0.0.1:1' })).toBe(403)
+    expect(await post(`${base}input?t=${token}`, press, { 'content-type': 'application/json', origin: base.replace(/\/$/, '') })).toBe(204)
+    expect(await post(`${base}input?t=${token}`, 'not an object')).toBe(400)
+  })
+
+  it('serves nothing outside the page directory, and nothing without the token', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    expect((await get(`${base}static/app.mjs`)).status).toBe(403)
+    for (const path of ['static/../server.ts', 'static/%2e%2e/server.ts', 'static/..%2fserver.ts', 'static/%2e%2e%2fserver.ts']) {
+      const got = await get(`${base}${path}?t=${token}`)
+      expect([403, 404], path).toContain(got.status)
+      expect(got.body, path).not.toContain('startServer')
+    }
+  })
+
+  it('answers 500 for an input whose handler fails, and logs why', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    expect(await post(`${base}input?t=${token}`, { id: 'a', kind: 'wheel', row: 1, column: 1, by: 1 })).toBe(500)
+    expect(logged.mock.calls.flat().join('\n')).toContain('boom')
+    logged.mockRestore()
   })
 
   it('streams the pane: the first event is the current frame, and a press moves the next one', async () => {

@@ -86,6 +86,21 @@ describe('Hub', () => {
     expect(hub.rowsOf('dark')).toEqual([])
   })
 
+  it('logs a layout that throws and leaves the page on its last frame', async () => {
+    const { hub, io, page } = await loaded()
+    const got = page('a', 100)
+    await vi.waitFor(() => expect(got).toHaveLength(1))
+    const log = vi.spyOn(io.ui, 'log').mockImplementation(() => undefined)
+    io.state.view.read = async () => {
+      throw new Error('no view')
+    }
+    hub.changed()
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith(expect.stringContaining('no view')))
+    await new Promise(resolve => setTimeout(resolve, 80))
+    expect(got).toHaveLength(1)
+    expect(hub.rowsOf('a')).toBe(got[0]!.frame.body)
+  })
+
   it('hands an event to every page', async () => {
     const { hub } = await loaded()
     const seen: unknown[] = []

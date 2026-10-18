@@ -6,7 +6,7 @@
  */
 import { allowInput, emptyRows, noGraphOf, tierOf } from '../lib/layout'
 import type { PaneInput, Row } from '../lib/layout'
-import { BUSY_SPIN_MS, isBusy } from '../lib/motion'
+import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
 import { currentInput } from './input'
 import { startMotion } from './motion'
 import type { Port } from './port'
@@ -49,4 +49,10 @@ export async function noteSpinners(io: Port, rows: readonly Row[]): Promise<void
   mod.paneBusy = seen
   // Past its minute a line under way stands still: a redraw then starts no frames, or each would draw the next.
   if (mod.paneBusy && mod.motionTimer === null && now - mod.busySince < BUSY_SPIN_MS) await startMotion(io, null)
+}
+
+/** `row` with its spinners turned to `frame`, the one the pane draws at (see {@link noteSpinners}, which also keeps the frames going while one shows). */
+export function spunRow(row: Row, frame: number): Row {
+  if (!row.segments.some(s => isBusy(s.text))) return row
+  return { ...row, segments: row.segments.map(s => (isBusy(s.text) ? { ...s, text: spun(s.text, frame) } : s)) }
 }
