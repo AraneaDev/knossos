@@ -226,6 +226,20 @@ describe('changesRows', () => {
     expect(sinceSaid()).toContain('Nothing changed in this project since this session began.')
     expect(sinceSaid('web')).toContain('Nothing changed in this project since the last commit.')
   })
+
+  it('says on the web why it lists nothing outside git or after a failed read, and nothing else', () => {
+    const base: SessionLedger = { status: 'ok', since: 'HEAD', complete: true, files: {}, files_truncated: false, tests: [], tests_truncated: false }
+    const said = (status: SessionLedger['status']) =>
+      changesArrangement(changesInput(ledgerChanges({ ...base, status }, NO_CHANGES, new Set(), [], null, 'web'), ROOT), 0, 'medium', undefined, undefined, 'web')
+        .left[0]!.make(80, 20)!
+        .body.map(plainText)
+        .join(' ')
+        .replace(/ +/g, ' ')
+        .trim()
+    expect(said('no-git')).toBe('Not a git repository, so there is no last commit to count from.')
+    expect(said('error')).toBe('The changes since the last commit could not be read. The next change reads them again.')
+    expect(said('ok')).toBe('Nothing changed in this project since the last commit.')
+  })
   it('draws files with their marks, each pressable to its detail, the tests, and the command', () => {
     const rows = changesRows(changesInput(session(), ROOT), 1, 90)
     const text = textOf(rows)
@@ -448,7 +462,7 @@ describe('a ledger that does not reach back to the session start', () => {
 
   it('leaves the origins out when told, and draws no origin column', () => {
     const complete: SessionLedger = { ...ledger, complete: true, reached: undefined }
-    const without = ledgerChanges(complete, NO_CHANGES, new Set(), [], null, false)
+    const without = ledgerChanges(complete, NO_CHANGES, new Set(), [], null, 'web')
     expect('origins' in without).toBe(false)
     expect(ledgerChanges(complete, NO_CHANGES, new Set(), [], null).origins).toEqual({ 'src/Router.php': 'outside' })
     const rows = changesRows(changesInput(without, ROOT), 0, 120)

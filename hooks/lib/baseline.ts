@@ -78,6 +78,9 @@ export type BaselineWords = {
   noGit: string
   goneRev: string
   unchanged: string
+  /** Why the Changes list is empty when it could not be read: no git to count from, or the read failed. */
+  notGit: string
+  unread: string
 }
 
 const SESSION_WORDS: BaselineWords = {
@@ -91,6 +94,8 @@ const SESSION_WORDS: BaselineWords = {
   noGit: 'No diff: the project is not in a git repository, or had no commit when the session began.',
   goneRev: 'No diff: the commit this session began at is no longer in the repository.',
   unchanged: 'Back as it was when the session began.',
+  notGit: 'Not in a git repository, so there is no commit the session began at to count from.',
+  unread: 'The changes since this session began could not be read. The next change reads them again.',
 }
 
 const COMMIT_WORDS: BaselineWords = {
@@ -104,6 +109,8 @@ const COMMIT_WORDS: BaselineWords = {
   noGit: 'No diff: the project is not in a git repository, or has no commit yet.',
   goneRev: 'No diff: the last commit read is no longer in the repository.',
   unchanged: 'Back as it was at the last commit.',
+  notGit: 'Not a git repository, so there is no last commit to count from.',
+  unread: 'The changes since the last commit could not be read. The next change reads them again.',
 }
 
 /** The words for the baseline of `host`: the session's in Claude Code, the last commit's on the web. */

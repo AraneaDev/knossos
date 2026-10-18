@@ -640,7 +640,8 @@ export type SessionChanges = {
  * false (and no files) when the ledger cannot account for every scan since.
  */
 export type SessionLedger = {
-  status: 'ok' | 'unscanned' | 'error' | 'no-binary'
+  /** `no-git` only for the working tree (`--working-tree`): the project is in no git work tree. */
+  status: 'ok' | 'unscanned' | 'error' | 'no-binary' | 'no-git'
   since?: string
   snapshot_id?: string | null
   complete: boolean

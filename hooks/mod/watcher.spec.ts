@@ -590,6 +590,43 @@ describe('the ledger on the web host', () => {
         expect(shown.since).toBe('since the last commit')
     })
 
+    it.each([
+        ['a no-git answer', '{"status":"no-git","complete":false,"files":{}}', null, 'no-git'],
+        ['an error with nothing read before it', '{"status":"error","complete":false,"files":{}}', null, 'error'],
+        ['the last good read over an error', '{"status":"error","complete":false,"files":{}}', ledger('HEAD'), 'ok'],
+    ])('keeps %s', async (_, answer, before, kept) => {
+        mod.host = 'web'
+        const port = fakePort({ sessionLedger: before }, { 'session-changes': answer })
+        const ch = await port.start()
+        ch.event({ event: 'ready' })
+        await settle()
+        expect(port.values.get('sessionLedger')).toMatchObject({ status: kept })
+    })
+
+    it('shows the changes with no watcher at all, and says why when there is no git or the read failed', async () => {
+        mod.host = 'web'
+        const answer = ledger('HEAD', { 'src/a.ts': { status: 'changed', dependents: 1, boundaries: [], boundary: null } } as never)
+        const port = fakePort({ sessionLedger: answer })
+        expect(mod.watcher).toBeNull()
+        const shown = await shownChanges(port.io, ROOT)
+        expect(Object.keys(shown.files)).toEqual(['src/a.ts'])
+        expect(shown.fallback).toBeUndefined()
+        port.values.set('sessionLedger', { status: 'no-git', complete: false, files: {} })
+        expect(await shownChanges(port.io, ROOT)).toMatchObject({ files: {}, fallback: 'Not a git repository, so there is no last commit to count from.' })
+        port.values.set('sessionLedger', { status: 'error', complete: false, files: {} })
+        expect((await shownChanges(port.io, ROOT)).fallback).toBe('The changes since the last commit could not be read. The next change reads them again.')
+    })
+
+    it('leaves Claude Code as it was: no ledger without a watcher, and a no-git answer dropped', async () => {
+        const port = fakePort({ sessionStart: 's0', sessionLedger: ledger('s0') })
+        expect((await shownChanges(port.io, ROOT)).fallback).toMatch(/watcher/i)
+        const noGit = fakePort({ sessionStart: 's0' }, { 'session-changes': '{"status":"no-git","complete":false,"files":{}}' })
+        const ch = await noGit.start()
+        ch.event({ event: 'ready' })
+        await settle()
+        expect(noGit.values.get('sessionLedger')).toBeNull()
+    })
+
     it('still asks since the snapshot on Claude Code', async () => {
         const port = fakePort({ sessionStart: 's0' }, { 'session-changes': JSON.stringify(ledger('s0')) })
         const ch = await port.start()
@@ -610,6 +647,8 @@ describe('following the checkout\'s commit', () => {
         let answer = head(REV)
         const port = fakePort({ view, sessionRev: { status: 'ok', rev: REV }, fileDiff: { stale: true }, gitHead: null }, { 'session-head': () => answer, 'session-changes': JSON.stringify(ledger('HEAD')) })
         await port.start()
+        // A live watcher says when a file changes: only a moved commit reads the changes here.
+        port.values.set('live', { phase: 'live' })
         expect(await followHead(port.io)).toBe(false)
         await settle()
         expect(port.ran('session-changes')).toEqual([])
@@ -625,6 +664,27 @@ describe('following the checkout\'s commit', () => {
         expect(await followHead(port.io)).toBe(false)
         await settle()
         expect(port.ran('session-changes')).toHaveLength(1)
+    })
+
+    it('reads the changes on every call while no watcher is live, moved or not, as git reads need none', async () => {
+        mod.host = 'web'
+        const port = fakePort({ view, sessionRev: { status: 'ok', rev: REV } }, { 'session-head': head(REV), 'session-changes': JSON.stringify(ledger('HEAD')) })
+        expect(mod.watcher).toBeNull()
+        expect(await followHead(port.io)).toBe(false)
+        await settle()
+        expect(port.ran('session-changes')).toEqual([['sh', SCRIPT, 'session-changes', ROOT, '--working-tree']])
+        expect(await followHead(port.io)).toBe(false)
+        await settle()
+        expect(port.ran('session-changes')).toHaveLength(2)
+        expect(port.values.get('sessionLedger')).toEqual(ledger('HEAD'))
+    })
+
+    it('reads the changes outside git too, so the Changes tab can say why there are none', async () => {
+        mod.host = 'web'
+        const port = fakePort({ view, sessionRev: null }, { 'session-head': '{"status":"no-git"}', 'session-changes': '{"status":"no-git","complete":false,"files":{}}' })
+        expect(await followHead(port.io)).toBe(false)
+        await settle()
+        expect(port.values.get('sessionLedger')).toMatchObject({ status: 'no-git' })
     })
 
     it('does nothing on silence or for a project git does not hold', async () => {

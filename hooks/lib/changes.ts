@@ -189,11 +189,19 @@ export const APPROXIMATE_START = 'This session began among older scans the recor
  * ledger still holds, said with its date; with no such point (an older
  * knossos, or nothing recorded since) it falls back to the turns'
  * own (`scans` drawn as the timeline). A start among merged scans is said to
- * be approximate. With `origins` false (a host where the session's own
- * edits are not told apart) the files carry no origin, and a complete ledger
- * counts from the last commit.
+ * be approximate.
+ *
+ * On the web (`host` `'web'`), where the session's own edits are not told
+ * apart, the files carry no origin and a complete ledger counts from the
+ * last commit, as {@link baselineWords} names it. There an answer that is
+ * not `ok` (no git, a read that failed) is said as why nothing is listed.
  */
-export function ledgerChanges(ledger: SessionLedger, turns: SessionChanges, edited: ReadonlySet<string>, scans: readonly string[], began: number | null, origins = true): SessionChanges {
+export function ledgerChanges(ledger: SessionLedger, turns: SessionChanges, edited: ReadonlySet<string>, scans: readonly string[], began: number | null, host?: 'web'): SessionChanges {
+  const origins = host !== 'web'
+  if (ledger.status !== 'ok') {
+    const words = baselineWords(host)
+    return { ...turns, files: {}, tests: {}, fallback: ledger.status === 'no-git' ? words.notGit : words.unread }
+  }
   const when = began === null ? '' : ` (${stamp(began)})`
   if (!ledger.complete) {
     const reached = ledger.reached
@@ -209,7 +217,7 @@ export function ledgerChanges(ledger: SessionLedger, turns: SessionChanges, edit
   }
   const listed = fromLedger(ledger, turns, edited, new Set(scans), origins)
   // Without origins the files are still every change since a start; the list says which one.
-  const shown = origins ? listed : { ...listed, since: 'since the last commit' }
+  const shown = origins ? listed : { ...listed, since: baselineWords(host).since }
   return ledger.start_approximate === true ? { ...shown, fallback: APPROXIMATE_START } : shown
 }
 
@@ -498,6 +506,8 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   if (timeline !== null) rows.push(timeline)
   if (input.files.length === 0) {
     if (input.fallback !== null) said('changes-fallback', input.fallback)
+    // On the web a fallback says why there is no list at all (no git, a failed read): nothing follows it.
+    if (input.fallback !== null && host === 'web') return { key: 'changes', title, body: rows }
     said(
       'changes-none',
       // Off Claude Code nothing is edited by a turn: the list is always of the changes since its baseline.

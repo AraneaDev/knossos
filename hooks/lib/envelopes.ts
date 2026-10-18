@@ -18,6 +18,8 @@ const DETAIL_ARRAYS = ['candidates']
 const DETAIL_OBJECTS = ['component']
 const FILE = new Set(['ok', 'unscanned', 'not-found', 'error', 'no-binary'])
 const FILE_OBJECTS = ['file']
+// A read of the working tree (`--working-tree`) may answer that there is no git to read.
+const LEDGER = new Set([...DASH, 'no-git'])
 const LEDGER_ARRAYS = ['tests']
 const LEDGER_OBJECTS = ['files']
 const RESCAN = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'error', 'no-binary'])
@@ -52,7 +54,7 @@ export function parseTurnBrief(stdout: string): TurnBrief | null {
 
 /** The changes since the session began from the wrapper's stdout; null for silence or anything unexpected. */
 export function parseSessionLedger(stdout: string): SessionLedger | null {
-  const parsed = parse(stdout, DASH, LEDGER_ARRAYS, LEDGER_OBJECTS) as SessionLedger | null
+  const parsed = parse(stdout, LEDGER, LEDGER_ARRAYS, LEDGER_OBJECTS) as SessionLedger | null
   return parsed === null || (parsed.status === 'ok' && typeof parsed.complete !== 'boolean') ? null : parsed
 }
 
