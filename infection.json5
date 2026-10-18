@@ -24,9 +24,10 @@
   source: {
     directories: ["src"],
   },
-  // Weed out mutants that cannot be killed except by a test worth less than it
-  // costs. Kept narrow on purpose: every exclusion below is justified by a
-  // *measured* survivor, not by a hunch about which mutators are noisy.
+  // Exclude only non-viable or proven-equivalent mutants, one mutator at a
+  // time, each citing its measured survivor and pinned to its sites by
+  // tests/phpunit/InfectionExclusionsTest.php; a killable mutant stays counted
+  // however costly it is to kill (docs/adr/0005-mutant-exclusions.md).
   //
   // Deliberately NOT excluded: IncrementInteger/DecrementInteger in general. In
   // IgnoreMatcher those mutants sat on index arithmetic (`$i + 1 < $length`) and

@@ -65,8 +65,11 @@ not asserted against, so the headroom is in assertions.
 The same engine backs Chaos-MCP's `audit_code_resilience` tool, so a green run
 means that tool works against this repository too.
 
-Equivalent mutants must be replaced with behavior-changing mutants. Never count them as survivors or exclude them. Lowering the floor requires the surviving
-mutant report, a risk explanation, and explicit review.
+Exclude a mutant only when it is non-viable or proven equivalent, after first
+changing the code so it does not exist; a killable mutant stays counted however
+costly it is to kill ([ADR 0005](../adr/0005-mutant-exclusions.md)). Lowering the
+floor requires the surviving mutant report, a risk explanation, and explicit
+review.
 
 ### Why `failOnWarning` is not optional
 
