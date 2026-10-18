@@ -56,6 +56,29 @@ export function templateImportHead(argument) {
         : null;
 }
 
+/** A JavaScript extension => the TypeScript sources a specifier naming it resolves to first. */
+const TYPESCRIPT_SOURCES = {
+    ".js": [".ts", ".tsx"],
+    ".jsx": [".tsx"],
+    ".mjs": [".mts"],
+    ".cjs": [".cts"],
+};
+
+/**
+ * The files a template head names, in the order the compiler resolves a
+ * string specifier: `./draw.js` is `draw.ts` or `draw.tsx` when one exists
+ * (NodeNext and bundler resolution name the output a source compiles to),
+ * then `draw.js` itself. No other suffix is tried.
+ */
+function templateHeadCandidates(head) {
+    const extension = path.extname(head);
+    const stem = head.slice(0, -extension.length);
+    return [
+        ...(TYPESCRIPT_SOURCES[extension] ?? []).map((source) => stem + source),
+        head,
+    ];
+}
+
 /** Adds the edges of imports no static import declaration names. */
 export class DynamicImportCollector {
     constructor(context) {
@@ -156,7 +179,9 @@ export class DynamicImportCollector {
         const file =
             head === null
                 ? undefined
-                : this.context.sourceFileNamed(head, [""]);
+                : templateHeadCandidates(head)
+                      .map((name) => this.context.sourceFileNamed(name, [""]))
+                      .find((found) => found !== undefined);
         const relative =
             file === undefined
                 ? null

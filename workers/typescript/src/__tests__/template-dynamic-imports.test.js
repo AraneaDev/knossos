@@ -103,6 +103,9 @@ describe("a dynamic import of a template literal", () => {
             ),
         ).toEqual(["ts:module:web/draw.mjs"]);
     });
+});
+
+describe("the file a template head names", () => {
     it("drops a query or fragment written into the head", () => {
         expect(
             dynamicImports(
@@ -140,6 +143,29 @@ describe("a dynamic import of a template literal", () => {
                 }),
                 ["web/app.mjs", "web/widget.v2.ts", "web/draw.mjs"],
             ),
+        ).toEqual([]);
+    });
+    it("maps a .js head to the TypeScript source it is compiled from, as a string specifier does", () => {
+        const source = [
+            "const q = '';",
+            "export const start = async () => [",
+            "    await import(`./draw.js${q}`),",
+            "    await import(`./esm.mjs${q}`),",
+            "];",
+            "",
+        ].join("\n");
+        expect(
+            dynamicImports(
+                {
+                    "web/app.ts": source,
+                    "web/draw.ts": "export const draw = 1;\n",
+                    "web/esm.mts": "export const esm = 1;\n",
+                },
+                ["web/app.ts", "web/draw.ts", "web/esm.mts"],
+            ),
+        ).toEqual(["ts:module:web/draw.ts", "ts:module:web/esm.mts"]);
+        expect(
+            dynamicImports({ "web/app.ts": source }, ["web/app.ts"]),
         ).toEqual([]);
     });
 });

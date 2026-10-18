@@ -388,6 +388,7 @@ final class TypescriptScannerTest extends KnossosTestCase
                 '    await import(`./${name}.mjs`),',
                 '    await import(`./query.mjs?v=${query}`),',
                 '    await import(`./widget.v2${query}`),',
+                '    await import(`./typed.js${query}`),',
                 "    await import('./plain.mjs'),",
                 '];',
                 '',
@@ -397,6 +398,7 @@ final class TypescriptScannerTest extends KnossosTestCase
             'web/plain.mjs' => "export const plain = 1;\n",
             'web/query.mjs' => "export const query = 1;\n",
             'web/widget.v2.ts' => "export const widget = 1;\n",
+            'web/typed.ts' => "export const typed = 1;\n",
         ];
         foreach ($files as $relative => $contents) {
             file_put_contents($root . '/' . $relative, $contents);
@@ -426,7 +428,8 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         // A `?` in the head starts the query; a head naming no exact file
         // (`./widget.v2` beside `widget.v2.ts`) gets no extension guessed.
-        assertSame(['ts:module:web/draw.mjs', 'ts:module:web/plain.mjs', 'ts:module:web/query.mjs'], $imports);
+        // `./typed.js` names the output `typed.ts` compiles to, as a string specifier would.
+        assertSame(['ts:module:web/draw.mjs', 'ts:module:web/plain.mjs', 'ts:module:web/query.mjs', 'ts:module:web/typed.ts'], $imports);
     }
 
     /**
