@@ -256,8 +256,7 @@ jobs:
         # the four files, the changelog's markdown, and the one edited PHP
         # line. The full matrix runs again on the push to main after it
         # merges, so nothing reaches a tag unchecked.
-        lane:
-          ${{ fromJSON(needs.release-pr.outputs.release == 'true' &&
+        lane: ${{ fromJSON(needs.release-pr.outputs.release == 'true' &&
           '["static"]' || '["static","tests","rust","release","gate"]') }}
     permissions:
       contents: read
