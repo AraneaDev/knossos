@@ -651,16 +651,17 @@ export class TypeScriptLanguageFactCollector {
 
     /**
      * The program's file, or a file in the project, a path from this file
-     * names, tried with each suffix in the order Node loads them.
+     * names, tried with each suffix in the order Node loads them, or with
+     * the ones a caller gives (`[""]` for the exact name only).
      */
-    sourceFileNamed(specifier) {
+    sourceFileNamed(specifier, suffixes = REQUIRE_SUFFIXES) {
         const sourceFileAt = this.project.sourceFileAt;
         if (sourceFileAt === undefined) return undefined;
         const base = path.resolve(
             path.dirname(this.sourceFile.fileName),
             specifier,
         );
-        for (const suffix of REQUIRE_SUFFIXES) {
+        for (const suffix of suffixes) {
             const fileName = normalize(base + suffix);
             const file = sourceFileAt(fileName);
             if (file !== undefined) return file;

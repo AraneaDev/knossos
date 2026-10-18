@@ -24,6 +24,7 @@ function dynamicImports(files, scanned) {
         fs.mkdtempSync(join(tmpdir(), "knossos-ts-template-imports-")),
     );
     created.push(root);
+    if (typeof files === "function") files = files(root);
     for (const [path, contents] of Object.entries(files)) {
         fs.mkdirSync(dirname(join(root, path)), { recursive: true });
         fs.writeFileSync(join(root, path), contents);
@@ -101,5 +102,44 @@ describe("a dynamic import of a template literal", () => {
                 ["web/app.mjs", "web/draw.mjs"],
             ),
         ).toEqual(["ts:module:web/draw.mjs"]);
+    });
+    it("drops a query or fragment written into the head", () => {
+        expect(
+            dynamicImports(
+                {
+                    "web/app.mjs": [
+                        "const n = 2;",
+                        "export const start = async () => [",
+                        "    await import(`./draw.mjs?v=${n}`),",
+                        "    await import(`./card.mjs#x${n}`),",
+                        "];",
+                        "",
+                    ].join("\n"),
+                    "web/draw.mjs": "export const drawFrame = () => 1;\n",
+                    "web/card.mjs": "export const card = () => 1;\n",
+                },
+                ["web/app.mjs", "web/draw.mjs", "web/card.mjs"],
+            ),
+        ).toEqual(["ts:module:web/card.mjs", "ts:module:web/draw.mjs"]);
+    });
+
+    it("names only the exact file, and never an absolute path", () => {
+        expect(
+            dynamicImports(
+                (root) => ({
+                    "web/app.mjs": [
+                        "const q = '';",
+                        "export const start = async () => [",
+                        "    await import(`./widget.v2${q}`),",
+                        `    await import(\`${root}/web/draw.mjs\${q}\`),`,
+                        "];",
+                        "",
+                    ].join("\n"),
+                    "web/widget.v2.ts": "export const widget = 1;\n",
+                    "web/draw.mjs": "export const drawFrame = () => 1;\n",
+                }),
+                ["web/app.mjs", "web/widget.v2.ts", "web/draw.mjs"],
+            ),
+        ).toEqual([]);
     });
 });

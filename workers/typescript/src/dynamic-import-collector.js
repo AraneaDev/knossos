@@ -35,20 +35,23 @@ import { reference } from "./typescript-fact-utils.js";
  *
  * `` import(`./draw.mjs${query}`) `` loads `./draw.mjs` whatever the query
  * is: the text before the first `${` names the file, and what follows only
- * decorates the URL. The head counts only when it is a relative or absolute
- * path ending in a file name with an extension, so `` `${base}/x.js` `` and
- * `` `./dir/${name}.js` ``, whose file the expression decides, stay
- * unresolved. The HTML reader in the PHP core applies the same rule to a
- * page's inline scripts (src/Discovery/Manifest/InlineScriptImports.php).
+ * decorates the URL. A `?` or `#` written into the head starts that
+ * decoration too, so `` `./draw.mjs?v=${n}` `` names `./draw.mjs`. The head
+ * counts only when it is a relative path (`./`, `../`) ending in a file name
+ * with an extension, so `` `${base}/x.js` ``, `` `./dir/${name}.js` `` and an
+ * absolute `` `/x.js${q}` `` stay unresolved. The HTML reader in the PHP core
+ * applies the same rule to a page's inline scripts
+ * (src/Discovery/Manifest/InlineScriptImports.php).
  */
 export function templateImportHead(argument) {
-    const head = ts.isNoSubstitutionTemplateLiteral(argument)
+    const text = ts.isNoSubstitutionTemplateLiteral(argument)
         ? argument.text
         : ts.isTemplateExpression(argument)
           ? argument.head.text
           : null;
+    const head = text?.replace(/[?#].*$/s, "") ?? null;
     return head !== null &&
-        /^(?:\.{1,2})?\/(?:[^/]*\/)*[^/]+\.[A-Za-z0-9]+$/.test(head)
+        /^\.{1,2}\/(?:[^/]*\/)*[^/]+\.[A-Za-z0-9]+$/.test(head)
         ? head
         : null;
 }
@@ -140,8 +143,8 @@ export class DynamicImportCollector {
      * The `imports` edge of `` import(`./draw.mjs${query}`) ``.
      *
      * The compiler binds no module to a template, so its head
-     * ({@link templateImportHead}) is resolved the way a string literal
-     * naming that file would be.
+     * ({@link templateImportHead}) is resolved to the file it names exactly:
+     * no extension is guessed, since the head already ends in one.
      */
     templateImport(node) {
         if (
@@ -151,7 +154,9 @@ export class DynamicImportCollector {
             return;
         const head = templateImportHead(node.arguments[0]);
         const file =
-            head === null ? undefined : this.context.sourceFileNamed(head);
+            head === null
+                ? undefined
+                : this.context.sourceFileNamed(head, [""]);
         const relative =
             file === undefined
                 ? null
