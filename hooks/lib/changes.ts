@@ -135,7 +135,7 @@ export function accumulate(changes: SessionChanges, brief: TurnBrief): SessionCh
  * turn count and the violations introduced stay the turn briefs': they are
  * the model's own, and only its own edits are judged.
  */
-export function fromLedger(ledger: SessionLedger, turns: SessionChanges, edited: ReadonlySet<string>, scans: ReadonlySet<string> = new Set()): SessionChanges {
+export function fromLedger(ledger: SessionLedger, turns: SessionChanges, edited: ReadonlySet<string>, scans: ReadonlySet<string> = new Set(), withOrigins = true): SessionChanges {
   const tests: Record<string, number> = {}
   const runners: Record<string, JsRunner | null> = {}
   for (const t of ledger.tests) {
@@ -146,7 +146,7 @@ export function fromLedger(ledger: SessionLedger, turns: SessionChanges, edited:
   const own = new Set([...scans].map(scanKey))
   const ours = (id: string): boolean => scans.has(id) || own.has(scanKey(id))
   const origins: Record<string, 'session' | 'outside'> = {}
-  for (const [path, file] of Object.entries(ledger.files)) origins[path] = edited.has(path) || (file.scans ?? []).some(ours) ? 'session' : 'outside'
+  if (withOrigins) for (const [path, file] of Object.entries(ledger.files)) origins[path] = edited.has(path) || (file.scans ?? []).some(ours) ? 'session' : 'outside'
   const timeline = (ledger.scans ?? []).map(scan => ({ snapshot: scan.snapshot_id, origin: ours(scan.snapshot_id) ? ('session' as const) : ('outside' as const) }))
   return {
     turns: turns.turns,
@@ -156,7 +156,7 @@ export function fromLedger(ledger: SessionLedger, turns: SessionChanges, edited:
     violations: turns.violations,
     ...(turns.violation_snapshots === undefined ? {} : { violation_snapshots: turns.violation_snapshots }),
     truncated: ledger.files_truncated || ledger.tests_truncated,
-    origins,
+    ...(withOrigins ? { origins } : {}),
     timeline,
     ...(ledger.scans_truncated === true ? { timeline_truncated: true } : {}),
   }
@@ -188,9 +188,11 @@ export const APPROXIMATE_START = 'This session began among older scans the recor
  * ledger still holds, said with its date; with no such point (an older
  * knossos, or nothing recorded since) it falls back to the turns'
  * own (`scans` drawn as the timeline). A start among merged scans is said to
- * be approximate.
+ * be approximate. With `origins` false (a host where the session's own
+ * edits are not told apart) the files carry no origin, and a complete ledger
+ * counts from the last commit.
  */
-export function ledgerChanges(ledger: SessionLedger, turns: SessionChanges, edited: ReadonlySet<string>, scans: readonly string[], began: number | null): SessionChanges {
+export function ledgerChanges(ledger: SessionLedger, turns: SessionChanges, edited: ReadonlySet<string>, scans: readonly string[], began: number | null, origins = true): SessionChanges {
   const when = began === null ? '' : ` (${stamp(began)})`
   if (!ledger.complete) {
     const reached = ledger.reached
@@ -199,12 +201,14 @@ export function ledgerChanges(ledger: SessionLedger, turns: SessionChanges, edit
     }
     const from = stamp(reached.at * 1000)
     return {
-      ...fromLedger(ledger, turns, edited, new Set(scans)),
+      ...fromLedger(ledger, turns, edited, new Set(scans), origins),
       fallback: `The scan record does not reach back to when this session began${when}. It lists every change since ${from}, the oldest point it still holds.`,
       since: `since ${from}`,
     }
   }
-  const shown = fromLedger(ledger, turns, edited, new Set(scans))
+  const listed = fromLedger(ledger, turns, edited, new Set(scans), origins)
+  // Without origins the files are still every change since a start; the list says which one.
+  const shown = origins ? listed : { ...listed, since: 'since the last commit' }
   return ledger.start_approximate === true ? { ...shown, fallback: APPROXIMATE_START } : shown
 }
 
@@ -377,7 +381,7 @@ export function changesInput(changes: SessionChanges, root: string | null, hues:
     // With none left to show, the list is every file again.
     untestedOnly: untestedOnly && untested > 0,
     truncated: changes.truncated,
-    sinceStart: changes.origins !== undefined,
+    sinceStart: changes.origins !== undefined || changes.since !== undefined,
     fallback: changes.fallback ?? null,
     since: changes.since ?? null,
     timeline: (changes.timeline ?? []).map(t => ({ origin: t.origin })),
@@ -502,7 +506,7 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   }
   const deps = input.files.reduce((n, f) => n + f.dependents, 0)
   // Every change since the session began says where it came from, in a column of its own at the end.
-  const origin = input.sinceStart && columns > ORIGIN_WIDTH + 20 ? ORIGIN_WIDTH + 1 : 0
+  const origin = input.sinceStart && input.files.some(f => f.origin !== undefined) && columns > ORIGIN_WIDTH + 20 ? ORIGIN_WIDTH + 1 : 0
   // How many tests reach each file, when that is known: a file none reaches is marked in the warning tone.
   const tested = input.files.some(f => f.tests !== null) && columns - origin > TESTS_WIDTH + 24 ? TESTS_WIDTH + 1 : 0
   const spec = tableSpec(columns - origin - tested, input.files.map(f => f.path), input.files.map(f => boundaryLabel(f.boundary)), [numberWidth('deps', input.files.map(f => f.dependents), tier)], PATH_MAX, { tier })

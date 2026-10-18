@@ -133,7 +133,7 @@ export async function shownChanges(io: Port, root: string | null): Promise<Sessi
   const ledger = await io.state.sessionLedger.read()
   if (ledger === null || ledger.since !== (await io.state.sessionStart.read())) return turns
   const edits = (await io.state.sessionEdits.read()).map(p => (p.startsWith('/') && root !== null ? (relativise(root, p) ?? p) : p))
-  return ledgerChanges(ledger, turns, new Set(edits), await io.state.sessionScans.read(), await io.state.sessionBegan.read())
+  return ledgerChanges(ledger, turns, new Set(edits), await io.state.sessionScans.read(), await io.state.sessionBegan.read(), mod.host !== 'web')
 }
 
 /** What the footer says for {@link FEEDBACK_MS} after an action: the mod's clock decides when it fades (see `tickAge`). */

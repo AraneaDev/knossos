@@ -1472,6 +1472,29 @@ describe('hubs carry their file', () => {
   })
 })
 
+describe('the pane outside Claude Code', () => {
+  const pressIds = (rows: Row[]) => rows.flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.id] : [])))
+
+  it('offers nothing that asks Claude: no ask button on a row, no q line in the key list', () => {
+    const list = input({ tab: 'hubs', selected: 0, host: 'web' })
+    const ids = pressIds(paneRows(list, 120))
+    expect(ids).toContain('copy')
+    expect(ids).not.toContain('ask')
+    expect(ids).not.toContain('scan-ask')
+    expect(pressIds(paneRows(input({ tab: 'hubs', selected: 0 }), 120))).toContain('ask')
+    const keys = textOf(paneRows(input({ showKeys: true, host: 'web' }), 60))
+    expect(keys).not.toMatch(/ q +ask Claude/)
+    expect(keys).toMatch(/ e +open the marked row's file/)
+  })
+  it('offers to scan an unscanned project directly, and the Claude Code pane keeps asking Claude', () => {
+    for (const columns of WIDTHS) {
+      const presses = emptyRows('unscanned', null, columns, 'web').flatMap(r => r.segments.flatMap(s => (s.press ? [s.press] : [])))
+      expect(presses).toEqual([{ id: 'scan', label: 'scan it', hotkey: 'q' }])
+    }
+    expect(pressIds(emptyRows('unscanned', null, 90))).toEqual(['scan-ask'])
+  })
+})
+
 describe('the pane with no graph', () => {
   it('has a heading and one thing to do: ask Claude to scan it', () => {
     for (const columns of WIDTHS) {

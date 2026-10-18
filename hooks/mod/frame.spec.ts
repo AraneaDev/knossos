@@ -57,6 +57,15 @@ describe('paneSource', () => {
     expect(mod.emptyShown).toBe(true)
   })
 
+  it('offers an unscanned project the direct scan on the web host, and asking Claude otherwise', async () => {
+    const cells = { dashboard: { status: 'unscanned' } }
+    expect(JSON.stringify(await paneSource(fakePort(cells).io, 80, true))).toContain('scan-ask')
+    mod.host = 'web'
+    const web = JSON.stringify(await paneSource(fakePort(cells).io, 80, true))
+    expect(web).toContain('"id":"scan"')
+    expect(web).not.toContain('scan-ask')
+  })
+
   it('is the detail while something is inspected, the tab otherwise, and notes what the pane shows', async () => {
     vi.mocked(currentInput).mockResolvedValue({ status: { text: 'shown' } } as never)
     const dashboard = { status: 'ok' }

@@ -73,6 +73,8 @@ export const mod = {
    * again at the next dirty turn.
    */
   disabled: false,
+  /** Where the pane runs: inside Claude Code, or in a browser (where nothing asks Claude to do anything). */
+  host: 'claude' as 'claude' | 'web',
   flight: null as SingleFlight | null,
   /** The pane's rescans, one at a time. */
   rescanFlight: null as SingleFlight | null,
@@ -264,6 +266,7 @@ export function reset(options: PluginOptions): void {
   mod.dirty = false
   mod.edited = new Set()
   mod.disabled = false
+  mod.host = 'claude'
   mod.baselineOf = null
   mod.endedSession = null
   mod.headAsked = false

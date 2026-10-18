@@ -431,6 +431,18 @@ describe('a ledger that does not reach back to the session start', () => {
     expect(textOf(empty)).toContain(`Nothing changed in this project since ${stamp(1_791_100_000_000)}.`)
   })
 
+  it('leaves the origins out when told, and draws no origin column', () => {
+    const complete: SessionLedger = { ...ledger, complete: true, reached: undefined }
+    const without = ledgerChanges(complete, NO_CHANGES, new Set(), [], null, false)
+    expect('origins' in without).toBe(false)
+    expect(ledgerChanges(complete, NO_CHANGES, new Set(), [], null).origins).toEqual({ 'src/Router.php': 'outside' })
+    const rows = changesRows(changesInput(without, ROOT), 0, 120)
+    expect(textOf(rows)).toContain('src/Router.php')
+    expect(textOf(rows)).toContain('since the last commit')
+    expect(textOf(rows)).not.toMatch(/\bfrom\b/)
+    expect(textOf(rows)).not.toContain('outside')
+  })
+
   it("with no point to reach (an older knossos), falls back to the turns' own and says so, with the date when known", () => {
     const older = ledgerChanges({ ...ledger, reached: undefined, files: {} }, session(), new Set(), ['s3'], began)
     expect(older.fallback).toBe(`The scan record does not reach back to when this session began (${stamp(began)}), so only what its turns reported is listed.`)

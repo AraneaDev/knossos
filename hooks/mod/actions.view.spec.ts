@@ -258,6 +258,14 @@ describe('the plain view switches', () => {
         expect(vi.mocked(requestRescan)).toHaveBeenCalledTimes(1)
         expect(vi.mocked(requestRescan)).toHaveBeenCalledWith(port.io)
     })
+
+    it('scan, the empty pane\'s offer outside Claude Code, runs that same rescan and submits no prompt', async () => {
+        const port = viewPort()
+        // The port has no prompt: a press that tried to send one would throw here.
+        await port.press('scan')
+        expect(vi.mocked(requestRescan)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(requestRescan)).toHaveBeenCalledWith(port.io)
+    })
 })
 
 describe('declining', () => {

@@ -165,6 +165,8 @@ export type PaneInput = {
   driftOpen: boolean
   /** Where the checkout stands; undefined until read, null without git. */
   git: GitHead | undefined
+  /** Set when the pane is drawn outside Claude Code: nothing in it asks Claude to do anything. Absent in Claude Code. */
+  host?: 'web'
   /** The footer's word after an action, while it lasts. */
   feedback: Feedback | null
   /** The boundary the Boundaries tab's cell runs to, as last stepped to; null for the marked one's top dependency. */
@@ -268,6 +270,8 @@ const fileRow = (path: string, loc: Loc | null): Openable => ({ name: path, cano
 /** The pane's state the layout does not read from the dashboard: where the checkout stands, the footer's word, and the Boundaries tab's cell. */
 export type PaneExtras = {
   git?: GitHead | undefined
+  /** `'web'` when the pane is drawn outside Claude Code (see {@link PaneInput.host}). */
+  host?: 'web'
   feedback?: Feedback | null
   couplings?: CouplingState | null
   flash?: Flash | null
@@ -541,6 +545,7 @@ export function paneInput(
     drift,
     driftOpen: drift !== null && view.drift === true,
     git: extras.git,
+    ...(extras.host === undefined ? {} : { host: extras.host }),
     feedback: extras.feedback !== undefined && extras.feedback !== null && now < extras.feedback.until ? extras.feedback : null,
     target: view.target ?? null,
     couplings: shownCouplings(boundaries, view, d.snapshot_id ?? null, extras.couplings ?? null),
@@ -970,7 +975,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   else if (hasList && !listFor(input).every(item => item.inert === true)) actions.push(button('open', 'open', 'o'))
   // The same keys on every list: `e` whenever the marked row has a file.
   if (editTarget(input) !== null) actions.push(button('edit', 'edit', 'e'))
-  if (subjectOf(input) !== null) actions.push(button('copy', 'copy', 'c'), button('ask', 'ask Claude', 'q'))
+  if (subjectOf(input) !== null) actions.push(button('copy', 'copy', 'c'), ...(input.host === 'web' ? [] : [button('ask', 'ask Claude', 'q')]))
   if (onTab && input.tab === 'boundaries' && input.boundaries !== null && markedCell(input.boundaries, input.selected, input.target) !== null) actions.push(button('target', 'next cell', 'l'))
   // On Overview `t` stands beside the tests it copies, in "This session".
   if (onTab && input.tab === 'changes' && input.changes.command !== null) actions.push(button('tests', 'copy test command', 't'))
@@ -1057,11 +1062,11 @@ function noteFooter(name: string, note: NoteInput, columns: number): { bar: Row[
  * beside it, a list to look up rather than a paragraph to read. Drawn under
  * the header, so nothing that lands later can push it out of view.
  */
-function keysBlock(): Block {
+function keysBlock(host?: 'web'): Block {
   const lines = (columns: number): Row[] => {
     const help: Row[] = []
     let n = 0
-    for (const [key, action] of [...KEY_HELP, ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
+    for (const [key, action] of [...KEY_HELP.filter(([key]) => host === undefined || key !== 'q'), ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
       wrapWords(action, Math.max(1, columns - 3 - KEY_WIDTH)).forEach((line, i) =>
         help.push({ key: `help-${n++}`, segments: [{ text: '   ' }, { text: padEnd(i === 0 ? key : '', KEY_WIDTH), color: ACCENT }, { text: line, dim: true }] }),
       )
@@ -1157,9 +1162,10 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
  * was refused, that one thing is the allow-root offer. Otherwise only a
  * project knossos says it never scanned offers asking Claude to scan it:
  * a load still on its way, or one that failed, is no reason to scan, so a
- * habitual `q` there sends nothing.
+ * habitual `q` there sends nothing. Outside Claude Code (`host`) there is no
+ * one to ask: the offer is to scan it directly.
  */
-export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number): Row[] {
+export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web'): Row[] {
   const width = Math.max(1, Math.min(CONTENT_MAX, columns))
   const { head: heading, why, busy: spins } = NO_GRAPH[state]
   const head: Row[] = [
@@ -1168,7 +1174,7 @@ export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: num
   ]
   if (allow !== null) return [...head, blank('gap-empty'), ...allowRows(allow, width)]
   if (state !== 'unscanned') return head
-  return [...head, blank('gap-empty'), { key: 'empty-action', segments: [button('scan-ask', 'ask Claude to scan it', 'q', { dim: false })] }]
+  return [...head, blank('gap-empty'), { key: 'empty-action', segments: [host === 'web' ? button('scan', 'scan it', 'q', { dim: false }) : button('scan-ask', 'ask Claude to scan it', 'q', { dim: false })] }]
 }
 
 /**
@@ -1310,7 +1316,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
   const room = () => height - rows.length - footer.length
   if (input.showKeys) {
     // The key list stands in for whatever is open; closing it puts that back as it was.
-    rows.push(...fillColumn(fitBlocks([keysBlock()], width, tier, room()), width, room(), tier))
+    rows.push(...fillColumn(fitBlocks([keysBlock(input.host)], width, tier, room()), width, room(), tier))
   } else if (input.finder !== null) {
     // The finder stands in for the tab or the detail while it is open; closing it puts them back as they were.
     rows.push(...fillColumn(fitBlocks(scrolledTo({ left: [finderBlock(input.finder, selected, tier, input.hues)] }, input.scrolls).left, width, tier, room()), width, room(), tier))

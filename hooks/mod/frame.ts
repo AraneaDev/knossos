@@ -27,7 +27,7 @@ export async function paneSource(io: Port, columns: number, terminal: boolean): 
   if (d === null || d.status !== 'ok') {
     const offer = allowInput(await io.state.brief.read(), await io.state.rescan.read(), await io.state.allow.read())
     mod.emptyShown = true
-    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns) }
+    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, mod.host === 'web' ? 'web' : undefined) }
   }
   const input = await currentInput(io, terminal)
   if (input === null) return { kind: 'empty', rows: [] }

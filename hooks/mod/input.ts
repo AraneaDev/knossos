@@ -50,6 +50,8 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
     route: await io.state.route.read(),
     note: await io.state.note.read(),
     untestedOnly: await io.state.untestedOnly.read(),
+    // The one place the host is read: the layout is told, and never reads `mod`.
+    ...(mod.host === 'web' ? { host: 'web' as const } : {}),
   }
   // The marked row's detail beside the tab: only while the pane is drawn wide.
   const peeked = mod.paneWide ? await io.state.peek.read() : null

@@ -685,6 +685,8 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['clear', viewing(v => ({ ...v, filter: '', filtering: false, degree: null, selected: 0 }))],
   ['sort', viewing(v => ({ ...v, sort: SORTS[(SORTS.indexOf(v.sort) + 1) % SORTS.length] ?? 'in', selected: 0 }))],
   ['rescan', io => requestRescan(io)],
+  // The empty pane's offer outside Claude Code: the same rescan the pane's `r` runs.
+  ['scan', io => requestRescan(io)],
   ['copy', (io, _, surface) => copySubject(io, surface)],
   ['ask', io => askClaude(io)],
   // The no-data pane's one action: the person's press sends it, as "Ask Claude" does.
