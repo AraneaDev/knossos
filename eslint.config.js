@@ -51,6 +51,41 @@ export default [
         },
     },
     {
+        // The web pane's page: plain modules the browser loads as they are.
+        files: ["web/public/*.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: {
+                Blob: "readonly",
+                clearTimeout: "readonly",
+                crypto: "readonly",
+                CSS: "readonly",
+                document: "readonly",
+                EventSource: "readonly",
+                fetch: "readonly",
+                HTMLInputElement: "readonly",
+                location: "readonly",
+                matchMedia: "readonly",
+                navigator: "readonly",
+                performance: "readonly",
+                sessionStorage: "readonly",
+                setTimeout: "readonly",
+                URL: "readonly",
+                URLSearchParams: "readonly",
+                window: "readonly",
+            },
+        },
+    },
+    {
+        files: ["web/*.spec.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: { URL: "readonly" },
+        },
+    },
+    {
         files: ["workers/typescript/**/*.js"],
         languageOptions: {
             ecmaVersion: 2024,

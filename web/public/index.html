@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Knossos</title>
+        <!-- No /favicon.ico: it would be asked for without the token. -->
+        <link rel="icon" href="data:," />
+        <!-- Every file this page loads carries its token: app.mjs adds the stylesheet, the icon and the manifest. -->
+        <script type="module">
+            const { start } = await import(`/static/app.mjs${location.search}`);
+            await start();
+        </script>
+    </head>
+    <body>
+        <main id="view"></main>
+        <div id="toasts" aria-live="polite"></div>
+    </body>
+</html>

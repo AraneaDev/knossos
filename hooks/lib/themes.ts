@@ -7,7 +7,10 @@
  * colour for a key. The raster's dark and light grids are built from these
  * values too.
  *
- * Taken from Claude Code 2.1.288's theme objects, verbatim.
+ * Taken from Claude Code 2.1.288's theme objects, verbatim, apart from
+ * `ground`: the terminal background the pane is drawn on, which no theme
+ * names. The web page is laid on it, and the raster's heat steps start
+ * from it.
  */
 
 export type WebTheme = 'dark' | 'light'
@@ -36,6 +39,8 @@ export const THEMES: Record<WebTheme, Record<string, string>> = {
     rainbow_violet: '#c882b4', rainbow_red_shimmer: '#fa9b93', rainbow_orange_shimmer: '#ffb989',
     rainbow_yellow_shimmer: '#ffe19b', rainbow_green_shimmer: '#b9e6b4', rainbow_blue_shimmer: '#b4cdf0',
     rainbow_indigo_shimmer: '#c3b4e6', rainbow_violet_shimmer: '#e6b4d2',
+    // Not Claude Code's: the terminal's own background, which the pane is drawn on.
+    ground: '#1e1e1e',
   },
   light: {
     autoAccept: '#8700ff', autoAcceptShimmer: '#d0b4ff', skill: '#8700ff', bashBorder: '#ff0087',
@@ -59,6 +64,7 @@ export const THEMES: Record<WebTheme, Record<string, string>> = {
     rainbow_violet: '#c882b4', rainbow_red_shimmer: '#fa9b93', rainbow_orange_shimmer: '#ffb989',
     rainbow_yellow_shimmer: '#ffe19b', rainbow_green_shimmer: '#b9e6b4', rainbow_blue_shimmer: '#b4cdf0',
     rainbow_indigo_shimmer: '#c3b4e6', rainbow_violet_shimmer: '#e6b4d2',
+    ground: '#ffffff',
   },
 }
 

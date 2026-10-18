@@ -81,13 +81,16 @@ const GRID_KEYS = ['text', 'inactive', 'subtle', 'suggestion', 'success', 'warni
 const gridOf = (theme: Record<string, string>): Palette =>
   Object.fromEntries([...GRID_KEYS, ...Object.keys(CATEGORICAL)].map(key => [key, parseInt(theme[key]!.slice(1), 16)]))
 
+/** The ground a shared theme draws on, as the Raster's number. */
+const groundOf = (theme: Record<string, string>): number => parseInt(theme.ground!.slice(1), 16)
+
 /** The themes Claude Code ships, by the name `/config` stores. */
 export type ThemeName = 'dark' | 'light' | 'dark-daltonized' | 'light-daltonized' | 'dark-ansi' | 'light-ansi'
 
 /** Each of Claude Code's themes' values for the keys a grid draws with. */
 export const RASTER_THEMES: Record<ThemeName, Palette> = {
-  dark: palette(gridOf(THEMES.dark), 0x1e1e1e),
-  light: palette(gridOf(THEMES.light), 0xffffff),
+  dark: palette(gridOf(THEMES.dark), groundOf(THEMES.dark)),
+  light: palette(gridOf(THEMES.light), groundOf(THEMES.light)),
   'dark-daltonized': palette(
     { text: 0xffffff, inactive: 0x999999, subtle: 0x505050, suggestion: 0x99ccff, success: 0x3399ff, warning: 0xffcc00, error: 0xff6666 },
     0x1e1e1e,

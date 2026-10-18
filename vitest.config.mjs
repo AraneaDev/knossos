@@ -24,6 +24,7 @@ export default defineConfig({
             "tools/capture/*.spec.mjs",
             "tools/eval/*.spec.mjs",
             "web/**/*.spec.ts",
+            "web/**/*.spec.mjs",
         ],
         environment: "node",
         // hooks/register.tsx is outside this measurement because the engine loads it; tools/quality type-checks it and runs register.test.ts through `claude plugin test`.

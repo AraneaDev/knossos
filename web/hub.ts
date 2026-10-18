@@ -7,6 +7,7 @@
  */
 import { paneLayout } from '../hooks/lib/layout'
 import type { Row } from '../hooks/lib/layout'
+import { CARD_BG } from '../hooks/lib/palette'
 import { HEAT_KEYS, rasterTheme } from '../hooks/lib/raster'
 import { themeColour } from '../hooks/lib/themes'
 import type { WebTheme } from '../hooks/lib/themes'
@@ -20,11 +21,11 @@ export const FRAME_MS = 50
 export type Size = { columns: number; rows: number }
 /** An event for a page: a frame, or what the port passes on (a toast, a copy, a focus or scroll request). */
 export type PageEvent = { type: string; [field: string]: unknown }
-/** What a page draws: the pane's rows, whether the footer stays pinned, and the colour of every theme key the rows use. */
+/** What a page draws: the pane's rows, whether the footer stays pinned, and the colour of every theme key the rows use (and of `card`, a hover card's ground). */
 export type Frame = { type: 'frame'; body: Row[]; footer: Row[]; pinned: boolean; theme: WebTheme; colours: Record<string, string> }
 
-/** Keys every frame resolves, whether its rows name them or not: the default ink, dim text, and the diff's two grounds. */
-const ALWAYS = ['text', 'inactive', 'diffAdded', 'diffRemoved']
+/** Keys every frame resolves, whether its rows name them or not: the page's ground and default ink, dim text, a hotkey's accent, and the diff's two grounds. */
+const ALWAYS = ['ground', 'text', 'inactive', 'suggestion', 'diffAdded', 'diffRemoved', CARD_BG]
 
 type Page = { size: Size; theme: WebTheme; send: (event: PageEvent) => void; rows: Row[]; last: number; timer: ReturnType<typeof setTimeout> | null; drawing: boolean; dirty: boolean }
 
@@ -49,6 +50,8 @@ function coloursOf(keys: Set<string>, theme: WebTheme): Record<string, string> {
     const colour = themeColour(key, theme) ?? heat
     if (colour !== undefined) colours[key] = colour
   }
+  // A hover card's ground, under a name of its own: the page draws cards without knowing which key they use.
+  colours.card = colours[CARD_BG]!
   return colours
 }
 

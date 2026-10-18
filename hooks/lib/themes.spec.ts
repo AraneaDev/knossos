@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as palette from './palette'
-import { RASTER_THEMES } from './raster'
+import { blend, HEAT_STRENGTH, RASTER_THEMES } from './raster'
 import { THEMES, themeColour } from './themes'
 
 /** Every theme key the pane can colour a segment with: palette.ts's constants and tables, each language chip, and the diff and page grounds. */
@@ -43,5 +43,13 @@ describe('THEMES', () => {
     }
     expect(RASTER_THEMES.dark.text).toBe(0xffffff)
     expect(RASTER_THEMES.light.userMessageBackground).toBe(0xf0f0f0)
+  })
+  it("gives each theme the ground the pane is drawn on: the terminal's, which the raster's heat steps start from", () => {
+    expect(THEMES.dark.ground).toBe('#1e1e1e')
+    expect(THEMES.light.ground).toBe('#ffffff')
+    for (const theme of ['dark', 'light'] as const) {
+      const ground = parseInt(THEMES[theme].ground!.slice(1), 16)
+      expect(RASTER_THEMES[theme]['heat-1']).toBe(blend(ground, RASTER_THEMES[theme].suggestion!, HEAT_STRENGTH[0]))
+    }
   })
 })
