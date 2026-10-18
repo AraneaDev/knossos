@@ -2368,12 +2368,12 @@ describe('knossos mod', () => {
     const ui = await mountPane($)
     const text = (await ui.find({ key: 'empty' }))?.text ?? ''
     expect(text).toContain('Could not read the graph')
-    expect(text).toContain('retrying')
+    expect(text).toContain('asks again shortly')
     expect(text).not.toContain('has not scanned')
     expect(await ui.find({ key: 'scan-ask' })).toBeUndefined()
     expect(await ui.findAll({ type: 'Button' })).toEqual([])
-    // Retried on its own while the pane shows it, not only at the next turn's end.
-    await w.clock.advance(16_000)
+    // Retried on its own while the pane shows it, not only at the next turn's end: after two misses, five seconds on.
+    await w.clock.advance(6_000)
     expect(w.dashboardRuns()).toHaveLength(3)
     expect(await ui.find({ key: 'pane' })).toBeDefined()
     expect(w.prompts).toEqual([])

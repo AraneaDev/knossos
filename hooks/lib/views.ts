@@ -47,6 +47,7 @@ import {
 } from './rows'
 import type { Loc, Row, Segment, Tier } from './rows'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
+import { busy } from './motion'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -575,7 +576,7 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
   const c = detail.component
   const diff = detail.diff ? [diffBlock(detail.diff, detail.panel === true)] : []
   if (c === null) {
-    const lines = detail.loading ? [`Inspecting ${detail.label}…`] : (detail.messages ?? [])
+    const lines = detail.loading ? [busy(`Inspecting ${detail.label}…`)] : (detail.messages ?? [])
     const head: Block = {
       key: 'detail',
       make: columns => ({ key: 'detail', title: detail.label, body: lines.flatMap((line, i) => wrapWords(line, columns).map((part, j) => dimRow(`detail-line-${i}-${j}`, part, columns))) }),
@@ -668,7 +669,7 @@ export function noteFooterRows(name: string, note: NoteInput, width: number): Ro
       ...said('note-field-keys', 'Enter checks it with knossos; nothing is written yet.', { dim: true }),
     ]
   }
-  if (note.phase === 'previewing' || note.phase === 'saving') return said('note-busy', note.phase === 'saving' ? 'recording…' : 'checking with knossos…', { dim: true })
+  if (note.phase === 'previewing' || note.phase === 'saving') return said('note-busy', busy(note.phase === 'saving' ? 'recording…' : 'checking with knossos…'), { dim: true })
   const replaces = note.previous === null ? '' : ` It replaces: "${note.previous}"`
   return [
     ...said('note-ask', `Record this note on ${name}? "${note.value}"${replaces}`, { color: ACCENT }),

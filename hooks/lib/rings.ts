@@ -22,6 +22,7 @@ import type { Hues } from './palette'
 import { absolute, baseName, button, cells, chip, dimRow, displayName, fit, grouped, plural, segmentsWidth, spaces, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
 import { PLACE, REACH, kindMark, mark } from './marks'
+import { busy } from './motion'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
 /** `via` names the member of the component a dependant reaches it through (a static method's caller), by its own name. */
@@ -50,7 +51,7 @@ const ringLabel = (hop: number): string => (hop >= 3 ? '3+ hops' : hop === 1 ? '
 /** The detail's view of the stored rings, for the component it shows (`name`); `root` places each on disk. */
 export function ringsInput(state: RingsState | null, name: string, root: string | null): RingsInput {
   const none = { centre: null, rings: [], truncated: false }
-  if (state === null || state.name !== name || (state.phase === 'loading' && state.answer === null)) return { loading: true, said: 'Reading what depends on it, hop by hop…', ...none }
+  if (state === null || state.name !== name || (state.phase === 'loading' && state.answer === null)) return { loading: true, said: busy('Reading what depends on it, hop by hop…'), ...none }
   const answer: BlastRadius | null = state.answer
   if (answer === null || answer.status !== 'ok' || answer.component === null) return { loading: false, said: answer?.status === 'not-found' ? 'knossos found no component by that name to measure.' : 'knossos did not answer; the detail asks again with the next snapshot.', ...none }
   return {
@@ -239,7 +240,7 @@ export function ringsBlock(input: RingsInput, selected: number, offset: number, 
       if (input.said !== null) return { key: 'rings', title: 'Blast radius', note, body: wrapWords(input.said, Math.max(1, columns - 3)).map((line, i) => dimRow(`rings-said-${i}`, `   ${line}`, columns)) }
       if (total === 0) return { key: 'rings', title: 'Blast radius', note, body: [dimRow('rings-none', '   Nothing depends on it: a change here reaches no other component.', columns)] }
       const body = columns >= RINGS_MIN ? ringRows(input, columns, selected, offset, hues) : ringLists(input, columns, selected, offset, hues)
-      return { key: 'rings', title: 'Blast radius', subtitle: input.loading ? 'reading…' : 'what a change reaches, ring by ring', note, body }
+      return { key: 'rings', title: 'Blast radius', subtitle: input.loading ? busy('reading…') : 'what a change reaches, ring by ring', note, body }
     },
   }
 }

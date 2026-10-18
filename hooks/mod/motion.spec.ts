@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { LIVE_OFF } from '../lib/live'
-import { MOTION_FRAME_MS, MOTION_MS, NO_MOTION } from '../lib/motion'
+import { BUSY_SPIN_MS, MOTION_FRAME_MS, MOTION_MS, NO_MOTION } from '../lib/motion'
 import { startMotion } from './motion'
 import { disable } from './port'
 import type { Port } from './port'
@@ -85,6 +85,31 @@ describe('the frames motion draws', () => {
     for (let i = 0; i < 40; i++) await port.frame()
     expect(port.running()).toHaveLength(1)
     port.values.set('live', { phase: 'live' })
+    await port.frame()
+    expect(port.running()).toEqual([])
+  })
+
+  it('keeps turning while the pane shows a line under way, even with no figures drawn, and stops once none shows', async () => {
+    mod.paneText = null
+    mod.paneBusy = true
+    const port = motionPort()
+    await startMotion(port.io, null)
+    expect(port.running()).toHaveLength(1)
+    for (let i = 0; i < 4; i++) await port.frame()
+    expect((port.values.get('motion') as { frame: number }).frame).toBe(2)
+    mod.paneBusy = false
+    await port.frame()
+    expect(port.running()).toEqual([])
+  })
+
+  it('lets a line under way stand still once it has spun for a minute: a lost answer keeps nothing redrawing', async () => {
+    mod.paneText = null
+    mod.paneBusy = true
+    mod.busySince = 1_000
+    const port = motionPort()
+    await startMotion(port.io, null)
+    while (port.env.now < 1_000 + BUSY_SPIN_MS - MOTION_FRAME_MS) await port.frame()
+    expect(port.running()).toHaveLength(1)
     await port.frame()
     expect(port.running()).toEqual([])
   })

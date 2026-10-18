@@ -54,7 +54,7 @@ import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLin
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
 import { widthGauge } from './gauge'
-import { dotGlyph, grown, NO_MOTION, spinGlyph } from './motion'
+import { busy, dotGlyph, grown, NO_MOTION, spinGlyph } from './motion'
 import type { Motion } from './motion'
 import { churnArrangement, churnInput, churnList } from './churn'
 import type { ChurnInput } from './churn'
@@ -1124,21 +1124,30 @@ export const SCAN_PROMPT = 'Scan this project with Knossos (scan_project), then 
 
 /**
  * Why the pane has no figures to draw: the first load is still on its way,
- * the last load came back silent or as an error, or knossos answered that
- * it has never scanned this project. Only the last is a reason to scan.
+ * a load is on its way again after one that failed, the last load came back
+ * silent or as an error, or knossos answered that it has never scanned this
+ * project. Only the last is a reason to scan.
  */
-export type NoGraph = 'loading' | 'unreadable' | 'unscanned'
+export type NoGraph = 'loading' | 'retrying' | 'unreadable' | 'unscanned'
 
-/** Which {@link NoGraph} state a dashboard that is not `ok` (or none yet) is in. */
+/**
+ * Which {@link NoGraph} state a dashboard that is not `ok` (or none yet) is
+ * in. A load on its way is said as one, even after a failure: a knossos
+ * still starting up answers the next read, and the pane does not call that
+ * an error while it waits for it.
+ */
 export function noGraphOf(d: Dashboard | null, refresh: RefreshState): NoGraph {
-  if (refresh.failed || d?.status === 'error') return 'unreadable'
+  const failed = refresh.failed || d?.status === 'error'
+  if (refresh.loading === true && d?.status !== 'unscanned') return failed ? 'retrying' : 'loading'
+  if (failed) return 'unreadable'
   if (d?.status === 'unscanned') return 'unscanned'
   return refresh.fetchedAt === null ? 'loading' : 'unreadable'
 }
 
-const NO_GRAPH: Record<NoGraph, { head: string; why: string }> = {
-  loading: { head: 'Reading the graph…', why: 'Knossos is loading the architecture graph of this project.' },
-  unreadable: { head: 'Could not read the graph', why: 'Knossos did not answer, or answered with an error; retrying.' },
+const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
+  loading: { head: 'Reading the graph…', why: 'Knossos is loading the architecture graph of this project.', busy: true },
+  retrying: { head: 'Reading the graph…', why: 'Knossos did not answer the last read; asking again.', busy: true },
+  unreadable: { head: 'Could not read the graph', why: 'Knossos did not answer, or answered with an error; the pane asks again shortly.' },
   unscanned: { head: 'No architecture graph yet', why: 'Knossos has not scanned this project, so there is nothing to draw.' },
 }
 
@@ -1152,9 +1161,9 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string }> = {
  */
 export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number): Row[] {
   const width = Math.max(1, Math.min(CONTENT_MAX, columns))
-  const { head: heading, why } = NO_GRAPH[state]
+  const { head: heading, why, busy: spins } = NO_GRAPH[state]
   const head: Row[] = [
-    { key: 'empty-head', segments: [{ text: fit(heading, width), bold: true, color: HEADING }] },
+    { key: 'empty-head', segments: [{ text: fit(spins === true ? busy(heading) : heading, width), bold: true, color: HEADING }] },
     ...wrapWords(why, width).map((line, i) => dimRow(`empty-${i}`, line, width)),
   ]
   if (allow !== null) return [...head, blank('gap-empty'), ...allowRows(allow, width)]

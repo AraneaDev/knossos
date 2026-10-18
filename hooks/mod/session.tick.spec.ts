@@ -331,7 +331,54 @@ describe('the age tick', () => {
         })
     })
 
+    describe('asking again for a pane with no figures', () => {
+        /** A started port whose last load failed `misses` times in a row, its answer at clock 0, with the pane open on its empty state. */
+        async function failed(misses: number) {
+            const port = await started()
+            port.values.set('dashboard', null)
+            port.values.set('refresh', { fetchedAt: null, failed: true })
+            port.env.panes = [{ id: PANE }]
+            port.env.now = 0
+            mod.emptyShown = true
+            mod.dashboardMisses = misses
+            mod.dashboardTriedAt = 0
+            return port
+        }
+
+        it('asks again sooner after the first failures than after later ones, and every 15 s from the third', async () => {
+            for (const [misses, wait] of [[1, 2_000], [2, 5_000], [3, 15_000], [9, 15_000]] as const) {
+                reset(options)
+                const port = await failed(misses)
+                const before = port.runsOf('dashboard')
+                port.env.now = wait - 1
+                await port.tick()
+                expect(port.runsOf('dashboard')).toBe(before)
+                port.env.now = wait
+                await port.tick()
+                expect(port.runsOf('dashboard')).toBe(before + 1)
+            }
+        })
+
+        it('does not ask while the pane is closed', async () => {
+            const port = await failed(1)
+            port.env.panes = []
+            const before = port.runsOf('dashboard')
+            port.env.now = 60_000
+            await port.tick()
+            expect(port.runsOf('dashboard')).toBe(before)
+            expect(mod.emptyShown).toBe(false)
+        })
+    })
+
     describe('redrawing', () => {
+        it('forgets a busy pane that is no longer open, so its spinner stops', async () => {
+            const port = await started()
+            mod.paneBusy = true
+            port.env.panes = []
+            await port.tick()
+            expect(mod.paneBusy).toBe(false)
+        })
+
         it('forgets a pane that is no longer open, and does not redraw for it', async () => {
             const port = await started()
             mod.paneText = 'fresh'

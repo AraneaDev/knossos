@@ -57,6 +57,17 @@ async function loadDashboard(io: Port): Promise<void> {
   mod.dashboardStored = false
   if (mod.disabled) return
   mod.dashboardTriedAt = await io.clock.now()
+  // The pane with no figures says a read is on its way, not that the last one failed, while this one runs.
+  await io.state.refresh.update(r => ({ ...r, loading: true }))
+  try {
+    await readDashboard(io)
+  } finally {
+    await io.state.refresh.update((r): RefreshState => ({ fetchedAt: r.fetchedAt, failed: r.failed }))
+  }
+}
+
+/** The read itself and what it stores; a failed one counts towards how soon the pane with no figures asks again. */
+async function readDashboard(io: Port): Promise<void> {
   // Every boundary, up to the core's cap: an older pane that draws only the heat map does not ask, and gets the twelve it can draw.
   const stdout = await wrapper(io, 'dashboard', [`--fan-in-threshold=${mod.threshold}`, `--boundaries=${BOUNDARY_AXES}`], DASHBOARD_TIMEOUT_MS)
   const parsed = parseDashboard(stdout)
@@ -64,6 +75,11 @@ async function loadDashboard(io: Port): Promise<void> {
     await disable(io)
     return
   }
+  if (parsed === null || parsed.status === 'error') {
+    mod.dashboardMisses++
+    // The wait before the next try runs from this answer, not from when the read began.
+    mod.dashboardTriedAt = await io.clock.now()
+  } else mod.dashboardMisses = 0
   if (parsed === null || (parsed.status === 'error' && (await io.state.dashboard.read())?.status === 'ok')) {
     await io.state.refresh.update(r => ({ ...r, failed: true }))
     return

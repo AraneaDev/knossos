@@ -23,6 +23,7 @@ import type { Entry, Openable } from './views'
 import { labelOf, noteName, notesTree } from './notes-tree'
 export { labelOf } from './notes-tree'
 import type { TreeLine } from './notes-tree'
+import { busy } from './motion'
 
 /** The filters `s` cycles through, in order. */
 export const NOTES_FILTERS: NotesFilter[] = ['all', 'yours', 'model', 'stale', 'missing', 'flagged']
@@ -97,7 +98,7 @@ export function notesInput(state: NotesState | null, filter: NotesFilter, text: 
   const base = { warn: false, loading: false, filter, text, filtering, ask, counts: NO_COUNTS, groups: { missing: [], stale: [], rest: [] }, truncated: false, walk: [] }
   const answer: Notes | null = state?.answer ?? null
   if (answer === null) {
-    return state === null || state.phase === 'loading' ? { ...base, said: 'Reading the notes…', loading: true } : { ...base, said: 'knossos did not answer; the tab asks again with the next snapshot.', warn: true }
+    return state === null || state.phase === 'loading' ? { ...base, said: busy('Reading the notes…'), loading: true } : { ...base, said: 'knossos did not answer; the tab asks again with the next snapshot.', warn: true }
   }
   if (answer.status === 'refused') return { ...base, said: answer.reason ?? 'knossos refused the list.', warn: true }
   if (answer.status === 'unscanned') return { ...base, said: 'No graph yet: scan the project, and its notes list here.', warn: true }

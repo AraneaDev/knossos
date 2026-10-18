@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Dashboard, Inspected, KnossosView } from '../../types'
 import { NO_CHANGES } from '../lib/layout'
+import { NO_MOTION } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
 import { drawPane } from './render'
@@ -71,6 +72,7 @@ function fakePort(cells: Record<string, unknown> = {}) {
         view: view(),
         detail: null,
         refresh: { fetchedAt: 0, failed: false },
+        motion: NO_MOTION,
         rescan: { phase: 'idle', reason: null },
         allow: null,
         theme: 'dark',
@@ -109,7 +111,7 @@ function fakePort(cells: Record<string, unknown> = {}) {
             }),
         },
     )
-    return { state, clock: { now: async () => 0 }, ui: { log: () => undefined } } as unknown as Port
+    return { state, clock: { now: async () => 0, every: () => ({ cancel: () => undefined }) }, ui: { log: () => undefined } } as unknown as Port
 }
 
 /** Handlers that record each call, so a test can press what the pane drew and see what it asked for. */

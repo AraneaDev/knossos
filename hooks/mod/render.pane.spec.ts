@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { BoundaryMatrix, Dashboard, KnossosView, TurnBrief } from '../../types'
 import { NO_CHANGES } from '../lib/layout'
+import { BUSY, BUSY_SPIN_MS, NO_MOTION, spinGlyph } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
 import { currentInput, drawnText, drawPane, TEXT_BUDGET } from './render'
@@ -71,6 +72,7 @@ function fakePort(cells: Record<string, unknown> = {}) {
         view: view(),
         detail: null,
         refresh: { fetchedAt: 0, failed: false },
+        motion: NO_MOTION,
         rescan: { phase: 'idle', reason: null },
         allow: null,
         theme: 'dark',
@@ -114,12 +116,19 @@ function fakePort(cells: Record<string, unknown> = {}) {
         },
     )
     const logs: { text: string; options: unknown }[] = []
+    const timers: number[] = []
     const io = {
         state,
-        clock: { now: async () => 0 },
+        clock: {
+            now: async () => 0,
+            every: (ms: number) => {
+                timers.push(ms)
+                return { cancel: () => undefined }
+            },
+        },
         ui: { log: (text: string, opts?: unknown) => void logs.push({ text, options: opts }) },
     } as unknown as Port
-    return { io, logs, reads }
+    return { io, logs, reads, timers }
 }
 
 const act: Handlers = { press: () => undefined, type: () => undefined, submit: () => undefined }
@@ -187,6 +196,36 @@ describe('drawPane: off and without a graph', () => {
         expect(mod.paneText).toBeNull()
         expect(textOf(tree)).toContain('Reading the graph')
         expect(textOf(tree)).not.toContain('allow root')
+    })
+
+    it('turns the spinner of a line under way at the motion\'s frame, and keeps the frames going while it shows', async () => {
+        const { io, timers } = fakePort({ dashboard: null, refresh: { fetchedAt: null, failed: true, loading: true }, motion: { since: null, frame: 2 } })
+        const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
+        expect(textOf(tree)).toContain(`${spinGlyph(2)} Reading the graph…`)
+        expect(textOf(tree)).toContain('asking again')
+        expect(textOf(tree)).not.toContain(BUSY)
+        expect(mod.paneBusy).toBe(true)
+        expect(timers).toHaveLength(1)
+        // Drawn again while the frames run: no second timer.
+        await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)
+        expect(timers).toHaveLength(1)
+    })
+
+    it('starts no frames for a line that has spun past its minute', async () => {
+        const { io, timers } = fakePort({ dashboard: null, refresh: { fetchedAt: null, failed: false, loading: true } })
+        mod.paneBusy = true
+        mod.busySince = -BUSY_SPIN_MS
+        await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)
+        expect(mod.paneBusy).toBe(true)
+        expect(timers).toEqual([])
+    })
+
+    it('says a failed read with nothing on its way as a failure, with no spinner and no frames', async () => {
+        const { io, timers } = fakePort({ dashboard: null, refresh: { fetchedAt: null, failed: true } })
+        const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
+        expect(textOf(tree)).toContain('Could not read the graph')
+        expect(mod.paneBusy).toBe(false)
+        expect(timers).toEqual([])
     })
 
     it('offers to ask for a scan when the project was never scanned', async () => {

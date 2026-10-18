@@ -310,8 +310,8 @@ export type DetailState = { snapshot_id: string | null; name: string; file?: tru
 
 export type JobState = { phase: 'idle' | 'scanning' | 'failed'; lastAttemptAt: number | null }
 
-/** When the dashboard was last stored (mod clock, ms), and whether the latest refresh since failed. */
-export type RefreshState = { fetchedAt: number | null; failed: boolean }
+/** When the dashboard was last stored (mod clock, ms), whether the latest refresh since failed, and whether one is on its way now. */
+export type RefreshState = { fetchedAt: number | null; failed: boolean; loading?: boolean }
 
 /** The component (or, with `file`, the file) the pane shows: `name` is what it is looked up by, `label` what the pane prints. */
 export type Inspected = {
