@@ -99,6 +99,7 @@ final class PluginCommand implements CliCommand
         '/hooks/lib/rows.ts',
         '/hooks/lib/scheduler.ts',
         '/hooks/lib/sparkline.ts',
+        '/hooks/lib/themes.ts',
         '/hooks/lib/tiles.ts',
         '/hooks/lib/views.ts',
         '/hooks/mod/actions.ts',
