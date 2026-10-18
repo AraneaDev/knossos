@@ -7,26 +7,19 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AllowState, BranchState, ChurnState, CouplingState, DetailState, DiffFold, DiffState, Feedback, GitHead, Inspected, KnossosView, LiveState, NotesState, NoteState, RefreshState, RescanState, RingsState, RouteState, SearchState, SessionChanges, SessionRev } from '../types'
 import { begin, counts, finish } from './lib/activity'
 import { committedSince } from './lib/agent'
-import type { JobState } from './lib/band'
-import type { SessionLedger } from './lib/envelopes'
-import type { Flash } from './lib/flash'
-import { NO_MOTION } from './lib/motion'
-import type { Motion } from './lib/motion'
 import { wheelMove } from './lib/cards'
-import { NO_CHANGES, withScrollsKept } from './lib/layout'
-import { LIVE_OFF } from './lib/live'
+import { withScrollsKept } from './lib/layout'
 import { copyCommand, handlersOf, twinTarget } from './mod/actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
+import { cellChange, INITIAL } from './mod/cells'
 import { freshDig, observe } from './mod/dig'
 import { request } from './mod/loaders'
 import type { Port } from './mod/port'
 import { drawBand, drawPane } from './mod/render'
 import { endSession, endTurn, openPane, registerCommand, retryRegister, runCommand, startUp } from './mod/session'
 import { editedPath, mod, PANE, reset, takeNoteSlot } from './mod/state'
-import type { StartCycles } from './mod/state'
 
 /**
  * Whether a Bash call marks the turn dirty. Off: a no-change incremental scan
@@ -37,82 +30,42 @@ const BASH_MARKS_DIRTY = false
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
 /** The Bash commands kept per turn to tell whether it ran the tests. */
 const COMMANDS_KEPT = 50
-/** The finder before anything was typed. */
-const NO_SEARCH: SearchState = { query: '', for: null, phase: 'idle', answer: null }
-
-const brief = atom({ plugin: 'knossos', key: 'brief' } as const, null)
-const dashboard = atom({ plugin: 'knossos', key: 'dashboard' } as const, null)
-const job = atom({ plugin: 'knossos', key: 'job' } as const, { phase: 'idle', lastAttemptAt: null } as JobState)
-const view = atom({ plugin: 'knossos', key: 'view' } as const, {
-  inspect: null,
-  isBandHidden: false,
-  tab: 'overview',
-  selected: 0,
-  showKeys: false,
-  filter: '',
-  filtering: false,
-  sort: 'in',
-} as KnossosView)
-const detail = atom({ plugin: 'knossos', key: 'detail' } as const, null as DetailState | null)
-const refresh = atom({ plugin: 'knossos', key: 'refresh' } as const, { fetchedAt: null, failed: false } as RefreshState)
-const rescan = atom({ plugin: 'knossos', key: 'rescan' } as const, { phase: 'idle', reason: null } as RescanState)
-const allow = atom({ plugin: 'knossos', key: 'allow' } as const, { phase: 'idle', root: null, reason: null } as AllowState)
-/** The person's Claude Code theme by name (`dark`, `light`, ...): what the heat map's raw colours are resolved for. */
-const theme = atom({ plugin: 'knossos', key: 'theme' } as const, 'dark' as string)
-/** Everything this session's turn briefs reported, added up: what the Changes tab and "Look at now" draw. */
-const changes = atom({ plugin: 'knossos', key: 'changes' } as const, NO_CHANGES as SessionChanges)
-/** The session's root with its links followed: a test command run from it changes to the project root first when they differ. */
-const sessionRoot = atom({ plugin: 'knossos', key: 'sessionRoot' } as const, null as string | null)
-/** The live watcher, as the header shows it. */
-const live = atom({ plugin: 'knossos', key: 'live' } as const, LIVE_OFF as LiveState)
-/** Everything the scan ledger says changed in the project since the session began, whoever changed it; null until read. */
-const sessionLedger = atom({ plugin: 'knossos', key: 'sessionLedger' } as const, null as SessionLedger | null)
-/** The snapshot the graph was at when the session began. */
-const sessionStart = atom({ plugin: 'knossos', key: 'sessionStart' } as const, null as string | null)
-/** When the session began (milliseconds), as its stored baseline says: what Changes names when the scan record does not reach back to it. */
-const sessionBegan = atom({ plugin: 'knossos', key: 'sessionBegan' } as const, null as number | null)
-/** The paths the session's own edit tools wrote, main loop and subagents alike: the Changes tab's "this session". */
-const sessionEdits = atom({ plugin: 'knossos', key: 'sessionEdits' } as const, [] as string[])
-/** The snapshots of the scans that took in changes made while the session's tools ran (see `lib/activity.ts`). */
-const sessionScans = atom({ plugin: 'knossos', key: 'sessionScans' } as const, [] as string[])
-/** The commit the project was at when the session began: what a changed file's diff is taken against. */
-const sessionRev = atom({ plugin: 'knossos', key: 'sessionRev' } as const, null as SessionRev | null)
-/** The change since the session began of the file the detail shows, as last read. */
-const fileDiff = atom({ plugin: 'knossos', key: 'fileDiff' } as const, null as DiffState | null)
-/** How far the detail's diff is opened (its hunks shown whole, the first hunk shown), for the diff it was opened on. */
-const diffFold = atom({ plugin: 'knossos', key: 'diffFold' } as const, null as DiffFold | null)
-/** Whether the Changes list holds only the changed files no test reaches: the press on that count, and `u`. */
-const untestedOnly = atom({ plugin: 'knossos', key: 'untestedOnly' } as const, false as boolean)
-/** Where the checkout stands (commit and branch), for the header; null until read, and without git. */
-const gitHead = atom({ plugin: 'knossos', key: 'gitHead' } as const, null as GitHead)
-/** The Boundaries tab's marked heat map cell spelled out, as last read. */
-const couplings = atom({ plugin: 'knossos', key: 'couplings' } as const, null as CouplingState | null)
-/** What the footer says for a moment after an action in the pane. */
-const feedback = atom({ plugin: 'knossos', key: 'feedback' } as const, null as Feedback | null)
-/** The finder's search: what was typed, and what `graph-search` answered for the query last read. */
-const search = atom({ plugin: 'knossos', key: 'search' } as const, NO_SEARCH as SearchState)
-/** The marked row's detail, drawn beside the tab on a wide pane: what is shown, and its lookup. */
-const peek = atom({ plugin: 'knossos', key: 'peek' } as const, null as { shown: Inspected; detail: DetailState } | null)
-/** The Branch tab's comparison with the merge base, for the snapshot it was read at. */
-const branch = atom({ plugin: 'knossos', key: 'branch' } as const, null as BranchState | null)
-/** The rows the latest scan changed, lit for a moment after it landed. */
-const flash = atom({ plugin: 'knossos', key: 'flash' } as const, null as Flash | null)
-const motion = atom({ plugin: 'knossos', key: 'motion' } as const, NO_MOTION as Motion)
-/** The Churn tab's hotspots, for the commit they were read at. */
-const churn = atom({ plugin: 'knossos', key: 'churn' } as const, null as ChurnState | null)
-/** The Notes tab's notes, for the snapshot, filter and text they were read for. */
-const notes = atom({ plugin: 'knossos', key: 'notes' } as const, null as NotesState | null)
-/** The blast radius of the component the detail shows, for its name and snapshot. */
-const rings = atom({ plugin: 'knossos', key: 'rings' } as const, null as RingsState | null)
-/** The route the path explorer draws, for its two ends and snapshot. */
-const route = atom({ plugin: 'knossos', key: 'route' } as const, null as RouteState | null)
-/** A note being added on the detail, until it is recorded or dropped. */
-const note = atom({ plugin: 'knossos', key: 'note' } as const, null as NoteState | null)
-/**
- * The cycles the graph held when the session began: how many, each listed one by its members, and
- * whether the list held them all. What a commit note counts as new; state, so a reload keeps it.
- */
-const startCycles = atom({ plugin: 'knossos', key: 'startCycles' } as const, null as StartCycles | null)
+// Each atom starts as ./mod/cells says: the engine takes `read` and `update` only on atoms declared in this file.
+const brief = atom({ plugin: 'knossos', key: 'brief' } as const, INITIAL.brief)
+const dashboard = atom({ plugin: 'knossos', key: 'dashboard' } as const, INITIAL.dashboard)
+const job = atom({ plugin: 'knossos', key: 'job' } as const, INITIAL.job)
+const view = atom({ plugin: 'knossos', key: 'view' } as const, INITIAL.view)
+const detail = atom({ plugin: 'knossos', key: 'detail' } as const, INITIAL.detail)
+const refresh = atom({ plugin: 'knossos', key: 'refresh' } as const, INITIAL.refresh)
+const rescan = atom({ plugin: 'knossos', key: 'rescan' } as const, INITIAL.rescan)
+const allow = atom({ plugin: 'knossos', key: 'allow' } as const, INITIAL.allow)
+const theme = atom({ plugin: 'knossos', key: 'theme' } as const, INITIAL.theme)
+const changes = atom({ plugin: 'knossos', key: 'changes' } as const, INITIAL.changes)
+const sessionRoot = atom({ plugin: 'knossos', key: 'sessionRoot' } as const, INITIAL.sessionRoot)
+const live = atom({ plugin: 'knossos', key: 'live' } as const, INITIAL.live)
+const sessionLedger = atom({ plugin: 'knossos', key: 'sessionLedger' } as const, INITIAL.sessionLedger)
+const sessionStart = atom({ plugin: 'knossos', key: 'sessionStart' } as const, INITIAL.sessionStart)
+const sessionBegan = atom({ plugin: 'knossos', key: 'sessionBegan' } as const, INITIAL.sessionBegan)
+const sessionEdits = atom({ plugin: 'knossos', key: 'sessionEdits' } as const, INITIAL.sessionEdits)
+const sessionScans = atom({ plugin: 'knossos', key: 'sessionScans' } as const, INITIAL.sessionScans)
+const sessionRev = atom({ plugin: 'knossos', key: 'sessionRev' } as const, INITIAL.sessionRev)
+const fileDiff = atom({ plugin: 'knossos', key: 'fileDiff' } as const, INITIAL.fileDiff)
+const diffFold = atom({ plugin: 'knossos', key: 'diffFold' } as const, INITIAL.diffFold)
+const untestedOnly = atom({ plugin: 'knossos', key: 'untestedOnly' } as const, INITIAL.untestedOnly)
+const gitHead = atom({ plugin: 'knossos', key: 'gitHead' } as const, INITIAL.gitHead)
+const couplings = atom({ plugin: 'knossos', key: 'couplings' } as const, INITIAL.couplings)
+const feedback = atom({ plugin: 'knossos', key: 'feedback' } as const, INITIAL.feedback)
+const search = atom({ plugin: 'knossos', key: 'search' } as const, INITIAL.search)
+const peek = atom({ plugin: 'knossos', key: 'peek' } as const, INITIAL.peek)
+const branch = atom({ plugin: 'knossos', key: 'branch' } as const, INITIAL.branch)
+const flash = atom({ plugin: 'knossos', key: 'flash' } as const, INITIAL.flash)
+const motion = atom({ plugin: 'knossos', key: 'motion' } as const, INITIAL.motion)
+const churn = atom({ plugin: 'knossos', key: 'churn' } as const, INITIAL.churn)
+const notes = atom({ plugin: 'knossos', key: 'notes' } as const, INITIAL.notes)
+const rings = atom({ plugin: 'knossos', key: 'rings' } as const, INITIAL.rings)
+const route = atom({ plugin: 'knossos', key: 'route' } as const, INITIAL.route)
+const note = atom({ plugin: 'knossos', key: 'note' } as const, INITIAL.note)
+const startCycles = atom({ plugin: 'knossos', key: 'startCycles' } as const, INITIAL.startCycles)
 
 /**
  * The engine as the mod's modules reach it, from this dispatch's `$`. The
@@ -147,7 +100,7 @@ function portOf($: EngineInterface): Port {
       dashboard: { read: () => read($, dashboard), update: change => update($, dashboard, change) },
       job: { read: () => read($, job), update: change => update($, job, change) },
       // A move of the marker, the tab or what is open lets the wheel's windows go (withScrollsKept).
-      view: { read: () => read($, view), update: change => update($, view, v => withScrollsKept(v, change(v))) },
+      view: { read: () => read($, view), update: change => update($, view, cellChange('view', change)) },
       detail: { read: () => read($, detail), update: change => update($, detail, change) },
       refresh: { read: () => read($, refresh), update: change => update($, refresh, change) },
       rescan: { read: () => read($, rescan), update: change => update($, rescan, change) },
