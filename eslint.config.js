@@ -13,7 +13,7 @@ export default [
     js.configs.recommended,
     ...tseslint.configs.recommended.map((config) => ({
         ...config,
-        files: ["hooks/**/*.{ts,tsx}"],
+        files: ["hooks/**/*.{ts,tsx}", "web/**/*.ts"],
     })),
     {
         files: ["tools/*.mjs"],
@@ -48,6 +48,40 @@ export default [
                 clearTimeout: "readonly",
                 URL: "readonly",
             },
+        },
+    },
+    {
+        // The web pane's page: plain modules the browser loads as they are.
+        files: ["web/public/*.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: {
+                clearTimeout: "readonly",
+                crypto: "readonly",
+                CSS: "readonly",
+                document: "readonly",
+                EventSource: "readonly",
+                fetch: "readonly",
+                HTMLInputElement: "readonly",
+                location: "readonly",
+                matchMedia: "readonly",
+                navigator: "readonly",
+                performance: "readonly",
+                sessionStorage: "readonly",
+                setTimeout: "readonly",
+                URL: "readonly",
+                URLSearchParams: "readonly",
+                window: "readonly",
+            },
+        },
+    },
+    {
+        files: ["web/*.spec.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: { URL: "readonly" },
         },
     },
     {

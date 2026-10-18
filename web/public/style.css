@@ -1,0 +1,139 @@
+/*
+ * The page's layout: a monospace grid, one line per row, as wide as the
+ * window. It states no colour: the ground, the default ink, a card's
+ * ground and a hotkey's accent are the frame's (--ground, --text, --card,
+ * --suggestion), set by app.mjs, and every segment carries its own.
+ */
+:root {
+    --line: 1.25;
+    color-scheme: light dark;
+}
+
+html,
+body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font:
+        14px / var(--line) ui-monospace,
+        "Cascadia Mono",
+        "DejaVu Sans Mono",
+        Menlo,
+        Consolas,
+        monospace;
+}
+
+#view {
+    overflow-x: hidden;
+    font-variant-ligatures: none;
+}
+
+/* Pinned, the footer stays at the foot of the window and the body scrolls above it. */
+#view.pinned {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+#view.pinned .pane-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#view.pinned .pane-footer {
+    flex: none;
+}
+
+.row,
+.line {
+    display: flex;
+    height: calc(var(--line) * 1em);
+    white-space: pre;
+    overflow: hidden;
+}
+
+.row > *,
+.line > * {
+    flex: none;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    white-space: pre;
+    cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+    outline: 1px solid currentColor;
+    outline-offset: -1px;
+}
+
+.hot {
+    color: var(--suggestion);
+}
+
+button.dim .hot {
+    opacity: 0.6;
+}
+
+button.hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+/* A field is as wide as its room, which the frame gives it (its inline width). */
+.row > input {
+    min-width: 1ch;
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+
+/* The hover cards: a layer over the pane, out of sight until the pointer rests on a card's segment; app.mjs places the card there. */
+#cards > .card {
+    display: none;
+    position: fixed;
+    z-index: 2;
+    background: var(--card);
+    pointer-events: none;
+}
+
+#cards > .card.shown {
+    display: block;
+}
+
+.probe {
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
+}
+
+#toasts {
+    position: fixed;
+    right: 1ch;
+    bottom: 1ch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5ch;
+    z-index: 3;
+}
+
+.toast {
+    background: var(--card);
+    padding: 0.25em 1ch;
+    white-space: pre-wrap;
+    user-select: text;
+}

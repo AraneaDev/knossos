@@ -164,6 +164,8 @@ The band: after a turn that edited files, how far the change reaches, with the p
 
 Every tab, key and setting is in [the pane guide](docs/claude-code/pane/index.md).
 
+The same pane runs in a browser tab, without a Claude Code session: `knossos web` in a project. See [the pane in a browser](docs/guides/web-pane.md).
+
 ## What your agent gets
 
 Four messages, each one line, each said once at the moment it helps: after a Read of a heavily

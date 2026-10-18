@@ -455,6 +455,23 @@ final class BriefCommandTest extends KnossosTestCase
         assertStringContainsString('knossos boundary-couplings [path] --from=BOUNDARY --to=BOUNDARY', $help);
     }
 
+    /** `session-changes` takes `--since` or `--working-tree`, exactly one: a mistake is an error status, as for any brief command. */
+    #[Group('cli')]
+    public function testSessionChangesTakesExactlyOneOfSinceAndWorkingTree(): void
+    {
+        $root = $this->scannedFixtureOnDisk();
+        try {
+            foreach ([[], ['since' => ['s1'], 'working-tree' => ['true']]] as $options) {
+                [$status, $out] = $this->runJson('session-changes', [$root], $options);
+                assertSame([0, 'error'], [$status, $out['status']]);
+            }
+            [$status, $out] = $this->runJson('session-changes', [$root], ['working-tree' => ['true']]);
+            assertSame([0, 'no-git', 'HEAD'], [$status, $out['status'], $out['since']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** One heat map cell spelled out: both boundaries are required, nothing else is taken, and the answer is JSON. */
     #[Group('cli')]
     public function testBoundaryCouplingsPrintsTheEnvelopeAsJson(): void

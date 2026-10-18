@@ -376,6 +376,7 @@ COPY --chown=knossos:knossos migrations ./migrations
 COPY --chown=knossos:knossos schemas ./schemas
 COPY --chown=knossos:knossos .claude-plugin ./.claude-plugin
 COPY --chown=knossos:knossos hooks ./hooks
+COPY --chown=knossos:knossos web ./web
 COPY --chown=knossos:knossos skills ./skills
 COPY --chown=knossos:knossos types ./types
 

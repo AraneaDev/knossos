@@ -8,6 +8,7 @@
 #        knossos-run-container.sh watch <project-dir> [--poll-ms=N]
 #        knossos-run-container.sh allow-root <root>
 #        knossos-run-container.sh session-changes <project-dir> --since=<snapshot>
+#        knossos-run-container.sh session-changes <project-dir> --working-tree
 #        knossos-run-container.sh session-head <project-dir>
 #        knossos-run-container.sh session-diff <project-dir> --rev=<commit> --file=<file>
 #        knossos-run-container.sh boundary-couplings <project-dir> --from=<boundary> --to=<boundary>
@@ -287,11 +288,12 @@ fi
 if [ "$SUBCOMMAND" = scan ]; then
     [ "$#" -eq 0 ] || exit 0
 fi
-# session-changes takes exactly the snapshot the session began at, a plain id:
-# any other option (`--db=...`) would read another graph.
+# session-changes takes exactly the snapshot the session began at, a plain id,
+# or `--working-tree` (what git says is not committed yet): any other option
+# (`--db=...`) would read another graph.
 if [ "$SUBCOMMAND" = session-changes ]; then
     [ "$#" -eq 1 ] || exit 0
-    case "$1" in --since=*[!A-Za-z0-9_.:-]* | --since=) exit 0 ;; --since=*) ;; *) exit 0 ;; esac
+    case "$1" in --working-tree) ;; --since=*[!A-Za-z0-9_.:-]* | --since=) exit 0 ;; --since=*) ;; *) exit 0 ;; esac
 fi
 # session-head takes nothing but the project.
 if [ "$SUBCOMMAND" = session-head ]; then

@@ -3,10 +3,10 @@ import type { RenderSurface } from 'claude-code'
 import { FEEDBACK_MS } from '../lib/layout'
 import { copyCommand, handlersOf, PRESSES, pressOf } from './actions'
 import type { Port } from './port'
-import { currentInput } from './render'
+import { currentInput } from './input'
 import { mod } from './state'
 
-vi.mock('./render', async importOriginal => ({ ...(await importOriginal<typeof import('./render')>()), currentInput: vi.fn() }))
+vi.mock('./input', async importOriginal => ({ ...(await importOriginal<typeof import('./input')>()), currentInput: vi.fn() }))
 
 const NOW = 5_000
 const PLACE = { path: '/work/app/src/A.php', line: 12 }
@@ -112,6 +112,19 @@ describe('e on a place: the editor', () => {
         await settle()
         expect(failed.feedback()).toMatchObject({ text: '✗ idea exited 2 · path copied', tone: 'alert' })
         expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with /plugin configure knossos@knossos.'])
+    })
+
+    it("names the web server's flag and variable, not the plugin setting, when it fails on the web", async () => {
+        mod.editor = 'idea --line {line} {file}'
+        mod.host = 'web'
+        try {
+            const failed = port(exited(2))
+            editing(failed.io, SURFACE)
+            await settle()
+            expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with `knossos web --editor=<command>` or KNOSSOS_EDITOR.'])
+        } finally {
+            mod.host = 'claude'
+        }
     })
 
     it('names no surface at all to the clipboard when the press came from none', async () => {

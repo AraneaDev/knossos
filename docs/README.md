@@ -36,6 +36,8 @@ is the short version.
   it starts, and how is each verdict chosen?
 - [The routing skill](claude-code/skill.md): which questions does the skill
   send to the graph, and which does it keep away?
+- [The pane in a browser](guides/web-pane.md): how do I open the pane in a
+  browser tab with `knossos web`, and what does it leave out?
 
 ## Agents
 

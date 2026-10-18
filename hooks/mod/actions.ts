@@ -4,19 +4,20 @@
  * between two, allowing a refused root, the editor and the clipboard).
  */
 import type { AllowState, DiffFold, Inspected, KnossosView, NoteState, PaneTab, RescanState, SearchState } from '../../types'
+import { wheelMove } from '../lib/cards'
 import { diffPage, diffView } from '../lib/diff'
 import { BUSY_CODE, BUSY_SAID, parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
 import { askPrompt, editTarget, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
 import { nextFilter } from '../lib/notes-view'
 import { editorCommand } from '../lib/rows'
-import type { Loc } from '../lib/layout'
+import type { Loc, Row } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { request, requestDetail, showComponent } from './loaders'
 import { askFlag, askMove, askRemove, confirm as confirmNotes, confirmMarked, editMarked, missingMarked, startMove, submitReason, typeReason } from './notes-actions'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
-import { currentInput, currentList } from './render'
-import type { Handlers } from './render'
+import { currentInput, currentList } from './input'
+import type { Handlers } from './input'
 import { fieldKey, mod, PANE, revealThenFocus } from './state'
 import { requestRescan, scanSafely } from './watcher'
 import type { ProcessRunResult, RenderSurface } from 'claude-code'
@@ -27,8 +28,8 @@ const ALLOW_TIMEOUT_MS = 20_000
 /** How long the editor's command may take to hand a file to the editor. */
 const EDITOR_TIMEOUT_MS = 10_000
 
-/** Where the person sets the editor command: what the installer itself tells them to run. */
-const EDITOR_SETTING = '/plugin configure knossos@knossos'
+/** Where the person sets the editor command, by host: in Claude Code what the installer itself tells them to run, on the web the server's flag or variable. */
+const EDITOR_SETTING = { claude: '/plugin configure knossos@knossos', web: '`knossos web --editor=<command>` or KNOSSOS_EDITOR' } as const
 
 /** How long the finder waits after a keystroke before it asks: a word typed fast is one search. */
 const SEARCH_DEBOUNCE_MS = 150
@@ -87,7 +88,7 @@ async function openRow(io: Port, index?: number): Promise<void> {
  */
 async function openLocation(io: Port, loc: Loc, surface?: RenderSurface): Promise<void> {
   const target = locText(loc)
-  // The plugin's `editor` setting, VS Code's `code -g` by default. A terminal editor
+  // The plugin's `editor` setting (on the web the server's), VS Code's `code -g` by default. A terminal editor
   // (`$EDITOR`) needs a terminal of its own, which a press cannot give, so it is not asked.
   const command = editorCommand(mod.editor, loc)
   const failed = await io.process.run(command, { timeoutMs: EDITOR_TIMEOUT_MS }).then(
@@ -98,7 +99,7 @@ async function openLocation(io: Port, loc: Loc, surface?: RenderSurface): Promis
   const copied = await io.ui.copy({ text: target, ...(surface === undefined ? {} : { surface }) })
   const program = command[0]!.split('/').pop()!
   await say(io, `✗ ${program} ${failed}${copied.isCopied ? ' · path copied' : ''}`, 'alert')
-  io.ui.toast(`knossos ran "${command.join(' ')}" to open the file. Set another editor command with ${EDITOR_SETTING}.`)
+  io.ui.toast(`knossos ran "${command.join(' ')}" to open the file. Set another editor command with ${EDITOR_SETTING[mod.host]}.`)
 }
 
 /** A press on a place (`file:` and the file's absolute path): the detail of that file, named by its path in the project. */
@@ -347,6 +348,37 @@ export function twinTarget(element: string): string | null | undefined {
   if (mod.focused !== `tab:${id}`) return `tab:${id}`
   const before = TABS[TABS.findIndex(t => t.id === id) - 1]
   return before === undefined ? null : `tab:${before.id}`
+}
+
+/**
+ * A focus move the engine asked for, before it is made: the twin key's redirect
+ * (`to`, the element to move the focus to instead), a refusal (`refuse`, the
+ * move to make is none), or null to let the focus stand. Notes the element the
+ * focus is on.
+ */
+export async function focusMoved(_io: Port, asked: unknown): Promise<{ to: string } | { refuse: true } | null> {
+  const twin = typeof asked === 'string' ? twinTarget(asked) : undefined
+  if (twin === null) return { refuse: true }
+  const element = twin ?? asked
+  mod.focused = typeof element === 'string' ? element : null
+  return twin === undefined ? null : { to: twin }
+}
+
+/** The focus has landed on `element`: a listed row moves the marker with it, and the lookups that follow the marker are asked for. */
+export async function focusLanded(io: Port, element: string): Promise<void> {
+  const index = element.startsWith('row:') ? Number(element.slice(4)) : Number.NaN
+  if (!Number.isInteger(index)) return
+  await io.state.view.update(v => (v.selected === index ? v : { ...v, selected: index, target: undefined }))
+  await request(io, 'couplings')
+  await request(io, 'peek')
+}
+
+/** The wheel over a list longer than its window scrolls that list, the marker left where it is; false when the pointer is over none, or at its end. */
+export async function wheelScrolled(io: Port, rows: readonly Row[], offset: number, pointer: { row: number; column: number }, by: number): Promise<boolean> {
+  const moved = wheelMove(rows, offset, pointer, by)
+  if (moved === null) return false
+  await io.state.view.update(v => ({ ...v, scrolls: { ...(v.scrolls ?? {}), [moved.key]: moved.start } }))
+  return true
 }
 
 /** What a press on the pane does, then the couplings of the cell it leaves marked, when it marks one. */
@@ -662,8 +694,13 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['allow-no', io => io.state.allow.update((a): AllowState => (a.phase === 'confirming' ? { phase: 'idle', root: null, reason: null } : a))],
 ])
 
-/** Ids that do what another does: a tab's hidden hotkey twin, the drift line's second button, the Cycles moves and folds, the untested count beside `u`, and the notes card's button beside the footer's `m`. */
-const SAME_AS: Readonly<Record<string, string>> = { 'tabkey:': 'tab:', drifted: 'drift', 'prev:': 'next:', 'mark:': 'next:', 'fold:': 'unfold:', 'untested-row': 'untested', 'untested-none': 'untested', 'note-card': 'note' }
+/**
+ * Ids that do what another does: a tab's hidden hotkey twin, the drift line's
+ * second button, the Cycles moves and folds, the untested count beside `u`,
+ * the notes card's button beside the footer's `m`, and the empty pane's
+ * `scan it` outside Claude Code, which is the rescan the pane's `r` runs.
+ */
+const SAME_AS: Readonly<Record<string, string>> = { 'tabkey:': 'tab:', drifted: 'drift', 'prev:': 'next:', 'mark:': 'next:', 'fold:': 'unfold:', 'untested-row': 'untested', 'untested-none': 'untested', 'note-card': 'note', scan: 'rescan' }
 
 /** Which entry of {@link PRESSES} a press on `id` runs, and what follows the colon; null for an id that does nothing. */
 export function pressOf(id: string): { key: string; rest: string } | null {

@@ -38,6 +38,24 @@ final class SessionChangesServiceTest extends KnossosTestCase
         return json_decode((string) json_encode((new SessionChangesService($pdo))->changes($root, $since)), true);
     }
 
+    /** @param list<string> $args */
+    private function git(string $dir, array $args): void
+    {
+        $this->runFixtureCommand(['git', '-C', $dir, '-c', 'user.name=Knossos Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false', ...$args]);
+    }
+
+    /** @return array<string, mixed> */
+    private static function working(PDO $pdo, string $root): array
+    {
+        return json_decode((string) json_encode((new SessionChangesService($pdo))->workingChanges($root)), true);
+    }
+
+    /** What the working tree lists as path => status. */
+    private static function statusesOf(array $changes): array
+    {
+        return array_map(static fn(array $file): string => $file['status'], $changes['files']);
+    }
+
     #[Group('query')]
     public function testEveryRecordedChangeSinceTheSessionBeganIsListedWithItsReachAndTests(): void
     {
@@ -282,6 +300,114 @@ final class SessionChangesServiceTest extends KnossosTestCase
             assertSame(true, $changes['files_truncated']);
         } finally {
             $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testTheWorkingTreeListsWhatIsNotCommittedWithItsReachAndTests(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+            // A clean tree lists nothing, and says it is complete since HEAD.
+            $clean = self::working($pdo, $root);
+            assertSame(['ok', true, 'HEAD', []], [$clean['status'], $clean['complete'], $clean['since'], $clean['files']]);
+            file_put_contents($root . '/src/Core/Greeter.php', "\n// edited\n", FILE_APPEND);
+            file_put_contents($root . '/src/Core/Added.php', "<?php\nnamespace App;\nfinal class Added {}\n");
+            unlink($root . '/src/Edge/Caller.php');
+            $changes = self::working($pdo, $root);
+            assertSame('ok', $changes['status']);
+            assertSame(true, $changes['complete']);
+            assertSame(['src/Core/Greeter.php' => 'changed', 'src/Core/Added.php' => 'added', 'src/Edge/Caller.php' => 'deleted'], self::statusesOf($changes));
+            // The same entry the ledger-backed list carries: reach, boundary, tests, and no scans.
+            $greeter = $changes['files']['src/Core/Greeter.php'];
+            assertSame('Core', $greeter['boundary']);
+            assertSame(1, $greeter['tests']);
+            assertSame([], $greeter['scans']);
+            assertSame(2, $greeter['dependents']);
+            assertSame(['Edge', 'composer:fixture/turn-brief', 'namespace:App'], $greeter['boundaries']);
+            assertSame(false, array_key_exists('tests', $changes['files']['src/Edge/Caller.php']));
+            assertSame(['tests/GreeterTest.php'], array_column($changes['tests'], 'path'));
+            assertSame([[], false], [$changes['scans'], $changes['files_truncated']]);
+            // A change staged and one still in the worktree are both listed; a commit empties the list.
+            $this->git($root, ['add', '.']);
+            assertSame(3, count(self::working($pdo, $root)['files']));
+            $this->git($root, ['commit', '--quiet', '-m', 'second']);
+            assertSame([], self::working($pdo, $root)['files']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A tracked file replaced by a link to nothing is changed, not deleted: it is still there as a link. */
+    #[Group('query')]
+    public function testADanglingLinkInPlaceOfATrackedFileIsChangedNotDeleted(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+            unlink($root . '/src/Edge/Caller.php');
+            symlink($root . '/nowhere', $root . '/src/Edge/Caller.php');
+            assertSame(['src/Edge/Caller.php' => 'changed'], self::statusesOf(self::working($pdo, $root)));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testTheWorkingTreeOfAProjectOutsideGitIsNoGit(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $changes = self::working($pdo, $root);
+            assertSame(['no-git', []], [$changes['status'], $changes['files']]);
+            assertSame('unscanned', self::working($pdo, sys_get_temp_dir())['status']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testOnABranchWithNoCommitEveryStagedFileIsAdded(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', 'src/Core/Greeter.php']);
+            $changes = self::working($pdo, $root);
+            assertSame('ok', $changes['status']);
+            assertSame('added', $changes['files']['src/Core/Greeter.php']['status']);
+            // The rest of the fixture is untracked, so also added.
+            assertSame(['added'], array_values(array_unique(self::statusesOf($changes))));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testAProjectInASubdirectoryListsOnlyItsOwnFiles(): void
+    {
+        $parent = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = $parent . '/pkg';
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
+        file_put_contents($parent . '/README.md', "readme\n");
+        $pdo = $this->freshTestDatabase();
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $parent]);
+            $this->git($parent, ['add', '.']);
+            $this->git($parent, ['commit', '--quiet', '-m', 'first']);
+            file_put_contents($root . '/src/Core/Greeter.php', "\n// edited\n", FILE_APPEND);
+            file_put_contents($parent . '/README.md', "changed\n");
+            file_put_contents($parent . '/outside.txt', "new\n");
+            // Paths are the project's own, and the sibling files of the repository are not listed.
+            assertSame(['src/Core/Greeter.php' => 'changed'], self::statusesOf(self::working($pdo, $root)));
+        } finally {
+            $this->removeTempTree($parent);
         }
     }
 }

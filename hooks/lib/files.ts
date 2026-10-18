@@ -108,9 +108,9 @@ const LIST_MIN = 5
  * since the session began, when it was opened as one, follows the
  * dependents (below both lists when wide, where they stand side by side).
  */
-export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hues = NO_HUES, selected = -1): Arrangement {
+export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hues = NO_HUES, selected = -1, host?: 'web'): Arrangement {
   const f = detail.file ?? null
-  const diff = detail.diff ? [diffBlock(detail.diff, detail.panel === true)] : []
+  const diff = detail.diff ? [diffBlock(detail.diff, detail.panel === true, host)] : []
   if (f === null) {
     const lines = detail.loading ? [busy(`Reading what depends on ${detail.label}…`)] : (detail.messages ?? [])
     const head: Block = {

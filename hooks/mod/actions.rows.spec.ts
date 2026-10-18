@@ -4,10 +4,10 @@ import type { Openable } from '../lib/layout'
 import { PRESSES, pressOf } from './actions'
 import { request, requestDetail, showComponent } from './loaders'
 import type { Port } from './port'
-import { currentInput, currentList } from './render'
+import { currentInput, currentList } from './input'
 import { mod } from './state'
 
-vi.mock('./render', async importOriginal => ({ ...(await importOriginal<typeof import('./render')>()), currentList: vi.fn(), currentInput: vi.fn() }))
+vi.mock('./input', async importOriginal => ({ ...(await importOriginal<typeof import('./input')>()), currentList: vi.fn(), currentInput: vi.fn() }))
 vi.mock('./loaders', async importOriginal => ({
     ...(await importOriginal<typeof import('./loaders')>()),
     showComponent: vi.fn(async () => {}),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, SessionChanges, SessionLedger, TurnBrief } from '../../types'
-import { accumulate, APPROXIMATE_START, cdFor, changesInput, changesList, FILE_CAP, fromLedger, ledgerChanges, lookAtOf, NO_CHANGES, ownTimeline, scanKey, stamp, testCommand, testsRan, timelineRow } from './changes'
+import { accumulate, APPROXIMATE_START, cdFor, changesArrangement, changesInput, changesList, FILE_CAP, fromLedger, ledgerChanges, lookAtOf, NO_CHANGES, ownTimeline, scanKey, stamp, testCommand, testsRan, timelineRow } from './changes'
 import { changesRows } from './__tests__/tabs'
 import { editTarget, paneInput } from './layout'
 import { paneRows } from './__tests__/pane'
@@ -210,6 +210,35 @@ describe('changesInput and changesList', () => {
 describe('changesRows', () => {
   it('says what will show before anything changed', () => {
     expect(textOf(changesRows(changesInput(NO_CHANGES, ROOT), 0, 60))).toMatch(/Changes this session\n *\n {3}Nothing yet. The files Claude edits show here/)
+  })
+
+  it('names the last commit as its baseline outside Claude Code, and the session inside it', () => {
+    const section = (host?: 'web') => changesArrangement(changesInput(NO_CHANGES, ROOT), 0, 'medium', undefined, undefined, host).left[0]!.make(60, 20)!
+    expect(section().title).toBe('Changes this session')
+    expect(section('web').title).toBe('Changes since the last commit')
+    const said = (host?: 'web') => section(host).body.map(plainText).join(' ').replace(/ +/g, ' ')
+    expect(said()).toContain('Nothing yet. The files Claude edits show here')
+    expect(said('web')).toContain('Nothing changed in this project since the last commit.')
+    expect(said('web')).not.toContain('Claude')
+    // A list read since a start says so on either host, in the host's words when the record names none.
+    const since = changesInput({ ...NO_CHANGES, origins: {} }, ROOT)
+    const sinceSaid = (host?: 'web') => changesArrangement(since, 0, 'medium', undefined, undefined, host).left[0]!.make(80, 20)!.body.map(plainText).join(' ')
+    expect(sinceSaid()).toContain('Nothing changed in this project since this session began.')
+    expect(sinceSaid('web')).toContain('Nothing changed in this project since the last commit.')
+  })
+
+  it('says on the web why it lists nothing outside git or after a failed read, and nothing else', () => {
+    const base: SessionLedger = { status: 'ok', since: 'HEAD', complete: true, files: {}, files_truncated: false, tests: [], tests_truncated: false }
+    const said = (status: SessionLedger['status']) =>
+      changesArrangement(changesInput(ledgerChanges({ ...base, status }, NO_CHANGES, new Set(), [], null, 'web'), ROOT), 0, 'medium', undefined, undefined, 'web')
+        .left[0]!.make(80, 20)!
+        .body.map(plainText)
+        .join(' ')
+        .replace(/ +/g, ' ')
+        .trim()
+    expect(said('no-git')).toBe('Not a git repository, so there is no last commit to count from.')
+    expect(said('error')).toBe('The changes since the last commit could not be read. The next change reads them again.')
+    expect(said('ok')).toBe('Nothing changed in this project since the last commit.')
   })
   it('draws files with their marks, each pressable to its detail, the tests, and the command', () => {
     const rows = changesRows(changesInput(session(), ROOT), 1, 90)
@@ -429,6 +458,18 @@ describe('a ledger that does not reach back to the session start', () => {
     }
     const empty = changesRows(changesInput(ledgerChanges({ ...ledger, files: {} }, NO_CHANGES, new Set(), [], began), ROOT), 0, 100)
     expect(textOf(empty)).toContain(`Nothing changed in this project since ${stamp(1_791_100_000_000)}.`)
+  })
+
+  it('leaves the origins out when told, and draws no origin column', () => {
+    const complete: SessionLedger = { ...ledger, complete: true, reached: undefined }
+    const without = ledgerChanges(complete, NO_CHANGES, new Set(), [], null, 'web')
+    expect('origins' in without).toBe(false)
+    expect(ledgerChanges(complete, NO_CHANGES, new Set(), [], null).origins).toEqual({ 'src/Router.php': 'outside' })
+    const rows = changesRows(changesInput(without, ROOT), 0, 120)
+    expect(textOf(rows)).toContain('src/Router.php')
+    expect(textOf(rows)).toContain('since the last commit')
+    expect(textOf(rows)).not.toMatch(/\bfrom\b/)
+    expect(textOf(rows)).not.toContain('outside')
   })
 
   it("with no point to reach (an older knossos), falls back to the turns' own and says so, with the date when known", () => {

@@ -124,10 +124,16 @@ export async function light(io: Port, keys: string[], now: number): Promise<void
  * session's own edits made it; otherwise what the turn briefs reported, with
  * why. The notes after a turn never read this: they stay the turns' own. The
  * note after a commit does, and keeps only the
- * files whose origin is this session ({@link ownChange}).
+ * files whose origin is this session ({@link ownChange}). On the web it is
+ * what is not committed yet, as last read, or why it could not be.
  */
 export async function shownChanges(io: Port, root: string | null): Promise<SessionChanges> {
   const turns = await io.state.changes.read()
+  // On the web the list is a plain git read of what is not committed (no session, no watcher needed): it is shown as read.
+  if (mod.host === 'web') {
+    const read = await io.state.sessionLedger.read()
+    return read === null ? turns : ledgerChanges(read, turns, new Set(), [], null, 'web')
+  }
   // Without the ledger the timeline holds the scans the session's own turns and rescans made.
   if (mod.watcher === null || !isWatching(await io.state.live.read())) return { ...turns, fallback: NO_WATCHER, timeline: ownTimeline(await io.state.sessionScans.read()) }
   const ledger = await io.state.sessionLedger.read()

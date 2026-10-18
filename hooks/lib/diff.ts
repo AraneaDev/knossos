@@ -16,6 +16,8 @@ import { button, dimRow, fit, pathText, plural, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Block, Section } from './cards'
 import { CHANGE } from './marks'
+import { baselineWords } from './baseline'
+import type { BaselineWords } from './baseline'
 import { busy } from './motion'
 
 /** Lines of one hunk shown; past them the rest is folded into "N more lines". */
@@ -123,28 +125,29 @@ export function folded(hunk: Hunk, max = HUNK_LINES): { shown: string[]; more: n
  * commit the session began at (not read, or no git), or without an answer,
  * it says so in place of a diff.
  */
-export function diffView(shown: Inspected, state: DiffState | null, rev: SessionRev | null, fold: DiffFold | null = null): DiffView | null {
+export function diffView(shown: Inspected, state: DiffState | null, rev: SessionRev | null, fold: DiffFold | null = null, host?: 'web'): DiffView | null {
   if (shown.file !== true || shown.changed !== true) return null
-  if (rev === null) return { phase: 'message', text: "No diff: the commit this session began at was not recorded (no git answered when it started)." }
-  if (rev.status === 'no-git') return { phase: 'message', text: 'No diff: the project is not in a git repository, or had no commit when the session began.' }
+  const words = baselineWords(host)
+  if (rev === null) return { phase: 'message', text: words.noRev }
+  if (rev.status === 'no-git') return { phase: 'message', text: words.noGit }
   if (state === null || state.name !== shown.name || state.rev !== rev.rev || state.phase === 'loading') return { phase: 'loading' }
-  const view = viewOf(shown.name, state.diff)
+  const view = viewOf(shown.name, state.diff, words)
   // Opened further only for the diff it was opened on: another file, commit or snapshot starts closed.
   if (view.phase !== 'diff' || fold === null || fold.name !== state.name || fold.rev !== state.rev || fold.snapshot !== state.snapshot) return view
   return { ...view, open: fold.open, from: fold.from }
 }
 
 /** The view of one `session-diff` answer. */
-function viewOf(path: string, answer: SessionDiff | null): DiffView {
+function viewOf(path: string, answer: SessionDiff | null, words: BaselineWords): DiffView {
   if (answer === null || answer.status === 'error' || answer.status === 'no-binary') return { phase: 'message', text: 'No diff: knossos said nothing.' }
   if (answer.status === 'no-git') return { phase: 'message', text: 'No diff: the project is not in a git repository.' }
-  if (answer.status === 'unknown-rev') return { phase: 'message', text: 'No diff: the commit this session began at is no longer in the repository.' }
+  if (answer.status === 'unknown-rev') return { phase: 'message', text: words.goneRev }
   if (answer.unreadable === true) return { phase: 'message', text: 'No diff: git could not show this change within its limits.' }
   if (answer.binary === true) return { phase: 'message', text: 'A binary file: no lines to show.' }
   if (answer.kind === 'absent') return { phase: 'message', text: 'Git has no record of this file, then or now.' }
   const hunks = parseHunks(answer.diff ?? '')
   const renamed = answer.kind !== 'renamed' ? null : answer.to === path ? `renamed from ${answer.from ?? '?'}` : `renamed to ${answer.to ?? '?'}`
-  if (hunks.length === 0 && renamed === null) return { phase: 'message', text: answer.kind === 'unchanged' ? 'Back as it was when the session began.' : 'No lines changed.' }
+  if (hunks.length === 0 && renamed === null) return { phase: 'message', text: answer.kind === 'unchanged' ? words.unchanged : 'No lines changed.' }
   const all = hunks.flatMap(h => h.lines)
   return {
     phase: 'diff',
@@ -165,8 +168,8 @@ function viewOf(path: string, answer: SessionDiff | null): DiffView {
  * cut. `asText` draws a few short hunks as text for a panel, ending in a
  * press that opens the full detail. The text rows fit `columns`.
  */
-export function diffSection(view: DiffView, columns: number, asText = false): Section {
-  const title = 'Changed since the session began'
+export function diffSection(view: DiffView, columns: number, asText = false, host?: 'web'): Section {
+  const title = baselineWords(host).diff
   if (view.phase !== 'diff') {
     const text = view.phase === 'loading' ? busy('Reading the change…') : view.text
     return { key: 'diff', title, body: wrapWords(text, Math.max(1, columns - 3)).map((part, i) => dimRow(`diff-line-${i}`, `   ${part}`, columns)) }
@@ -290,4 +293,4 @@ function hunkRows(key: string, hunk: Hunk, shown: string[], columns: number): Ro
 }
 
 /** The change as a card the detail places: across the pane, below its lists; `asText` draws it as text rows, for a panel. */
-export const diffBlock = (view: DiffView, asText = false): Block => ({ key: 'diff', make: columns => diffSection(view, columns, asText) })
+export const diffBlock = (view: DiffView, asText = false, host?: 'web'): Block => ({ key: 'diff', make: columns => diffSection(view, columns, asText, host) })

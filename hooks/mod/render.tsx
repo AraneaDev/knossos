@@ -7,67 +7,16 @@
 import type { Elements, RenderElement, RenderNode, RenderSurface, UiPressArgument } from 'claude-code'
 
 import { bandModel } from '../lib/band'
-import { diffView } from '../lib/diff'
-import { allowInput, detailInput, emptyRows, fileDetailInput, fit, listFor, noGraphOf, paneHeight, paneInput, paneLayout, rowWidth, shrinkRows, tierOf } from '../lib/layout'
-import type { Openable, PaneInput, Preview, Row, Segment } from '../lib/layout'
+import { fit, paneHeight, paneLayout, rowWidth, shrinkRows } from '../lib/layout'
+import type { Preview, Row, Segment } from '../lib/layout'
 import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
-import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
-import { startMotion } from './motion'
-import { shownChanges } from './port'
 import type { Port } from './port'
+import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
+import { cardPlace } from '../lib/place'
+import type { Handlers } from './input'
 import { fieldKey, mod } from './state'
-
-/**
- * What the pane's elements do: a press (a Button, by its id, from the surface
- * it came from), a keystroke or Enter in a field (by the field's id), and a
- * plain click on a link. Handed in by the hooks module, so drawing imports
- * none of the actions; each one swallows its own failure, as a handler that
- * outlives the session (a teardown under it) must.
- */
-export type Handlers = {
-  press: (id: string, surface?: RenderSurface) => void
-  type: (field: string, value: string) => void
-  submit: (field: string, value: string) => void
-}
-
-/** Everything the pane draws, from state; null when there is no dashboard to draw. */
-export async function currentInput(io: Port, terminal: boolean): Promise<PaneInput | null> {
-  const d = await io.state.dashboard.read()
-  if (d?.status !== 'ok') return null
-  const v = await io.state.view.read()
-  const stored = await io.state.detail.read()
-  const shown = v.inspect === null ? null : v.inspect.file ? fileDetailInput(v.inspect, stored, d.project_root, huesOf(d)) : detailInput(v.inspect, stored, d.project_root)
-  // The full detail opens its diff as far as the person pressed; the panel beside a tab draws it closed.
-  if (shown !== null && v.inspect !== null) shown.diff = diffView(v.inspect, await io.state.fileDiff.read(), await io.state.sessionRev.read(), await io.state.diffFold.read())
-  const extras = {
-    git: await io.state.gitHead.read(),
-    feedback: await io.state.feedback.read(),
-    couplings: await io.state.couplings.read(),
-    flash: await io.state.flash.read(),
-    motion: await io.state.motion.read(),
-    search: await io.state.search.read(),
-    branch: await io.state.branch.read(),
-    churn: await io.state.churn.read(),
-    notes: await io.state.notes.read(),
-    rings: await io.state.rings.read(),
-    route: await io.state.route.read(),
-    note: await io.state.note.read(),
-    untestedOnly: await io.state.untestedOnly.read(),
-  }
-  // The marked row's detail beside the tab: only while the pane is drawn wide.
-  const peeked = mod.paneWide ? await io.state.peek.read() : null
-  const side = peeked === null ? null : peeked.shown.file === true ? fileDetailInput(peeked.shown, peeked.detail, d.project_root, huesOf(d)) : detailInput(peeked.shown, peeked.detail, d.project_root)
-  if (side !== null && peeked !== null) side.diff = diffView(peeked.shown, await io.state.fileDiff.read(), await io.state.sessionRev.read())
-  return paneInput(d, await io.state.brief.read(), await io.state.refresh.read(), await io.state.rescan.read(), v, await io.clock.now(), terminal, shown, await io.state.allow.read(), await shownChanges(io, d.project_root), await io.state.sessionRoot.read(), await io.state.live.read(), extras, side)
-}
-
-/** The rows the selection walks on what the pane shows, from state. */
-export async function currentList(io: Port): Promise<Openable[]> {
-  const input = await currentInput(io, true)
-  return input === null ? [] : listFor(input)
-}
 
 /** A hover group's name for one card: the plugin's prefix and the card's key, within the engine's 64 characters. */
 const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 64)
@@ -162,7 +111,7 @@ function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Se
  */
 function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns: number, terminal: boolean, places = true, hovers = false) {
   const { Box, Code } = ui
-  const spinning = spunRow(line)
+  const spinning = spunRow(line, mod.spinFrame)
   const row = places ? spinning : { ...spinning, segments: spinning.segments.map(({ press, ...s }) => (press === undefined || press.id.startsWith(FILE_PRESS) ? s : { ...s, press })) }
   // A change's hunks: the engine's own diff, gutters, markers and colours as Claude Code draws them.
   if (row.code !== undefined) {
@@ -181,18 +130,16 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns:
   // its styled pieces nested in it and the rest bare strings: a tall pane stays far inside the engine's bounds.
   const plain = (s: Segment): boolean => s.press === undefined && s.field === undefined
   const drawn: RenderNode[] = []
+  const rooms = fieldRooms(row.segments, columns)
   let x = 0
   for (let i = 0; i < row.segments.length; i++) {
     const s = row.segments[i]!
-    if (s.field !== undefined) {
+    const field = rooms.get(i)
+    if (field !== undefined) {
       // A field takes the blank cells laid out after it, and stops where the row's next drawn segment (a card's frame) begins.
-      let next = i + 1
-      while (next < row.segments.length && plain(row.segments[next]!) && row.segments[next]!.bg === undefined && /^ *$/.test(row.segments[next]!.text)) next++
-      const trailing = row.segments.slice(next).reduce((n, t) => n + (t.hidden === true ? 0 : cells(t.text)), 0)
-      const room = Math.max(1, columns - x - trailing)
-      drawn.push(drawSegment(act, ui, row, s, i, terminal, room, scoped(i)))
-      x += room
-      i = next - 1
+      drawn.push(drawSegment(act, ui, row, s, i, terminal, field.room, scoped(i)))
+      x += field.room
+      i = field.next - 1
       continue
     }
     if (!plain(s)) {
@@ -212,13 +159,6 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns:
       {drawn}
     </Box>
   )
-}
-
-/** `row` with its spinners turned to the frame the pane draws; one there marks the pane busy, so the frames go on. */
-function spunRow(row: Row): Row {
-  if (!row.segments.some(s => isBusy(s.text))) return row
-  mod.spinSeen = true
-  return { ...row, segments: row.segments.map(s => (isBusy(s.text) ? { ...s, text: spun(s.text, mod.spinFrame) } : s)) }
 }
 
 /**
@@ -286,13 +226,6 @@ export function drawnText(tree: unknown): number {
 /** The most hover cards a pane hangs: those on the rows nearest the marked one. */
 const CARDS_MAX = 8
 
-/** A hover card where the pointer can reach it: under its row, or over it when the rows below cannot hold it; never past the right edge. */
-function cardPlace(row: number, rows: number, x: number, preview: Preview, columns: number): { top: number; left: number } {
-  const height = preview.rows.length
-  const below = row + 1 + height <= rows || row < height
-  return { top: below ? row + 1 : row - height, left: Math.max(0, Math.min(x, columns - preview.width)) }
-}
-
 /**
  * The hover cards the rows hang, drawn out of the flow over the rows below
  * their own (`position: absolute`), hidden until the pointer rests on a
@@ -314,10 +247,10 @@ function drawCards(ui: Elements[RenderSurface], rows: Row[], columns: number) {
     for (const s of row.segments) {
       const preview = s.preview
       if (preview !== undefined) {
-        const place = cardPlace(y, rows.length, x, preview, columns)
+        const place = cardPlace(y, x, { rows: preview.rows.length, columns: preview.width }, { rows: rows.length, columns })
         const width = Math.min(preview.width, columns)
         cards.push(
-          <Box key={preview.key} position="absolute" top={place.top} left={place.left} width={width} height={preview.rows.length} display="none" backgroundColor={CARD_BG} hover={{ scope: scopeOf(preview), display: 'flex' }}>
+          <Box key={preview.key} position="absolute" top={place.row} left={place.column} width={width} height={preview.rows.length} display="none" backgroundColor={CARD_BG} hover={{ scope: scopeOf(preview), display: 'flex' }}>
             <Text wrap="truncate-end">{preview.rows.map(line => line.segments.map(c => c.text).join('')).join('\n')}</Text>
           </Box>,
         )
@@ -406,56 +339,46 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
  * rows, until it fits; past it even at {@link SHORT_ROWS}, one line says so.
  */
 export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {
-  // A line that says something is on its way spins: drawn at the motion's frame, and while one shows the frames go on.
-  mod.spinFrame = mod.disabled ? 0 : (await io.state.motion.read()).frame
-  mod.spinSeen = false
-  const tree = await drawPaneTree(io, ui, surface, props, act)
-  const now = await io.clock.now()
-  if (mod.spinSeen && !mod.paneBusy) mod.busySince = now
-  mod.paneBusy = mod.spinSeen
-  // Past its minute a line under way stands still: a redraw then starts no frames, or each would draw the next.
-  if (mod.paneBusy && mod.motionTimer === null && now - mod.busySince < BUSY_SPIN_MS) await startMotion(io, null)
-  return tree
-}
-
-/** The pane's tree, as {@link drawPane} describes it. */
-async function drawPaneTree(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {
   const { Box } = ui
-  mod.paneText = null
-  mod.emptyShown = false
-  if (mod.disabled) return <Box key="off" />
-  const d = await io.state.dashboard.read()
-  const v = await io.state.view.read()
   const columns = Math.max(1, props.bodyColumns)
   const terminal = surface === 'terminal'
-  // Whether the pane is wide enough for the detail beside the tab: the lookup it needs runs from the next press or tick.
-  mod.paneWide = tierOf(columns) === 'wide'
-  if (d === null || d.status !== 'ok') {
-    const offer = allowInput(await io.state.brief.read(), await io.state.rescan.read(), await io.state.allow.read())
-    mod.emptyShown = true
+  const source = await paneSource(io, columns, terminal)
+  if (source.kind === 'off') {
+    await noteSpinners(io, [])
+    return <Box key="off" />
+  }
+  if (source.kind === 'empty') {
+    await noteSpinners(io, source.rows)
+    if (source.rows.length === 0) return <Box key="empty" />
     return (
       <Box key="empty" flexDirection="column">
-        {emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns).map(row => drawRow(act, ui, row, columns, terminal))}
+        {source.rows.map(row => drawRow(act, ui, row, columns, terminal))}
       </Box>
     )
   }
-  const input = await currentInput(io, terminal)
-  if (input === null) return <Box key="empty" />
-  mod.paneText = input.status.text
+  const { input, key } = source
   // No loop variable may be called `h`: JSX compiles to h(...), and a
   // parameter of that name shadows the element factory inside its callback.
   const height = paneHeight(props.scroll)
   const offset = Math.max(0, props.scroll?.offset ?? 0)
   const themeName = await io.state.theme.read()
-  const key = v.inspect === null ? 'pane' : 'detail'
   // How many rows the last layout drew with something in them (the blank fill under a short tab left out).
   let used = height
-  const draw = (rows: number, lean: boolean): RenderElement => {
+  // The rows of the last tree drawn: shrinkRows returns the last one it drew, so these are the returned tree's.
+  let shown: Row[] = []
+  const layout = (rows: number) => {
     const laidOut = paneLayout(input, columns, rows, offset)
     used = rowsHeight(laidOut.body.filter(r => !r.key.startsWith('fill-'))) + laidOut.footer.length
     // Kept for the wheel: the last layout drawn is the one on screen.
     mod.paneRows = laidOut.body
     mod.paneOffset = offset
+    return laidOut
+  }
+  const draw = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
+    shown = [...laidOut.body, ...laidOut.footer]
+    return build(laidOut, lean)
+  }
+  const build = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
     if (!laidOut.pinned) {
       return (
         <Box key={key} flexDirection="column">
@@ -476,16 +399,24 @@ async function drawPaneTree(io: Port, ui: Elements[RenderSurface], surface: Rend
       </Box>
     )
   }
-  let tree = draw(height, false)
+  const first = layout(height)
+  // The spinners of the layout about to be drawn: the frame they spin at is set before any row is.
+  await noteSpinners(io, [...first.body, ...first.footer])
+  let tree = draw(first, false)
   if (drawnText(tree) <= TEXT_BUDGET) return tree
-  tree = draw(height, true)
+  tree = draw(layout(height), true)
   // Lists make most of the weight: fewer rows each try, in proportion to the budget, down to SHORT_ROWS at the last.
   const lean = { tree, weight: drawnText(tree) }
   const fitted = shrinkRows(Math.min(height, used), SHORT_ROWS, TEXT_BUDGET, lean, rows => {
-    const drawn = draw(rows, true)
-    return { tree: drawn, weight: drawnText(drawn) }
+    const smaller = draw(layout(rows), true)
+    return { tree: smaller, weight: drawnText(smaller) }
   })
-  if (fitted.weight <= TEXT_BUDGET) return fitted.tree
+  if (fitted.weight <= TEXT_BUDGET) {
+    // The fewer rows drawn under the budget may hold other spinners than the full layout did.
+    await noteSpinners(io, shown)
+    return fitted.tree
+  }
+  await noteSpinners(io, [])
   const { weight, rows } = fitted
   // Still past the budget at the fewest rows: one line says so, rather than a tree the engine would refuse.
   if (!mod.tooLargeLogged) {

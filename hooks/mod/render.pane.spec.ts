@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { BoundaryMatrix, Dashboard, KnossosView, TurnBrief } from '../../types'
 import { NO_CHANGES } from '../lib/layout'
+import { paneRows } from '../lib/__tests__/pane'
 import { BUSY, BUSY_SPIN_MS, NO_MOTION, spinGlyph } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
-import { currentInput, drawnText, drawPane, TEXT_BUDGET } from './render'
-import type { Handlers } from './render'
+import { currentInput } from './input'
+import { drawnText, drawPane, TEXT_BUDGET } from './render'
+import type { Handlers } from './input'
 import { mod, reset } from './state'
 
 const ROOT = '/work/app'
@@ -171,6 +173,17 @@ const weight = (tree: unknown) => JSON.stringify(tree).length
 
 beforeEach(() => {
     reset(options)
+})
+
+describe('the host in the input', () => {
+    it('currentInput carries the web host into the input, and Claude Code leaves it out', async () => {
+        const { io } = fakePort()
+        expect((await currentInput(io, true))!.host).toBeUndefined()
+        mod.host = 'web'
+        const input = (await currentInput(io, true))!
+        expect(input.host).toBe('web')
+        expect(JSON.stringify(paneRows(input, 120))).not.toContain('"id":"ask"')
+    })
 })
 
 describe('drawPane: off and without a graph', () => {

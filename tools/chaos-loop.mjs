@@ -19,6 +19,8 @@
 //               baseline does not silently regress the close-the-loop evidence.
 //               Strongly recommended between "add tests" and "verify" steps.
 
+import { Buffer } from "node:buffer";
+
 // Resolve the Chaos-MCP checkout root from CHAOS_MCP_BIN when it lives under a
 // conventional /build/<entry> layout; fall back to dirname once and warn if the
 // path lacks a /build/ segment.

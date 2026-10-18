@@ -94,7 +94,7 @@ Usage:
   knossos dashboard [path] [--fan-in-threshold=N] [--boundaries=N] [--db=FILE] [--json]
   knossos component-detail [path] <name> [--db=FILE] [--json]
   knossos file-detail <file> [--db=FILE] [--json]
-  knossos session-changes [path] --since=SNAPSHOT [--db=FILE] [--json]
+  knossos session-changes [path] (--since=SNAPSHOT | --working-tree) [--db=FILE] [--json]
   knossos boundary-couplings [path] --from=BOUNDARY --to=BOUNDARY [--db=FILE] [--json]
   knossos graph-search [path] --query=TEXT [--db=FILE] [--json]
   knossos file-context <file> [--db=FILE] [--json]
@@ -128,6 +128,8 @@ Usage:
                 (roots also come from KNOSSOS_ALLOWED_ROOTS and the roots
                  file beside the database, re-read on every request)
   knossos allow-root <path> [--execute]
+  knossos web [path] [--port=N] [--no-open] [--editor=<command>]
+                (the pane in a browser tab; runs until Ctrl-C, needs Node 24+)
 
 Docker supplies PHP, Node, Composer, and SQLite; mount source read-only at an
 allowed path and graph data read-write at /data.

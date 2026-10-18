@@ -15,7 +15,7 @@ import { accumulate, cdFor } from '../lib/layout'
 import { isWatching, LIVE_OFF, liveAfter, liveChanged, snapshotOf, watchLines } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
 import { deliverNote, turnEndNote } from './agent'
-import { refreshDashboard } from './loaders'
+import { readHeadRev, refreshDashboard } from './loaders'
 import { disable, keepScan, light, shownChanges, sleep, wrapper } from './port'
 import type { Port } from './port'
 import { startMotion } from './motion'
@@ -42,27 +42,60 @@ const LEDGER_TIMEOUT_MS = 20_000
 
 /**
  * Asks for the changes since the session began again (from the scan ledger),
- * coalesced with a read in flight. Only while a watcher keeps that ledger:
- * without one the Changes tab shows the turn briefs. Called from the
- * watcher's loop and after a turn's brief, never inside a render.
+ * coalesced with a read in flight. In Claude Code only while a watcher keeps
+ * that ledger: without one the Changes tab shows the turn briefs. On the web
+ * the read is git's, which needs no watcher. Called from the watcher's loop,
+ * after a turn's brief and from {@link followHead}, never inside a render.
  */
 function requestLedger(io: Port): void {
-  if (mod.disabled || mod.watcher === null) return
+  if (mod.disabled || (mod.watcher === null && mod.host !== 'web')) return
   void (mod.ledgerFlight ??= new SingleFlight(() => loadLedger(io))).request().catch(() => undefined)
 }
 
-/** One read of the changes since the session began; silence or an error keeps the last one. */
+/**
+ * One read of the changes since the session began; silence or an error keeps
+ * the last one. On the web host there is no session: the read is what is not
+ * committed yet, and nothing can begin again under it. There `no-git` is
+ * kept, and so is an error with nothing read before it, so the Changes tab
+ * says why it lists nothing.
+ */
 async function loadLedger(io: Port): Promise<void> {
-  const since = await io.state.sessionStart.read()
-  if (since === null || mod.disabled) return
-  const parsed = parseSessionLedger(await wrapper(io, 'session-changes', [`--since=${since}`], LEDGER_TIMEOUT_MS))
+  const web = mod.host === 'web'
+  const since = web ? null : await io.state.sessionStart.read()
+  if ((!web && since === null) || mod.disabled) return
+  const parsed = parseSessionLedger(await wrapper(io, 'session-changes', [web ? '--working-tree' : `--since=${since}`], LEDGER_TIMEOUT_MS))
   if (parsed?.status === 'no-binary') return disable(io)
+  if (web && (parsed?.status === 'no-git' || (parsed?.status === 'error' && (await io.state.sessionLedger.read())?.status !== 'ok'))) {
+    await io.state.sessionLedger.update(() => parsed)
+    return
+  }
   if (parsed?.status !== 'ok') return
   // A session that began again (a /clear) while this read ran reads since its own start.
-  if ((await io.state.sessionStart.read()) !== since) return
+  if (!web && (await io.state.sessionStart.read()) !== since) return
   await light(io, ledgerFlashKeys(await io.state.sessionLedger.read(), parsed), await io.clock.now())
   await io.state.sessionLedger.update(() => parsed)
   await settleUntested(io)
+}
+
+/**
+ * Reads where the checkout stands and, when its commit is not the one the
+ * Changes tab counts from, counts from it: the commit is kept as the one the
+ * session began at, the open diff (drawn against the old one) is dropped and
+ * the changes are read again. True when the commit moved. With no live
+ * watcher to say when a file changed, the changes are read again on every
+ * call, moved or not. Only the web host calls it; Claude Code counts from
+ * where its session began.
+ */
+export async function followHead(io: Port): Promise<boolean> {
+  const head = await readHeadRev(io)
+  const known = await io.state.sessionRev.read()
+  const moved = head?.status === 'ok' && !(known?.status === 'ok' && known.rev === head.rev)
+  if (moved) {
+    await io.state.sessionRev.update(() => head)
+    await io.state.fileDiff.update(() => null)
+  }
+  if (moved || mod.watcher === null || !isWatching(await io.state.live.read())) requestLedger(io)
+  return moved
 }
 
 /**

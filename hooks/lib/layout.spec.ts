@@ -1361,6 +1361,8 @@ describe('the allow-root offer', () => {
     expect(asked.map(plainText).join(' ').replace(/\s+/g, ' ')).toContain('Allow knossos to scan /work/Knossos-MCP? This adds it to /data/roots.json.')
     expect(keysOf(allowRows(offer('running'), 60))).toEqual([])
     expect(keysOf(allowRows(offer('done'), 60))).toEqual([])
+    // Allowing scans the root at once, on either host.
+    expect(allowRows(offer('done'), 80).map(r => r.segments.map(s => s.text).join(''))).toEqual([`✓ ${offer('done').root} allowed · scanning it now`])
     expect(allowRows(offer('failed', 'knossos did not allow it'), 60).map(plainText).join(' ')).toContain('allow-root failed: knossos did not allow it')
     expect(keysOf(allowRows(offer('failed'), 60))).toEqual(['a:allow'])
   })
@@ -1469,6 +1471,51 @@ describe('hubs carry their file', () => {
   it('and a hub the dashboard places nowhere offers no e', () => {
     const hubs = input({ tab: 'hubs', selected: 0 })
     expect(paneRows(hubs, 90).some(r => r.segments.some(s => s.press?.id === 'edit'))).toBe(false)
+  })
+})
+
+describe('the pane outside Claude Code', () => {
+  const pressIds = (rows: Row[]) => rows.flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.id] : [])))
+
+  it('offers nothing that asks Claude: no ask button on a row, no q line in the key list', () => {
+    const list = input({ tab: 'hubs', selected: 0, host: 'web' })
+    const ids = pressIds(paneRows(list, 120))
+    expect(ids).toContain('copy')
+    expect(ids).not.toContain('ask')
+    expect(ids).not.toContain('scan-ask')
+    expect(pressIds(paneRows(input({ tab: 'hubs', selected: 0 }), 120))).toContain('ask')
+    const keys = textOf(paneRows(input({ showKeys: true, host: 'web' }), 60))
+    expect(keys).not.toMatch(/ q +ask Claude/)
+    expect(keys).toMatch(/ e +open the marked row's file/)
+    // `t` copies the tests for the changes since the host's baseline, in its usual place after `q`.
+    const flat = (text: string) => text.replace(/\s+/g, ' ')
+    expect(flat(keys)).toContain("t on Overview and Changes: copy the command for the tests that reach the changes since the last commit d ")
+    const claude = textOf(paneRows(input({ showKeys: true }), 60))
+    expect(flat(claude)).toContain("q ask Claude about the marked row: your press sends the prompt t on Overview and Changes: copy the command for the tests that reach this session's changes d ")
+  })
+  it('is told through paneInput, which carries the host into the rows it lays out', () => {
+    const web = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true, null, null, undefined, null, undefined, { host: 'web' })
+    expect(web.host).toBe('web')
+    expect(pressIds(paneRows(web, 120))).not.toContain('ask')
+    const claude = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true)
+    expect(claude.host).toBeUndefined()
+    expect(pressIds(paneRows(claude, 120))).toContain('ask')
+  })
+  it('says a rescan is running, with its spinner and nothing to press, on either host', () => {
+    for (const host of [undefined, 'web'] as const) {
+      const rows = emptyRows('unscanned', null, 90, host, true)
+      expect(rows[0]?.segments[0]?.text).toBe(busy('Scanning the project…'))
+      expect(pressIds(rows)).toEqual([])
+      expect(textOf(rows)).not.toContain('No architecture graph yet')
+    }
+    expect(pressIds(emptyRows('unscanned', null, 90, undefined, false))).toEqual(['scan-ask'])
+  })
+  it('offers to scan an unscanned project directly, and the Claude Code pane keeps asking Claude', () => {
+    for (const columns of WIDTHS) {
+      const presses = emptyRows('unscanned', null, columns, 'web').flatMap(r => r.segments.flatMap(s => (s.press ? [s.press] : [])))
+      expect(presses).toEqual([{ id: 'scan', label: 'scan it', hotkey: 'q' }])
+    }
+    expect(pressIds(emptyRows('unscanned', null, 90))).toEqual(['scan-ask'])
   })
 })
 

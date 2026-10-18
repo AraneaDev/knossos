@@ -5,8 +5,11 @@
 export class SingleFlight {
   private current: Promise<void> | null = null
   private again = false
+  private readonly run: () => Promise<void>
 
-  constructor(private readonly run: () => Promise<void>) {}
+  constructor(run: () => Promise<void>) {
+    this.run = run
+  }
 
   get isRunning(): boolean {
     return this.current !== null

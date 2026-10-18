@@ -9,7 +9,8 @@
  *
  * A Raster takes raw colours only, where `Text` takes theme keys. So the few
  * theme keys the pane draws a grid with are resolved here, from the values
- * each of Claude Code's themes gives them: dark and light, their daltonized
+ * each of Claude Code's themes gives them: dark and light (the table in
+ * themes.ts every host shares), their daltonized
  * forms, and the ANSI ones, whose basic terminal colours are taken as xterm
  * paints them (a Raster cannot name a palette index). An unknown theme reads
  * as light when its name says so, else dark. The heat map's four steps are
@@ -18,6 +19,7 @@
  * a value for it; elsewhere the cell keeps the terminal's background.
  */
 import type { Row } from './rows'
+import { THEMES } from './themes'
 
 /** The engine's "terminal default" colour: bit 24 alone. */
 export const DEFAULT_COLOUR = 0x01000000
@@ -72,19 +74,23 @@ function palette(keys: Palette, background: number, categorical: Palette = CATEG
   return { ...categorical, ...keys, ...heat }
 }
 
+/** The keys a grid draws with, besides the subagent colours: the rest of a theme's keys never reach a cell. */
+const GRID_KEYS = ['text', 'inactive', 'subtle', 'suggestion', 'success', 'warning', 'error', 'userMessageBackground']
+
+/** The grid's keys of a shared theme table, its `#rrggbb` values as the Raster's numbers. */
+const gridOf = (theme: Record<string, string>): Palette =>
+  Object.fromEntries([...GRID_KEYS, ...Object.keys(CATEGORICAL)].map(key => [key, parseInt(theme[key]!.slice(1), 16)]))
+
+/** The ground a shared theme draws on, as the Raster's number. */
+const groundOf = (theme: Record<string, string>): number => parseInt(theme.ground!.slice(1), 16)
+
 /** The themes Claude Code ships, by the name `/config` stores. */
 export type ThemeName = 'dark' | 'light' | 'dark-daltonized' | 'light-daltonized' | 'dark-ansi' | 'light-ansi'
 
 /** Each of Claude Code's themes' values for the keys a grid draws with. */
 export const RASTER_THEMES: Record<ThemeName, Palette> = {
-  dark: palette(
-    { text: 0xffffff, inactive: 0x999999, subtle: 0x505050, suggestion: 0xb1b9f9, success: 0x4eba65, warning: 0xffc107, error: 0xff6b80, userMessageBackground: 0x373737 },
-    0x1e1e1e,
-  ),
-  light: palette(
-    { text: 0x000000, inactive: 0x666666, subtle: 0xafafaf, suggestion: 0x5769f7, success: 0x2c7a39, warning: 0x966c1e, error: 0xab2b3f, userMessageBackground: 0xf0f0f0 },
-    0xffffff,
-  ),
+  dark: palette(gridOf(THEMES.dark), groundOf(THEMES.dark)),
+  light: palette(gridOf(THEMES.light), groundOf(THEMES.light)),
   'dark-daltonized': palette(
     { text: 0xffffff, inactive: 0x999999, subtle: 0x505050, suggestion: 0x99ccff, success: 0x3399ff, warning: 0xffcc00, error: 0xff6666 },
     0x1e1e1e,
