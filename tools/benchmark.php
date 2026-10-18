@@ -2,6 +2,15 @@
 
 declare(strict_types=1);
 
+/*
+ *   tools/benchmark [--budgets=FILE] [--report=FILE]
+ *   tools/benchmark [BUDGETS [REPORT]]
+ *
+ * Exit 0 passes, 1 means a limit was exceeded or nothing was measured, 2 or
+ * higher that the budget file is invalid or a run failed.
+ */
+require_once __DIR__ . '/lib/benchmark-budgets.php';
+
 const BENCHMARK_ROOT = __DIR__ . '/..';
 
 /**
@@ -116,12 +125,42 @@ function removeTree(string $path): void
     rmdir($path);
 }
 
-$budgetPath = $argv[1] ?? BENCHMARK_ROOT . '/benchmarks/budgets.json';
-$reportPath = $argv[2] ?? BENCHMARK_ROOT . '/coverage/benchmarks/report.json';
-$budgets = json_decode((string) file_get_contents($budgetPath), true, 512, JSON_THROW_ON_ERROR);
-if (!is_array($budgets) || ($budgets['schema_version'] ?? null) !== 1 || !is_array($budgets['sizes'] ?? null)) {
+$budgetPath = BENCHMARK_ROOT . '/benchmarks/budgets.json';
+$reportPath = BENCHMARK_ROOT . '/coverage/benchmarks/report.json';
+$positional = [];
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
+        $budgetPath = substr($argument, strlen('--budgets='));
+    } elseif (str_starts_with($argument, '--report=') && $argument !== '--report=') {
+        $reportPath = substr($argument, strlen('--report='));
+    } elseif (!str_starts_with($argument, '--') && count($positional) < 2) {
+        $positional[] = $argument;
+    } else {
+        fwrite(STDERR, "usage: tools/benchmark [--budgets=FILE] [--report=FILE]\n");
+        exit(2);
+    }
+}
+$budgetPath = $positional[0] ?? $budgetPath;
+$reportPath = $positional[1] ?? $reportPath;
+[$budgets, $budgetErrors] = readBudgetFile($budgetPath);
+if ($budgets !== null) {
+    $budgetErrors = benchmarkBudgetErrors($budgets);
+}
+if ($budgetErrors !== []) {
     fwrite(STDERR, "Invalid benchmark budget file.\n");
+    foreach ($budgetErrors as $error) {
+        fwrite(STDERR, sprintf("benchmark budgets %s: %s\n", $budgetPath, $error));
+    }
     exit(2);
+}
+// A file with no sizes runs no scan, and a run that measured nothing proves nothing.
+if ($budgets['sizes'] === []) {
+    fwrite(STDERR, sprintf("benchmark budgets %s: no sizes measured; the file must declare at least one.\n", $budgetPath));
+    exit(1);
+}
+$memoryMeasurable = is_dir('/proc/self');
+if (!$memoryMeasurable) {
+    fwrite(STDERR, "peak_rss_mb NOT measured: there is no /proc to read resident memory from.\n");
 }
 
 $temporaryRoot = sys_get_temp_dir() . '/knossos-benchmark-' . bin2hex(random_bytes(8));
@@ -129,12 +168,9 @@ $results = [];
 $violations = [];
 try {
     foreach ($budgets['sizes'] as $size => $limits) {
-        if (!is_string($size) || !is_array($limits)) {
-            throw new RuntimeException('Invalid benchmark size definition.');
-        }
         $corpus = $temporaryRoot . '/' . $size . '/corpus';
         $database = $temporaryRoot . '/' . $size . '/knossos.sqlite';
-        $count = (int) ($limits['files_per_language'] ?? 0);
+        $count = $limits['files_per_language'];
         $generated = runMeasured([PHP_BINARY, __DIR__ . '/generate-benchmark-corpus.php', $corpus, (string) $count], 30);
         $generation = jsonObject($generated);
 
@@ -173,11 +209,7 @@ try {
             'incremental_stages_ms' => $incrementalScan['data']['metrics']['stages_ms'] ?? [],
         ];
         $results[$size] = ['limits' => $limits, 'actual' => $actual];
-        foreach (['cold_scan_seconds', 'incremental_scan_seconds', 'query_seconds', 'peak_rss_mb', 'sqlite_mb'] as $metric) {
-            if ((float) $actual[$metric] > (float) $limits[$metric]) {
-                $violations[] = sprintf('%s.%s %.2f exceeds %.2f', $size, $metric, $actual[$metric], $limits[$metric]);
-            }
-        }
+        $violations = [...$violations, ...benchmarkViolations((string) $size, $limits, $actual, $memoryMeasurable)];
         fwrite(STDOUT, sprintf(
             "%s: cold=%.2fs incremental=%.2fs query=%.2fs rss=%.2fMiB sqlite=%.2fMiB\n",
             $size,
