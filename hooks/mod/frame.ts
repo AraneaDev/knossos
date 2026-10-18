@@ -5,8 +5,9 @@
  * bundler draws from the same decisions as the hooks module.
  */
 import { allowInput, emptyRows, noGraphOf, tierOf } from '../lib/layout'
-import type { PaneInput, Row } from '../lib/layout'
+import type { PaneInput, Row, Segment } from '../lib/layout'
 import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
+import { cells } from '../lib/rows'
 import { currentInput } from './input'
 import { startMotion } from './motion'
 import type { Port } from './port'
@@ -28,7 +29,9 @@ export async function paneSource(io: Port, columns: number, terminal: boolean): 
     const rescan = await io.state.rescan.read()
     const offer = allowInput(await io.state.brief.read(), rescan, await io.state.allow.read())
     mod.emptyShown = true
-    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, mod.host === 'web' ? 'web' : undefined, rescan.phase === 'scanning') }
+    // Only the web's `scan it` starts a scan from the empty pane, so only there does the pane say one runs; Claude Code's is drawn as it was.
+    const web = mod.host === 'web'
+    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, web ? 'web' : undefined, web && rescan.phase === 'scanning') }
   }
   const input = await currentInput(io, terminal)
   if (input === null) return { kind: 'empty', rows: [] }
@@ -55,4 +58,33 @@ export async function noteSpinners(io: Port, rows: readonly Row[]): Promise<void
 export function spunRow(row: Row, frame: number): Row {
   if (!row.segments.some(s => isBusy(s.text))) return row
   return { ...row, segments: row.segments.map(s => (isBusy(s.text) ? { ...s, text: spun(s.text, frame) } : s)) }
+}
+
+/** A segment no press, field or ground sets apart: plain text. */
+const plain = (s: Segment): boolean => s.press === undefined && s.field === undefined
+
+/**
+ * The room each field of a row `columns` wide takes, by the field's index: a
+ * field takes the blank cells laid out after it (`next` is the first
+ * segment past them) and stops where the row's next drawn segment (a card's
+ * frame) begins. Every host draws a field this wide.
+ */
+export function fieldRooms(segments: readonly Segment[], columns: number): Map<number, { room: number; next: number }> {
+  const rooms = new Map<number, { room: number; next: number }>()
+  let x = 0
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i]!
+    if (s.field === undefined) {
+      x += s.hidden === true ? 0 : cells(s.text)
+      continue
+    }
+    let next = i + 1
+    while (next < segments.length && plain(segments[next]!) && segments[next]!.bg === undefined && /^ *$/.test(segments[next]!.text)) next++
+    const trailing = segments.slice(next).reduce((n, t) => n + (t.hidden === true ? 0 : cells(t.text)), 0)
+    const room = Math.max(1, columns - x - trailing)
+    rooms.set(i, { room, next })
+    x += room
+    i = next - 1
+  }
+  return rooms
 }

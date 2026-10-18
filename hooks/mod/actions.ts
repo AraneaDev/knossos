@@ -28,8 +28,8 @@ const ALLOW_TIMEOUT_MS = 20_000
 /** How long the editor's command may take to hand a file to the editor. */
 const EDITOR_TIMEOUT_MS = 10_000
 
-/** Where the person sets the editor command: what the installer itself tells them to run. */
-const EDITOR_SETTING = '/plugin configure knossos@knossos'
+/** Where the person sets the editor command, by host: in Claude Code what the installer itself tells them to run, on the web the server's flag or variable. */
+const EDITOR_SETTING = { claude: '/plugin configure knossos@knossos', web: '`knossos web --editor=<command>` or KNOSSOS_EDITOR' } as const
 
 /** How long the finder waits after a keystroke before it asks: a word typed fast is one search. */
 const SEARCH_DEBOUNCE_MS = 150
@@ -88,7 +88,7 @@ async function openRow(io: Port, index?: number): Promise<void> {
  */
 async function openLocation(io: Port, loc: Loc, surface?: RenderSurface): Promise<void> {
   const target = locText(loc)
-  // The plugin's `editor` setting, VS Code's `code -g` by default. A terminal editor
+  // The plugin's `editor` setting (on the web the server's), VS Code's `code -g` by default. A terminal editor
   // (`$EDITOR`) needs a terminal of its own, which a press cannot give, so it is not asked.
   const command = editorCommand(mod.editor, loc)
   const failed = await io.process.run(command, { timeoutMs: EDITOR_TIMEOUT_MS }).then(
@@ -99,7 +99,7 @@ async function openLocation(io: Port, loc: Loc, surface?: RenderSurface): Promis
   const copied = await io.ui.copy({ text: target, ...(surface === undefined ? {} : { surface }) })
   const program = command[0]!.split('/').pop()!
   await say(io, `✗ ${program} ${failed}${copied.isCopied ? ' · path copied' : ''}`, 'alert')
-  io.ui.toast(`knossos ran "${command.join(' ')}" to open the file. Set another editor command with ${EDITOR_SETTING}.`)
+  io.ui.toast(`knossos ran "${command.join(' ')}" to open the file. Set another editor command with ${EDITOR_SETTING[mod.host]}.`)
 }
 
 /** A press on a place (`file:` and the file's absolute path): the detail of that file, named by its path in the project. */
@@ -685,8 +685,6 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['clear', viewing(v => ({ ...v, filter: '', filtering: false, degree: null, selected: 0 }))],
   ['sort', viewing(v => ({ ...v, sort: SORTS[(SORTS.indexOf(v.sort) + 1) % SORTS.length] ?? 'in', selected: 0 }))],
   ['rescan', io => requestRescan(io)],
-  // The empty pane's offer outside Claude Code: the same rescan the pane's `r` runs.
-  ['scan', io => requestRescan(io)],
   ['copy', (io, _, surface) => copySubject(io, surface)],
   ['ask', io => askClaude(io)],
   // The no-data pane's one action: the person's press sends it, as "Ask Claude" does.
@@ -696,8 +694,13 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['allow-no', io => io.state.allow.update((a): AllowState => (a.phase === 'confirming' ? { phase: 'idle', root: null, reason: null } : a))],
 ])
 
-/** Ids that do what another does: a tab's hidden hotkey twin, the drift line's second button, the Cycles moves and folds, the untested count beside `u`, and the notes card's button beside the footer's `m`. */
-const SAME_AS: Readonly<Record<string, string>> = { 'tabkey:': 'tab:', drifted: 'drift', 'prev:': 'next:', 'mark:': 'next:', 'fold:': 'unfold:', 'untested-row': 'untested', 'untested-none': 'untested', 'note-card': 'note' }
+/**
+ * Ids that do what another does: a tab's hidden hotkey twin, the drift line's
+ * second button, the Cycles moves and folds, the untested count beside `u`,
+ * the notes card's button beside the footer's `m`, and the empty pane's
+ * `scan it` outside Claude Code, which is the rescan the pane's `r` runs.
+ */
+const SAME_AS: Readonly<Record<string, string>> = { 'tabkey:': 'tab:', drifted: 'drift', 'prev:': 'next:', 'mark:': 'next:', 'fold:': 'unfold:', 'untested-row': 'untested', 'untested-none': 'untested', 'note-card': 'note', scan: 'rescan' }
 
 /** Which entry of {@link PRESSES} a press on `id` runs, and what follows the colon; null for an id that does nothing. */
 export function pressOf(id: string): { key: string; rest: string } | null {

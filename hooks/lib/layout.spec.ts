@@ -1361,6 +1361,8 @@ describe('the allow-root offer', () => {
     expect(asked.map(plainText).join(' ').replace(/\s+/g, ' ')).toContain('Allow knossos to scan /work/Knossos-MCP? This adds it to /data/roots.json.')
     expect(keysOf(allowRows(offer('running'), 60))).toEqual([])
     expect(keysOf(allowRows(offer('done'), 60))).toEqual([])
+    // Allowing scans the root at once, on either host.
+    expect(allowRows(offer('done'), 80).map(r => r.segments.map(s => s.text).join(''))).toEqual([`✓ ${offer('done').root} allowed · scanning it now`])
     expect(allowRows(offer('failed', 'knossos did not allow it'), 60).map(plainText).join(' ')).toContain('allow-root failed: knossos did not allow it')
     expect(keysOf(allowRows(offer('failed'), 60))).toEqual(['a:allow'])
   })

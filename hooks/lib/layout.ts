@@ -674,7 +674,7 @@ export function allowRows(allow: AllowInput, columns: number): Row[] {
   }
   if (allow.phase === 'running') return [dimRow('allow-running', `   allowing ${allow.root}…`, columns)]
   if (allow.phase === 'done') {
-    return wrapWords(`${SEVERITY.ok.glyph} ${allow.root} allowed · the next turn scans it`, columns).map((line, i) => ({
+    return wrapWords(`${SEVERITY.ok.glyph} ${allow.root} allowed · scanning it now`, columns).map((line, i) => ({
       key: `allow-done-${i}`,
       segments: [{ text: line, color: STATUS_COLOURS.ok }],
     }))

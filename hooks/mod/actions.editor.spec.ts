@@ -114,6 +114,19 @@ describe('e on a place: the editor', () => {
         expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with /plugin configure knossos@knossos.'])
     })
 
+    it("names the web server's flag and variable, not the plugin setting, when it fails on the web", async () => {
+        mod.editor = 'idea --line {line} {file}'
+        mod.host = 'web'
+        try {
+            const failed = port(exited(2))
+            editing(failed.io, SURFACE)
+            await settle()
+            expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with `knossos web --editor=<command>` or KNOSSOS_EDITOR.'])
+        } finally {
+            mod.host = 'claude'
+        }
+    })
+
     it('names no surface at all to the clipboard when the press came from none', async () => {
         const { io, copy } = port(exited(1))
         editing(io, undefined)

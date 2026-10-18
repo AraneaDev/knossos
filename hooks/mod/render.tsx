@@ -13,10 +13,11 @@ import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
 import type { Port } from './port'
-import { noteSpinners, paneSource, spunRow } from './frame'
+import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import type { Handlers } from './input'
 import { fieldKey, mod } from './state'
 
+/** A hover group's name for one card: the plugin's prefix and the card's key, within the engine's 64 characters. */
 const scopeOf = (preview: Preview): string => `knossos:${preview.key}`.slice(0, 64)
 
 /**
@@ -128,18 +129,16 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns:
   // its styled pieces nested in it and the rest bare strings: a tall pane stays far inside the engine's bounds.
   const plain = (s: Segment): boolean => s.press === undefined && s.field === undefined
   const drawn: RenderNode[] = []
+  const rooms = fieldRooms(row.segments, columns)
   let x = 0
   for (let i = 0; i < row.segments.length; i++) {
     const s = row.segments[i]!
-    if (s.field !== undefined) {
+    const field = rooms.get(i)
+    if (field !== undefined) {
       // A field takes the blank cells laid out after it, and stops where the row's next drawn segment (a card's frame) begins.
-      let next = i + 1
-      while (next < row.segments.length && plain(row.segments[next]!) && row.segments[next]!.bg === undefined && /^ *$/.test(row.segments[next]!.text)) next++
-      const trailing = row.segments.slice(next).reduce((n, t) => n + (t.hidden === true ? 0 : cells(t.text)), 0)
-      const room = Math.max(1, columns - x - trailing)
-      drawn.push(drawSegment(act, ui, row, s, i, terminal, room, scoped(i)))
-      x += room
-      i = next - 1
+      drawn.push(drawSegment(act, ui, row, s, i, terminal, field.room, scoped(i)))
+      x += field.room
+      i = field.next - 1
       continue
     }
     if (!plain(s)) {
@@ -371,8 +370,8 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
   const themeName = await io.state.theme.read()
   // How many rows the last layout drew with something in them (the blank fill under a short tab left out).
   let used = height
-  // What each tree drew, to tell which spinners the one returned holds.
-  const shown = new WeakMap<RenderElement, Row[]>()
+  // The rows of the last tree drawn: shrinkRows returns the last one it drew, so these are the returned tree's.
+  let shown: Row[] = []
   const layout = (rows: number) => {
     const laidOut = paneLayout(input, columns, rows, offset)
     used = rowsHeight(laidOut.body.filter(r => !r.key.startsWith('fill-'))) + laidOut.footer.length
@@ -382,9 +381,8 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
     return laidOut
   }
   const draw = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
-    const tree = build(laidOut, lean)
-    shown.set(tree, [...laidOut.body, ...laidOut.footer])
-    return tree
+    shown = [...laidOut.body, ...laidOut.footer]
+    return build(laidOut, lean)
   }
   const build = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
     if (!laidOut.pinned) {
@@ -421,7 +419,7 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
   })
   if (fitted.weight <= TEXT_BUDGET) {
     // The fewer rows drawn under the budget may hold other spinners than the full layout did.
-    await noteSpinners(io, shown.get(fitted.tree) ?? [])
+    await noteSpinners(io, shown)
     return fitted.tree
   }
   await noteSpinners(io, [])

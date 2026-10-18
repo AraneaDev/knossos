@@ -31,7 +31,7 @@ export type Handlers = {
 export async function currentInput(io: Port, terminal: boolean): Promise<PaneInput | null> {
   const d = await io.state.dashboard.read()
   if (d?.status !== 'ok') return null
-  // The one place the host is read: the layout and the diff's words are told, and never read `mod`.
+  // The pane's input carries the host: the layout and the diff's words are told it here, and never read `mod` themselves.
   const host = mod.host === 'web' ? ('web' as const) : undefined
   const v = await io.state.view.read()
   const stored = await io.state.detail.read()

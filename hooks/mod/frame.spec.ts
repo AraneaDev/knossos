@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Row } from '../lib/layout'
 import { busy, NO_MOTION, spinGlyph } from '../lib/motion'
-import { noteSpinners, paneSource, spunRow } from './frame'
+import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import { currentInput } from './input'
 import type { Port } from './port'
 import { mod, reset } from './state'
@@ -66,15 +66,21 @@ describe('paneSource', () => {
     expect(web).not.toContain('scan-ask')
   })
 
-  it('shows the scan running once the scan it offered is under way, and no button, on either host', async () => {
-    for (const host of ['claude', 'web'] as const) {
-      mod.host = host
-      const source = await paneSource(fakePort({ dashboard: { status: 'unscanned' }, rescan: { phase: 'scanning', reason: null } }).io, 80, true)
-      expect(source.kind).toBe('empty')
-      const text = JSON.stringify(source)
-      expect(text).toContain('Scanning the project')
-      expect(text).not.toContain('"press"')
-    }
+  it('shows the scan running on the web once the scan it offered is under way, and no button', async () => {
+    mod.host = 'web'
+    const source = await paneSource(fakePort({ dashboard: { status: 'unscanned' }, rescan: { phase: 'scanning', reason: null } }).io, 80, true)
+    expect(source.kind).toBe('empty')
+    const text = JSON.stringify(source)
+    expect(text).toContain('Scanning the project')
+    expect(text).not.toContain('"press"')
+  })
+
+  it('leaves the empty pane of Claude Code as it was while a rescan runs: its offer, no scanning line', async () => {
+    const cells = { dashboard: { status: 'unscanned' } }
+    const idle = await paneSource(fakePort(cells).io, 80, true)
+    const scanning = await paneSource(fakePort({ ...cells, rescan: { phase: 'scanning', reason: null } }).io, 80, true)
+    expect(scanning).toEqual(idle)
+    expect(JSON.stringify(scanning)).not.toContain('Scanning the project')
   })
 
   it('is the detail while something is inspected, the tab otherwise, and notes what the pane shows', async () => {
@@ -117,5 +123,20 @@ describe('spunRow', () => {
     expect(turned.segments[1]).toBe(row.segments[1])
     const still: Row = { key: 's', segments: [{ text: 'idle' }] }
     expect(spunRow(still, 3)).toBe(still)
+  })
+})
+
+describe('fieldRooms', () => {
+  it('gives a field the rest of its row: the blank cells after it, up to the next drawn segment', () => {
+    const segments = [{ text: 'find ' }, { text: '', field: { id: 'finder', value: '', placeholder: '' } }, { text: '   ' }, { text: '', hidden: true as const, press: { id: 'x', label: 'x', hotkey: 'x' } }, { text: ' │' }]
+    expect([...fieldRooms(segments, 40)]).toEqual([[1, { room: 33, next: 3 }]])
+  })
+
+  it('keeps a blank on a ground, and a row with no field has no rooms', () => {
+    const segments = [{ text: '', field: { id: 'f', value: '', placeholder: '' } }, { text: '  ', bg: 'selectionBg' }]
+    expect(fieldRooms(segments, 10).get(0)).toEqual({ room: 8, next: 1 })
+    expect(fieldRooms([{ text: 'plain' }], 10).size).toBe(0)
+    // Never less than one cell, however full the row.
+    expect(fieldRooms([{ text: 'x'.repeat(12) }, { text: '', field: { id: 'f', value: '', placeholder: '' } }], 10).get(1)!.room).toBe(1)
   })
 })

@@ -57,8 +57,8 @@ export const STAT_HUES = {
   drifted: 'ide',
 } as const
 
-/** Each language's chip colour, by its short name: theme keys no boundary uses. */
-const LANGUAGE_COLOURS: Record<string, string> = {
+/** Each language's chip colour, by its short name: theme keys no boundary uses. Exported for the specs, which give each a web colour. */
+export const LANGUAGE_COLOURS: Record<string, string> = {
   php: 'merged',
   ts: 'ide',
   js: 'autoAccept',

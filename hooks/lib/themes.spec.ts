@@ -3,7 +3,7 @@ import * as palette from './palette'
 import { blend, HEAT_STRENGTH, RASTER_THEMES } from './raster'
 import { THEMES, themeColour } from './themes'
 
-/** Every theme key the pane can colour a segment with: palette.ts's constants and tables, each language chip, and the diff and page grounds. */
+/** Every theme key the pane can colour a segment with: palette.ts's constants and tables, each language chip (from palette.ts's own table, so a language added there needs a web colour), and the diff and page grounds. */
 function paneKeys(): string[] {
   const keys = new Set<string>()
   for (const value of Object.values(palette)) {
@@ -11,7 +11,7 @@ function paneKeys(): string[] {
     else if (Array.isArray(value)) value.forEach(v => keys.add(v as string))
     else if (value !== null && typeof value === 'object' && !(value instanceof Map)) Object.values(value).forEach(v => keys.add(v as string))
   }
-  for (const language of ['php', 'ts', 'js', 'py', 'rs', 'typescript', 'javascript', 'python', 'rust', 'go']) keys.add(palette.languageColour(language))
+  for (const language of [...Object.keys(palette.LANGUAGE_COLOURS), 'an unknown language']) keys.add(palette.languageColour(language))
   for (const key of ['diffAdded', 'diffRemoved', 'diffAddedWord', 'diffRemovedWord', 'selectionBg', 'background']) keys.add(key)
   return [...keys]
 }
