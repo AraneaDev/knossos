@@ -1640,24 +1640,19 @@ TOML);
 
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
-        // `/config.js` is root-absolute against the WEB root, which a bundler
-        // serves out of `public/` or `static/`. Every reading is offered; the
-        // ones naming no emitted file match nothing downstream.
+        // Recorded as written, with its line: which file `/config.js` names
+        // depends on the rest of the scan, which the reader does not see.
         assertSame([
-            'frontend/config.js',
-            'frontend/public/config.js',
-            'frontend/static/config.js',
-            'frontend/src/main.tsx',
-            'frontend/public/src/main.tsx',
-            'frontend/static/src/main.tsx',
-        ], $units[0]->metadata['entry_points']);
+            ['url' => '/config.js', 'line' => 4],
+            ['url' => '/src/main.tsx', 'line' => 6],
+        ], $units[0]->metadata['script_refs']);
     }
 
     /**
      * The icon and stylesheet links in the same shell are not code, so nothing
-     * about them should reach the entry-point list — the extension guard in
-     * {@see \Knossos\Discovery\Manifest\ManifestPaths::entryPointPath()} is what keeps them out, and a
-     * reader that scraped every `href` would defeat it.
+     * about them should reach the script references: the reader reads only
+     * script tags and modulepreload links, and one that scraped every `href`
+     * would put ordinary prose links through the same suppression.
      */
     public function testDiscoverIgnoresNonScriptReferencesInHtml(): void
     {
@@ -1673,7 +1668,7 @@ TOML);
 
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
-        assertSame([], $units[0]->metadata['entry_points']);
+        assertSame([], $units[0]->metadata['script_refs']);
     }
 
     /**
@@ -1694,9 +1689,10 @@ TOML);
 
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
-        // Relative sources are anchored to the file's own directory and get no
-        // web-root readings: they are already project-relative.
-        assertSame(['a.js', 'b.js'], $units[0]->metadata['entry_points']);
+        assertSame([
+            ['url' => './a.js', 'line' => 1],
+            ['url' => 'b.js', 'line' => 2],
+        ], $units[0]->metadata['script_refs']);
     }
 
     /**
