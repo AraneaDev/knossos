@@ -168,7 +168,7 @@
       "propertyNames": { "type": "string", "pattern": "^/(.*/)?$" },
       "additionalProperties": {
         "type": "string",
-        "pattern": "^(?!/)(?![A-Za-z]:)(?!(.*[/\\\\])?\\.\\.([/\\\\]|$)).+/$"
+        "pattern": "^(?!.*\u0000)(?!/)(?![A-Za-z]:)(?!(.*[/\\\\])?\\.\\.([/\\\\]|$)).+/$"
       },
       "description": "URL path prefixes a web server maps to project folders, such as {\"/static/\": \"web/public/\"}. A root-absolute script URL in an HTML page that starts with a prefix resolves under that folder, the longest prefix first, and is reported when no scanned file is there. Keys start and end with /; folders are project-relative and end with /. Since 0.33.0."
     }

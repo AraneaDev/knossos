@@ -132,6 +132,7 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
         yield 'a backslash traversal' => ['/static/', 'web\\..\\..\\etc/'];
         yield 'a leading backslash traversal' => ['/static/', '..\\etc/'];
         yield 'a folder without its trailing slash' => ['/static/', 'web/public'];
+        yield 'a NUL byte' => ['/static/', "web\0public/"];
     }
 
     /**
