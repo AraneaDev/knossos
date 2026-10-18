@@ -170,7 +170,12 @@ version. Anything else runs every lane.
 
 Pull request titles are checked by the `pr-title` workflow with
 `tools/check-commit-style.sh`, the same script the `commit-msg` hook uses,
-because the squash-merged title is what release-please reads.
+because the squash-merged title is what release-please reads. The workflow
+checks the branch's commits too, and passes `--ci`, which drops the local
+exemptions for `Merge`, `Revert "`, `fixup!`, `squash!` and `amend!` subjects:
+a title can be typed to look like one, and a rebase merge lands them on `main`
+as they are. The release subject `chore(main): release <version>` passes only
+when `tools/ci/release-pr` says the pull request is release-please's own.
 
 ## The documentation checks
 

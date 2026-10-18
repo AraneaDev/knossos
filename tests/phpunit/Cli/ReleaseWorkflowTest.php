@@ -121,6 +121,25 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         self::assertFileExists(self::repositoryRoot() . '/tools/ci/release-pr');
     }
 
+    /**
+     * The title and every commit are checked in CI mode, and the release
+     * subject is allowed only when tools/ci/release-pr said so.
+     */
+    #[Group('packaging')]
+    public function testThePrTitleCheckRunsInCiModeAndAsksReleasePr(): void
+    {
+        $workflow = (string) file_get_contents(self::repositoryRoot() . '/.github/workflows/pr-title.yml');
+
+        self::assertStringContainsString('tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO"', $workflow);
+        self::assertStringContainsString("0) echo 'flag=--release-pr' >> \"\$GITHUB_OUTPUT\" ;;", $workflow);
+        self::assertSame(2, substr_count($workflow, 'RELEASE_PR: ${{ steps.release.outputs.flag }}'));
+        self::assertSame(2, substr_count($workflow, 'bash tools/check-commit-style.sh --ci ${RELEASE_PR:+"$RELEASE_PR"} -- '));
+        self::assertSame(2, substr_count($workflow, 'tools/check-commit-style.sh'), 'Every call of the check runs in CI mode.');
+        self::assertStringContainsString('types: [opened, edited, reopened, synchronize, labeled, unlabeled]', $workflow);
+        self::assertStringContainsString('pull-requests: read', $workflow);
+        self::assertStringNotContainsString('pull-requests: write', $workflow);
+    }
+
     /** One job of a workflow, from its key to the next job's. */
     private static function job(string $workflow, string $name): string
     {
