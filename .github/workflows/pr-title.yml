@@ -8,9 +8,13 @@ name: PR Title
 #
 # The consequence to know: the version that runs is the one on main, so an edit
 # to the check itself is only exercised after it merges.
+#
+# `labeled` and `unlabeled` are there for release-please, which labels its pull
+# request just after opening it: the run for `opened` can miss the label and
+# refuse the release subject, and the label arriving runs the check again.
 on:
   pull_request_target:
-    types: [opened, edited, reopened, synchronize]
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -19,6 +23,8 @@ jobs:
   conventional-title:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       # The base BRANCH at full depth, not the pull request's pinned base
       # commit: a pull request opened before this check existed pins a base
@@ -31,24 +37,62 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Whether this is release-please's own pull request, the only one whose
+      # title and commits may carry the release subject. Decided by its content
+      # with the base branch's tools/ci/release-pr, on the same inputs
+      # quality.yml gives it: the labels from the event, and the file list and
+      # diff from git with wide context, so a version line's start marker is
+      # inside its hunk. The pull request's head commit is fetched as git data
+      # only; it is never checked out and nothing of it runs.
+      - name: Decide whether this is release-please's pull request
+        id: release
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          dir=$(mktemp -d)
+          git fetch --quiet --no-tags origin "refs/pull/$PR/head"
+          head=$(git rev-parse FETCH_HEAD)
+          base=$(git merge-base HEAD "$head")
+          printf '%s' "$LABELS" | jq -r '.[]' > "$dir/labels"
+          git diff --no-ext-diff --no-textconv --no-renames --name-only "$base" "$head" > "$dir/files"
+          git diff --no-ext-diff --no-textconv --no-renames --unified=10 "$base" "$head" > "$dir/diff"
+          status=0
+          tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
+            --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" || status=$?
+          case "$status" in
+            0) echo 'flag=--release-pr' >> "$GITHUB_OUTPUT" ;;
+            1) ;;
+            *) exit "$status" ;;
+          esac
+
       # A squash merge of a multi-commit branch takes the PR title as the commit
       # subject, so the title -- not the branch's own commits -- is what
-      # release-please parses on main.
+      # release-please parses on main. --ci leaves nothing exempt that a person
+      # could type; the release subject passes only with --release-pr.
       #
       # The title is passed through the environment rather than interpolated
       # into the script: it is attacker-controlled text, and under
-      # pull_request_target this is a trusted runner.
+      # pull_request_target this is a trusted runner. The `--` keeps a title
+      # that starts with a dash from being read as a flag.
       - name: Check the pull request title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: bash tools/check-commit-style.sh "$PR_TITLE"
+          RELEASE_PR: ${{ steps.release.outputs.flag }}
+        run: bash tools/check-commit-style.sh --ci ${RELEASE_PR:+"$RELEASE_PR"} -- "$PR_TITLE"
 
       # A branch that is rebased onto main instead of squashed puts its own
-      # subjects on main, so those are checked too. The pull request's commits
-      # are fetched as data and never executed.
+      # subjects on main, so those are checked too, fixup! and squash! ones
+      # included. A real merge commit (two parents, such as the one GitHub's
+      # update-branch button makes) is left out: a rebase merge drops it and a
+      # squash merge folds it in, so it never reaches main. A one-parent commit
+      # whose subject merely starts with "Merge" is checked like any other.
+      # The pull request's commits are fetched as data and never executed.
       - name: Check every commit on the branch
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_PR: ${{ steps.release.outputs.flag }}
         run: |
           git fetch --quiet origin "refs/pull/$PR_NUMBER/head"
           # Where the branch actually left this one, rather than the pull
@@ -57,6 +101,6 @@ jobs:
           status=0
           while IFS= read -r subject; do
             [ -n "$subject" ] || continue
-            bash tools/check-commit-style.sh "$subject" || status=1
-          done < <(git log --format='%s' "$base..FETCH_HEAD")
+            bash tools/check-commit-style.sh --ci ${RELEASE_PR:+"$RELEASE_PR"} -- "$subject" || status=1
+          done < <(git log --no-merges --format='%s' "$base..FETCH_HEAD")
           exit "$status"

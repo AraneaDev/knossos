@@ -1,0 +1,73 @@
+diff --git a/.release-please-manifest.json b/.release-please-manifest.json
+index 2e04e49c..53ecb865 100644
+--- a/.release-please-manifest.json
++++ b/.release-please-manifest.json
+@@ -1,3 +1,3 @@
+ {
+-  ".": "0.32.1"
++  ".": "0.33.0"
+ }
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e5e250b9..6ffe2bb5 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,17 @@
+ # Changelog
+ 
++## [0.33.0](https://github.com/AraneaDev/knossos/compare/v0.32.1...v0.33.0) (2026-10-18)
++
++
++### Features
++
++* knossos web serves the pane in a browser tab, for the project it runs in ([#361](https://github.com/AraneaDev/knossos/issues/361)) ([b3b2df0](https://github.com/AraneaDev/knossos/commit/b3b2df0861fd2cd4c4195e4185a77d2bbe71e50b))
++
++
++### Fixes
++
++* drop the web page's unused close and name the hub's contract with the port ([#363](https://github.com/AraneaDev/knossos/issues/363)) ([b363d7b](https://github.com/AraneaDev/knossos/commit/b363d7ba2d83f12813c6561375beb1aebe727c9d))
++
+ ## [0.32.1](https://github.com/AraneaDev/knossos/compare/v0.32.0...v0.32.1) (2026-10-18)
+ 
+ 
+diff --git a/Dockerfile b/Dockerfile
+index 5159fee2..802a7813 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -116,7 +116,7 @@ FROM runtime_deps AS runtime
+ # x-release-please-start-version
+ LABEL org.opencontainers.image.title="Knossos" \
+       org.opencontainers.image.description="Local evidence-backed architecture intelligence over MCP" \
+-      org.opencontainers.image.version="0.32.1"
++      org.opencontainers.image.version="0.33.0"
+ # x-release-please-end
+ 
+ COPY workers/php/src ./workers/php/src
+@@ -362,7 +362,7 @@ FROM quality_tools AS quality
+ # x-release-please-start-version
+ LABEL org.opencontainers.image.title="Knossos" \
+       org.opencontainers.image.description="Local evidence-backed architecture intelligence over MCP" \
+-      org.opencontainers.image.version="0.32.1"
++      org.opencontainers.image.version="0.33.0"
+ # x-release-please-end
+ 
+ COPY --chown=knossos:knossos workers/php/src ./workers/php/src
+diff --git a/src/Runtime/Version.php b/src/Runtime/Version.php
+index abf7dbd8..8bd2e013 100644
+--- a/src/Runtime/Version.php
++++ b/src/Runtime/Version.php
+@@ -13,7 +13,7 @@
+  */
+ final class Version
+ {
+-    public const CURRENT = '0.32.1'; // x-release-please-version
++    public const CURRENT = '0.33.0'; // x-release-please-version
+ 
+     private function __construct() {}
+ }
+diff --git a/version.txt b/version.txt
+index fd9620c0..be386c9e 100644
+--- a/version.txt
++++ b/version.txt
+@@ -1 +1 @@
+-0.32.1
++0.33.0
