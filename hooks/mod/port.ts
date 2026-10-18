@@ -131,7 +131,7 @@ export async function shownChanges(io: Port, root: string | null): Promise<Sessi
   // Without the ledger the timeline holds the scans the session's own turns and rescans made.
   if (mod.watcher === null || !isWatching(await io.state.live.read())) return { ...turns, fallback: NO_WATCHER, timeline: ownTimeline(await io.state.sessionScans.read()) }
   const ledger = await io.state.sessionLedger.read()
-  if (ledger === null || ledger.since !== (await io.state.sessionStart.read())) return turns
+  if (ledger === null || (mod.host !== 'web' && ledger.since !== (await io.state.sessionStart.read()))) return turns
   const edits = (await io.state.sessionEdits.read()).map(p => (p.startsWith('/') && root !== null ? (relativise(root, p) ?? p) : p))
   return ledgerChanges(ledger, turns, new Set(edits), await io.state.sessionScans.read(), await io.state.sessionBegan.read(), mod.host !== 'web')
 }

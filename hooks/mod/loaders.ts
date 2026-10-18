@@ -5,7 +5,7 @@
  * runs on a timer, never inside a render, and stores its answer only while
  * it is still the one wanted.
  */
-import type { BranchState, ChurnState, ComponentDetail, NotesFilter, NotesState, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState } from '../../types'
+import type { BranchState, ChurnState, ComponentDetail, NotesFilter, NotesState, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState, SessionRev } from '../../types'
 import { alertKeys, freshAlerts } from '../lib/alerts'
 import { BASELINES_KEY, baselinesOf, remember } from '../lib/baseline'
 import { BOUNDARY_AXES } from '../lib/boundaries'
@@ -508,10 +508,19 @@ async function recordHead(io: Port): Promise<void> {
  * switch branches), always on a timer, never in a render.
  */
 export async function readGitHead(io: Port): Promise<void> {
-  if (mod.disabled) return
+  await readHeadRev(io)
+}
+
+/** {@link readGitHead}, handing back the commit the answer names: null for silence, an error, or a mod turned off; `no-git` for a project git does not hold. */
+export async function readHeadRev(io: Port): Promise<SessionRev | null> {
+  if (mod.disabled) return null
   const stdout = await wrapper(io, 'session-head', [], HEAD_TIMEOUT_MS)
-  if (parseSessionDiff(stdout)?.status === 'no-binary') return disable(io)
+  if (parseSessionDiff(stdout)?.status === 'no-binary') {
+    await disable(io)
+    return null
+  }
   await noteGitHead(io, stdout)
+  return parseSessionRev(stdout)
 }
 
 /** Keeps what a `session-head` answer says of the checkout; silence keeps what was read before. */

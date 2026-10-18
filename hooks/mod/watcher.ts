@@ -15,7 +15,7 @@ import { accumulate, cdFor } from '../lib/layout'
 import { isWatching, LIVE_OFF, liveAfter, liveChanged, snapshotOf, watchLines } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
 import { deliverNote, turnEndNote } from './agent'
-import { refreshDashboard } from './loaders'
+import { readHeadRev, refreshDashboard } from './loaders'
 import { disable, keepScan, light, shownChanges, sleep, wrapper } from './port'
 import type { Port } from './port'
 import { startMotion } from './motion'
@@ -46,23 +46,46 @@ const LEDGER_TIMEOUT_MS = 20_000
  * without one the Changes tab shows the turn briefs. Called from the
  * watcher's loop and after a turn's brief, never inside a render.
  */
-function requestLedger(io: Port): void {
+export function requestLedger(io: Port): void {
   if (mod.disabled || mod.watcher === null) return
   void (mod.ledgerFlight ??= new SingleFlight(() => loadLedger(io))).request().catch(() => undefined)
 }
 
-/** One read of the changes since the session began; silence or an error keeps the last one. */
+/**
+ * One read of the changes since the session began; silence or an error keeps
+ * the last one. On the web host there is no session: the read is what is not
+ * committed yet, and nothing can begin again under it.
+ */
 async function loadLedger(io: Port): Promise<void> {
-  const since = await io.state.sessionStart.read()
-  if (since === null || mod.disabled) return
-  const parsed = parseSessionLedger(await wrapper(io, 'session-changes', [`--since=${since}`], LEDGER_TIMEOUT_MS))
+  const web = mod.host === 'web'
+  const since = web ? null : await io.state.sessionStart.read()
+  if ((!web && since === null) || mod.disabled) return
+  const parsed = parseSessionLedger(await wrapper(io, 'session-changes', [web ? '--working-tree' : `--since=${since}`], LEDGER_TIMEOUT_MS))
   if (parsed?.status === 'no-binary') return disable(io)
   if (parsed?.status !== 'ok') return
   // A session that began again (a /clear) while this read ran reads since its own start.
-  if ((await io.state.sessionStart.read()) !== since) return
+  if (!web && (await io.state.sessionStart.read()) !== since) return
   await light(io, ledgerFlashKeys(await io.state.sessionLedger.read(), parsed), await io.clock.now())
   await io.state.sessionLedger.update(() => parsed)
   await settleUntested(io)
+}
+
+/**
+ * Reads where the checkout stands and, when its commit is not the one the
+ * Changes tab counts from, counts from it: the commit is kept as the one the
+ * session began at, the open diff (drawn against the old one) is dropped and
+ * the changes are read again. True when the commit moved. Only the web host
+ * calls it; Claude Code counts from where its session began.
+ */
+export async function followHead(io: Port): Promise<boolean> {
+  const head = await readHeadRev(io)
+  if (head?.status !== 'ok') return false
+  const known = await io.state.sessionRev.read()
+  if (known?.status === 'ok' && known.rev === head.rev) return false
+  await io.state.sessionRev.update(() => head)
+  await io.state.fileDiff.update(() => null)
+  requestLedger(io)
+  return true
 }
 
 /**
