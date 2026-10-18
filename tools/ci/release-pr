@@ -13,6 +13,10 @@
 #   - every file it changes is one release-please writes: the manifest,
 #     CHANGELOG.md, version.txt, and the extra-files release-please-config.json
 #     names;
+#   - in every extra-file, each changed line is one release-please's generic
+#     updater writes: it carries `x-release-please-version`, or it sits between
+#     `x-release-please-start-version` and `x-release-please-end`, with the
+#     start marker inside the hunk (the workflow asks git for wide context);
 #   - version.txt goes from one version to another, and in every extra-file
 #     each removed line holds the old version, each added line the new one,
 #     and the added lines are exactly the removed lines with the version
@@ -93,13 +97,23 @@ sed -n '/"extra-files"/,/\]/p' "$config" |
 awk -v dir="$work" '
     function fail(why) { print why > (dir "/bad"); exit }
     function strip(p, prefix) { return substr(p, 1, length(prefix)) == prefix ? substr(p, length(prefix) + 1) : p }
+    # A changed line release-please may write: one carrying the inline marker,
+    # or one inside a start-version/end block. The block state comes from the
+    # unchanged lines only, starts closed at each hunk, and a marker outside
+    # the hunk therefore does not count: such a line is written to N.unmarked.
+    function marked(line) { return block || index(line, "x-release-please-version") > 0 }
     olds > 0 || news > 0 {
         c = substr($0, 1, 1)
-        if (c == " ") { olds--; news-- }
+        if (c == " ") {
+            olds--; news--
+            if (index($0, "x-release-please-start-version") > 0) block = 1
+            if (index($0, "x-release-please-end") > 0) block = 0
+        }
         else if (c == "-") { olds--; print substr($0, 2) > (dir "/" n ".del") }
         else if (c == "+") { news--; print substr($0, 2) > (dir "/" n ".add") }
         else if (c == "\\") { }
         else fail("malformed: a hunk in " path " ends early")
+        if ((c == "-" || c == "+") && !marked($0)) print substr($0, 2) > (dir "/" n ".unmarked")
         if (olds < 0 || news < 0) fail("malformed: a hunk in " path " runs long")
         next
     }
@@ -112,6 +126,8 @@ awk -v dir="$work" '
     /^\+\+\+ / {
         path = strip(substr($0, 5), "b/")
         if (n == 0 || path == "/dev/null") fail("unsupported: " $0)
+        if (path in seen) fail("unsupported: " path " appears twice")
+        seen[path] = 1
         print n "\t" path > (dir "/paths")
         next
     }
@@ -122,6 +138,7 @@ awk -v dir="$work" '
         split(h, side, " ")
         olds = (split(substr(side[1], 2), o, ",") > 1) ? o[2] + 0 : 1
         news = (split(substr(side[2], 2), a, ",") > 1) ? a[2] + 0 : 1
+        block = 0
         next
     }
     /^index / { next }
@@ -160,6 +177,8 @@ printf '%s\n' "$new" | grep -Eq "$semver" || no "version.txt's new line is not a
 while IFS= read -r extra; do
     n=$(number_of "$extra")
     [ -n "$n" ] || continue
+    [ ! -s "$work/$n.unmarked" ] ||
+        no "$extra changes a line outside release-please's version markers: $(head -1 "$work/$n.unmarked")"
     : >>"$work/$n.del"
     : >>"$work/$n.add"
     # The literal version, not a pattern: a "." in it must not match any
