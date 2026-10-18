@@ -250,8 +250,9 @@ file in the scan for every local script it loads:
   by its text before the first `${`, so
   ``import(`/static/app.mjs${location.search}`)`` loads `/static/app.mjs`.
 
-A script tag inside an HTML comment, and an import inside a string or comment
-of an inline script, loads nothing. The query and fragment are dropped.
+A script tag inside an HTML comment or inside a `<template>`, `<textarea>`,
+`<title>`, `<xmp>` or `<noscript>`, a custom element such as `<script-loader>`,
+and an import inside a string or comment of an inline script, load nothing. The query and fragment are dropped.
 Remote URLs, `data:` and `blob:` URLs, package names such as `react`, and
 files no scanner reads (`.css`, `.json`) are ignored without a word.
 
@@ -278,8 +279,9 @@ A file found this way is classified `application.entry_point` with the page as
 `named_by`, so it and everything only it reaches stop being candidates. A
 module that file loads with ``import(`./draw.mjs${query}`)`` is reached too:
 the TypeScript worker follows a template literal by its text before the first
-`${` when that text ends in a file name, and leaves `` `./${name}.mjs` ``
-unresolved. When no
+`${`, without any `?` or `#` part, when that text is a relative path ending in
+a file name. It names that exact file, and leaves `` `./${name}.mjs` `` and an
+absolute `` `/x.mjs${q}` `` unresolved. When no
 file matches, or more than one does, nothing is guessed: the reference adds no
 entry point and the scan reports a warning naming the page, the line, the URL
 and the reason, with code `DISCOVERY_HTML_SCRIPT_UNRESOLVED` or
