@@ -74,29 +74,6 @@ export function wheelRows(carry, event, cellHeight) {
 }
 
 /**
- * The manifest, made for this page: its URLs carry the token, which no
- * file can hold since it changes each time the server starts.
- */
-export function manifestFor(manifest, pageUrl) {
-    const page = new URL(pageUrl);
-    const token = page.searchParams.get("t") ?? "";
-    const of = (src) => {
-        const url = new URL(src, new URL("/static/", page));
-        url.searchParams.set("t", token);
-        return url.href;
-    };
-    return {
-        ...manifest,
-        start_url: page.href,
-        scope: new URL("/", page).href,
-        icons: (manifest.icons ?? []).map((icon) => ({
-            ...icon,
-            src: of(icon.src),
-        })),
-    };
-}
-
-/**
  * One page's connection to the pane: the event stream, opened again with
  * {@link retryDelay} after each loss (the first event back is the current
  * frame, which replaces whatever the page shows), and its inputs, each sent
@@ -207,20 +184,8 @@ export async function start() {
         );
     link("stylesheet", withToken("style.css"));
     link("icon", withToken("icon.svg"));
-    const manifest = await fetch(withToken("manifest.webmanifest"))
-        .then((r) => r.json())
-        .catch(() => null);
-    if (manifest !== null) {
-        link(
-            "manifest",
-            URL.createObjectURL(
-                new Blob(
-                    [JSON.stringify(manifestFor(manifest, location.href))],
-                    { type: "application/manifest+json" },
-                ),
-            ),
-        );
-    }
+    // The server makes the manifest: its addresses carry the token.
+    link("manifest", `/manifest.webmanifest?t=${encodeURIComponent(token)}`);
     const { drawFrame } = await import(`./draw.mjs${query}`);
     const name = location.hash.replace(/^#\/?/, "");
     const view = VIEWS[name] ?? VIEWS.pane;

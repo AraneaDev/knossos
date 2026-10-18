@@ -22,11 +22,11 @@ Knossos web pane for /home/you/code/shop: http://127.0.0.1:41231/?t=6f0c…
 Press Ctrl-C to stop it.
 ```
 
-| Option      | Effect                                            |
-| ----------- | ------------------------------------------------- |
-| `[path]`    | The project. The working directory when left out. |
-| `--port=N`  | Listen on port `N`. A free port when left out.    |
-| `--no-open` | Print the address only; open no browser.          |
+| Option      | Effect                                                                     |
+| ----------- | -------------------------------------------------------------------------- |
+| `[path]`    | The project. The working directory when left out.                          |
+| `--port=N`  | Listen on port `N`. The project's last port, or a free one, when left out. |
+| `--no-open` | Print the address only; open no browser.                                   |
 
 It needs Node 24 or newer on `PATH`, which runs the pane's TypeScript as it is,
 with no build step. With an older Node it stops at once and says which version
@@ -55,7 +55,23 @@ Knossos web pane for /home/you/code/shop is already running: http://127.0.0.1:41
 
 The lock is a file in Knossos's data directory (`KNOSSOS_DATA_DIR`, by default
 `~/.knossos`), under `web/`. A lock left behind by a server that was killed
-names a process that is gone, and the next start takes it over.
+is taken over by the next start: its process is gone, or its process id now
+belongs to another program and its address answers nothing.
+
+## The same address every time
+
+The address stays the same from one start to the next, so a bookmark or an
+installed app keeps working. The project's token is kept beside the lock, in a
+file only you can read, made on the first start. The port is remembered too,
+and used again while it is free. When something else has taken it, the server
+starts on a free port and says the address changed:
+
+```text
+Port 41231 is taken, so the address changed: http://127.0.0.1:43817/?t=6f0c…
+```
+
+The new port is the one remembered from then on. With `--port=N` the server
+uses that port or does not start.
 
 ## What differs from Claude Code
 
@@ -100,10 +116,12 @@ when it is back. Nothing you pressed while it was away is sent again.
 ## Security
 
 The server listens on `127.0.0.1` only. It runs Knossos commands and writes
-notes for whoever reaches it, so the address carries a random token, made new
-each time it starts, and every request without it is refused. Keep the address
-to yourself as you would a password. It is never put in a cookie.
+notes for whoever reaches it, so the address carries a random token, and every
+request without it is refused with a page that says to open the address
+`knossos web` printed in its terminal. Keep the address to yourself as you
+would a password. It is never put in a cookie. To make a new token, delete the
+project's `.host.json` file under `web/` in the data directory and start again.
 
-The page can be installed as an app from the browser. The token changes with
-every start, so an installed app opens only while the server it was installed
-from runs.
+The page can be installed as an app from the browser. The app opens while
+`knossos web` runs for its project; when it does not, the browser cannot reach it
+until you start it again.

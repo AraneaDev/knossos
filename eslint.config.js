@@ -57,7 +57,6 @@ export default [
             ecmaVersion: 2024,
             sourceType: "module",
             globals: {
-                Blob: "readonly",
                 clearTimeout: "readonly",
                 crypto: "readonly",
                 CSS: "readonly",

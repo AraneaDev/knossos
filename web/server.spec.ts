@@ -156,6 +156,43 @@ describe('startServer', () => {
     stream.close()
   })
 
+  it('says, to a request without the token, where the right address is', async () => {
+    const { url } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    for (const path of ['', '?t=stale', 'static/app.mjs']) {
+      const got = await get(`${base}${path}`)
+      expect(got.status).toBe(403)
+      expect(got.body).toBe('This address is out of date or incomplete. Open the address knossos web printed in its terminal.\n')
+    }
+  })
+
+  it('serves the app manifest for this server: one id, and a start address that carries the token', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const got = await get(`${base}manifest.webmanifest?t=${token}`)
+    expect(got.status).toBe(200)
+    const manifest = JSON.parse(got.body) as { id: string; start_url: string; scope: string; display: string; icons: { src: string }[] }
+    expect(manifest.id).toBe('/')
+    expect(manifest.start_url).toBe(url)
+    expect(manifest.scope).toBe(base)
+    expect(manifest.display).toBe('standalone')
+    expect(manifest.icons[0]!.src).toBe(`${base}static/icon.svg?t=${token}`)
+    expect((await get(`${base}manifest.webmanifest`)).status).toBe(403)
+  })
+
+  it('serves with the token and on the port it is given, and on a free port when that one is taken and it may move', async () => {
+    const token = 'a'.repeat(48)
+    const first = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, token })
+    running = first
+    expect(first.token).toBe(token)
+    expect(first.url).toBe(`http://127.0.0.1:${first.port}/?t=${token}`)
+    // The port is taken by the first: the second is refused it, unless it may move.
+    await expect(startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: first.port })).rejects.toThrow(/EADDRINUSE/)
+    const moved = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: first.port, movable: true })
+    expect(moved.port).not.toBe(first.port)
+    await moved.close()
+  })
+
   it('listens on 127.0.0.1 only', async () => {
     const { url, token } = await started()
     expect(new URL(url).hostname).toBe('127.0.0.1')

@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -90,6 +91,42 @@ describe('knossos web', () => {
     expect(second.out()).toContain(`Knossos web pane for ${realpathSync(dir)} is already running: ${url}`)
     first.child.kill('SIGTERM')
     expect(await first.exited).toBe(0)
+  })
+
+  it('keeps its address across starts: the same token, and the same port while it is free', { timeout: 30_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: pluginRoot(String(50_000 + Math.floor(Math.random() * 9_999))) }
+    const address = /: (http:\/\/127\.0\.0\.1:(\d+)\/\?t=([0-9a-f]+))\n/
+    const first = main(dir, env)
+    const [, url, port, token] = await first.line(address)
+    first.child.kill('SIGTERM')
+    expect(await first.exited).toBe(0)
+
+    const second = main(dir, env)
+    expect((await second.line(address))[1]).toBe(url)
+    second.child.kill('SIGTERM')
+    expect(await second.exited).toBe(0)
+
+    // Its port taken by something else, it moves to a free one, keeps the token, and says the address changed.
+    const squatter = createServer()
+    await new Promise<void>(resolve => squatter.listen(Number(port), '127.0.0.1', resolve))
+    try {
+      const third = main(dir, env)
+      const [, moved, newPort, sameToken] = await third.line(address)
+      expect(newPort).not.toBe(port)
+      expect(sameToken).toBe(token)
+      expect(third.out()).toContain(`Port ${port} is taken, so the address changed: ${moved}`)
+      third.child.kill('SIGTERM')
+      expect(await third.exited).toBe(0)
+      // The new port is the one remembered now.
+      const fourth = main(dir, env)
+      expect((await fourth.line(address))[1]).toBe(moved)
+      fourth.child.kill('SIGTERM')
+      expect(await fourth.exited).toBe(0)
+    } finally {
+      squatter.close()
+    }
   })
 
   it('refuses a directory that is not there', async () => {

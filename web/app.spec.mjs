@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createPage,
     focusStep,
-    manifestFor,
     pageId,
     pressOfKey,
     pressOrder,
@@ -273,22 +272,5 @@ describe("the page's own", () => {
             by: -2,
             carry: -10,
         });
-    });
-
-    it("points its manifest at this page and its icon with the token", () => {
-        const made = manifestFor(
-            {
-                name: "Knossos",
-                start_url: "/",
-                icons: [{ src: "icon.svg", type: "image/svg+xml" }],
-            },
-            "http://127.0.0.1:4000/?t=tok#/pane",
-        );
-        expect(made.start_url).toBe("http://127.0.0.1:4000/?t=tok#/pane");
-        expect(made.scope).toBe("http://127.0.0.1:4000/");
-        expect(made.icons[0].src).toBe(
-            "http://127.0.0.1:4000/static/icon.svg?t=tok",
-        );
-        expect(made.name).toBe("Knossos");
     });
 });

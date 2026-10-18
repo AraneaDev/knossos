@@ -1,8 +1,0 @@
-{
-    "name": "Knossos",
-    "short_name": "Knossos",
-    "description": "The Knossos pane for one project, served by knossos web.",
-    "display": "standalone",
-    "start_url": "/",
-    "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
-}

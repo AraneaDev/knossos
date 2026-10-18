@@ -22,6 +22,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { dirname, extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -43,6 +44,38 @@ const KEEPALIVE_MS = 20_000
 const MAX_BODY = 64 * 1024
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public')
 const TYPES: Record<string, string> = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png' }
+
+/** What a request without the right token is told: the token changes only when its file goes, so the printed address is the one to use. */
+export const REFUSED = 'This address is out of date or incomplete. Open the address knossos web printed in its terminal.\n'
+
+/** `port` when it is free on 127.0.0.1; when it is taken, a free one if `movable`, else the error. 0 asks for any. */
+async function portFor(port: number, movable: boolean): Promise<number> {
+  if (port === 0) return 0
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const probe = createNetServer()
+      probe.once('error', reject)
+      probe.listen(port, '127.0.0.1', () => probe.close(() => resolve()))
+    })
+    return port
+  } catch (error) {
+    if (movable && (error as NodeJS.ErrnoException).code === 'EADDRINUSE') return 0
+    throw error
+  }
+}
+
+/** The app manifest of the server at `origin`: one app (`id`), opened at the address that carries the token. */
+const manifestOf = (origin: string, token: string): string =>
+  JSON.stringify({
+    id: '/',
+    name: 'Knossos',
+    short_name: 'Knossos',
+    description: 'The Knossos pane for one project, served by knossos web.',
+    display: 'standalone',
+    start_url: `${origin}/?t=${token}`,
+    scope: `${origin}/`,
+    icons: [{ src: `${origin}/static/icon.svg?t=${token}`, sizes: 'any', type: 'image/svg+xml' }],
+  })
 
 /** An error's message, for the log. */
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -97,12 +130,23 @@ function bodyOf(req: IncomingMessage): Promise<Record<string, unknown> | null> {
 /**
  * Serves the pane of the project at `root` (the plugin's wrapper from
  * `pluginRoot`, knossos's data in `dataDir`) on 127.0.0.1, on `port` or a
- * free one. `ready` settles once start-up has read what it reads first.
+ * free one (on a free one too when `port` is taken and it is `movable`),
+ * with `token` or a new one. `ready` settles once start-up has read what it
+ * reads first.
  */
-export async function startServer(o: { root: string; pluginRoot: string; dataDir: string; port?: number }): Promise<{ url: string; token: string; ready: Promise<void>; close(): Promise<void> }> {
+export async function startServer(o: {
+  root: string
+  pluginRoot: string
+  dataDir: string
+  port?: number
+  movable?: boolean
+  token?: string
+}): Promise<{ url: string; token: string; port: number; ready: Promise<void>; close(): Promise<void> }> {
+  // Before anything starts: a port it cannot have stops it here, with nothing to undo.
+  const wanted = await portFor(o.port ?? 0, o.movable === true)
   reset({ watch: true })
   mod.host = 'web'
-  const token = randomBytes(24).toString('hex')
+  const token = o.token ?? randomBytes(24).toString('hex')
   const hub = new Hub()
   let following = false
   const follow = () => {
@@ -195,8 +239,11 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     // The URLs carry the token: no page they lead to is told where it came from.
     res.setHeader('referrer-policy', 'no-referrer')
-    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403).end()
+    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
     if (req.method === 'GET' && url.pathname === '/') return void file(res, 'index.html')
+    if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
+      return void res.writeHead(200, { 'content-type': 'application/manifest+json', 'cache-control': 'no-store' }).end(manifestOf(origin, token))
+    }
     if (req.method === 'GET' && url.pathname.startsWith('/static/')) return void file(res, url.pathname.slice('/static/'.length))
     if (req.method === 'GET' && url.pathname === '/events') return events(res, url)
     if (req.method === 'POST' && url.pathname === '/input') {
@@ -217,7 +264,7 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
   })
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(o.port ?? 0, '127.0.0.1', () => resolve())
+    server.listen(wanted, '127.0.0.1', () => resolve())
   })
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
@@ -226,6 +273,7 @@ export async function startServer(o: { root: string; pluginRoot: string; dataDir
   return {
     url: `http://127.0.0.1:${port}/?t=${token}`,
     token,
+    port,
     ready,
     close: async () => {
       clearInterval(headPoll)
