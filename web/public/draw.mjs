@@ -12,8 +12,8 @@
  * as its lines, each numbered in a gutter.
  *
  * The rows are drawn one by one, keyed (`data-key`), so the page can replace
- * only those that changed ({@link patchPlan}), and a card carries the cell the
- * frame placed it in ({@link cardOffset}).
+ * only those that changed ({@link patchPlan}), and a card is placed by the shared
+ * rule from {@link cardSeat}.
  */
 
 const ESCAPES = {
@@ -106,7 +106,7 @@ export const drawCards = (rows) =>
             .filter((s) => s.card !== undefined)
             .map(({ card }) => ({
                 key: card.key,
-                html: `<div class="card" data-card="${escapeHtml(card.key)}" data-at="${card.at.row},${card.at.column}" data-place="${card.place.row},${card.place.column}"${styleOf({}, { width: `${card.width}ch` })}>${card.lines.map((line) => `<div class="line">${escapeHtml(line)}</div>`).join("")}</div>`,
+                html: `<div class="card" data-card="${escapeHtml(card.key)}"${styleOf({}, { width: `${card.width}ch` })}>${card.lines.map((line) => `<div class="line">${escapeHtml(line)}</div>`).join("")}</div>`,
             })),
     );
 
@@ -126,17 +126,32 @@ export function patchPlan(old, next) {
 }
 
 /**
- * Where a card goes on the page: the frame placed it in cells (`data.place`,
- * from the cell its segment is in, `data.at`, both `row,column`), so the page only turns the
- * distance between the two into pixels from the segment's own box.
+ * The cell the pointer's segment is in, and the window in cells, for the
+ * placement rule (`place.mjs`, the rule Claude Code places a card with): the
+ * segment's box on the page over the size of a cell, whole cells only.
  */
-export function cardOffset(anchor, data, cell) {
-    const [atRow, atColumn] = data.at.split(",").map(Number);
-    const [row, column] = data.place.split(",").map(Number);
+export function cardSeat(anchor, cell, view) {
     return {
-        top: anchor.top + (row - atRow) * cell.height,
-        left: anchor.left + (column - atColumn) * cell.width,
+        row: Math.floor(anchor.top / cell.height),
+        column: Math.floor(anchor.left / cell.width),
+        pane: {
+            rows: Math.floor(view.height / cell.height),
+            columns: Math.floor(view.width / cell.width),
+        },
     };
+}
+
+/** A card's size in cells, from its box in pixels. */
+export function cardCells(box, cell) {
+    return {
+        rows: Math.ceil(box.height / cell.height),
+        columns: Math.ceil(box.width / cell.width),
+    };
+}
+
+/** A cell the rule chose, as the pixels the card sits at. */
+export function cardPixels(place, cell) {
+    return { top: place.row * cell.height, left: place.column * cell.width };
 }
 
 /** A frame as the pane's HTML: its body, then its footer, then its cards' layer. */

@@ -3,7 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-    cardOffset,
+    cardCells,
+    cardPixels,
+    cardSeat,
     drawCards,
     drawFrame,
     drawRows,
@@ -155,8 +157,6 @@ describe("cards", () => {
                         key: "card-0",
                         width: 30,
                         lines: ["Router", "12 dependents"],
-                        at: { row: 0, column: 0 },
-                        place: { row: 1, column: 0 },
                     },
                 }),
             ],
@@ -171,7 +171,7 @@ describe("cards", () => {
         expect(drawCards(rows)).toEqual([
             {
                 key: "card-0",
-                html: '<div class="card" data-card="card-0" data-at="0,0" data-place="1,0" style="width:30ch"><div class="line">Router</div><div class="line">12 dependents</div></div>',
+                html: '<div class="card" data-card="card-0" style="width:30ch"><div class="line">Router</div><div class="line">12 dependents</div></div>',
             },
         ]);
         const html = drawFrame(frameOf(rows));
@@ -180,32 +180,29 @@ describe("cards", () => {
         );
     });
 
-    it("carries the cell the frame placed a card in, and turns the distance from its segment into pixels", () => {
-        const html = drawCards([
-            {
-                key: "hub-0",
-                segments: [
-                    seg("Router", {
-                        card: {
-                            key: "card-0",
-                            width: 30,
-                            lines: ["Router"],
-                            at: { row: 9, column: 4 },
-                            place: { row: 7, column: 2 },
-                        },
-                    }),
-                ],
-            },
-        ])[0].html;
-        expect(html).toContain('data-at="9,4" data-place="7,2"');
-        // Two rows up and two columns left of the segment's own box.
+    it("turns a segment's box, a card's box and the window into cells for the shared rule, and its cell back into pixels", () => {
+        const cell = { width: 8, height: 18 };
         expect(
-            cardOffset(
-                { top: 200, left: 100 },
-                { at: "9,4", place: "7,2" },
-                { width: 8, height: 18 },
-            ),
-        ).toEqual({ top: 164, left: 84 });
+            cardSeat({ top: 200, left: 100 }, cell, {
+                width: 800,
+                height: 600,
+            }),
+        ).toEqual({ row: 11, column: 12, pane: { rows: 33, columns: 100 } });
+        expect(cardCells({ width: 193, height: 36 }, cell)).toEqual({
+            rows: 2,
+            columns: 25,
+        });
+        expect(cardPixels({ row: 7, column: 2 }, cell)).toEqual({
+            top: 126,
+            left: 16,
+        });
+    });
+
+    it("states no placement rule of its own, nor does the app", () => {
+        for (const file of ["draw.mjs", "app.mjs"]) {
+            const text = readFileSync(join(HERE, "public", file), "utf8");
+            expect(text, file).not.toMatch(/function cardPlace/);
+        }
     });
 });
 

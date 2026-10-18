@@ -191,9 +191,11 @@ export async function start() {
     // The server makes the manifest: its addresses carry the token.
     link("manifest", `/manifest.webmanifest?t=${encodeURIComponent(token)}`);
     const draw = await import(`./draw.mjs${query}`);
+    // The server makes this one from the hooks module's own file: the rule Claude Code places a card with.
+    const { cardPlace } = await import(`./place.mjs${query}`);
     const name = location.hash.replace(/^#\/?/, "");
     const view = VIEWS[name] ?? VIEWS.pane;
-    view(document.getElementById("view"), { token, draw });
+    view(document.getElementById("view"), { token, draw, cardPlace });
 }
 
 /** One character cell of the page's grid, in pixels. */
@@ -286,7 +288,7 @@ function patcher(container, patchPlan) {
 }
 
 /** The pane: the frames drawn into `root`, the person's keys, presses, typing, focus and wheel sent back. */
-function paneView(root, { token, draw: drawn }) {
+function paneView(root, { token, draw: drawn, cardPlace }) {
     const light = matchMedia("(prefers-color-scheme: light)");
     const theme = () => (light.matches ? "light" : "dark");
     root.innerHTML =
@@ -352,13 +354,24 @@ function paneView(root, { token, draw: drawn }) {
         );
         if (card === null) return;
         card.classList.add("shown");
-        const place = drawn.cardOffset(
+        const view = { width: window.innerWidth, height: window.innerHeight };
+        const seat = drawn.cardSeat(
             hovered.anchor.getBoundingClientRect(),
-            card.dataset,
             cell,
+            view,
         );
-        card.style.top = `${place.top}px`;
-        card.style.left = `${place.left}px`;
+        const at = cardPlace(
+            seat.row,
+            seat.column,
+            drawn.cardCells(
+                { width: card.offsetWidth, height: card.offsetHeight },
+                cell,
+            ),
+            seat.pane,
+        );
+        const pixels = drawn.cardPixels(at, cell);
+        card.style.top = `${pixels.top}px`;
+        card.style.left = `${pixels.left}px`;
     };
     root.addEventListener("pointerover", (e) => {
         const anchor = e.target.closest?.("[data-card]");

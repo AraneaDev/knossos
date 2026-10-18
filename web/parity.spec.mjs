@@ -86,9 +86,8 @@ describe("the web host draws whatever the shared layout lays out", () => {
             'data-press="orbit:spin" data-hotkey="o" title="spin"',
         );
         expect(html).toContain('data-card="card-orbit"');
-        // Placed by the shared rule: the card's cell is the row below its segment's.
-        expect(html).toMatch(
-            /<div class="card" data-card="card-orbit" data-at="0,(\d+)" data-place="1,\1" style="width:24ch"><div class="line">3 moons, 1 ring<\/div><\/div>/,
+        expect(html).toContain(
+            '<div class="card" data-card="card-orbit" style="width:24ch"><div class="line">3 moons, 1 ring</div></div>',
         );
     });
 });

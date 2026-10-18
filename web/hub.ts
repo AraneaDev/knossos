@@ -158,10 +158,8 @@ export class Hub {
     const laid = source.kind === 'pane' ? paneLayout(source.input, columns, rows, 0) : { body: source.kind === 'empty' ? source.rows : [], footer: [], pinned: false }
     await noteSpinners(io, [...laid.body, ...laid.footer])
     const colour = colourIn(page.theme)
-    // A card is placed among all the rows the page shows, the body's then the footer's.
-    const total = laid.body.length + laid.footer.length
-    const ready = (offset: number) => (row: Row, i: number) => pageRow(spunRow(row, mod.spinFrame), colour, columns, { row: offset + i, rows: total })
+    const ready = (row: Row) => pageRow(spunRow(row, mod.spinFrame), colour, columns)
     const colours = Object.fromEntries(Object.entries(PAGE_KEYS).map(([name, key]) => [name, colour(key)!])) as Frame['colours']
-    return { rows: laid.body, frame: { type: 'frame', body: laid.body.map(ready(0)), footer: laid.footer.map(ready(laid.body.length)), pinned: laid.pinned, theme: page.theme, colours } }
+    return { rows: laid.body, frame: { type: 'frame', body: laid.body.map(ready), footer: laid.footer.map(ready), pinned: laid.pinned, theme: page.theme, colours } }
   }
 }

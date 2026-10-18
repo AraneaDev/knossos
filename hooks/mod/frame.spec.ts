@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Row } from '../lib/layout'
 import { busy, NO_MOTION, spinGlyph } from '../lib/motion'
-import { cardPlace, fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
+import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import { currentInput } from './input'
 import type { Port } from './port'
 import { mod, reset } from './state'
@@ -138,22 +138,5 @@ describe('fieldRooms', () => {
     expect(fieldRooms([{ text: 'plain' }], 10).size).toBe(0)
     // Never less than one cell, however full the row.
     expect(fieldRooms([{ text: 'x'.repeat(12) }, { text: '', field: { id: 'f', value: '', placeholder: '' } }], 10).get(1)!.room).toBe(1)
-  })
-})
-
-describe('cardPlace', () => {
-  const pane = { rows: 20, columns: 80 }
-  it('goes under its row when the rows below can hold it', () => {
-    expect(cardPlace(3, 10, { rows: 4, columns: 30 }, pane)).toEqual({ row: 4, column: 10 })
-  })
-  it('goes over its row when the rows below cannot hold it and the rows above can', () => {
-    expect(cardPlace(18, 10, { rows: 4, columns: 30 }, pane)).toEqual({ row: 14, column: 10 })
-  })
-  it('stays under its row when neither side can hold it', () => {
-    expect(cardPlace(2, 0, { rows: 19, columns: 10 }, pane)).toEqual({ row: 3, column: 0 })
-  })
-  it('never passes the right edge, nor the left', () => {
-    expect(cardPlace(3, 70, { rows: 4, columns: 30 }, pane).column).toBe(50)
-    expect(cardPlace(3, 5, { rows: 4, columns: 100 }, pane).column).toBe(0)
   })
 })

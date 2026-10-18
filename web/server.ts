@@ -18,6 +18,7 @@
  * another origin cannot send one without asking first) and, when the
  * browser names its origin, comes from this server's own.
  */
+import { stripTypeScriptTypes } from 'node:module'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -44,6 +45,7 @@ const KEEPALIVE_MS = 20_000
 /** The largest input a page sends. */
 const MAX_BODY = 64 * 1024
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public')
+const PLACE = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'lib', 'place.ts')
 const TYPES: Record<string, string> = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png' }
 
 /** What a request without the right token is told: the token changes only when its file goes, so the printed address is the one to use. */
@@ -217,6 +219,11 @@ export async function startServer(o: {
       named = decodeURIComponent(path)
     } catch {
       return void res.writeHead(404).end()
+    }
+    // The hover card's rule is the hooks module's own file, as JavaScript: made here, so no copy of it exists.
+    if (named === 'place.mjs') {
+      const source = await readFile(PLACE, 'utf8')
+      return void res.writeHead(200, { 'content-type': TYPES['.mjs']!, 'cache-control': 'no-store' }).end(stripTypeScriptTypes(source))
     }
     const at = normalize(join(PUBLIC, named))
     if (!at.startsWith(PUBLIC + sep)) return void res.writeHead(404).end()

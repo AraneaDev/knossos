@@ -4,6 +4,7 @@ import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
 import type { Frame } from './hub'
+import { cardPlace } from '../hooks/lib/place'
 import { followHead } from '../hooks/mod/watcher'
 import { mod } from '../hooks/mod/state'
 import { startServer } from './server'
@@ -251,6 +252,20 @@ describe('startServer', () => {
     expect((await get(`${base}static/draw.mjs?t=${token}`)).body).toContain('export function drawFrame')
     expect((await get(`${base}static/missing.mjs?t=${token}`)).status).toBe(404)
     expect((await get(`${base}elsewhere?t=${token}`)).status).toBe(404)
+  })
+
+  it("serves the hooks module's placement rule as JavaScript that places a card as the TypeScript does", async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    expect((await get(`${base}static/place.mjs`)).status).toBe(403)
+    const served = await get(`${base}static/place.mjs?t=${token}`)
+    expect(served.status).toBe(200)
+    expect(served.body).not.toMatch(/: number/)
+    const page = (await import(`data:text/javascript;base64,${Buffer.from(served.body).toString('base64')}`)) as { cardPlace: typeof cardPlace }
+    const pane = { rows: 20, columns: 80 }
+    for (const [row, column, card] of [[3, 10, { rows: 4, columns: 30 }], [18, 10, { rows: 4, columns: 30 }], [2, 0, { rows: 19, columns: 10 }], [3, 70, { rows: 4, columns: 30 }], [3, 5, { rows: 4, columns: 100 }]] as const) {
+      expect(page.cardPlace(row, column, card, pane)).toEqual(cardPlace(row, column, card, pane))
+    }
   })
 
   it('listens on 127.0.0.1 only', async () => {

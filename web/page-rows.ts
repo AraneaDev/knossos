@@ -10,17 +10,11 @@
  */
 import { parseHunks } from '../hooks/lib/diff'
 import type { Row, Segment } from '../hooks/lib/layout'
-import { cells, pressLabel, textStyle } from '../hooks/lib/rows'
-import { cardPlace, fieldRooms } from '../hooks/mod/frame'
+import { pressLabel, textStyle } from '../hooks/lib/rows'
+import { fieldRooms } from '../hooks/mod/frame'
 
 /** A look with its colours resolved: what an element's inline style takes. */
 export type Look = { color?: string; background?: string; bold?: true }
-
-/** A cell of the pane: a row and a column. */
-export type Cell = { row: number; column: number }
-
-/** Where a row sits in the pane it is drawn in: its index among `rows` rows. */
-export type Seat = { row: number; rows: number }
 
 /** One segment, ready to draw. A press keeps its id and hotkey (the page's keys and focus ring go by them) and its full name as `title`. */
 export type PageSegment = {
@@ -29,7 +23,7 @@ export type PageSegment = {
   press?: { id: string; label: string; title: string; hotkey?: string; dim?: true }
   hidden?: true
   field?: { id: string; value: string; placeholder: string; width: number }
-  card?: { key: string; width: number; lines: string[]; at: Cell; place: Cell }
+  card?: { key: string; width: number; lines: string[] }
 }
 
 /** One diff line: its number in the gutter (padded to the hunk's widest), its marker and text, and its ground. */
@@ -68,32 +62,26 @@ function linesOf(source: string, colour: Colour): PageLine[] {
 }
 
 /** One segment ready to draw; a field `width` cells wide. */
-function segmentOf(s: Segment, colour: Colour, columns: number, width: number | undefined, at: Cell, seat: Seat): PageSegment {
+function segmentOf(s: Segment, colour: Colour, columns: number, width: number | undefined): PageSegment {
   const out: PageSegment = { text: s.text, look: lookOf(s, colour) }
   if (s.press !== undefined) {
     out.press = { id: s.press.id, label: pressLabel(s), title: s.press.label, ...(s.press.hotkey === undefined ? {} : { hotkey: s.press.hotkey }), ...(s.dim === true ? { dim: true as const } : {}) }
   }
   if (s.hidden === true) out.hidden = true
   if (s.field !== undefined) out.field = { id: s.field.id, value: s.field.value, placeholder: s.field.placeholder, width: width ?? 1 }
-  // The card as Claude Code hangs it: its lines' text on the card's ground, never wider than the pane, and the cell it goes to by the rule Claude Code places it with.
-  if (s.preview !== undefined) {
-    const lines = s.preview.rows.map(r => r.segments.map(c => c.text).join(''))
-    const place = cardPlace(at.row, at.column, { rows: lines.length, columns: s.preview.width }, { rows: seat.rows, columns })
-    out.card = { key: s.preview.key, width: Math.min(s.preview.width, columns), lines, at, place }
-  }
+  // The card as Claude Code hangs it: its lines' text on the card's ground, never wider than the pane.
+  if (s.preview !== undefined) out.card = { key: s.preview.key, width: Math.min(s.preview.width, columns), lines: s.preview.rows.map(r => r.segments.map(c => c.text).join('')) }
   return out
 }
 
-/** `row`, seated at `seat` in a pane `columns` wide, ready to draw: the blank cells a field takes are its own, so they are left out. */
-export function pageRow(row: Row, colour: Colour, columns: number, seat: Seat): PageRow {
+/** `row` ready to draw in a pane `columns` wide: the blank cells a field takes are its own, so they are left out. */
+export function pageRow(row: Row, colour: Colour, columns: number): PageRow {
   if (row.code !== undefined) return { key: row.key, segments: [], lines: linesOf(row.code.source, colour), gutter: lookOf({ text: '', dim: true }, colour) }
   const rooms = fieldRooms(row.segments, columns)
   const segments: PageSegment[] = []
-  let column = 0
   for (let i = 0; i < row.segments.length; i++) {
     const room = rooms.get(i)
-    segments.push(segmentOf(row.segments[i]!, colour, columns, room?.room, { row: seat.row, column }, seat))
-    column += cells(row.segments[i]!.text)
+    segments.push(segmentOf(row.segments[i]!, colour, columns, room?.room))
     if (room !== undefined) i = room.next - 1
   }
   return { key: row.key, segments }
