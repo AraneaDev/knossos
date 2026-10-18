@@ -1,0 +1,41 @@
+#!/bin/sh
+# The verdict of the required `quality` check, from the results of the jobs it
+# stands for: the lane matrix, the coverage shards and the coverage merge.
+#
+#   tools/ci/quality-verdict LANES SHARDS MERGE [--release-pr]
+#
+# Each result is what GitHub reports for a job: success, failure, cancelled or
+# skipped. Every one must be success, because a job that was skipped or
+# cancelled when it should have run proved nothing. The one expected skip is a
+# release-please pull request (tools/ci/release-pr decides that): it runs the
+# static lane alone and no coverage jobs, so with --release-pr the results
+# must be exactly success, skipped, skipped. Exit 0 passes, 1 fails, 2 means it
+# was called wrong.
+set -eu
+
+usage() {
+    printf 'usage: quality-verdict LANES SHARDS MERGE [--release-pr]\n' >&2
+    exit 2
+}
+
+[ "$#" -eq 3 ] || [ "$#" -eq 4 ] || usage
+release=false
+if [ "$#" -eq 4 ]; then
+    [ "$4" = --release-pr ] || usage
+    release=true
+fi
+lanes=$1 shards=$2 merge=$3
+
+printf 'lanes: %s\ncoverage shards: %s\ncoverage merge: %s\nrelease-please pull request: %s\n' \
+    "${lanes:-<none>}" "${shards:-<none>}" "${merge:-<none>}" "$release"
+
+if [ "$release" = true ]; then
+    expected='success skipped skipped'
+else
+    expected='success success success'
+fi
+[ "$lanes $shards $merge" = "$expected" ] || {
+    printf 'quality-verdict: expected lanes, shards and merge to be: %s\n' "$expected" >&2
+    exit 1
+}
+printf 'quality-verdict: passed\n'

@@ -146,6 +146,7 @@ cannot pass with a lower figure. To reproduce one shard locally, run
 An aggregating job named `quality` fails unless every lane, every shard and the
 merge succeeded, which is the check branch protection requires: a job that is
 skipped or cancelled when it should have run fails it just as a red one does.
+The rule is `tools/ci/quality-verdict`, tested by `tests/shell/quality-verdict.sh`.
 A second push to a pull request cancels the run in progress.
 
 CI runs PHPUnit once, on pull requests and on pushes to `main` alike. The
@@ -159,9 +160,29 @@ identical to the `main` it was cut from, which had just passed. The full matrix
 runs again on the push to `main` after it merges, so nothing reaches a tag
 unchecked.
 
+What counts as a release-please pull request is decided by its content, with
+`tools/ci/release-pr`, not by its author or its branch name: release-please
+opens it with a personal token, and anyone can push a branch of that shape. It
+must come from this repository, carry the `autorelease: pending` label, change
+only the manifest, `CHANGELOG.md`, `version.txt` and the extra-files in
+`release-please-config.json`, and change nothing in those extra-files but the
+version, on lines release-please's markers allow: a line that carries
+`x-release-please-version` itself, or one between
+`x-release-please-start-version` and `x-release-please-end`, with the start
+marker within the ten lines of context the workflows ask git for. Anything else
+runs every lane. The diff it judges is the merge commit the lanes test against
+its base, and on a pull request both `tools/ci/release-pr` and
+`tools/ci/quality-verdict` run from the base commit, so a pull request cannot
+pass with a broken copy of either.
+
 Pull request titles are checked by the `pr-title` workflow with
 `tools/check-commit-style.sh`, the same script the `commit-msg` hook uses,
-because the squash-merged title is what release-please reads.
+because the squash-merged title is what release-please reads. The workflow
+checks the branch's commits too, and passes `--ci`, which drops the local
+exemptions for `Merge`, `Revert "`, `fixup!`, `squash!` and `amend!` subjects:
+a title can be typed to look like one, and a rebase merge lands them on `main`
+as they are. The release subject `chore(main): release <version>` passes only
+when `tools/ci/release-pr` says the pull request is release-please's own.
 
 ## The documentation checks
 

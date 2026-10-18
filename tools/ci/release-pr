@@ -1,0 +1,200 @@
+#!/bin/sh
+# Decides whether a pull request is release-please's own release pull request,
+# the one kind that may skip the heavy quality lanes and use the release
+# subject. Exit 0 means it is, 1 means it is not, 2 means it was called wrong.
+#
+# The pull request's author cannot say so: release-please opens it with a
+# personal token, so it carries a person's login. Its branch name cannot
+# either, because anyone can push a branch of that shape. What can be checked
+# is the content, and only this shape passes:
+#
+#   - it comes from this repository, not a fork;
+#   - it carries the `autorelease: pending` label release-please sets;
+#   - every file it changes is one release-please writes: the manifest,
+#     CHANGELOG.md, version.txt, and the extra-files release-please-config.json
+#     names;
+#   - in every extra-file, each changed line is one release-please's generic
+#     updater writes: it carries `x-release-please-version`, or it sits between
+#     `x-release-please-start-version` and `x-release-please-end`, with the
+#     start marker inside the hunk (the workflow asks git for wide context);
+#   - version.txt goes from one version to another, and in every extra-file
+#     each removed line holds the old version, each added line the new one,
+#     and the added lines are exactly the removed lines with the version
+#     replaced. A version line that also changes something else fails.
+#
+# The inputs are files, so a test can hand it a recorded pull request:
+#
+#   tools/ci/release-pr --repo OWNER/NAME --head-repo OWNER/NAME \
+#       --labels labels.txt --files files.txt --diff pr.diff [--config path]
+#
+# labels.txt holds one label per line, files.txt one changed path per line (as
+# `gh pr view --json labels,files` lists them), pr.diff is `gh pr diff`. Being
+# wrong in the cautious direction costs a release pull request a full run;
+# anything this cannot read is therefore not a release pull request.
+set -eu
+LC_ALL=C
+export LC_ALL
+
+ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)"
+
+usage() {
+    printf 'usage: release-pr --repo R --head-repo R --labels FILE --files FILE --diff FILE [--config FILE]\n' >&2
+    exit 2
+}
+
+repo='' head_repo='' head_set='' labels='' files='' diff='' config="$ROOT/release-please-config.json"
+while [ "$#" -gt 0 ]; do
+    [ "$#" -ge 2 ] || usage
+    case "$1" in
+        --repo) repo=$2 ;;
+        --head-repo) head_repo=$2 head_set=1 ;;
+        --labels) labels=$2 ;;
+        --files) files=$2 ;;
+        --diff) diff=$2 ;;
+        --config) config=$2 ;;
+        *) usage ;;
+    esac
+    shift 2
+done
+if [ -z "$repo" ] || [ -z "$head_set" ] || [ -z "$labels" ] || [ -z "$files" ] || [ -z "$diff" ]; then
+    usage
+fi
+for f in "$labels" "$files" "$diff" "$config"; do
+    [ -r "$f" ] || {
+        printf 'release-pr: cannot read %s\n' "$f" >&2
+        exit 2
+    }
+done
+
+no() {
+    printf 'release-pr: not a release pull request: %s\n' "$1"
+    exit 1
+}
+
+[ "$head_repo" = "$repo" ] || no "it comes from ${head_repo:-an unknown repository}, not $repo"
+
+tr -d '\r' <"$labels" | grep -qxF 'autorelease: pending' || no "it has no 'autorelease: pending' label"
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# The extra-files, read with sed so a machine without jq gives the same
+# answer as CI. An entry is either an object with a "path" or a bare string.
+sed -n '/"extra-files"/,/\]/p' "$config" |
+    sed -n -e 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        -e 's/^[[:space:]]*"\([^"]*\)"[[:space:]]*,\{0,1\}[[:space:]]*$/\1/p' >"$work/extra"
+{
+    printf '%s\n' .release-please-manifest.json CHANGELOG.md version.txt
+    cat "$work/extra"
+} | sort -u >"$work/allowed"
+
+# Splits the diff into one numbered pair of files per changed file: N.del and
+# N.add hold its removed and added lines, and `paths` maps N to the path. Hunks
+# are read by their line counts, so a removed line that starts with "--" is
+# never taken for a file header. Anything other than plain text edits to
+# existing files (binary, mode, rename, copy, create, delete) is reported as
+# `unsupported`, and a hunk that does not add up as `malformed`.
+awk -v dir="$work" '
+    function fail(why) { print why > (dir "/bad"); exit }
+    function strip(p, prefix) { return substr(p, 1, length(prefix)) == prefix ? substr(p, length(prefix) + 1) : p }
+    # A changed line release-please may write: one carrying the inline marker,
+    # or one inside a start-version/end block. The block state comes from the
+    # unchanged lines only, starts closed at each hunk, and a marker outside
+    # the hunk therefore does not count: such a line is written to N.unmarked.
+    function marked(line) { return block || index(line, "x-release-please-version") > 0 }
+    olds > 0 || news > 0 {
+        c = substr($0, 1, 1)
+        if (c == " ") {
+            olds--; news--
+            if (index($0, "x-release-please-start-version") > 0) block = 1
+            if (index($0, "x-release-please-end") > 0) block = 0
+        }
+        else if (c == "-") { olds--; print substr($0, 2) > (dir "/" n ".del") }
+        else if (c == "+") { news--; print substr($0, 2) > (dir "/" n ".add") }
+        else if (c == "\\") { }
+        else fail("malformed: a hunk in " path " ends early")
+        if ((c == "-" || c == "+") && !marked($0)) print substr($0, 2) > (dir "/" n ".unmarked")
+        if (olds < 0 || news < 0) fail("malformed: a hunk in " path " runs long")
+        next
+    }
+    /^\\/ { next }
+    /^diff --git / { n++; path = ""; next }
+    /^(old mode|new mode|deleted file mode|new file mode|rename |copy |similarity index|dissimilarity index|Binary files|GIT binary patch)/ {
+        fail("unsupported: " $0)
+    }
+    /^--- / { next }
+    /^\+\+\+ / {
+        path = strip(substr($0, 5), "b/")
+        if (n == 0 || path == "/dev/null") fail("unsupported: " $0)
+        if (path in seen) fail("unsupported: " path " appears twice")
+        seen[path] = 1
+        print n "\t" path > (dir "/paths")
+        next
+    }
+    /^@@ / {
+        if (path == "") fail("malformed: a hunk with no file")
+        if (!match($0, /^@@ -[0-9]+(,[0-9]+)? \+[0-9]+(,[0-9]+)? @@/)) fail("malformed: " $0)
+        h = substr($0, 4, RLENGTH - 6)
+        split(h, side, " ")
+        olds = (split(substr(side[1], 2), o, ",") > 1) ? o[2] + 0 : 1
+        news = (split(substr(side[2], 2), a, ",") > 1) ? a[2] + 0 : 1
+        block = 0
+        next
+    }
+    /^index / { next }
+    { if (n > 0) fail("malformed: " $0) }
+    END { if (olds > 0 || news > 0) print "malformed: the diff ends inside a hunk" > (dir "/bad") }
+' "$diff"
+[ ! -s "$work/bad" ] || no "the diff holds something other than text edits ($(head -1 "$work/bad"))"
+[ -s "$work/paths" ] || no 'the diff changes nothing'
+
+# Every changed file, whether the list or the diff names it, must be one
+# release-please writes.
+{
+    tr -d '\r' <"$files" | sed '/^$/d'
+    cut -f2- "$work/paths"
+} | sort -u >"$work/changed"
+outside=$(comm -23 "$work/changed" "$work/allowed")
+[ -z "$outside" ] || no "it changes a file release-please does not write: $(printf '%s' "$outside" | head -1)"
+
+number_of() { awk -F '\t' -v p="$1" '$2 == p { print $1; exit }' "$work/paths"; }
+lines() {
+    if [ -f "$1" ]; then wc -l <"$1" | tr -d ' '; else echo 0; fi
+}
+
+semver='^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*(-[0-9A-Za-z.-]+)?$'
+n=$(number_of version.txt)
+[ -n "$n" ] || no 'it does not change version.txt'
+if [ "$(lines "$work/$n.del")" != 1 ] || [ "$(lines "$work/$n.add")" != 1 ]; then
+    no 'version.txt does not go from one version to another'
+fi
+old=$(cat "$work/$n.del")
+new=$(cat "$work/$n.add")
+printf '%s\n' "$old" | grep -Eq "$semver" || no "version.txt's old line is not a version: $old"
+printf '%s\n' "$new" | grep -Eq "$semver" || no "version.txt's new line is not a version: $new"
+[ "$old" != "$new" ] || no 'version.txt does not change the version'
+
+while IFS= read -r extra; do
+    n=$(number_of "$extra")
+    [ -n "$n" ] || continue
+    [ ! -s "$work/$n.unmarked" ] ||
+        no "$extra changes a line outside release-please's version markers: $(head -1 "$work/$n.unmarked")"
+    : >>"$work/$n.del"
+    : >>"$work/$n.add"
+    # The literal version, not a pattern: a "." in it must not match any
+    # character.
+    awk -v v="$old" 'index($0, v) == 0 { exit 1 }' "$work/$n.del" ||
+        no "a line $extra removes does not hold the old version $old"
+    awk -v v="$new" 'index($0, v) == 0 { exit 1 }' "$work/$n.add" ||
+        no "a line $extra adds does not hold the new version $new"
+    awk -v o="$old" -v v="$new" '{
+            out = ""; s = $0
+            while ((i = index(s, o)) > 0) { out = out substr(s, 1, i - 1) v; s = substr(s, i + length(o)) }
+            print out s
+        }' "$work/$n.del" | sort >"$work/expected"
+    sort "$work/$n.add" >"$work/actual"
+    cmp -s "$work/expected" "$work/actual" ||
+        no "$extra changes more than the version from $old to $new"
+done <"$work/extra"
+
+printf 'release-pr: a release pull request, %s to %s\n' "$old" "$new"

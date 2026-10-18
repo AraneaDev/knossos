@@ -13,14 +13,33 @@
 #
 #   tools/check-commit-style.sh "fix: stop gating on a window that has ended"
 #   tools/check-commit-style.sh --file .git/COMMIT_EDITMSG
+#   tools/check-commit-style.sh --ci [--release-pr] -- "<pull request title>"
+#
+# --ci is for the pull request checks, where nothing is exempt; --release-pr
+# says the pull request is release-please's own (tools/ci/release-pr decided
+# it), the one place its release subject may appear.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-  printf 'usage: check-commit-style.sh <subject> | --file <path>\n' >&2
+  printf 'usage: check-commit-style.sh [--ci [--release-pr]] <subject> | --file <path>\n' >&2
   exit 2
 }
+
+ci=0
+release_pr=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --ci) ci=1 ;;
+    --release-pr) release_pr=1 ;;
+    --file) break ;;
+    --) shift; break ;;
+    --*) usage ;;
+    *) break ;;
+  esac
+  shift
+done
 
 # No argument is a caller that got it wrong; an empty argument is a message with
 # nothing in it, which is a different thing and not this script's to judge. Both
@@ -47,12 +66,19 @@ esac
 # twice helps nobody.
 [ -n "$subject" ] || exit 0
 
-# Git writes these itself, or writes them to be consumed by a later rebase, and
-# release-please's own release subject is exempt as belt and braces. None of
-# them reach main in a form this rule should judge.
-case "$subject" in
-  'Merge '* | 'Revert "'* | 'fixup!'* | 'squash!'* | 'amend!'* | 'chore(main): release '*) exit 0 ;;
-esac
+# Locally, git writes these itself, or writes them to be consumed by a later
+# rebase, and release-please's own release subject is exempt as belt and
+# braces. None of them reach main from a local commit in a form this rule
+# should judge.
+#
+# In CI none of them is exempt. A pull request title can be typed to look like
+# any of them, and a branch that is rebased onto main instead of squashed puts
+# its fixup! and Merge subjects there as they are.
+if [ "$ci" -eq 0 ]; then
+  case "$subject" in
+    'Merge '* | 'Revert "'* | 'fixup!'* | 'squash!'* | 'amend!'* | 'chore(main): release '*) exit 0 ;;
+  esac
+fi
 
 # The types release-please recognises, read from its own config so a type this
 # check accepts and release-please does not -- exactly the failure this check
@@ -84,6 +110,14 @@ fail() {
   printf '  Types: %s\n\n' "$(printf '%s' "$types" | tr '|' ' ')" >&2
   exit 1
 }
+
+# The release subject is release-please's: on any other pull request it would
+# read as a release that never happened.
+if [ "$ci" -eq 1 ] && [ "$release_pr" -eq 0 ]; then
+  case "$subject" in
+    'chore(main): release '*) fail "Only release-please's own pull request may use this subject." ;;
+  esac
+fi
 
 # A type, an optional scope, an optional ! for a break, then ": " and something
 # to say. Anchored at both ends so a subject that merely mentions a type
