@@ -64,13 +64,26 @@ final readonly class ProjectDiscoverer
     {
         $files = $walk['files'];
         $units = $walk['units'];
+        $walked = $files;
         $files = SourceClassifier::withoutCompiledSiblings($files);
+        // The `tsc` output just left out, by the sources it is built from: a
+        // page that loads `main.js` loads what `main.ts` compiles to.
+        $kept = [];
+        foreach ($files as $file) {
+            $kept[$file->relativePath] = true;
+        }
+        $compiled = [];
+        foreach ($walked as $file) {
+            if (!isset($kept[$file->relativePath])) {
+                $compiled[$file->relativePath] = SourceClassifier::compiledFrom($file->relativePath);
+            }
+        }
         usort($files, static fn(DiscoveredFile $left, DiscoveredFile $right): int =>
             $left->relativePath <=> $right->relativePath);
         usort($units, static fn(ProjectUnit $left, ProjectUnit $right): int =>
             [$left->kind, $left->configPath] <=> [$right->kind, $right->configPath]);
         $diagnostics = $walk['diagnostics'];
-        $units = EntryPointResolver::resolve($units, $files, $webRoots, $diagnostics);
+        $units = EntryPointResolver::resolve($units, $files, $webRoots, $diagnostics, $compiled);
 
         $inputParts = array_map(
             static fn(DiscoveredFile $file): string => $file->relativePath . '=' . $file->contentHash,

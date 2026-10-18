@@ -16,10 +16,11 @@ final class HtmlScriptResolverTest extends TestCase
     /**
      * @param list<string> $files
      * @param array<string, string> $webRoots
+     * @param array<string, list<string>> $compiled
      */
-    private static function resolve(string $page, string $url, array $files, array $webRoots = []): string|HtmlScriptMiss|null
+    private static function resolve(string $page, string $url, array $files, array $webRoots = [], array $compiled = []): string|HtmlScriptMiss|null
     {
-        return HtmlScriptResolver::resolve($page, $url, array_fill_keys($files, true), $webRoots);
+        return HtmlScriptResolver::resolve($page, $url, array_fill_keys($files, true), $webRoots, $compiled);
     }
 
     private static function assertMiss(string $reason, string|HtmlScriptMiss|null $result): HtmlScriptMiss
@@ -103,5 +104,38 @@ final class HtmlScriptResolverTest extends TestCase
         foreach (['https://cdn/x.js', 'http://cdn/x.js', '//cdn/x.js', 'data:text/javascript,1', 'blob:https://x/y', 'react', 'lodash/fp', './style.css', '/static/', ''] as $url) {
             self::assertNull(self::resolve('index.html', $url, ['x.js', 'style.css']), $url);
         }
+    }
+
+    /** `..` in a root URL is applied before any prefix is matched, so it cannot climb out of a mapped folder. */
+    public function testADotDotInARootUrlIsAppliedBeforeMapping(): void
+    {
+        $roots = ['/static/' => 'web/public/'];
+        $result = self::resolve('index.html', '/static/../x.js', ['web/x.js'], $roots);
+        self::assertMiss('none', $result);
+        self::assertNotContains('web/x.js', $result instanceof HtmlScriptMiss ? $result->candidates : []);
+        // Inside the mapped folder it still resolves through the mapping.
+        assertSame('web/public/x.js', self::resolve('index.html', '/static/js/../x.js', ['web/public/x.js'], $roots));
+        self::assertMiss('outside', self::resolve('index.html', '/static/../../x.js', ['x.js'], $roots));
+    }
+
+    /**
+     * Only the page's own folder is read as the folder a server mounts at the
+     * first segment; above it, a file of the same name elsewhere would be a guess.
+     */
+    public function testTheFirstSegmentIsDroppedOnlyBesideThePage(): void
+    {
+        self::assertMiss('none', self::resolve('apps/admin/index.html', '/assets/main.js', ['main.js', 'apps/main.js', 'public/main.js']));
+        assertSame('web/public/app.mjs', self::resolve('web/public/index.html', '/static/app.mjs', ['web/public/app.mjs', 'app.mjs', 'web/app.mjs']));
+    }
+
+    /** A page loading the output `tsc` writes beside its source loads that source, which is what the scan holds. */
+    public function testACompiledSiblingResolvesToItsSource(): void
+    {
+        $compiled = ['web/main.js' => ['web/main.ts']];
+        assertSame('web/main.ts', self::resolve('web/index.html', './main.js', ['web/main.ts'], [], $compiled));
+        assertSame('web/main.ts', self::resolve('web/index.html', '/main.js', ['web/main.ts'], [], $compiled));
+        $both = ['web/main.js' => ['web/main.ts', 'web/main.tsx']];
+        $miss = self::assertMiss('ambiguous', self::resolve('web/index.html', './main.js', ['web/main.ts', 'web/main.tsx'], [], $both));
+        assertSame(['web/main.ts', 'web/main.tsx'], $miss->candidates);
     }
 }

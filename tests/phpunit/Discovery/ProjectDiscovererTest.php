@@ -1713,6 +1713,25 @@ TOML);
     }
 
     /**
+     * A page loading `tsc` output loads what its source compiles to. The
+     * output is left out of the scan beside its source, so the page's
+     * reference lands on the source instead of being reported as missing.
+     */
+    public function testDiscoverResolvesAPageScriptBuiltFromTypeScriptToItsSource(): void
+    {
+        file_put_contents($this->root . '/index.html', "<script type=\"module\" src=\"./main.js\"></script>\n");
+        file_put_contents($this->root . '/main.ts', "export const start = (): void => {};\n");
+        file_put_contents($this->root . '/main.js', "export const start = () => { };\n//# sourceMappingURL=main.js.map\n");
+
+        $result = (new ProjectDiscoverer(new DiscoveryConfig([$this->root])))->discover($this->root);
+
+        $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
+        self::assertNotContains('main.js', array_map(static fn(DiscoveredFile $file): string => $file->relativePath, $result->files));
+        assertSame(['main.ts'], $units[0]->metadata['entry_points']);
+        assertSame([], $result->diagnostics);
+    }
+
+    /**
      * A Compose file mounts a source file into a container by path, and a CI
      * workflow runs one by name. Neither is an import, so the file looks
      * orphaned while being the only reason the stack starts.

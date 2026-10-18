@@ -262,11 +262,17 @@ Each reference then has to name exactly one scanned file:
 - A root URL (`/static/app.mjs`) is read through
   [`web_roots`](../get-started/project-configuration.md#web-roots) when one of
   its prefixes matches, and never any other way then.
-- Otherwise a root URL is looked for under the page's folder, each folder above
-  it up to the project root, and the `public/` and `static/` folders in each.
-  At each, both the full path and the path without its first segment are tried,
-  so `/static/app.mjs` from `web/public/index.html` finds
-  `web/public/app.mjs` when a server mounts that folder at `/static/`.
+- Otherwise a root URL is looked for in the page's folder without its first
+  segment, so `/static/app.mjs` from `web/public/index.html` finds
+  `web/public/app.mjs` when a server mounts that folder at `/static/`. The full
+  path is looked for under the page's folder, each folder above it up to the
+  project root, and the `public/` and `static/` folders in each. The first
+  segment is dropped beside the page only, so `/assets/main.js` from
+  `apps/admin/index.html` never lands on an unrelated `main.js` higher up.
+- A `..` in the URL is applied first, so `/static/../x.js` is `/x.js` and cannot
+  climb out of a mapped folder.
+- A page that loads `tsc` output (`main.js` beside `main.ts`, which the scan
+  leaves out) names the TypeScript source.
 
 A file found this way is classified `application.entry_point` with the page as
 `named_by`, so it and everything only it reaches stop being candidates. A

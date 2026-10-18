@@ -30,50 +30,88 @@ final class HtmlScriptResolver
      * A relative URL resolves from the page's folder and nowhere else. A
      * root URL resolves through the longest `$webRoots` prefix it starts
      * with, and never falls back when one matches. Without a mapping it is
-     * looked for under the page's folder, each parent folder up to the
-     * project root, and the `public/` and `static/` folders in each of them,
-     * where bundlers keep the files they serve at the web root. At each, the
-     * full path is tried and the path with its first segment dropped, which
-     * is how a server that mounts a folder at `/static/` names its files.
+     * looked for in the page's folder with its first segment dropped, which
+     * is how a server that mounts that folder at `/static/` names its files,
+     * and as the full path under the page's folder, each parent folder up to
+     * the project root, and the `public/` and `static/` folders in each of
+     * them, where bundlers keep the files they serve at the web root. The
+     * first segment is dropped beside the page only: above it, a file that
+     * merely shares the rest of the path would be a guess.
+     *
+     * `tsc` output that discovery leaves out beside its source
+     * (`main.js` beside `main.ts`) stands for that source. A URL's `..` is
+     * applied first, so it cannot climb out of a mapped folder.
      *
      * @param array<string, true> $files scanned project-relative paths
      * @param array<string, string> $webRoots URL prefix (`/static/`) => project folder (`web/public/`)
+     * @param array<string, list<string>> $compiled `tsc` output discovery left out => the sources it is built from
      */
-    public static function resolve(string $page, string $url, array $files, array $webRoots): string|HtmlScriptMiss|null
+    public static function resolve(string $page, string $url, array $files, array $webRoots, array $compiled = []): string|HtmlScriptMiss|null
     {
         $path = self::localPath($url);
         if ($path === null) {
             return null;
         }
         $pageFolder = ManifestPaths::manifestDirectory($page);
-        if (!str_starts_with($path, '/')) {
-            $candidate = self::normalise($pageFolder . '/' . $path);
-            if ($candidate === null) {
-                return new HtmlScriptMiss('outside');
-            }
-
-            return isset($files[$candidate]) ? $candidate : new HtmlScriptMiss('none', [$candidate]);
-        }
-        $mapped = self::mapped($path, $webRoots);
-        if ($mapped !== false) {
-            if ($mapped === null) {
-                return new HtmlScriptMiss('outside');
-            }
-
-            return isset($files[$mapped]) ? $mapped : new HtmlScriptMiss('mapped-missing', [$mapped]);
-        }
-        $relative = self::normalise($path);
+        $root = str_starts_with($path, '/');
+        // `..` is applied before anything else, so `/static/../x.js` is the
+        // root URL `/x.js` and no mapped folder can be climbed out of.
+        $relative = self::normalise($root ? $path : $pageFolder . '/' . $path);
         if ($relative === null) {
             return new HtmlScriptMiss('outside');
         }
+        if (!$root) {
+            return self::chosen(self::scanned($relative, $files, $compiled), 'none', [$relative]);
+        }
+        $mapped = self::mapped('/' . $relative, $webRoots);
+        if ($mapped === null) {
+            return new HtmlScriptMiss('outside');
+        }
+        if ($mapped !== false) {
+            return self::chosen(self::scanned($mapped, $files, $compiled), 'mapped-missing', [$mapped]);
+        }
         $candidates = self::heuristicCandidates($relative, $pageFolder);
-        $matches = array_values(array_filter($candidates, static fn(string $candidate): bool => isset($files[$candidate])));
+        $matches = [];
+        foreach ($candidates as $candidate) {
+            foreach (self::scanned($candidate, $files, $compiled) as $match) {
+                $matches[$match] = true;
+            }
+        }
+
+        return self::chosen(array_map(strval(...), array_keys($matches)), 'none', $candidates);
+    }
+
+    /**
+     * The scanned files a candidate path stands for: itself, or, for `tsc`
+     * output discovery dropped beside its source, that source.
+     *
+     * @param array<string, true> $files
+     * @param array<string, list<string>> $compiled
+     * @return list<string>
+     */
+    private static function scanned(string $candidate, array $files, array $compiled): array
+    {
+        if (isset($files[$candidate])) {
+            return [$candidate];
+        }
+
+        return array_values(array_filter($compiled[$candidate] ?? [], static fn(string $source): bool => isset($files[$source])));
+    }
+
+    /**
+     * The one match, or a miss: ambiguous for several, `$reason` for none.
+     *
+     * @param list<string> $matches
+     * @param list<string> $tried
+     */
+    private static function chosen(array $matches, string $reason, array $tried): string|HtmlScriptMiss
+    {
         if (count($matches) === 1) {
             return $matches[0];
         }
         sort($matches, SORT_STRING);
 
-        return $matches === [] ? new HtmlScriptMiss('none', $candidates) : new HtmlScriptMiss('ambiguous', $matches);
+        return $matches === [] ? new HtmlScriptMiss($reason, $tried) : new HtmlScriptMiss('ambiguous', $matches);
     }
 
     /**
@@ -125,19 +163,17 @@ final class HtmlScriptResolver
      */
     private static function heuristicCandidates(string $relative, string $pageFolder): array
     {
-        $roots = [];
+        $candidates = [ManifestPaths::joinPath($pageFolder, $relative) => true];
+        $slash = strpos($relative, '/');
+        if ($slash !== false) {
+            $candidates[ManifestPaths::joinPath($pageFolder, substr($relative, $slash + 1))] = true;
+        }
         for ($folder = $pageFolder; ; $folder = ManifestPaths::manifestDirectory($folder)) {
-            array_push($roots, $folder, ManifestPaths::joinPath($folder, 'public'), ManifestPaths::joinPath($folder, 'static'));
+            foreach ([$folder, ManifestPaths::joinPath($folder, 'public'), ManifestPaths::joinPath($folder, 'static')] as $root) {
+                $candidates[ManifestPaths::joinPath($root, $relative)] = true;
+            }
             if ($folder === '') {
                 break;
-            }
-        }
-        $slash = strpos($relative, '/');
-        $readings = $slash === false ? [$relative] : [$relative, substr($relative, $slash + 1)];
-        $candidates = [];
-        foreach ($roots as $root) {
-            foreach ($readings as $reading) {
-                $candidates[ManifestPaths::joinPath($root, $reading)] = true;
             }
         }
 

@@ -23,16 +23,17 @@ final class EntryPointResolver
      * @param list<DiscoveredFile> $files sorted by path
      * @param array<string, string> $webRoots URL prefix => project folder, from `knossos.json`
      * @param list<DiscoveryDiagnostic> $diagnostics appended to with the script references no single file answers to
+     * @param array<string, list<string>> $compiled `tsc` output discovery left out beside its source => the sources it is built from
      * @return list<ProjectUnit>
      */
-    public static function resolve(array $units, array $files, array $webRoots = [], array &$diagnostics = []): array
+    public static function resolve(array $units, array $files, array $webRoots = [], array &$diagnostics = [], array $compiled = []): array
     {
         $units = self::withBuildOutputSources($units);
         $units = self::withClassNameEntryPoints($units);
         $units = self::withLoadedDirectoryEntryPoints($units, $files);
         $units = self::withGlobEntryPoints($units, $files);
 
-        return self::withHtmlScriptEntryPoints($units, $files, $webRoots, $diagnostics);
+        return self::withHtmlScriptEntryPoints($units, $files, $webRoots, $diagnostics, $compiled);
     }
 
     /**
@@ -49,9 +50,10 @@ final class EntryPointResolver
      * @param list<DiscoveredFile> $files
      * @param array<string, string> $webRoots
      * @param list<DiscoveryDiagnostic> $diagnostics
+     * @param array<string, list<string>> $compiled
      * @return list<ProjectUnit>
      */
-    private static function withHtmlScriptEntryPoints(array $units, array $files, array $webRoots, array &$diagnostics): array
+    private static function withHtmlScriptEntryPoints(array $units, array $files, array $webRoots, array &$diagnostics, array $compiled): array
     {
         $scanned = [];
         foreach ($files as $file) {
@@ -69,7 +71,7 @@ final class EntryPointResolver
                 if (!is_array($ref) || !is_string($ref['url'] ?? null) || !is_int($ref['line'] ?? null)) {
                     continue;
                 }
-                $result = HtmlScriptResolver::resolve($unit->configPath, $ref['url'], $scanned, $webRoots);
+                $result = HtmlScriptResolver::resolve($unit->configPath, $ref['url'], $scanned, $webRoots, $compiled);
                 if (is_string($result)) {
                     $paths[$result] = true;
                 } elseif ($result !== null) {
