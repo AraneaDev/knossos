@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.1](https://github.com/AraneaDev/knossos/compare/v0.32.0...v0.32.1) (2026-10-18)
+
+
+### Fixes
+
+* show a spinner while the pane reads the graph, not an error during a cold start ([#359](https://github.com/AraneaDev/knossos/issues/359)) ([2b70014](https://github.com/AraneaDev/knossos/commit/2b70014de157ba9c0c33c407dfd91fd5c0f1bf86))
+
 ## [0.32.0](https://github.com/AraneaDev/knossos/compare/v0.31.0...v0.32.0) (2026-10-17)
 
 
