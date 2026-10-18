@@ -269,7 +269,11 @@ Each reference then has to name exactly one scanned file:
   `web/public/app.mjs` when a server mounts that folder at `/static/`.
 
 A file found this way is classified `application.entry_point` with the page as
-`named_by`, so it and everything only it reaches stop being candidates. When no
+`named_by`, so it and everything only it reaches stop being candidates. A
+module that file loads with ``import(`./draw.mjs${query}`)`` is reached too:
+the TypeScript worker follows a template literal by its text before the first
+`${` when that text ends in a file name, and leaves `` `./${name}.mjs` ``
+unresolved. When no
 file matches, or more than one does, nothing is guessed: the reference adds no
 entry point and the scan reports a warning naming the page, the line, the URL
 and the reason, with code `DISCOVERY_HTML_SCRIPT_UNRESOLVED` or

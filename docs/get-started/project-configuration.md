@@ -209,7 +209,7 @@ so `/static/app.mjs` names `web/public/app.mjs`. When two keys match, the
 longer one wins. A mapped URL whose file is not in the scan is reported as a
 warning; it is never looked for anywhere else.
 
-`web_roots` is new in Knossos 0.34.0. An older Knossos rejects a configuration
+`web_roots` is new in Knossos 0.33.0. An older Knossos rejects a configuration
 that uses it with `PROJECT_CONFIG_UNKNOWN_KEY`.
 
 ## Precedence
