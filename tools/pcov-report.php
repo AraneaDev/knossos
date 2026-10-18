@@ -160,6 +160,9 @@ foreach ($components as $component => [$componentCovered, $componentExecutable])
     printf("PHP component %-24s %6.2f%% (%d/%d), floor %.2f%% %s\n", $component, $componentPercent, $componentCovered, $componentExecutable, $floor, $passed ? 'PASS' : 'FAIL');
     $componentSummary[$component] = ['covered' => $componentCovered, 'valid' => $componentExecutable, 'percent' => round($componentPercent, 2), 'floor' => $floor, 'passed' => $passed];
 }
+$aggregateFloor = (float) $budgets['php']['aggregate_lines'];
+$aggregatePassed = $percent >= $aggregateFloor;
+printf("PHP aggregate %.2f%%, floor %.2f%% %s\n", $percent, $aggregateFloor, $aggregatePassed ? 'PASS' : 'FAIL');
 $summary = ['lines' => ['covered' => $covered, 'valid' => $executable, 'percent' => round($percent, 2)], 'components' => $componentSummary, 'files' => $files];
 file_put_contents($coverageDirectory . '/summary.json', json_encode($summary, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 
@@ -193,4 +196,4 @@ $xml .= sprintf(
     $covered,
 );
 file_put_contents($coverageDirectory . '/clover.xml', $xml);
-exit($percent >= (float) $budgets['php']['aggregate_lines'] && $componentPassed ? 0 : 1);
+exit($aggregatePassed && $componentPassed ? 0 : 1);

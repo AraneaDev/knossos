@@ -269,6 +269,35 @@ final class DocstringCoverageTest extends KnossosTestCase
         assertContains('min_docstring_coverage.overall is "100"; it must be a number.', $errors);
     }
 
+    /** With the method floors at 0, a class with no docblock fails the type floor alone. */
+    #[Group('documentation')]
+    public function testAClassWithoutADocblockFailsATypeFloorOf100(): void
+    {
+        $root = $this->fixtureTree();
+        file_put_contents($root . '/src/Bare.php', "<?php\nfinal class Bare\n{\n}\n");
+        $budgets = $this->budgetFile($root, ['min_docstring_coverage' => ['src' => 0, 'overall' => 0], 'min_type_docblock_coverage' => 100]);
+
+        [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('docstring-report.php'), '--root=' . $root, '--budgets=' . $budgets]);
+
+        assertSame(1, $exit, $errors);
+        assertContains('type docblock coverage is 50.00% (1/2); floor is 100.00%.', $errors);
+        assertSame(false, str_contains($errors, 'docstring coverage for'));
+    }
+
+    /** With the area floor at 0, the overall floor alone refuses the tree. */
+    #[Group('documentation')]
+    public function testTheOverallFloorActsOnItsOwn(): void
+    {
+        $root = $this->fixtureTree();
+        $budgets = $this->budgetFile($root, ['min_docstring_coverage' => ['src' => 0, 'overall' => 100], 'min_type_docblock_coverage' => 100]);
+
+        [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('docstring-report.php'), '--root=' . $root, '--budgets=' . $budgets]);
+
+        assertSame(1, $exit, $errors);
+        assertContains('docstring coverage overall is 50.00%; floor is 100.00%.', $errors);
+        assertSame(false, str_contains($errors, 'docstring coverage for'));
+    }
+
     /** A tree whose only area is src: one documented class with one documented and one bare public method. */
     private function fixtureTree(): string
     {

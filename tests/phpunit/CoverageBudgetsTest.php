@@ -201,6 +201,33 @@ final class CoverageBudgetsTest extends KnossosTestCase
         assertSame(true, is_file($root . '/coverage/php/summary.json'));
     }
 
+    /** The same tree under a component floor it does not meet is refused, so the pass above is the floor's doing. */
+    public function testPcovReportFailsAComponentBelowItsFloor(): void
+    {
+        $budgets = self::VALID;
+        $budgets['php']['components']['transport'] = 100;
+
+        [$exit, $output, $errors] = $this->pcovReport($this->fixtureTree(), $this->writeBudgets($budgets));
+
+        assertSame(1, $exit, $output . $errors);
+        assertSame(1, preg_match('/^PHP component transport +50\.00% \(1\/2\), floor 100\.00% FAIL$/m', $output), $output);
+        assertSame(1, preg_match('/^PHP component storage .* PASS$/m', $output), $output);
+    }
+
+    /** With every component floor at 0, the aggregate floor alone refuses the run. */
+    public function testPcovReportFailsAnAggregateBelowItsFloor(): void
+    {
+        $budgets = self::VALID;
+        $budgets['php']['aggregate_lines'] = 100;
+        $budgets['php']['components'] = ['storage' => 0, 'transport' => 0];
+
+        [$exit, $output, $errors] = $this->pcovReport($this->fixtureTree(), $this->writeBudgets($budgets));
+
+        assertSame(1, $exit, $output . $errors);
+        assertContains("PHP aggregate 50.00%, floor 100.00% FAIL\n", $output);
+        assertSame(0, preg_match('/^PHP component .* FAIL$/m', $output), $output);
+    }
+
     public function testPcovReportRefusesAMeasuredComponentWithoutAFloor(): void
     {
         $budgets = self::VALID;

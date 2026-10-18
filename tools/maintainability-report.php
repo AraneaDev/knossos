@@ -6,10 +6,12 @@ declare(strict_types=1);
  * The maintainability budgets: duplicate blocks across files, the most complex
  * and the longest PHP function, and the widest dependency fan-out.
  *
- *   php tools/maintainability-report.php [--root=DIR] [--budgets=FILE]
+ *   php tools/maintainability-report.php [--root=DIR] [--budgets=FILE] [--report=FILE]
  *
  * --root is the tree measured, this checkout when it is not given; --budgets
- * the limits, the root's maintainability-budgets.json when it is not given. A limit that is missing or not a number at least 0 is refused with
+ * the limits, the root's maintainability-budgets.json when it is not given;
+ * --report where the JSON report goes, the root's
+ * coverage/quality/maintainability.json when it is not given. A limit that is missing or not a number at least 0 is refused with
  * exit 1 before anything is measured: compared as it was, a missing limit
  * failed with a budget printed as 0, and a quoted one was cast.
  */
@@ -21,17 +23,21 @@ const MAINTAINABILITY_METRICS = ['cross_file_duplicate_blocks', 'max_php_functio
 
 $root = dirname(__DIR__);
 $budgetPath = null;
+$reportPath = null;
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
         $root = rtrim(substr($argument, strlen('--root=')), '/');
     } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
         $budgetPath = substr($argument, strlen('--budgets='));
+    } elseif (str_starts_with($argument, '--report=') && $argument !== '--report=') {
+        $reportPath = substr($argument, strlen('--report='));
     } else {
-        fwrite(STDERR, "usage: php tools/maintainability-report.php [--root=DIR] [--budgets=FILE]\n");
+        fwrite(STDERR, "usage: php tools/maintainability-report.php [--root=DIR] [--budgets=FILE] [--report=FILE]\n");
         exit(2);
     }
 }
 $budgetPath ??= $root . '/maintainability-budgets.json';
+$reportPath ??= $root . '/coverage/quality/maintainability.json';
 [$budgets, $budgetErrors] = readBudgetFile($budgetPath);
 foreach ($budgets === null ? [] : MAINTAINABILITY_METRICS as $metric) {
     $error = budgetNumberError($metric, $budgets[$metric] ?? null, 0.0);
@@ -45,7 +51,6 @@ if ($budgetErrors !== []) {
     }
     exit(1);
 }
-$reportPath = $root . '/coverage/quality/maintainability.json';
 $patterns = [$root . '/src/*.php', $root . '/src/*/*.php', $root . '/src/*/*/*.php', $root . '/workers/php/src/*.php', $root . '/workers/php/src/*/*.php', $root . '/workers/typescript/src/*.js', $root . '/workers/python/bin/*.py', $root . '/workers/python/bin/knossos_python/*.py'];
 $paths = [];
 foreach ($patterns as $pattern) {

@@ -38,6 +38,8 @@ final class MaintainabilityBudgetTest extends KnossosTestCase
 
         assertSame(0, $exit, $errors);
         assertContains('Maintainability report:', $output);
+        $report = json_decode((string) file_get_contents($this->directory . '/maintainability.json'), true, 512, JSON_THROW_ON_ERROR);
+        assertSame(1, $report['schema_version']);
     }
 
     /** @return iterable<string, array{string}> */
@@ -84,7 +86,7 @@ final class MaintainabilityBudgetTest extends KnossosTestCase
         assertContains('max_php_function_lines is "205"; it must be a number.', $errors);
     }
 
-    public function testItTakesOnlyABudgetsOption(): void
+    public function testItTakesOnlyItsOwnOptions(): void
     {
         [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('maintainability-report.php'), '--budget=x']);
 
@@ -112,6 +114,8 @@ final class MaintainabilityBudgetTest extends KnossosTestCase
     {
         return $this->runFixtureCommandOutput([
             PHP_BINARY, self::guardTool('maintainability-report.php'), '--root=' . self::repositoryRoot(), '--budgets=' . $budgets,
+            // Written beside the budgets, so a test run leaves the checkout's report alone.
+            '--report=' . $this->directory . '/maintainability.json',
         ]);
     }
 }

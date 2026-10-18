@@ -50,6 +50,9 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame(0, $exit, $output . $errors);
         assertContains('tiny: cold=', $output);
         assertSame(true, $this->report()['passed']);
+        // Where /proc exists, peak memory is read from it and a 0 would be refused;
+        // only a system without it may say the peak was not measured.
+        assertSame(!is_dir('/proc/self'), str_contains($errors, 'peak_rss_mb NOT measured'), $errors);
     }
 
     /** The same run against a limit of 0 is refused, so the pass above is the limits' doing. */

@@ -375,7 +375,8 @@ docstring report measures needs its own floor. A missing or quoted limit stops
 the lane with exit 1 and names the key, rather than being read as 0 or skipped.
 `php tools/maintainability-report.php` and `php tools/docstring-report.php`
 both take `--root=DIR` and `--budgets=FILE`, which is how their tests plant a
-violation without touching the checked-in file.
+violation without touching the checked-in file. The maintainability report also
+takes `--report=FILE`, so its tests write their JSON outside the checkout.
 
 The TypeScript/JavaScript and Python limits sit in the linters' own
 configuration and fail there: ESLint holds function complexity to 29 and function
