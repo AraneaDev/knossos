@@ -90,11 +90,23 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         self::assertStringNotContainsString('head_ref, \'release-please', $quality);
 
         $decide = self::job($quality, 'release-pr');
-        self::assertStringContainsString('tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO"', $decide);
         self::assertStringContainsString('HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}', $decide);
-        self::assertStringContainsString('gh pr diff "$PR"', $decide);
-        self::assertStringContainsString('pull-requests: read', $decide);
+        self::assertStringContainsString('LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}', $decide);
         self::assertStringNotContainsString('write', $decide, 'Deciding reads the pull request and writes nothing.');
+
+        // The script and its config come from the base commit, never from the
+        // pull request being judged.
+        self::assertStringContainsString("ref: \${{ github.event.pull_request.base.sha }}\n          path: .base\n", $decide);
+        self::assertStringContainsString('BASE_SHA: ${{ github.event.pull_request.base.sha }}', $decide);
+        self::assertStringContainsString('sh .base/tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO"', $decide);
+        self::assertStringContainsString('--config .base/release-please-config.json', $decide);
+        self::assertSame(1, preg_match_all('#tools/ci/release-pr --#', $decide), 'Only the base copy runs.');
+        self::assertStringContainsString('if [ ! -f .base/tools/ci/release-pr ]; then', $decide);
+
+        // The diff judged is the merge commit the lanes test, against the base.
+        self::assertStringContainsString('git diff --no-ext-diff --no-renames --name-only "$BASE_SHA" HEAD > "$dir/files"', $decide);
+        self::assertStringContainsString('git diff --no-ext-diff --no-renames --unified=10 "$BASE_SHA" HEAD > "$dir/diff"', $decide);
+        self::assertStringNotContainsString('gh pr', $decide);
 
         $verdict = "needs.release-pr.outputs.release == 'true'";
         $notRelease = "needs.release-pr.outputs.release != 'true'";
@@ -114,9 +126,19 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         $job = self::job((string) file_get_contents(self::repositoryRoot() . '/.github/workflows/quality.yml'), 'quality');
 
         self::assertStringContainsString('RELEASE_PR: ${{ needs.release-pr.outputs.release }}', $job);
-        self::assertStringContainsString('tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE" --release-pr', $job);
-        self::assertStringContainsString('tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE"' . "\n", $job);
+        self::assertStringContainsString('sh "$verdict" "$LANES" "$SHARDS" "$MERGE" --release-pr', $job);
+        self::assertStringContainsString('sh "$verdict" "$LANES" "$SHARDS" "$MERGE"' . "\n", $job);
         self::assertStringNotContainsString('expected=', $job, 'The rule lives in tools/ci/quality-verdict.');
+
+        // On a pull request the base commit's copy decides; without one, only
+        // all three results success pass.
+        self::assertStringContainsString("ref: \${{ github.event.pull_request.base.sha }}\n          path: .base\n", $job);
+        self::assertStringContainsString('verdict=.base/tools/ci/quality-verdict', $job);
+        self::assertStringContainsString("[ \"\$LANES \$SHARDS \$MERGE\" = 'success success success' ]\n              exit\n", $job);
+
+        // The pre-check that depends on no script: exactly these three shapes.
+        self::assertStringContainsString("case \"\$RELEASE_PR|\$LANES \$SHARDS \$MERGE\" in\n            'true|success skipped skipped' | 'false|success success success' | '|success success success') ;;\n            *)\n", $job);
+        self::assertLessThan(strpos($job, 'verdict=tools/ci/quality-verdict'), strpos($job, 'case "$RELEASE_PR|'), 'The pre-check runs before any script.');
         self::assertFileExists(self::repositoryRoot() . '/tools/ci/quality-verdict');
         self::assertFileExists(self::repositoryRoot() . '/tools/ci/release-pr');
     }
@@ -154,7 +176,7 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         self::assertStringContainsString('GATE: ${{ job.status }}', $step);
         self::assertStringContainsString('tools/ci/release-rollback --release-created "$CREATED" --gate-result "$GATE"', $step);
         self::assertStringNotContainsString('--dry-run', $step);
-        self::assertStringNotContainsString('labels', $workflow, 'Relabelling lives in tools/ci/release-rollback.');
+        self::assertStringNotContainsString('labels', $step, 'Relabelling lives in tools/ci/release-rollback.');
         self::assertFileExists(self::repositoryRoot() . '/tools/ci/release-rollback');
     }
 

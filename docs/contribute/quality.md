@@ -166,7 +166,11 @@ opens it with a personal token, and anyone can push a branch of that shape. It
 must come from this repository, carry the `autorelease: pending` label, change
 only the manifest, `CHANGELOG.md`, `version.txt` and the extra-files in
 `release-please-config.json`, and change nothing in those extra-files but the
-version. Anything else runs every lane.
+version, on lines release-please's `x-release-please-version` markers allow.
+Anything else runs every lane. The diff it judges is the merge commit the
+lanes test against its base, and on a pull request both `tools/ci/release-pr`
+and `tools/ci/quality-verdict` run from the base commit, so a pull request
+cannot pass with a broken copy of either.
 
 Pull request titles are checked by the `pr-title` workflow with
 `tools/check-commit-style.sh`, the same script the `commit-msg` hook uses,

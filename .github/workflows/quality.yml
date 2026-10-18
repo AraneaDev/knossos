@@ -159,12 +159,21 @@ jobs:
   # pull request that runs `static` alone and no coverage jobs (see the lane
   # matrix for why that is safe). tools/ci/release-pr decides it from what the
   # pull request is: from this repository, labelled `autorelease: pending`,
-  # changing only the files release-please writes, and only the version in
-  # them. Its author and its branch name decide nothing, because release-please
-  # opens it as a person and anyone can push a branch of that shape.
+  # changing only the files release-please writes, and only the version lines
+  # release-please's markers allow. Its author and its branch name decide
+  # nothing, because release-please opens it as a person and anyone can push a
+  # branch of that shape.
   #
-  # Every way this can go wrong runs more, never less: a push or a pull request
-  # it cannot read is not a release pull request, and if this job fails the
+  # The diff judged is the one the lanes test: the checked-out merge commit
+  # against the base commit, computed here with git, not fetched from the API
+  # later. The script and the config it reads come from the base commit, so a
+  # pull request that breaks tools/ci/release-pr cannot use the broken copy to
+  # skip the lane that runs its tests. A base without the script (the pull
+  # request that adds it) gives an ordinary pull request. Labels come from the
+  # event.
+  #
+  # Every way this can go wrong runs more, never less: a pull request it
+  # cannot read is not a release pull request, and if this job fails the
   # lanes are skipped and `quality` fails. release-please labels its pull
   # request just after opening it, so the run for `opened` can miss the label
   # and run every lane; the next push to the branch is judged again.
@@ -174,7 +183,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read
     outputs:
       release: ${{ steps.decide.outputs.release }}
     steps:
@@ -182,28 +190,36 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           persist-credentials: false
-      # A diff GitHub will not serve (too large) or any other failed read is
-      # an ordinary pull request: the cost is a full run. Only a wrong call of
-      # the script itself (exit 2) fails the job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .base
+          persist-credentials: false
+      # Wide context, so a version line's start marker is inside its hunk.
+      # Only a wrong call of the script itself (exit 2) fails the job.
       - name: Decide whether this is release-please's pull request
         id: decide
         if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          dir=$(mktemp -d)
-          if ! { gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' > "$dir/labels" &&
-            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json files --jq '.files[].path' > "$dir/files" &&
-            gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" > "$dir/diff"; }; then
-            echo '::notice::Could not read the pull request; treating it as an ordinary one.'
+          if [ ! -f .base/tools/ci/release-pr ]; then
+            echo '::notice::The base commit has no tools/ci/release-pr; treating this as an ordinary pull request.'
             echo 'release=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          dir=$(mktemp -d)
+          git fetch --quiet --no-tags --depth=1 .base HEAD
+          printf '%s' "$LABELS" | jq -r '.[]' > "$dir/labels"
+          git diff --no-ext-diff --no-renames --name-only "$BASE_SHA" HEAD > "$dir/files"
+          git diff --no-ext-diff --no-renames --unified=10 "$BASE_SHA" HEAD > "$dir/diff"
           status=0
-          tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
-            --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" || status=$?
+          sh .base/tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
+            --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" \
+            --config .base/release-please-config.json || status=$?
           case "$status" in
             0) echo 'release=true' >> "$GITHUB_OUTPUT" ;;
             1) echo 'release=false' >> "$GITHUB_OUTPUT" ;;
@@ -467,7 +483,11 @@ jobs:
   # so a green `quality` still means everything ran and passed. The one
   # expected skip is a release-please pull request's coverage jobs, and only
   # when the release-pr job said it is one. tools/ci/quality-verdict holds the
-  # rule, so its tests can plant each skipped, cancelled or failed result.
+  # rule, so its tests can plant each skipped, cancelled or failed result. On
+  # a pull request the base commit's copy runs, so a pull request cannot pass
+  # this check with a broken verdict of its own; a base without the script
+  # gets a strict inline compare. The inline pre-check before it depends on
+  # no script at all.
   quality:
     needs: [release-pr, lane, coverage-shard, coverage]
     if: always() && github.event_name != 'schedule'
@@ -481,17 +501,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .base
+          persist-credentials: false
       - name: Require every lane, shard and the merge to have passed
         env:
           LANES: ${{ needs.lane.result }}
           SHARDS: ${{ needs.coverage-shard.result }}
           MERGE: ${{ needs.coverage.result }}
           RELEASE_PR: ${{ needs.release-pr.outputs.release }}
+          EVENT: ${{ github.event_name }}
         run: |
+          case "$RELEASE_PR|$LANES $SHARDS $MERGE" in
+            'true|success skipped skipped' | 'false|success success success' | '|success success success') ;;
+            *)
+              echo "::error::lanes, shards and merge: $LANES $SHARDS $MERGE (release pull request: ${RELEASE_PR:-no})"
+              exit 1
+              ;;
+          esac
+          verdict=tools/ci/quality-verdict
+          if [ "$EVENT" = pull_request ]; then
+            verdict=.base/tools/ci/quality-verdict
+            if [ ! -f "$verdict" ]; then
+              echo 'The base commit has no tools/ci/quality-verdict; requiring every result to be success.'
+              [ "$LANES $SHARDS $MERGE" = 'success success success' ]
+              exit
+            fi
+          fi
           if [ "$RELEASE_PR" = 'true' ]; then
-            tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE" --release-pr
+            sh "$verdict" "$LANES" "$SHARDS" "$MERGE" --release-pr
           else
-            tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE"
+            sh "$verdict" "$LANES" "$SHARDS" "$MERGE"
           fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: github.ref == 'refs/heads/main'
