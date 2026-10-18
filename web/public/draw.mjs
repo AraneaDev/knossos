@@ -12,8 +12,8 @@
  * as its lines, each numbered in a gutter.
  *
  * The rows are drawn one by one, keyed (`data-key`), so the page can replace
- * only those that changed ({@link patchPlan}), and a card is placed by
- * {@link cardPlace}.
+ * only those that changed ({@link patchPlan}), and a card carries the cell the
+ * frame placed it in ({@link cardOffset}).
  */
 
 const ESCAPES = {
@@ -106,7 +106,7 @@ export const drawCards = (rows) =>
             .filter((s) => s.card !== undefined)
             .map(({ card }) => ({
                 key: card.key,
-                html: `<div class="card" data-card="${escapeHtml(card.key)}"${styleOf({}, { width: `${card.width}ch` })}>${card.lines.map((line) => `<div class="line">${escapeHtml(line)}</div>`).join("")}</div>`,
+                html: `<div class="card" data-card="${escapeHtml(card.key)}" data-at="${card.at.row},${card.at.column}" data-place="${card.place.row},${card.place.column}"${styleOf({}, { width: `${card.width}ch` })}>${card.lines.map((line) => `<div class="line">${escapeHtml(line)}</div>`).join("")}</div>`,
             })),
     );
 
@@ -126,16 +126,16 @@ export function patchPlan(old, next) {
 }
 
 /**
- * Where a card goes for a segment at `anchor` (its box on the page): under
- * it, or over it when the window below cannot hold the card and the window
- * above can; never past the window's right edge. As Claude Code places one.
+ * Where a card goes on the page: the frame placed it in cells (`data.place`,
+ * from the cell its segment is in, `data.at`, both `row,column`), so the page only turns the
+ * distance between the two into pixels from the segment's own box.
  */
-export function cardPlace(anchor, size, view) {
-    const below =
-        anchor.bottom + size.height <= view.height || anchor.top < size.height;
+export function cardOffset(anchor, data, cell) {
+    const [atRow, atColumn] = data.at.split(",").map(Number);
+    const [row, column] = data.place.split(",").map(Number);
     return {
-        top: below ? anchor.bottom : anchor.top - size.height,
-        left: Math.max(0, Math.min(anchor.left, view.width - size.width)),
+        top: anchor.top + (row - atRow) * cell.height,
+        left: anchor.left + (column - atColumn) * cell.width,
     };
 }
 

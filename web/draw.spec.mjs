@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-    cardPlace,
+    cardOffset,
     drawCards,
     drawFrame,
     drawRows,
@@ -155,6 +155,8 @@ describe("cards", () => {
                         key: "card-0",
                         width: 30,
                         lines: ["Router", "12 dependents"],
+                        at: { row: 0, column: 0 },
+                        place: { row: 1, column: 0 },
                     },
                 }),
             ],
@@ -169,7 +171,7 @@ describe("cards", () => {
         expect(drawCards(rows)).toEqual([
             {
                 key: "card-0",
-                html: '<div class="card" data-card="card-0" style="width:30ch"><div class="line">Router</div><div class="line">12 dependents</div></div>',
+                html: '<div class="card" data-card="card-0" data-at="0,0" data-place="1,0" style="width:30ch"><div class="line">Router</div><div class="line">12 dependents</div></div>',
             },
         ]);
         const html = drawFrame(frameOf(rows));
@@ -178,23 +180,32 @@ describe("cards", () => {
         );
     });
 
-    it("places a card under its segment, over it when the window below cannot hold it, never past the right edge", () => {
-        const view = { width: 800, height: 600 };
-        const size = { width: 200, height: 100 };
+    it("carries the cell the frame placed a card in, and turns the distance from its segment into pixels", () => {
+        const html = drawCards([
+            {
+                key: "hub-0",
+                segments: [
+                    seg("Router", {
+                        card: {
+                            key: "card-0",
+                            width: 30,
+                            lines: ["Router"],
+                            at: { row: 9, column: 4 },
+                            place: { row: 7, column: 2 },
+                        },
+                    }),
+                ],
+            },
+        ])[0].html;
+        expect(html).toContain('data-at="9,4" data-place="7,2"');
+        // Two rows up and two columns left of the segment's own box.
         expect(
-            cardPlace({ top: 40, bottom: 58, left: 100 }, size, view),
-        ).toEqual({ top: 58, left: 100 });
-        expect(
-            cardPlace({ top: 560, bottom: 578, left: 700 }, size, view),
-        ).toEqual({ top: 460, left: 600 });
-        // Too tall for either side: under it, from the top.
-        expect(
-            cardPlace(
-                { top: 40, bottom: 58, left: 0 },
-                { width: 10, height: 590 },
-                view,
+            cardOffset(
+                { top: 200, left: 100 },
+                { at: "9,4", place: "7,2" },
+                { width: 8, height: 18 },
             ),
-        ).toEqual({ top: 58, left: 0 });
+        ).toEqual({ top: 164, left: 84 });
     });
 });
 

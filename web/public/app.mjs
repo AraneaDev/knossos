@@ -352,10 +352,10 @@ function paneView(root, { token, draw: drawn }) {
         );
         if (card === null) return;
         card.classList.add("shown");
-        const place = drawn.cardPlace(
+        const place = drawn.cardOffset(
             hovered.anchor.getBoundingClientRect(),
-            { width: card.offsetWidth, height: card.offsetHeight },
-            { width: window.innerWidth, height: window.innerHeight },
+            card.dataset,
+            cell,
         );
         card.style.top = `${place.top}px`;
         card.style.left = `${place.left}px`;

@@ -13,7 +13,7 @@ import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
 import type { Port } from './port'
-import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
+import { cardPlace, fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import type { Handlers } from './input'
 import { fieldKey, mod } from './state'
 
@@ -225,13 +225,6 @@ export function drawnText(tree: unknown): number {
 /** The most hover cards a pane hangs: those on the rows nearest the marked one. */
 const CARDS_MAX = 8
 
-/** A hover card where the pointer can reach it: under its row, or over it when the rows below cannot hold it; never past the right edge. */
-function cardPlace(row: number, rows: number, x: number, preview: Preview, columns: number): { top: number; left: number } {
-  const height = preview.rows.length
-  const below = row + 1 + height <= rows || row < height
-  return { top: below ? row + 1 : row - height, left: Math.max(0, Math.min(x, columns - preview.width)) }
-}
-
 /**
  * The hover cards the rows hang, drawn out of the flow over the rows below
  * their own (`position: absolute`), hidden until the pointer rests on a
@@ -253,10 +246,10 @@ function drawCards(ui: Elements[RenderSurface], rows: Row[], columns: number) {
     for (const s of row.segments) {
       const preview = s.preview
       if (preview !== undefined) {
-        const place = cardPlace(y, rows.length, x, preview, columns)
+        const place = cardPlace(y, x, { rows: preview.rows.length, columns: preview.width }, { rows: rows.length, columns })
         const width = Math.min(preview.width, columns)
         cards.push(
-          <Box key={preview.key} position="absolute" top={place.top} left={place.left} width={width} height={preview.rows.length} display="none" backgroundColor={CARD_BG} hover={{ scope: scopeOf(preview), display: 'flex' }}>
+          <Box key={preview.key} position="absolute" top={place.row} left={place.column} width={width} height={preview.rows.length} display="none" backgroundColor={CARD_BG} hover={{ scope: scopeOf(preview), display: 'flex' }}>
             <Text wrap="truncate-end">{preview.rows.map(line => line.segments.map(c => c.text).join('')).join('\n')}</Text>
           </Box>,
         )
