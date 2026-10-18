@@ -8,7 +8,7 @@ import {
 } from "./fixtures/helpers";
 import { Hub } from "./hub";
 import { webPort } from "./port";
-import { drawFrame } from "./public/draw.mjs";
+import { drawCards, drawRows } from "./public/draw.mjs";
 
 // The shared layout, made to return whatever a spec gives it: a card or row no web code has heard of.
 const laid = vi.hoisted(() => ({ next: null }));
@@ -79,7 +79,14 @@ describe("the web host draws whatever the shared layout lays out", () => {
         await vi.waitFor(() => expect(frames).toHaveLength(1));
         const [frame] = frames;
         expect(frame.body.map((row) => row.key)).toEqual(["orbit-head"]);
-        const html = drawFrame(frame);
+        // What the page puts in its body, footer and cards containers.
+        const html = [
+            ...drawRows(frame.body),
+            ...drawRows(frame.footer),
+            ...drawCards([...frame.body, ...frame.footer]),
+        ]
+            .map((entry) => entry.html)
+            .join("");
         expect(html).toContain('data-key="orbit-head"');
         expect(html).toMatch(/font-weight:bold">Orbit</);
         expect(html).toContain(
