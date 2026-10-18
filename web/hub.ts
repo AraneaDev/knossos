@@ -14,6 +14,8 @@ import type { WebTheme } from '../hooks/lib/themes'
 import { noteSpinners, paneSource, spunRow } from '../hooks/mod/frame'
 import type { Port } from '../hooks/mod/port'
 import { mod } from '../hooks/mod/state'
+import { pageRow } from './page-rows'
+import type { Colour, PageRow } from './page-rows'
 
 /** The least time between two frames to one page. */
 export const FRAME_MS = 50
@@ -21,38 +23,27 @@ export const FRAME_MS = 50
 export type Size = { columns: number; rows: number }
 /** An event for a page: a frame, or what the port passes on (a toast, a copy, a focus or scroll request). */
 export type PageEvent = { type: string; [field: string]: unknown }
-/** What a page draws: the pane's rows, whether the footer stays pinned, and the colour of every theme key the rows use (and of `card`, a hover card's ground). */
-export type Frame = { type: 'frame'; body: Row[]; footer: Row[]; pinned: boolean; theme: WebTheme; colours: Record<string, string> }
+/**
+ * What a page draws: the pane's rows ready to draw (see {@link pageRow}),
+ * whether the footer stays pinned, and the page's own colours: its ground
+ * and ink, a hover card's ground and a hotkey's accent, as Claude Code
+ * draws a Button's.
+ */
+export type Frame = { type: 'frame'; body: PageRow[]; footer: PageRow[]; pinned: boolean; theme: WebTheme; colours: Record<keyof typeof PAGE_KEYS, string> }
 
-/** Keys every frame resolves, whether its rows name them or not: the page's ground and default ink, dim text, a hotkey's accent, and the diff's two grounds. */
-const ALWAYS = ['ground', 'text', 'inactive', 'suggestion', 'diffAdded', 'diffRemoved', CARD_BG]
+/** The page's own colours, by what it names them: the theme key of each. */
+const PAGE_KEYS = { ground: 'ground', text: 'text', card: CARD_BG, suggestion: 'suggestion' } as const
 
 type Page = { size: Size; theme: WebTheme; send: (event: PageEvent) => void; rows: Row[]; last: number; timer: ReturnType<typeof setTimeout> | null; drawing: boolean; dirty: boolean }
 
-/** Every theme key `rows` colour something with, their hover cards' included. */
-function keysOf(rows: readonly Row[], into = new Set<string>(ALWAYS)): Set<string> {
-  for (const row of rows) {
-    if (row.tint !== undefined) into.add(row.tint)
-    for (const s of row.segments) {
-      for (const key of [s.color, s.bg, s.cell?.fg, s.cell?.bg]) if (key !== undefined) into.add(key)
-      if (s.preview !== undefined) keysOf(s.preview.rows, into)
-    }
-  }
-  return into
-}
-
-/** The colour of each key under `theme`: the shared table, or the raster's heat steps. */
-function coloursOf(keys: Set<string>, theme: WebTheme): Record<string, string> {
+/** The colour of a theme key under `theme`: the shared table, or the raster's heat steps. */
+function colourIn(theme: WebTheme): Colour {
   const grid = rasterTheme(theme)
-  const colours: Record<string, string> = {}
-  for (const key of keys) {
+  return key => {
+    if (key === undefined) return undefined
     const heat = (HEAT_KEYS as readonly string[]).includes(key) ? `#${grid[key]!.toString(16).padStart(6, '0')}` : undefined
-    const colour = themeColour(key, theme) ?? heat
-    if (colour !== undefined) colours[key] = colour
+    return themeColour(key, theme) ?? heat
   }
-  // A hover card's ground, under a name of its own: the page draws cards without knowing which key they use.
-  colours.card = colours[CARD_BG]!
-  return colours
 }
 
 export class Hub {
@@ -142,15 +133,15 @@ export class Hub {
     page.last = Date.now()
     try {
       // A layout that throws leaves the page on its last frame; the server's terminal is told why.
-      const frame = await (this.queue = this.queue
+      const drawn = await (this.queue = this.queue
         .then(() => this.frameOf(page))
         .catch((error: unknown) => {
           this.io?.ui.log(`knossos web: laying the pane out failed: ${error instanceof Error ? error.message : String(error)}`)
           return null
         }))
-      if (frame !== null && this.pages.get(id) === page) {
-        page.rows = frame.body
-        page.send(frame)
+      if (drawn !== null && this.pages.get(id) === page) {
+        page.rows = drawn.rows
+        page.send(drawn.frame)
       }
     } finally {
       page.drawing = false
@@ -158,16 +149,17 @@ export class Hub {
     }
   }
 
-  /** The pane for `page`, as drawPane lays it out for Claude Code: its source, its rows at the page's size, the spinners at their frame. */
-  private async frameOf(page: Page): Promise<Frame> {
+  /** The pane for `page`, as drawPane lays it out for Claude Code: its source, its rows at the page's size, the spinners at their frame; and the body's rows as laid out, for the wheel. */
+  private async frameOf(page: Page): Promise<{ rows: Row[]; frame: Frame }> {
     const io = this.io
     if (io === null) throw new Error('the hub has no port')
     const { columns, rows } = page.size
     const source = await paneSource(io, columns, false)
     const laid = source.kind === 'pane' ? paneLayout(source.input, columns, rows, 0) : { body: source.kind === 'empty' ? source.rows : [], footer: [], pinned: false }
     await noteSpinners(io, [...laid.body, ...laid.footer])
-    const body = laid.body.map(row => spunRow(row, mod.spinFrame))
-    const footer = laid.footer.map(row => spunRow(row, mod.spinFrame))
-    return { type: 'frame', body, footer, pinned: laid.pinned, theme: page.theme, colours: coloursOf(keysOf([...body, ...footer]), page.theme) }
+    const colour = colourIn(page.theme)
+    const ready = (row: Row) => pageRow(spunRow(row, mod.spinFrame), colour, columns)
+    const colours = Object.fromEntries(Object.entries(PAGE_KEYS).map(([name, key]) => [name, colour(key)!])) as Frame['colours']
+    return { rows: laid.body, frame: { type: 'frame', body: laid.body.map(ready), footer: laid.footer.map(ready), pinned: laid.pinned, theme: page.theme, colours } }
   }
 }

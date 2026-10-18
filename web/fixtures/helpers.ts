@@ -34,5 +34,5 @@ export const frameText = (frame: Frame): string => [...frame.body, ...frame.foot
 export const activeTab = (frame: Frame): string | undefined =>
   frame.body
     .flatMap(row => row.segments)
-    .find(s => s.press?.id.startsWith('tab:') === true && s.bg !== undefined)
+    .find(s => s.press?.id.startsWith('tab:') === true && s.look.background !== undefined)
     ?.press?.id.slice('tab:'.length)

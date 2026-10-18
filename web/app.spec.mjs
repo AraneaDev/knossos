@@ -5,6 +5,7 @@ import {
     pageId,
     pressOfKey,
     pressOrder,
+    releasedOn,
     retryDelay,
     wheelRows,
 } from "./public/app.mjs";
@@ -272,5 +273,12 @@ describe("the page's own", () => {
             by: -2,
             carry: -10,
         });
+    });
+
+    it("presses on release only over the press it went down on, whatever node draws it now", () => {
+        expect(releasedOn("tab:hubs", "tab:hubs")).toBe("tab:hubs");
+        expect(releasedOn("tab:hubs", "row:0")).toBeNull();
+        expect(releasedOn(null, "tab:hubs")).toBeNull();
+        expect(releasedOn(undefined, undefined)).toBeNull();
     });
 });

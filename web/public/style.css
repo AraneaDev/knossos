@@ -1,8 +1,8 @@
 /*
  * The page's layout: a monospace grid, one line per row, as wide as the
- * window. It states no colour: the ground and the default ink are the
- * frame's (--ground, --text), set by app.mjs, and every segment carries
- * its own.
+ * window. It states no colour: the ground, the default ink, a card's
+ * ground and a hotkey's accent are the frame's (--ground, --text, --card,
+ * --suggestion), set by app.mjs, and every segment carries its own.
  */
 :root {
     --line: 1.25;
@@ -45,14 +45,16 @@ body {
     flex: none;
 }
 
-.row {
+.row,
+.line {
     display: flex;
     height: calc(var(--line) * 1em);
     white-space: pre;
     overflow: hidden;
 }
 
-.row > * {
+.row > *,
+.line > * {
     flex: none;
 }
 
@@ -73,6 +75,10 @@ input:focus-visible {
     outline-offset: -1px;
 }
 
+.hot {
+    color: var(--suggestion);
+}
+
 button.dim .hot {
     opacity: 0.6;
 }
@@ -85,8 +91,8 @@ button.hidden {
     clip-path: inset(50%);
 }
 
+/* A field is as wide as its room, which the frame gives it (its inline width). */
 .row > input {
-    flex: 1 1 0;
     min-width: 1ch;
     font: inherit;
     color: inherit;
@@ -96,21 +102,16 @@ button.hidden {
     margin: 0;
 }
 
-/* A hover card: out of sight until the pointer rests on its segment, drawn over the rows below. */
-.hover {
-    position: relative;
-    flex: none;
-}
-
-.hover > .card {
+/* The hover cards: a layer over the pane, out of sight until the pointer rests on a card's segment; app.mjs places the card there. */
+#cards > .card {
     display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
+    position: fixed;
     z-index: 2;
+    background: var(--card);
+    pointer-events: none;
 }
 
-.hover:hover > .card {
+#cards > .card.shown {
     display: block;
 }
 

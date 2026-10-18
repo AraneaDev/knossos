@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { THEMES } from '../hooks/lib/themes'
 import { handlersOf } from '../hooks/mod/actions'
 import { mod, reset } from '../hooks/mod/state'
 import { activeTab, fixtureDashboard, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
@@ -74,12 +75,12 @@ describe('Hub', () => {
     await vi.waitFor(() => expect(dark).toHaveLength(1))
     const { frame } = dark[0]!
     expect(frame.theme).toBe('dark')
-    expect(frame.colours.text).toBe('#ffffff')
-    expect(frame.colours.diffAdded).toBe('#225c2b')
-    // The page's own ground and a hover card's, whatever the rows name.
-    expect(frame.colours.ground).toBe('#1e1e1e')
-    expect(frame.colours.card).toBe('#373737')
-    for (const value of Object.values(frame.colours)) expect(value).toMatch(/^#[0-9a-f]{6}$/)
+    // The page's own ink and ground, a hover card's and a hotkey's accent, whatever the rows name.
+    expect(frame.colours).toEqual({ ground: '#1e1e1e', text: '#ffffff', card: '#373737', suggestion: THEMES.dark.suggestion })
+    // Every segment's look comes resolved: no theme key reaches the page.
+    const looks = [...frame.body, ...frame.footer].flatMap(row => row.segments.flatMap(s => [s.look.color, s.look.background]))
+    expect(looks.filter(v => v !== undefined).length).toBeGreaterThan(0)
+    for (const value of looks) if (value !== undefined) expect(value).toMatch(/^#[0-9a-f]{6}$/)
     hub.setTheme('dark', 'light')
     await vi.waitFor(() => expect(dark.at(-1)!.frame.theme).toBe('light'))
     expect(dark.at(-1)!.frame.colours.text).toBe('#000000')
@@ -94,6 +95,8 @@ describe('Hub', () => {
     const { hub, io, page } = await loaded()
     const got = page('a', 100)
     await vi.waitFor(() => expect(got).toHaveLength(1))
+    const rows = hub.rowsOf('a')
+    expect(rows.length).toBeGreaterThan(0)
     const log = vi.spyOn(io.ui, 'log').mockImplementation(() => undefined)
     io.state.view.read = async () => {
       throw new Error('no view')
@@ -102,7 +105,7 @@ describe('Hub', () => {
     await vi.waitFor(() => expect(log).toHaveBeenCalledWith(expect.stringContaining('no view')))
     await new Promise(resolve => setTimeout(resolve, 80))
     expect(got).toHaveLength(1)
-    expect(hub.rowsOf('a')).toBe(got[0]!.frame.body)
+    expect(hub.rowsOf('a')).toBe(rows)
   })
 
   it('hands an event to every page', async () => {

@@ -73,6 +73,10 @@ export function wheelRows(carry, event, cellHeight) {
     return { by, carry: pixels - by * cellHeight };
 }
 
+/** The press a pointer press lands on: the press it went down on, when it came up on the same one (whatever node now draws it); null otherwise. */
+export const releasedOn = (down, up) =>
+    down !== null && down !== undefined && down === up ? down : null;
+
 /**
  * One page's connection to the pane: the event stream, opened again with
  * {@link retryDelay} after each loss (the first event back is the current
@@ -186,10 +190,10 @@ export async function start() {
     link("icon", withToken("icon.svg"));
     // The server makes the manifest: its addresses carry the token.
     link("manifest", `/manifest.webmanifest?t=${encodeURIComponent(token)}`);
-    const { drawFrame } = await import(`./draw.mjs${query}`);
+    const draw = await import(`./draw.mjs${query}`);
     const name = location.hash.replace(/^#\/?/, "");
     const view = VIEWS[name] ?? VIEWS.pane;
-    view(document.getElementById("view"), { token, drawFrame });
+    view(document.getElementById("view"), { token, draw });
 }
 
 /** One character cell of the page's grid, in pixels. */
@@ -212,10 +216,89 @@ const keyed = (root, key) =>
               `[data-press="${CSS.escape(key)}"], [data-field="${CSS.escape(key)}"]`,
           );
 
+/**
+ * Makes `container`'s children the `entries` (keyed HTML), drawing anew only
+ * those that changed since the last call (see `patchPlan`). A row that holds
+ * the focused field is changed around it, never replaced: the field keeps
+ * its node, so its value, its caret and the focus stay as the person left
+ * them, whatever a frame drawn before their last keystroke says.
+ */
+function patcher(container, patchPlan) {
+    let drawn = [];
+    const make = (html) => {
+        const holder = document.createElement("template");
+        holder.innerHTML = html;
+        return holder.content.firstElementChild;
+    };
+    /** `node` changed to `html` around `input`, which stays where it is; null when the new row has no field of its own. */
+    const around = (node, html, input) => {
+        const fresh = make(html);
+        const twin = fresh.querySelector(
+            `[data-field="${CSS.escape(input.dataset.field)}"]`,
+        );
+        if (twin === null || input.parentElement !== node) return null;
+        for (const child of [...node.childNodes])
+            if (child !== input) child.remove();
+        const kids = [...fresh.childNodes];
+        const at = kids.indexOf(twin);
+        input.before(...kids.slice(0, at));
+        input.after(...kids.slice(at + 1));
+        for (const { name, value } of twin.attributes)
+            if (name !== "value" && input.getAttribute(name) !== value)
+                input.setAttribute(name, value);
+        return node;
+    };
+    return (entries) => {
+        const nodes = new Map(drawn.map((e) => [e.key, e.node]));
+        const active = document.activeElement;
+        const field =
+            active instanceof HTMLInputElement && container.contains(active)
+                ? active
+                : null;
+        // The rows gone go first, so none stands between two that stay and makes one of them move.
+        const kept = new Set(entries.map((e) => e.key));
+        for (const e of drawn) if (!kept.has(e.key)) e.node.remove();
+        drawn = patchPlan(drawn, entries).map((step, i) => {
+            let node = nodes.get(step.key);
+            if (!step.reuse) {
+                const old = node;
+                node =
+                    (old !== undefined &&
+                        field !== null &&
+                        old.contains(field) &&
+                        around(old, step.html, field)) ||
+                    make(step.html);
+                // In the old one's place: the rows after it stay where they are, and are not moved (a move would blur a field).
+                if (
+                    old !== undefined &&
+                    old !== node &&
+                    old.parentNode === container
+                )
+                    old.replaceWith(node);
+            }
+            const here = container.children[i];
+            if (here !== node) container.insertBefore(node, here ?? null);
+            return { key: step.key, html: step.html, node };
+        });
+        while (container.children.length > drawn.length)
+            container.lastElementChild.remove();
+    };
+}
+
 /** The pane: the frames drawn into `root`, the person's keys, presses, typing, focus and wheel sent back. */
-function paneView(root, { token, drawFrame }) {
+function paneView(root, { token, draw: drawn }) {
     const light = matchMedia("(prefers-color-scheme: light)");
     const theme = () => (light.matches ? "light" : "dark");
+    root.innerHTML =
+        '<div class="pane-body"></div><div class="pane-footer"></div>';
+    const bodyOf = root.querySelector(".pane-body");
+    const footerOf = root.querySelector(".pane-footer");
+    const layer = document.getElementById("cards");
+    const patch = {
+        body: patcher(bodyOf, drawn.patchPlan),
+        footer: patcher(footerOf, drawn.patchPlan),
+        cards: patcher(layer, drawn.patchPlan),
+    };
     let cell = cellOf(root);
     const size = () => ({
         cols: Math.floor(root.clientWidth / cell.width),
@@ -244,15 +327,50 @@ function paneView(root, { token, drawFrame }) {
         draw,
         on: {
             toast: (e) => toast(e.text),
-            // The clipboard may refuse a write the person did not just ask for: the text is shown instead, to copy by hand.
+            // The clipboard may refuse a write the person did not just ask for: the page says so, with the text to copy by hand.
             copy: (e) =>
                 void navigator.clipboard
                     .writeText(e.text)
-                    .catch(() => toast(e.text)),
+                    .catch(() =>
+                        toast(
+                            `The browser refused the copy. Copy it from here: ${e.text}`,
+                        ),
+                    ),
             focus: (e) => keyed(root, e.key)?.focus(),
             scroll: (e) =>
                 keyed(root, e.key)?.scrollIntoView({ block: "nearest" }),
         },
+    });
+
+    /** The card the pointer rests on, by its key, and the segment it hangs from. */
+    let hovered = null;
+    const showCard = () => {
+        for (const card of layer.children) card.classList.remove("shown");
+        if (hovered === null || !hovered.anchor.isConnected) return;
+        const card = layer.querySelector(
+            `[data-card="${CSS.escape(hovered.key)}"]`,
+        );
+        if (card === null) return;
+        card.classList.add("shown");
+        const place = drawn.cardPlace(
+            hovered.anchor.getBoundingClientRect(),
+            { width: card.offsetWidth, height: card.offsetHeight },
+            { width: window.innerWidth, height: window.innerHeight },
+        );
+        card.style.top = `${place.top}px`;
+        card.style.left = `${place.left}px`;
+    };
+    root.addEventListener("pointerover", (e) => {
+        const anchor = e.target.closest?.("[data-card]");
+        if (anchor === null || anchor === undefined) return;
+        hovered = { key: anchor.dataset.card, anchor };
+        showCard();
+    });
+    root.addEventListener("pointerout", (e) => {
+        if (hovered === null || hovered.anchor.contains(e.relatedTarget))
+            return;
+        hovered = null;
+        showCard();
     });
 
     function draw(frame) {
@@ -260,26 +378,21 @@ function paneView(root, { token, drawFrame }) {
         style.setProperty("--ground", frame.colours.ground);
         style.setProperty("--text", frame.colours.text);
         style.setProperty("--card", frame.colours.card);
-        // A redraw keeps where the person was: the focus, a field's caret, the body's scroll.
-        const active = document.activeElement;
-        const was = root.contains(active)
-            ? (active.dataset.press ?? active.dataset.field ?? null)
-            : null;
-        const caret =
-            active instanceof HTMLInputElement
-                ? [active.selectionStart, active.selectionEnd]
-                : null;
-        const scrolled = root.querySelector(".pane-body")?.scrollTop ?? 0;
+        style.setProperty("--suggestion", frame.colours.suggestion);
         root.classList.toggle("pinned", frame.pinned);
-        root.innerHTML = drawFrame(frame);
-        const body = root.querySelector(".pane-body");
-        if (body !== null) body.scrollTop = scrolled;
-        const again = keyed(root, was);
-        if (again !== null) {
-            again.focus({ preventScroll: true });
-            if (caret !== null && again instanceof HTMLInputElement)
-                again.setSelectionRange(caret[0], caret[1]);
+        // Only the rows that changed are drawn again: a press, a selection, the scroll and a field's caret stay as they were.
+        patch.body(drawn.drawRows(frame.body));
+        patch.footer(drawn.drawRows(frame.footer));
+        patch.cards(drawn.drawCards([...frame.body, ...frame.footer]));
+        // A card that rests under the pointer follows its segment's new node.
+        if (hovered !== null && !hovered.anchor.isConnected) {
+            const again = root.querySelector(
+                `[data-card="${CSS.escape(hovered.key)}"]`,
+            );
+            hovered =
+                again === null ? null : { key: hovered.key, anchor: again };
         }
+        showCard();
     }
 
     document.addEventListener("keydown", (e) => {
@@ -308,10 +421,22 @@ function paneView(root, { token, drawFrame }) {
         e.preventDefault();
         if (done.focus !== undefined) keyed(root, done.focus)?.focus();
     });
+    // A pointer presses on release over the press it went down on, by id, so a frame that draws its row again in between loses nothing.
+    const pressAt = (e) => e.target.closest?.("[data-press]")?.dataset.press;
+    let down = null;
+    root.addEventListener("pointerdown", (e) => {
+        down = e.button === 0 ? pressAt(e) : null;
+    });
+    root.addEventListener("pointerup", (e) => {
+        const press = releasedOn(down, pressAt(e));
+        down = null;
+        if (press !== null) void page.post({ kind: "press", press });
+    });
+    // The keyboard's Enter or Space on a focused press arrives as a click with no pointer behind it.
     root.addEventListener("click", (e) => {
-        const button = e.target.closest?.("[data-press]");
-        if (button !== null && button !== undefined)
-            void page.post({ kind: "press", press: button.dataset.press });
+        const press = pressAt(e);
+        if (e.detail === 0 && press !== undefined)
+            void page.post({ kind: "press", press });
     });
     root.addEventListener("focusin", (e) => {
         const key = e.target.dataset?.press ?? e.target.dataset?.field;
@@ -326,8 +451,7 @@ function paneView(root, { token, drawFrame }) {
     root.addEventListener(
         "wheel",
         (e) => {
-            const body = root.querySelector(".pane-body");
-            if (body === null) return;
+            const body = bodyOf;
             e.preventDefault();
             const turned = wheelRows(carry, e, cell.height);
             carry = turned.carry;
