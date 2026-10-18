@@ -20,6 +20,7 @@ import { button, clip, dimRow, displayName, fit, placeOf, tableRow, tableSpec, w
 import type { Loc, Row, Tier } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
+import { busy } from './motion'
 
 /** One match as the finder lists it: a component, or (`file`) a file by its path. */
 export type Found = { name: string; canonical: string; kind: string; file: boolean; boundary: string | null; place: string; loc: Loc | null }
@@ -108,7 +109,7 @@ export function finderBlock(finder: FinderInput, selected: number, tier: Tier, h
           rows.push({ key: `found-note-${i}`, segments: clip([{ text: '   ' }, mark(NOTE.missing, ' '), button(`finder-note:${n.canonical}`, n.label), { text: `  ${who}  `, dim: true }, { text: fit(n.line, room) }], columns) })
         })
       }
-      const note = finder.searching ? 'searching…' : finder.query.trim() === '' ? 'components and files' : `${list.length}${finder.truncated ? '+' : ''} found`
+      const note = finder.searching ? busy('searching…') : finder.query.trim() === '' ? 'components and files' : `${list.length}${finder.truncated ? '+' : ''} found`
       return { key: 'find', title: finder.routeFrom === undefined ? 'Find' : `Route from ${finder.routeFrom} to…`, note: noteOf(note), body: rows }
     },
   }

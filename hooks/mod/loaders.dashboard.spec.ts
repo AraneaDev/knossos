@@ -165,6 +165,41 @@ describe('refreshing the dashboard', () => {
         expect(runs.filter(r => r[2] === 'dashboard')).toHaveLength(1)
     })
 
+    it('says a read is on its way while it runs, and leaves no trace of that once it lands or fails', async () => {
+        for (const answer of [json(dashboard('s1')), '']) {
+            reset(options)
+            const { io, values } = fakePort({ refresh: { fetchedAt: null, failed: true } }, { dashboard: answer })
+            const seen: unknown[] = []
+            const run = io.process.run
+            io.process.run = (async (argv: string[], opts: never) => {
+                if (argv[2] === 'dashboard') seen.push(values.get('refresh'))
+                return run(argv, opts)
+            }) as typeof run
+            await refreshDashboard(io)
+            expect(seen).toEqual([{ fetchedAt: null, failed: true, loading: true }])
+            expect(values.get('refresh')).not.toHaveProperty('loading')
+        }
+    })
+
+    it('counts the loads in a row that failed, from when each answered, and starts again at the first that did not', async () => {
+        const { io, clock, answers } = fakePort({}, { dashboard: '' })
+        const run = io.process.run
+        // The read takes 3 s: the next try is timed from its answer.
+        io.process.run = (async (argv: string[], opts: never) => {
+            clock.now += 3_000
+            return run(argv, opts)
+        }) as typeof run
+        await refreshDashboard(io)
+        expect(mod.dashboardMisses).toBe(1)
+        expect(mod.dashboardTriedAt).toBe(4_000)
+        answers.dashboard = json({ status: 'error', message: 'boom' })
+        await refreshDashboard(io)
+        expect(mod.dashboardMisses).toBe(2)
+        answers.dashboard = json(dashboard('s1'))
+        await refreshDashboard(io)
+        expect(mod.dashboardMisses).toBe(0)
+    })
+
     it('asks the wrapper with the fan-in threshold the options set', async () => {
         reset({ ...options, fanInThreshold: 37 })
         const { io, runs } = fakePort({}, { dashboard: json(dashboard('s1')) })

@@ -28,6 +28,7 @@ import { moreRows, noteOf, windowOf, shownOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { pairColumns, pairDiagram } from './diagram'
 import type { Openable } from './views'
+import { busy } from './motion'
 
 export type BoundaryLine = {
   /** The axis letter. */
@@ -404,7 +405,7 @@ export function couplingSection(input: BoundariesInput, cell: HeatCell, view: Co
   const node = (b: BoundaryLine) => ({ key: b.name, label: b.label, ...(boundaryColour(b.name, hues) === undefined ? {} : { color: boundaryColour(b.name, hues)! }) })
   const said = `${grouped(count)}${view?.truncated === true ? '+' : ''} ${count === 1 ? 'dep' : 'deps'}`
   const body: Row[] = [...pairDiagram(node(from), node(to), said, columns, forbidden, 'coupling-pair').rows, blank('coupling-gap')]
-  if (view === null || view.phase === 'loading') body.push(dimRow('coupling-loading', '   reading the couplings…', columns))
+  if (view === null || view.phase === 'loading') body.push(dimRow('coupling-loading', `   ${busy('reading the couplings…')}`, columns))
   else if (view.phase === 'silent') body.push(dimRow('coupling-silent', '   knossos did not say which components; press l to try another cell', columns))
   else if (view.items.length === 0) body.push(dimRow('coupling-none', '   no component pair listed', columns))
   else {

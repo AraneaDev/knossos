@@ -25,6 +25,7 @@ import type { Loc, Row, Segment } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
+import { busy } from './motion'
 
 /** One component the Branch tab lists: what it shows, what it opens, where it is. */
 export type BranchLine = { name: string; canonical: string; boundary: string | null; place: string; loc: Loc | null }
@@ -130,7 +131,7 @@ export function branchInput(state: BranchState | null, root: string | null, fold
   // A comparison for a newer graph on its way keeps the last one on show, saying so.
   const loading = state === null || state.phase === 'loading'
   const answer = state?.answer ?? null
-  if (answer === null && loading) return { said: ['Comparing the branch with its merge base…'], warn: false, loading: true, verdict: { state: 'none', checks: [] }, ...nothing }
+  if (answer === null && loading) return { said: [busy('Comparing the branch with its merge base…')], warn: false, loading: true, verdict: { state: 'none', checks: [] }, ...nothing }
   if (answer === null) return { said: ['knossos did not answer; the tab asks again when the graph moves.'], warn: true, loading: false, verdict: { state: 'none', checks: [] }, ...nothing }
   const { said, warn } = standing(answer)
   const target = answer.default_branch ?? 'the default branch'
@@ -282,7 +283,7 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
       )
       const left: Row[] = input.heading?.left === null || input.heading === null ? [] : [{ key: 'branch-left', segments: [{ text: fit(`   ${input.heading.left}`, columns), dim: true }] }]
       const verdict = input.verdict.state === 'none' ? [] : verdictRows(input, selected, columns, limit, hues)
-      const note = input.loading ? 'comparing…' : input.heading?.ahead === null || input.heading === null ? '' : `${plural(input.heading.ahead, 'commit', 'commits')} ahead`
+      const note = input.loading ? busy('comparing…') : input.heading?.ahead === null || input.heading === null ? '' : `${plural(input.heading.ahead, 'commit', 'commits')} ahead`
       return { key: 'branch', title: input.heading?.title ?? 'Branch', glyph: CARD_ICON.branch, ...(note === '' ? {} : { note: noteOf(note) }), body: [...left, ...verdict, ...said] }
     },
   }

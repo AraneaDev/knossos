@@ -95,8 +95,17 @@ export const mod = {
   paneOffset: 0,
   /** Whether the pane last drew its no-figures state: the age tick retries a failed load while it shows. */
   emptyShown: false,
-  /** When the last dashboard load started (mod clock, ms). */
+  /** When the last dashboard load started, or, for one that failed, when its answer came (mod clock, ms). */
   dashboardTriedAt: 0,
+  /** Dashboard loads in a row that failed: the pane with no figures asks again sooner after the first ones. */
+  dashboardMisses: 0,
+  /** Whether the pane last drew a line that says something is on its way: the motion's frames turn its spinner. */
+  paneBusy: false,
+  /** When the pane began to draw lines under way (mod clock, ms): they spin for {@link BUSY_SPIN_MS} at most. */
+  busySince: 0,
+  /** While the pane draws: the motion's frame its spinners show, and whether it has drawn one yet. */
+  spinFrame: 0,
+  spinSeen: false,
   /** Keeps the band's age current while the mod is on. */
   ticker: null as Timer | null,
   /** The frames the pane's motion draws (see `motion.ts`): running only while something moves. */
@@ -271,6 +280,11 @@ export function reset(options: PluginOptions): void {
   mod.paneText = null
   mod.emptyShown = false
   mod.dashboardTriedAt = 0
+  mod.dashboardMisses = 0
+  mod.paneBusy = false
+  mod.busySince = 0
+  mod.spinFrame = 0
+  mod.spinSeen = false
   mod.ticker?.cancel()
   mod.ticker = null
   mod.motionTimer?.cancel()

@@ -11,6 +11,9 @@
 /** How long the motion after a scan lasts: the same moment a changed row stays lit. */
 export const MOTION_MS = 3_000
 
+/** How long a line under way spins before it stands still: an answer lost on its way never keeps the pane redrawing. */
+export const BUSY_SPIN_MS = 60_000
+
 /** How often a frame is drawn while something moves. */
 export const MOTION_FRAME_MS = 125
 
@@ -38,3 +41,20 @@ const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'] as cons
 
 /** The spinner at `frame`, one step a frame round its cycle. */
 export const spinGlyph = (frame: number): string => SPINNER[((frame % SPINNER.length) + SPINNER.length) % SPINNER.length]!
+
+/**
+ * The spinner's place in a line that says something is on its way: its
+ * first frame, which the drawing turns with the frames ({@link spun}). The
+ * layout stays pure and needs no frame, and every frame is one cell wide,
+ * so what fits the line still fits it.
+ */
+export const BUSY = SPINNER[0]
+
+/** `text` as a line under way: the spinner before it. */
+export const busy = (text: string): string => `${BUSY} ${text}`
+
+/** Whether `text` holds a spinner's place. */
+export const isBusy = (text: string): boolean => text.includes(BUSY)
+
+/** `text` with each spinner's place turned to `frame`. */
+export const spun = (text: string, frame: number): string => (isBusy(text) ? text.replaceAll(BUSY, spinGlyph(frame)) : text)

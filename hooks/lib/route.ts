@@ -21,6 +21,7 @@ import type { Loc, Row, Segment } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
 import { CARD_ICON, PLACE, SEVERITY } from './marks'
+import { busy } from './motion'
 
 /** One component on a route. */
 export type RouteNode = { name: string; canonical: string; kind: string; boundary: string | null }
@@ -52,7 +53,7 @@ export type RouteInput = {
 /** The route view of the stored answer, for the ends picked (shown by their labels); `root` places each hop's file. */
 export function routeInput(state: RouteState | null, from: { name: string; label: string }, to: { name: string; label: string }, index: number, root: string | null): RouteInput {
   const base = { from: from.label, to: to.label, routes: [], index: 0, truncated: false }
-  if (state === null || state.from !== from.name || state.to !== to.name || (state.phase === 'loading' && state.answer === null)) return { ...base, loading: true, said: [`Looking for a route from ${from.label} to ${to.label}…`], warn: false }
+  if (state === null || state.from !== from.name || state.to !== to.name || (state.phase === 'loading' && state.answer === null)) return { ...base, loading: true, said: [busy(`Looking for a route from ${from.label} to ${to.label}…`)], warn: false }
   const answer: PathBetween | null = state.answer
   if (answer === null) return { ...base, loading: false, said: ['knossos did not answer; the route is looked for again with the next snapshot.'], warn: true }
   if (answer.status === 'not-found' || answer.status === 'ambiguous') {
@@ -137,7 +138,7 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
     make: columns => ({
       key: 'route',
       title: `${input.from} → ${input.to}`,
-      ...(input.loading ? { note: noteOf('looking…') } : {}),
+      ...(input.loading ? { note: noteOf(busy('looking…')) } : {}),
       body: input.said.flatMap((text, i) =>
         wrapWords(text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `route-said-${i}-${j}`, segments: [{ text: input.warn && j === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: part, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
       ),

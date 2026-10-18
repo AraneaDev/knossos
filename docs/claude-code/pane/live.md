@@ -41,11 +41,17 @@ these off.
 
 With no figures to draw, the pane says which of three things is the case:
 
-| heading                     | meaning                                                                        |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| `Reading the graph…`        | the first load is on its way                                                   |
-| `Could not read the graph`  | knossos did not answer, or answered with an error; it retries every 15 seconds |
-| `No architecture graph yet` | knossos answered that it never scanned this project                            |
+| heading                     | meaning                                                                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `Reading the graph…`        | a load is on its way, the first one or one after a load that failed                                                           |
+| `Could not read the graph`  | knossos did not answer, or answered with an error, and no load is on its way; it asks again after 2, 5, then every 15 seconds |
+| `No architecture graph yet` | knossos answered that it never scanned this project                                                                           |
+
+A knossos that is still starting with the session often misses the first load.
+The pane keeps saying `Reading the graph…` while it asks again, so a cold start
+never reads as an error. Here, and on every other line that says something is
+on its way (a blast radius, a branch comparison, a search, a note being
+recorded), a spinner turns until the answer lands.
 
 Only the last offers `q: ask Claude to scan it`. Your press submits:
 

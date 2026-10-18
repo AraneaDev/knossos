@@ -33,6 +33,7 @@ import {
 import type { Loc, Row, Segment, TableSpec, Tier } from './rows'
 import { hoodBlock, locIn } from './views'
 import type { DetailInput, FileView, HoodSide, Openable } from './views'
+import { busy } from './motion'
 
 /** Paths longer than this are cut from the front in a table, as on Changes. */
 const PATH_MAX = 56
@@ -111,7 +112,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
   const f = detail.file ?? null
   const diff = detail.diff ? [diffBlock(detail.diff, detail.panel === true)] : []
   if (f === null) {
-    const lines = detail.loading ? [`Reading what depends on ${detail.label}…`] : (detail.messages ?? [])
+    const lines = detail.loading ? [busy(`Reading what depends on ${detail.label}…`)] : (detail.messages ?? [])
     const head: Block = {
       key: 'detail',
       make: columns => ({

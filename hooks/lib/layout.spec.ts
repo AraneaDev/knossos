@@ -29,7 +29,7 @@ import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
 import { gitLabel, paneLayout, shrinkRows, statsOf, titleRow } from './layout'
 import { CHIP_BG, languageColour, STAT_HUES, STATUS_COLOURS } from './palette'
-import { dotGlyph, NO_MOTION, spinGlyph } from './motion'
+import { busy, dotGlyph, isBusy, NO_MOTION, spinGlyph } from './motion'
 import type { Motion } from './motion'
 import { chainGroups, cyclesInput } from './cycles'
 import { issueCount, issuesInput, issuesList, superscript } from './views'
@@ -1484,14 +1484,17 @@ describe('the pane with no graph', () => {
   })
   it('offers no scan while the first load is on its way or after a load that failed: q there sends nothing', () => {
     for (const columns of WIDTHS) {
-      for (const state of ['loading', 'unreadable'] as const) {
+      for (const state of ['loading', 'retrying', 'unreadable'] as const) {
         const rows = emptyRows(state, null, columns)
         expect(rows.flatMap(r => r.segments.filter(s => s.press !== undefined))).toEqual([])
         for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
       }
     }
-    expect(emptyRows('loading', null, 90)[0]?.segments[0]?.text).toBe('Reading the graph…')
-    expect(emptyRows('unreadable', null, 90).map(plainText).join(' ')).toMatch(/^Could not read the graph .*retrying\.$/)
+    // A read on its way spins; a failed one with none on its way is still.
+    expect(emptyRows('loading', null, 90)[0]?.segments[0]?.text).toBe(busy('Reading the graph…'))
+    expect(emptyRows('retrying', null, 90).map(plainText).join(' ')).toBe(`${busy('Reading the graph…')} Knossos did not answer the last read; asking again.`)
+    expect(emptyRows('unreadable', null, 90).map(plainText).join(' ')).toMatch(/^Could not read the graph .*asks again shortly\.$/)
+    expect(emptyRows('unreadable', null, 90).some(r => r.segments.some(s => isBusy(s.text)))).toBe(false)
   })
   it('tells the states apart from the dashboard and the last load', () => {
     const none = { fetchedAt: null, failed: false }
@@ -1503,6 +1506,15 @@ describe('the pane with no graph', () => {
     expect(noGraphOf(unscanned, { fetchedAt: 5, failed: false })).toBe('unscanned')
     // Said unscanned once, but the latest load did not answer: no longer known to be unscanned.
     expect(noGraphOf(unscanned, { fetchedAt: 5, failed: true })).toBe('unreadable')
+  })
+  it('says a read on its way as loading, even after one that failed, and never calls that an error', () => {
+    const error = { status: 'error' } as Dashboard
+    const unscanned = { status: 'unscanned' } as Dashboard
+    expect(noGraphOf(null, { fetchedAt: null, failed: false, loading: true })).toBe('loading')
+    expect(noGraphOf(null, { fetchedAt: null, failed: true, loading: true })).toBe('retrying')
+    expect(noGraphOf(error, { fetchedAt: 5, failed: false, loading: true })).toBe('retrying')
+    // A project knossos said it never scanned keeps saying so, and its scan offer, while it is read again.
+    expect(noGraphOf(unscanned, { fetchedAt: 5, failed: false, loading: true })).toBe('unscanned')
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dotGlyph, grown, MOTION_MS, moving, NO_MOTION, spinGlyph } from './motion'
+import { busy, BUSY, dotGlyph, grown, isBusy, MOTION_MS, moving, NO_MOTION, spinGlyph, spun } from './motion'
 
 const landed = (frame: number) => ({ since: 1_000, frame })
 
@@ -28,5 +28,21 @@ describe('motion after a scan', () => {
     const steps = Array.from({ length: 8 }, (_, i) => spinGlyph(i))
     expect(new Set(steps).size).toBe(8)
     expect(spinGlyph(8)).toBe(spinGlyph(0))
+  })
+})
+
+describe('a line under way', () => {
+  it('holds the spinner at its first frame, a cell wide, before the text', () => {
+    expect(busy('Reading the notes…')).toBe(`${spinGlyph(0)} Reading the notes…`)
+    expect(BUSY).toBe(spinGlyph(0))
+    expect(isBusy(busy('x'))).toBe(true)
+    expect(isBusy('Reading the notes…')).toBe(false)
+  })
+
+  it('turns every spinner in a text to the frame, and leaves other text as it is', () => {
+    expect(spun(`   ${busy('reading…')}`, 3)).toBe(`   ${spinGlyph(3)} reading…`)
+    expect(spun(`${busy('a')} · ${busy('b')}`, 9)).toBe(`${spinGlyph(9)} a · ${spinGlyph(9)} b`)
+    expect(spun('nothing under way', 5)).toBe('nothing under way')
+    for (let frame = 0; frame < 16; frame++) expect([...spun(busy('x'), frame)]).toHaveLength(3)
   })
 })

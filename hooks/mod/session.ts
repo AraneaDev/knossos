@@ -20,8 +20,13 @@ const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect
 /** formatAge's finest step is a second; the tick redraws only when the text would change. */
 const AGE_TICK_MS = 1_000
 
-/** How often the pane with no figures, after a load that failed, asks for the dashboard again. */
-const EMPTY_RETRY_MS = 15_000
+/**
+ * How long the pane with no figures waits, after the n-th load in a row that
+ * failed, before it asks for the dashboard again; past the last, the last.
+ * The first waits are short: a knossos still starting with the session
+ * answers within seconds, and the pane should not stand empty for long.
+ */
+const EMPTY_RETRY_MS = [2_000, 5_000, 15_000] as const
 
 /** How long to wait before each retry of a refused registration, in milliseconds; after the last, turn ends retry. */
 const REGISTER_RETRY_MS = [500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000] as const
@@ -92,9 +97,10 @@ async function tickAge(io: Port): Promise<void> {
   // A row already found to have nothing to show is not looked at again each tick: that would lay the pane out every second.
   if (mod.paneWide && (await io.state.peek.read()) === null && mod.peekNone !== peekKey(await io.state.view.read(), (await io.state.dashboard.read())?.snapshot_id ?? null)) await request(io, 'peek')
   // A pane closed by any means (the command, its own close key) stops drawing; stop ticking for it, and it is no longer wide.
-  if (mod.paneText !== null && !(await io.ui.panes()).some((pane: UiPane) => pane.id === PANE)) {
+  if ((mod.paneText !== null || mod.paneBusy) && !(await io.ui.panes()).some((pane: UiPane) => pane.id === PANE)) {
     mod.paneText = null
     mod.paneWide = false
+    mod.paneBusy = false
   }
   if (mod.bandText === null && mod.paneText === null) return
   const now = await io.clock.now()
@@ -108,8 +114,9 @@ async function tickAge(io: Port): Promise<void> {
 
 /**
  * While the pane shows no figures because a load failed (silent, or an
- * error), asks for the dashboard again every {@link EMPTY_RETRY_MS}: the
- * pane says it is retrying, so it does.
+ * error), asks for the dashboard again, sooner after the first failures
+ * than after later ones ({@link EMPTY_RETRY_MS}): the pane says it asks
+ * again, so it does.
  */
 async function retryEmpty(io: Port): Promise<void> {
   if (!mod.emptyShown || mod.disabled || mod.dashboardFlight?.isRunning === true) return
@@ -119,7 +126,8 @@ async function retryEmpty(io: Port): Promise<void> {
   }
   const d = await io.state.dashboard.read()
   if (d?.status === 'ok' || noGraphOf(d, await io.state.refresh.read()) !== 'unreadable') return
-  if ((await io.clock.now()) - mod.dashboardTriedAt < EMPTY_RETRY_MS) return
+  const wait = EMPTY_RETRY_MS[Math.min(Math.max(0, mod.dashboardMisses - 1), EMPTY_RETRY_MS.length - 1)]!
+  if ((await io.clock.now()) - mod.dashboardTriedAt < wait) return
   void refreshDashboard(io).catch(() => undefined)
 }
 
@@ -179,6 +187,7 @@ export async function runCommand(io: Port, args: string): Promise<string> {
     await io.ui.close({ id: PANE }).catch(() => undefined)
     mod.paneText = null
     mod.paneWide = false
+    mod.paneBusy = false
     return 'Knossos pane closed.'
   }
   await io.state.view.update(v => ({ ...v, inspect: null }))

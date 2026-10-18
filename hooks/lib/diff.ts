@@ -16,6 +16,7 @@ import { button, dimRow, fit, pathText, plural, wrapWords } from './rows'
 import type { Row, Segment } from './rows'
 import type { Block, Section } from './cards'
 import { CHANGE } from './marks'
+import { busy } from './motion'
 
 /** Lines of one hunk shown; past them the rest is folded into "N more lines". */
 export const HUNK_LINES = 40
@@ -167,7 +168,7 @@ function viewOf(path: string, answer: SessionDiff | null): DiffView {
 export function diffSection(view: DiffView, columns: number, asText = false): Section {
   const title = 'Changed since the session began'
   if (view.phase !== 'diff') {
-    const text = view.phase === 'loading' ? 'Reading the change…' : view.text
+    const text = view.phase === 'loading' ? busy('Reading the change…') : view.text
     return { key: 'diff', title, body: wrapWords(text, Math.max(1, columns - 3)).map((part, i) => dimRow(`diff-line-${i}`, `   ${part}`, columns)) }
   }
   // Only the sides that moved: an added file is all `+`, a deleted one all `−`.

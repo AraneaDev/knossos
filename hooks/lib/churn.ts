@@ -21,6 +21,7 @@ import type { Loc, Row, Segment, Tier } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
 import { PLACE, SEVERITY, mark } from './marks'
+import { busy } from './motion'
 
 /** One ranked file as the tab draws it. */
 export type ChurnFile = { path: string; commits: number; dependents: number; score: number; boundary: string | null; loc: Loc | null }
@@ -45,7 +46,7 @@ export function churnInput(state: ChurnState | null, root: string | null): Churn
   const base = { warn: false, loading: false, days: DAYS, commits: 0, truncated: false, files: [] }
   const answer: Churn | null = state?.answer ?? null
   if (answer === null) {
-    return state === null || state.phase === 'loading' ? { ...base, said: 'Reading the last 30 days of commits…', loading: true } : { ...base, said: 'knossos did not answer; the tab asks again when the checkout moves.', warn: true }
+    return state === null || state.phase === 'loading' ? { ...base, said: busy('Reading the last 30 days of commits…'), loading: true } : { ...base, said: 'knossos did not answer; the tab asks again when the checkout moves.', warn: true }
   }
   if (answer.status === 'no-git') return { ...base, said: 'No git repository, or git did not answer: there is no history to rank.', warn: true }
   if (answer.status === 'unreadable') return { ...base, said: 'Could not read the git history: git printed no log, not even of the last 50 commits.', warn: true }

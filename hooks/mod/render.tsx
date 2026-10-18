@@ -11,8 +11,10 @@ import { diffView } from '../lib/diff'
 import { allowInput, detailInput, emptyRows, fileDetailInput, fit, listFor, noGraphOf, paneHeight, paneInput, paneLayout, rowWidth, shrinkRows, tierOf } from '../lib/layout'
 import type { Openable, PaneInput, Preview, Row, Segment } from '../lib/layout'
 import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
+import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
+import { startMotion } from './motion'
 import { shownChanges } from './port'
 import type { Port } from './port'
 import { fieldKey, mod } from './state'
@@ -160,7 +162,8 @@ function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Se
  */
 function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns: number, terminal: boolean, places = true, hovers = false) {
   const { Box, Code } = ui
-  const row = places ? line : { ...line, segments: line.segments.map(({ press, ...s }) => (press === undefined || press.id.startsWith(FILE_PRESS) ? s : { ...s, press })) }
+  const spinning = spunRow(line)
+  const row = places ? spinning : { ...spinning, segments: spinning.segments.map(({ press, ...s }) => (press === undefined || press.id.startsWith(FILE_PRESS) ? s : { ...s, press })) }
   // A change's hunks: the engine's own diff, gutters, markers and colours as Claude Code draws them.
   if (row.code !== undefined) {
     return (
@@ -209,6 +212,13 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns:
       {drawn}
     </Box>
   )
+}
+
+/** `row` with its spinners turned to the frame the pane draws; one there marks the pane busy, so the frames go on. */
+function spunRow(row: Row): Row {
+  if (!row.segments.some(s => isBusy(s.text))) return row
+  mod.spinSeen = true
+  return { ...row, segments: row.segments.map(s => (isBusy(s.text) ? { ...s, text: spun(s.text, mod.spinFrame) } : s)) }
 }
 
 /**
@@ -396,6 +406,20 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
  * rows, until it fits; past it even at {@link SHORT_ROWS}, one line says so.
  */
 export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {
+  // A line that says something is on its way spins: drawn at the motion's frame, and while one shows the frames go on.
+  mod.spinFrame = mod.disabled ? 0 : (await io.state.motion.read()).frame
+  mod.spinSeen = false
+  const tree = await drawPaneTree(io, ui, surface, props, act)
+  const now = await io.clock.now()
+  if (mod.spinSeen && !mod.paneBusy) mod.busySince = now
+  mod.paneBusy = mod.spinSeen
+  // Past its minute a line under way stands still: a redraw then starts no frames, or each would draw the next.
+  if (mod.paneBusy && mod.motionTimer === null && now - mod.busySince < BUSY_SPIN_MS) await startMotion(io, null)
+  return tree
+}
+
+/** The pane's tree, as {@link drawPane} describes it. */
+async function drawPaneTree(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {
   const { Box } = ui
   mod.paneText = null
   mod.emptyShown = false
