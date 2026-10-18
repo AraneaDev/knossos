@@ -10,6 +10,12 @@ namespace Knossos\Discovery\Manifest;
  */
 final class HtmlManifest implements ManifestReader
 {
+    /**
+     * Elements whose text a browser running scripts never parses as tags, so
+     * a script tag written there loads nothing.
+     */
+    private const UNREAD_TEXT_ELEMENTS = ['template', 'textarea', 'title', 'xmp', 'noscript'];
+
     /** Script types whose inline text a browser runs as JavaScript; no type at all is the classic default. */
     private const SCRIPT_TYPES = ['', 'module', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript'];
 
@@ -53,11 +59,10 @@ final class HtmlManifest implements ManifestReader
         $refs = [];
         $at = 0;
         $length = strlen($contents);
-        while ($at < $length && preg_match('/<!--|<(script|link)\b/i', $contents, $match, PREG_OFFSET_CAPTURE, $at) === 1) {
+        while ($at < $length && preg_match('/<!--|<(script|link|template|textarea|title|xmp|noscript)(?=[\s\/>])/i', $contents, $match, PREG_OFFSET_CAPTURE, $at) === 1) {
             $start = $match[0][1];
             if ($match[0][0] === '<!--') {
-                $end = strpos($contents, '-->', $start + 4);
-                $at = $end === false ? $length : $end + 3;
+                $at = self::commentEnd($contents, $start);
                 continue;
             }
             if (preg_match('/\G<[a-z]+((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/i', $contents, $tag, 0, $start) !== 1) {
@@ -65,8 +70,14 @@ final class HtmlManifest implements ManifestReader
                 continue;
             }
             $at = $start + strlen($tag[0]);
+            $name = strtolower($match[1][0]);
+            if (in_array($name, self::UNREAD_TEXT_ELEMENTS, true)) {
+                $close = stripos($contents, '</' . $name, $at);
+                $at = $close === false ? $length : $close;
+                continue;
+            }
             $attributes = self::attributes($tag[1], $start + strlen($match[0][0]));
-            if (strtolower($match[1][0]) === 'link') {
+            if ($name === 'link') {
                 $rel = ' ' . strtolower($attributes['rel'][0] ?? '') . ' ';
                 if (isset($attributes['href']) && preg_match('/\smodulepreload\s/', $rel) === 1) {
                     self::record($refs, $contents, $attributes['href'][0], $attributes['href'][1]);
@@ -87,6 +98,23 @@ final class HtmlManifest implements ManifestReader
         }
 
         return array_values($refs);
+    }
+
+    /**
+     * The offset just past the comment opening at `$start`. `<!-->` and
+     * `<!--->` end at once, as a browser reads them; an unclosed comment
+     * runs to the end of the page.
+     */
+    private static function commentEnd(string $contents, int $start): int
+    {
+        foreach (['>', '->'] as $abrupt) {
+            if (substr_compare($contents, $abrupt, $start + 4, strlen($abrupt)) === 0) {
+                return $start + 4 + strlen($abrupt);
+            }
+        }
+        $end = strpos($contents, '-->', $start + 4);
+
+        return $end === false ? strlen($contents) : $end + 3;
     }
 
     /**

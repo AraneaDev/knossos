@@ -138,4 +138,45 @@ final class HtmlManifestTest extends TestCase
         assertSame([], self::refs('<script type="application/json">import("./y.js")</script>'));
         assertSame([['url' => 'z.js', 'line' => 1]], self::refs('<script src="z.js">import("./w.js")</script>'));
     }
+
+    /** A custom element whose name starts with `script` or `link` is neither. */
+    public function testATagNameMustEndAtItsName(): void
+    {
+        assertSame([], self::refs('<script-loader src="a.js"></script-loader><link-list rel="modulepreload" href="b.mjs">'));
+        assertSame([['url' => 'c.js', 'line' => 1]], self::refs('<script/src="c.js"></script>'));
+    }
+
+    /**
+     * The text of a template, a textarea, a title, an xmp or a noscript is
+     * never parsed as tags by a browser running scripts, so a script tag
+     * written there loads nothing.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function rawTextElements(): iterable
+    {
+        foreach (['template', 'textarea', 'title', 'xmp', 'noscript'] as $element) {
+            yield $element => [$element];
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('rawTextElements')]
+    public function testSkipsScriptsInsideElementsWhoseTextIsNotLoaded(string $element): void
+    {
+        assertSame([['url' => 'after.js', 'line' => 2]], self::refs(
+            "<{$element} class=\"x\"><script src=\"inside.js\"></script></" . strtoupper($element) . ">\n<script src=\"after.js\"></script>",
+        ));
+        // Unterminated: the rest of the page is that element's text.
+        assertSame([], self::refs("<{$element}><script src=\"inside.js\"></script>"));
+    }
+
+    /** `<!-->` and `<!--->` are whole comments, as a browser reads them. */
+    public function testAnAbruptCommentEndsAtOnce(): void
+    {
+        assertSame([
+            ['url' => 'a.js', 'line' => 1],
+            ['url' => 'b.js', 'line' => 2],
+            ['url' => 'c.js', 'line' => 3],
+        ], self::refs("<!--><script src=\"a.js\"></script>\n<!---><script src=\"b.js\"></script>\n<!-- --><script src=\"c.js\"></script>"));
+    }
 }
