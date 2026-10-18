@@ -98,6 +98,10 @@ would zero both delta budgets and report a pass that checked nothing.
 `tools/gate-baseline` makes that choice, and `tests/shell/gate-baseline.sh`
 holds it to each of these cases.
 
+When the gate fails, the lane prints every budget's value against its limit
+and names the ones that failed (`tools/gate-report.php`), so the CI log says
+which budget broke without a local rerun.
+
 Both trees come from `git archive` and are scanned at the same path. The path
 matters: a project's identity is its root, so a baseline scanned elsewhere
 would be a different project with nothing to compare against. Extracting both

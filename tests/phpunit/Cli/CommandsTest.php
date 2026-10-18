@@ -1297,7 +1297,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                     $printed = (string) ob_get_clean();
                 }
 
-                return [$exit, json_decode($printed, true, 512, JSON_THROW_ON_ERROR)['data']];
+                return [$exit, json_decode($printed, true, 512, JSON_THROW_ON_ERROR)['data'], $printed];
             };
 
             [, $measured] = $gate(['unreferenced_candidates' => 100000]);
@@ -1308,9 +1308,18 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             assertSame(true, $atLimitData['passed'], 'A metric exactly at its budget passes.');
             assertSame(0, $atLimit);
 
-            [$over, $overData] = $gate(['unreferenced_candidates' => $actual - 1]);
+            [$over, $overData, $overJson] = $gate(['unreferenced_candidates' => $actual - 1]);
             assertSame(false, $overData['passed']);
             assertSame(1, $over, 'An exceeded budget must fail the build.');
+
+            // The gate lane prints this result through tools/gate-report.php, which
+            // must name the budget from the command's real output, not a shape of
+            // its own.
+            file_put_contents($budgetsFile, $overJson);
+            [$reported, $reportOut, $reportErr] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('gate-report.php'), $budgetsFile]);
+            assertSame(1, $reported, $reportErr);
+            assertContains(sprintf('gate: unreferenced_candidates %d, limit %d: FAIL', $actual, $actual - 1), $reportOut);
+            assertContains('gate: 1 of 1 budgets failed: unreferenced_candidates.', $reportErr);
         } finally {
             @unlink($budgetsFile);
             $cleanup();
