@@ -158,8 +158,23 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         self::assertSame(2, substr_count($workflow, 'bash tools/check-commit-style.sh --ci ${RELEASE_PR:+"$RELEASE_PR"} -- '));
         self::assertSame(2, substr_count($workflow, 'tools/check-commit-style.sh'), 'Every call of the check runs in CI mode.');
         self::assertStringContainsString('types: [opened, edited, reopened, synchronize, labeled, unlabeled]', $workflow);
-        self::assertStringContainsString('pull-requests: read', $workflow);
-        self::assertStringNotContainsString('pull-requests: write', $workflow);
+        self::assertStringNotContainsString('pull-requests:', $workflow, 'The inputs come from git and the event, not the API.');
+
+        // The same inputs quality.yml uses: labels from the event, the diff
+        // from git with wide context, never the API's three lines.
+        self::assertStringContainsString('LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}', $workflow);
+        self::assertStringContainsString('git diff --no-ext-diff --no-renames --name-only "$base" "$head" > "$dir/files"', $workflow);
+        self::assertStringContainsString('git diff --no-ext-diff --no-renames --unified=10 "$base" "$head" > "$dir/diff"', $workflow);
+        self::assertStringNotContainsString('gh pr', $workflow);
+
+        // pull_request_target runs trusted: the only checkout is the base
+        // branch, the pull request arrives only through git fetch, and nothing
+        // moves the work tree onto it.
+        self::assertSame(1, substr_count($workflow, 'uses: actions/checkout@'));
+        self::assertStringContainsString('ref: ${{ github.event.pull_request.base.ref }}', $workflow);
+        self::assertDoesNotMatchRegularExpression('/\\bgit (checkout|switch|restore|reset|worktree|merge|rebase|cherry-pick|apply|am|stash)(?=\\s|$)/m', $workflow);
+        self::assertDoesNotMatchRegularExpression('/github\\.event\\.pull_request\\.head\\.(sha|ref)/', $workflow);
+        self::assertSame(2, substr_count($workflow, 'git fetch --quiet'), 'The head is fetched as data, once per step that reads it.');
     }
 
     /**

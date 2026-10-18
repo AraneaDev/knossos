@@ -117,6 +117,35 @@ grep -q '^+FROM image:0.33.0$' "$work/diff" || { printf 'FAIL the fixture edit d
 expect 'a version bump outside the markers is refused' 1 \
     "Dockerfile changes a line outside release-please's version markers: FROM image:0.32.1" --head-repo "$REPO"
 
+# A version line six lines below its start marker, as git prints it with the
+# ten lines of context the workflows ask for, passes. The same change with
+# git's default three lines hides the marker, and is refused.
+synthetic() { # context-lines
+    printf 'Dockerfile\nversion.txt\n' >"$work/files"
+    printf 'autorelease: pending\n' >"$work/labels"
+    {
+        printf '%s\n' 'diff --git a/Dockerfile b/Dockerfile' 'index 1111111..2222222 100644' \
+            '--- a/Dockerfile' '+++ b/Dockerfile'
+        if [ "$1" = 10 ]; then
+            printf '%s\n' '@@ -1,9 +1,9 @@' ' # x-release-please-start-version' ' LABEL a="1"' '       b="2"'
+        else
+            printf '%s\n' '@@ -4,6 +4,6 @@'
+        fi
+        printf '%s\n' '       c="3"' '       d="4"' '       e="5"' \
+            '-      org.opencontainers.image.version="0.32.1"' \
+            '+      org.opencontainers.image.version="0.33.0"' \
+            ' # x-release-please-end' ' COPY x y' \
+            'diff --git a/version.txt b/version.txt' 'index 3333333..4444444 100644' \
+            '--- a/version.txt' '+++ b/version.txt' '@@ -1 +1 @@' '-0.32.1' '+0.33.0'
+    } >"$work/diff"
+}
+synthetic 10
+expect 'a version line six lines below its start marker passes with ten lines of context' 0 \
+    'a release pull request, 0.32.1 to 0.33.0' --head-repo "$REPO"
+synthetic 3
+expect 'the same change with three lines of context hides the marker' 1 \
+    "Dockerfile changes a line outside release-please's version markers" --head-repo "$REPO"
+
 # The same file twice in one diff would leave the second copy unchecked.
 real
 awk '/^diff --git a\/Dockerfile / { keep = 1 } /^diff --git a\/src/ { keep = 0 } keep { print > "/dev/stderr" } { print }' \

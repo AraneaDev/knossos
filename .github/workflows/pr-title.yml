@@ -25,7 +25,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read # reads the labels, files and diff tools/ci/release-pr judges
     steps:
       # The base BRANCH at full depth, not the pull request's pinned base
       # commit: a pull request opened before this check existed pins a base
@@ -40,23 +39,25 @@ jobs:
 
       # Whether this is release-please's own pull request, the only one whose
       # title and commits may carry the release subject. Decided by its content
-      # with the base branch's tools/ci/release-pr, as quality.yml decides it;
-      # the pull request is read as data through the API and nothing of it
-      # runs. A pull request that cannot be read is an ordinary one.
+      # with the base branch's tools/ci/release-pr, on the same inputs
+      # quality.yml gives it: the labels from the event, and the file list and
+      # diff from git with wide context, so a version line's start marker is
+      # inside its hunk. The pull request's head commit is fetched as git data
+      # only; it is never checked out and nothing of it runs.
       - name: Decide whether this is release-please's pull request
         id: release
         env:
-          GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           dir=$(mktemp -d)
-          if ! { gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' > "$dir/labels" &&
-            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json files --jq '.files[].path' > "$dir/files" &&
-            gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" > "$dir/diff"; }; then
-            echo '::notice::Could not read the pull request; treating it as an ordinary one.'
-            exit 0
-          fi
+          git fetch --quiet --no-tags origin "refs/pull/$PR/head"
+          head=$(git rev-parse FETCH_HEAD)
+          base=$(git merge-base HEAD "$head")
+          printf '%s' "$LABELS" | jq -r '.[]' > "$dir/labels"
+          git diff --no-ext-diff --no-renames --name-only "$base" "$head" > "$dir/files"
+          git diff --no-ext-diff --no-renames --unified=10 "$base" "$head" > "$dir/diff"
           status=0
           tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
             --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" || status=$?
