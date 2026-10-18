@@ -360,6 +360,13 @@ The budgets in `maintainability-budgets.json` are:
 - docstring coverage of 100% for `src`, `workers-php`, `tools` and overall, and
   type-docblock coverage of 100%.
 
+Each of these must be in the file as a JSON number, and every area the
+docstring report measures needs its own floor. A missing or quoted limit stops
+the lane with exit 1 and names the key, rather than being read as 0 or skipped.
+`php tools/maintainability-report.php` and `php tools/docstring-report.php`
+both take `--root=DIR` and `--budgets=FILE`, which is how their tests plant a
+violation without touching the checked-in file.
+
 The TypeScript/JavaScript and Python limits sit in the linters' own
 configuration and fail there: ESLint holds function complexity to 29 and function
 length to 101 non-comment lines, and Ruff holds McCabe complexity to 20, with its

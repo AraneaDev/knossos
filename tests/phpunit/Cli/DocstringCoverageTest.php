@@ -177,6 +177,10 @@ final class DocstringCoverageTest extends KnossosTestCase
             @unlink($path);
         }
         $this->fixtures = [];
+        foreach ($this->trees as $tree) {
+            $this->runFixtureCommand(['rm', '-rf', $tree]);
+        }
+        $this->trees = [];
     }
 
     #[Group('documentation')]
@@ -222,4 +226,78 @@ final class DocstringCoverageTest extends KnossosTestCase
         }
     }
 
+    /**
+     * The floor acts, not just the measurement: one undocumented public method
+     * under a floor of 100 makes the gate exit 1 and say which area fell short.
+     */
+    #[Group('documentation')]
+    public function testAnUndocumentedPublicMethodFailsAFloorOf100(): void
+    {
+        $root = $this->fixtureTree();
+        $budgets = $this->budgetFile($root, ['min_docstring_coverage' => ['src' => 100, 'overall' => 0], 'min_type_docblock_coverage' => 100]);
+
+        [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('docstring-report.php'), '--root=' . $root, '--budgets=' . $budgets]);
+
+        assertSame(1, $exit, $errors);
+        assertContains('docstring coverage for src is 50.00% (1/2); floor is 100.00%.', $errors);
+    }
+
+    /** The same tree passes a floor it meets, so the refusal above is the floor's doing. */
+    #[Group('documentation')]
+    public function testTheSameTreePassesAFloorItMeets(): void
+    {
+        $root = $this->fixtureTree();
+        $budgets = $this->budgetFile($root, ['min_docstring_coverage' => ['src' => 50, 'overall' => 50], 'min_type_docblock_coverage' => 100]);
+
+        [$exit, $output, $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('docstring-report.php'), '--root=' . $root, '--budgets=' . $budgets]);
+
+        assertSame(0, $exit, $errors);
+        assertContains('Docstring coverage: 50.00% methods (1/2)', $output);
+    }
+
+    /** A measured area with no floor was skipped; it is refused now, by name. */
+    #[Group('documentation')]
+    public function testAMeasuredAreaWithoutAFloorIsRefused(): void
+    {
+        $root = $this->fixtureTree();
+        $budgets = $this->budgetFile($root, ['min_docstring_coverage' => ['overall' => '100'], 'min_type_docblock_coverage' => 100]);
+
+        [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('docstring-report.php'), '--root=' . $root, '--budgets=' . $budgets]);
+
+        assertSame(1, $exit, $errors);
+        assertContains('docstring budgets ' . $budgets . ': min_docstring_coverage.src is missing.', $errors);
+        assertContains('min_docstring_coverage.overall is "100"; it must be a number.', $errors);
+    }
+
+    /** A tree whose only area is src: one documented class with one documented and one bare public method. */
+    private function fixtureTree(): string
+    {
+        $root = sys_get_temp_dir() . '/knossos-docstring-tree-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o700, true);
+        $this->trees[] = $root;
+        file_put_contents($root . '/src/Thing.php', <<<'PHP'
+            <?php
+            /** A thing the floor is measured over. */
+            final class Thing
+            {
+                /** Says it is documented. */
+                public function documented(): void {}
+
+                public function bare(): void {}
+            }
+            PHP);
+
+        return $root;
+    }
+
+    /** @param array<string, mixed> $budgets */
+    private function budgetFile(string $root, array $budgets): string
+    {
+        file_put_contents($root . '/budgets.json', json_encode($budgets, JSON_THROW_ON_ERROR));
+
+        return $root . '/budgets.json';
+    }
+
+    /** @var list<string> */
+    private array $trees = [];
 }

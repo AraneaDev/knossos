@@ -2,10 +2,49 @@
 
 declare(strict_types=1);
 
+/*
+ * The maintainability budgets: duplicate blocks across files, the most complex
+ * and the longest PHP function, and the widest dependency fan-out.
+ *
+ *   php tools/maintainability-report.php [--root=DIR] [--budgets=FILE]
+ *
+ * --root is the tree measured, this checkout when it is not given; --budgets
+ * the limits, the root's maintainability-budgets.json when it is not given. A limit that is missing or not a number at least 0 is refused with
+ * exit 1 before anything is measured: compared as it was, a missing limit
+ * failed with a budget printed as 0, and a quoted one was cast.
+ */
+require_once __DIR__ . '/lib/budget-numbers.php';
 require_once __DIR__ . '/lib/dependency-fanout.php';
 require_once __DIR__ . '/lib/php-function-metrics.php';
 
+const MAINTAINABILITY_METRICS = ['cross_file_duplicate_blocks', 'max_php_function_complexity', 'max_php_function_lines', 'max_dependency_fanout'];
+
 $root = dirname(__DIR__);
+$budgetPath = null;
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
+        $root = rtrim(substr($argument, strlen('--root=')), '/');
+    } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
+        $budgetPath = substr($argument, strlen('--budgets='));
+    } else {
+        fwrite(STDERR, "usage: php tools/maintainability-report.php [--root=DIR] [--budgets=FILE]\n");
+        exit(2);
+    }
+}
+$budgetPath ??= $root . '/maintainability-budgets.json';
+[$budgets, $budgetErrors] = readBudgetFile($budgetPath);
+foreach ($budgets === null ? [] : MAINTAINABILITY_METRICS as $metric) {
+    $error = budgetNumberError($metric, $budgets[$metric] ?? null, 0.0);
+    if ($error !== null) {
+        $budgetErrors[] = $error;
+    }
+}
+if ($budgetErrors !== []) {
+    foreach ($budgetErrors as $error) {
+        fwrite(STDERR, sprintf("maintainability budgets %s: %s\n", $budgetPath, $error));
+    }
+    exit(1);
+}
 $reportPath = $root . '/coverage/quality/maintainability.json';
 $patterns = [$root . '/src/*.php', $root . '/src/*/*.php', $root . '/src/*/*/*.php', $root . '/workers/php/src/*.php', $root . '/workers/php/src/*/*.php', $root . '/workers/typescript/src/*.js', $root . '/workers/python/bin/*.py', $root . '/workers/python/bin/knossos_python/*.py'];
 $paths = [];
@@ -53,7 +92,6 @@ $duplicates = array_filter($blocks, static function (array $locations): bool {
 ksort($duplicates, SORT_STRING);
 uasort($files, static fn(array $left, array $right): int => [$right['decision_points'], $right['logical_lines']] <=> [$left['decision_points'], $left['logical_lines']]);
 usort($functions, static fn(array $left, array $right): int => [$right['complexity'], $right['lines']] <=> [$left['complexity'], $left['lines']]);
-$budgets = json_decode((string) file_get_contents($root . '/maintainability-budgets.json'), true, 512, JSON_THROW_ON_ERROR);
 $maxPhpComplexity = max(array_column($functions, 'complexity'));
 $maxPhpFunctionLines = max(array_column($functions, 'lines'));
 $maxDependencyFanout = max(array_column($files, 'dependency_fanout'));
@@ -78,9 +116,9 @@ if (!is_dir(dirname($reportPath)) && !mkdir(dirname($reportPath), 0775, true) &&
 }
 file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 $failures = [];
-foreach (['cross_file_duplicate_blocks', 'max_php_function_complexity', 'max_php_function_lines', 'max_dependency_fanout'] as $metric) {
+foreach (MAINTAINABILITY_METRICS as $metric) {
     if ($report['summary'][$metric] > $budgets[$metric]) {
-        $failures[] = sprintf('%s is %d; budget is %d.', $metric, $report['summary'][$metric], $budgets[$metric]);
+        $failures[] = sprintf('%s is %d; budget is %s.', $metric, $report['summary'][$metric], (string) $budgets[$metric]);
     }
 }
 printf("Maintainability report: %d files, %d logical lines, %d decision points, %d cross-file duplicate blocks; PHP max complexity %d and function lines %d.\n", $report['summary']['files'], $report['summary']['logical_lines'], $report['summary']['decision_points'], $report['summary']['cross_file_duplicate_blocks'], $maxPhpComplexity, $maxPhpFunctionLines);
