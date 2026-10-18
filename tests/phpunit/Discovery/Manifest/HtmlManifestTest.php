@@ -179,4 +179,12 @@ final class HtmlManifestTest extends TestCase
             ['url' => 'c.js', 'line' => 3],
         ], self::refs("<!--><script src=\"a.js\"></script>\n<!---><script src=\"b.js\"></script>\n<!-- --><script src=\"c.js\"></script>"));
     }
+
+    /** A tag with an unclosed quote is passed over; a repeated or valueless attribute does not confuse `src`. */
+    public function testReadsMalformedAndBareAttributesLeniently(): void
+    {
+        assertSame([['url' => 'b.js', 'line' => 2]], self::refs("<script src=\"a.js></script>\n<script src=\"b.js\"></script>"));
+        assertSame([['url' => 'first.js', 'line' => 1]], self::refs('<script async defer src="first.js" src="second.js"></script>'));
+        assertSame([], self::refs('<script src=""></script><script src="  "></script>'));
+    }
 }

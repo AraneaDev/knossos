@@ -93,4 +93,43 @@ final class InlineScriptImportsTest extends TestCase
         assertSame([], self::specifiers('/* never closed import("./x.js")'));
         assertSame([], self::specifiers('import'));
     }
+
+    /** A regular expression literal is skipped like a string, so a quote or `import(` in it is not code. */
+    public function testSkipsRegularExpressionLiterals(): void
+    {
+        assertSame(['./y.js'], self::specifiers("const r = /[\"'\\/]import(\"\\.\\/x.js\")/g; import \"./y.js\";"));
+        // A slash after a name or a closing bracket divides; the import after it still counts.
+        assertSame(['./z.js'], self::specifiers('const half = total / 2; const q = (a) / (b); import "./z.js";'));
+        // An unterminated literal ends at its line, or at the end of the script.
+        assertSame(['./n.js'], self::specifiers("const r = /never closed\nimport \"./n.js\";"));
+        assertSame([], self::specifiers('const r = /never closed'));
+        // After `return` an operand follows, so `/` opens a literal there.
+        assertSame(['./r.js'], self::specifiers("function f() { return /'/; }\nimport \"./r.js\";"));
+    }
+
+    /** An escaped backtick does not end a template, and an unterminated template ends the read. */
+    public function testReadsEscapesInTemplates(): void
+    {
+        assertSame(['./t.js'], self::specifiers('const t = `a\\`import("./no.js")`; import "./t.js";'));
+        assertSame([], self::specifiers('const t = `never closed import("./no.js")'));
+        // An import inside a substitution is code, and is read.
+        assertSame(['./in.js'], self::specifiers('const t = `${await import("./in.js")}`;'));
+    }
+
+    /** Comments between the keyword and the specifier, and strings inside a named list, are passed over. */
+    public function testReadsAroundCommentsAndQuotedNames(): void
+    {
+        assertSame(['./c.js', './d.js', './q.js'], self::specifiers(implode("\n", [
+            'import /* c */ "./c.js";',
+            'import // d',
+            '  "./d.js";',
+            'import { "a-b" as ab, "}" as brace } from "./q.js";',
+        ])));
+        assertSame([], self::specifiers('import /* never closed "./x.js"'));
+        assertSame([], self::specifiers('import // to the end'));
+        assertSame([], self::specifiers('import { a, b'));
+        assertSame([], self::specifiers('import { a } from'));
+        // Anything else in a clause ends it: this reads as no import at all.
+        assertSame([], self::specifiers('import x = require("./cjs.js");'));
+    }
 }

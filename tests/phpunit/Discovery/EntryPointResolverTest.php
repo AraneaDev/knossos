@@ -78,6 +78,35 @@ final class EntryPointResolverTest extends TestCase
         self::assertStringContainsString('./gone.js', $missing->message);
     }
 
+    /** A mapped file that is missing, and a path above the root, each say why; a malformed ref is skipped. */
+    public function testEachMissSaysWhy(): void
+    {
+        $diagnostics = [];
+        EntryPointResolver::resolve([
+            new ProjectUnit('html', 'index.html', 'h', ['script_refs' => [
+                ['url' => '/static/gone.mjs', 'line' => 2],
+                ['url' => '../../up.js', 'line' => 4],
+                ['url' => 42, 'line' => 5],
+                'not a ref',
+            ]]),
+        ], self::files(['gone.mjs']), ['/static/' => 'web/'], $diagnostics);
+
+        assertSame(2, count($diagnostics));
+        assertSame('index.html:2 loads /static/gone.mjs, which web_roots maps to web/gone.mjs, and that is not a scanned file.', $diagnostics[0]->message);
+        assertSame('index.html:4 loads ../../up.js, which points above the project root.', $diagnostics[1]->message);
+        assertSame(['DISCOVERY_HTML_SCRIPT_UNRESOLVED', 'DISCOVERY_HTML_SCRIPT_UNRESOLVED'], [$diagnostics[0]->code, $diagnostics[1]->code]);
+    }
+
+    /** A trailing `**` spans the rest of the path, and `?` stands for one character within a segment. */
+    public function testEntryGlobsSpanDirectoriesAndSingleCharacters(): void
+    {
+        $units = EntryPointResolver::resolve([
+            new ProjectUnit('node', 'package.json', 'h', ['entry_globs' => ['jobs/**', 'bin/run?.ts']]),
+        ], self::files(['bin/run1.ts', 'bin/run10.ts', 'jobs/a/b.ts', 'jobs/c.ts', 'other.ts']));
+
+        assertSame(['bin/run1.ts', 'jobs/a/b.ts', 'jobs/c.ts'], $units[0]->metadata['entry_points']);
+    }
+
     /** A configured web root decides a reference the heuristic would find ambiguous. */
     public function testAConfiguredWebRootReachesResolution(): void
     {
