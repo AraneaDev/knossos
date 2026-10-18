@@ -1,5 +1,6 @@
 import { request } from 'node:http'
 import type { IncomingMessage } from 'node:http'
+import { stripTypeScriptTypes } from 'node:module'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
@@ -16,6 +17,11 @@ vi.mock('../hooks/mod/actions', async original => ({
     throw new Error('boom')
   }),
 }))
+// The strip that makes the placement rule JavaScript, so a spec can make it fail.
+vi.mock('node:module', async original => {
+  const real = await original<typeof import('node:module')>()
+  return { ...real, stripTypeScriptTypes: vi.fn(real.stripTypeScriptTypes) }
+})
 // The checkout's commit read, counted: the head poll reads it only while a page is connected.
 vi.mock('../hooks/mod/watcher', async original => {
   const real = await original<typeof import('../hooks/mod/watcher')>()
@@ -38,13 +44,13 @@ async function started(): Promise<Running> {
 }
 
 /** A GET's status and body. */
-function get(url: string): Promise<{ status: number; body: string }> {
+function get(url: string): Promise<{ status: number; body: string; type: string }> {
   return new Promise((resolve, reject) => {
     request(url, res => {
       let body = ''
       res.setEncoding('utf8')
       res.on('data', chunk => (body += chunk))
-      res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body, type: String(res.headers['content-type'] ?? '') }))
     })
       .on('error', reject)
       .end()
@@ -260,12 +266,27 @@ describe('startServer', () => {
     expect((await get(`${base}static/place.mjs`)).status).toBe(403)
     const served = await get(`${base}static/place.mjs?t=${token}`)
     expect(served.status).toBe(200)
+    expect(served.type).toMatch(/^text\/javascript/)
     expect(served.body).not.toMatch(/: number/)
     const page = (await import(`data:text/javascript;base64,${Buffer.from(served.body).toString('base64')}`)) as { cardPlace: typeof cardPlace }
     const pane = { rows: 20, columns: 80 }
     for (const [row, column, card] of [[3, 10, { rows: 4, columns: 30 }], [18, 10, { rows: 4, columns: 30 }], [2, 0, { rows: 19, columns: 10 }], [3, 70, { rows: 4, columns: 30 }], [3, 5, { rows: 4, columns: 100 }]] as const) {
       expect(page.cardPlace(row, column, card, pane)).toEqual(cardPlace(row, column, card, pane))
     }
+  })
+
+  it('answers 500, with no body, and logs why when the placement rule cannot be made', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.mocked(stripTypeScriptTypes).mockImplementationOnce(() => {
+      throw new Error('no strip')
+    })
+    const got = await get(`${base}static/place.mjs?t=${token}`)
+    expect(got.status).toBe(500)
+    expect(got.body).toBe('')
+    expect(logged.mock.calls.flat().join('\n')).toContain('no strip')
+    logged.mockRestore()
   })
 
   it('listens on 127.0.0.1 only', async () => {

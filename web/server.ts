@@ -222,8 +222,14 @@ export async function startServer(o: {
     }
     // The hover card's rule is the hooks module's own file, as JavaScript: made here, so no copy of it exists.
     if (named === 'place.mjs') {
-      const source = await readFile(PLACE, 'utf8')
-      return void res.writeHead(200, { 'content-type': TYPES['.mjs']!, 'cache-control': 'no-store' }).end(stripTypeScriptTypes(source))
+      let script: string
+      try {
+        script = stripTypeScriptTypes(await readFile(PLACE, 'utf8'))
+      } catch (error) {
+        io.ui.log(`knossos web: making the placement rule for the page failed: ${messageOf(error)}`)
+        return void res.writeHead(500).end()
+      }
+      return void res.writeHead(200, { 'content-type': TYPES['.mjs']!, 'cache-control': 'no-store' }).end(script)
     }
     const at = normalize(join(PUBLIC, named))
     if (!at.startsWith(PUBLIC + sep)) return void res.writeHead(404).end()
