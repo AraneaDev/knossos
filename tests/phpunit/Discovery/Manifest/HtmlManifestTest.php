@@ -155,7 +155,7 @@ final class HtmlManifestTest extends TestCase
      */
     public static function rawTextElements(): iterable
     {
-        foreach (['template', 'textarea', 'title', 'xmp', 'noscript'] as $element) {
+        foreach (['template', 'textarea', 'title', 'xmp', 'noscript', 'style', 'iframe', 'noembed', 'noframes'] as $element) {
             yield $element => [$element];
         }
     }
@@ -186,5 +186,22 @@ final class HtmlManifestTest extends TestCase
         assertSame([['url' => 'b.js', 'line' => 2]], self::refs("<script src=\"a.js></script>\n<script src=\"b.js\"></script>"));
         assertSame([['url' => 'first.js', 'line' => 1]], self::refs('<script async defer src="first.js" src="second.js"></script>'));
         assertSame([], self::refs('<script src=""></script><script src="  "></script>'));
+    }
+
+    /** A template inside a template ends at its own close, so the outer one's text runs on to the outer close. */
+    public function testSkipsNestedTemplatesToTheirMatchingClose(): void
+    {
+        assertSame([['url' => 'after.js', 'line' => 1]], self::refs(
+            '<template><template></template><script src="between.js"></script></template><script src="after.js"></script>',
+        ));
+        assertSame([], self::refs('<template><TEMPLATE id="x"></template><script src="inside.js"></script>'));
+    }
+
+    /** `<plaintext>` makes the rest of the page text: nothing after it is read. */
+    public function testPlaintextEndsReadingForTheRestOfThePage(): void
+    {
+        assertSame([['url' => 'before.js', 'line' => 1]], self::refs(
+            "<script src=\"before.js\"></script><plaintext>\n<script src=\"after.js\"></script></plaintext><script src=\"later.js\"></script>",
+        ));
     }
 }

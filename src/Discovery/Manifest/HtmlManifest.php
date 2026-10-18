@@ -14,7 +14,7 @@ final class HtmlManifest implements ManifestReader
      * Elements whose text a browser running scripts never parses as tags, so
      * a script tag written there loads nothing.
      */
-    private const UNREAD_TEXT_ELEMENTS = ['template', 'textarea', 'title', 'xmp', 'noscript'];
+    private const UNREAD_TEXT_ELEMENTS = ['template', 'textarea', 'title', 'xmp', 'noscript', 'style', 'iframe', 'noembed', 'noframes'];
 
     /** Script types whose inline text a browser runs as JavaScript; no type at all is the classic default. */
     private const SCRIPT_TYPES = ['', 'module', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript'];
@@ -59,7 +59,7 @@ final class HtmlManifest implements ManifestReader
         $refs = [];
         $at = 0;
         $length = strlen($contents);
-        while ($at < $length && preg_match('/<!--|<(script|link|template|textarea|title|xmp|noscript)(?=[\s\/>])/i', $contents, $match, PREG_OFFSET_CAPTURE, $at) === 1) {
+        while ($at < $length && preg_match('/<!--|<(script|link|template|textarea|title|xmp|noscript|style|iframe|noembed|noframes|plaintext)(?=[\s\/>])/i', $contents, $match, PREG_OFFSET_CAPTURE, $at) === 1) {
             $start = $match[0][1];
             if ($match[0][0] === '<!--') {
                 $at = self::commentEnd($contents, $start);
@@ -71,9 +71,12 @@ final class HtmlManifest implements ManifestReader
             }
             $at = $start + strlen($tag[0]);
             $name = strtolower($match[1][0]);
+            // Everything after `<plaintext>` is text; it has no closing tag.
+            if ($name === 'plaintext') {
+                break;
+            }
             if (in_array($name, self::UNREAD_TEXT_ELEMENTS, true)) {
-                $close = stripos($contents, '</' . $name, $at);
-                $at = $close === false ? $length : $close;
+                $at = self::elementEnd($contents, $name, $at);
                 continue;
             }
             $attributes = self::attributes($tag[1], $start + strlen($match[0][0]));
@@ -98,6 +101,28 @@ final class HtmlManifest implements ManifestReader
         }
 
         return array_values($refs);
+    }
+
+    /**
+     * The offset of the tag that closes the element `$name` whose text starts
+     * at `$at`, or the end of the page. Only a template nests, so for it
+     * each inner `<template>` must be closed before the outer one is.
+     */
+    private static function elementEnd(string $contents, string $name, int $at): int
+    {
+        $depth = 0;
+        $pattern = $name === 'template' ? '~<(/?)template(?=[\s/>])~i' : '~<(/)' . $name . '(?=[\s/>])~i';
+        while (preg_match($pattern, $contents, $tag, PREG_OFFSET_CAPTURE, $at) === 1) {
+            if ($tag[1][0] === '/' && $depth-- === 0) {
+                return $tag[0][1];
+            }
+            if ($tag[1][0] === '') {
+                ++$depth;
+            }
+            $at = $tag[0][1] + strlen($tag[0][0]);
+        }
+
+        return strlen($contents);
     }
 
     /**
