@@ -105,6 +105,7 @@ final class PluginCommand implements CliCommand
         '/hooks/mod/agent.ts',
         '/hooks/mod/cells.ts',
         '/hooks/mod/dig.ts',
+        '/hooks/mod/frame.ts',
         '/hooks/mod/input.ts',
         '/hooks/mod/loaders.ts',
         '/hooks/mod/motion.ts',

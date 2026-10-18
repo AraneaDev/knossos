@@ -7,15 +7,14 @@
 import type { Elements, RenderElement, RenderNode, RenderSurface, UiPressArgument } from 'claude-code'
 
 import { bandModel } from '../lib/band'
-import { allowInput, emptyRows, fit, noGraphOf, paneHeight, paneLayout, rowWidth, shrinkRows, tierOf } from '../lib/layout'
+import { fit, paneHeight, paneLayout, rowWidth, shrinkRows } from '../lib/layout'
 import type { Preview, Row, Segment } from '../lib/layout'
 import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
-import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
+import { isBusy, spun } from '../lib/motion'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { cells, dimRow, FILE_PRESS, pressLabel, rowsHeight, textStyle } from '../lib/rows'
-import { startMotion } from './motion'
 import type { Port } from './port'
-import { currentInput } from './input'
+import { noteSpinners, paneSource } from './frame'
 import type { Handlers } from './input'
 import { fieldKey, mod } from './state'
 
@@ -163,10 +162,9 @@ function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns:
   )
 }
 
-/** `row` with its spinners turned to the frame the pane draws; one there marks the pane busy, so the frames go on. */
+/** `row` with its spinners turned to the frame the pane draws (see `noteSpinners`, which also keeps the frames going while one shows). */
 function spunRow(row: Row): Row {
   if (!row.segments.some(s => isBusy(s.text))) return row
-  mod.spinSeen = true
   return { ...row, segments: row.segments.map(s => (isBusy(s.text) ? { ...s, text: spun(s.text, mod.spinFrame) } : s)) }
 }
 
@@ -355,56 +353,47 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
  * rows, until it fits; past it even at {@link SHORT_ROWS}, one line says so.
  */
 export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {
-  // A line that says something is on its way spins: drawn at the motion's frame, and while one shows the frames go on.
-  mod.spinFrame = mod.disabled ? 0 : (await io.state.motion.read()).frame
-  mod.spinSeen = false
-  const tree = await drawPaneTree(io, ui, surface, props, act)
-  const now = await io.clock.now()
-  if (mod.spinSeen && !mod.paneBusy) mod.busySince = now
-  mod.paneBusy = mod.spinSeen
-  // Past its minute a line under way stands still: a redraw then starts no frames, or each would draw the next.
-  if (mod.paneBusy && mod.motionTimer === null && now - mod.busySince < BUSY_SPIN_MS) await startMotion(io, null)
-  return tree
-}
-
-/** The pane's tree, as {@link drawPane} describes it. */
-async function drawPaneTree(io: Port, ui: Elements[RenderSurface], surface: RenderSurface, props: { bodyColumns: number; scroll?: { offset: number; bodyRows: number } }, act: Handlers): Promise<RenderElement> {
   const { Box } = ui
-  mod.paneText = null
-  mod.emptyShown = false
-  if (mod.disabled) return <Box key="off" />
-  const d = await io.state.dashboard.read()
-  const v = await io.state.view.read()
   const columns = Math.max(1, props.bodyColumns)
   const terminal = surface === 'terminal'
-  // Whether the pane is wide enough for the detail beside the tab: the lookup it needs runs from the next press or tick.
-  mod.paneWide = tierOf(columns) === 'wide'
-  if (d === null || d.status !== 'ok') {
-    const offer = allowInput(await io.state.brief.read(), await io.state.rescan.read(), await io.state.allow.read())
-    mod.emptyShown = true
+  const source = await paneSource(io, columns, terminal)
+  if (source.kind === 'off') {
+    await noteSpinners(io, [])
+    return <Box key="off" />
+  }
+  if (source.kind === 'empty') {
+    await noteSpinners(io, source.rows)
+    if (source.rows.length === 0) return <Box key="empty" />
     return (
       <Box key="empty" flexDirection="column">
-        {emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns).map(row => drawRow(act, ui, row, columns, terminal))}
+        {source.rows.map(row => drawRow(act, ui, row, columns, terminal))}
       </Box>
     )
   }
-  const input = await currentInput(io, terminal)
-  if (input === null) return <Box key="empty" />
-  mod.paneText = input.status.text
+  const { input, key } = source
   // No loop variable may be called `h`: JSX compiles to h(...), and a
   // parameter of that name shadows the element factory inside its callback.
   const height = paneHeight(props.scroll)
   const offset = Math.max(0, props.scroll?.offset ?? 0)
   const themeName = await io.state.theme.read()
-  const key = v.inspect === null ? 'pane' : 'detail'
   // How many rows the last layout drew with something in them (the blank fill under a short tab left out).
   let used = height
-  const draw = (rows: number, lean: boolean): RenderElement => {
+  // What each tree drew, to tell which spinners the one returned holds.
+  const shown = new WeakMap<RenderElement, Row[]>()
+  const layout = (rows: number) => {
     const laidOut = paneLayout(input, columns, rows, offset)
     used = rowsHeight(laidOut.body.filter(r => !r.key.startsWith('fill-'))) + laidOut.footer.length
     // Kept for the wheel: the last layout drawn is the one on screen.
     mod.paneRows = laidOut.body
     mod.paneOffset = offset
+    return laidOut
+  }
+  const draw = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
+    const tree = build(laidOut, lean)
+    shown.set(tree, [...laidOut.body, ...laidOut.footer])
+    return tree
+  }
+  const build = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
     if (!laidOut.pinned) {
       return (
         <Box key={key} flexDirection="column">
@@ -425,16 +414,24 @@ async function drawPaneTree(io: Port, ui: Elements[RenderSurface], surface: Rend
       </Box>
     )
   }
-  let tree = draw(height, false)
+  const first = layout(height)
+  // The spinners of the layout about to be drawn: the frame they spin at is set before any row is.
+  await noteSpinners(io, [...first.body, ...first.footer])
+  let tree = draw(first, false)
   if (drawnText(tree) <= TEXT_BUDGET) return tree
-  tree = draw(height, true)
+  tree = draw(layout(height), true)
   // Lists make most of the weight: fewer rows each try, in proportion to the budget, down to SHORT_ROWS at the last.
   const lean = { tree, weight: drawnText(tree) }
   const fitted = shrinkRows(Math.min(height, used), SHORT_ROWS, TEXT_BUDGET, lean, rows => {
-    const drawn = draw(rows, true)
-    return { tree: drawn, weight: drawnText(drawn) }
+    const smaller = draw(layout(rows), true)
+    return { tree: smaller, weight: drawnText(smaller) }
   })
-  if (fitted.weight <= TEXT_BUDGET) return fitted.tree
+  if (fitted.weight <= TEXT_BUDGET) {
+    // The fewer rows drawn under the budget may hold other spinners than the full layout did.
+    await noteSpinners(io, shown.get(fitted.tree) ?? [])
+    return fitted.tree
+  }
+  await noteSpinners(io, [])
   const { weight, rows } = fitted
   // Still past the budget at the fewest rows: one line says so, rather than a tree the engine would refuse.
   if (!mod.tooLargeLogged) {

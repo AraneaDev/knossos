@@ -9,13 +9,10 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { begin, counts, finish } from './lib/activity'
 import { committedSince } from './lib/agent'
-import { wheelMove } from './lib/cards'
-import { withScrollsKept } from './lib/layout'
-import { copyCommand, handlersOf, twinTarget } from './mod/actions'
+import { copyCommand, focusLanded, focusMoved, handlersOf, wheelScrolled } from './mod/actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
 import { cellChange, INITIAL } from './mod/cells'
 import { freshDig, observe } from './mod/dig'
-import { request } from './mod/loaders'
 import type { Port } from './mod/port'
 import { drawBand, drawPane } from './mod/render'
 import { endSession, endTurn, openPane, registerCommand, retryRegister, runCommand, startUp } from './mod/session'
@@ -274,33 +271,24 @@ export const register: Register = (on, options) => {
 
   // The arrows, Tab or a click moving the focus onto a listed row move the marker with it.
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
+    const io = portOf($)
     // A person's move names the element; a `$.ui.focus` call may arrive as its own arguments, naming it `key`.
     const asked = e.element ?? (e as { key?: unknown }).key
-    const twin = typeof asked === 'string' ? twinTarget(asked) : undefined
-    if (twin === null) return {}
-    const element = twin ?? asked
-    mod.focused = typeof element === 'string' ? element : null
+    const moved = await focusMoved(io, asked)
+    if (moved !== null && 'refuse' in moved) return {}
     // Redirected in the field the move named: a person's move its `element`, a `$.ui.focus` call its `key`.
-    const redirected = e.element === undefined ? ({ ...e, key: twin } as typeof e) : { ...e, element: twin }
-    const moved = await next(twin === undefined ? e : redirected)
-    const index = typeof element === 'string' && element.startsWith('row:') ? Number(element.slice(4)) : Number.NaN
-    if (moved.deny === undefined && Number.isInteger(index)) {
-      const io = portOf($)
-      await update($, view, v => (v.selected === index ? v : withScrollsKept(v, { ...v, selected: index, target: undefined })))
-      await request(io, 'couplings')
-      await request(io, 'peek')
-    }
-    return moved
+    const redirected = moved === null ? e : e.element === undefined ? ({ ...e, key: moved.to } as typeof e) : { ...e, element: moved.to }
+    const landed = await next(redirected)
+    const element = moved === null ? asked : moved.to
+    if (landed.deny === undefined && typeof element === 'string') await focusLanded(io, element)
+    return landed
   })
 
   // The wheel over a list longer than its window scrolls that list, the marker left where it is; anywhere else the page scrolls.
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     if (e.origin.kind !== 'person' || e.pointer === undefined) return next(e)
     // At a list's end, or over none, the page takes the wheel, as a browser hands it on.
-    const moved = wheelMove(mod.paneRows, mod.paneOffset, e.pointer, e.by)
-    if (moved === null) return next(e)
-    await update($, view, v => ({ ...v, scrolls: { ...(v.scrolls ?? {}), [moved.key]: moved.start } }))
-    return {}
+    return (await wheelScrolled(portOf($), mod.paneRows, mod.paneOffset, e.pointer, e.by)) ? {} : next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

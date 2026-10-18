@@ -103,9 +103,8 @@ export const mod = {
   paneBusy: false,
   /** When the pane began to draw lines under way (mod clock, ms): they spin for {@link BUSY_SPIN_MS} at most. */
   busySince: 0,
-  /** While the pane draws: the motion's frame its spinners show, and whether it has drawn one yet. */
+  /** While the pane draws: the motion's frame its spinners show. */
   spinFrame: 0,
-  spinSeen: false,
   /** Keeps the band's age current while the mod is on. */
   ticker: null as Timer | null,
   /** The frames the pane's motion draws (see `motion.ts`): running only while something moves. */
@@ -284,7 +283,6 @@ export function reset(options: PluginOptions): void {
   mod.paneBusy = false
   mod.busySince = 0
   mod.spinFrame = 0
-  mod.spinSeen = false
   mod.ticker?.cancel()
   mod.ticker = null
   mod.motionTimer?.cancel()

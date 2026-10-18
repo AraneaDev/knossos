@@ -4,12 +4,13 @@
  * between two, allowing a refused root, the editor and the clipboard).
  */
 import type { AllowState, DiffFold, Inspected, KnossosView, NoteState, PaneTab, RescanState, SearchState } from '../../types'
+import { wheelMove } from '../lib/cards'
 import { diffPage, diffView } from '../lib/diff'
 import { BUSY_CODE, BUSY_SAID, parseAllowRoot, parseAnnotate, parseGraphSearch } from '../lib/envelopes'
 import { askPrompt, editTarget, locText, nextTarget, noGraphOf, peekList, refusedRoot, SCAN_PROMPT, SORTS, subjectOf, TABS } from '../lib/layout'
 import { nextFilter } from '../lib/notes-view'
 import { editorCommand } from '../lib/rows'
-import type { Loc } from '../lib/layout'
+import type { Loc, Row } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { request, requestDetail, showComponent } from './loaders'
 import { askFlag, askMove, askRemove, confirm as confirmNotes, confirmMarked, editMarked, missingMarked, startMove, submitReason, typeReason } from './notes-actions'
@@ -347,6 +348,37 @@ export function twinTarget(element: string): string | null | undefined {
   if (mod.focused !== `tab:${id}`) return `tab:${id}`
   const before = TABS[TABS.findIndex(t => t.id === id) - 1]
   return before === undefined ? null : `tab:${before.id}`
+}
+
+/**
+ * A focus move the engine asked for, before it is made: the twin key's redirect
+ * (`to`, the element to move the focus to instead), a refusal (`refuse`, the
+ * move to make is none), or null to let the focus stand. Notes the element the
+ * focus is on.
+ */
+export async function focusMoved(_io: Port, asked: unknown): Promise<{ to: string } | { refuse: true } | null> {
+  const twin = typeof asked === 'string' ? twinTarget(asked) : undefined
+  if (twin === null) return { refuse: true }
+  const element = twin ?? asked
+  mod.focused = typeof element === 'string' ? element : null
+  return twin === undefined ? null : { to: twin }
+}
+
+/** The focus has landed on `element`: a listed row moves the marker with it, and the lookups that follow the marker are asked for. */
+export async function focusLanded(io: Port, element: string): Promise<void> {
+  const index = element.startsWith('row:') ? Number(element.slice(4)) : Number.NaN
+  if (!Number.isInteger(index)) return
+  await io.state.view.update(v => (v.selected === index ? v : { ...v, selected: index, target: undefined }))
+  await request(io, 'couplings')
+  await request(io, 'peek')
+}
+
+/** The wheel over a list longer than its window scrolls that list, the marker left where it is; false when the pointer is over none, or at its end. */
+export async function wheelScrolled(io: Port, rows: readonly Row[], offset: number, pointer: { row: number; column: number }, by: number): Promise<boolean> {
+  const moved = wheelMove(rows, offset, pointer, by)
+  if (moved === null) return false
+  await io.state.view.update(v => ({ ...v, scrolls: { ...(v.scrolls ?? {}), [moved.key]: moved.start } }))
+  return true
 }
 
 /** What a press on the pane does, then the couplings of the cell it leaves marked, when it marks one. */
