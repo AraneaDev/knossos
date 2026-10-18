@@ -87,10 +87,16 @@ compare the two scans. `boundary_violations`, `error_diagnostics`,
 `warning_diagnostics` and `unreferenced_candidates` are read off the second one.
 
 The baseline is what CI works out from the event, a pull request's target
-commit or the tip a push replaced. Failing that the lane takes the point the
-branch left the default branch, and failing that `HEAD^`. `KNOSSOS_GATE_BASE_REF`
-names it explicitly. If nothing resolves, the lane stops. Scanning one tree twice would zero both delta
-budgets and report a pass that checked nothing.
+commit or the tip a push replaced. `KNOSSOS_GATE_BASE_REF` names it
+explicitly. Failing that the lane takes the point the branch left
+`origin/main`, or else `main`. When that point is `HEAD` itself, `HEAD` is a
+commit of the default branch, and only then does the lane step back to
+`HEAD^`. A branch that shares no history with either is refused rather than
+measured against its last commit, which would let everything earlier on the
+branch through. If nothing resolves, the lane stops. Scanning one tree twice
+would zero both delta budgets and report a pass that checked nothing.
+`tools/gate-baseline` makes that choice, and `tests/shell/gate-baseline.sh`
+holds it to each of these cases.
 
 Both trees come from `git archive` and are scanned at the same path. The path
 matters: a project's identity is its root, so a baseline scanned elsewhere
