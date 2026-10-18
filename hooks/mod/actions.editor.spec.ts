@@ -3,10 +3,10 @@ import type { RenderSurface } from 'claude-code'
 import { FEEDBACK_MS } from '../lib/layout'
 import { copyCommand, handlersOf, PRESSES, pressOf } from './actions'
 import type { Port } from './port'
-import { currentInput } from './render'
+import { currentInput } from './input'
 import { mod } from './state'
 
-vi.mock('./render', async importOriginal => ({ ...(await importOriginal<typeof import('./render')>()), currentInput: vi.fn() }))
+vi.mock('./input', async importOriginal => ({ ...(await importOriginal<typeof import('./input')>()), currentInput: vi.fn() }))
 
 const NOW = 5_000
 const PLACE = { path: '/work/app/src/A.php', line: 12 }

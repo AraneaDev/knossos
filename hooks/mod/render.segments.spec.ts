@@ -5,7 +5,7 @@ import { NO_MOTION } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
 import { drawPane } from './render'
-import type { Handlers } from './render'
+import type { Handlers } from './input'
 import { fieldKey, reset } from './state'
 
 const ROOT = '/work/app'

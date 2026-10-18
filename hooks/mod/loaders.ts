@@ -17,7 +17,7 @@ import { SingleFlight } from '../lib/scheduler'
 import { disable, light, wrapper } from './port'
 import type { Cell, Port } from './port'
 import { startMotion } from './motion'
-import { currentInput, currentList } from './render'
+import { currentInput, currentList } from './input'
 import { cyclesOf, mod } from './state'
 
 /** The wrapper's own limits (30 s and 15 s) plus room for it to exit on its own. */

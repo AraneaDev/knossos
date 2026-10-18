@@ -71,17 +71,7 @@ if ('readme' in args && (!args.since || !args['session-rev'])) {
 }
 
 // The mod's modules import each other without an extension, as the engine's bundler resolves them.
-const { registerHooks } = await import('node:module')
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    try {
-      return nextResolve(specifier, context)
-    } catch (error) {
-      if (/^\.\.?\//.test(specifier) && !/\.[a-z]+$/.test(specifier)) return nextResolve(`${specifier}.ts`, context)
-      throw error
-    }
-  },
-})
+await import('./ts-resolve.mjs')
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
