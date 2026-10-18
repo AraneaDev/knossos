@@ -1634,6 +1634,10 @@ TOML);
             '</body></html>',
             '',
         ]));
+        mkdir($this->root . '/frontend/public', 0700, true);
+        mkdir($this->root . '/frontend/src', 0700, true);
+        file_put_contents($this->root . '/frontend/public/config.js', "window.config = {};\n");
+        file_put_contents($this->root . '/frontend/src/main.tsx', "export {};\n");
 
         $discoverer = new ProjectDiscoverer(new DiscoveryConfig([$this->root]));
         $result = $discoverer->discover($this->root);
@@ -1646,6 +1650,11 @@ TOML);
             ['url' => '/config.js', 'line' => 4],
             ['url' => '/src/main.tsx', 'line' => 6],
         ], $units[0]->metadata['script_refs']);
+        // `/config.js` is served out of `public/`, which a bundler serves at
+        // the web root; `/src/main.tsx` is the file beside the page. Each
+        // names exactly one scanned file, so neither is reported.
+        assertSame(['frontend/public/config.js', 'frontend/src/main.tsx'], $units[0]->metadata['entry_points']);
+        assertSame([], $result->diagnostics);
     }
 
     /**
@@ -1669,6 +1678,8 @@ TOML);
         $units = array_values(array_filter($result->units, fn($u): bool => $u->kind === 'html'));
         $this->assertNotEmpty($units);
         assertSame([], $units[0]->metadata['script_refs']);
+        assertSame([], $units[0]->metadata['entry_points']);
+        assertSame([], $result->diagnostics);
     }
 
     /**
@@ -1683,6 +1694,7 @@ TOML);
             '<script src=b.js></script>',
             '',
         ]));
+        file_put_contents($this->root . '/a.js', "export {};\n");
 
         $discoverer = new ProjectDiscoverer(new DiscoveryConfig([$this->root]));
         $result = $discoverer->discover($this->root);
@@ -1693,6 +1705,11 @@ TOML);
             ['url' => './a.js', 'line' => 1],
             ['url' => 'b.js', 'line' => 2],
         ], $units[0]->metadata['script_refs']);
+        // A relative source names the file beside the page and nothing else;
+        // `b.js` is not in the scan, so it is reported rather than guessed.
+        assertSame(['a.js'], $units[0]->metadata['entry_points']);
+        assertSame(['DISCOVERY_HTML_SCRIPT_UNRESOLVED'], array_map(static fn($diagnostic): string => $diagnostic->code, $result->diagnostics));
+        self::assertStringContainsString('index.html:2 loads b.js', $result->diagnostics[0]->message);
     }
 
     /**

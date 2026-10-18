@@ -64,7 +64,8 @@ final readonly class ProjectDiscoverer
             $left->relativePath <=> $right->relativePath);
         usort($units, static fn(ProjectUnit $left, ProjectUnit $right): int =>
             [$left->kind, $left->configPath] <=> [$right->kind, $right->configPath]);
-        $units = EntryPointResolver::resolve($units, $files);
+        $diagnostics = $walk['diagnostics'];
+        $units = EntryPointResolver::resolve($units, $files, [], $diagnostics);
 
         $inputParts = array_map(
             static fn(DiscoveredFile $file): string => $file->relativePath . '=' . $file->contentHash,
@@ -79,7 +80,7 @@ final readonly class ProjectDiscoverer
             $walk['root'],
             $files,
             $units,
-            $walk['diagnostics'],
+            $diagnostics,
             hash('sha256', implode("\n", $inputParts)),
             hash('sha256', implode("\n", $configParts)),
             $walk['unparsedManifestHashes'],
