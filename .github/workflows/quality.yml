@@ -214,8 +214,8 @@ jobs:
           dir=$(mktemp -d)
           git fetch --quiet --no-tags --depth=1 .base HEAD
           printf '%s' "$LABELS" | jq -r '.[]' > "$dir/labels"
-          git diff --no-ext-diff --no-renames --name-only "$BASE_SHA" HEAD > "$dir/files"
-          git diff --no-ext-diff --no-renames --unified=10 "$BASE_SHA" HEAD > "$dir/diff"
+          git diff --no-ext-diff --no-textconv --no-renames --name-only "$BASE_SHA" HEAD > "$dir/files"
+          git diff --no-ext-diff --no-textconv --no-renames --unified=10 "$BASE_SHA" HEAD > "$dir/diff"
           status=0
           sh .base/tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
             --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" \

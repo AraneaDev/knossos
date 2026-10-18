@@ -167,12 +167,13 @@ must come from this repository, carry the `autorelease: pending` label, change
 only the manifest, `CHANGELOG.md`, `version.txt` and the extra-files in
 `release-please-config.json`, and change nothing in those extra-files but the
 version, on lines release-please's markers allow: a line that carries
-`x-release-please-version` itself, or one between `x-release-please-start-version`
-and `x-release-please-end`, with the start marker within the ten lines of
-context the workflows ask git for. Anything else runs every lane. The diff it judges is the merge commit the
-lanes test against its base, and on a pull request both `tools/ci/release-pr`
-and `tools/ci/quality-verdict` run from the base commit, so a pull request
-cannot pass with a broken copy of either.
+`x-release-please-version` itself, or one between
+`x-release-please-start-version` and `x-release-please-end`, with the start
+marker within the ten lines of context the workflows ask git for. Anything else
+runs every lane. The diff it judges is the merge commit the lanes test against
+its base, and on a pull request both `tools/ci/release-pr` and
+`tools/ci/quality-verdict` run from the base commit, so a pull request cannot
+pass with a broken copy of either.
 
 Pull request titles are checked by the `pr-title` workflow with
 `tools/check-commit-style.sh`, the same script the `commit-msg` hook uses,

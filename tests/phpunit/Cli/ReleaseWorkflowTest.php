@@ -104,9 +104,10 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         self::assertStringContainsString('if [ ! -f .base/tools/ci/release-pr ]; then', $decide);
 
         // The diff judged is the merge commit the lanes test, against the base.
-        self::assertStringContainsString('git diff --no-ext-diff --no-renames --name-only "$BASE_SHA" HEAD > "$dir/files"', $decide);
-        self::assertStringContainsString('git diff --no-ext-diff --no-renames --unified=10 "$BASE_SHA" HEAD > "$dir/diff"', $decide);
+        self::assertStringContainsString('git diff --no-ext-diff --no-textconv --no-renames --name-only "$BASE_SHA" HEAD > "$dir/files"', $decide);
+        self::assertStringContainsString('git diff --no-ext-diff --no-textconv --no-renames --unified=10 "$BASE_SHA" HEAD > "$dir/diff"', $decide);
         self::assertStringNotContainsString('gh pr', $decide);
+        self::assertSame(substr_count($quality, 'git diff '), substr_count($quality, 'git diff --no-ext-diff --no-textconv '), 'No diff driver or textconv filter shapes what is judged.');
 
         $verdict = "needs.release-pr.outputs.release == 'true'";
         $notRelease = "needs.release-pr.outputs.release != 'true'";
@@ -163,9 +164,10 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         // The same inputs quality.yml uses: labels from the event, the diff
         // from git with wide context, never the API's three lines.
         self::assertStringContainsString('LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}', $workflow);
-        self::assertStringContainsString('git diff --no-ext-diff --no-renames --name-only "$base" "$head" > "$dir/files"', $workflow);
-        self::assertStringContainsString('git diff --no-ext-diff --no-renames --unified=10 "$base" "$head" > "$dir/diff"', $workflow);
+        self::assertStringContainsString('git diff --no-ext-diff --no-textconv --no-renames --name-only "$base" "$head" > "$dir/files"', $workflow);
+        self::assertStringContainsString('git diff --no-ext-diff --no-textconv --no-renames --unified=10 "$base" "$head" > "$dir/diff"', $workflow);
         self::assertStringNotContainsString('gh pr', $workflow);
+        self::assertSame(substr_count($workflow, 'git diff '), substr_count($workflow, 'git diff --no-ext-diff --no-textconv '), 'No diff driver or textconv filter shapes what is judged.');
 
         // pull_request_target runs trusted: the only checkout is the base
         // branch, the pull request arrives only through git fetch, and nothing

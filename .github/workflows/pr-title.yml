@@ -56,8 +56,8 @@ jobs:
           head=$(git rev-parse FETCH_HEAD)
           base=$(git merge-base HEAD "$head")
           printf '%s' "$LABELS" | jq -r '.[]' > "$dir/labels"
-          git diff --no-ext-diff --no-renames --name-only "$base" "$head" > "$dir/files"
-          git diff --no-ext-diff --no-renames --unified=10 "$base" "$head" > "$dir/diff"
+          git diff --no-ext-diff --no-textconv --no-renames --name-only "$base" "$head" > "$dir/files"
+          git diff --no-ext-diff --no-textconv --no-renames --unified=10 "$base" "$head" > "$dir/diff"
           status=0
           tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
             --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" || status=$?
