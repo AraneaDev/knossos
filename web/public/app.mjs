@@ -84,9 +84,7 @@ export const releasedOn = (down, up) =>
  * once as it happens and never again.
  */
 export function createPage(o) {
-    let source = null;
     let attempt = 0;
-    let timer = null;
     const page = {
         frame: null,
         /** The press or field the page's focus is on, as the pane last heard of it. */
@@ -110,7 +108,7 @@ export function createPage(o) {
                 rows: String(size.rows),
                 theme: o.theme(),
             });
-            source = new o.EventSource(`/events?${query}`);
+            const source = new o.EventSource(`/events?${query}`);
             source.onmessage = (message) => {
                 attempt = 0;
                 received(JSON.parse(message.data));
@@ -118,15 +116,8 @@ export function createPage(o) {
             source.onerror = () => {
                 // The stream would retry on its own at once; the page waits instead, longer each time.
                 source.close();
-                timer = setTimeout(() => {
-                    timer = null;
-                    page.connect();
-                }, retryDelay(attempt++));
+                setTimeout(() => page.connect(), retryDelay(attempt++));
             };
-        },
-        close() {
-            if (timer !== null) clearTimeout(timer);
-            source?.close();
         },
         /** The focus landed on `element` (a press or field id): told to the pane, unless it already knows. */
         focusedOn(element) {
