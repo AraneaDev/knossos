@@ -2,7 +2,33 @@
 
 declare(strict_types=1);
 
+/*
+ * The PHP floors over pcov's per-process data.
+ *
+ *   php tools/pcov-report.php [--root=DIR] [--budgets=FILE]
+ *
+ * --root is the tree whose coverage/php data and sources are read, this
+ * checkout when it is not given; --budgets the floors, the root's
+ * coverage-budgets.json when it is not given. The budgets are checked before
+ * any floor is applied: a missing file, a floor that is not a number from 0 to
+ * 100, a measured component with no floor or a floor no component answers to
+ * stops the report with exit 1, where it once read the first two as 90 and 0.
+ */
+require __DIR__ . '/lib/coverage-budgets.php';
+
 $root = dirname(__DIR__);
+$budgetPath = null;
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
+        $root = rtrim(substr($argument, strlen('--root=')), '/');
+    } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
+        $budgetPath = substr($argument, strlen('--budgets='));
+    } else {
+        fwrite(STDERR, "usage: php tools/pcov-report.php [--root=DIR] [--budgets=FILE]\n");
+        exit(2);
+    }
+}
+$budgetPath ??= $root . '/coverage-budgets.json';
 $coverageDirectory = $root . '/coverage/php';
 $merged = [];
 foreach (glob($coverageDirectory . '/pcov-*.json') ?: [] as $path) {
@@ -47,7 +73,7 @@ $approxExecutableLines = static function (string $path): int {
 };
 // Constant-only files: the version, and the CLI entry point that re-exports it.
 $excluded = [$root . '/src/Application.php', $root . '/src/Runtime/Version.php'];
-$expectedFiles = [$root . '/bin/http-router.php' => true];
+$expectedFiles = is_file($root . '/bin/http-router.php') ? [$root . '/bin/http-router.php' => true] : [];
 foreach ([$root . '/src', $root . '/workers/php/src'] as $sourceDirectory) {
     if (!is_dir($sourceDirectory)) {
         continue;
@@ -116,14 +142,19 @@ foreach ($files as $file => [$fileCovered, $fileExecutable]) {
 }
 printf("PHP aggregate line coverage: %.2f%% (%d/%d)\n", $percent, $covered, $executable);
 
-$budgetPath = $root . '/coverage-budgets.json';
-$budgets = is_file($budgetPath) ? json_decode((string) file_get_contents($budgetPath), true, 512, JSON_THROW_ON_ERROR) : [];
+[$budgets, $budgetErrors] = coverageBudgetFile($budgetPath, array_map('strval', array_keys($components)));
+if ($budgets === null || $budgetErrors !== []) {
+    foreach ($budgetErrors as $error) {
+        fwrite(STDERR, sprintf("coverage budgets %s: %s\n", $budgetPath, $error));
+    }
+    exit(1);
+}
 $componentSummary = [];
 $componentPassed = true;
 ksort($components, SORT_STRING);
 foreach ($components as $component => [$componentCovered, $componentExecutable]) {
     $componentPercent = 100 * $componentCovered / max(1, $componentExecutable);
-    $floor = (float) ($budgets['php']['components'][$component] ?? 0);
+    $floor = (float) $budgets['php']['components'][$component];
     $passed = $componentPercent >= $floor;
     $componentPassed = $componentPassed && $passed;
     printf("PHP component %-24s %6.2f%% (%d/%d), floor %.2f%% %s\n", $component, $componentPercent, $componentCovered, $componentExecutable, $floor, $passed ? 'PASS' : 'FAIL');
@@ -162,4 +193,4 @@ $xml .= sprintf(
     $covered,
 );
 file_put_contents($coverageDirectory . '/clover.xml', $xml);
-exit($percent >= (float) ($budgets['php']['aggregate_lines'] ?? 90.0) && $componentPassed ? 0 : 1);
+exit($percent >= (float) $budgets['php']['aggregate_lines'] && $componentPassed ? 0 : 1);

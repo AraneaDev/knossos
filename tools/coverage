@@ -9,6 +9,12 @@
 #                                           RAW_DIR into coverage/
 #        tools/coverage report              the reports and floors over coverage/
 #
+#        all and report take --budgets=FILE, the floors to hold the reports to;
+#        coverage-budgets.json when it is not given. The file is checked before
+#        anything runs (tools/check-coverage-budgets.php), so a floor that is
+#        missing or not a number from 0 to 100 stops the profile instead of
+#        reaching a tool that would read it as no floor at all.
+#
 # CI runs `run --shard` in several jobs at once and `merge` then `report` in
 # one job after them, so PHPUnit runs once per pull request without one job
 # having to sit through the whole suite. Every figure is the same as an
@@ -19,29 +25,44 @@
 set -eu
 
 usage() {
-    echo "usage: tools/coverage [run [--shard=I/N] | merge RAW_DIR | report]" >&2
+    echo "usage: tools/coverage [run [--shard=I/N] | merge RAW_DIR | report] [--budgets=FILE]" >&2
     exit 64
 }
 
+# The tools this one hands work to, beside it, so a copy of the directory runs
+# its own copies rather than the checkout's.
+tools=$(dirname -- "$0")
+
 mode="${1:-all}"
+case "$mode" in
+    --budgets=*) mode=all ;;
+    *) [ "$#" -eq 0 ] || shift ;;
+esac
 shard=''
 raw=''
+budgets=coverage-budgets.json
 case "$mode" in
     all | report)
         [ "$#" -le 1 ] || usage
+        if [ "$#" -eq 1 ]; then
+            case "$1" in
+                --budgets=?*) budgets="${1#--budgets=}" ;;
+                *) usage ;;
+            esac
+        fi
         ;;
     run)
-        [ "$#" -le 2 ] || usage
-        if [ "$#" -eq 2 ]; then
-            case "$2" in
-                --shard=*/*) shard="${2#--shard=}" ;;
+        [ "$#" -le 1 ] || usage
+        if [ "$#" -eq 1 ]; then
+            case "$1" in
+                --shard=*/*) shard="${1#--shard=}" ;;
                 *) usage ;;
             esac
         fi
         ;;
     merge)
-        [ "$#" -eq 2 ] || usage
-        raw="$2"
+        [ "$#" -eq 1 ] || usage
+        raw="$1"
         ;;
     *) usage ;;
 esac
@@ -51,7 +72,7 @@ export KNOSSOS_JS_COVERAGE_DIR=/opt/knossos/coverage/js/tmp
 export KNOSSOS_PYTHON_COVERAGE_DIR=/opt/knossos/coverage/python
 
 prepare() {
-    php tools/reset-coverage.php
+    php "$tools/reset-coverage.php"
     mkdir -p coverage/php coverage/js/tmp coverage/python coverage/rust
 }
 
@@ -94,15 +115,27 @@ run_suite() {
         chown -R knossos:knossos coverage
     fi
     if [ -n "$shard" ]; then
-        as_suite_user php tools/phpunit-shard --shard="$shard" --out="$config"
+        as_suite_user php "$tools/phpunit-shard" --shard="$shard" --out="$config"
     fi
     as_suite_user php -d pcov.directory=/opt/knossos -d auto_prepend_file=/opt/knossos/tools/pcov-prepend.php \
         vendor/bin/phpunit -c "$config" --log-junit coverage/junit.xml
     printf '{"shard": %d, "of": %d}\n' "$index" "$of" > coverage/shard.json
 }
 
+# The floor at a dotted key of the budget file, such as typescript.lines. Read
+# only after check_budgets has passed, so the key is there and holds a number.
+floor() {
+    node -e 'const budgets = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+process.stdout.write(String(process.argv[2].split(".").reduce((value, step) => value[step], budgets)));' \
+        "$budgets" "$1"
+}
+
+check_budgets() {
+    php "$tools/check-coverage-budgets.php" "$budgets"
+}
+
 report() {
-    php tools/pcov-report.php
+    php "$tools/pcov-report.php" --budgets="$budgets"
 
     node_modules/.bin/c8 report \
         --temp-directory=coverage/js/tmp \
@@ -116,15 +149,16 @@ report() {
         --include='workers/typescript/bin/**/*.js' \
         --include='workers/typescript/src/**/*.js' \
         --check-coverage \
-        --lines="$(node -p "require('./coverage-budgets.json').typescript.lines")" \
-        --branches="$(node -p "require('./coverage-budgets.json').typescript.branches")" \
-        --functions="$(node -p "require('./coverage-budgets.json').typescript.functions")" \
-        --statements="$(node -p "require('./coverage-budgets.json').typescript.statements")"
+        --lines="$(floor typescript.lines)" \
+        --branches="$(floor typescript.branches)" \
+        --functions="$(floor typescript.functions)" \
+        --statements="$(floor typescript.statements)"
 
     # The plugin's own TypeScript (hooks/lib, hooks/mod) is measured by vitest, and
-    # the thresholds come from the same budgets file. A shortfall exits non-zero, which
-    # `set -e` turns into an aborted run.
-    node_modules/.bin/vitest run --config vitest.config.mjs --coverage
+    # the thresholds come from the same budgets file, named to vitest.config.mjs by
+    # KNOSSOS_COVERAGE_BUDGETS. A shortfall exits non-zero, which `set -e` turns into
+    # an aborted run.
+    KNOSSOS_COVERAGE_BUDGETS="$budgets" node_modules/.bin/vitest run --config vitest.config.mjs --coverage
 
     # The quality gate runs the Python unit suite separately from PHPUnit. Collect
     # it here too: the PHP integration tests exercise the real subprocess protocol,
@@ -135,7 +169,7 @@ report() {
         -m pytest workers/python/tests -q
     coverage combine --data-file=coverage/python/.coverage
     coverage report --data-file=coverage/python/.coverage \
-        --fail-under="$(node -p "require('./coverage-budgets.json').python.lines")"
+        --fail-under="$(floor python.lines)"
     coverage xml --data-file=coverage/python/.coverage
     coverage json --data-file=coverage/python/.coverage -o coverage/python/coverage.json
     coverage html --data-file=coverage/python/.coverage --directory=coverage/python/html
@@ -145,7 +179,7 @@ report() {
     # when this step stops without saying anything, the figure it refused is in
     # `cargo llvm-cov report --manifest-path workers/rust/Cargo.toml`.
     cargo llvm-cov --manifest-path workers/rust/Cargo.toml \
-        --fail-under-lines "$(node -p "require('./coverage-budgets.json').rust.lines")" \
+        --fail-under-lines "$(floor rust.lines)" \
         --json --output-path coverage/rust/coverage.json
     # llvm-cov appends its own `html/` to --output-dir, so this writes coverage/rust/html/
     # -- the same shape as coverage/python/html and coverage/js/lcov-report. Passing
@@ -161,12 +195,14 @@ case "$mode" in
         ;;
     merge)
         prepare
-        php tools/coverage-merge.php "$raw"
+        php "$tools/coverage-merge.php" "$raw"
         ;;
     report)
+        check_budgets
         report
         ;;
     all)
+        check_budgets
         prepare
         run_suite
         report

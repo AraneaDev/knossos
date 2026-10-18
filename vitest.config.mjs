@@ -1,8 +1,16 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
-import budgets from "./coverage-budgets.json" with { type: "json" };
+// tools/coverage names the budget file it was given, after checking that every floor in it is a number.
+const budgets = JSON.parse(
+    readFileSync(
+        process.env.KNOSSOS_COVERAGE_BUDGETS ??
+            fileURLToPath(new URL("./coverage-budgets.json", import.meta.url)),
+        "utf8",
+    ),
+);
 
 const jsxStub = fileURLToPath(
     new URL("./tools/jsx-runtime-stub.mjs", import.meta.url),

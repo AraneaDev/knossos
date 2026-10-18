@@ -27,6 +27,21 @@ abstract class KnossosTestCase extends TestCase
     }
 
     /**
+     * The path of a tool under tools/, or of its stand-in when
+     * KNOSSOS_GUARD_TOOLS names another directory laid out like tools/.
+     *
+     * A guard's test proves it can fail by running against a copy of tools/
+     * with the guard's check removed and failing there. Pointing the variable
+     * at that copy runs the same test against it, without editing the checkout.
+     */
+    protected static function guardTool(string $relative): string
+    {
+        $tools = getenv('KNOSSOS_GUARD_TOOLS');
+
+        return (is_string($tools) && $tools !== '' ? rtrim($tools, '/') : self::repositoryRoot() . '/tools') . '/' . $relative;
+    }
+
+    /**
      * Run $operation with error_log() pointed at a temporary file and return
      * what it logged, so a deliberately provoked failure does not print into
      * the suite's output. The previous setting is restored even when

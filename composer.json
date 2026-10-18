@@ -43,7 +43,10 @@
       "php -l tools/supply-chain-report.php",
       "php -l tools/scanner-conformance",
       "php -l tools/phpunit-shard",
-      "php -l tools/coverage-merge.php"
+      "php -l tools/coverage-merge.php",
+      "php -l tools/check-coverage-budgets.php",
+      "php -l tools/lib/budget-numbers.php",
+      "php -l tools/lib/coverage-budgets.php"
     ],
     "test": [
       "phpunit",
