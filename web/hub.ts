@@ -13,6 +13,7 @@ import { themeColour } from '../hooks/lib/themes'
 import type { WebTheme } from '../hooks/lib/themes'
 import { noteSpinners, paneSource, spunRow } from '../hooks/mod/frame'
 import type { Port } from '../hooks/mod/port'
+import type { PortHub } from './port'
 import { mod } from '../hooks/mod/state'
 import { pageRow } from './page-rows'
 import type { Colour, PageRow } from './page-rows'
@@ -46,7 +47,7 @@ function colourIn(theme: WebTheme): Colour {
   }
 }
 
-export class Hub {
+export class Hub implements PortHub {
   /** The theme the pages last asked for: what the port's config reports. */
   theme: WebTheme = 'dark'
   private io: Port | null = null
