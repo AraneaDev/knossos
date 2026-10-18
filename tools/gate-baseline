@@ -1,0 +1,57 @@
+#!/bin/sh
+# The commit the `gate` lane measures a change against.
+#
+#   tools/gate-baseline REPO
+#
+# Prints the baseline commit's id and exits 0, or says why there is none and
+# exits 1; 2 means it was called wrong. In order:
+#
+#   KNOSSOS_GATE_BASE_REF  what CI worked out from the event, when it is set
+#   merge base             where HEAD left origin/main, or else main
+#
+# A base that is HEAD itself means HEAD is a commit of the default branch, as
+# on a push to main or the release re-run. Comparing a tree with itself zeroes
+# both delta budgets while still reporting a pass, so the base steps back to
+# HEAD's parent there, and only there. Off the default branch there is no
+# fallback to the parent: that would gate the last commit's delta alone and
+# let everything earlier on the branch through unmeasured. With nothing to
+# measure against the gate refuses, because a gate that cannot fail is worse
+# than no gate: it reads as if it checked.
+set -eu
+
+[ "$#" -eq 1 ] || {
+    printf 'usage: tools/gate-baseline REPO\n' >&2
+    exit 2
+}
+repo=$1
+
+# The commit a name resolves to, or nothing. `rev-parse` without --verify
+# prints the name back when it does not resolve, which once read as a base.
+commit() {
+    git -C "$repo" rev-parse --verify -q "$1^{commit}" 2>/dev/null
+}
+
+refuse() {
+    printf 'gate: no baseline commit found in %s.\n' "$repo" >&2
+    printf 'gate: %s\n' "$1" >&2
+    printf 'gate: set KNOSSOS_GATE_BASE_REF, or fetch enough history to reach the base ref.\n' >&2
+    exit 1
+}
+
+head=$(commit HEAD) || refuse 'HEAD is not a commit.'
+
+if [ -n "${KNOSSOS_GATE_BASE_REF:-}" ]; then
+    base=$(commit "$KNOSSOS_GATE_BASE_REF") || {
+        printf 'gate: baseline commit %s is not in %s (shallow clone?).\n' "$KNOSSOS_GATE_BASE_REF" "$repo" >&2
+        exit 1
+    }
+else
+    base=$(git -C "$repo" merge-base HEAD origin/main 2>/dev/null) \
+        || base=$(git -C "$repo" merge-base HEAD main 2>/dev/null) \
+        || refuse 'HEAD shares no history with origin/main or main, and the last commit alone is not the change.'
+fi
+
+if [ "$base" = "$head" ]; then
+    base=$(commit HEAD~1) || refuse 'HEAD is on the default branch and has no parent to compare with.'
+fi
+printf '%s\n' "$base"

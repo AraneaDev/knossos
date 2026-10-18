@@ -26,6 +26,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { stopWatchers } from "../capture/session.mjs";
@@ -537,7 +538,7 @@ async function prepare(args, s) {
     const scanMs = {};
     for (const [i, name] of names.entries()) {
         console.log(`scanning ${name}`);
-        const started = Date.now();
+        const started = performance.now();
         const { stdout } = await exec(
             "php",
             [
@@ -550,7 +551,7 @@ async function prepare(args, s) {
             { env, maxBuffer: 1 << 26 },
         );
         checkScan(name, JSON.parse(stdout));
-        scanMs[name] = Date.now() - started;
+        scanMs[name] = Math.round(performance.now() - started);
     }
     await writeJson(path.join(dir, "prepare.json"), scanMs);
     return 0;

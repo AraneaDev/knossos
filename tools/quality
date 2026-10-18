@@ -196,9 +196,9 @@ if command -v shellcheck >/dev/null 2>&1; then
         tools/mcp-serve tools/mutation-diff tools/release-lifecycle tools/supply-chain tools/install \
         hooks/scripts/session-brief.sh hooks/scripts/session-brief-container.sh \
         hooks/scripts/knossos-run.sh hooks/scripts/knossos-run-container.sh hooks/scripts/lib.sh \
-        tools/check-commit-style.sh tools/ci/release-pr tools/ci/quality-verdict tools/ci/release-rollback \
+        tools/check-commit-style.sh tools/ci/release-pr tools/ci/quality-verdict tools/ci/release-rollback tools/gate-baseline \
         tests/shell/session-brief-hook.sh tests/shell/knossos-run-hook.sh tests/shell/install-hooks.sh tests/shell/check-commit-style.sh \
-        tests/shell/release-pr.sh tests/shell/quality-verdict.sh tests/shell/release-rollback.sh \
+        tests/shell/release-pr.sh tests/shell/quality-verdict.sh tests/shell/release-rollback.sh tests/shell/gate-baseline.sh \
         web/fixtures/knossos-run.sh
 elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
     echo "shellcheck is required in the quality container" >&2
@@ -343,36 +343,10 @@ if [ "$profile" = "full" ] && in_lane gate; then
     fi
 
     # The commit to measure against: what CI worked out from the event, else
-    # where this branch left the default branch, else the previous commit so a
-    # push to main still has something to compare to.
-    gate_base="${KNOSSOS_GATE_BASE_REF:-}"
-    if [ -z "$gate_base" ]; then
-        gate_base=$(git -C "$gate_repo" merge-base HEAD origin/main 2>/dev/null \
-            || git -C "$gate_repo" merge-base HEAD main 2>/dev/null \
-            || git -C "$gate_repo" rev-parse HEAD^ 2>/dev/null \
-            || true)
-    fi
-    # A merge base taken ON the default branch is that commit itself, which is
-    # what a push to main and the release re-run both hand this lane. Comparing
-    # a tree with itself zeroes both delta budgets while still reporting a
-    # pass, so step back one commit instead.
-    if [ -n "$gate_base" ] \
-        && [ "$(git -C "$gate_repo" rev-parse "$gate_base^{commit}" 2>/dev/null)" \
-            = "$(git -C "$gate_repo" rev-parse 'HEAD^{commit}' 2>/dev/null)" ]; then
-        gate_base=$(git -C "$gate_repo" rev-parse 'HEAD^' 2>/dev/null || true)
-    fi
-    # Failing loudly beats quietly scanning one tree twice: that silently
-    # zeroes both delta budgets, and a gate that cannot fail is worse than no
-    # gate because it reads as if it checked.
-    if [ -z "$gate_base" ]; then
-        echo "gate: no baseline commit found in $gate_repo." >&2
-        echo "gate: set KNOSSOS_GATE_BASE_REF, or fetch enough history to reach the base ref." >&2
-        exit 1
-    fi
-    if ! git -C "$gate_repo" cat-file -e "$gate_base^{commit}" 2>/dev/null; then
-        echo "gate: baseline commit $gate_base is not in $gate_repo (shallow clone?)." >&2
-        exit 1
-    fi
+    # where this branch left the default branch, stepping back one commit only
+    # on the default branch itself. tools/gate-baseline refuses when none of
+    # those resolves, and `set -e` ends the lane with its message.
+    gate_base=$(sh "$root/tools/gate-baseline" "$gate_repo")
 
     # Archiving a snapshot of this graph peaks around 130 MB, over PHP's
     # 128 MB default. That default is unset on a typical developer's CLI and
@@ -408,6 +382,17 @@ if [ "$profile" = "full" ] && in_lane gate; then
     gate_project=$(php -r '$s = json_decode(file_get_contents($argv[1]), true); echo $s["project_id"];' "$gate_dir/baseline.json")
     # shellcheck disable=SC2016 # as above: PHP variables
     gate_baseline=$(php -r '$s = json_decode(file_get_contents($argv[1]), true); echo $s["snapshot_id"];' "$gate_dir/baseline.json")
+    # The gate's own text output is one line, "budgets failed", so the result is
+    # taken as JSON and tools/gate-report.php prints every check's value against
+    # its limit. Exit 1 is the gate's refusal and is reported; any other failure
+    # is the command's own, and its message is already on stderr.
+    gate_status=0
     KNOSSOS_DATA_DIR="$gate_dir" php "$root/bin/knossos" quality-gate "$gate_project" "$gate_baseline" \
-        --budgets="$gate_dir/budgets.json" --policies="$gate_dir/policies.json"
+        --budgets="$gate_dir/budgets.json" --policies="$gate_dir/policies.json" --json > "$gate_dir/gate.json" \
+        || gate_status=$?
+    if [ "$gate_status" -ne 0 ] && [ "$gate_status" -ne 1 ]; then
+        exit "$gate_status"
+    fi
+    php "$root/tools/gate-report.php" "$gate_dir/gate.json"
+    [ "$gate_status" -eq 0 ]
 fi

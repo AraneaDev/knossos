@@ -87,10 +87,20 @@ compare the two scans. `boundary_violations`, `error_diagnostics`,
 `warning_diagnostics` and `unreferenced_candidates` are read off the second one.
 
 The baseline is what CI works out from the event, a pull request's target
-commit or the tip a push replaced. Failing that the lane takes the point the
-branch left the default branch, and failing that `HEAD^`. `KNOSSOS_GATE_BASE_REF`
-names it explicitly. If nothing resolves, the lane stops. Scanning one tree twice would zero both delta
-budgets and report a pass that checked nothing.
+commit or the tip a push replaced. `KNOSSOS_GATE_BASE_REF` names it
+explicitly. Failing that the lane takes the point the branch left
+`origin/main`, or else `main`. When that point is `HEAD` itself, `HEAD` is a
+commit of the default branch, and only then does the lane step back to
+`HEAD^`. A branch that shares no history with either is refused rather than
+measured against its last commit, which would let everything earlier on the
+branch through. If nothing resolves, the lane stops. Scanning one tree twice
+would zero both delta budgets and report a pass that checked nothing.
+`tools/gate-baseline` makes that choice, and `tests/shell/gate-baseline.sh`
+holds it to each of these cases.
+
+When the gate fails, the lane prints every budget's value against its limit
+and names the ones that failed (`tools/gate-report.php`), so the CI log says
+which budget broke without a local rerun.
 
 Both trees come from `git archive` and are scanned at the same path. The path
 matters: a project's identity is its root, so a baseline scanned elsewhere
@@ -359,6 +369,14 @@ The budgets in `maintainability-budgets.json` are:
 - direct per-file dependency fanout no higher than 15;
 - docstring coverage of 100% for `src`, `workers-php`, `tools` and overall, and
   type-docblock coverage of 100%.
+
+Each of these must be in the file as a JSON number, and every area the
+docstring report measures needs its own floor. A missing or quoted limit stops
+the lane with exit 1 and names the key, rather than being read as 0 or skipped.
+`php tools/maintainability-report.php` and `php tools/docstring-report.php`
+both take `--root=DIR` and `--budgets=FILE`, which is how their tests plant a
+violation without touching the checked-in file. The maintainability report also
+takes `--report=FILE`, so its tests write their JSON outside the checkout.
 
 The TypeScript/JavaScript and Python limits sit in the linters' own
 configuration and fail there: ESLint holds function complexity to 29 and function

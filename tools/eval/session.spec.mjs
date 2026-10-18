@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { removeTemp, tmp } from "./fixtures/tmp.mjs";
 import { armArgv } from "./arms.mjs";
 import { buildRow, runSession, terminateGroups } from "./session.mjs";
@@ -258,6 +258,29 @@ describe("budget stops", () => {
             "baseline",
         );
         expect(r.status).toBe("budget");
+    });
+});
+
+describe("wall time when the system clock steps", () => {
+    // The clock a session reads can be stepped back by time sync while it runs;
+    // a timed-out session once reported -267 ms. Elapsed time is measured on the
+    // monotonic clock, so a wall clock that runs backwards cannot reach it.
+    it("stays positive while the wall clock runs backwards", async () => {
+        let now = 1_000_000_000_000;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => {
+            now -= 1000;
+            return now;
+        });
+        try {
+            const { outcome } = await session(
+                "full",
+                { FAKE_SLEEP_MS: "5000" },
+                300,
+            );
+            expect(outcome.wallMs).toBeGreaterThanOrEqual(300);
+        } finally {
+            clock.mockRestore();
+        }
     });
 });
 

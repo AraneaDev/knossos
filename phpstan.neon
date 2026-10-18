@@ -12,6 +12,9 @@ parameters:
     scanFiles:
         - tools/lib/dependency-fanout.php
         - tools/lib/php-function-metrics.php
+        - tools/lib/budget-numbers.php
+        - tools/lib/coverage-budgets.php
+        - tools/lib/benchmark-budgets.php
     excludePaths:
         analyse:
             - bin/knossos

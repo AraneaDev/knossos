@@ -336,7 +336,8 @@ jobs:
       # A pull request is measured against the commit it targets. A push is
       # measured against the tip it replaced, which is empty on the first push
       # to a branch and all-zeros on a force push; both cases hand the lane an
-      # empty value, and it falls back to the merge base and then to HEAD^.
+      # empty value, and it falls back to the merge base with main
+      # (tools/gate-baseline), refusing when there is none.
       - name: Work out the baseline commit
         if: matrix.lane == 'gate'
         id: gate-base

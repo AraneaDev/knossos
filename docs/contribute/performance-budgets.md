@@ -14,11 +14,19 @@ docker run --rm \
 ```
 
 The `release` lane of the full profile runs the same command. Results are
-written to `coverage/benchmarks/report.json`, or to the path you pass as the
-command's second argument. The `quality-reports` artifact CI uploads comes from
-the `coverage` lane, so it does not carry this report. Any exceeded budget makes
-the command exit `1`. Invalid benchmark configuration or an execution failure
-exits `2` or higher.
+written to `coverage/benchmarks/report.json`, or to the path you pass with
+`--report=FILE` or as the command's second argument; `--budgets=FILE`, or the
+first argument, holds the run to another budget file. The `quality-reports`
+artifact CI uploads comes from the `coverage` lane, so it does not carry this
+report. Any exceeded budget makes the command exit `1`, and so does a budget
+file with no sizes, since a run that measured nothing proves nothing. Invalid
+benchmark configuration or an execution failure exits `2` or higher: every size
+needs `files_per_language` as a whole number of at least 1 and each limit as a
+JSON number of at least 0, and a missing or quoted one is named.
+
+Peak RSS is read from `/proc`. Where `/proc` exists, a peak of 0 is a failed
+measurement and fails the run. Where it does not, the command prints that the
+peak was not measured.
 
 ## Corpus and measurements
 

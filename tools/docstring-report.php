@@ -9,6 +9,8 @@ declare(strict_types=1);
  * actual summary, per area, and fails when an area drops below its floor in
  * maintainability-budgets.json.
  *
+ *   php tools/docstring-report.php [--root=DIR] [--budgets=FILE]
+ *
  * Two deliberate choices about what is measured:
  *
  * - A docblock counts only when it has prose, not merely annotations. The same
@@ -30,6 +32,22 @@ $root = dirname(__DIR__);
 // Shared with tools/api-documentation-check.php: one definition of "documented",
 // so the two gates cannot drift apart again.
 require __DIR__ . '/lib/docblocks.php';
+require __DIR__ . '/lib/budget-numbers.php';
+
+// --root is the tree measured, this checkout when it is not given; --budgets the
+// floors, the root's maintainability-budgets.json when it is not given.
+$budgetPath = null;
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
+        $root = rtrim(substr($argument, strlen('--root=')), '/');
+    } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
+        $budgetPath = substr($argument, strlen('--budgets='));
+    } else {
+        fwrite(STDERR, "usage: php tools/docstring-report.php [--root=DIR] [--budgets=FILE]\n");
+        exit(2);
+    }
+}
+$budgetPath ??= $root . '/maintainability-budgets.json';
 $reportPath = $root . '/coverage/quality/docstring-coverage.json';
 
 /** Areas measured independently, so a well-documented one cannot mask a bare one. */
@@ -39,8 +57,8 @@ const AREAS = [
     'tools' => 'tools',
 ];
 
-$budgets = json_decode((string) file_get_contents($root . '/maintainability-budgets.json'), true, 512, JSON_THROW_ON_ERROR);
-$floors = $budgets['min_docstring_coverage'] ?? [];
+[$budgets, $budgetErrors] = readBudgetFile($budgetPath);
+$floors = is_array($budgets['min_docstring_coverage'] ?? null) ? $budgets['min_docstring_coverage'] : [];
 
 $areas = [];
 $undocumented = [];
@@ -92,6 +110,28 @@ foreach (AREAS as $label => $relative) {
     ];
 }
 
+// Every area measured needs a floor, and so do the overall and type figures. A
+// floor that was missing or not a number used to skip its check, so an area
+// could be measured, fall to any figure, and pass.
+if ($budgets !== null) {
+    foreach ([...array_keys($areas), 'overall'] as $label) {
+        $error = budgetNumberError('min_docstring_coverage.' . $label, $floors[$label] ?? null, 0.0, 100.0);
+        if ($error !== null) {
+            $budgetErrors[] = $error;
+        }
+    }
+    $error = budgetNumberError('min_type_docblock_coverage', $budgets['min_type_docblock_coverage'] ?? null, 0.0, 100.0);
+    if ($error !== null) {
+        $budgetErrors[] = $error;
+    }
+}
+if ($budgetErrors !== []) {
+    foreach ($budgetErrors as $error) {
+        fwrite(STDERR, sprintf("docstring budgets %s: %s\n", $budgetPath, $error));
+    }
+    exit(1);
+}
+
 sort($undocumented, SORT_STRING);
 sort($undocumentedTypes, SORT_STRING);
 $documentedTotal = array_sum(array_column($areas, 'documented'));
@@ -120,8 +160,8 @@ file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_UNE
 
 $failures = [];
 foreach ($areas as $label => $area) {
-    $floor = $floors[$label] ?? null;
-    if (is_numeric($floor) && $area['percent'] < (float) $floor) {
+    $floor = $floors[$label];
+    if ($area['percent'] < (float) $floor) {
         $failures[] = sprintf(
             'docstring coverage for %s is %.2f%% (%d/%d); floor is %.2f%%. Undocumented symbols are listed in %s.',
             $label,
@@ -137,8 +177,8 @@ $typeTotalAll = $report['types']['total'];
 $typeDocumentedAll = $report['types']['documented'];
 $typePercent = $typeTotalAll === 0 ? 100.0 : round($typeDocumentedAll / $typeTotalAll * 100, 2);
 $report['types']['percent'] = $typePercent;
-$typeFloor = $budgets['min_type_docblock_coverage'] ?? null;
-if (is_numeric($typeFloor) && $typePercent < (float) $typeFloor) {
+$typeFloor = $budgets['min_type_docblock_coverage'];
+if ($typePercent < (float) $typeFloor) {
     $failures[] = sprintf(
         'type docblock coverage is %.2f%% (%d/%d); floor is %.2f%%. A type without a docblock never says why it exists.',
         $typePercent,
@@ -147,8 +187,8 @@ if (is_numeric($typeFloor) && $typePercent < (float) $typeFloor) {
         (float) $typeFloor,
     );
 }
-$overallFloor = $floors['overall'] ?? null;
-if (is_numeric($overallFloor) && $report['summary']['percent'] < (float) $overallFloor) {
+$overallFloor = $floors['overall'];
+if ($report['summary']['percent'] < (float) $overallFloor) {
     $failures[] = sprintf('docstring coverage overall is %.2f%%; floor is %.2f%%.', $report['summary']['percent'], (float) $overallFloor);
 }
 

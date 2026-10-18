@@ -72,6 +72,16 @@ neglected one:
 Floors may only move upward unless a reviewed risk exception is documented with
 before/after evidence.
 
+The file is checked before any floor runs. Every floor must be a JSON number
+from 0 to 100. Every PHP component the run measures needs a floor, and every
+component floor must name a component the run measured. A missing key, a quoted number such as
+`"95"` or a value out of range stops the profile with exit 1 and names the key.
+Each tool these floors are handed to reads a missing value as no floor at all,
+so without the check a deleted line would pass every run. `tools/coverage
+report --budgets=FILE` and `php tools/pcov-report.php --root=DIR
+--budgets=FILE` hold a run to another file, which is how the tests plant a
+broken budget without touching this one.
+
 [Quality gates](quality.md#profiles-and-lanes) explains why coverage is one lane. The
 Claude Code mod is covered by its own suites (see
 [how the mod is built](mod-internals.md#the-tests)) and sits outside these
