@@ -262,6 +262,10 @@ expect_output 'missing binary says so for a watch' "$NO_BINARY" env KNOSSOS_BIN=
 # session-changes: what changed since the session began, read from the scan ledger, with nothing but that snapshot.
 expect_output 'session-changes reads since the snapshot it names' "session-changes|$ABS_PROJ|--since=scan_ab12|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --since=scan_ab12
+expect_output 'session-changes reads the working tree when asked' "session-changes|$ABS_PROJ|--working-tree|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree
+expect_silent_success 'session-changes refuses the working tree with a snapshot' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree --since=s1
+expect_silent_success 'session-changes refuses the working tree with a value' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree=1
 expect_silent_success 'session-changes refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --db=/tmp/other.sqlite
 expect_silent_success 'session-changes refuses a snapshot that is not a plain id' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" '--since=a b'
 expect_silent_success 'session-changes refuses no snapshot' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj"
@@ -439,6 +443,10 @@ expect_output 'container blast-radius passes the component' "img:1|blast-radius|
 ME="$(id -u):$(id -g)"
 expect_output 'container session-changes reads since the snapshot it names' "img:1|session-changes|$ABS_PROJ|--since=scan_ab12|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --since=scan_ab12
+expect_output 'container session-changes reads the working tree when asked' "img:1|session-changes|$ABS_PROJ|--working-tree|--json|" \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --working-tree
+expect_silent_success 'container session-changes refuses the working tree with a snapshot' \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --working-tree --since=s1
 expect_silent_success 'container session-changes refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --db=/tmp/other.sqlite
 expect_output 'container boundary-couplings passes the two boundaries' "img:1|boundary-couplings|$ABS_PROJ|--from=Edge|--to=Core|--json|" \

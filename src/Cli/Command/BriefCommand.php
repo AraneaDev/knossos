@@ -60,7 +60,7 @@ final class BriefCommand implements CliCommand
             'turn-brief' => ['db', 'json', 'files', 'policies', 'no-policies', 'since', 'reuse-scan'],
             'rescan', 'component-detail', 'file-detail', 'file-context', 'branch-diff' => ['db', 'json'],
             'graph-search' => ['db', 'json', 'query'],
-            'session-changes' => ['db', 'json', 'since'],
+            'session-changes' => ['db', 'json', 'since', 'working-tree'],
             'boundary-couplings' => ['db', 'json', 'from', 'to'],
             default => in_array($command, PaneQueries::COMMANDS, true) ? ['db', 'json', ...PaneQueries::options($command)] : ['db', 'json', 'fan-in-threshold', 'boundaries'],
         };
@@ -155,8 +155,12 @@ final class BriefCommand implements CliCommand
             return (new RescanService($pdo, $databasePath, $context->installationRoot()))->rescan($path);
         }
         if ($command === 'session-changes') {
-            $since = $context->options->single($options, 'since') ?? throw new InvalidArgumentException('--since is required.');
-            return (new SessionChangesService($pdo))->changes($path, $since);
+            $since = $context->options->single($options, 'since');
+            $working = $context->options->flag($options, 'working-tree');
+            if (($since === null) === !$working) {
+                throw new InvalidArgumentException('Exactly one of --since and --working-tree is required.');
+            }
+            return $working ? (new SessionChangesService($pdo))->workingChanges($path) : (new SessionChangesService($pdo))->changes($path, (string) $since);
         }
         if ($command === 'boundary-couplings') {
             $from = $context->options->single($options, 'from') ?? throw new InvalidArgumentException('--from is required.');

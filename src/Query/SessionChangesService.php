@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitProcessRunner;
+use Knossos\Git\GitProcessRunnerInterface;
+use Knossos\Git\GitWorkingTreeProvider;
+use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Scan\ProjectPathResolver;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanLedgerSpan;
 use PDO;
+use Throwable;
 
 /**
  * Everything that changed in a project since a session started, whoever
@@ -42,6 +47,9 @@ use PDO;
  * {@see self::MAX_TIMELINE} (`scans_truncated` past that): the snapshot
  * each produced, when (Unix seconds) and how many files it changed, so the
  * pane can draw the session's scans as a timeline.
+ *
+ * {@see self::workingChanges()} answers the same envelope from git instead
+ * of the ledger: what is not committed yet, counted from `HEAD`.
  */
 final readonly class SessionChangesService
 {
@@ -60,7 +68,19 @@ final readonly class SessionChangesService
     /** Files the test search starts from: the most depended on, past it the rest are left to the turn briefs. */
     private const MAX_TEST_SOURCES = 100;
 
-    public function __construct(private PDO $pdo) {}
+    /** Bounds one git question, in milliseconds (the provider's own ceiling). */
+    private const GIT_TIMEOUT_MS = 5000;
+
+    private GitProcessRunnerInterface $runner;
+
+    private GitWorkingTreeProvider $git;
+
+    /** The real git runner and provider by default; a test double replaces either. */
+    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $runner = null, ?GitWorkingTreeProvider $git = null)
+    {
+        $this->runner = $runner ?? new GitProcessRunner();
+        $this->git = $git ?? new ProcessGitWorkingTreeProvider(runner: $this->runner);
+    }
 
     /**
      * The changes since snapshot `$since` in the project that owns `$path`.
@@ -70,8 +90,7 @@ final readonly class SessionChangesService
     public function changes(string $path, string $since): array
     {
         $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_root' => null, 'project_id' => null, 'snapshot_id' => null, 'since' => $since, 'complete' => false,
-            'files' => (object) [], 'files_truncated' => false, 'tests' => [], 'tests_truncated' => false, 'scans' => [], 'scans_truncated' => false, 'reached' => null, 'start_approximate' => false];
+        $envelope = self::envelope($absolute, $since);
         $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
@@ -88,22 +107,98 @@ final readonly class SessionChangesService
             if ($absorbed === null || $reached === null) {
                 return $base;
             }
-            return ['complete' => false, 'reached' => $reached] + $this->listed($projectId, $root, $absorbed) + $base;
+            return ['complete' => false, 'reached' => $reached] + $this->ledgered($projectId, $root, $absorbed) + $base;
         }
-        return ['complete' => true, 'start_approximate' => $absorbed['approximate']] + $this->listed($projectId, $root, $absorbed) + $base;
+        return ['complete' => true, 'start_approximate' => $absorbed['approximate']] + $this->ledgered($projectId, $root, $absorbed) + $base;
     }
 
     /**
-     * The files `$absorbed` says changed, as they stand now, with their reach
-     * and the tests that reach them, and the scans that changed them.
+     * The files git reports changed against `HEAD` in the project that owns
+     * `$path`, worktree and index, untracked files included, in the envelope
+     * of {@see self::changes()} with `since` `HEAD` and `complete` true:
+     * nothing is cut short. A file gone from the disk is deleted, one `HEAD`
+     * does not hold (or any file, on a branch with no commit yet) is added,
+     * the rest changed. `no-git` when the project is not in a git work tree.
+     *
+     * @return array<string, mixed>
+     */
+    public function workingChanges(string $path): array
+    {
+        $absolute = realpath($path) ?: $path;
+        $envelope = self::envelope($absolute, 'HEAD');
+        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
+            return ['status' => 'unscanned'] + $envelope;
+        }
+        $projectId = (string) $project['id'];
+        $root = (string) $project['root_realpath'];
+        $base = ['project_root' => $root, 'project_id' => $projectId, 'snapshot_id' => (new ScanLedger($this->pdo))->activeSnapshot($projectId)] + $envelope;
+        if (!$this->succeeds($root, ['rev-parse', '--is-inside-work-tree'])) {
+            return ['status' => 'no-git'] + $base;
+        }
+        try {
+            // No base ref: the provider compares with HEAD, or with the index on a branch that has none.
+            $listing = $this->git->changes($root, null, self::MAX_FILES, self::GIT_TIMEOUT_MS);
+        } catch (Throwable) {
+            return ['status' => 'error'] + $base;
+        }
+        $statuses = [];
+        foreach ($listing['paths'] as $file) {
+            $statuses[$file] = !is_file($root . '/' . $file) ? 'deleted' : ($this->succeeds($root, ['cat-file', '-e', 'HEAD:./' . $file]) ? 'changed' : 'added');
+        }
+        return ['status' => 'ok', 'complete' => true] + $this->listed($projectId, $root, $statuses, [], [], $listing['truncated']) + $base;
+    }
+
+    /**
+     * The envelope every answer carries, with nothing found yet.
+     *
+     * @return array<string, mixed>
+     */
+    private static function envelope(string $absolute, string $since): array
+    {
+        return ['path' => $absolute, 'project_root' => null, 'project_id' => null, 'snapshot_id' => null, 'since' => $since, 'complete' => false,
+            'files' => (object) [], 'files_truncated' => false, 'tests' => [], 'tests_truncated' => false, 'scans' => [], 'scans_truncated' => false, 'reached' => null, 'start_approximate' => false];
+    }
+
+    /**
+     * Whether a git command succeeds in `$dir`.
+     *
+     * @param list<string> $args
+     */
+    private function succeeds(string $dir, array $args): bool
+    {
+        try {
+            $this->runner->run(['git', '--no-optional-locks', '--no-pager', '-C', $dir, ...$args], 2000, 'session changes');
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * The files `$absorbed` says changed, as they stand now.
      *
      * @param array{before: array<string, string|null>, scans: array<string, list<string>>, chain: list<array<string, mixed>>} $absorbed
      * @return array<string, mixed>
      */
-    private function listed(string $projectId, string $root, array $absorbed): array
+    private function ledgered(string $projectId, string $root, array $absorbed): array
     {
-        $ledger = new ScanLedger($this->pdo);
-        $statuses = self::statuses($absorbed['before'], $ledger->hashes($projectId));
+        $statuses = self::statuses($absorbed['before'], (new ScanLedger($this->pdo))->hashes($projectId));
+        return $this->listed($projectId, $root, $statuses, $absorbed['scans'], $absorbed['chain']);
+    }
+
+    /**
+     * The files with these statuses, with their reach and the tests that
+     * reach them, and the scans that changed them.
+     *
+     * @param array<string, string> $statuses
+     * @param array<string, list<string>> $fileScans the snapshots of the scans that changed each file
+     * @param list<array<string, mixed>> $chain the recorded scans themselves, in recording order
+     * @param bool $cut whether the caller already left files out
+     * @return array<string, mixed>
+     */
+    private function listed(string $projectId, string $root, array $statuses, array $fileScans, array $chain, bool $cut = false): array
+    {
         $live = array_keys(array_filter($statuses, static fn(string $s): bool => $s !== 'deleted'));
         $impact = (new FileFanInQuery($this->pdo))->forPaths($projectId, $live, 0);
         $files = [];
@@ -114,7 +209,7 @@ final readonly class SessionChangesService
                 'dependents' => (int) ($found['dependent_files'] ?? 0),
                 'boundaries' => array_values($found['boundaries'] ?? []),
                 'boundary' => $found['boundary'] ?? null,
-                'scans' => array_slice($absorbed['scans'][$file] ?? [], -self::MAX_SCANS),
+                'scans' => array_slice($fileScans[$file] ?? [], -self::MAX_SCANS),
             ];
         }
         uksort($files, static fn(string $a, string $b): int => $files[$b]['dependents'] <=> $files[$a]['dependents'] ?: strcmp($a, $b));
@@ -125,11 +220,11 @@ final readonly class SessionChangesService
         }
         return [
             'files' => (object) array_slice($files, 0, self::MAX_FILES, true),
-            'files_truncated' => count($files) > self::MAX_FILES || count($live) > self::MAX_TEST_SOURCES,
+            'files_truncated' => $cut || count($files) > self::MAX_FILES || count($live) > self::MAX_TEST_SOURCES,
             'tests' => JsTestRunner::annotate($root, $tests['tests']),
             'tests_truncated' => $tests['truncated'],
-            'scans' => array_slice($absorbed['chain'], -self::MAX_TIMELINE),
-            'scans_truncated' => count($absorbed['chain']) > self::MAX_TIMELINE,
+            'scans' => array_slice($chain, -self::MAX_TIMELINE),
+            'scans_truncated' => count($chain) > self::MAX_TIMELINE,
         ];
     }
 
