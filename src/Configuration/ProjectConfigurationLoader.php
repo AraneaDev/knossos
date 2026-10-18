@@ -30,7 +30,7 @@ final class ProjectConfigurationLoader
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
     public const FRAMEWORKS = ['laravel', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
-    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions'];
+    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'web_roots'];
     public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
 
     /**
@@ -172,7 +172,40 @@ final class ProjectConfigurationLoader
             $typedBudgets[$key] = $value;
         }
         $suppressions = self::stringList($data['dead_code_suppressions'] ?? [], 'dead_code_suppressions', 200);
-        return new ProjectConfiguration(basename($path), $ignores, $maxFiles, $maxBytes, $workerTimeoutMs, $workerMemoryMb, $boundaries, array_values(array_unique($frameworks)), $retention, $policies, $typedBudgets, $suppressions, $watchScanTimeoutMs, $refreshBudgetMs);
+        $webRoots = self::webRoots($data['web_roots'] ?? []);
+        return new ProjectConfiguration(basename($path), $ignores, $maxFiles, $maxBytes, $workerTimeoutMs, $workerMemoryMb, $boundaries, array_values(array_unique($frameworks)), $retention, $policies, $typedBudgets, $suppressions, $watchScanTimeoutMs, $refreshBudgetMs, $webRoots);
+    }
+
+    /**
+     * The URL prefixes a web server maps to project folders, which decide
+     * the file a root-absolute script URL in an HTML page names.
+     *
+     * A prefix is a URL path that starts and ends with `/` (`/static/`); a
+     * folder is project-relative and ends with `/` (`web/public/`), so a
+     * prefix and its folder join without guessing where a slash belongs.
+     *
+     * @return array<string, string>
+     */
+    private static function webRoots(mixed $value): array
+    {
+        $roots = self::object($value, 'web_roots');
+        if (count($roots) > 50) {
+            throw new DiscoveryException('PROJECT_CONFIG_INVALID: web_roots may hold at most 50 entries.');
+        }
+        foreach ($roots as $prefix => $folder) {
+            // A JSON key of digits arrives as an integer, and is no prefix either.
+            if (!is_string($prefix) || !str_starts_with($prefix, '/') || !str_ends_with($prefix, '/')) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: web_roots keys must be URL path prefixes that start and end with /.');
+            }
+            if (!is_string($folder) || $folder === '') {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: web_roots values must be non-empty strings.');
+            }
+            if (str_starts_with($folder, '/') || preg_match('/^[A-Za-z]:/', $folder) === 1 || !str_ends_with($folder, '/') || str_contains($folder, "\0") || in_array('..', explode('/', str_replace('\\', '/', $folder)), true)) {
+                throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: web_roots folders must be project-relative, end with /, and may not contain parent traversal.');
+            }
+        }
+
+        return $roots;
     }
 
     /**

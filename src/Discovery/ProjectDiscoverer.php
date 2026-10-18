@@ -23,6 +23,9 @@ final readonly class ProjectDiscoverer
 
     private TreeWalker $walker;
 
+    /** @var array<string, string> */
+    private array $webRoots;
+
     /**
      * @param ?FileContentReader $contents how a file discovery uses twice is
      *        read. Production reads the filesystem; injected only so a test
@@ -33,12 +36,13 @@ final readonly class ProjectDiscoverer
     public function __construct(DiscoveryConfig $config, ?FileContentReader $contents = null)
     {
         $this->walker = new TreeWalker($config, $contents ?? new FilesystemContentReader());
+        $this->webRoots = $config->webRoots;
     }
 
     /** Walk the tree and select the files worth analysing, within the configured caps. */
     public function discover(string $requestedRoot, ?CancellationToken $cancellation = null): DiscoveryResult
     {
-        return self::result($this->walker->walk($requestedRoot, $cancellation));
+        return self::result($this->walker->walk($requestedRoot, $cancellation), $this->webRoots);
     }
 
     /**
@@ -54,8 +58,9 @@ final readonly class ProjectDiscoverer
      *     manifestRoots: list<string>,
      *     directories: list<string>,
      * } $walk what {@see TreeWalker::walk()} read
+     * @param array<string, string> $webRoots the URL prefixes `knossos.json` maps to project folders
      */
-    private static function result(array $walk): DiscoveryResult
+    private static function result(array $walk, array $webRoots): DiscoveryResult
     {
         $files = $walk['files'];
         $units = $walk['units'];
@@ -65,7 +70,7 @@ final readonly class ProjectDiscoverer
         usort($units, static fn(ProjectUnit $left, ProjectUnit $right): int =>
             [$left->kind, $left->configPath] <=> [$right->kind, $right->configPath]);
         $diagnostics = $walk['diagnostics'];
-        $units = EntryPointResolver::resolve($units, $files, [], $diagnostics);
+        $units = EntryPointResolver::resolve($units, $files, $webRoots, $diagnostics);
 
         $inputParts = array_map(
             static fn(DiscoveredFile $file): string => $file->relativePath . '=' . $file->contentHash,

@@ -293,11 +293,13 @@ final class InlineScriptImports
         return $at > 0 ? $script[$at - 1] : '';
     }
 
+    /** Whether a byte can begin a name: a letter, `_`, `$`, or any byte of a multibyte character. */
     private static function isIdentifierStart(string $char): bool
     {
         return $char !== '' && (ctype_alpha($char) || $char === '_' || $char === '$' || ord($char) >= 0x80);
     }
 
+    /** Whether a byte can continue a name, which digits also do. */
     private static function isIdentifierPart(string $char): bool
     {
         return self::isIdentifierStart($char) || ctype_digit($char);

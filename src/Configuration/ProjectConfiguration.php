@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Configuration;
 
-/** A project's resolved `knossos.json` settings: limits, ignores, boundaries, frameworks. */
+/** A project's resolved `knossos.json` settings: limits, ignores, boundaries, frameworks, web roots. */
 final readonly class ProjectConfiguration
 {
     /**
@@ -16,6 +16,7 @@ final readonly class ProjectConfiguration
      * @param list<string> $deadCodeSuppressions
      * @param int|null $watchScanTimeoutMs how long one scan of the shared watcher may run; null for its default
      * @param int|null $refreshBudgetMs how long refresh_if_stale may rescan inside a query, 0 for never; null for its default
+     * @param array<string, string> $webRoots URL path prefix (`/static/`) => the project folder a web server serves it from (`web/public/`)
      */
     public function __construct(
         public ?string $path = null,
@@ -32,5 +33,6 @@ final readonly class ProjectConfiguration
         public array $deadCodeSuppressions = [],
         public ?int $watchScanTimeoutMs = null,
         public ?int $refreshBudgetMs = null,
+        public array $webRoots = [],
     ) {}
 }

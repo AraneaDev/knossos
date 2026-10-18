@@ -29,6 +29,9 @@ final readonly class DiscoveryConfig
      *        feeds silently reports every tracked file as dirty. Defaulted
      *        rather than required because a caller with no repository to match
      *        never compares the value against anything.
+     * @param array<string, string> $webRoots URL path prefix => project folder,
+     *        from `knossos.json`, deciding which file a root-absolute script
+     *        URL in an HTML page names
      */
     public function __construct(
         public array $allowedRoots,
@@ -36,6 +39,7 @@ final readonly class DiscoveryConfig
         public int $maxFiles = 100_000,
         public int $maxFileBytes = 2_000_000,
         public string $gitObjectHash = 'sha1',
+        public array $webRoots = [],
     ) {
         if ($allowedRoots === []) {
             throw new InvalidArgumentException('At least one allowed root is required.');

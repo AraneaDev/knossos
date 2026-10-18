@@ -441,6 +441,58 @@ JSON;
         assertSame(['vendor/', '*.bak'], $config->ignores);
     }
 
+    // ----- web roots -----
+
+    public function testLoaderAcceptsWebRoots(): void
+    {
+        $root = $this->writeConfig('knossos.json', json_encode(['version' => 1, 'web_roots' => ['/static/' => 'web/public/', '/' => 'site/']]));
+
+        $config = ProjectConfigurationLoader::load($root, [$root]);
+
+        assertSame(['/static/' => 'web/public/', '/' => 'site/'], $config->webRoots);
+    }
+
+    public function testLoaderDefaultsWebRootsToNone(): void
+    {
+        $root = $this->writeConfig('knossos.json', self::minimalValidJson());
+
+        assertSame([], ProjectConfigurationLoader::load($root, [$root])->webRoots);
+    }
+
+    /** @return array<string, array{mixed, string}> */
+    public static function invalidWebRoots(): array
+    {
+        return [
+            'a list' => [['/static/'], 'PROJECT_CONFIG_INVALID: web_roots must be an object.'],
+            'no leading slash' => [['static/' => 'web/public/'], 'PROJECT_CONFIG_INVALID: web_roots keys must be URL path prefixes that start and end with /.'],
+            'no trailing slash' => [['/static' => 'web/public/'], 'PROJECT_CONFIG_INVALID: web_roots keys must be URL path prefixes that start and end with /.'],
+            'an absolute folder' => [['/static/' => '/srv/www/'], 'PROJECT_CONFIG_UNSAFE: web_roots folders must be project-relative, end with /, and may not contain parent traversal.'],
+            'a parent traversal' => [['/static/' => 'web/../../etc/'], 'PROJECT_CONFIG_UNSAFE: web_roots folders must be project-relative, end with /, and may not contain parent traversal.'],
+            'no trailing slash on the folder' => [['/static/' => 'web/public'], 'PROJECT_CONFIG_UNSAFE: web_roots folders must be project-relative, end with /, and may not contain parent traversal.'],
+            'an empty folder' => [['/static/' => ''], 'PROJECT_CONFIG_INVALID: web_roots values must be non-empty strings.'],
+            'a non-string folder' => [['/static/' => 42], 'PROJECT_CONFIG_INVALID: web_roots values must be non-empty strings.'],
+            'too many' => [array_combine(array_map(static fn(int $i): string => '/p' . $i . '/', range(1, 51)), array_fill(0, 51, 'web/')), 'PROJECT_CONFIG_INVALID: web_roots may hold at most 50 entries.'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidWebRoots')]
+    public function testLoaderRejectsInvalidWebRoots(mixed $webRoots, string $message): void
+    {
+        $root = $this->writeConfig('knossos.json', json_encode(['version' => 1, 'web_roots' => $webRoots]));
+
+        $error = captureThrows(static fn() => ProjectConfigurationLoader::load($root, [$root]), DiscoveryException::class);
+
+        assertSame($message, $error->getMessage());
+    }
+
+    public function testFiftyWebRootsAreAccepted(): void
+    {
+        $roots = array_combine(array_map(static fn(int $i): string => '/p' . $i . '/', range(1, 50)), array_fill(0, 50, 'web/'));
+        $root = $this->writeConfig('knossos.json', json_encode(['version' => 1, 'web_roots' => $roots]));
+
+        assertSame(50, count(ProjectConfigurationLoader::load($root, [$root])->webRoots));
+    }
+
     // ----- dead code suppressions -----
 
     public function testLoaderAcceptsDeadCodeSuppressions(): void
