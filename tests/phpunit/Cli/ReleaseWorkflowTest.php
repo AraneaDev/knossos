@@ -77,6 +77,59 @@ final class ReleaseWorkflowTest extends KnossosTestCase
     }
 
     /**
+     * Only a pull request tools/ci/release-pr calls a release skips the heavy
+     * lanes and the coverage jobs. The branch name decided it before, and any
+     * branch of that shape, a fork's included, skipped them.
+     */
+    #[Group('packaging')]
+    public function testOnlyTheReleasePrVerdictSkipsTheHeavyLanes(): void
+    {
+        $quality = (string) file_get_contents(self::repositoryRoot() . '/.github/workflows/quality.yml');
+
+        self::assertStringNotContainsString('release-please--branches--', $quality, 'A branch name must not decide which lanes run.');
+        self::assertStringNotContainsString('head_ref, \'release-please', $quality);
+
+        $decide = self::job($quality, 'release-pr');
+        self::assertStringContainsString('tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO"', $decide);
+        self::assertStringContainsString('HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}', $decide);
+        self::assertStringContainsString('gh pr diff "$PR"', $decide);
+        self::assertStringContainsString('pull-requests: read', $decide);
+        self::assertStringNotContainsString('write', $decide, 'Deciding reads the pull request and writes nothing.');
+
+        $verdict = "needs.release-pr.outputs.release == 'true'";
+        $notRelease = "needs.release-pr.outputs.release != 'true'";
+        self::assertStringContainsString($verdict, self::job($quality, 'lane'));
+        foreach (['lane', 'coverage-shard', 'coverage', 'quality'] as $job) {
+            self::assertMatchesRegularExpression('/^    needs: \[[^\]]*\brelease-pr\b/m', self::job($quality, $job), $job . ' must read the release-pr verdict.');
+        }
+        foreach (['coverage-shard', 'coverage'] as $job) {
+            self::assertStringContainsString('if: github.event_name != \'schedule\' && ' . $notRelease, self::job($quality, $job));
+        }
+    }
+
+    /** The required check's verdict is the tested script, not inline shell. */
+    #[Group('packaging')]
+    public function testTheQualityJobUsesTheVerdictScript(): void
+    {
+        $job = self::job((string) file_get_contents(self::repositoryRoot() . '/.github/workflows/quality.yml'), 'quality');
+
+        self::assertStringContainsString('RELEASE_PR: ${{ needs.release-pr.outputs.release }}', $job);
+        self::assertStringContainsString('tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE" --release-pr', $job);
+        self::assertStringContainsString('tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE"' . "\n", $job);
+        self::assertStringNotContainsString('expected=', $job, 'The rule lives in tools/ci/quality-verdict.');
+        self::assertFileExists(self::repositoryRoot() . '/tools/ci/quality-verdict');
+        self::assertFileExists(self::repositoryRoot() . '/tools/ci/release-pr');
+    }
+
+    /** One job of a workflow, from its key to the next job's. */
+    private static function job(string $workflow, string $name): string
+    {
+        self::assertSame(1, preg_match('/^  ' . preg_quote($name, '/') . ':\n(.*?)(?=^  [a-z]|\z)/ms', $workflow, $match), 'No job ' . $name . '.');
+
+        return $match[1];
+    }
+
+    /**
      * The steps of the workflow's one job, each as its own text, split where a
      * step begins: a `-` at the steps list's indent.
      *

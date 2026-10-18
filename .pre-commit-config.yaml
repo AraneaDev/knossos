@@ -19,6 +19,9 @@ repos:
       - id: mixed-line-ending
         args: [--fix=no]
       - id: trailing-whitespace
+        # A unified diff marks an empty context line with a single space, so
+        # stripping it would leave a recorded diff that no longer parses.
+        exclude: ^tests/shell/fixtures/
   - repo: local
     hooks:
       - id: knossos-fast-quality

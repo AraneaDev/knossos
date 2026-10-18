@@ -53,7 +53,9 @@
       "sh tests/shell/session-brief-hook.sh",
       "sh tests/shell/knossos-run-hook.sh",
       "sh tests/shell/install-hooks.sh",
-      "sh tests/shell/check-commit-style.sh"
+      "sh tests/shell/check-commit-style.sh",
+      "sh tests/shell/release-pr.sh",
+      "sh tests/shell/quality-verdict.sh"
     ],
     "check:quick": [
       "@composer validate --strict",

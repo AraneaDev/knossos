@@ -155,8 +155,63 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Whether this run is for release-please's own release pull request, the one
+  # pull request that runs `static` alone and no coverage jobs (see the lane
+  # matrix for why that is safe). tools/ci/release-pr decides it from what the
+  # pull request is: from this repository, labelled `autorelease: pending`,
+  # changing only the files release-please writes, and only the version in
+  # them. Its author and its branch name decide nothing, because release-please
+  # opens it as a person and anyone can push a branch of that shape.
+  #
+  # Every way this can go wrong runs more, never less: a push or a pull request
+  # it cannot read is not a release pull request, and if this job fails the
+  # lanes are skipped and `quality` fails. release-please labels its pull
+  # request just after opening it, so the run for `opened` can miss the label
+  # and run every lane; the next push to the branch is judged again.
+  release-pr:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      # A diff GitHub will not serve (too large) or any other failed read is
+      # an ordinary pull request: the cost is a full run. Only a wrong call of
+      # the script itself (exit 2) fails the job.
+      - name: Decide whether this is release-please's pull request
+        id: decide
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          dir=$(mktemp -d)
+          if ! { gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' > "$dir/labels" &&
+            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json files --jq '.files[].path' > "$dir/files" &&
+            gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" > "$dir/diff"; }; then
+            echo '::notice::Could not read the pull request; treating it as an ordinary one.'
+            echo 'release=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          status=0
+          tools/ci/release-pr --repo "$GITHUB_REPOSITORY" --head-repo "$HEAD_REPO" \
+            --labels "$dir/labels" --files "$dir/files" --diff "$dir/diff" || status=$?
+          case "$status" in
+            0) echo 'release=true' >> "$GITHUB_OUTPUT" ;;
+            1) echo 'release=false' >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+
   lane:
-    needs: image
+    needs: [image, release-pr]
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -176,23 +231,17 @@ jobs:
         # coverage jobs below run it split over several runners.
         #
         # A release-please pull request runs `static` alone, and no coverage
-        # jobs. Its diff is
-        # version.txt, the manifest, a CHANGELOG entry and the version string
-        # in Dockerfile and Runtime/Version.php, so every other lane re-verifies
-        # code byte-identical to the main it was cut from, which had just gone
-        # green. `static` still covers what such a pull request can break: the
-        # version strings agreeing across the four files, the changelog's
-        # markdown, and the one edited PHP line. The full matrix runs again on
-        # the push to main after it merges, so nothing reaches a tag unchecked.
-        #
-        # Matched on the prefix release-please owns, not an exact name: a
-        # component-scoped repository calls the branch
-        # release-please--branches--main--components--<name>, and an equality
-        # test silently never fires there. A human pushing code to a branch of
-        # that shape would skip the lanes, which is why the post-merge run on
-        # main is the backstop rather than this being the only gate.
+        # jobs. The release-pr job only says so when its diff is version.txt,
+        # the manifest, a CHANGELOG entry and the version string in the
+        # release-please extra-files (Dockerfile and Runtime/Version.php), so
+        # every other lane would re-verify code byte-identical to the main it
+        # was cut from, which had just gone green. `static` still covers what
+        # such a pull request can break: the version strings agreeing across
+        # the four files, the changelog's markdown, and the one edited PHP
+        # line. The full matrix runs again on the push to main after it
+        # merges, so nothing reaches a tag unchecked.
         lane:
-          ${{ fromJSON(startsWith(github.head_ref, 'release-please--branches--') &&
+          ${{ fromJSON(needs.release-pr.outputs.release == 'true' &&
           '["static"]' || '["static","tests","rust","release","gate"]') }}
     permissions:
       contents: read
@@ -304,8 +353,8 @@ jobs:
   # count is the matrix's length: tools/coverage reads it from
   # strategy.job-total, and the merge reads it from the shards' markers.
   coverage-shard:
-    needs: image
-    if: github.event_name != 'schedule' && !startsWith(github.head_ref, 'release-please--branches--')
+    needs: [image, release-pr]
+    if: github.event_name != 'schedule' && needs.release-pr.outputs.release != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -358,8 +407,8 @@ jobs:
   # when every shard succeeded; if any did not, it is skipped, and the
   # quality job treats a skipped merge as a failure.
   coverage:
-    needs: [image, coverage-shard]
-    if: github.event_name != 'schedule' && !startsWith(github.head_ref, 'release-please--branches--')
+    needs: [image, release-pr, coverage-shard]
+    if: github.event_name != 'schedule' && needs.release-pr.outputs.release != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -416,35 +465,34 @@ jobs:
   # survives the split: a lane, shard or merge that goes red fails this job,
   # and one that is skipped or cancelled when it should have run fails it too,
   # so a green `quality` still means everything ran and passed. The one
-  # expected skip is a release-please pull request's coverage jobs.
+  # expected skip is a release-please pull request's coverage jobs, and only
+  # when the release-pr job said it is one. tools/ci/quality-verdict holds the
+  # rule, so its tests can plant each skipped, cancelled or failed result.
   quality:
-    needs: [lane, coverage-shard, coverage]
+    needs: [release-pr, lane, coverage-shard, coverage]
     if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write # publishes the coverage badge to the gh-pages branch
     steps:
+      # Credentials are not persisted: the badge push below names its token
+      # itself, and nothing else here writes to the repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Require every lane, shard and the merge to have passed
         env:
           LANES: ${{ needs.lane.result }}
           SHARDS: ${{ needs.coverage-shard.result }}
           MERGE: ${{ needs.coverage.result }}
-          RELEASE_PLEASE: ${{ startsWith(github.head_ref, 'release-please--branches--') }}
+          RELEASE_PR: ${{ needs.release-pr.outputs.release }}
         run: |
-          printf 'lanes: %s\ncoverage shards: %s\ncoverage merge: %s\nrelease-please branch: %s\n' \
-            "$LANES" "$SHARDS" "$MERGE" "$RELEASE_PLEASE"
-          if [ "$RELEASE_PLEASE" = 'true' ]; then
-            expected='success skipped skipped'
+          if [ "$RELEASE_PR" = 'true' ]; then
+            tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE" --release-pr
           else
-            expected='success success success'
+            tools/ci/quality-verdict "$LANES" "$SHARDS" "$MERGE"
           fi
-          [ "$LANES $SHARDS $MERGE" = "$expected" ] || {
-            echo "expected lanes, shards and merge to be: $expected" >&2
-            exit 1
-          }
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: github.ref == 'refs/heads/main'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: github.ref == 'refs/heads/main'
         with:

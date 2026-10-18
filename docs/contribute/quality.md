@@ -146,6 +146,7 @@ cannot pass with a lower figure. To reproduce one shard locally, run
 An aggregating job named `quality` fails unless every lane, every shard and the
 merge succeeded, which is the check branch protection requires: a job that is
 skipped or cancelled when it should have run fails it just as a red one does.
+The rule is `tools/ci/quality-verdict`, tested by `tests/shell/quality-verdict.sh`.
 A second push to a pull request cancels the run in progress.
 
 CI runs PHPUnit once, on pull requests and on pushes to `main` alike. The
@@ -158,6 +159,14 @@ Its diff is version files, a manifest and a changelog entry, so every other lane
 identical to the `main` it was cut from, which had just passed. The full matrix
 runs again on the push to `main` after it merges, so nothing reaches a tag
 unchecked.
+
+What counts as a release-please pull request is decided by its content, with
+`tools/ci/release-pr`, not by its author or its branch name: release-please
+opens it with a personal token, and anyone can push a branch of that shape. It
+must come from this repository, carry the `autorelease: pending` label, change
+only the manifest, `CHANGELOG.md`, `version.txt` and the extra-files in
+`release-please-config.json`, and change nothing in those extra-files but the
+version. Anything else runs every lane.
 
 Pull request titles are checked by the `pr-title` workflow with
 `tools/check-commit-style.sh`, the same script the `commit-msg` hook uses,
