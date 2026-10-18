@@ -28,7 +28,10 @@ final class InlineScriptImports
      * A template literal counts by its static prefix, the text before its
      * first `${`, and only when that prefix is not empty:
      * `` `/static/app.mjs${location.search}` `` loads `/static/app.mjs`, and
-     * `` `${base}/x.js` `` names nothing a page can be read for.
+     * `` `${base}/x.js` `` names nothing a page can be read for. The
+     * TypeScript worker follows the same rule for a module's own dynamic
+     * imports (`templateImportHead` in
+     * workers/typescript/src/dynamic-import-collector.js).
      *
      * @return list<array{specifier: string, offset: int}>
      */

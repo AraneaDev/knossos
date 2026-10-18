@@ -550,6 +550,7 @@ export class TypeScriptLanguageFactCollector {
                 this.dynamicImports.dynamicDefaultImport(node.arguments[0]);
             return;
         }
+        this.dynamicImports.templateImport(node);
         if (
             ts.isIdentifier(node.expression) &&
             node.expression.text === "require" &&
@@ -640,16 +641,24 @@ export class TypeScriptLanguageFactCollector {
      * `x.ts` means the `.js`.
      */
     requiredSourceFile(location) {
-        const sourceFileAt = this.project.sourceFileAt;
         if (
-            sourceFileAt === undefined ||
             !ts.isStringLiteralLike(location) ||
             !/^\.\.?(\/|$)/.test(location.text)
         )
             return undefined;
+        return this.sourceFileNamed(location.text);
+    }
+
+    /**
+     * The program's file, or a file in the project, a path from this file
+     * names, tried with each suffix in the order Node loads them.
+     */
+    sourceFileNamed(specifier) {
+        const sourceFileAt = this.project.sourceFileAt;
+        if (sourceFileAt === undefined) return undefined;
         const base = path.resolve(
             path.dirname(this.sourceFile.fileName),
-            location.text,
+            specifier,
         );
         for (const suffix of REQUIRE_SUFFIXES) {
             const fileName = normalize(base + suffix);

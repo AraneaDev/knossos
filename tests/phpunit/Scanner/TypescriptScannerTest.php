@@ -368,6 +368,62 @@ final class TypescriptScannerTest extends KnossosTestCase
     }
 
     /**
+     * `` import(`./draw.mjs${query}`) `` loads `./draw.mjs`: the text before
+     * the first `${` names the file. A template whose file the expression
+     * decides (`` `./${name}.mjs` ``) names none, and a string literal
+     * resolves as it always has.
+     */
+    #[Group('typescript-scanner')]
+    public function testTypescriptWorkerFollowsADynamicImportWhoseTemplateStartsWithAFilePath(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-ts-template-import-' . bin2hex(random_bytes(6));
+        mkdir($root . '/web', 0o755, true);
+        $files = [
+            'package.json' => '{"name":"template-import-fixture"}',
+            'web/app.mjs' => implode("\n", [
+                'const query = new URL(import.meta.url).search;',
+                'const name = "other";',
+                'export const start = async () => [',
+                '    await import(`./draw.mjs${query}`),',
+                '    await import(`./${name}.mjs`),',
+                "    await import('./plain.mjs'),",
+                '];',
+                '',
+            ]),
+            'web/draw.mjs' => "export const drawFrame = () => 1;\n",
+            'web/other.mjs' => "export const other = 1;\n",
+            'web/plain.mjs' => "export const plain = 1;\n",
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->typescriptWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['web/app.mjs']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_keys($files) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/web');
+            @rmdir($root);
+        }
+
+        $imports = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'imports' && str_starts_with($edge->targetReference, 'ts:module:web/')) {
+                    $imports[] = $edge->targetReference;
+                }
+            }
+        }
+        sort($imports);
+
+        assertSame(['ts:module:web/draw.mjs', 'ts:module:web/plain.mjs'], $imports);
+    }
+
+    /**
      * `const { App } = await import('./tui/App')` loads a module lazily and
      * names the exports it takes. Only a dynamic import's `default` was
      * resolved, so a component loaded this way was reported as reached by

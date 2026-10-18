@@ -14,7 +14,12 @@ import {
     sourcePathTarget,
     unwrapParentheses,
 } from "./module-entry.js";
-import { normalize, realSourcePath, relativeInside } from "./project-paths.js";
+import {
+    belowNodeModules,
+    normalize,
+    realSourcePath,
+    relativeInside,
+} from "./project-paths.js";
 import {
     globBase,
     globContext,
@@ -24,6 +29,29 @@ import {
     relativeGlob,
 } from "./syntax-predicates.js";
 import { reference } from "./typescript-fact-utils.js";
+
+/**
+ * The file path a template literal handed to `import()` starts with, or null.
+ *
+ * `` import(`./draw.mjs${query}`) `` loads `./draw.mjs` whatever the query
+ * is: the text before the first `${` names the file, and what follows only
+ * decorates the URL. The head counts only when it is a relative or absolute
+ * path ending in a file name with an extension, so `` `${base}/x.js` `` and
+ * `` `./dir/${name}.js` ``, whose file the expression decides, stay
+ * unresolved. The HTML reader in the PHP core applies the same rule to a
+ * page's inline scripts (src/Discovery/Manifest/InlineScriptImports.php).
+ */
+export function templateImportHead(argument) {
+    const head = ts.isNoSubstitutionTemplateLiteral(argument)
+        ? argument.text
+        : ts.isTemplateExpression(argument)
+          ? argument.head.text
+          : null;
+    return head !== null &&
+        /^(?:\.{1,2})?\/(?:[^/]*\/)*[^/]+\.[A-Za-z0-9]+$/.test(head)
+        ? head
+        : null;
+}
 
 /** Adds the edges of imports no static import declaration names. */
 export class DynamicImportCollector {
@@ -106,6 +134,36 @@ export class DynamicImportCollector {
             if (source !== null && target !== null && source !== target)
                 this.context.addEdge("references", source, target, element);
         }
+    }
+
+    /**
+     * The `imports` edge of `` import(`./draw.mjs${query}`) ``.
+     *
+     * The compiler binds no module to a template, so its head
+     * ({@link templateImportHead}) is resolved the way a string literal
+     * naming that file would be.
+     */
+    templateImport(node) {
+        if (
+            node.expression.kind !== ts.SyntaxKind.ImportKeyword ||
+            node.arguments.length !== 1
+        )
+            return;
+        const head = templateImportHead(node.arguments[0]);
+        const file =
+            head === null ? undefined : this.context.sourceFileNamed(head);
+        const relative =
+            file === undefined
+                ? null
+                : relativeInside(this.context.root, file.fileName);
+        if (relative !== null && !belowNodeModules(relative))
+            this.context.addEdge(
+                "imports",
+                this.context.currentSource() ?? this.context.moduleId,
+                reference("module", relative),
+                node,
+                { dynamic: true, type_only: false },
+            );
     }
 
     /**
