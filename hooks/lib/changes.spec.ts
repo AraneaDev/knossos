@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, SessionChanges, SessionLedger, TurnBrief } from '../../types'
-import { accumulate, APPROXIMATE_START, cdFor, changesInput, changesList, FILE_CAP, fromLedger, ledgerChanges, lookAtOf, NO_CHANGES, ownTimeline, scanKey, stamp, testCommand, testsRan, timelineRow } from './changes'
+import { accumulate, APPROXIMATE_START, cdFor, changesArrangement, changesInput, changesList, FILE_CAP, fromLedger, ledgerChanges, lookAtOf, NO_CHANGES, ownTimeline, scanKey, stamp, testCommand, testsRan, timelineRow } from './changes'
 import { changesRows } from './__tests__/tabs'
 import { editTarget, paneInput } from './layout'
 import { paneRows } from './__tests__/pane'
@@ -210,6 +210,21 @@ describe('changesInput and changesList', () => {
 describe('changesRows', () => {
   it('says what will show before anything changed', () => {
     expect(textOf(changesRows(changesInput(NO_CHANGES, ROOT), 0, 60))).toMatch(/Changes this session\n *\n {3}Nothing yet. The files Claude edits show here/)
+  })
+
+  it('names the last commit as its baseline outside Claude Code, and the session inside it', () => {
+    const section = (host?: 'web') => changesArrangement(changesInput(NO_CHANGES, ROOT), 0, 'medium', undefined, undefined, host).left[0]!.make(60, 20)!
+    expect(section().title).toBe('Changes this session')
+    expect(section('web').title).toBe('Changes since the last commit')
+    const said = (host?: 'web') => section(host).body.map(plainText).join(' ').replace(/ +/g, ' ')
+    expect(said()).toContain('Nothing yet. The files Claude edits show here')
+    expect(said('web')).toContain('Nothing changed in this project since the last commit.')
+    expect(said('web')).not.toContain('Claude')
+    // A list read since a start says so on either host, in the host's words when the record names none.
+    const since = changesInput({ ...NO_CHANGES, origins: {} }, ROOT)
+    const sinceSaid = (host?: 'web') => changesArrangement(since, 0, 'medium', undefined, undefined, host).left[0]!.make(80, 20)!.body.map(plainText).join(' ')
+    expect(sinceSaid()).toContain('Nothing changed in this project since this session began.')
+    expect(sinceSaid('web')).toContain('Nothing changed in this project since the last commit.')
   })
   it('draws files with their marks, each pressable to its detail, the tests, and the command', () => {
     const rows = changesRows(changesInput(session(), ROOT), 1, 90)

@@ -50,6 +50,7 @@ import { LIVE_OFF } from './live'
 import { CARD_MAX, componentFigures, fileFigures, previewCard } from './hover'
 import { tilesBlock } from './tiles'
 import type { Stat } from './tiles'
+import { baselineWords } from './baseline'
 import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLineBlock, overviewData, overviewList as overviewWalk, sessionBlock } from './overview'
 import type { OverviewData } from './overview'
 import { branchArrangement, branchCount, branchInput, branchList } from './branch'
@@ -296,8 +297,8 @@ export type PaneExtras = {
  * way to this session's changes, the in-degree buckets, then the
  * cross-boundary flows. Each opens another tab (see `overview.ts`).
  */
-export function overviewList(input: Pick<PaneInput, 'overview' | 'changes'>): Openable[] {
-  return overviewWalk(input.overview, input.changes)
+export function overviewList(input: Pick<PaneInput, 'overview' | 'changes' | 'host'>): Openable[] {
+  return overviewWalk(input.overview, input.changes, input.host)
 }
 
 /** The Hubs list, narrowed to the in-degree range when one is set. */
@@ -911,7 +912,6 @@ const KEY_HELP: [string, string][] = [
   ['b', 'back from a detail'],
   ['c', "copy the marked row's full name or path"],
   ['q', 'ask Claude about the marked row: your press sends the prompt'],
-  ['t', "on Overview and Changes: copy the command for the tests that reach this session's changes"],
   ['d', 'list the files drifted since the snapshot, or hide them'],
   ['u', 'on Overview and Changes: list only the changed files no test reaches, or every file again'],
   ['l', "on Boundaries: move the marked cell to the next boundary the marked one depends on, and spell it out"],
@@ -1066,7 +1066,10 @@ function keysBlock(host?: 'web'): Block {
   const lines = (columns: number): Row[] => {
     const help: Row[] = []
     let n = 0
-    for (const [key, action] of [...KEY_HELP.filter(([key]) => host === undefined || key !== 'q'), ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
+    const keys = KEY_HELP.filter(([key]) => host === undefined || key !== 'q')
+    // `t` sits after `q`, and names the changes by the baseline the host counts from.
+    keys.splice(keys.findIndex(([key]) => key === 'd'), 0, ['t', `on Overview and Changes: copy the command for the tests that reach ${baselineWords(host).tests}`])
+    for (const [key, action] of [...keys, ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
       wrapWords(action, Math.max(1, columns - 3 - KEY_WIDTH)).forEach((line, i) =>
         help.push({ key: `help-${n++}`, segments: [{ text: '   ' }, { text: padEnd(i === 0 ? key : '', KEY_WIDTH), color: ACCENT }, { text: line, dim: true }] }),
       )
@@ -1227,7 +1230,7 @@ function overviewArrangement(input: PaneInput, selected: number, tier: Tier): Ar
   const data = input.overview
   const session = input.changes.files.length > 0 ? 1 : 0
   const tiles = input.stats.length > 0 ? [tilesBlock(input.stats, tier)] : []
-  const sessionCard = sessionBlock(input.changes, input.lookAt, selected)
+  const sessionCard = sessionBlock(input.changes, input.lookAt, selected, input.host)
   const composition = compositionBlock(data)
   const concentration = concentrationBlock(data, selected, session)
   const health = healthBlock(data)
@@ -1331,7 +1334,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
   } else if (input.route !== null) {
     rows.push(...arrange(scrolledTo(routeArrangement(input.route, selected, input.hues), input.scrolls), width, room(), true))
   } else if (input.detail !== null) {
-    rows.push(...arrange(scrolledTo(detailOf(input.detail, tier, input.hues, selected), input.scrolls), width, room(), true))
+    rows.push(...arrange(scrolledTo(detailOf(input.detail, tier, input.hues, selected, input.host), input.scrolls), width, room(), true))
   } else {
     // Listed under the tabs, the drifted files hold the marker; the tab below shows none. They take a third of the room.
     const drift = input.drift
@@ -1349,7 +1352,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
       const [left, right] = gridColumns(width, PEEK_SPLIT)
       const height = Math.max(0, room())
       const master = fillColumn(arrange(scrolledTo(tabArrangement(input, tabSelected, PANEL), input.scrolls), left, height, true, PANEL), left, height, PANEL, 'stretch-m')
-      const detail = fillColumn(peekRows(peek, right, height, input.hues), right, master.length, PANEL, 'stretch-d')
+      const detail = fillColumn(peekRows(peek, right, height, input.hues, input.host), right, master.length, PANEL, 'stretch-d')
       rows.push(...besideRows(master.length >= detail.length ? master : fillColumn(master, left, detail.length, PANEL, 'stretch-m'), detail, left))
     }
   }
@@ -1389,8 +1392,8 @@ const PEEK_SPLIT = 0.55
 const PANEL: Tier = 'medium'
 
 /** A component's or a file's detail arrangement. */
-const detailOf = (detail: DetailInput, tier: Tier, hues: Hues, selected: number): Arrangement =>
-  detail.file === undefined ? detailArrangement(detail, tier, hues, selected) : fileDetailArrangement(detail, tier, hues, selected)
+const detailOf = (detail: DetailInput, tier: Tier, hues: Hues, selected: number, host?: 'web'): Arrangement =>
+  detail.file === undefined ? detailArrangement(detail, tier, hues, selected, host) : fileDetailArrangement(detail, tier, hues, selected, host)
 
 /** The detail drawn beside the tab: on a wide pane, on a tab that has one, while the finder is shut and something is marked. */
 function peekShown(input: PaneInput, tier: Tier): DetailInput | null {
@@ -1403,8 +1406,8 @@ function peekShown(input: PaneInput, tier: Tier): DetailInput | null {
  * own cards at the panel's width, its presses renamed `peek:N` (they open
  * what the panel lists, not what the tab lists), and no marker of its own.
  */
-function peekRows(peek: DetailInput, width: number, height: number, hues: Hues): Row[] {
-  const rows = arrange(detailOf({ ...peek, panel: true }, PANEL, hues, -1), width, height, true, PANEL)
+function peekRows(peek: DetailInput, width: number, height: number, hues: Hues, host?: 'web'): Row[] {
+  const rows = arrange(detailOf({ ...peek, panel: true }, PANEL, hues, -1, host), width, height, true, PANEL)
   // Its lists' presses open what it lists; the line under a cut one is text, since no marker walks the panel.
   const pressOf = (seg: Segment): Segment => {
     if (seg.press === undefined) return seg
@@ -1426,7 +1429,7 @@ export const SHORT_PANE = 24
 /** The open tab's cards. */
 function tabArrangement(input: PaneInput, selected: number, tier: Tier): Arrangement {
   if (input.tab === 'overview') return overviewArrangement(input, selected, tier)
-  if (input.tab === 'changes') return changesArrangement(input.changes, selected, tier, input.hues, input.lit)
+  if (input.tab === 'changes') return changesArrangement(input.changes, selected, tier, input.hues, input.lit, input.host)
   if (input.tab === 'hubs') return hubsArrangement(input, selected, tier)
   if (input.tab === 'issues') return issuesArrangement(input.issues, selected, tier, input.hues)
   if (input.tab === 'cycles') return cyclesArrangement(input.cycles, tier, input.hues, selected)

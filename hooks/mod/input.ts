@@ -31,11 +31,13 @@ export type Handlers = {
 export async function currentInput(io: Port, terminal: boolean): Promise<PaneInput | null> {
   const d = await io.state.dashboard.read()
   if (d?.status !== 'ok') return null
+  // The one place the host is read: the layout and the diff's words are told, and never read `mod`.
+  const host = mod.host === 'web' ? ('web' as const) : undefined
   const v = await io.state.view.read()
   const stored = await io.state.detail.read()
   const shown = v.inspect === null ? null : v.inspect.file ? fileDetailInput(v.inspect, stored, d.project_root, huesOf(d)) : detailInput(v.inspect, stored, d.project_root)
   // The full detail opens its diff as far as the person pressed; the panel beside a tab draws it closed.
-  if (shown !== null && v.inspect !== null) shown.diff = diffView(v.inspect, await io.state.fileDiff.read(), await io.state.sessionRev.read(), await io.state.diffFold.read())
+  if (shown !== null && v.inspect !== null) shown.diff = diffView(v.inspect, await io.state.fileDiff.read(), await io.state.sessionRev.read(), await io.state.diffFold.read(), host)
   const extras = {
     git: await io.state.gitHead.read(),
     feedback: await io.state.feedback.read(),
@@ -50,13 +52,12 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
     route: await io.state.route.read(),
     note: await io.state.note.read(),
     untestedOnly: await io.state.untestedOnly.read(),
-    // The one place the host is read: the layout is told, and never reads `mod`.
-    ...(mod.host === 'web' ? { host: 'web' as const } : {}),
+    ...(host === undefined ? {} : { host }),
   }
   // The marked row's detail beside the tab: only while the pane is drawn wide.
   const peeked = mod.paneWide ? await io.state.peek.read() : null
   const side = peeked === null ? null : peeked.shown.file === true ? fileDetailInput(peeked.shown, peeked.detail, d.project_root, huesOf(d)) : detailInput(peeked.shown, peeked.detail, d.project_root)
-  if (side !== null && peeked !== null) side.diff = diffView(peeked.shown, await io.state.fileDiff.read(), await io.state.sessionRev.read())
+  if (side !== null && peeked !== null) side.diff = diffView(peeked.shown, await io.state.fileDiff.read(), await io.state.sessionRev.read(), null, host)
   return paneInput(d, await io.state.brief.read(), await io.state.refresh.read(), await io.state.rescan.read(), v, await io.clock.now(), terminal, shown, await io.state.allow.read(), await shownChanges(io, d.project_root), await io.state.sessionRoot.read(), await io.state.live.read(), extras, side)
 }
 

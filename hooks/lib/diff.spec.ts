@@ -84,6 +84,21 @@ describe("the detail's view of the change", () => {
     expect(diffView(SHOWN, { ...done(answer()), name: 'src/Other.php' }, { status: 'ok', rev: REV })).toEqual({ phase: 'loading' })
     expect(viewOf(null)).toMatchObject({ phase: 'message', text: expect.stringContaining('said nothing') })
     expect(viewOf({ status: 'unknown-rev' })).toMatchObject({ text: expect.stringContaining('no longer in the repository') })
+  })
+
+  it('names the commit the session began at in Claude Code, and the last commit outside it', () => {
+    const message = (rev: Parameters<typeof diffView>[2], diff: SessionDiff | null, host?: 'web') => (diffView(SHOWN, done(diff), rev, null, host) as { text?: string }).text
+    const ok = { status: 'ok', rev: REV } as const
+    expect(message(null, null)).toBe('No diff: the commit this session began at was not recorded (no git answered when it started).')
+    expect(message(null, null, 'web')).toBe('No diff: the last commit was not read (no git answered).')
+    expect(message({ status: 'no-git' }, null)).toBe('No diff: the project is not in a git repository, or had no commit when the session began.')
+    expect(message({ status: 'no-git' }, null, 'web')).toBe('No diff: the project is not in a git repository, or has no commit yet.')
+    expect(message(ok, { status: 'unknown-rev' } as SessionDiff)).toBe('No diff: the commit this session began at is no longer in the repository.')
+    expect(message(ok, { status: 'unknown-rev' } as SessionDiff, 'web')).toBe('No diff: the last commit read is no longer in the repository.')
+    expect(message(ok, answer({ kind: 'unchanged', diff: '' }))).toBe('Back as it was when the session began.')
+    expect(message(ok, answer({ kind: 'unchanged', diff: '' }), 'web')).toBe('Back as it was at the last commit.')
+    expect(diffSection({ phase: 'loading' }, 60).title).toBe('Changed since the session began')
+    expect(diffSection({ phase: 'loading' }, 60, false, 'web').title).toBe('Changed since the last commit')
     expect(viewOf(answer({ binary: true, diff: '' }))).toMatchObject({ text: expect.stringContaining('binary') })
     expect(viewOf(answer({ unreadable: true, diff: '' }))).toMatchObject({ text: expect.stringContaining('could not show') })
     expect(viewOf(answer({ kind: 'unchanged', diff: '' }))).toMatchObject({ text: 'Back as it was when the session began.' })

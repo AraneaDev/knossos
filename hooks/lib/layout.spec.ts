@@ -1485,6 +1485,11 @@ describe('the pane outside Claude Code', () => {
     const keys = textOf(paneRows(input({ showKeys: true, host: 'web' }), 60))
     expect(keys).not.toMatch(/ q +ask Claude/)
     expect(keys).toMatch(/ e +open the marked row's file/)
+    // `t` copies the tests for the changes since the host's baseline, in its usual place after `q`.
+    const flat = (text: string) => text.replace(/\s+/g, ' ')
+    expect(flat(keys)).toContain("t on Overview and Changes: copy the command for the tests that reach the changes since the last commit d ")
+    const claude = textOf(paneRows(input({ showKeys: true }), 60))
+    expect(flat(claude)).toContain("q ask Claude about the marked row: your press sends the prompt t on Overview and Changes: copy the command for the tests that reach this session's changes d ")
   })
   it('is told through paneInput, which carries the host into the rows it lays out', () => {
     const web = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true, null, null, undefined, null, undefined, { host: 'web' })

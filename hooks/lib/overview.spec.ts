@@ -163,6 +163,16 @@ describe('the overview data', () => {
     expect(list[5]!.jump).toEqual({ tab: 'hubs', degree: { from: 101, to: null } })
     expect(list[6]!.jump).toEqual({ tab: 'boundaries', selected: 0, target: 'core' })
     expect(list.every(o => o.loc === undefined && o.ask !== undefined)).toBe(true)
+  })
+
+  it('names the changes since the session in Claude Code, and since the last commit outside it', () => {
+    expect(overviewList(data, changes)[0]!.copy).toBe("1 file changed this session")
+    expect(overviewList(data, changes, 'web')[0]!.copy).toBe("1 file changed since the last commit")
+    const title = (host?: 'web') => sessionBlock(changes, lookAtOf(changes), 0, host).make(100, 30, undefined)!.title
+    expect(title()).toBe('This session')
+    expect(title('web')).toBe('Since the last commit')
+    const empty = changesInput(NO_CHANGES, ROOT)
+    expect(sessionBlock(empty, null, 0, 'web').make(100, 30, undefined)!.title).toBe('Since the last commit')
     expect(overviewList(data, changesInput(NO_CHANGES, ROOT)).map(o => o.name)[0]).toBe('in-degree 0')
   })
 })

@@ -39,6 +39,7 @@ import type { Row, Segment } from './rows'
 import type { Openable } from './views'
 import { NOTE, PLACE, REACH, mark } from './marks'
 import { countsLine } from './notes-view'
+import { baselineWords } from './baseline'
 
 /** One part of a whole: its label, how many, and how its share of the bar is drawn (a glyph in a colour). */
 export type Part = { label: string; value: number; glyph: string; colour: string }
@@ -173,7 +174,7 @@ export function overviewData(d: Dashboard, hues: Hues, grow: (width: number) => 
 export const bucketLabel = (b: Bucket): string => (b.to === null ? `${b.from}+` : b.from === b.to ? `${b.from}` : `${b.from}–${b.to}`)
 
 /** The session row the Overview walks first, when the session changed anything: it opens Changes. */
-const sessionRow = (changes: ChangesInput): Openable[] =>
+const sessionRow = (changes: ChangesInput, host?: 'web'): Openable[] =>
   changes.files.length === 0
     ? []
     : [
@@ -181,7 +182,7 @@ const sessionRow = (changes: ChangesInput): Openable[] =>
           name: 'Changes',
           canonical: 'Changes',
           jump: { tab: 'changes' },
-          copy: `${plural(changes.files.length, 'file', 'files')} changed this session`,
+          copy: `${plural(changes.files.length, 'file', 'files')} ${baselineWords(host).changed}`,
           ask: 'Using the Knossos graph, what did the changes in this session reach, and which tests should I run?',
         },
       ]
@@ -191,7 +192,7 @@ const sessionRow = (changes: ChangesInput): Openable[] =>
  * them: the way to this session's changes, the in-degree buckets (each opens
  * Hubs narrowed to it), then the flows (each opens its cell on Boundaries).
  */
-export function overviewList(data: OverviewData, changes: ChangesInput): Openable[] {
+export function overviewList(data: OverviewData, changes: ChangesInput, host?: 'web'): Openable[] {
   const buckets = data.buckets.map(
     (b): Openable => ({
       name: `in-degree ${bucketLabel(b)}`,
@@ -210,7 +211,7 @@ export function overviewList(data: OverviewData, changes: ChangesInput): Openabl
   )
   // Last, so the rows before it keep their places in the walk.
   const notes: Openable[] = data.notes === null ? [] : [{ name: 'notes', canonical: 'notes', jump: { tab: 'notes', notesFilter: pressing(data.notes) }, ask: 'Using the Knossos notes, which notes in this project need looking at again, and why?' }]
-  return [...sessionRow(changes), ...buckets, ...flows, ...notes]
+  return [...sessionRow(changes, host), ...buckets, ...flows, ...notes]
 }
 
 /** What the Notes tab opens on from the Overview: the group that needs the person most, else every note. */
@@ -524,11 +525,11 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
  * and the way to Changes, which the marker walks first; `t` copies the test
  * command. Before anything changed, one line.
  */
-export function sessionBlock(changes: ChangesInput, look: LookAt | null, selected: number): Block {
+export function sessionBlock(changes: ChangesInput, look: LookAt | null, selected: number, host?: 'web'): Block {
   return {
     key: 'session',
     make: (columns): Section => {
-      const section = (body: Row[]): Section => ({ key: 'session', title: 'This session', body, ...(body.length === 0 ? { empty: 'nothing changed yet' } : {}) })
+      const section = (body: Row[]): Section => ({ key: 'session', title: baselineWords(host).card, body, ...(body.length === 0 ? { empty: 'nothing changed yet' } : {}) })
       if (changes.files.length === 0) return section([])
       const body: Row[] = []
       const timeline = timelineRow(changes, columns)

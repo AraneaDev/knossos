@@ -572,9 +572,9 @@ function sideSection(prefix: string, side: Side, offset: number, columns: number
  * who uses it and what it uses (side by side when wide), its annotations,
  * and below them its change, when it was opened as one.
  */
-export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = NO_HUES, selected = -1): Arrangement {
+export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = NO_HUES, selected = -1, host?: 'web'): Arrangement {
   const c = detail.component
-  const diff = detail.diff ? [diffBlock(detail.diff, detail.panel === true)] : []
+  const diff = detail.diff ? [diffBlock(detail.diff, detail.panel === true, host)] : []
   if (c === null) {
     const lines = detail.loading ? [busy(`Inspecting ${detail.label}…`)] : (detail.messages ?? [])
     const head: Block = {
