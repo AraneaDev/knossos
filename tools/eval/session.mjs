@@ -4,12 +4,18 @@
  */
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
+import { performance } from "node:perf_hooks";
 import { extractAnswer, scoreAnswer } from "./answer.mjs";
 import { contamination } from "./arms.mjs";
 import { limitState } from "./ledger.mjs";
 import { finalText, grepAfterGraph, knossosCounts } from "./transcript.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Durations and deadlines come from the monotonic clock. Time sync can step the
+// wall clock back mid-session, and a timed-out session measured on it once
+// reported -267 ms of wall time.
+const monotonicMs = () => performance.now();
 
 const signalGroup = (pid, signal) => {
     try {
@@ -23,8 +29,8 @@ const signalGroup = (pid, signal) => {
 /** SIGTERM to each process group, SIGKILL to any still there after `graceMs`. */
 export async function terminateGroups(pids, graceMs = 5000) {
     let alive = pids.filter((pid) => signalGroup(pid, "SIGTERM"));
-    const end = Date.now() + graceMs;
-    while (alive.length > 0 && Date.now() < end) {
+    const end = monotonicMs() + graceMs;
+    while (alive.length > 0 && monotonicMs() < end) {
         await sleep(50);
         alive = alive.filter((pid) => signalGroup(pid, 0));
     }
@@ -44,7 +50,7 @@ export function runSession({
     onClose = () => {},
 }) {
     return new Promise((resolve, reject) => {
-        const started = Date.now();
+        const started = monotonicMs();
         const child = spawn(claudeBin, argv, {
             cwd,
             env,
@@ -98,7 +104,7 @@ export function runSession({
             clearTimeout(killTimer);
             onClose(child.pid);
             if (buffer.trim() !== "") lines.push(buffer);
-            const wallMs = Date.now() - started;
+            const wallMs = Math.round(monotonicMs() - started);
             out.end(() =>
                 resolve({ lines, timedOut, exitCode, stderr, wallMs }),
             );
