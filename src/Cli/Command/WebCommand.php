@@ -8,8 +8,9 @@ use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 
 /**
- * `web [<dir>] [--port=N] [--no-open]`: the Claude Code pane in a browser
- * tab, for the project in `<dir>` (the working directory by default).
+ * `web [<dir>] [--port=N] [--no-open] [--editor=<command>]`: the Claude Code
+ * pane in a browser tab, for the project in `<dir>` (the working directory by
+ * default).
  *
  * The server is Node's (`web/main.ts` in this installation, which loads the
  * pane's TypeScript as it is, with no build step), so this command only
@@ -43,7 +44,7 @@ final class WebCommand implements CliCommand
     /** {@inheritDoc} */
     public function allowedOptions(string $command): array
     {
-        return ['port', 'no-open'];
+        return ['port', 'no-open', 'editor'];
     }
 
     /** {@inheritDoc} */
@@ -63,6 +64,10 @@ final class WebCommand implements CliCommand
         }
         if ($context->options->flag($options, 'no-open')) {
             $argv[] = '--no-open';
+        }
+        $editor = $context->options->single($options, 'editor');
+        if ($editor !== null) {
+            $argv[] = '--editor=' . $editor;
         }
 
         return self::runInForeground($argv);

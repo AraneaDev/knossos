@@ -4,6 +4,8 @@ import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
 import type { Frame } from './hub'
+import { followHead } from '../hooks/mod/watcher'
+import { mod } from '../hooks/mod/state'
 import { startServer } from './server'
 
 // A wheel whose handler throws: what the server answers for an internal failure.
@@ -13,6 +15,11 @@ vi.mock('../hooks/mod/actions', async original => ({
     throw new Error('boom')
   }),
 }))
+// The checkout's commit read, counted: the head poll reads it only while a page is connected.
+vi.mock('../hooks/mod/watcher', async original => {
+  const real = await original<typeof import('../hooks/mod/watcher')>()
+  return { ...real, followHead: vi.fn(real.followHead) }
+})
 
 type Running = Awaited<ReturnType<typeof startServer>>
 let running: Running | null = null
@@ -191,6 +198,59 @@ describe('startServer', () => {
     const moved = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: first.port, movable: true })
     expect(moved.port).not.toBe(first.port)
     await moved.close()
+  })
+
+  it("reads the checkout's commit only while a page is connected, and at once when one connects", async () => {
+    running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, headPollMs: 20 })
+    await running.ready
+    const reads = vi.mocked(followHead)
+    reads.mockClear()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(reads).not.toHaveBeenCalled()
+    const base = running.url.slice(0, running.url.indexOf('?'))
+    const stream = await events(`${base}events?t=${running.token}&id=a&cols=100&rows=40`)
+    await stream.next(() => true)
+    await vi.waitFor(() => expect(reads.mock.calls.length).toBeGreaterThan(1))
+    stream.close()
+    // The page's stream is gone once the server hears it close; after that nothing more is read.
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const seen = reads.mock.calls.length
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(reads.mock.calls.length).toBe(seen)
+  })
+
+  it('opens files with the editor command it is given', async () => {
+    running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, editor: 'zed {file}:{line}' })
+    expect(mod.editor).toBe('zed {file}:{line}')
+    expect(mod.host).toBe('web')
+  })
+
+  it('hands every kind of input to the pane, and refuses a kind it does not know or a body too large', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const send = (body: unknown) => post(`${base}input?t=${token}`, body)
+    const stream = await events(`${base}events?t=${token}&id=a&cols=100&rows=40`)
+    await stream.next(() => true)
+    expect(await send({ id: 'a', kind: 'press', press: 'tab:hubs' })).toBe(204)
+    expect(await send({ id: 'a', kind: 'type', field: 'filter', value: 'Ro' })).toBe(204)
+    expect(await send({ id: 'a', kind: 'submit', field: 'filter', value: 'Ro' })).toBe(204)
+    expect(await send({ id: 'a', kind: 'focus', element: 'tab:overview' })).toBe(204)
+    expect(await send({ id: 'a', kind: 'resize', cols: 60, rows: 20 })).toBe(204)
+    await stream.next(f => Math.max(...frameText(f).split('\n').map(l => l.length)) <= 60)
+    expect(await send({ id: 'a', kind: 'theme', theme: 'light' })).toBe(204)
+    await stream.next(f => f.theme === 'light')
+    expect(await send({ id: 'a', kind: 'dance' })).toBe(400)
+    expect(await post(`${base}input?t=${token}`, { id: 'a', kind: 'type', value: 'x'.repeat(70 * 1024) }).catch(() => 400)).toBe(400)
+    stream.close()
+  })
+
+  it('serves the page and its files, and nothing at an address it does not know', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    expect((await get(`${base}?t=${token}`)).body).toContain('<main id="view">')
+    expect((await get(`${base}static/draw.mjs?t=${token}`)).body).toContain('export function drawFrame')
+    expect((await get(`${base}static/missing.mjs?t=${token}`)).status).toBe(404)
+    expect((await get(`${base}elsewhere?t=${token}`)).status).toBe(404)
   })
 
   it('listens on 127.0.0.1 only', async () => {

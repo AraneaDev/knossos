@@ -6,7 +6,7 @@
  * Claude Code can do (a prompt, a session note, a slash command) does
  * nothing here: the pane hides what would ask for it on this host.
  */
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { realpath, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -19,7 +19,7 @@ import { PANE } from '../hooks/mod/state'
 /** What the port needs of the hub: to be told of a change, to pass an event on, the pages' theme and whether a page is there. */
 export type PortHub = { changed(): void; send(event: { type: string; [field: string]: unknown }): void; theme: string; connected: boolean }
 
-/** The most a run may print before it is cut off. */
+/** The most a run may print before it is cut off, by default. */
 const MAX_OUTPUT = 64 * 1024 * 1024
 
 type Piece = { stream: 'stdout' | 'stderr'; text: string }
@@ -30,14 +30,65 @@ function timer(handle: ReturnType<typeof setTimeout>, clear: (h: ReturnType<type
   return { cancel: () => clear(handle) }
 }
 
-/** `argv` run to its end, or killed at `timeoutMs`: its exit code and output; a run that could not start or timed out rejects. */
-function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+/** The process groups of the runs under way: ended with this process, as nothing else would end them. */
+const groups = new Set<number>()
+let groupsEnded = false
+
+/** Ends the process group `pid` leads, whatever is left of it. */
+function endGroup(pid: number): void {
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {
+    // Gone already.
+  }
+}
+
+/**
+ * `argv` run to its end, or killed at `timeoutMs`: its exit code and output.
+ * It leads a process group of its own, and a run that times out or prints
+ * more than `maxOutput` bytes is ended with everything it started, so a
+ * hung grandchild (PHP under the wrapper's shell) cannot keep its output
+ * open. A run that could not start, timed out, printed too much or was
+ * killed rejects, saying which.
+ */
+function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv, maxOutput: number): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  if (!groupsEnded) {
+    groupsEnded = true
+    process.once('exit', () => groups.forEach(endGroup))
+  }
   return new Promise((resolve, reject) => {
-    execFile(argv[0]!, argv.slice(1), { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: MAX_OUTPUT, env, encoding: 'utf8' }, (error, stdout, stderr) => {
-      if (error === null) return resolve({ exitCode: 0, stdout, stderr })
-      if (error.killed === true || error.signal !== null) return reject(new Error(`${argv[0]} timed out or was killed`))
-      if (typeof error.code === 'number') return resolve({ exitCode: error.code, stdout, stderr })
+    const child = spawn(argv[0]!, argv.slice(1), { env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const pid = child.pid
+    if (pid !== undefined) groups.add(pid)
+    const out = { stdout: '', stderr: '' }
+    let size = 0
+    let why: string | null = null
+    const end = (reason: string) => {
+      why ??= reason
+      if (pid !== undefined) endGroup(pid)
+    }
+    const timer = timeoutMs > 0 ? setTimeout(() => end(`${argv[0]} timed out after ${timeoutMs} ms`), timeoutMs) : null
+    for (const name of ['stdout', 'stderr'] as const) {
+      child[name].setEncoding('utf8')
+      child[name].on('data', (text: string) => {
+        size += Buffer.byteLength(text)
+        if (size > maxOutput) end(`${argv[0]} printed more than ${maxOutput} bytes`)
+        else out[name] += text
+      })
+    }
+    const settle = () => {
+      if (timer !== null) clearTimeout(timer)
+      if (pid !== undefined) groups.delete(pid)
+    }
+    child.on('error', error => {
+      settle()
       reject(error)
+    })
+    child.on('close', (code, signal) => {
+      settle()
+      if (why !== null) return reject(new Error(why))
+      if (signal !== null) return reject(new Error(`${argv[0]} was killed (${signal})`))
+      resolve({ exitCode: code ?? 1, ...out })
     })
   })
 }
@@ -125,9 +176,10 @@ function storeOf(file: string): Record<string, unknown> {
 /**
  * The port for one project's pane at `root`, running the plugin's wrapper
  * from `pluginRoot` with `env`, keeping the store in `storeFile`. `heard` is
- * called whenever a spawned child (the watcher) prints.
+ * called whenever a spawned child (the watcher) prints; `maxOutput` bounds
+ * what a run may print.
  */
-export function webPort(o: { root: string; pluginRoot: string; storeFile: string; hub: PortHub; env?: NodeJS.ProcessEnv; heard?: () => void }): Port {
+export function webPort(o: { root: string; pluginRoot: string; storeFile: string; hub: PortHub; env?: NodeJS.ProcessEnv; heard?: () => void; maxOutput?: number }): Port {
   const env = o.env ?? process.env
   const heard = o.heard ?? (() => undefined)
   const values: Record<string, unknown> = { ...INITIAL }
@@ -152,7 +204,9 @@ export function webPort(o: { root: string; pluginRoot: string; storeFile: string
         if (options?.to !== 'debug') console.error(text)
       },
       toast: (text: string) => o.hub.send({ type: 'toast', text }),
+      // The page writes the clipboard: with none connected nothing is copied, and a page whose browser refuses says so itself.
       copy: async (args: { text: string }) => {
+        if (!o.hub.connected) return { isCopied: false, reason: 'no page is open' }
         o.hub.send({ type: 'copy', text: args.text })
         return { isCopied: true }
       },
@@ -165,7 +219,7 @@ export function webPort(o: { root: string; pluginRoot: string; storeFile: string
     },
     session: { root: async () => o.root, id: async () => 'web', append: async () => undefined },
     process: {
-      run: (argv: string[], options?: { timeoutMs?: number }) => run(argv, options?.timeoutMs ?? 0, env),
+      run: (argv: string[], options?: { timeoutMs?: number }) => run(argv, options?.timeoutMs ?? 0, env, o.maxOutput ?? MAX_OUTPUT),
       spawn: (args: { argv: string[] }) => spawned(args.argv, env, heard),
     },
     fs: {

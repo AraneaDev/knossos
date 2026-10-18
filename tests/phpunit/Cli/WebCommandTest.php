@@ -22,11 +22,11 @@ use function PHPUnit\Framework\assertSame;
 final class WebCommandTest extends KnossosTestCase
 {
     #[Group('cli')]
-    public function testItIsOneOfTheCommandsAndTakesAPortAndNoOpen(): void
+    public function testItIsOneOfTheCommandsAndTakesAPortNoOpenAndAnEditor(): void
     {
         $handlers = array_filter(CliCommandSet::all(new CliHelpRenderer(), 'test'), static fn($c): bool => $c->supports('web'));
         assertSame(1, count($handlers));
-        assertSame(['port', 'no-open'], (new WebCommand())->allowedOptions('web'));
+        assertSame(['port', 'no-open', 'editor'], (new WebCommand())->allowedOptions('web'));
     }
 
     #[Group('cli')]
@@ -51,11 +51,11 @@ final class WebCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testNode24RunsTheWebEntryForTheDirectoryWithItsOptionsAndReturnsItsExitCode(): void
     {
-        [$status, $error, $calls] = $this->runWith('v24.3.0', exit: 5, positionals: ['/some/project'], options: ['port' => ['8123'], 'no-open' => ['true']]);
+        [$status, $error, $calls] = $this->runWith('v24.3.0', exit: 5, positionals: ['/some/project'], options: ['port' => ['8123'], 'no-open' => ['true'], 'editor' => ['zed']]);
 
         assertSame(5, $status);
         assertSame('', $error);
-        assertSame(['--version', self::repositoryRoot() . '/web/main.ts /some/project --port=8123 --no-open'], $calls);
+        assertSame(['--version', self::repositoryRoot() . '/web/main.ts /some/project --port=8123 --no-open --editor=zed'], $calls);
     }
 
     #[Group('cli')]

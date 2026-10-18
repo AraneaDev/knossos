@@ -128,7 +128,7 @@ Usage:
                 (roots also come from KNOSSOS_ALLOWED_ROOTS and the roots
                  file beside the database, re-read on every request)
   knossos allow-root <path> [--execute]
-  knossos web [path] [--port=N] [--no-open]
+  knossos web [path] [--port=N] [--no-open] [--editor=<command>]
                 (the pane in a browser tab; runs until Ctrl-C, needs Node 24+)
 
 Docker supplies PHP, Node, Composer, and SQLite; mount source read-only at an

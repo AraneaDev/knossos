@@ -34,9 +34,10 @@ import { mod, reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
+import { addressOf } from './lock'
 import { webPort } from './port'
 
-/** How often the checkout's commit is read again, beside every word from the watcher. */
+/** How often the checkout's commit is read again while a page is connected, beside every word from the watcher. */
 const HEAD_POLL_MS = 5_000
 /** How often an idle event stream says it is still there, so a proxy or a sleeping laptop notices a dead one. */
 const KEEPALIVE_MS = 20_000
@@ -141,16 +142,21 @@ export async function startServer(o: {
   port?: number
   movable?: boolean
   token?: string
+  /** The command files open in (see `editorCommand`); VS Code's when null. */
+  editor?: string | null
+  /** How often the checkout's commit is read while a page is connected ({@link HEAD_POLL_MS} by default). */
+  headPollMs?: number
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
-  reset({ watch: true })
+  reset({ watch: true, ...(o.editor == null ? {} : { editor: o.editor }) })
   mod.host = 'web'
   const token = o.token ?? randomBytes(24).toString('hex')
   const hub = new Hub()
   let following = false
+  // Only for a page to see: with none connected nothing is read, and the next page to connect reads it at once.
   const follow = () => {
-    if (following) return
+    if (following || !hub.connected) return
     following = true
     void followHead(io)
       .catch((error: unknown) => io.ui.log(`knossos web: reading the checkout's commit failed: ${messageOf(error)}`))
@@ -161,7 +167,7 @@ export async function startServer(o: {
   hub.attach(io)
   const act = handlersOf(io)
   const ready = startUp(io, false).catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
-  const headPoll = setInterval(follow, HEAD_POLL_MS)
+  const headPoll = setInterval(follow, o.headPollMs ?? HEAD_POLL_MS)
   const streams = new Set<ServerResponse>()
 
   /** One input from a page, handed to the pane's own handlers: false for a kind there is none of. A wheel answers whether the pane took it. */
@@ -232,6 +238,7 @@ export async function startServer(o: {
       hub.disconnect(id, send)
     })
     hub.connect(id, sizeOf(url.searchParams.get('cols'), url.searchParams.get('rows')), send, themeOf(url.searchParams.get('theme')))
+    follow()
   }
 
   let origin = ''
@@ -271,7 +278,7 @@ export async function startServer(o: {
   origin = `http://127.0.0.1:${port}`
 
   return {
-    url: `http://127.0.0.1:${port}/?t=${token}`,
+    url: addressOf(port, token),
     token,
     port,
     ready,

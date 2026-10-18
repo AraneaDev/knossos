@@ -46,6 +46,54 @@ describe('webPort', () => {
     expect(() => process.kill(pid, 0)).toThrow()
   })
 
+  it('ends a timed-out run whose own child still holds its output open, and that child too', async () => {
+    const io = portOver(fakeHub())
+    const pidFile = join(scratch(), 'pid')
+    const started = Date.now()
+    // Not exec'd: the shell waits on a sleep of its own, which keeps the pipe open after the shell is killed.
+    await expect(io.process.run(['sh', '-c', `sleep 30 & echo $! > ${pidFile}; wait`], { timeoutMs: 300 })).rejects.toThrow(/timed out after 300 ms/)
+    expect(Date.now() - started).toBeLessThan(5_000)
+    const pid = Number(readFileSync(pidFile, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
+  })
+
+  it('says a run that printed too much did, not that it timed out', async () => {
+    const io = webPort({ root: '/work/app', pluginRoot: '/nowhere', storeFile: join(scratch(), 'store.json'), hub: fakeHub(), maxOutput: 1_000 })
+    await expect(io.process.run(['sh', '-c', 'head -c 5000 /dev/zero; sleep 30'], { timeoutMs: 10_000 })).rejects.toThrow(/printed more than 1000 bytes/)
+  })
+
+  it('rejects a run that cannot start, and ends a spawned read that cannot either', async () => {
+    const io = portOver(fakeHub())
+    await expect(io.process.run(['/no/such/program'], { timeoutMs: 1_000 })).rejects.toThrow(/ENOENT/)
+    const stream = io.process.spawn({ argv: ['/no/such/program'] })
+    await expect(stream.next()).rejects.toThrow(/ENOENT/)
+  })
+
+  it('ends a spawned child when the read is thrown into or disposed of', async () => {
+    const io = portOver(fakeHub())
+    for (const stop of ['throw', 'dispose'] as const) {
+      const pidFile = join(scratch(), 'pid')
+      const stream = io.process.spawn({ argv: ['sh', '-c', `echo $$ > ${pidFile}; echo one; exec sleep 30`] })
+      await stream.next()
+      if (stop === 'throw') await expect(stream.throw(new Error('stop'))).rejects.toThrow('stop')
+      else await (stream as unknown as AsyncDisposable)[Symbol.asyncDispose]()
+      const pid = Number(readFileSync(pidFile, 'utf8'))
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
+    }
+  })
+
+  it('passes a scroll on to the pages, and does nothing for what only Claude Code can do', async () => {
+    const hub = fakeHub()
+    const io = portOver(hub)
+    await io.ui.scroll({ requestId: 'knossos', to: { key: 'row:3' } } as never)
+    expect(hub.send).toHaveBeenCalledWith({ type: 'scroll', key: 'row:3' })
+    await expect(io.ui.open({} as never)).resolves.toBeUndefined()
+    await expect(io.ui.close({} as never)).resolves.toBeUndefined()
+    await expect(io.command.register({} as never)).resolves.toBeUndefined()
+    await expect(io.prompt.submit({} as never)).resolves.toBeUndefined()
+    await expect(io.session.append({} as never)).resolves.toBeUndefined()
+  })
+
   it('streams a spawned child and ends it when the reader stops', async () => {
     const io = portOver(fakeHub())
     const pidFile = join(scratch(), 'pid')
@@ -89,6 +137,9 @@ describe('webPort', () => {
     expect(await io.session.id()).toBe('web')
     expect(await io.config.list()).toEqual([{ key: 'theme', value: 'dark' }])
     expect(await io.ui.panes()).toEqual([])
+    // With no page to write it, nothing is copied.
+    expect(await io.ui.copy({ text: 'knossos scan' })).toEqual({ isCopied: false, reason: 'no page is open' })
+    expect(hub.send).not.toHaveBeenCalled()
     hub.connected = true
     expect(await io.ui.panes()).toEqual([{ id: 'knossos' }])
     expect(await io.ui.copy({ text: 'knossos scan' })).toEqual({ isCopied: true })

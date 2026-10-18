@@ -1,11 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { scratch } from './fixtures/helpers'
-import { claim, identity, lockFile } from './lock'
+import { addressOf, claim, identity, lockFile } from './lock'
+
+const TOKEN = 'ab'.repeat(24)
 
 /** A pid no process has: one that just ended. */
 function deadPid(): number {
@@ -17,30 +19,56 @@ describe('claim', () => {
   it('takes a free project, and gives it up on release', async () => {
     const data = scratch()
     const root = scratch()
-    const got = await claim(data, root)
+    const got = await claim(data, root, TOKEN)
     expect(got.kind).toBe('mine')
     const file = lockFile(data, root)
-    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, url: '' })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: null })
     if (got.kind !== 'mine') throw new Error('not mine')
-    got.record('http://127.0.0.1:1234/?t=x')
-    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, url: 'http://127.0.0.1:1234/?t=x' })
+    got.record(1234)
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: 1234 })
     got.release()
     expect(existsSync(file)).toBe(false)
     // Twice is harmless.
     got.release()
   })
 
-  it("finds a live server's lock and its URL, when the server there answers", async () => {
+  it('keeps the token out of the lock, and the lock and its directory to their owner', async () => {
     const data = scratch()
     const root = scratch()
-    const server = createServer((_req, res) => res.writeHead(200).end('page'))
+    const got = await claim(data, root, TOKEN)
+    if (got.kind !== 'mine') throw new Error('not mine')
+    got.record(1234)
+    const file = lockFile(data, root)
+    expect(readFileSync(file, 'utf8')).not.toContain(TOKEN)
+    expect(statSync(file).mode & 0o777).toBe(0o600)
+    expect(statSync(join(data, 'web')).mode & 0o777).toBe(0o700)
+    got.release()
+  })
+
+  it('narrows a web directory made before under a looser mode', async () => {
+    const data = scratch()
+    mkdirSync(join(data, 'web'), { mode: 0o755 })
+    chmodSync(join(data, 'web'), 0o755)
+    identity(data, scratch())
+    expect(statSync(join(data, 'web')).mode & 0o777).toBe(0o700)
+  })
+
+  it("finds a live server's lock, and its address from the port and the project's token, when the server there answers", async () => {
+    const data = scratch()
+    const root = scratch()
+    const asked: string[] = []
+    const server = createServer((req, res) => {
+      asked.push(req.url ?? '')
+      res.writeHead(200).end('page')
+    })
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/?t=y`
+    const port = (server.address() as AddressInfo).port
     try {
       mkdirSync(join(data, 'web'), { recursive: true })
       // The parent of this process is alive for as long as the spec runs.
-      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, url }))
-      expect(await claim(data, root)).toEqual({ kind: 'running', url })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port }))
+      expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(port, TOKEN) })
+      expect(asked).toEqual([`/?t=${TOKEN}`])
     } finally {
       server.close()
     }
@@ -54,10 +82,10 @@ describe('claim', () => {
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     const port = (server.address() as AddressInfo).port
     await new Promise(resolve => server.close(resolve))
-    writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, url: `http://127.0.0.1:${port}/?t=gone` }))
-    const got = await claim(data, root)
+    writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port }))
+    const got = await claim(data, root, TOKEN)
     expect(got.kind).toBe('mine')
-    expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, url: '' })
+    expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 
   it('waits on a lock still starting, and takes over one that never got its URL', async () => {
@@ -65,21 +93,21 @@ describe('claim', () => {
     const root = scratch()
     mkdirSync(join(data, 'web'), { recursive: true })
     const file = lockFile(data, root)
-    writeFileSync(file, JSON.stringify({ pid: process.ppid, url: '' }))
-    expect(await claim(data, root)).toEqual({ kind: 'running', url: '' })
+    writeFileSync(file, JSON.stringify({ pid: process.ppid, port: null }))
+    expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: '' })
     const old = new Date(Date.now() - 60_000)
     utimesSync(file, old, old)
-    expect((await claim(data, root)).kind).toBe('mine')
+    expect((await claim(data, root, TOKEN)).kind).toBe('mine')
   })
 
   it("takes over a lock whose process is gone, and writes it as its own", async () => {
     const data = scratch()
     const root = scratch()
     mkdirSync(join(data, 'web'), { recursive: true })
-    writeFileSync(lockFile(data, root), JSON.stringify({ pid: deadPid(), url: 'http://127.0.0.1:9/?t=old' }))
-    const got = await claim(data, root)
+    writeFileSync(lockFile(data, root), JSON.stringify({ pid: deadPid(), port: 9 }))
+    const got = await claim(data, root, TOKEN)
     expect(got.kind).toBe('mine')
-    expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, url: '' })
+    expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 
   it('takes over a lock it cannot read', async () => {
@@ -87,7 +115,7 @@ describe('claim', () => {
     const root = scratch()
     mkdirSync(join(data, 'web'), { recursive: true })
     writeFileSync(lockFile(data, root), '{not json')
-    expect((await claim(data, root)).kind).toBe('mine')
+    expect((await claim(data, root, TOKEN)).kind).toBe('mine')
   })
 
   it('names the project by its real path: a link to it is the same project', () => {

@@ -1,12 +1,13 @@
 import { execFileSync, spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { scratch } from './fixtures/helpers'
-import { browserCommands } from './browser'
+import { browserCommands, openBrowser } from './browser'
 import { lockFile } from './lock'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -31,8 +32,8 @@ function pluginRoot(mark: string): string {
 }
 
 /** `node web/main.ts` for `dir`, not opening a browser, and its output as it comes. */
-function main(dir: string, env: Record<string, string>) {
-  const child = spawn(process.execPath, [join(HERE, 'main.ts'), dir, '--no-open'], { env: { ...process.env, ...env } })
+function main(dir: string, env: Record<string, string>, extra: string[] = []) {
+  const child = spawn(process.execPath, [join(HERE, 'main.ts'), dir, '--no-open', ...extra], { env: { ...process.env, ...env } })
   running.push(child)
   let out = ''
   child.stdout.setEncoding('utf8').on('data', (text: string) => (out += text))
@@ -68,6 +69,9 @@ describe('knossos web', () => {
     const [, url] = await run.line(/Knossos web pane for (?:.*): (http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]+)\n/)
     expect(run.out()).toContain(`Knossos web pane for ${realpathSync(dir)}: ${url}`)
     expect(existsSync(lockFile(data, dir))).toBe(true)
+    // The address is the server's key: the lock, which any process may come to read, holds only the pid and port.
+    expect(Object.keys(JSON.parse(readFileSync(lockFile(data, dir), 'utf8')))).toEqual(['pid', 'port'])
+    expect(readFileSync(lockFile(data, dir), 'utf8')).not.toContain(new URL(url!).searchParams.get('t'))
     const page = await fetch(url!)
     expect(page.status).toBe(200)
     for (let i = 0; i < 100 && !alive(mark); i++) await new Promise(resolve => setTimeout(resolve, 50))
@@ -129,10 +133,43 @@ describe('knossos web', () => {
     }
   })
 
+  it('refuses an option it does not know with its usage line, and takes a port after a space', { timeout: 20_000 }, async () => {
+    const refused = main(scratch(), { KNOSSOS_DATA_DIR: scratch() }, ['--prot=8123'])
+    expect(await refused.exited).toBe(2)
+    expect(refused.out()).toBe('knossos web: unknown option --prot=8123\nusage: knossos web [path] [--port=N] [--no-open] [--editor=<command>]\n')
+    const free = createServer()
+    await new Promise<void>(resolve => free.listen(0, '127.0.0.1', resolve))
+    const port = (free.address() as AddressInfo).port
+    await new Promise(resolve => free.close(resolve))
+    const run = main(scratch(), { KNOSSOS_DATA_DIR: scratch(), KNOSSOS_WEB_PLUGIN_ROOT: pluginRoot(String(60_000 + Math.floor(Math.random() * 9_999))) }, ['--port', String(port)])
+    const [, at] = await run.line(/: http:\/\/127\.0\.0\.1:(\d+)\//)
+    expect(Number(at)).toBe(port)
+    run.child.kill('SIGTERM')
+    expect(await run.exited).toBe(0)
+  })
+
   it('refuses a directory that is not there', async () => {
     const run = main(join(scratch(), 'nowhere'), { KNOSSOS_DATA_DIR: scratch() })
     expect(await run.exited).toBe(2)
     expect(run.out()).toMatch(/knossos web: .*nowhere.* is not a directory/)
+  })
+})
+
+describe('openBrowser', () => {
+  it('opens with the first command that works, and says when none did', async () => {
+    const bin = scratch()
+    const path = process.env.PATH
+    // No wslview here; xdg-open answers, and notes the address it was given.
+    writeFileSync(join(bin, 'xdg-open'), `#!/bin/sh\necho "$1" > '${join(bin, 'opened')}'\n`)
+    chmodSync(join(bin, 'xdg-open'), 0o755)
+    process.env.PATH = bin
+    try {
+      expect(await openBrowser('http://127.0.0.1:1/?t=x', 'linux')).toBe(true)
+      expect(readFileSync(join(bin, 'opened'), 'utf8')).toBe('http://127.0.0.1:1/?t=x\n')
+      expect(await openBrowser('http://127.0.0.1:1/?t=x', 'darwin')).toBe(false)
+    } finally {
+      process.env.PATH = path
+    }
   })
 })
 
