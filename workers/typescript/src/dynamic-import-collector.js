@@ -40,8 +40,11 @@ import { reference } from "./typescript-fact-utils.js";
  * counts only when it is a relative path (`./`, `../`) ending in a file name
  * with an extension, so `` `${base}/x.js` ``, `` `./dir/${name}.js` `` and an
  * absolute `` `/x.js${q}` `` stay unresolved. The HTML reader in the PHP core
- * applies the same rule to a page's inline scripts
- * (src/Discovery/Manifest/InlineScriptImports.php).
+ * reads a page's inline scripts by the same head rule
+ * (src/Discovery/Manifest/InlineScriptImports.php) with one difference: it
+ * keeps a `/...` head, because a page's URLs are root-relative and the core
+ * resolves them against the page's web roots, where an absolute path in a
+ * module names a file on disk outside any project.
  */
 export function templateImportHead(argument) {
     const text = ts.isNoSubstitutionTemplateLiteral(argument)

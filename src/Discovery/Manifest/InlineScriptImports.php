@@ -29,9 +29,12 @@ final class InlineScriptImports
      * first `${`, and only when that prefix is not empty:
      * `` `/static/app.mjs${location.search}` `` loads `/static/app.mjs`, and
      * `` `${base}/x.js` `` names nothing a page can be read for. The
-     * TypeScript worker follows the same rule for a module's own dynamic
-     * imports (`templateImportHead` in
-     * workers/typescript/src/dynamic-import-collector.js).
+     * TypeScript worker reads a module's own dynamic imports by the same
+     * rule (`templateImportHead` in
+     * workers/typescript/src/dynamic-import-collector.js), except that it
+     * drops a `/...` head: a page's URLs are root-relative and resolve
+     * against its web roots, while an absolute path in a module names a
+     * file on disk.
      *
      * @return list<array{specifier: string, offset: int}>
      */
