@@ -1163,10 +1163,18 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
  * project knossos says it never scanned offers asking Claude to scan it:
  * a load still on its way, or one that failed, is no reason to scan, so a
  * habitual `q` there sends nothing. Outside Claude Code (`host`) there is no
- * one to ask: the offer is to scan it directly.
+ * one to ask: the offer is to scan it directly. While a rescan runs
+ * (`scanning`) the pane says so, with its spinner, and offers nothing: the
+ * graph it waits for lands on its own.
  */
-export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web'): Row[] {
+export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web', scanning = false): Row[] {
   const width = Math.max(1, Math.min(CONTENT_MAX, columns))
+  if (scanning) {
+    return [
+      { key: 'empty-head', segments: [{ text: fit(busy('Scanning the project…'), width), bold: true, color: HEADING }] },
+      ...wrapWords('Knossos is scanning this project; the graph appears here when it is done.', width).map((line, i) => dimRow(`empty-${i}`, line, width)),
+    ]
+  }
   const { head: heading, why, busy: spins } = NO_GRAPH[state]
   const head: Row[] = [
     { key: 'empty-head', segments: [{ text: fit(spins === true ? busy(heading) : heading, width), bold: true, color: HEADING }] },

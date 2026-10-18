@@ -66,6 +66,17 @@ describe('paneSource', () => {
     expect(web).not.toContain('scan-ask')
   })
 
+  it('shows the scan running once the scan it offered is under way, and no button, on either host', async () => {
+    for (const host of ['claude', 'web'] as const) {
+      mod.host = host
+      const source = await paneSource(fakePort({ dashboard: { status: 'unscanned' }, rescan: { phase: 'scanning', reason: null } }).io, 80, true)
+      expect(source.kind).toBe('empty')
+      const text = JSON.stringify(source)
+      expect(text).toContain('Scanning the project')
+      expect(text).not.toContain('"press"')
+    }
+  })
+
   it('is the detail while something is inspected, the tab otherwise, and notes what the pane shows', async () => {
     vi.mocked(currentInput).mockResolvedValue({ status: { text: 'shown' } } as never)
     const dashboard = { status: 'ok' }

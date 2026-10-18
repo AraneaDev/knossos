@@ -25,9 +25,10 @@ export async function paneSource(io: Port, columns: number, terminal: boolean): 
   // Whether the pane is wide enough for the detail beside the tab: the lookup it needs runs from the next press or tick.
   mod.paneWide = tierOf(columns) === 'wide'
   if (d === null || d.status !== 'ok') {
-    const offer = allowInput(await io.state.brief.read(), await io.state.rescan.read(), await io.state.allow.read())
+    const rescan = await io.state.rescan.read()
+    const offer = allowInput(await io.state.brief.read(), rescan, await io.state.allow.read())
     mod.emptyShown = true
-    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, mod.host === 'web' ? 'web' : undefined) }
+    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, mod.host === 'web' ? 'web' : undefined, rescan.phase === 'scanning') }
   }
   const input = await currentInput(io, terminal)
   if (input === null) return { kind: 'empty', rows: [] }

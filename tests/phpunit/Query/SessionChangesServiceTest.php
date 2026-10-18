@@ -326,7 +326,8 @@ final class SessionChangesServiceTest extends KnossosTestCase
             assertSame('Core', $greeter['boundary']);
             assertSame(1, $greeter['tests']);
             assertSame([], $greeter['scans']);
-            assertSame(true, $greeter['dependents'] >= 0 && is_array($greeter['boundaries']));
+            assertSame(2, $greeter['dependents']);
+            assertSame(['Edge', 'composer:fixture/turn-brief', 'namespace:App'], $greeter['boundaries']);
             assertSame(false, array_key_exists('tests', $changes['files']['src/Edge/Caller.php']));
             assertSame(['tests/GreeterTest.php'], array_column($changes['tests'], 'path'));
             assertSame([[], false], [$changes['scans'], $changes['files_truncated']]);
@@ -335,6 +336,23 @@ final class SessionChangesServiceTest extends KnossosTestCase
             assertSame(3, count(self::working($pdo, $root)['files']));
             $this->git($root, ['commit', '--quiet', '-m', 'second']);
             assertSame([], self::working($pdo, $root)['files']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A tracked file replaced by a link to nothing is changed, not deleted: it is still there as a link. */
+    #[Group('query')]
+    public function testADanglingLinkInPlaceOfATrackedFileIsChangedNotDeleted(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+            unlink($root . '/src/Edge/Caller.php');
+            symlink($root . '/nowhere', $root . '/src/Edge/Caller.php');
+            assertSame(['src/Edge/Caller.php' => 'changed'], self::statusesOf(self::working($pdo, $root)));
         } finally {
             $this->removeTempTree($root);
         }

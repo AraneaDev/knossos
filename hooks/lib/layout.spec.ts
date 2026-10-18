@@ -1486,6 +1486,23 @@ describe('the pane outside Claude Code', () => {
     expect(keys).not.toMatch(/ q +ask Claude/)
     expect(keys).toMatch(/ e +open the marked row's file/)
   })
+  it('is told through paneInput, which carries the host into the rows it lays out', () => {
+    const web = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true, null, null, undefined, null, undefined, { host: 'web' })
+    expect(web.host).toBe('web')
+    expect(pressIds(paneRows(web, 120))).not.toContain('ask')
+    const claude = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true)
+    expect(claude.host).toBeUndefined()
+    expect(pressIds(paneRows(claude, 120))).toContain('ask')
+  })
+  it('says a rescan is running, with its spinner and nothing to press, on either host', () => {
+    for (const host of [undefined, 'web'] as const) {
+      const rows = emptyRows('unscanned', null, 90, host, true)
+      expect(rows[0]?.segments[0]?.text).toBe(busy('Scanning the project…'))
+      expect(pressIds(rows)).toEqual([])
+      expect(textOf(rows)).not.toContain('No architecture graph yet')
+    }
+    expect(pressIds(emptyRows('unscanned', null, 90, undefined, false))).toEqual(['scan-ask'])
+  })
   it('offers to scan an unscanned project directly, and the Claude Code pane keeps asking Claude', () => {
     for (const columns of WIDTHS) {
       const presses = emptyRows('unscanned', null, columns, 'web').flatMap(r => r.segments.flatMap(s => (s.press ? [s.press] : [])))

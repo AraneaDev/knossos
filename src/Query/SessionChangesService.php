@@ -144,7 +144,7 @@ final readonly class SessionChangesService
         }
         $statuses = [];
         foreach ($listing['paths'] as $file) {
-            $statuses[$file] = !is_file($root . '/' . $file) ? 'deleted' : ($this->succeeds($root, ['cat-file', '-e', 'HEAD:./' . $file]) ? 'changed' : 'added');
+            $statuses[$file] = !file_exists($root . '/' . $file) && !is_link($root . '/' . $file) ? 'deleted' : ($this->succeeds($root, ['cat-file', '-e', 'HEAD:./' . $file]) ? 'changed' : 'added');
         }
         return ['status' => 'ok', 'complete' => true] + $this->listed($projectId, $root, $statuses, [], [], $listing['truncated']) + $base;
     }
