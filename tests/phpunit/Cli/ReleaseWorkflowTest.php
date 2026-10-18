@@ -140,6 +140,24 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         self::assertStringNotContainsString('pull-requests: write', $workflow);
     }
 
+    /**
+     * The rollback runs after anything, hands the job's status to the tested
+     * script, and the script alone maps that status to an action.
+     */
+    #[Group('packaging')]
+    public function testTheReleaseRollbackIsTheTestedScript(): void
+    {
+        $workflow = (string) file_get_contents(self::repositoryRoot() . '/.github/workflows/release-please.yml');
+        $step = self::step(self::steps($workflow), 'name: Remove the draft release and re-open it when its gate did not pass');
+
+        self::assertSame('${{ always() && steps.release.outputs.release_created }}', self::condition($step));
+        self::assertStringContainsString('GATE: ${{ job.status }}', $step);
+        self::assertStringContainsString('tools/ci/release-rollback --release-created "$CREATED" --gate-result "$GATE"', $step);
+        self::assertStringNotContainsString('--dry-run', $step);
+        self::assertStringNotContainsString('labels', $workflow, 'Relabelling lives in tools/ci/release-rollback.');
+        self::assertFileExists(self::repositoryRoot() . '/tools/ci/release-rollback');
+    }
+
     /** One job of a workflow, from its key to the next job's. */
     private static function job(string $workflow, string $name): string
     {

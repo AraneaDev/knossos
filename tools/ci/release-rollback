@@ -1,0 +1,87 @@
+#!/bin/sh
+# Rolls a release back when its gate did not pass, so nothing is ever tagged
+# that did not pass. release-please.yml runs it as the job's last word on the
+# release, with the job's status as the gate result.
+#
+#   tools/ci/release-rollback --release-created true|'' --gate-result STATUS \
+#       --repo OWNER/NAME --tag TAG --sha SHA [--dry-run]
+#
+# A gate result of exactly `success` leaves everything alone, and so does a run
+# that created no release. Anything else, failure, cancelled (the job timeout
+# included) or a result that is missing, rolls back:
+#
+#   - the draft release is deleted. A draft has no tag yet, so this leaves
+#     nothing published;
+#   - the merged release pull request goes from `autorelease: tagged` back to
+#     `autorelease: pending`. Creating the release moved it to tagged, and
+#     release-please only releases a merged pull request that is still
+#     pending, so without this no later run would produce this version again.
+#     The pull request is found from the release commit, which is the commit
+#     it merged as.
+#
+# Each action is printed as it is taken. --dry-run prints them and changes
+# nothing; the pull request lookup, which only reads, still runs. Exit 0 when
+# the rollback is done or not needed, 1 when the pull request cannot be found
+# (the draft is gone by then, the label must be fixed by hand), 2 when called
+# wrong.
+set -eu
+
+usage() {
+    printf 'usage: release-rollback --release-created V --gate-result R --repo R --tag T --sha S [--dry-run]\n' >&2
+    exit 2
+}
+
+created='' created_set='' gate='' gate_set='' repo='' tag='' sha='' dry=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run)
+            dry=1
+            shift
+            continue
+            ;;
+    esac
+    [ "$#" -ge 2 ] || usage
+    case "$1" in
+        --release-created) created=$2 created_set=1 ;;
+        --gate-result) gate=$2 gate_set=1 ;;
+        --repo) repo=$2 ;;
+        --tag) tag=$2 ;;
+        --sha) sha=$2 ;;
+        *) usage ;;
+    esac
+    shift 2
+done
+if [ -z "$created_set" ] || [ -z "$gate_set" ] || [ -z "$repo" ] || [ -z "$tag" ] || [ -z "$sha" ]; then
+    usage
+fi
+
+# Runs a change, or only names it in a dry run.
+change() {
+    if [ "$dry" -eq 1 ]; then
+        printf 'dry run: gh %s\n' "$*"
+    else
+        gh "$@"
+    fi
+}
+
+if [ "$created" != true ]; then
+    printf 'release-rollback: no release was created; nothing to roll back\n'
+    exit 0
+fi
+if [ "$gate" = success ]; then
+    printf 'release-rollback: the gate passed; nothing to roll back\n'
+    exit 0
+fi
+printf 'release-rollback: the gate result is %s; rolling %s back\n' "${gate:-missing}" "$tag"
+
+printf 'delete draft %s\n' "$tag"
+change release delete "$tag" --yes --repo "$repo"
+
+pr=$(gh api "repos/$repo/commits/$sha/pulls" --jq '.[0].number') || pr=''
+if [ -z "$pr" ] || [ "$pr" = null ]; then
+    printf "::error::No pull request found for %s; relabel the Release PR to 'autorelease: pending' by hand.\n" "$sha"
+    exit 1
+fi
+printf 'relabel PR %s\n' "$pr"
+change api -X DELETE "repos/$repo/issues/$pr/labels/autorelease:%20tagged"
+change api -X POST "repos/$repo/issues/$pr/labels" -f 'labels[]=autorelease: pending'

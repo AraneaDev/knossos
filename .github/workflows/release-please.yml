@@ -159,27 +159,33 @@ jobs:
         run: gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
 
       # A failed or cancelled gate (the job timeout included) removes the
-      # draft, so nothing is ever tagged that did not pass. Creating the release
-      # also moved the merged Release PR from `autorelease: pending` to
-      # `autorelease: tagged`, and release-please only releases a merged PR
-      # that is still pending. Without putting the label back, no later run
-      # would ever produce this version again. The PR is found from the release
-      # commit, which is the commit the PR merged as.
+      # draft and puts the merged Release PR back to `autorelease: pending`,
+      # so nothing is ever tagged that did not pass and a later run can still
+      # release this version. tools/ci/release-rollback holds the rule and
+      # says why; tests/shell/release-rollback.sh plants each outcome.
+      #
+      # The step runs whatever happened before it, and hands the job's status
+      # so far to the script, which acts on anything but `success`. The script
+      # comes from the release commit's checkout. When the release was created
+      # but the checkout itself failed, there is no script to run, so the
+      # draft is deleted inline: the one case that cannot leave a draft behind
+      # by depending on the step that failed.
       - name: Remove the draft release and re-open it when its gate did not pass
-        if: ${{ !success() && steps.release.outputs.release_created }}
+        if: ${{ always() && steps.release.outputs.release_created }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          CREATED: ${{ steps.release.outputs.release_created }}
+          GATE: ${{ job.status }}
           TAG: ${{ steps.release.outputs.tag_name }}
           SHA: ${{ steps.release.outputs.sha }}
         run: |
-          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY"
-          PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" --jq '.[0].number')
-          if [ -z "$PR" ] || [ "$PR" = "null" ]; then
-            echo "::error::No pull request found for $SHA; relabel the Release PR to 'autorelease: pending' by hand."
+          if [ ! -x tools/ci/release-rollback ]; then
+            echo '::error::The release commit was not checked out; deleting the draft. Relabel the Release PR to autorelease: pending by hand.'
+            gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY"
             exit 1
           fi
-          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/autorelease:%20tagged"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f 'labels[]=autorelease: pending'
+          tools/ci/release-rollback --release-created "$CREATED" --gate-result "$GATE" \
+            --repo "$GITHUB_REPOSITORY" --tag "$TAG" --sha "$SHA"
 
       # Opens or updates the next Release PR. It runs after the release is
       # settled: after a publish the new tag exists to diff against, and after

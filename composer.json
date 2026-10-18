@@ -55,7 +55,8 @@
       "sh tests/shell/install-hooks.sh",
       "sh tests/shell/check-commit-style.sh",
       "sh tests/shell/release-pr.sh",
-      "sh tests/shell/quality-verdict.sh"
+      "sh tests/shell/quality-verdict.sh",
+      "sh tests/shell/release-rollback.sh"
     ],
     "check:quick": [
       "@composer validate --strict",
