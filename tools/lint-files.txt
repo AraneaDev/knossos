@@ -868,6 +868,7 @@ php	tests/phpunit/Scanner/TypescriptRunOnLoadScriptTest.php
 php	tests/phpunit/Scanner/TypescriptScannerTest.php
 php	tests/phpunit/Scanner/TypescriptStringDispatchTest.php
 php	tests/phpunit/Scanner/TypescriptSupertypeMemberTest.php
+php	tests/phpunit/Scanner/TypescriptTableLookupTest.php
 php	tests/phpunit/Scanner/TypescriptVirtualSourceTest.php
 php	tests/phpunit/Scanner/TypescriptWorkerEdgeCasesTest.php
 php	tests/phpunit/Scanner/TypescriptWorkerReadsCoverageTest.php
