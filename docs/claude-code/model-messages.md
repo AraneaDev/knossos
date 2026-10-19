@@ -111,9 +111,14 @@ violation is reported once a session.
 - The count is per violating dependency, so one call can count twice: once for
   the class, once for the method.
 - The message lists at most ten violations, then `- …and 2 more (run review_diff)`.
-- Only files the turn edited with Edit, Write or NotebookEdit count. A branch
-  checkout, a formatter or a shell command never adds to the verdict, so
-  switching branches does not hand the model a branch's worth of violations.
+- Only files the turn changed count: with Edit, Write or NotebookEdit, or with
+  a Bash command while the live watcher ran (the files its scans took in while
+  the command ran, as the scan ledger lists them). A command that moved HEAD by
+  more than a commit (a checkout, a reset, a pull) never adds to the verdict,
+  so switching branches does not hand the model a branch's worth of
+  violations. Without the watcher, a shell command's changes do not count. A
+  change the watcher notices only after the turn ended counts toward the next
+  turn.
 - When the scan ledger cannot account for every scan since the turn began (a
   scan that was not recorded, or one older than the ledger keeps), or an entry
   was cut because it changed more than 2,000 files (a branch switch), the brief

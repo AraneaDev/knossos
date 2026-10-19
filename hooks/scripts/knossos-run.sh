@@ -26,10 +26,15 @@
 #        knossos-run.sh note-check <project-dir> --component=<name> [--value=<reason> | --remove] [--execute]
 #        knossos-run.sh note-confirm <project-dir> --component=<name> [--execute]
 #
-# Every failure exits 0. All but one print nothing: the mod reads silence as
+# Every failure exits 0. All but two print nothing: the mod reads silence as
 # "no data", keeps its last figures with their age and asks again later, so a
-# broken install can never break a session. The exception is a missing
-# binary, which prints {"status":"no-binary"} so the mod can turn itself off.
+# broken install can never break a session. A missing binary prints
+# {"status":"no-binary"} so the mod can turn itself off, and a call this
+# wrapper refuses (a subcommand it does not know, an argument it does not let
+# through, a KNOSSOS_RUN_TIMEOUT it cannot use) prints
+# {"status":"refused","by":"wrapper","reason":"..."} so the mod can log it:
+# the mod asking for something the wrapper will never run is a defect, not
+# a quiet moment.
 #
 # `watch` is the one that does not end on its own: it becomes the live
 # watcher (`knossos watch --shared`), which prints one JSON event per line
@@ -83,7 +88,17 @@ PATH=${KNOSSOS_SAFE_PATH:-/usr/bin:/bin}
 export PATH
 unset KNOSSOS_SAFE_PATH KNOSSOS_SAVED_IFS KNOSSOS_PATH_ENTRY KNOSSOS_PATH_REAL KNOSSOS_PATH_PROJECT
 
-[ "$#" -ge 2 ] || exit 0
+# A call this wrapper does not let through is said, not swallowed: one JSON
+# line naming the wrapper as the one that refused, so the mod can tell it
+# from a binary that had nothing to say (and from the binary's own
+# `refused`), and nothing runs. The reason names only the subcommand, which by
+# then is one of the fixed names below, never what the caller passed.
+refuse() {
+    printf '{"status":"refused","by":"wrapper","reason":"%s"}\n' "${1:-$SUBCOMMAND does not take these arguments}"
+    exit 0
+}
+
+[ "$#" -ge 2 ] || refuse 'a subcommand and a project directory are required'
 SUBCOMMAND=$1
 PROJECT_DIR=$2
 shift 2
@@ -111,21 +126,36 @@ case "$SUBCOMMAND" in
     allow-root) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     session-changes|session-head|session-diff|boundary-couplings) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     watch) LIMIT=0 ;;
-    *) exit 0 ;;
+    *) refuse 'unknown subcommand' ;;
 esac
+# The bound is a whole number of seconds above 0: `timeout` reads 0 as no
+# bound at all, and a value it cannot read makes every run fail, which would
+# look like a binary with nothing to say.
+# Leading zeros go first, so the length below counts digits that matter; a day
+# is the most any run may take, and a longer bound would overflow the shell's
+# arithmetic before it meant anything.
+case $LIMIT in
+    '' | *[!0-9]*) refuse 'KNOSSOS_RUN_TIMEOUT is not a whole number of seconds' ;;
+esac
+LIMIT=${LIMIT#"${LIMIT%%[!0]*}"}
+LIMIT=${LIMIT:-0}
+if [ "$SUBCOMMAND" != watch ]; then
+    [ "$LIMIT" != 0 ] || refuse 'KNOSSOS_RUN_TIMEOUT is not above 0'
+    { [ "${#LIMIT}" -le 5 ] && [ "$LIMIT" -le 86400 ]; } || refuse 'KNOSSOS_RUN_TIMEOUT is more than a day'
+fi
 
 # component-detail takes exactly one component name, which may not read as an
 # option: `--db=...` would point the read at another graph.
 if [ "$SUBCOMMAND" = component-detail ]; then
-    [ "$#" -eq 1 ] || exit 0
-    case "$1" in -*) exit 0 ;; esac
+    [ "$#" -eq 1 ] || refuse
+    case "$1" in -*) refuse ;; esac
 fi
 # file-detail takes exactly one file, relative to the project directory: an
 # option such as `--db=...` would point the read at another graph, and an
 # absolute path or a `..` step would read outside the directory the call names.
 if [ "$SUBCOMMAND" = file-detail ] || [ "$SUBCOMMAND" = file-context ]; then
-    [ "$#" -eq 1 ] || exit 0
-    case "$1" in -* | /* | '' | .. | ../* | */../* | */..) exit 0 ;; esac
+    [ "$#" -eq 1 ] || refuse
+    case "$1" in -* | /* | '' | .. | ../* | */../* | */..) refuse ;; esac
 fi
 # Whether "$1" is one line of text of at most $2 characters: no control
 # character, counted by its characters. Read byte by byte (LC_ALL=C), so a
@@ -142,32 +172,32 @@ is_text_line() (
 # text of at most 200 characters: any other option (`--db=...`) would read
 # another graph.
 if [ "$SUBCOMMAND" = graph-search ]; then
-    [ "$#" -eq 1 ] || exit 0
-    case "$1" in --query=) exit 0 ;; --query=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 208 || exit 0
+    [ "$#" -eq 1 ] || refuse
+    case "$1" in --query=) refuse ;; --query=*) ;; *) refuse ;; esac
+    is_text_line "$1" 208 || refuse
 fi
 # branch-diff takes nothing but the project.
 if [ "$SUBCOMMAND" = branch-diff ]; then
-    [ "$#" -eq 0 ] || exit 0
+    [ "$#" -eq 0 ] || refuse
 fi
 # churn takes nothing but the project.
 if [ "$SUBCOMMAND" = churn ]; then
-    [ "$#" -eq 0 ] || exit 0
+    [ "$#" -eq 0 ] || refuse
 fi
 # blast-radius takes exactly one component, by its name, one line of text: any other
 # option (`--db=...`) would read another graph.
 if [ "$SUBCOMMAND" = blast-radius ]; then
-    [ "$#" -eq 1 ] || exit 0
-    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 || exit 0
+    [ "$#" -eq 1 ] || refuse
+    case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
+    is_text_line "$1" 520 || refuse
 fi
 # path-between takes exactly the two components, the one the route starts at
 # and the one it ends at, in that order, each one line of text.
 if [ "$SUBCOMMAND" = path-between ]; then
-    [ "$#" -eq 2 ] || exit 0
-    case "$1" in --from=) exit 0 ;; --from=*) ;; *) exit 0 ;; esac
-    case "$2" in --to=) exit 0 ;; --to=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 && is_text_line "$2" 520 || exit 0
+    [ "$#" -eq 2 ] || refuse
+    case "$1" in --from=) refuse ;; --from=*) ;; *) refuse ;; esac
+    case "$2" in --to=) refuse ;; --to=*) ;; *) refuse ;; esac
+    { is_text_line "$1" 520 && is_text_line "$2" 520; } || refuse
 fi
 # Whether "$1" is a kind of note the pane may name. Not `check`: the person's
 # request has its own command, note-check.
@@ -205,80 +235,80 @@ in_order() (
 # `--remove`, then the author and the kind of the note it names. Nothing else:
 # an option such as `--db=...` would write into another graph.
 if [ "$SUBCOMMAND" = annotate ]; then
-    [ "$#" -ge 2 ] && [ "$#" -le 5 ] || exit 0
-    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 || exit 0
+    { [ "$#" -ge 2 ] && [ "$#" -le 5 ]; } || refuse
+    case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
+    is_text_line "$1" 520 || refuse
     if [ "$2" = --remove ]; then
-        in_order 3 ake "$@" || exit 0
+        in_order 3 ake "$@" || refuse
     else
-        [ "$#" -le 3 ] || exit 0
-        case "$2" in --value=*) ;; *) exit 0 ;; esac
-        is_text_line "$2" 2008 || exit 0
-        in_order 3 e "$@" || exit 0
+        [ "$#" -le 3 ] || refuse
+        case "$2" in --value=) refuse ;; --value=*) ;; *) refuse ;; esac
+        is_text_line "$2" 2008 || refuse
+        in_order 3 e "$@" || refuse
     fi
 fi
 # notes takes, each at most once and in this order, the filter (one of a fixed
 # set) and the text the list is narrowed by, one line of at most 200 characters.
 if [ "$SUBCOMMAND" = notes ]; then
-    [ "$#" -le 2 ] || exit 0
+    [ "$#" -le 2 ] || refuse
     stage=0
     for arg in "$@"; do
         case "$arg" in
             --filter=all | --filter=yours | --filter=model | --filter=stale | --filter=missing | --filter=flagged) step=1 ;;
-            --text=*) is_text_line "$arg" 207 || exit 0; step=2 ;;
-            *) exit 0 ;;
+            --text=*) is_text_line "$arg" 207 || refuse; step=2 ;;
+            *) refuse ;;
         esac
-        [ "$step" -gt "$stage" ] || exit 0
+        [ "$step" -gt "$stage" ] || refuse
         stage=$step
     done
 fi
 # note-adopt takes the component, the note as the person edited it (one line,
 # at most 2,000 characters) and, last, `--execute`.
 if [ "$SUBCOMMAND" = note-adopt ]; then
-    [ "$#" -ge 1 ] && [ "$#" -le 3 ] || exit 0
-    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 || exit 0
+    { [ "$#" -ge 1 ] && [ "$#" -le 3 ]; } || refuse
+    case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
+    is_text_line "$1" 520 || refuse
     from=2
-    case "${2:-}" in --value=*) is_text_line "$2" 2008 || exit 0; from=3 ;; esac
-    in_order "$from" e "$@" || exit 0
+    case "${2:-}" in --value=) refuse ;; --value=*) is_text_line "$2" 2008 || refuse; from=3 ;; esac
+    in_order "$from" e "$@" || refuse
 fi
 # note-move takes the component, the one the note moves to, then the author and
 # the kind of the note, and, last, `--execute`.
 if [ "$SUBCOMMAND" = note-move ]; then
-    [ "$#" -ge 2 ] && [ "$#" -le 5 ] || exit 0
-    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    case "$2" in --to=) exit 0 ;; --to=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 && is_text_line "$2" 520 || exit 0
-    in_order 3 ake "$@" || exit 0
+    { [ "$#" -ge 2 ] && [ "$#" -le 5 ]; } || refuse
+    case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
+    case "$2" in --to=) refuse ;; --to=*) ;; *) refuse ;; esac
+    { is_text_line "$1" 520 && is_text_line "$2" 520; } || refuse
+    in_order 3 ake "$@" || refuse
 fi
 # note-check takes the component, the reason (one line, at most 2,000
 # characters) or `--remove` to take the request back, and, last, `--execute`.
 if [ "$SUBCOMMAND" = note-check ]; then
-    [ "$#" -ge 1 ] && [ "$#" -le 3 ] || exit 0
-    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 || exit 0
+    { [ "$#" -ge 1 ] && [ "$#" -le 3 ]; } || refuse
+    case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
+    is_text_line "$1" 520 || refuse
     from=2
-    case "${2:-}" in --value=*) is_text_line "$2" 2008 || exit 0; from=3 ;; --remove) from=3 ;; esac
-    in_order "$from" e "$@" || exit 0
+    case "${2:-}" in --value=) refuse ;; --value=*) is_text_line "$2" 2008 || refuse; from=3 ;; --remove) from=3 ;; esac
+    in_order "$from" e "$@" || refuse
 fi
 # note-confirm takes the component and, last, `--execute`: the note's text and
 # its flag stay as they are, so nothing else is asked of it.
 if [ "$SUBCOMMAND" = note-confirm ]; then
-    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || exit 0
-    case "$1" in --component=) exit 0 ;; --component=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 || exit 0
-    in_order 2 e "$@" || exit 0
+    { [ "$#" -ge 1 ] && [ "$#" -le 2 ]; } || refuse
+    case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
+    is_text_line "$1" 520 || refuse
+    in_order 2 e "$@" || refuse
 fi
 # scan takes nothing but the project: an option such as `--db=...` would point the write at another graph.
 if [ "$SUBCOMMAND" = scan ]; then
-    [ "$#" -eq 0 ] || exit 0
+    [ "$#" -eq 0 ] || refuse
 fi
 # watch takes at most its poll interval, in milliseconds: an option such as
 # `--db=...` would point it at another graph.
 if [ "$SUBCOMMAND" = watch ]; then
-    [ "$#" -le 1 ] || exit 0
+    [ "$#" -le 1 ] || refuse
     if [ "$#" -eq 1 ]; then
-        case "$1" in --poll-ms=*[!0-9]* | --poll-ms=) exit 0 ;; --poll-ms=*) ;; *) exit 0 ;; esac
+        case "$1" in --poll-ms=*[!0-9]* | --poll-ms=) refuse ;; --poll-ms=*) ;; *) refuse ;; esac
     fi
     set -- --shared "$@"
 fi
@@ -286,38 +316,59 @@ fi
 # or `--working-tree` (what git says is not committed yet): any other option
 # (`--db=...`) would read another graph.
 if [ "$SUBCOMMAND" = session-changes ]; then
-    [ "$#" -eq 1 ] || exit 0
-    case "$1" in --working-tree) ;; --since=*[!A-Za-z0-9_.:-]* | --since=) exit 0 ;; --since=*) ;; *) exit 0 ;; esac
+    [ "$#" -eq 1 ] || refuse
+    case "$1" in --working-tree) ;; --since=*[!A-Za-z0-9_.:-]* | --since=) refuse ;; --since=*) ;; *) refuse ;; esac
 fi
 # session-head takes nothing but the project.
 if [ "$SUBCOMMAND" = session-head ]; then
-    [ "$#" -eq 0 ] || exit 0
+    [ "$#" -eq 0 ] || refuse
 fi
 # session-diff takes exactly the commit the session began at (a hex id) and one
 # file relative to the project directory, in that order: no other option, no
 # absolute path and no step out of the directory.
 if [ "$SUBCOMMAND" = session-diff ]; then
-    [ "$#" -eq 2 ] || exit 0
-    case "$1" in --rev=*[!0-9a-f]* | --rev=) exit 0 ;; --rev=*) ;; *) exit 0 ;; esac
-    [ "${#1}" -ge 13 ] && [ "${#1}" -le 70 ] || exit 0
-    case "$2" in --file=-* | --file=/* | --file= | --file=.. | --file=../* | --file=*/../* | --file=*/..) exit 0 ;; --file=*) ;; *) exit 0 ;; esac
+    [ "$#" -eq 2 ] || refuse
+    case "$1" in --rev=*[!0-9a-f]* | --rev=) refuse ;; --rev=*) ;; *) refuse ;; esac
+    { [ "${#1}" -ge 13 ] && [ "${#1}" -le 70 ]; } || refuse
+    case "$2" in --file=-* | --file=/* | --file= | --file=.. | --file=../* | --file=*/../* | --file=*/..) refuse ;; --file=*) ;; *) refuse ;; esac
 fi
 # boundary-couplings takes exactly the two boundaries of one heat map cell, the
 # one it runs from and the one it runs to, in that order, each one line of text:
 # any other option (`--db=...`) would read another graph.
 if [ "$SUBCOMMAND" = boundary-couplings ]; then
-    [ "$#" -eq 2 ] || exit 0
-    case "$1" in --from=) exit 0 ;; --from=*) ;; *) exit 0 ;; esac
-    case "$2" in --to=) exit 0 ;; --to=*) ;; *) exit 0 ;; esac
-    is_text_line "$1" 520 && is_text_line "$2" 520 || exit 0
+    [ "$#" -eq 2 ] || refuse
+    case "$1" in --from=) refuse ;; --from=*) ;; *) refuse ;; esac
+    case "$2" in --to=) refuse ;; --to=*) ;; *) refuse ;; esac
+    { is_text_line "$1" 520 && is_text_line "$2" 520; } || refuse
 fi
 # allow-root takes nothing but the root, and always writes: the pane runs it
 # only after the person confirmed, so a preview would answer a question nobody
 # asked. An option such as `--db=...` would grant the root in another file.
 if [ "$SUBCOMMAND" = allow-root ]; then
-    [ "$#" -eq 0 ] || exit 0
+    [ "$#" -eq 0 ] || refuse
     set -- --execute
 fi
+
+# Whether "$1", a path under the project directory, stays inside it once every
+# symbolic link on the way is followed: `src/x.php` may be a link to a file
+# anywhere, and the binary would read that file. The directories are resolved
+# physically, each link's target read in turn (at most 16), and the path is
+# refused once one lands outside. A path whose directory does not exist names
+# nothing to read, so it stays.
+inside_project() (
+    path=$1
+    hops=0
+    while :; do
+        dir=$(CDPATH='' cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd -P) || exit 0
+        case $dir/ in "$PROJECT_DIR"/*) ;; *) exit 1 ;; esac
+        name=${path##*/}
+        [ -L "$dir/$name" ] || exit 0
+        hops=$((hops + 1))
+        [ "$hops" -le 16 ] || exit 1
+        link=$(readlink -- "$dir/$name") || exit 1
+        case $link in /*) path=$link ;; *) path=$dir/$link ;; esac
+    done
+)
 
 CDPATH='' cd -- "$PROJECT_DIR" 2>/dev/null || exit 0
 # Absolute from here on: a relative path would mean something else to the binary, the mount and the find below once the directory changes.
@@ -327,6 +378,7 @@ TARGET=$PROJECT_DIR
 if [ "$SUBCOMMAND" = file-detail ] || [ "$SUBCOMMAND" = file-context ]; then
     TARGET="$PROJECT_DIR/$1"
     shift
+    inside_project "$TARGET" || refuse "$SUBCOMMAND reads nothing outside the project"
 fi
 
 # Shared discovery helpers and the install-time data location. A missing

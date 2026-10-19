@@ -315,7 +315,7 @@ where they run:
   `hooks/mod`, `tools/` and `tools/capture`.
 - `claude plugin validate` and `claude plugin test` run in `tests`, against a
   staging copy of the plugin. The quality image pins the Claude CLI
-  (`@anthropic-ai/claude-code@2.1.287`). A machine without the `claude` command
+  (`@anthropic-ai/claude-code@2.1.303`). A machine without the `claude` command
   reports them as not run.
 - The staged `register.tsx` type-check runs in `tests` against the engine's own
   declarations, committed in `tools/claude-code-api/`, or the `index.d.ts`

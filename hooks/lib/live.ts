@@ -5,6 +5,7 @@
  * the child process and feeds these the lines it writes.
  */
 import type { LiveState, WatchEvent } from '../../types'
+import { wrapperRefusal } from './envelopes'
 import { printableDeep } from './printable'
 
 export const LIVE_OFF: LiveState = { phase: 'off' }
@@ -24,13 +25,13 @@ export function watchPollMsOf(value: unknown): number {
 /** The most an unfinished line may grow before it is dropped: the watcher's lines are short. */
 const LINE_MAX = 64 * 1024
 
-/** One line as an event: a JSON object naming its `event` (or the wrapper's `no-binary`), else null. */
+/** One line as an event: a JSON object naming its `event` (or the wrapper's `no-binary`, or its refusal of the call), else null. */
 export function parseWatchEvent(line: string): WatchEvent | null {
   try {
     const value: unknown = printableDeep(JSON.parse(line))
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
     const event = value as WatchEvent
-    return typeof event.event === 'string' || event.status === 'no-binary' ? event : null
+    return typeof event.event === 'string' || event.status === 'no-binary' || wrapperRefusal(line.trim()) !== null ? event : null
   } catch {
     return null
   }

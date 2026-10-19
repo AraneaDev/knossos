@@ -71,6 +71,32 @@ export function committedSince(before: string | null, after: string | null, refl
   return (back < 0 ? entries : entries.slice(0, back)).some(e => COMMIT_ENTRY.test(e.subject))
 }
 
+/** A reflog entry that only records a commit: what it changed was in the working tree already. */
+const RECORD_ENTRY = /^commit(?: \([a-z]+\))?: /
+
+/**
+ * Whether HEAD moved while a shell command ran by more than committing: a
+ * checkout, a reset, a merge, a pull or a rebase brings files into the
+ * working tree that the command did not write, where a commit only records
+ * what was there. From HEAD before and after the command and HEAD's reflog
+ * after it, read as {@link committedSince} reads them. Without a reflog, a
+ * move counts unless git's own commit line in `output` says it was one.
+ */
+export function movedTree(before: string | null, after: string | null, reflog: string, output: string): boolean {
+  if (before === null || after === null || after === '' || before === after) return false
+  const entries = reflog
+    .split('\n')
+    .filter(line => line !== '')
+    .slice(0, REFLOG_READ)
+    .map(line => {
+      const at = line.indexOf('\x1f')
+      return at < 0 ? { sha: line, subject: '' } : { sha: line.slice(0, at), subject: line.slice(at + 1) }
+    })
+  if (entries.length === 0) return !madeCommit(output)
+  const back = entries.findIndex(e => e.sha === before)
+  return (back < 0 ? entries : entries.slice(0, back)).some(e => !RECORD_ENTRY.test(e.subject))
+}
+
 /** The dashboard figures {@link stillReported} judges by: its policy check, and the snapshots it reaches back over. */
 export type PolicyView = {
   snapshot_id: string | null

@@ -8,6 +8,7 @@ import type { EngineInterface, PluginState } from 'claude-code'
 
 import type { Feedback, SessionChanges } from '../../types'
 import { ledgerChanges, ownTimeline } from '../lib/changes'
+import { wrapperRefusal } from '../lib/envelopes'
 import { FLASH_MS } from '../lib/flash'
 import type { Flash } from '../lib/flash'
 import { FEEDBACK_MS } from '../lib/layout'
@@ -99,13 +100,21 @@ export async function disable(io: Port): Promise<void> {
   io.ui.invalidate('ui.render')
 }
 
-/** Runs the wrapper in `dir` (the session's root by default); its stdout, or '' for any failure (the wrapper's contract is silence). */
+/**
+ * Runs the wrapper in `dir` (the session's root by default); its stdout, or
+ * '' for any failure (the wrapper's contract is silence). A call the wrapper
+ * refused is '' too, after one debug line saying what it refused and why: the
+ * mod asked for something the wrapper never runs, which silence would hide.
+ */
 export async function wrapper(io: Port, sub: string, args: string[], timeoutMs: number, dir?: string): Promise<string> {
   try {
     const root = dir ?? (await io.session.root())
     const script = `${io.plugin.root}/hooks/scripts/knossos-run.sh`
     const { stdout } = await io.process.run(['sh', script, sub, root, ...args], { timeoutMs })
-    return stdout
+    const refused = wrapperRefusal(stdout)
+    if (refused === null) return stdout
+    await io.ui.log(`knossos: the wrapper refused ${sub} (${refused}); read as no data`, { to: 'debug' })
+    return ''
   } catch {
     return ''
   }
