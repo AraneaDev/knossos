@@ -248,8 +248,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
             file_put_contents($root . '/src/Planted.php', "<?php\n\nforeach (array_chunk(\$rows, 50) as \$chunk) {\n}\n");
 
             self::assertSame([
-                "IncrementInteger exclusion `.*array_chunk\\(\\$\\w+, \\d+\\).*` now also hides src/Planted.php:3",
-                "DecrementInteger exclusion `.*array_chunk\\(\\$\\w+, \\d+\\).*` now also hides src/Planted.php:3",
+                'IncrementInteger exclusion `.*array_chunk\\(\$\\w+, \\d+\\).*` now also hides src/Planted.php:3',
+                'DecrementInteger exclusion `.*array_chunk\\(\$\\w+, \\d+\\).*` now also hides src/Planted.php:3',
             ], self::violations($root));
         } finally {
             $this->removeTempTree($root);
