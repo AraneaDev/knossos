@@ -109,6 +109,7 @@ final class QualitySkipsTest extends KnossosTestCase
         assertContains("quality_not_run 'scanner conformance of the Rust worker'", $quality);
         assertContains("quality_not_run 'docker compose config'", $quality);
         assertContains("quality_not_run 'the staged register.tsx type-check against the Claude Code API'", $quality);
+        assertContains("quality_not_run 'the lint list freshness check", $quality);
         assertContains("quality_opted_out 'the external link check'", $quality);
     }
 

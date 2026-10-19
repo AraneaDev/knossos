@@ -137,15 +137,31 @@ run_mod_checks_if_available() {
 }
 
 if in_lane static; then
+# The linters below read their files from tools/lint-files.txt, which is derived
+# from `git ls-files` and committed, because the image carries no .git. Here it
+# is derived again from the checkout and compared, so a file git tracks cannot
+# be missing from it. The container is handed the checkout on a mount
+# (KNOSSOS_GATE_REPO); a host run reads the repository it is inside.
+lint_repo="${KNOSSOS_GATE_REPO:-$root}"
+if git -c safe.directory="$lint_repo" -C "$lint_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    php tools/lint-files.php --check --repo="$lint_repo"
+else
+    quality_not_run 'the lint list freshness check (tools/lint-files.php --check)' \
+        "no git checkout at $lint_repo; mount the checkout and name it with KNOSSOS_GATE_REPO"
+fi
+
 composer validate --strict
 composer --working-dir=workers/php validate --strict
 composer install --dry-run --no-interaction --no-scripts
 npm ci --dry-run --ignore-scripts --no-audit --no-fund
 npm --prefix workers/typescript ci --dry-run --ignore-scripts --no-audit --no-fund
 
+# php -l, PHP-CS-Fixer, PHPStan and ESLint all read the lists in
+# tools/lint-files.txt: composer lint and lint:js through tools/lint-files.php,
+# PHP-CS-Fixer through its config, PHPStan from the paths handed to it here.
 composer lint
 vendor/bin/php-cs-fixer check --using-cache=no --allow-risky=yes --sequential
-vendor/bin/phpstan analyse --no-progress --debug --memory-limit=1G
+php tools/lint-files.php --run=php -- vendor/bin/phpstan analyse --no-progress --debug --memory-limit=1G
 npm run lint:js
 # The mod's sources under hooks/lib, then every module and spec under
 # hooks/lib and hooks/mod. Vitest strips the specs' types without reading
@@ -208,14 +224,7 @@ if quality_has pre-commit 'pre-commit validate-config'; then
 fi
 
 if quality_has shellcheck 'ShellCheck'; then
-    shellcheck tools/quality tools/quality-container tools/quality-deps-key tools/dependency-image-key tools/coverage tools/install-hooks tools/benchmark \
-        tools/mcp-serve tools/mutation-diff tools/release-lifecycle tools/supply-chain tools/install \
-        hooks/scripts/session-brief.sh hooks/scripts/session-brief-container.sh \
-        hooks/scripts/knossos-run.sh hooks/scripts/knossos-run-container.sh hooks/scripts/lib.sh \
-        tools/check-commit-style.sh tools/ci/release-pr tools/ci/quality-verdict tools/ci/release-rollback tools/gate-baseline \
-        tests/shell/session-brief-hook.sh tests/shell/knossos-run-hook.sh tests/shell/install-hooks.sh tests/shell/check-commit-style.sh \
-        tests/shell/release-pr.sh tests/shell/quality-verdict.sh tests/shell/release-rollback.sh tests/shell/gate-baseline.sh \
-        web/fixtures/knossos-run.sh
+    php tools/lint-files.php --run=shell -- shellcheck
 fi
 
 if quality_has hadolint 'Hadolint'; then

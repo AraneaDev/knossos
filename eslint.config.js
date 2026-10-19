@@ -13,7 +13,7 @@ export default [
     js.configs.recommended,
     ...tseslint.configs.recommended.map((config) => ({
         ...config,
-        files: ["hooks/**/*.{ts,tsx}", "web/**/*.ts"],
+        files: ["hooks/**/*.{ts,tsx}", "web/**/*.ts", "types/**/*.ts"],
     })),
     {
         files: ["tools/*.mjs"],
@@ -21,6 +21,15 @@ export default [
             ecmaVersion: 2024,
             sourceType: "module",
             globals: { console: "readonly", process: "readonly" },
+        },
+    },
+    {
+        // The configuration files at the root, which Node loads as modules.
+        files: ["*.config.{js,mjs}", "workers/typescript/vitest.config.js"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: { process: "readonly", URL: "readonly" },
         },
     },
     {

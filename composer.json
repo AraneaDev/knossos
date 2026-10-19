@@ -31,26 +31,7 @@
     "bin/knossos"
   ],
   "scripts": {
-    "lint": [
-      "find src bin workers/php/src workers/php/bin -type f -name '*.php' -print0 | xargs -0 -n1 php -l",
-      "php -l tests/Fixtures/workers/fake-worker.php",
-      "php -l tools/benchmark.php",
-      "php -l tools/generate-benchmark-corpus.php",
-      "php -l tools/generate-reference.php",
-      "php -l tools/documentation-check.php",
-      "php -l tools/maintainability-report.php",
-      "php -l tools/api-documentation-check.php",
-      "php -l tools/supply-chain-report.php",
-      "php -l tools/scanner-conformance",
-      "php -l tools/phpunit-shard",
-      "php -l tools/coverage-merge.php",
-      "php -l tools/check-coverage-budgets.php",
-      "php -l tools/lib/budget-numbers.php",
-      "php -l tools/lib/coverage-budgets.php",
-      "php -l tools/docstring-report.php",
-      "php -l tools/lib/benchmark-budgets.php",
-      "php -l tools/gate-report.php"
-    ],
+    "lint": "php tools/lint-files.php --each=php -- php -l",
     "test": [
       "phpunit",
       "@test:shell"

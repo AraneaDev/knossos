@@ -311,6 +311,10 @@ jobs:
       # A runner whose workspace is itself a container mount cannot bind host
       # paths that only exist inside the job, and Docker would silently create
       # an empty directory on the host instead of failing.
+      #
+      # The checkout is mounted read-only all the same, because the static
+      # lane derives the lint lists from `git ls-files` and refuses a committed
+      # tools/lint-files.txt that differs; the image itself carries no .git.
       - name: Run the ${{ matrix.lane }} lane
         if: matrix.lane != 'gate'
         env:
@@ -326,8 +330,10 @@ jobs:
             -e TRIVY_CACHE_DIR=/tmp/trivy-cache \
             -e KNOSSOS_EXTERNAL_LINKS="$EXTERNAL_LINKS" \
             -e KNOSSOS_PHPUNIT_IN_COVERAGE="$PHPUNIT_IN_COVERAGE" \
+            -e KNOSSOS_GATE_REPO=/workspace \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$RUNNER_TEMP/trivy-cache:/tmp/trivy-cache" \
+            -v "$PWD:/workspace:ro" \
             knossos:quality full "$LANE"
       # The gate lane runs on its own because it is the one lane that needs the
       # repository's history: the image bakes this source without .git, so the
