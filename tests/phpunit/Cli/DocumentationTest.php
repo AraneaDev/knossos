@@ -495,4 +495,131 @@ final class DocumentationTest extends KnossosTestCase
         self::assertSame(1, $calls);
         self::assertStringContainsString('HTTP 503', $stderr);
     }
+
+    /**
+     * The Markdown lint fails a run that found nothing to lint. It used to
+     * report "0 files, 0 issues" and pass, so a wrong root or an ignore
+     * pattern that swallowed every page would have passed every run.
+     */
+    #[Group('documentation')]
+    public function testMarkdownLintRefusesARunWithNoFiles(): void
+    {
+        [$exit, $output] = $this->lintMarkdownTree([]);
+
+        assertSame(1, $exit, $output);
+        assertContains('Linting: no files under', $output);
+    }
+
+    /** One page that breaks a rule fails the lint, and is named; the same tree without it passes. */
+    #[Group('documentation')]
+    public function testMarkdownLintFailsOnOneBadPage(): void
+    {
+        [$exit, $output] = $this->lintMarkdownTree(['README.md' => "# Home\n\nText.\n", 'docs/good.md' => "# Good\n"]);
+        assertSame(0, $exit, $output);
+        assertContains('Linting: 2 files', $output);
+
+        [$exit, $output] = $this->lintMarkdownTree(['README.md' => "# Home\n\nText.\n", 'docs/bad.md' => "#Bad heading\n"]);
+        assertSame(1, $exit, $output);
+        assertContains('docs/bad.md:1 MD018', $output);
+    }
+
+    /** `generate-reference --check` refuses a reference that no longer matches the source, by name. */
+    #[Group('documentation')]
+    public function testGeneratedReferenceCheckRefusesAStaleCopy(): void
+    {
+        $docs = sys_get_temp_dir() . '/knossos-reference-' . bin2hex(random_bytes(6));
+        mkdir($docs, 0o700, true);
+        try {
+            foreach (['cli.md', 'mcp-tools.md', 'api.md'] as $page) {
+                copy(self::repositoryRoot() . '/docs/reference/' . $page, $docs . '/' . $page);
+            }
+            [$exit, $output, $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('generate-reference.php'), '--check', '--docs=' . $docs]);
+            assertSame(0, $exit, $errors);
+            assertContains('Generated reference is current.', $output);
+
+            file_put_contents($docs . '/mcp-tools.md', "\n## `a_tool_the_server_lacks`\n", FILE_APPEND);
+            [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('generate-reference.php'), '--check', '--docs=' . $docs]);
+            assertSame(1, $exit, 'a stale reference passed the check');
+            assertContains('Generated reference is stale: ' . $docs . '/mcp-tools.md', $errors);
+            self::assertStringEqualsFile(self::repositoryRoot() . '/docs/reference/cli.md', (string) file_get_contents($docs . '/cli.md'), '--check wrote to the reference it checks');
+        } finally {
+            $this->removeTree($docs);
+        }
+    }
+
+    /** One public interface method without a summary fails the API gate, and so does a tree with no interfaces at all. */
+    #[Group('documentation')]
+    public function testApiDocumentationCheckRefusesAnUndocumentedContract(): void
+    {
+        $documented = "<?php\n\nnamespace Fixture;\n\ninterface Port\n{\n    /** Reads the thing. */\n    public function read(): string;\n}\n";
+        [$exit, $output, $errors] = $this->checkApiTree(['src/Fixture/Port.php' => $documented]);
+        assertSame(0, $exit, $errors);
+        assertContains('API documentation passed:', $output);
+
+        $undocumented = str_replace("}\n", "\n    public function write(string \$value): void;\n}\n", $documented);
+        [$exit, , $errors] = $this->checkApiTree(['src/Fixture/Port.php' => $undocumented]);
+        assertSame(1, $exit, 'an undocumented contract passed');
+        assertContains('Port::write requires a descriptive docblock summary', $errors);
+
+        [$exit, , $errors] = $this->checkApiTree(['src/Fixture/Plain.php' => "<?php\n\nnamespace Fixture;\n\nfinal class Plain\n{\n}\n"]);
+        assertSame(1, $exit, 'a tree with no contracts passed');
+        assertContains('no public interface method was found under', $errors);
+    }
+
+    /**
+     * Lint a tree holding `$files` and the repository's markdownlint config.
+     *
+     * @param array<string, string> $files
+     * @return array{0: int, 1: string, 2: string}
+     */
+    private function lintMarkdownTree(array $files): array
+    {
+        $tree = sys_get_temp_dir() . '/knossos-lint-md-' . bin2hex(random_bytes(6));
+        mkdir($tree, 0o700, true);
+        try {
+            copy(self::repositoryRoot() . '/.markdownlint-cli2.jsonc', $tree . '/.markdownlint-cli2.jsonc');
+            foreach ($files as $relative => $contents) {
+                if (!is_dir(dirname($tree . '/' . $relative))) {
+                    mkdir(dirname($tree . '/' . $relative), 0o700, true);
+                }
+                file_put_contents($tree . '/' . $relative, $contents);
+            }
+
+            return $this->runFixtureCommandOutput(['node', self::guardTool('lint-md.mjs'), '--root=' . $tree]);
+        } finally {
+            $this->removeTree($tree);
+        }
+    }
+
+    /**
+     * Run the API documentation check over a tree holding `$files` beside the
+     * repository's own worker sources, which the check also reads.
+     *
+     * @param array<string, string> $files
+     * @return array{0: int, 1: string, 2: string}
+     */
+    private function checkApiTree(array $files): array
+    {
+        $tree = sys_get_temp_dir() . '/knossos-api-doc-' . bin2hex(random_bytes(6));
+        try {
+            foreach ([
+                'workers/typescript/src/scanner.js',
+                'workers/python/bin/worker.py',
+                'workers/python/bin/knossos_python/collector.py',
+                'workers/rust/src/protocol.rs',
+            ] as $source) {
+                $files[$source] = (string) file_get_contents(self::repositoryRoot() . '/' . $source);
+            }
+            foreach ($files as $relative => $contents) {
+                if (!is_dir(dirname($tree . '/' . $relative))) {
+                    mkdir(dirname($tree . '/' . $relative), 0o700, true);
+                }
+                file_put_contents($tree . '/' . $relative, $contents);
+            }
+
+            return $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('api-documentation-check.php'), '--root=' . $tree]);
+        } finally {
+            $this->removeTree($tree);
+        }
+    }
 }

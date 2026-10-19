@@ -2,7 +2,24 @@
 
 declare(strict_types=1);
 
+/*
+ * Holds every public method of the interfaces under src/, and the named worker
+ * entry points, to a descriptive doc comment.
+ *
+ *   php tools/api-documentation-check.php [--root=DIR]
+ *
+ * --root checks another tree laid out like this one; the tests plant an
+ * undocumented contract in one to see the check refuse.
+ */
 $root = dirname(__DIR__);
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--root=') && strlen($argument) > 7) {
+        $root = rtrim(substr($argument, 7), '/');
+    } else {
+        fwrite(STDERR, "usage: php tools/api-documentation-check.php [--root=DIR]\n");
+        exit(64);
+    }
+}
 // Shared with tools/docstring-report.php on purpose: both gates answer "is this
 // documented", and they used to disagree.
 require __DIR__ . '/lib/docblocks.php';
@@ -46,6 +63,12 @@ foreach ($sourceFiles as $file) {
         }
         $checked[] = 'php:' . $interface . '::' . $method;
     }
+}
+
+// An interface-free src/ would pass with nothing checked, as the
+// one-directory glob this replaced once nearly did.
+if ($checked === []) {
+    $failures[] = 'no public interface method was found under ' . $root . '/src';
 }
 
 $javascript = (string) file_get_contents($root . '/workers/typescript/src/scanner.js');

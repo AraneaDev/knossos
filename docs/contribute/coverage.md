@@ -82,6 +82,19 @@ report --budgets=FILE` and `php tools/pcov-report.php --root=DIR
 --budgets=FILE` hold a run to another file, which is how the tests plant a
 broken budget without touching this one.
 
+`skipped_tests` in the same file is the most PHPUnit tests a coverage run may
+skip. A test that skips itself, because a tool is missing or the process runs as
+root, passes without asserting anything, so the run counts the skipped tests in
+its JUnit logs and refuses above the budget, naming every one. The merge counts
+them over the shards (`--budgets=FILE` names another file), and an unsharded run
+counts them with `php tools/skipped-tests.php`. The budget is 4, the count
+measured on `main` at 391ea306 in CI's coverage shards. Three of them, in
+`RepositoryCheckTest`, `DocumentationTest` and `GitIgnoreTest`, ask git which
+files it ignores, which needs the checkout the image does not carry; the fourth,
+in `GitProcessRunnerHardeningTest`, needs root, and the suite runs as the
+`knossos` user.
+Make a skipped test run rather than raise the budget.
+
 [Quality gates](quality.md#profiles-and-lanes) explains why coverage is one lane. The
 Claude Code mod is covered by its own suites (see
 [how the mod is built](mod-internals.md#the-tests)) and sits outside these

@@ -10,8 +10,28 @@ use Knossos\Scan\ProjectScanService;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+/*
+ * Writes docs/reference/{cli,mcp-tools,api}.md from the live sources, or with
+ * --check refuses when the committed files differ from what it would write.
+ *
+ *   php tools/generate-reference.php [--check] [--docs=DIR]
+ *
+ * --docs names the directory the three files live in, docs/reference unless
+ * given; the tests point it at a stale copy to see the check refuse.
+ */
 $root = dirname(__DIR__);
-$check = ($argv[1] ?? '') === '--check';
+$check = false;
+$docs = $root . '/docs/reference';
+foreach (array_slice($argv, 1) as $argument) {
+    if ($argument === '--check') {
+        $check = true;
+    } elseif (str_starts_with($argument, '--docs=') && strlen($argument) > 7) {
+        $docs = rtrim(substr($argument, 7), '/');
+    } else {
+        fwrite(STDERR, "usage: php tools/generate-reference.php [--check] [--docs=DIR]\n");
+        exit(64);
+    }
+}
 $runtime = new RuntimeFactory($root);
 $pdo = $runtime->database(':memory:');
 $tools = new ToolService(
@@ -125,7 +145,7 @@ foreach (['PythonAstFactCollector' => 'class', 'scan' => 'def', 'handle' => 'def
 }
 $api = rtrim($api) . "\n";
 
-$outputs = [$root . '/docs/reference/cli.md' => $cli, $root . '/docs/reference/mcp-tools.md' => $mcp, $root . '/docs/reference/api.md' => $api];
+$outputs = [$docs . '/cli.md' => $cli, $docs . '/mcp-tools.md' => $mcp, $docs . '/api.md' => $api];
 $stale = [];
 foreach ($outputs as $path => $contents) {
     if ($check) {

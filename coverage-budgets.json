@@ -1,4 +1,5 @@
 {
+  "skipped_tests": 4,
   "php": {
     "aggregate_lines": 96.6,
     "components": {

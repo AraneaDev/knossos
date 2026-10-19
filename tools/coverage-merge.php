@@ -7,12 +7,14 @@ declare(strict_types=1);
  * directory, so `tools/coverage report` enforces the floors over the whole
  * suite exactly as it does after an unsharded run.
  *
- *   php tools/coverage-merge.php RAW_DIR [--into=DIR] [--files-from=PATH]
+ *   php tools/coverage-merge.php RAW_DIR [--into=DIR] [--files-from=PATH] [--budgets=FILE]
  *
  * RAW_DIR holds one directory per shard, each the coverage/ directory a
  * `tools/coverage run --shard=I/N` left behind. --into defaults to coverage/;
  * --files-from is handed to tools/phpunit-shard in place of asking PHPUnit for
  * the suite, which is how the tests drive this without a real suite.
+ * --budgets defaults to coverage-budgets.json, whose `skipped_tests` is the
+ * most tests the shards together may skip (tools/lib/skipped-tests.php).
  *
  * It refuses, naming everything that is wrong, unless every shard of the same
  * N finished (its shard.json marker exists), left PHP coverage data, and every
@@ -39,6 +41,7 @@ declare(strict_types=1);
  */
 
 $root = dirname(__DIR__);
+require __DIR__ . '/lib/skipped-tests.php';
 
 /**
  * Print why the shards cannot be merged and stop with a failing status.
@@ -57,20 +60,27 @@ function mergeRefuse(array $messages): never
 $raw = null;
 $into = $root . '/coverage';
 $filesFrom = null;
+$budgetFile = $root . '/coverage-budgets.json';
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--into=') && strlen($argument) > 7) {
         $into = substr($argument, 7);
     } elseif (str_starts_with($argument, '--files-from=') && strlen($argument) > 13) {
         $filesFrom = substr($argument, 13);
+    } elseif (str_starts_with($argument, '--budgets=') && strlen($argument) > 10) {
+        $budgetFile = substr($argument, 10);
     } elseif (!str_starts_with($argument, '--') && $raw === null) {
         $raw = rtrim($argument, '/');
     } else {
-        fwrite(STDERR, "usage: php tools/coverage-merge.php RAW_DIR [--into=DIR] [--files-from=PATH]\n");
+        fwrite(STDERR, "usage: php tools/coverage-merge.php RAW_DIR [--into=DIR] [--files-from=PATH] [--budgets=FILE]\n");
         exit(64);
     }
 }
 if ($raw === null || !is_dir($raw)) {
     mergeRefuse([($raw ?? '(none)') . ' is not a directory of shard results']);
+}
+[$budgets, $budgetErrors] = coverageBudgetFile($budgetFile, null);
+if ($budgets === null || $budgetErrors !== []) {
+    mergeRefuse(array_map(static fn(string $error): string => "coverage budgets {$budgetFile}: {$error}", $budgetErrors));
 }
 
 // The shards, keyed by their own marker's index rather than by directory name,
@@ -177,6 +187,12 @@ foreach (array_keys($ranIn) as $file) {
         $errors[] = "{$file} ran in shard " . implode(' and ', $ranIn[$file]) . ' but is not a test file of this suite';
     }
 }
+// Every shard ran its files; now count what they skipped.
+$skipped = [];
+if ($errors === []) {
+    [$skipped, $junitErrors] = skippedTestsIn(array_values(array_map(static fn(string $directory): string => $directory . '/junit.xml', $shards)));
+    $errors = $skipped === null ? $junitErrors : skippedTestsOverBudget($budgets, $skipped);
+}
 if ($errors !== []) {
     mergeRefuse($errors);
 }
@@ -245,9 +261,11 @@ foreach ($shards as $index => $directory) {
     $copy($directory . '/junit.xml', $into . '/junit/shard-' . $index . '.xml');
 }
 printf(
-    "coverage merge: %d shards, %d test files each run once; %d PHP, %d JavaScript and %d Python data files\n",
+    "coverage merge: %d shards, %d test files each run once, %d skipped tests of %d allowed; %d PHP, %d JavaScript and %d Python data files\n",
     $of,
     count($assigned),
+    count($skipped ?? []),
+    (int) $budgets[SKIPPED_TESTS_KEY],
     $counted['php'],
     $counted['js'],
     $counted['python'],
