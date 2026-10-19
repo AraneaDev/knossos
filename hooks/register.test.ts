@@ -1015,7 +1015,7 @@ describe('knossos mod', () => {
       await call('Read', { file_path: `${ROOT}/src/Quiet.php`, ...id })
       return call('Grep', { pattern: 'Router', ...id })
     }
-    const said = (ran: { context?: string[] }) => (ran.context ?? []).filter(c => c.startsWith('You dug past a Knossos answer'))
+    const said = (ran: { context?: readonly string[] }) => (ran.context ?? []).filter(c => c.startsWith('You dug past a Knossos answer'))
     expect(said(await dig())).toHaveLength(1)
     // Once a turn: more digging in the same turn is not reminded again, while a subagent's loop has its own.
     expect(said(await call('Read', { file_path: `${ROOT}/src/Quiet.php` }))).toHaveLength(0)

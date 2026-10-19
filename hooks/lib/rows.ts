@@ -180,10 +180,10 @@ function head(chars: string[], room: number): string {
 function tail(chars: string[], room: number): string {
   let used = 0
   let out = ''
-  for (let i = chars.length - 1; i >= 0; i--) {
-    used += graphemeCells(chars[i])
+  for (const g of [...chars].reverse()) {
+    used += graphemeCells(g)
     if (used > room) break
-    out = chars[i] + out
+    out = g + out
   }
   return out
 }
