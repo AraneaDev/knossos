@@ -47,6 +47,23 @@ function parse(
   }
 }
 
+/**
+ * Why the wrapper refused a call (`{"status":"refused","by":"wrapper",...}`),
+ * or null when `stdout` is anything else: the binary's answer, its own
+ * `refused` (which names no `by`), or silence. A refusal is the mod asking
+ * for something the wrapper never runs, so it is logged, then read as no data.
+ */
+export function wrapperRefusal(stdout: string): string | null {
+  if (!stdout.startsWith('{"status":"refused"')) return null
+  try {
+    const value = printableDeep(JSON.parse(stdout)) as { status?: unknown; by?: unknown; reason?: unknown }
+    if (value.status !== 'refused' || value.by !== 'wrapper') return null
+    return typeof value.reason === 'string' && value.reason !== '' ? value.reason : 'no reason given'
+  } catch {
+    return null
+  }
+}
+
 /** A turn brief from the wrapper's stdout; null for silence or anything unexpected. */
 export function parseTurnBrief(stdout: string): TurnBrief | null {
   return parse(stdout, BRIEF, BRIEF_ARRAYS, BRIEF_OBJECTS) as TurnBrief | null

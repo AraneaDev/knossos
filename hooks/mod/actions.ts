@@ -34,6 +34,12 @@ const EDITOR_SETTING = { claude: '/plugin configure knossos@knossos', web: '`kno
 /** How long the finder waits after a keystroke before it asks: a word typed fast is one search. */
 const SEARCH_DEBOUNCE_MS = 150
 
+/** What the finder's search asks the wrapper: what was typed, trimmed. */
+export const searchArgs = (query: string): string[] => [`--query=${query}`]
+
+/** What a note on a component asks: a preview of it, or (`execute`) its write once the person confirmed. */
+export const annotateArgs = (component: string, value: string, execute: boolean): string[] => [`--component=${component}`, `--value=${value}`, ...(execute ? ['--execute'] : [])]
+
 /** The wrapper bounds graph-search and annotate at 15 s. */
 const SEARCH_TIMEOUT_MS = 20_000
 const NOTE_TIMEOUT_MS = 20_000
@@ -237,7 +243,7 @@ async function loadSearch(io: Port): Promise<void> {
     return
   }
   await io.state.search.update((f): SearchState => ({ ...f, phase: 'searching' }))
-  const parsed = parseGraphSearch(await wrapper(io, 'graph-search', [`--query=${query}`], SEARCH_TIMEOUT_MS))
+  const parsed = parseGraphSearch(await wrapper(io, 'graph-search', searchArgs(query), SEARCH_TIMEOUT_MS))
   if (parsed?.status === 'no-binary') return disable(io)
   await io.state.search.update((f): SearchState => ({ ...f, for: query, phase: 'idle', answer: parsed }))
   // Enter was pressed before this answer landed: its first match opens now, if the field still says the same.
@@ -462,7 +468,7 @@ async function submitNote(io: Port, text: string): Promise<void> {
 /** The preview of a note: what it would replace, or why knossos refuses it. Writes nothing. */
 async function previewNote(io: Port, component: string, value: string): Promise<void> {
   const root = (await io.state.dashboard.read())?.project_root ?? undefined
-  const parsed = parseAnnotate(await wrapper(io, 'annotate', [`--component=${component}`, `--value=${value}`], NOTE_TIMEOUT_MS, root))
+  const parsed = parseAnnotate(await wrapper(io, 'annotate', annotateArgs(component, value, false), NOTE_TIMEOUT_MS, root))
   if (parsed?.status === 'no-binary') return disable(io)
   await io.state.note.update((n): NoteState | null => {
     if (n === null || n.component !== component || n.value !== value || n.phase !== 'previewing') return n
@@ -486,7 +492,7 @@ async function confirmNote(io: Port): Promise<void> {
 /** Records a confirmed note; the detail is read again once it is. */
 async function recordNote(io: Port, component: string, value: string): Promise<void> {
   const root = (await io.state.dashboard.read())?.project_root ?? undefined
-  const parsed = parseAnnotate(await wrapper(io, 'annotate', [`--component=${component}`, `--value=${value}`, '--execute'], NOTE_TIMEOUT_MS, root))
+  const parsed = parseAnnotate(await wrapper(io, 'annotate', annotateArgs(component, value, true), NOTE_TIMEOUT_MS, root))
   if (parsed?.status === 'no-binary') return disable(io)
   // A scan committing holds the write lock: the note stays at its question, its text kept, to try again.
   if (parsed?.status === 'error' && parsed.code === BUSY_CODE) {

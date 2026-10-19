@@ -239,7 +239,9 @@ The mod writes to the graph in three ways, and nothing else:
 
 - After a turn that edited files with Edit, Write or NotebookEdit, it runs
   `knossos turn-brief`, an incremental scan of the project. A turn that only
-  ran shell commands does not start one; the next scan picks those changes up.
+  ran shell commands starts one when the live watcher noticed a change while a
+  command ran, or when a command moved HEAD by more than a commit (a checkout,
+  a reset, a pull); a command is never followed by a scan of its own.
 - `r` runs `knossos rescan`, the same scan without the brief.
 - The live watcher runs incremental scans as files change.
 
@@ -264,6 +266,13 @@ of the trend query does. None of them ever creates a database.
 - The project has never been scanned.
 - An older Claude Code without function hooks ignores the module; the session
   brief keeps working.
+
+A call the wrapper refuses (a subcommand it does not run, an argument it does
+not let through, a file that is a link out of the project, a
+`KNOSSOS_RUN_TIMEOUT` that is not a whole number of seconds from 1 to 86,400)
+is not silent: the wrapper prints
+`{"status":"refused","by":"wrapper","reason":"..."}`, the mod writes one debug
+log line naming the subcommand and the reason, and reads the answer as no data.
 
 Every other failure is silent by design. The band keeps its last figures with
 their real age, and a timeout or an empty answer is asked again at the next

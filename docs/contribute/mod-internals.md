@@ -206,6 +206,18 @@ session loads the plugin, or the file `KNOSSOS_CLAUDE_CODE_TYPES` names). The
 check says so on stderr when the `claude` CLI or the declarations are missing,
 instead of passing quietly. The test file is never shipped in the plugin.
 
+The kit runs no process and no command hook: the test's own hooks are the
+bottom of every chain. Its world stands in for the wrapper by subcommand, and a
+subcommand the wrapper does not run fails the test where the mod runs it,
+instead of being answered as another. What the wrapper itself lets through is
+tested where real processes run: `tests/shell/knossos-run-hook.sh` drives the
+wrapper with a stub binary, and `hooks/mod/actions.finder.wrapper.spec.ts` runs
+the finder's search through the real wrapper (`KNOSSOS_PLUGIN_ROOT` points it
+at another copy, a staged install or one with a guard taken out). The same goes
+for the `SessionStart` command hook: `tests/shell/session-brief-hook.sh` runs
+`session-brief.sh`, and the kit test checks only that what it printed reaches
+the session's context through the mod untouched.
+
 **The vitest specs.** `npm run test:mod` runs the specs beside the pure code:
 `hooks/lib/**/*.spec.ts` and `hooks/mod/**/*.spec.ts`, plus the tool specs under
 `tools/`. They run without Claude Code. The mod brings no React package, so

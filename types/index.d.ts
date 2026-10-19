@@ -763,6 +763,8 @@ export type WatchEvent = {
     | 'error'
     | 'stopped'
   status?: string
+  /** With status `refused`: `wrapper` when the wrapper refused the watcher's call (the reason says why). */
+  by?: string
   snapshot_id?: string | null
   retryable?: boolean
   /** On `error`: `scan_timeout` when a scan ran past its time limit (the watcher stops after 3 in a row). */

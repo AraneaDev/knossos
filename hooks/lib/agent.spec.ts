@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commitNote, committedSince, cyclesSinceStart, madeCommit, stillReported } from './agent'
+import { commitNote, committedSince, cyclesSinceStart, madeCommit, movedTree, stillReported } from './agent'
 
 describe('a commit', () => {
   it('is told by the line git prints for a commit, never by the command text', () => {
@@ -89,5 +89,38 @@ describe('a commit', () => {
     // A start recorded before `exact` existed keeps the count it always had.
     expect(cyclesSinceStart({ count: 1, keys: [], complete: false }, now)).toEqual({ count: 1, fresh: [] })
     expect(cyclesSinceStart(null, now)).toEqual({ count: 0, fresh: [] })
+  })
+})
+
+describe('movedTree', () => {
+  const A = 'a'.repeat(40)
+  const B = 'b'.repeat(40)
+  const C = 'c'.repeat(40)
+  const log = (...entries: [string, string][]) => entries.map(([sha, subject]) => `${sha}\x1f${subject}\n`).join('')
+
+  it('a HEAD that stayed, or one git could not read, moved nothing', () => {
+    expect(movedTree(A, A, log([A, 'checkout: moving from a to b']), '')).toBe(false)
+    expect(movedTree(null, B, '', '')).toBe(false)
+    expect(movedTree(A, null, '', '')).toBe(false)
+    expect(movedTree(A, '', '', '')).toBe(false)
+  })
+
+  it('commits only record what the tree held', () => {
+    expect(movedTree(A, C, log([C, 'commit: two'], [B, 'commit (amend): one'], [A, 'commit (initial): start']), '')).toBe(false)
+  })
+
+  it('a checkout, a reset or a pull among them brought files in', () => {
+    expect(movedTree(A, B, log([B, 'checkout: moving from main to topic'], [A, 'commit: x']), '')).toBe(true)
+    expect(movedTree(A, C, log([C, 'commit: y'], [B, 'reset: moving to HEAD~1'], [A, 'commit: x']), '')).toBe(true)
+    expect(movedTree(A, B, log([B, 'pull: Fast-forward'], [A, 'commit: x']), '')).toBe(true)
+  })
+
+  it('reads only the entries newer than the HEAD before', () => {
+    expect(movedTree(B, C, log([C, 'commit: y'], [B, 'checkout: moving from a to b'], [A, 'commit: x']), '')).toBe(false)
+  })
+
+  it("without a reflog a move counts unless git's commit line says it was one", () => {
+    expect(movedTree(A, B, '', 'Switched to branch topic')).toBe(true)
+    expect(movedTree(A, B, '', '[main bbbbbbb] x\n 1 file changed')).toBe(false)
   })
 })

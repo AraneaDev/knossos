@@ -45,6 +45,9 @@ const NOTES_TIMEOUT_MS = 20_000
  * an error envelope over good figures, keeps the figures there and marks the
  * refresh failed so the pane says how old they are.
  */
+/** What the dashboard asks the wrapper for: the fan-in threshold from the options and the heat map's axes. */
+export const dashboardArgs = (): string[] => [`--fan-in-threshold=${mod.threshold}`, `--boundaries=${BOUNDARY_AXES}`]
+
 export async function refreshDashboard(io: Port): Promise<boolean> {
   if (mod.disabled) return false
   // A request during a load coalesces into one rerun after it, so the last load to land is the newest.
@@ -69,7 +72,7 @@ async function loadDashboard(io: Port): Promise<void> {
 /** The read itself and what it stores; a failed one counts towards how soon the pane with no figures asks again. */
 async function readDashboard(io: Port): Promise<void> {
   // Every boundary, up to the core's cap: an older pane that draws only the heat map does not ask, and gets the twelve it can draw.
-  const stdout = await wrapper(io, 'dashboard', [`--fan-in-threshold=${mod.threshold}`, `--boundaries=${BOUNDARY_AXES}`], DASHBOARD_TIMEOUT_MS)
+  const stdout = await wrapper(io, 'dashboard', dashboardArgs(), DASHBOARD_TIMEOUT_MS)
   const parsed = parseDashboard(stdout)
   if (parsed?.status === 'no-binary') {
     await disable(io)

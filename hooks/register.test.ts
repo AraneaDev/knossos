@@ -84,6 +84,14 @@ function world(
     rings?: Answer[]
     route?: Answer[]
     note?: Answer[]
+    /** What `notes` (the Notes tab's list) answers. */
+    notes?: Answer[]
+    /**
+     * Whether the plugin's `$.session.append` lands: the kit stores the row and
+     * `appended` reads it back. Left out, the world refuses it, and every
+     * turn-end note lands in the debug log instead.
+     */
+    appendRows?: boolean
     editor?: 'opens' | 'missing'
     refuseRegister?: () => boolean | Promise<boolean>
     /** Per watcher start, the event lines it writes at once; none left: the start writes nothing and ends (no watcher offered). */
@@ -112,8 +120,12 @@ function world(
   // The plugin's own store, in memory, readable by the test: what an earlier process left, and what this one keeps.
   const store = new Map<string, unknown>(Object.entries(answers.store ?? {}))
   // The kit's own answer to a plugin's session.append differs by version (a refusal, or an echo that resolves), so
-  // the world refuses it itself: every turn-end note then lands in the debug log, the same on any kit.
-  on('session.append', () => ({ deny: 'refused by the test world' }))
+  // by default the world refuses it itself: every turn-end note then lands in the debug log, the same on any kit.
+  // With `appendRows` the row is stored as a session stores it, and read back from there.
+  const session = answers.appendRows === true ? mock.session(on) : null
+  if (session === null) on('session.append', () => ({ deny: 'refused by the test world' }))
+  /** The text of every row the mod appended to the conversation, oldest first. */
+  const appended = (): string[] => ((session?.appended() ?? []) as unknown[]).map((row: unknown) => JSON.stringify((row as { message?: unknown }).message ?? row))
   on('store.get', (_$, e) => ({ value: structuredClone(store.get(e.key)) }))
   on('store.set', (_$, e) => {
     store.set(e.key, structuredClone(e.value))
@@ -147,7 +159,35 @@ function world(
     rings: answers.rings ?? [{ stdout: '' }],
     route: answers.route ?? [{ stdout: '' }],
     note: answers.note ?? [{ stdout: '' }],
+    notes: answers.notes ?? [{ stdout: '' }],
   }
+  /**
+   * The wrapper's subcommands the mod runs, each to the answers it gets. One
+   * missing here fails the test where the mod runs it: the wrapper would
+   * refuse it, so it is never answered as some other subcommand.
+   */
+  const wrapped = new Map<string, Answer[]>([
+    ['turn-brief', queues.brief],
+    ['dashboard', queues.dashboard],
+    ['component-detail', queues.detail],
+    ['file-detail', queues.file],
+    ['scan', queues.scan],
+    ['allow-root', queues.allow],
+    ['session-changes', queues.ledger],
+    ['session-head', queues.head],
+    ['session-diff', queues.diff],
+    ['boundary-couplings', queues.couplings],
+    ['graph-search', queues.search],
+    ['branch-diff', queues.branch],
+    ['churn', queues.churn],
+    ['blast-radius', queues.rings],
+    ['path-between', queues.route],
+    ['annotate', queues.note],
+    ['notes', queues.notes],
+    ['note-move', queues.note],
+    ['note-check', queues.note],
+    ['note-confirm', queues.note],
+  ])
   /** Every prompt submitted, and every copy with the surface it was for. */
   const prompts: string[] = []
   const copies: { text: string; surface: string | undefined }[] = []
@@ -279,39 +319,14 @@ function world(
       if (answers.editor === 'missing') throw Object.assign(new Error('spawn code ENOENT'), { code: 'ENOENT' })
       return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
-    const sub = e.argv[2]
-    const queue =
-      sub === 'dashboard'
-        ? queues.dashboard
-        : sub === 'component-detail'
-          ? queues.detail
-          : sub === 'file-detail'
-            ? queues.file
-            : sub === 'scan'
-              ? queues.scan
-              : sub === 'allow-root'
-                ? queues.allow
-                : sub === 'session-changes'
-                  ? queues.ledger
-                  : sub === 'session-head'
-                    ? queues.head
-                    : sub === 'session-diff'
-                      ? queues.diff
-                      : sub === 'boundary-couplings'
-                        ? queues.couplings
-                        : sub === 'graph-search'
-                          ? queues.search
-                          : sub === 'branch-diff'
-                            ? queues.branch
-                            : sub === 'churn'
-                                ? queues.churn
-                                : sub === 'blast-radius'
-                                  ? queues.rings
-                                  : sub === 'path-between'
-                                    ? queues.route
-                                    : sub === 'annotate'
-                                      ? queues.note
-                                      : queues.brief
+    // Anything else the mod runs is the wrapper, by its script; a subcommand it does not run fails the test here,
+    // whatever the mod makes of the failure.
+    expect(e.argv[0], `a process the test world does not stand in for: ${e.argv.join(' ')}`).toBe('sh')
+    expect(String(e.argv[1]).endsWith('/hooks/scripts/knossos-run.sh'), `not the wrapper: ${e.argv.join(' ')}`).toBe(true)
+    const sub = String(e.argv[2])
+    const queue = wrapped.get(sub)
+    expect(queue, `a subcommand the wrapper does not run: ${sub}`).toBeDefined()
+    if (queue === undefined) throw new Error(`a subcommand the wrapper does not run: ${sub}`)
     const answer = (queue.length > 1 ? queue.shift() : queue[0]) ?? { stdout: '' }
     if (answer.hold !== undefined) await clock.sleep(answer.hold)
     return {
@@ -349,7 +364,7 @@ function world(
   const ringRuns = () => calls.filter(c => c[2] === 'blast-radius')
   const routeRuns = () => calls.filter(c => c[2] === 'path-between')
   const noteRuns = () => calls.filter(c => c[2] === 'annotate')
-  return { churnRuns, ringRuns, routeRuns, noteRuns, tools, searchRuns, branchRuns, couplingRuns, store, switchSession, headRuns, diffRuns, ledgerRuns, kills, watcher, watchSend, watchStop, registered, clock, calls, briefRuns, detailRuns, fileRuns, scanRuns, dashboardRuns, allowRuns, editorRuns, toasts, logs, opened, closed, invalidations, prompts, copies, focuses }
+  return { appended, churnRuns, ringRuns, routeRuns, noteRuns, tools, searchRuns, branchRuns, couplingRuns, store, switchSession, headRuns, diffRuns, ledgerRuns, kills, watcher, watchSend, watchStop, registered, clock, calls, briefRuns, detailRuns, fileRuns, scanRuns, dashboardRuns, allowRuns, editorRuns, toasts, logs, opened, closed, invalidations, prompts, copies, focuses }
 }
 
 const START = { cwd: ROOT, surface: 'terminal', isInteractive: true } as const
@@ -4059,6 +4074,17 @@ describe('the live watcher', () => {
     expect(w.watcher.starts).toHaveLength(1)
   })
 
+  test("the wrapper's refusal of the watcher's call is logged, and the watcher is not asked again", async ($, on) => {
+    const w = world(on, { dashboard: [{ stdout: paneDashboard() }], watch: [[{ status: 'refused', by: 'wrapper', reason: 'watch does not take these arguments' }], [READY]] })
+    await $.session.start(START)
+    await w.clock.settle()
+    await w.clock.advance(100)
+    expect(w.logs.filter(l => l.text.includes('the wrapper refused watch'))).toEqual([{ text: 'knossos: the wrapper refused watch (watch does not take these arguments); no live watcher this session', to: 'debug' }])
+    // Refused, not ended: no restart after the pause a watcher that ended on its own gets.
+    await w.clock.advance(120_000)
+    expect(w.watcher.starts).toHaveLength(1)
+  })
+
   test('a watcher that ran and then ended on its own is started again after a pause', async ($, on) => {
     const w = world(on, { watch: [[READY], [READY]] })
     await $.session.start(START)
@@ -5124,5 +5150,165 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     expect(w.noteRuns().filter(r => r.includes('--execute'))).toHaveLength(1)
     expect(await ui.find({ key: 'note-yes' })).toBeUndefined()
     await ui.unmount()
+  })
+})
+
+describe('a turn that changed files only through the shell', () => {
+  const READY = { event: 'ready', project_id: 'p1', snapshot_id: 's1', files: 3, scanned: false }
+  const violation = { policy_id: 'no-http-in-domain', source: 'src/Domain/A.php', target: 'src/Http/B.php', source_boundaries: [], target_boundaries: [] }
+  const shelled = brief({ changed_files: ['src/Domain/A.php'], impact: {}, policy: { status: 'evaluated', total: 1, violations: [violation], truncated: false } })
+  /** The scan ledger once the watcher took the command's change in: one file, changed by the scan that made s2. */
+  const ledger = JSON.stringify({ status: 'ok', since: 's1', complete: true, files: { 'src/Domain/A.php': { status: 'changed', dependents: 1, boundaries: [], boundary: null, scans: ['s2'] } }, files_truncated: false, tests: [], tests_truncated: false })
+
+  test('a file a Bash command wrote while the watcher ran is briefed at the turn end, and its violation reaches the model', async ($, on) => {
+    const w = world(on, { watch: [[READY]], bashMs: 1_000, brief: [{ stdout: shelled }], ledger: [{ stdout: ledger }], appendRows: true })
+    await $.session.start(START)
+    await w.clock.settle()
+    const ran = bash($, "sed -i 's/Domain/Http/' src/Domain/A.php")
+    await w.clock.advance(500)
+    // The watcher notices the change while the command still runs, and scans it once the command is done.
+    w.watchSend({ event: 'changes', changes: 1 })
+    await w.clock.advance(600)
+    await ran
+    w.watchSend({ event: 'scan_started', mode: 'incremental', changes: 1 })
+    w.watchSend({ event: 'scan_completed', mode: 'incremental', snapshot_id: 's2', parsed_files: 1 })
+    await w.clock.advance(100)
+    await $.turn.complete(TURN)
+    await w.clock.advance(3_000)
+    expect(w.briefRuns()).toHaveLength(1)
+    const args = w.briefRuns()[0]!
+    // The file the scan ledger says that scan changed, from the graph as it stood before the command.
+    expect(args).toContain('--files=src/Domain/A.php')
+    expect(args).toContain('--since=s1')
+    const rows = w.appended().filter(r => r.includes('this turn introduced'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toContain('knossos: this turn introduced 1 boundary-policy violation. Fix it before finishing:')
+    expect(rows[0]).toContain('- no-http-in-domain: src/Domain/A.php → src/Http/B.php')
+    expect(turnNotes(w)).toHaveLength(0)
+  })
+
+  test('a command the watcher saw change nothing leaves the turn without a brief', async ($, on) => {
+    const w = world(on, { watch: [[READY]], bashMs: 1_000, brief: [{ stdout: shelled }], ledger: [{ stdout: ledger }] })
+    await $.session.start(START)
+    await w.clock.settle()
+    const ran = bash($, 'ls src')
+    await w.clock.advance(1_100)
+    await ran
+    // Another writer, well after the command ended: not the command's change.
+    await w.clock.advance(10_000)
+    w.watchSend({ event: 'changes', changes: 1 })
+    w.watchSend({ event: 'scan_started', mode: 'incremental', changes: 1 })
+    w.watchSend({ event: 'scan_completed', mode: 'incremental', snapshot_id: 's2', parsed_files: 1 })
+    await w.clock.advance(100)
+    await $.turn.complete(TURN)
+    await w.clock.advance(3_000)
+    expect(w.briefRuns()).toHaveLength(0)
+  })
+
+  test('a checkout marks the turn for its brief, but brings no file into the verdict', { options: { watch: false } }, async ($, on) => {
+    const w = world(on, { git: command => (command.startsWith('git checkout') ? ['checkout: moving from main to topic'] : []), bashOutput: () => "Switched to branch 'topic'" })
+    await $.session.start(START)
+    await w.clock.settle()
+    await bash($, 'git checkout topic')
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    expect(w.briefRuns()).toHaveLength(1)
+    expect(w.briefRuns()[0]!.filter(a => a.startsWith('--files='))).toEqual([])
+  })
+
+  test("a scan that lands after a checkout is the checkout's, even with a quick command just before it", async ($, on) => {
+    const w = world(on, {
+      watch: [[READY]],
+      bashMs: 100,
+      brief: [{ stdout: shelled }],
+      ledger: [{ stdout: ledger }],
+      git: command => (command.startsWith('git checkout') ? ['checkout: moving from main to feature'] : []),
+      bashOutput: command => (command.startsWith('git checkout') ? "Switched to branch 'feature'" : 'done'),
+    })
+    await $.session.start(START)
+    await w.clock.settle()
+    const listed = bash($, 'ls')
+    await w.clock.advance(150)
+    await listed
+    const switched = bash($, 'git checkout feature')
+    await w.clock.advance(150)
+    await switched
+    // The watcher notices the branch's files and scans them, within the lookback of both commands.
+    w.watchSend({ event: 'changes', changes: 40 })
+    w.watchSend({ event: 'scan_started', mode: 'incremental', changes: 40 })
+    w.watchSend({ event: 'scan_completed', mode: 'incremental', snapshot_id: 's2', parsed_files: 40 })
+    await w.clock.advance(100)
+    await $.turn.complete(TURN)
+    await w.clock.advance(3_000)
+    expect(w.briefRuns()).toHaveLength(1)
+    expect(w.briefRuns()[0]!.filter(a => a.startsWith('--files='))).toEqual([])
+  })
+
+  test('a commit alone moves HEAD without marking the turn', { options: { watch: false } }, async ($, on) => {
+    const w = world(on, { git: committed, bashOutput: committing })
+    await $.session.start(START)
+    await w.clock.settle()
+    await bash($, 'git commit -m route')
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    expect(w.briefRuns()).toHaveLength(0)
+  })
+})
+
+describe('the turn-end note reaching the model', () => {
+  test("a turn's violation is appended to the conversation as the user's row", async ($, on) => {
+    const violation = { policy_id: 'no-http-in-domain', source: 'src/Domain/A.php', target: 'src/Http/B.php', source_boundaries: [], target_boundaries: [] }
+    const w = world(on, { brief: [{ stdout: brief({ policy: { status: 'evaluated', total: 1, violations: [violation], truncated: false } }) }], appendRows: true })
+    await $.session.start(START)
+    await w.clock.settle()
+    await edit($, `${ROOT}/src/Domain/A.php`)
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    const rows = w.appended().filter(r => r.includes('this turn introduced'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toContain('"type":"user"')
+    expect(rows[0]).toContain('- no-http-in-domain: src/Domain/A.php → src/Http/B.php')
+    // Delivered, so no trace of a note that did not reach the model.
+    expect(turnNotes(w)).toHaveLength(0)
+  })
+})
+
+describe("a call the wrapper refused", () => {
+  test('shows nothing, and leaves one debug line naming what was refused and why', async ($, on) => {
+    const refusal = '{"status":"refused","by":"wrapper","reason":"graph-search does not take these arguments"}\n'
+    const w = world(on, { dashboard: [{ stdout: issuesDashboard() }], search: [{ stdout: refusal }] })
+    await $.session.start(START)
+    await w.clock.settle()
+    const ui = await mountPane($, 'terminal', 120)
+    await ui.press({ key: 'tab:issues' })
+    await ui.press({ key: 'find' })
+    await w.clock.settle()
+    await ui.input({ key: 'field:find', text: 'dsvc', kind: 'change' })
+    await w.clock.advance(200)
+    await w.clock.settle()
+    expect(w.searchRuns()).toHaveLength(1)
+    expect(await ui.find({ key: 'found-0' })).toBeUndefined()
+    expect(w.logs.filter(l => l.text.includes('the wrapper refused'))).toEqual([
+      { text: 'knossos: the wrapper refused graph-search (graph-search does not take these arguments); read as no data', to: 'debug' },
+    ])
+    await ui.unmount()
+  })
+})
+
+describe('the session brief the SessionStart command hook prints', () => {
+  // `claude plugin test` runs no settings or hooks.json command hook (the test's own classic.SessionStart hook is the
+  // bottom of that chain), so session-brief.sh itself is tested by tests/shell/session-brief-hook.sh. This is the
+  // engine's half: what that hook printed reaches the session's context through the mod's hooks untouched.
+  test('reaches the session context through the mod as printed, the brief and the timeout line alike', async ($, on) => {
+    const printed = 'Knossos architecture brief for /repo\n- 41 files depend on src/Router.php'
+    const timedOut = "Knossos brief timed out after 3 s; run knossos session-brief '/repo' to see why."
+    const w = world(on)
+    on('classic.SessionStart', () => ({ additionalContext: [printed, timedOut] }))
+    await $.session.start(START)
+    await w.clock.settle()
+    const started = await $.classic.SessionStart({ source: 'startup' })
+    expect(started.additionalContext).toEqual([printed, timedOut])
+    // The mod went on starting up beside it.
+    expect(w.registered).toEqual(['knossos'])
   })
 })
