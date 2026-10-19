@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.33.0](https://github.com/AraneaDev/knossos/compare/v0.32.1...v0.33.0) (2026-10-19)
+
+
+### Features
+
+* knossos web serves the pane in a browser tab, for the project it runs in ([#361](https://github.com/AraneaDev/knossos/issues/361)) ([b3b2df0](https://github.com/AraneaDev/knossos/commit/b3b2df0861fd2cd4c4195e4185a77d2bbe71e50b))
+* treat the scripts an html page loads as entry points, resolved to one file or reported ([#365](https://github.com/AraneaDev/knossos/issues/365)) ([6c65a1d](https://github.com/AraneaDev/knossos/commit/6c65a1d0613453b62799547c6584caea0834723a))
+
+
+### Fixes
+
+* derive the lint lists, never skip a check silently, and make every report-only step assert its content ([#369](https://github.com/AraneaDev/knossos/issues/369)) ([6492fb2](https://github.com/AraneaDev/knossos/commit/6492fb22fd79cfd1d0c3d69c324e96b33db01385))
+* drop the web page's unused close and name the hub's contract with the port ([#363](https://github.com/AraneaDev/knossos/issues/363)) ([b363d7b](https://github.com/AraneaDev/knossos/commit/b363d7ba2d83f12813c6561375beb1aebe727c9d))
+* exclude only mutants that cannot be killed, pin every exclusion, and gate mutation runs on both floors and the population ([#367](https://github.com/AraneaDev/knossos/issues/367)) ([3ccec6d](https://github.com/AraneaDev/knossos/commit/3ccec6d2965fcdc976c4df1dfd64569fe993c90c))
+* **hooks:** make the plugin's guards refuse visibly, check shell-only edits, and test them through the engine ([#368](https://github.com/AraneaDev/knossos/issues/368)) ([db1cc81](https://github.com/AraneaDev/knossos/commit/db1cc81f4572753cf0779d455c7b68a61eb890e4))
+* refuse invalid budgets, and plant a violation for every numeric floor and the gate baseline ([#366](https://github.com/AraneaDev/knossos/issues/366)) ([391ea30](https://github.com/AraneaDev/knossos/commit/391ea306b2abbe10aeaaa357c76a119d2064f98e))
+
 ## [0.32.1](https://github.com/AraneaDev/knossos/compare/v0.32.0...v0.32.1) (2026-10-18)
 
 
