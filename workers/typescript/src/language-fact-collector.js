@@ -214,6 +214,7 @@ export class TypeScriptLanguageFactCollector {
         if (ts.isArrayLiteralExpression(node)) this.launches.array(node);
         if (ts.isTypeReferenceNode(node)) this.typeReference(node);
         if (ts.isIdentifier(node)) this.valueReference(node);
+        if (ts.isElementAccessExpression(node)) this.tableLookup(node);
         if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent))
             this.destructuredMember(node);
     }
@@ -745,6 +746,44 @@ export class TypeScriptLanguageFactCollector {
         const source = this.currentSource();
         if (source !== null && target !== null && source !== target)
             this.addEdge("references", source, target, node);
+    }
+
+    /**
+     * `handlers[data.type]` picks a function out of a module's table by a key
+     * only the run time knows. No identifier names the entry, so every
+     * function the table holds read as unused: the lookup references each of
+     * them. A literal key, `handlers['ping']`, reaches only the entry it names.
+     */
+    tableLookup(node) {
+        const symbol = unalias(
+            this.checker,
+            this.checker.getSymbolAtLocation(node.expression),
+        );
+        const binding = symbol?.declarations?.find(
+            (item) => ts.isVariableDeclaration(item) && item.initializer,
+        );
+        const table =
+            binding === undefined
+                ? undefined
+                : unwrapExpression(binding.initializer);
+        if (table === undefined || !ts.isObjectLiteralExpression(table)) return;
+        const key = unwrapExpression(node.argumentExpression);
+        const named =
+            ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)
+                ? key.text
+                : undefined;
+        const source = this.currentSource();
+        for (const property of table.properties) {
+            if (!isFunctionAssignment(property)) continue;
+            if (named !== undefined && property.name.text !== named) continue;
+            const target = this.symbolReference(
+                this.checker.getSymbolAtLocation(property.name),
+                "method",
+                true,
+            );
+            if (target !== null && target !== source)
+                this.addEdge("references", source, target, node);
+        }
     }
 
     /**
