@@ -131,54 +131,12 @@ jobs:
           path: shards
           pattern: mutation-shard-*
           merge-multiple: true
-      - name: Enforce the MSI floor across all shards
-        run: |
-          set -o pipefail
-          found=$(find shards -name 'mutation-shard-*.json' | wc -l)
-          if [ "$found" -ne "$SHARD_COUNT" ]; then
-            echo "Expected $SHARD_COUNT shard logs, found $found." >&2
-            echo "An aggregate over a subset is not a measurement of the tree." >&2
-            exit 1
-          fi
-
-          # Infection's own arithmetic, transcribed from Calculator::fromMetrics
-          # in 0.34 rather than guessed at. Two parts are easy to get wrong and
-          # both inflate the score: syntax errors count as detected alongside
-          # errors, and the denominator is the *tested* population -- skipped
-          # and ignored mutants are excluded, not merely undetected.
-          #
-          #   detected = killed + killedByStaticAnalysis + errors + syntaxErrors + timeouts
-          #   tested   = total - skipped - ignored
-          #   MSI      = detected / tested
-          #   covered  = detected / (tested - notCovered)
-          #
-          # Checked against the single-job run of 2026-08-08: 8970 + 1 + 1 + 74
-          # over 14256 - 115 is 63.97%, which is the figure Infection printed.
-          totals=$(jq -s '[
-              (map(.stats.totalMutantsCount - .stats.skippedCount - .stats.ignoredCount) | add),
-              (map(.stats.notCoveredCount) | add),
-              (map(.stats.killedCount + .stats.killedByStaticAnalysisCount + .stats.errorCount + .stats.syntaxErrorCount + .stats.timeOutCount) | add)
-            ] | @tsv' -r shards/mutation-shard-*.json)
-          tested=$(printf '%s' "$totals" | cut -f1)
-          not_covered=$(printf '%s' "$totals" | cut -f2)
-          detected=$(printf '%s' "$totals" | cut -f3)
-
-          # Read from infection.json5 so a local full run and this gate cannot
-          # drift apart. Local runs still enforce it through the config; only
-          # the sharded runs above defer to this job.
-          floor=$(grep -E '^[[:space:]]*minMsi:' infection.json5 | grep -oE '[0-9]+(\.[0-9]+)?')
-          if [ -z "$floor" ]; then
-            echo "Could not read minMsi from infection.json5." >&2
-            exit 1
-          fi
-
-          msi=$(awk -v d="$detected" -v t="$tested" 'BEGIN { printf "%.2f", t ? d * 100 / t : 0 }')
-          covered=$(awk -v d="$detected" -v t="$tested" -v n="$not_covered" 'BEGIN { c = t - n; printf "%.2f", c ? d * 100 / c : 0 }')
-
-          printf 'Tested mutants: %s  detected: %s  not covered: %s\n' "$tested" "$detected" "$not_covered"
-          printf 'MSI: %s%%  Covered MSI: %s%%  floor: %s%%\n' "$msi" "$covered" "$floor"
-
-          if ! awk -v m="$msi" -v c="$covered" -v f="$floor" 'BEGIN { exit (m >= f && c >= f) ? 0 : 1 }'; then
-            echo "MSI is below the floor in infection.json5." >&2
-            exit 1
-          fi
+      - name: Enforce both MSI floors and the mutant population across all shards
+        # tools/mutation-gate holds the decision, so tests/shell/mutation-gate.sh
+        # can plant each failure against it: a missing shard log, MSI below
+        # minMsi, covered MSI below minCoveredMsi (both read from
+        # infection.json5, so a local full run and this gate cannot drift
+        # apart), and a tested or ignored mutant count that moved past the
+        # tolerance in tools/mutation-population.json. The runner's own PHP is
+        # enough: the script needs no vendor directory.
+        run: php tools/mutation-gate --shards=shards --expected="$SHARD_COUNT"

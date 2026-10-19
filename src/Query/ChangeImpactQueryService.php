@@ -45,9 +45,12 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
     /**
      * Static blast radius weighted by recent Git churn.
      *
+     * Every bound is required: ArchitectureQueryService::changeImpact() holds
+     * the defaults and is the only caller.
+     *
      * @param list<string> $edgeKinds
      */
-    public function changeImpact(string $projectId, string $symbol, int $sinceDays = 90, int $maxCommits = 500, int $maxDepth = 4, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000): ResultEnvelope
+    public function changeImpact(string $projectId, string $symbol, int $sinceDays, int $maxCommits, int $maxDepth, int $limit, array $edgeKinds, string $minConfidence, int $timeoutMs): ResultEnvelope
     {
         if ($sinceDays < 1 || $sinceDays > 3650) {
             throw new InvalidArgumentException('since_days must be between 1 and 3650.');

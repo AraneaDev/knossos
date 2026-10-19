@@ -40,9 +40,13 @@ full-src run takes hours, which is too slow to gate a push. It runs in the
 `Mutation` workflow, on a schedule (07:00 UTC every Monday) and on demand from
 the Actions tab (`workflow_dispatch`). The workflow splits `src` into four
 shards that run side by side, each over every fourth file, and an `msi-gate` job
-then enforces the floor on the aggregate of the four shard logs. It fails when a
-shard log is missing, so a smaller tree is never reported as a pass. To run it
-locally:
+runs `tools/mutation-gate` on the aggregate of the four shard logs. It fails when
+a shard log is missing, so a smaller tree is never reported as a pass; when MSI
+is below `minMsi` or covered MSI is below `minCoveredMsi`; and when the tested or
+ignored mutant count moved more than the tolerance in
+`tools/mutation-population.json` since the last full run, because a score over
+fewer mutants can clear a floor while measuring less of the code. Update that
+file in the same commit as the floor, from the same run. To run it locally:
 
 ```sh
 php -d pcov.enabled=1 vendor/bin/infection --no-interaction --no-progress --threads=4
@@ -51,7 +55,8 @@ php -d pcov.enabled=1 vendor/bin/infection --no-interaction --no-progress --thre
 Scope it while iterating with `--filter=src/Mcp` (or any path) to keep the
 feedback loop short. To check only what your change touched, run
 `tools/mutation-diff [base-ref] [min-msi]`: it mutates the added and modified
-lines against `origin/main` by default, and holds them to 85%, above the
+lines of your working tree against `origin/main` by default (it refuses while a
+file under `src/` is untracked; `git add -N` it), and holds them to 85%, above the
 tree's floor, because new work should be better tested than the historic
 average. Inside the quality image, where there is no git, pass the changed files
 as `KNOSSOS_MUTATION_FILES=src/A.php,src/B.php tools/mutation-diff '' [min-msi]`.
@@ -65,8 +70,11 @@ not asserted against, so the headroom is in assertions.
 The same engine backs Chaos-MCP's `audit_code_resilience` tool, so a green run
 means that tool works against this repository too.
 
-Equivalent mutants must be replaced with behavior-changing mutants. Never count them as survivors or exclude them. Lowering the floor requires the surviving
-mutant report, a risk explanation, and explicit review.
+Exclude a mutant only when it is non-viable or proven equivalent, after first
+changing the code so it does not exist; a killable mutant stays counted however
+costly it is to kill ([ADR 0005](../adr/0005-mutant-exclusions.md)). Lowering the
+floor requires the surviving mutant report, a risk explanation, and explicit
+review.
 
 ### Why `failOnWarning` is not optional
 

@@ -155,5 +155,7 @@ help text and schemas they come from, never the Markdown.
   why NestJS got static enrichment before Next.js and Express.
 - [ADR 0004: Serve MCP 2026-07-28 alongside 2025-11-25](adr/0004-protocol-2026-07-28.md):
   how one dispatcher serves two protocol revisions.
+- [ADR 0005: Exclude a mutant only when no test could ever kill it](adr/0005-mutant-exclusions.md):
+  when an Infection exclusion is allowed, and how each one is pinned to its sites.
 - [CI and editor examples](examples): GitHub Actions, GitLab CI and VS Code
   task recipes, used by the integration guide.
