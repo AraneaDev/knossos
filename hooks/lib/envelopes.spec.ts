@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { countLabel, detailLines, fileDetailLines, parseAllowRoot, parseBranchDiff, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseRescan, parseSessionHead, parseTurnBrief, rescanReason } from './envelopes'
+import { countLabel, detailLines, fileDetailLines, parseAllowRoot, parseBranchDiff, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseRescan, parseSessionHead, parseTurnBrief, rescanReason, wrapperRefusal } from './envelopes'
+
+describe("the wrapper's refusal", () => {
+  it('names the reason the wrapper gave', () => expect(wrapperRefusal('{"status":"refused","by":"wrapper","reason":"graph-search does not take these arguments"}\n')).toBe('graph-search does not take these arguments'))
+  it('says so when it gave none', () => expect(wrapperRefusal('{"status":"refused","by":"wrapper"}')).toBe('no reason given'))
+  it("is not the binary's own refusal", () => expect(wrapperRefusal('{"status":"refused","reason":"the note is too long"}')).toBeNull())
+  it('is not an answer, silence or garbage', () => {
+    expect(wrapperRefusal('{"status":"ok","results":[]}')).toBeNull()
+    expect(wrapperRefusal('')).toBeNull()
+    expect(wrapperRefusal('{"status":"refused",')).toBeNull()
+  })
+  it('draws a reason carrying an escape sequence inert', () => expect(wrapperRefusal('{"status":"refused","by":"wrapper","reason":"a\\u001bb"}')).toBe('a�b'))
+})
 
 describe('envelopes', () => {
   it('a path carrying an escape sequence is drawn inert', () =>

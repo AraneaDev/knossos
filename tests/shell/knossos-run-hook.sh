@@ -1,5 +1,6 @@
 #!/bin/sh
-# The mod's wrapper must be silent on every failure and pass JSON through.
+# The mod's wrapper must be silent on every failure, say so when it refuses a
+# call, and pass JSON through.
 set -u
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
@@ -34,8 +35,24 @@ expect_output() {
     fi
 }
 
+# A call the wrapper does not let through: one refusal line naming the wrapper,
+# and nothing else. Every refused case runs a stub that would print its argv,
+# so a call that slipped through shows as that argv instead.
+expect_refused() {
+    label=$1; shift
+    out=$("$@" 2>/dev/null); status=$?
+    case "$out" in
+        '{"status":"refused","by":"wrapper","reason":"'*'"}') refused=yes ;;
+        *) refused=no ;;
+    esac
+    if [ "$status" -ne 0 ] || [ "$refused" != yes ]; then
+        printf 'FAIL %s (status %s, output %s)\n' "$label" "$status" "$out"; failures=$((failures + 1))
+    else
+        printf 'ok   %s\n' "$label"
+    fi
+}
+
 printf '#!/bin/sh\nexit 3\n' > "$STUBS/failing"; chmod +x "$STUBS/failing"
-printf '#!/bin/sh\nsleep 30\n' > "$STUBS/hanging"; chmod +x "$STUBS/hanging"
 printf '#!/bin/sh\nprintf "%%s|" "$@"\n' > "$STUBS/echoing"; chmod +x "$STUBS/echoing"
 # shellcheck disable=SC2016
 printf '#!/bin/sh\nprintf "%%s|%%s" "${KNOSSOS_DATA_DIR:-}" "${KNOSSOS_ROOTS_FILE:-}"\n' > "$STUBS/envdump"; chmod +x "$STUBS/envdump"
@@ -49,13 +66,30 @@ ln -s "$(command -v dirname)" "$STUBS/bare/dirname"
 expect_output 'missing binary says so' "$NO_BINARY" env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" dashboard "$STUBS/proj"
 expect_output 'missing binary says so for a turn brief' "$NO_BINARY" env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" turn-brief "$STUBS/proj"
 expect_silent_success 'failing binary' env KNOSSOS_BIN="$STUBS/failing" /bin/sh "$RUN" dashboard /tmp
-expect_silent_success 'hanging binary' env KNOSSOS_BIN="$STUBS/hanging" KNOSSOS_RUN_TIMEOUT=1 /bin/sh "$RUN" dashboard /tmp
-expect_silent_success 'unknown subcommand' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" bogus /tmp
+# A binary that outlives the bound is cut off: it would print once it woke, so
+# an unbounded run shows as its output, and as the time it took.
+printf '#!/bin/sh\nsleep 5\nprintf late\n' > "$STUBS/sleeper"; chmod +x "$STUBS/sleeper"
+started=$(date +%s)
+out=$(env KNOSSOS_BIN="$STUBS/sleeper" KNOSSOS_RUN_TIMEOUT=1 /bin/sh "$RUN" dashboard /tmp 2>/dev/null); status=$?
+elapsed=$(($(date +%s) - started))
+if [ "$status" -ne 0 ] || [ -n "$out" ] || [ "$elapsed" -ge 3 ]; then
+    printf 'FAIL %s (status %s, output %s, %s s)\n' 'a binary past the bound is cut off at it' "$status" "$out" "$elapsed"; failures=$((failures + 1))
+else
+    printf 'ok   %s\n' 'a binary past the bound is cut off at it'
+fi
+# A bound the wrapper cannot use is refused, never handed to timeout: 0 is no
+# bound at all, and a word fails every run.
+for bad in 0 00 1s abc -1; do
+    expect_refused "KNOSSOS_RUN_TIMEOUT='$bad' is refused" env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_RUN_TIMEOUT="$bad" /bin/sh "$RUN" dashboard "$STUBS/proj"
+done
+expect_output 'watch takes no bound, whatever KNOSSOS_RUN_TIMEOUT says' "watch|$ABS_PROJ|--shared|" \
+    env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_RUN_TIMEOUT=0 /bin/sh "$RUN" watch "$STUBS/proj"
+expect_refused 'unknown subcommand' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" bogus /tmp
 # scan is the pane's rescan: it runs `knossos rescan`, never `knossos scan`, and takes nothing but the project.
 expect_output 'scan runs the rescan command on the project' "rescan|$ABS_PROJ|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj"
-expect_silent_success 'scan refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'scan refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj" extra
+expect_refused 'scan refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'scan refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj" extra
 expect_output 'missing binary says so for a scan' "$NO_BINARY" env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" scan "$STUBS/proj"
 expect_silent_success 'failing binary on a scan' env KNOSSOS_BIN="$STUBS/failing" /bin/sh "$RUN" scan /tmp
 # allow-root: the root alone, always with --execute, and only into a roots file the installation (or the environment) names.
@@ -63,13 +97,13 @@ expect_output 'allow-root grants the root with --execute' "allow-root|$ABS_PROJ|
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root "$STUBS/proj"
 expect_silent_success 'allow-root without a named roots file does nothing' \
     env -u KNOSSOS_ROOTS_FILE KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" allow-root "$STUBS/proj"
-expect_silent_success 'allow-root refuses an option' \
+expect_refused 'allow-root refuses an option' \
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'allow-root refuses a second argument' \
+expect_refused 'allow-root refuses a second argument' \
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root "$STUBS/proj" extra
 expect_silent_success 'failing binary on allow-root' \
     env KNOSSOS_BIN="$STUBS/failing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root /tmp
-expect_silent_success 'missing project dir' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard
+expect_refused 'missing project dir' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard
 expect_silent_success 'unenterable project dir' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard /nonexistent/dir
 expect_output 'passes arguments with spaces intact' "turn-brief|$ABS_PROJ|--files=a, b.php|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" '--files=a, b.php'
@@ -119,13 +153,13 @@ expect_output 'component-detail passes an unmatched component through' '{"status
     env KNOSSOS_BIN="$STUBS/unmatched" /bin/sh "$RUN" component-detail /tmp Nope
 expect_output 'component-detail with a missing binary says so' "$NO_BINARY" \
     env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" component-detail "$STUBS/proj" Router
-expect_silent_success 'component-detail without a name' \
+expect_refused 'component-detail without a name' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" component-detail /tmp
-expect_silent_success 'component-detail with two names' \
+expect_refused 'component-detail with two names' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" component-detail /tmp A B
-expect_silent_success 'component-detail with a name that reads as an option' \
+expect_refused 'component-detail with a name that reads as an option' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" component-detail /tmp --db=/elsewhere
-expect_silent_success 'the old inspect subcommand is gone' \
+expect_refused 'the old inspect subcommand is gone' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" inspect /tmp p1 Router
 
 # file-detail: one file relative to the project directory, handed to the
@@ -135,48 +169,48 @@ expect_output 'file-detail passes the file under the project, spaces intact' "fi
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-detail "$STUBS/proj" 'src/My File.php'
 expect_output 'file-detail with a missing binary says so' "$NO_BINARY" \
     env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" file-detail "$STUBS/proj" a.php
-expect_silent_success 'file-detail without a file' \
+expect_refused 'file-detail without a file' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-detail /tmp
-expect_silent_success 'file-detail with two files' \
+expect_refused 'file-detail with two files' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-detail /tmp a.php b.php
-expect_silent_success 'file-detail with a file that reads as an option' \
+expect_refused 'file-detail with a file that reads as an option' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-detail /tmp --db=/elsewhere
-expect_silent_success 'file-detail with an absolute path' \
+expect_refused 'file-detail with an absolute path' \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-detail /tmp /etc/passwd
 
 # file-context: one file relative to the project, as file-detail takes it.
 expect_output 'file-context passes the file under the project' "file-context|$ABS_PROJ/src/My File.php|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context "$STUBS/proj" 'src/My File.php'
-expect_silent_success 'file-context with an absolute path' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp /etc/passwd
+expect_refused 'file-context with an absolute path' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp /etc/passwd
 for path in '..' '../x.php' 'src/../../etc/passwd' 'src/..'; do
-    expect_silent_success "file-detail refuses $path" \
+    expect_refused "file-detail refuses $path" \
         env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-detail "$STUBS/proj" "$path"
-    expect_silent_success "file-context refuses $path" \
+    expect_refused "file-context refuses $path" \
         env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context "$STUBS/proj" "$path"
 done
-expect_silent_success 'file-context with a file that reads as an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp --db=/elsewhere
-expect_silent_success 'file-context without a file' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp
+expect_refused 'file-context with a file that reads as an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp --db=/elsewhere
+expect_refused 'file-context without a file' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp
 # graph-search: what was typed into the finder, one printable line and nothing else.
 expect_output 'graph-search passes what was typed' "graph-search|$ABS_PROJ|--query=dash svc|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" '--query=dash svc'
-expect_silent_success 'graph-search refuses an empty query' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" --query=
-expect_silent_success 'graph-search refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'graph-search refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" --query=a --db=/tmp/x
-expect_silent_success 'graph-search refuses a query with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=a
+expect_refused 'graph-search refuses an empty query' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" --query=
+expect_refused 'graph-search refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'graph-search refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" --query=a --db=/tmp/x
+expect_refused 'graph-search refuses a query with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=a
 b"
-expect_silent_success 'graph-search refuses a query past 200 characters' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=$(printf '%0201d' 0)"
+expect_refused 'graph-search refuses a query past 200 characters' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=$(printf '%0201d' 0)"
 # branch-diff: the branch against its merge base, with nothing but the project.
 expect_output 'branch-diff asks for the project alone' "branch-diff|$ABS_PROJ|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" branch-diff "$STUBS/proj"
-expect_silent_success 'branch-diff refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" branch-diff "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'branch-diff refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" branch-diff "$STUBS/proj" --db=/tmp/other.sqlite
 # Non-ASCII text is text in any locale, and counted by its characters, not its bytes.
 E200=$(i=0; while [ "$i" -lt 200 ]; do printf '\303\251'; i=$((i + 1)); done)
 expect_output 'graph-search passes a non-ASCII query under the C locale' "graph-search|$ABS_PROJ|--query=écran|--json|" \
     env LC_ALL=C KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" '--query=écran'
 expect_output 'graph-search passes 200 non-ASCII characters' "graph-search|$ABS_PROJ|--query=$E200|--json|" \
     env LC_ALL=C KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=$E200"
-expect_silent_success 'graph-search refuses 201 non-ASCII characters' env LC_ALL=C KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=${E200}é"
-expect_silent_success 'graph-search refuses a tab' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=a$(printf '\t')b"
+expect_refused 'graph-search refuses 201 non-ASCII characters' env LC_ALL=C KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=${E200}é"
+expect_refused 'graph-search refuses a tab' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" "--query=a$(printf '\t')b"
 expect_output 'blast-radius passes a non-ASCII component' "blast-radius|$ABS_PROJ|--component=App\\Écran|--json|" \
     env LC_ALL=C KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" '--component=App\Écran'
 expect_output 'path-between passes non-ASCII ends' "path-between|$ABS_PROJ|--from=Ä|--to=Ö|--json|" \
@@ -186,115 +220,122 @@ expect_output 'annotate previews a non-ASCII note' "annotate|$ABS_PROJ|--compone
 # churn, blast-radius, path-between: the project and the components asked for, and nothing else.
 expect_output 'churn asks for the project alone' "churn|$ABS_PROJ|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" churn "$STUBS/proj"
-expect_silent_success 'churn refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" churn "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'churn refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" churn "$STUBS/proj" --db=/tmp/other.sqlite
 expect_output 'blast-radius passes the component' "blast-radius|$ABS_PROJ|--component=App\\Greeter::greet|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" '--component=App\Greeter::greet'
-expect_silent_success 'blast-radius refuses an empty component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" --component=
-expect_silent_success 'blast-radius refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'blast-radius refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" --component=A --db=/tmp/x
+expect_refused 'blast-radius refuses an empty component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" --component=
+expect_refused 'blast-radius refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'blast-radius refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" blast-radius "$STUBS/proj" --component=A --db=/tmp/x
 expect_output 'path-between passes both ends in order' "path-between|$ABS_PROJ|--from=A|--to=B|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --from=A --to=B
-expect_silent_success 'path-between refuses the ends swapped' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --to=B --from=A
-expect_silent_success 'path-between refuses one end' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --from=A
-expect_silent_success 'path-between refuses an end with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --from=A "--to=B
+expect_refused 'path-between refuses the ends swapped' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --to=B --from=A
+expect_refused 'path-between refuses one end' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --from=A
+expect_refused 'path-between refuses an end with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" path-between "$STUBS/proj" --from=A "--to=B
 C"
 # annotate: a preview unless --execute comes last; the note one printable line of at most 2,000 characters.
 expect_output 'annotate previews a note' "annotate|$ABS_PROJ|--component=A|--value=a note|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A '--value=a note'
 expect_output 'annotate records a confirmed note' "annotate|$ABS_PROJ|--component=A|--value=a note|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A '--value=a note' --execute
-expect_silent_success 'annotate refuses another third argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --value=x --db=/tmp/x
-expect_silent_success 'annotate refuses the value first' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --value=x --component=A
-expect_silent_success 'annotate refuses a note with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A "--value=a
+expect_refused 'annotate refuses another third argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --value=x --db=/tmp/x
+expect_refused 'annotate refuses the value first' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --value=x --component=A
+expect_refused 'annotate refuses a note with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A "--value=a
 b"
-expect_silent_success 'annotate refuses a note past 2,000 characters' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A "--value=$(printf '%02001d' 0)"
+expect_refused 'annotate refuses a note past 2,000 characters' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A "--value=$(printf '%02001d' 0)"
+# A note, a reason or an edited note is never empty where one is given.
+expect_refused 'annotate refuses an empty note' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --value=
+expect_refused 'annotate refuses an empty note it would record' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --value= --execute
+expect_refused 'note-adopt refuses an empty note' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --component=A --value= --execute
+expect_refused 'note-check refuses an empty reason' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value= --execute
+expect_output 'note-check flags without a reason' "note-check|$ABS_PROJ|--component=A|--execute|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --execute
 # annotate removes a note: the component, --remove, then the author and the kind it names, and --execute last.
 expect_output 'annotate removes the model note it names' "annotate|$ABS_PROJ|--component=A|--remove|--author=model|--kind=note|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --author=model --kind=note --execute
 expect_output 'annotate previews removing the persons note' "annotate|$ABS_PROJ|--component=A|--remove|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove
-expect_silent_success 'annotate refuses an author it does not know' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --author=root
-expect_silent_success 'annotate refuses the check kind' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --kind=check
-expect_silent_success 'annotate refuses a remove with a note' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --value=x
+expect_refused 'annotate refuses an author it does not know' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --author=root
+expect_refused 'annotate refuses the check kind' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --kind=check
+expect_refused 'annotate refuses a remove with a note' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" annotate "$STUBS/proj" --component=A --remove --value=x
 # notes: the filter from its fixed set, then the text, each at most once.
 expect_output 'notes asks for the project alone' "notes|$ABS_PROJ|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj"
 expect_output 'notes passes a filter and a text' "notes|$ABS_PROJ|--filter=stale|--text=cache|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --filter=stale --text=cache
-expect_silent_success 'notes refuses a filter it does not know' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --filter=everything
-expect_silent_success 'notes refuses the text first' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --text=a --filter=all
-expect_silent_success 'notes refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --db=/tmp/x
+expect_refused 'notes refuses a filter it does not know' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --filter=everything
+expect_refused 'notes refuses the text first' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --text=a --filter=all
+expect_refused 'notes refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes "$STUBS/proj" --db=/tmp/x
 # note-adopt: the component, the edited note, --execute last.
 expect_output 'note-adopt records the edited note' "note-adopt|$ABS_PROJ|--component=A|--value=mine|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --component=A --value=mine --execute
-expect_silent_success 'note-adopt refuses an option-looking component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --db=/tmp/x
-expect_silent_success 'note-adopt refuses a note with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --component=A "--value=a
+expect_refused 'note-adopt refuses an option-looking component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --db=/tmp/x
+expect_refused 'note-adopt refuses a note with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-adopt "$STUBS/proj" --component=A "--value=a
 b"
 # note-move: the component, where it goes, the author and the kind, --execute last.
 expect_output 'note-move moves a model note' "note-move|$ABS_PROJ|--component=A|--to=B|--author=model|--kind=note|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=B --author=model --kind=note --execute
-expect_silent_success 'note-move refuses no target' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A
-expect_silent_success 'note-move refuses an empty target' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=
-expect_silent_success 'note-move refuses --execute before the author' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=B --execute --author=model
+expect_refused 'note-move refuses no target' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A
+expect_refused 'note-move refuses an empty target' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=
+expect_refused 'note-move refuses --execute before the author' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-move "$STUBS/proj" --component=A --to=B --execute --author=model
 # note-check: the component, the reason or --remove, --execute last.
 expect_output 'note-check flags with a reason' "note-check|$ABS_PROJ|--component=A|--value=still?|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value=still? --execute
 expect_output 'note-check takes the flag back' "note-check|$ABS_PROJ|--component=A|--remove|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --remove --execute
-expect_silent_success 'note-check refuses a reason and a remove' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value=x --remove
-expect_silent_success 'note-check refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --db=/tmp/x
+expect_refused 'note-check refuses a reason and a remove' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --value=x --remove
+expect_refused 'note-check refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-check "$STUBS/proj" --component=A --db=/tmp/x
 # note-confirm: the component, --execute last, nothing else.
 expect_output 'note-confirm confirms a note' "note-confirm|$ABS_PROJ|--component=A|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --execute
-expect_silent_success 'note-confirm refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --value=x
-expect_silent_success 'note-confirm refuses no component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --execute
+expect_refused 'note-confirm refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --value=x
+expect_refused 'note-confirm refuses no component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --execute
 
 # watch: the live watcher, `knossos watch --shared`, with at most its poll interval.
 expect_output 'watch runs the shared watcher on the project' "watch|$ABS_PROJ|--shared|--poll-ms=1500|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=1500
 expect_output 'watch without a poll interval leaves it to the binary' "watch|$ABS_PROJ|--shared|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj"
-expect_silent_success 'watch refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'watch refuses a poll interval that is not a number' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=1e3
-expect_silent_success 'watch refuses an empty poll interval' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=
-expect_silent_success 'watch refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=1 extra
+expect_refused 'watch refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'watch refuses a poll interval that is not a number' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=1e3
+expect_refused 'watch refuses an empty poll interval' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=
+expect_refused 'watch refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" watch "$STUBS/proj" --poll-ms=1 extra
 expect_output 'missing binary says so for a watch' "$NO_BINARY" env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" watch "$STUBS/proj"
 # session-changes: what changed since the session began, read from the scan ledger, with nothing but that snapshot.
 expect_output 'session-changes reads since the snapshot it names' "session-changes|$ABS_PROJ|--since=scan_ab12|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --since=scan_ab12
 expect_output 'session-changes reads the working tree when asked' "session-changes|$ABS_PROJ|--working-tree|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree
-expect_silent_success 'session-changes refuses the working tree with a snapshot' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree --since=s1
-expect_silent_success 'session-changes refuses the working tree with a value' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree=1
-expect_silent_success 'session-changes refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'session-changes refuses a snapshot that is not a plain id' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" '--since=a b'
-expect_silent_success 'session-changes refuses no snapshot' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj"
-expect_silent_success 'session-changes refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --since=s1 --db=/tmp/x
+expect_refused 'session-changes refuses the working tree with a snapshot' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree --since=s1
+expect_refused 'session-changes refuses the working tree with a value' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --working-tree=1
+expect_refused 'session-changes refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'session-changes refuses a snapshot that is not a plain id' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" '--since=a b'
+expect_refused 'session-changes refuses no snapshot' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj"
+expect_refused 'session-changes refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-changes "$STUBS/proj" --since=s1 --db=/tmp/x
 # boundary-couplings: one heat map cell spelled out, by its two boundaries, in that order and nothing else.
 expect_output 'boundary-couplings passes the two boundaries' "boundary-couplings|$ABS_PROJ|--from=namespace:App\\Core|--to=module:hooks (+ts)|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" '--from=namespace:App\Core' '--to=module:hooks (+ts)'
-expect_silent_success 'boundary-couplings refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from=a --db=/tmp/other.sqlite
-expect_silent_success 'boundary-couplings refuses the boundaries swapped' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --to=a --from=b
-expect_silent_success 'boundary-couplings refuses an empty boundary' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from= --to=b
-expect_silent_success 'boundary-couplings refuses a boundary with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from=a "--to=b
+expect_refused 'boundary-couplings refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from=a --db=/tmp/other.sqlite
+expect_refused 'boundary-couplings refuses the boundaries swapped' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --to=a --from=b
+expect_refused 'boundary-couplings refuses an empty boundary' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from= --to=b
+expect_refused 'boundary-couplings refuses a boundary with a line break' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from=a "--to=b
 c"
-expect_silent_success 'boundary-couplings refuses a third argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from=a --to=b --json
+expect_refused 'boundary-couplings refuses a third argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" boundary-couplings "$STUBS/proj" --from=a --to=b --json
 # session-head: the commit the session starts at, with nothing but the project.
 expect_output 'session-head asks for the project alone' "session-head|$ABS_PROJ|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-head "$STUBS/proj"
-expect_silent_success 'session-head refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-head "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'session-head refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-head "$STUBS/proj" --db=/tmp/other.sqlite
 # session-diff: one file's change since that commit, a hex id and a file inside the project, in that order.
 REV=0123456789abcdef0123456789abcdef01234567
 expect_output 'session-diff passes the commit and the file' "session-diff|$ABS_PROJ|--rev=$REV|--file=src/a b.php|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "--rev=$REV" '--file=src/a b.php'
 for bad in '--rev=HEAD' '--rev=' '--rev=abc' "--rev=$REV$REV$REV" '--since=s1'; do
-    expect_silent_success "session-diff refuses $bad" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "$bad" --file=src/a.php
+    expect_refused "session-diff refuses $bad" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "$bad" --file=src/a.php
 done
 for bad in '--file=/etc/passwd' '--file=../x' '--file=src/../../x' '--file=..' '--file=src/..' '--file=--output=x' '--file=' '--db=/tmp/x'; do
-    expect_silent_success "session-diff refuses $bad" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "--rev=$REV" "$bad"
+    expect_refused "session-diff refuses $bad" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "--rev=$REV" "$bad"
 done
-expect_silent_success 'session-diff refuses a third argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "--rev=$REV" --file=a.php extra
-expect_silent_success 'session-diff refuses the file before the commit' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" --file=a.php "--rev=$REV"
+expect_refused 'session-diff refuses a third argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" "--rev=$REV" --file=a.php extra
+expect_refused 'session-diff refuses the file before the commit' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" session-diff "$STUBS/proj" --file=a.php "--rev=$REV"
 expect_output 'missing binary says so for a session diff' "$NO_BINARY" env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" session-diff "$STUBS/proj" "--rev=$REV" --file=a.php
 # The real binary against a real repository: the head it names is the one git has, and a file's diff comes back.
 if command -v git >/dev/null 2>&1 && command -v php >/dev/null 2>&1; then
@@ -351,7 +392,7 @@ expect_output 'container component-detail passes the name intact' "img:1|compone
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" component-detail "$STUBS/proj" 'My Router'
 expect_output 'container graph-search passes a non-ASCII query under the C locale' "img:1|graph-search|$ABS_PROJ|--query=écran|--json|" \
     env LC_ALL=C PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" graph-search "$STUBS/proj" '--query=écran'
-expect_silent_success 'container graph-search refuses 201 non-ASCII characters' \
+expect_refused 'container graph-search refuses 201 non-ASCII characters' \
     env LC_ALL=C PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" graph-search "$STUBS/proj" "--query=${E200}é"
 rm -f "$STUBS/dockerbin/env"
 env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" churn "$STUBS/proj" >/dev/null
@@ -364,7 +405,7 @@ expect_output 'container dashboard keeps its arguments' "img:1|dashboard|$ABS_PR
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" dashboard "$STUBS/proj" --fan-in-threshold=20
 expect_output 'container with a relative project directory mounts and passes the absolute path' "img:1|dashboard|$ABS_PROJ|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh -c "cd '$STUBS' && /bin/sh '$STUBS/container/knossos-run.sh' dashboard proj"
-expect_silent_success 'container component-detail with a name that reads as an option' \
+expect_refused 'container component-detail with a name that reads as an option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" component-detail "$STUBS/proj" -x
 expect_output 'container scan runs the rescan command' "img:1|rescan|$ABS_PROJ|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" scan "$STUBS/proj"
@@ -383,33 +424,33 @@ case "$(cat "$STUBS/dockerbin/flags")" in
     *interactive*init*name=knossos-hook-*|*init*interactive*name=knossos-hook-*) printf 'ok   %s\n' 'container watch runs attached, with --init and a name' ;;
     *) printf 'FAIL %s (flags %s)\n' 'container watch runs attached, with --init and a name' "$(cat "$STUBS/dockerbin/flags")"; failures=$((failures + 1)) ;;
 esac
-expect_silent_success 'container watch refuses another option' env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --db=/tmp/other.sqlite
-expect_silent_success 'container watch refuses a poll interval that is not a number' env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --poll-ms=1e3
-expect_silent_success 'container scan refuses an option' \
+expect_refused 'container watch refuses another option' env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'container watch refuses a poll interval that is not a number' env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" watch "$STUBS/proj" --poll-ms=1e3
+expect_refused 'container scan refuses an option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" scan "$STUBS/proj" --db=/x
 expect_output 'container allow-root grants the root with --execute' "img:1|allow-root|$ABS_PROJ|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" allow-root "$STUBS/proj"
-expect_silent_success 'container allow-root refuses an option' \
+expect_refused 'container allow-root refuses an option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" allow-root "$STUBS/proj" --db=/x
 expect_output 'container file-detail passes the file under the project' "img:1|file-detail|$ABS_PROJ/src/A.php|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-detail "$STUBS/proj" src/A.php
-expect_silent_success 'container file-detail with an absolute path' \
+expect_refused 'container file-detail with an absolute path' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-detail "$STUBS/proj" /etc/passwd
-expect_silent_success 'container component-detail without a name' \
+expect_refused 'container component-detail without a name' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" component-detail "$STUBS/proj"
 expect_output 'container file-context passes the file under the project' "img:1|file-context|$ABS_PROJ/src/A.php|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-context "$STUBS/proj" src/A.php
 # The same `..` guard as the local wrapper. The two cases above prove a valid
 # path reaches docker through this harness, so silence here is the guard's.
 for path in '..' '../x.php' 'src/../../etc/passwd' 'src/..'; do
-    expect_silent_success "container file-detail refuses $path" \
+    expect_refused "container file-detail refuses $path" \
         env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-detail "$STUBS/proj" "$path"
-    expect_silent_success "container file-context refuses $path" \
+    expect_refused "container file-context refuses $path" \
         env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-context "$STUBS/proj" "$path"
 done
 expect_output 'container graph-search passes what was typed' "img:1|graph-search|$ABS_PROJ|--query=dash|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" graph-search "$STUBS/proj" --query=dash
-expect_silent_success 'container graph-search refuses another option' \
+expect_refused 'container graph-search refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" graph-search "$STUBS/proj" --db=/tmp/other.sqlite
 expect_output 'container branch-diff asks for the project alone' "img:1|branch-diff|$ABS_PROJ|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" branch-diff "$STUBS/proj"
@@ -417,19 +458,19 @@ expect_output 'container churn asks for the project alone' "img:1|churn|$ABS_PRO
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" churn "$STUBS/proj"
 expect_output 'container annotate records a confirmed note' "img:1|annotate|$ABS_PROJ|--component=A|--value=n|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --value=n --execute
-expect_silent_success 'container annotate refuses another option' \
+expect_refused 'container annotate refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --value=n --db=/tmp/x
 expect_output 'container annotate removes a model note' "img:1|annotate|$ABS_PROJ|--component=A|--remove|--author=model|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --remove --author=model --execute
 expect_output 'container notes passes the filter' "img:1|notes|$ABS_PROJ|--filter=missing|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" notes "$STUBS/proj" --filter=missing
-expect_silent_success 'container notes refuses another option' \
+expect_refused 'container notes refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" notes "$STUBS/proj" --db=/tmp/x
 expect_output 'container note-adopt records the note' "img:1|note-adopt|$ABS_PROJ|--component=A|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-adopt "$STUBS/proj" --component=A --execute
 expect_output 'container note-move moves the note' "img:1|note-move|$ABS_PROJ|--component=A|--to=B|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-move "$STUBS/proj" --component=A --to=B --execute
-expect_silent_success 'container note-move refuses another option' \
+expect_refused 'container note-move refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-move "$STUBS/proj" --component=A --to=B --db=/tmp/x
 expect_output 'container note-check flags the note' "img:1|note-check|$ABS_PROJ|--component=A|--execute|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" note-check "$STUBS/proj" --component=A --execute
@@ -445,28 +486,34 @@ expect_output 'container session-changes reads since the snapshot it names' "img
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --since=scan_ab12
 expect_output 'container session-changes reads the working tree when asked' "img:1|session-changes|$ABS_PROJ|--working-tree|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --working-tree
-expect_silent_success 'container session-changes refuses the working tree with a snapshot' \
+expect_refused 'container session-changes refuses the working tree with a snapshot' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --working-tree --since=s1
-expect_silent_success 'container session-changes refuses another option' \
+expect_refused 'container session-changes refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-changes "$STUBS/proj" --db=/tmp/other.sqlite
 expect_output 'container boundary-couplings passes the two boundaries' "img:1|boundary-couplings|$ABS_PROJ|--from=Edge|--to=Core|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" boundary-couplings "$STUBS/proj" --from=Edge --to=Core
-expect_silent_success 'container boundary-couplings refuses another option' \
+expect_refused 'container boundary-couplings refuses another option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" boundary-couplings "$STUBS/proj" --from=Edge --db=/tmp/other.sqlite
 expect_output 'container session-head runs as the caller' "user=$ME|img:1|session-head|$ABS_PROJ|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-head "$STUBS/proj"
-expect_silent_success 'container session-head refuses an option' \
+expect_refused 'container session-head refuses an option' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-head "$STUBS/proj" --db=/tmp/other.sqlite
 expect_output 'container session-diff runs as the caller with the commit and the file' "user=$ME|img:1|session-diff|$ABS_PROJ|--rev=$REV|--file=src/a b.php|--json|" \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-diff "$STUBS/proj" "--rev=$REV" '--file=src/a b.php'
 for bad in --file=../a.php --file=/etc/passwd --file=-x --file=a/../../b; do
-    expect_silent_success "container session-diff refuses $bad" env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-diff "$STUBS/proj" "--rev=$REV" "$bad"
+    expect_refused "container session-diff refuses $bad" env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-diff "$STUBS/proj" "--rev=$REV" "$bad"
 done
-expect_silent_success 'container session-diff refuses a commit that is not hex' \
+expect_refused 'container session-diff refuses a commit that is not hex' \
     env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" session-diff "$STUBS/proj" --rev=HEAD~1xxxxxxxxx --file=a.php
 expect_output 'container without docker says so' "$NO_BINARY" \
     env PATH="$STUBS/bare" /bin/sh "$STUBS/container/knossos-run.sh" dashboard "$STUBS/proj"
 printf '#!/bin/sh\nexit 1\n' > "$STUBS/dockerbin-failing"; mkdir -p "$STUBS/dockerfail"; mv "$STUBS/dockerbin-failing" "$STUBS/dockerfail/docker"; chmod +x "$STUBS/dockerfail/docker"
+expect_refused 'container refuses a bound of 0' \
+    env KNOSSOS_RUN_TIMEOUT=0 PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" dashboard "$STUBS/proj"
+expect_refused 'container refuses an unknown subcommand' \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" bogus "$STUBS/proj"
+expect_refused 'container annotate refuses an empty note' \
+    env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" annotate "$STUBS/proj" --component=A --value=
 expect_silent_success 'container with a failing docker stays silent' \
     env PATH="$STUBS/dockerfail:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" dashboard "$STUBS/proj"
 
@@ -549,9 +596,13 @@ expect_no_planted_run() {
             chmod +x "$dir/$tool"
         done
     done
-    "$@" >/dev/null 2>&1
+    # The run must still reach its end and print (the trusted stub's argv, or
+    # no-binary): one cut short before any lookup would leave no marker either.
+    output=$("$@" 2>/dev/null)
     if [ -e "$proj/RAN" ]; then
         printf 'FAIL %s: a program the project ships was executed\n' "$label"; failures=$((failures + 1))
+    elif [ -z "$output" ]; then
+        printf 'FAIL %s: the run printed nothing, so it never got as far as the lookup\n' "$label"; failures=$((failures + 1))
     else
         printf 'ok   %s\n' "$label"
     fi
