@@ -1,0 +1,7 @@
+{
+  // Floors for tests/shell/mutation-gate.sh. The shards beside this file
+  // score MSI 84.21% and covered MSI 88.89%, between these and the next
+  // whole percent above them.
+  minMsi: 80,
+  minCoveredMsi: 85,
+}

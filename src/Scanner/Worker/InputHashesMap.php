@@ -59,7 +59,7 @@ final class InputHashesMap
             try {
                 RelativePath::assertValid($path, self::FIELD . ' key ' . $path);
             } catch (InvalidArgumentException $error) {
-                throw self::invalid($workerId, 'sent ' . lcfirst(rtrim($error->getMessage(), '.')));
+                throw self::invalid($workerId, 'sent ' . rtrim($error->getMessage(), '.'));
             }
             if ($hash !== null && (!is_string($hash) || preg_match('/\A[0-9a-f]{64}\z/', $hash) !== 1)) {
                 throw self::invalid($workerId, sprintf('sent %s for %s that is neither null nor a lowercase SHA-256 hex digest', self::FIELD, $path));

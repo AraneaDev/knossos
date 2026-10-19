@@ -6,6 +6,7 @@ namespace Knossos\Scan;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
+use Knossos\Reconciliation\Milliseconds;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerException;
@@ -598,6 +599,6 @@ final readonly class LanguageScanRunner
     /** Milliseconds since a hrtime() mark, for the stage timings. */
     private static function elapsedMilliseconds(int $startedAt): float
     {
-        return round((hrtime(true) - $startedAt) / 1_000_000, 3);
+        return Milliseconds::since($startedAt);
     }
 }

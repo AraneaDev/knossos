@@ -391,6 +391,59 @@ final class HttpTest extends KnossosTestCase
         assertContains('byte limit', $overCap['body']);
     }
 
+    /** An endpoint built without caps, as the HTTP router builds it, takes a body of one mebibyte and no more. */
+    #[Group('http')]
+    public function testTheDefaultRequestCapIsOneMebibyte(): void
+    {
+        [$endpoint, $headers] = $this->modernEndpoint();
+        $headers['Mcp-Method'] = 'initialize';
+
+        assertSame(200, $endpoint->handle('POST', $headers, self::initializeBodyOfExactly(1_048_576), '127.0.0.1')['status']);
+        assertSame(413, $endpoint->handle('POST', $headers, self::initializeBodyOfExactly(1_048_577), '127.0.0.1')['status']);
+    }
+
+    /** And it answers with up to one mebibyte, replacing anything larger with an error. */
+    #[Group('http')]
+    public function testTheDefaultResponseCapIsOneMebibyte(): void
+    {
+        [, $headers] = $this->modernEndpoint();
+        // The request cap is raised so the request can be as large as the
+        // answer it provokes; only the response cap is left at its default.
+        $endpoint = $this->cappedEndpoint(2_097_152);
+        $headers['Mcp-Method'] = 'tools/call';
+
+        $name = self::paddedToolName(1_048_576, $endpoint, $headers);
+        $atCap = $endpoint->handle('POST', $headers + ['Mcp-Name' => $name], self::unknownToolBody($name), '127.0.0.1');
+        assertSame(1_048_576, strlen($atCap['body']));
+        assertContains('Unknown tool', $atCap['body']);
+
+        $name = self::paddedToolName(1_048_577, $endpoint, $headers);
+        $overCap = $endpoint->handle('POST', $headers + ['Mcp-Name' => $name], self::unknownToolBody($name), '127.0.0.1');
+        assertSame(500, $overCap['status']);
+        assertContains('byte limit', $overCap['body']);
+    }
+
+    /**
+     * A tool name whose unknown-tool answer from this endpoint encodes to
+     * exactly $bytes, measured from the endpoint's own answer to a short name.
+     *
+     * @param array<string, string> $headers
+     */
+    private static function paddedToolName(int $bytes, HttpEndpoint $endpoint, array $headers): string
+    {
+        $probe = $endpoint->handle('POST', $headers + ['Mcp-Name' => 'p'], self::unknownToolBody('p'), '127.0.0.1');
+
+        return str_repeat('p', $bytes - strlen($probe['body']) + 1);
+    }
+
+    private static function unknownToolBody(string $name): string
+    {
+        return json_encode([
+            'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+            'params' => ['name' => $name, 'arguments' => [], '_meta' => ['io.modelcontextprotocol/protocolVersion' => '2026-07-28']],
+        ], JSON_THROW_ON_ERROR);
+    }
+
     private function cappedEndpoint(int $maxRequestBytes): HttpEndpoint
     {
         $pdo = SqliteConnection::open(':memory:');
