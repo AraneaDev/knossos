@@ -13,6 +13,9 @@ use Knossos\Scanner\Worker\WorkerException;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 $separator = array_search('--', $argv, true);
 if ($separator === false || $separator === count($argv) - 1) {
     fwrite(STDERR, "usage: tools/scanner-conformance [--require=capability] -- command [args...]\n");

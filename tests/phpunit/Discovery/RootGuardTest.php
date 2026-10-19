@@ -59,7 +59,7 @@ final class RootGuardTest extends TestCase
         $guard = new RootGuard(allowedRoots: [sys_get_temp_dir()]);
 
         $error = captureThrows(
-            static fn () => $guard->resolve(sys_get_temp_dir() . '/knossos-nonexistent-' . uniqid()),
+            static fn() => $guard->resolve(sys_get_temp_dir() . '/knossos-nonexistent-' . uniqid()),
             DiscoveryException::class,
         );
 
@@ -74,7 +74,7 @@ final class RootGuardTest extends TestCase
         $guard = new RootGuard(allowedRoots: [$this->tempDir]);
 
         $error = captureThrows(
-            static fn () => $guard->resolve($file),
+            static fn() => $guard->resolve($file),
             DiscoveryException::class,
         );
 
@@ -96,11 +96,11 @@ final class RootGuardTest extends TestCase
         $guard = new RootGuard(allowedRoots: [$allowed]);
 
         $absent = captureThrows(
-            static fn () => $guard->resolve($allowed . '/knossos-nonexistent'),
+            static fn() => $guard->resolve($allowed . '/knossos-nonexistent'),
             RootNotFoundException::class,
         );
         $rejected = captureThrows(
-            static fn () => $guard->resolve($outside),
+            static fn() => $guard->resolve($outside),
             DiscoveryException::class,
         );
 
@@ -135,7 +135,7 @@ final class RootGuardTest extends TestCase
         $guard = new RootGuard(allowedRoots: [$allowed]);
 
         $error = captureThrows(
-            static fn () => $guard->resolve($outside),
+            static fn() => $guard->resolve($outside),
             DiscoveryException::class,
         );
 
@@ -157,7 +157,7 @@ final class RootGuardTest extends TestCase
         $guard = new RootGuard(allowedRoots: [$invalidAllowed]);
 
         $error = captureThrows(
-            static fn () => $guard->resolve(sys_get_temp_dir()),
+            static fn() => $guard->resolve(sys_get_temp_dir()),
             DiscoveryException::class,
         );
 

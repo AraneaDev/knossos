@@ -157,7 +157,7 @@ final class RepositoryCheckTest extends KnossosTestCase
 
         try {
             // Split so this file never matches the check it exercises.
-            file_put_contents($file, "const k = `-----BEGIN RSA " . "PRIVATE KEY-----`\n");
+            file_put_contents($file, 'const k = `-----BEGIN RSA ' . "PRIVATE KEY-----`\n");
             [$ignoreExit] = $this->runFixtureCommandOutput(['git', '-C', $root, 'check-ignore', '-q', $file]);
             if ($ignoreExit === 0) {
                 self::markTestSkipped('git ignores the fixture path here, so the walk is not what decides.');
@@ -217,7 +217,7 @@ final class RepositoryCheckTest extends KnossosTestCase
             foreach ($names as $name) {
                 mkdir($dir . '/' . $name, 0o755, true);
                 // Split so this file never matches the check it exercises.
-                file_put_contents($dir . '/' . $name . '/key.ts', "const k = `-----BEGIN RSA " . "PRIVATE KEY-----`\n");
+                file_put_contents($dir . '/' . $name . '/key.ts', 'const k = `-----BEGIN RSA ' . "PRIVATE KEY-----`\n");
             }
             // GIT_DIR pointing nowhere makes `git check-ignore` fail, so the
             // checker fails open exactly as it does in a gitless checkout.

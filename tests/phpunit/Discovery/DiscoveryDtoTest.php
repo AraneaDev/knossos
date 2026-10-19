@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Discovery;
 
-use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\DiscoveredFile;
+use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Discovery\JsonConfig;
 use Knossos\Discovery\ProjectUnit;

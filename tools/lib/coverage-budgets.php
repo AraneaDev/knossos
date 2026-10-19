@@ -31,6 +31,16 @@ const COVERAGE_FLOOR_KEYS = [
 ];
 
 /**
+ * The most PHPUnit tests a coverage run may skip, by key.
+ *
+ * Not a percentage: a count, compared with the skipped tests in the run's JUnit
+ * logs (tools/coverage-merge.php). A test that skips itself when a tool or a
+ * permission is missing passes without asserting anything, and nothing used to
+ * count them, so a suite could lose whole branches to skips and stay green.
+ */
+const SKIPPED_TESTS_KEY = 'skipped_tests';
+
+/**
  * Why the coverage budgets cannot be enforced as they stand; empty when they can.
  *
  * Every floor is a percentage, so a JSON number from 0 to 100. With
@@ -53,6 +63,14 @@ function coverageBudgetErrors(mixed $budgets, ?array $measuredComponents): array
         if ($error !== null) {
             $errors[] = $error;
         }
+    }
+    $skipped = budgetAt($budgets, SKIPPED_TESTS_KEY);
+    $error = budgetNumberError(SKIPPED_TESTS_KEY, $skipped, 0.0);
+    if ($error === null && !is_int($skipped)) {
+        $error = sprintf('%s is %s; it must be a whole number of tests.', SKIPPED_TESTS_KEY, json_encode($skipped));
+    }
+    if ($error !== null) {
+        $errors[] = $error;
     }
     $components = budgetAt($budgets, 'php.components');
     if (!is_array($components) || ($components !== [] && array_is_list($components))) {

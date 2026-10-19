@@ -91,14 +91,14 @@ export const RANKING = {
 } as const
 
 /** The glyph in each card's title. A card icon is never a row mark, apart from {@link SHARED}. */
-export const CARD_ICON: Readonly<Record<string, string>> = {
+export const CARD_ICON = {
   look: '◬', turn: '▤', top: '◎', hubs: '◎', files: '≡', map: '▦', bounds: '▦', 'bounds-list': '▥', focus: '◈',
   coupling: '⇄', cycles: '↻', 'cycle-members': '↻', 'cycle-diagram': '↻', hood: '⇄', policy: '!', diag: '!', dead: '!',
   hotspots: '!', branch: '⎇', crossing: '⇄', 'branch-cycles': '↻', grown: '◎', 'branch-dead': '!', 'branch-policy': '!',
   'branch-files': '≡', find: '⌕', budget: '!', churn: '≡', 'churn-plot': '∴', 'churn-list': '≡', rings: '◎', route: '⇢',
   'route-others': '⇢', flows: '⇄', changes: '±', tests: '✓', trend: '∿', detail: '◇', used: '←', uses: '→', deps: '←', comps: '→',
   notes: '✎', diff: '±', drift: 'Δ', session: '±', composition: '▥', concentration: '◎', health: '∿',
-}
+} as const satisfies Readonly<Record<string, string>>
 
 /** Glyphs in two families on purpose, because there they say the same thing: ok and tested, a warning and untested, a change, a cycle. */
 export const SHARED: ReadonlyArray<string> = ['✓', '▲', '±', '↻']

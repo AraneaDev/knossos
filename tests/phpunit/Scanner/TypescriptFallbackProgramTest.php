@@ -84,7 +84,7 @@ final class TypescriptFallbackProgramTest extends KnossosTestCase
         foreach ($contributions as $contribution) {
             self::assertInstanceOf(ScanContribution::class, $contribution);
             foreach ($contribution->diagnostics as $diagnostic) {
-                $codes[$diagnostic->evidence->relativePath ?? ""][] = $diagnostic->code;
+                $codes[$diagnostic->evidence->relativePath ?? ''][] = $diagnostic->code;
             }
         }
         ksort($codes);

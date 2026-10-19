@@ -17,6 +17,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/lib/coverage-budgets.php';
 
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
+$argc = count($argv);
 if ($argc !== 2) {
     fwrite(STDERR, "usage: php tools/check-coverage-budgets.php FILE\n");
     exit(2);

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
-use Knossos\Query\QueryBounds;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\QueryBounds;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 

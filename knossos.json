@@ -1,7 +1,7 @@
 {
   "$schema": "./schemas/project-config-v1.schema.json",
   "version": 1,
-  "ignores": ["tests/Fixtures"],
+  "ignores": ["tests/Fixtures", "tools/claude-code-api"],
   "boundaries": [
     {
       "name": "core",

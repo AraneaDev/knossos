@@ -9,17 +9,18 @@ use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Mcp\McpServerAssembly;
 use Knossos\Query\LedgeredScanner;
-use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
+use Knossos\Scan\ScanLedger;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertNotFalse;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Every writer a session can meet records its scans in the scan ledger: the

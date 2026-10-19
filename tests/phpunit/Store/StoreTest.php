@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Store;
 
+use InvalidArgumentException;
 use Knossos\Discovery\FileFingerprint;
+use Knossos\Store\GraphRepository;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
-use Knossos\Store\GraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
-use InvalidArgumentException;
 use ReflectionProperty;
 use RuntimeException;
 

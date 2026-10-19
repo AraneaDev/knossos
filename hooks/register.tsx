@@ -154,7 +154,7 @@ export const register: Register = (on, options) => {
    * was denied or failed answered nothing, so it neither starts, counts toward nor answers a dig. The reminder takes
    * no slot of the turn's note cap: it comes once a turn at most, and a capped one would be lost for the whole turn.
    */
-  const dug = <R extends { deny?: unknown; isError?: boolean; context?: string[] }>(e: { tool: string; agentId?: string }, ran: R): R => {
+  const dug = <R extends { deny?: unknown; isError?: boolean; context?: readonly string[] }>(e: { tool: string; agentId?: string }, ran: R): R => {
     if (mod.disabled || !mod.notesOn || ran.deny !== undefined || ran.isError === true) return ran
     const loop = e.agentId ?? ''
     const seen = observe(mod.digs.get(loop) ?? freshDig(), e.tool, e)

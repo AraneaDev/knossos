@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Cli;
 
-use Knossos\Scan\ProjectScanService;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliCommandRouter;
 use Knossos\Cli\CliHelpRenderer;
@@ -12,16 +11,18 @@ use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\BriefCommand;
 use Knossos\Runtime\RuntimeFactory;
+use Knossos\Scan\ProjectScanService;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertIsList;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The two commands a Claude Code mod calls after every turn: both exit 0
@@ -602,8 +603,8 @@ final class BriefCommandTest extends KnossosTestCase
     public function testFileDetailNeverCreatesADatabase(): void
     {
         $directory = $this->temporaryDirectory();
-        file_put_contents($directory . '/a.php', "<?php
-");
+        file_put_contents($directory . '/a.php', '<?php
+');
         $router = new CliCommandRouter(self::repositoryRoot(), new CliOptionParser(), new CliHelpRenderer(), 'test');
         try {
             ob_start();

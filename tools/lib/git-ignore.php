@@ -118,7 +118,8 @@ function gitIgnoreExchange(mixed $stdin, mixed $stdout, string $input): string
                 }
             }
         }
-        if ($read !== []) {
+        // stream_select() empties $read when only the write side is ready.
+        if (in_array($stdout, $read, true)) {
             $chunk = fread($stdout, 65536);
             if ($chunk === false || ($chunk === '' && feof($stdout))) {
                 break;

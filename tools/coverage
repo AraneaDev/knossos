@@ -205,6 +205,8 @@ case "$mode" in
         check_budgets
         prepare
         run_suite
+        # A sharded run's skips are counted by the merge; an unsharded one's here.
+        php "$tools/skipped-tests.php" --budgets="$budgets" coverage/junit.xml
         report
         ;;
 esac

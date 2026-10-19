@@ -12,14 +12,15 @@ use Knossos\Query\DashboardService;
 use Knossos\Runtime\MemoryLimit;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertGreaterThanOrEqual;
 use function PHPUnit\Framework\assertLessThanOrEqual;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 /**
  * One cell of the boundary heat map spelled out: the component pairs behind

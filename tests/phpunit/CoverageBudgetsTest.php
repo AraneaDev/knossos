@@ -21,6 +21,7 @@ final class CoverageBudgetsTest extends KnossosTestCase
 {
     /** A complete budget file for a run that measured the storage and transport components. */
     private const VALID = [
+        'skipped_tests' => 4,
         'php' => ['aggregate_lines' => 50, 'components' => ['storage' => 50, 'transport' => 49.5]],
         'typescript' => ['lines' => 96.0, 'branches' => 88.8, 'functions' => 97.3, 'statements' => 96.0],
         'python' => ['lines' => 96.4],
@@ -98,6 +99,30 @@ final class CoverageBudgetsTest extends KnossosTestCase
     {
         $budgets = self::VALID;
         $budgets['typescript']['lines'] = $floor;
+
+        assertSame([$error], \coverageBudgetErrors($budgets, self::MEASURED));
+    }
+
+    /** @return iterable<string, array{mixed, string}> */
+    public static function unusableSkipBudgets(): iterable
+    {
+        yield 'missing' => [null, 'skipped_tests is missing.'];
+        yield 'negative' => [-1, 'skipped_tests is -1; it must be at least 0.'];
+        yield 'a fraction' => [1.5, 'skipped_tests is 1.5; it must be a whole number of tests.'];
+        yield 'a numeric string' => ['4', 'skipped_tests is "4"; it must be a number.'];
+        yield 'NaN' => [NAN, 'skipped_tests is not a finite number.'];
+    }
+
+    /** The skip budget is a count of tests, so it must be a whole number from 0 up. */
+    #[DataProvider('unusableSkipBudgets')]
+    public function testASkipBudgetThatCannotActIsRefused(mixed $budget, string $error): void
+    {
+        $budgets = self::VALID;
+        if ($budget === null) {
+            unset($budgets['skipped_tests']);
+        } else {
+            $budgets['skipped_tests'] = $budget;
+        }
 
         assertSame([$error], \coverageBudgetErrors($budgets, self::MEASURED));
     }

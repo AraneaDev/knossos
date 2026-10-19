@@ -9,13 +9,13 @@ use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Watch\ProcessScanner;
 use Knossos\Watch\ScanTimeoutException;
-use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertLessThan;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The watcher's scan processes are bounded: a scan past its time limit, or

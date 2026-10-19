@@ -79,7 +79,7 @@ final class DiscoveryResultTest extends TestCase
             configurationHash: 'h',
         );
 
-        assertSame(['a', 'b', 'c'], array_map(static fn (DiscoveredFile $f): string => $f->relativePath, $result->files));
+        assertSame(['a', 'b', 'c'], array_map(static fn(DiscoveredFile $f): string => $f->relativePath, $result->files));
     }
 
     public function testClassIsFinalAndReadonly(): void

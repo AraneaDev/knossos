@@ -6,7 +6,6 @@ namespace Knossos\Tests\Phpunit\Scanner\Protocol;
 
 use InvalidArgumentException;
 use Knossos\Scanner\Protocol\Evidence;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 

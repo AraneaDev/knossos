@@ -24,7 +24,7 @@ final class WatchScanAttemptTest extends TestCase
 
     private static function successfulScanner(): ProjectScanner
     {
-        return new class () implements ProjectScanner {
+        return new class implements ProjectScanner {
             public function scan(
                 string $root,
                 ?string $name = null,
@@ -45,9 +45,7 @@ final class WatchScanAttemptTest extends TestCase
     private static function throwingScanner(\Throwable $error): ProjectScanner
     {
         return new class ($error) implements ProjectScanner {
-            public function __construct(private \Throwable $error)
-            {
-            }
+            public function __construct(private \Throwable $error) {}
 
             public function scan(
                 string $root,
@@ -106,7 +104,7 @@ final class WatchScanAttemptTest extends TestCase
 
     public function testRunReturnsCancelledWithoutCallingScannerWhenTokenAlreadyCancelled(): void
     {
-        $doesNotMatter = new class () implements ProjectScanner {
+        $doesNotMatter = new class implements ProjectScanner {
             public int $invocations = 0;
 
             public function scan(

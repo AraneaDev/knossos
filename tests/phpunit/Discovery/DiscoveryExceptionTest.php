@@ -52,7 +52,7 @@ final class DiscoveryExceptionTest extends TestCase
         $previous = new \LogicException('boom');
 
         $error = captureThrows(
-            static fn () => throw new DiscoveryException('wrap', 7, $previous),
+            static fn() => throw new DiscoveryException('wrap', 7, $previous),
             DiscoveryException::class,
         );
 

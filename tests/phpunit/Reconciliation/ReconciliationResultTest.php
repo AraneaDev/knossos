@@ -38,7 +38,7 @@ final class ReconciliationResultTest extends TestCase
         // reordering any of the fields would change this canonical list.
         assertSame(
             ['projectId', 'scanId', 'files', 'nodes', 'edges', 'diagnostics', 'unresolvedNodes', 'phaseMilliseconds'],
-            array_map(static fn (ReflectionProperty $p): string => $p->getName(), self::publicProperties()),
+            array_map(static fn(ReflectionProperty $p): string => $p->getName(), self::publicProperties()),
         );
     }
 
@@ -46,7 +46,7 @@ final class ReconciliationResultTest extends TestCase
     {
         $expected = ['string', 'string', 'int', 'int', 'int', 'int', 'int', 'array'];
         $actual = array_map(
-            static fn (ReflectionProperty $p): string => (string) $p->getType(),
+            static fn(ReflectionProperty $p): string => (string) $p->getType(),
             self::publicProperties(),
         );
         // Kills type mutations on any promoted parameter (e.g. int → float).

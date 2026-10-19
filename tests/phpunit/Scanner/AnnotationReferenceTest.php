@@ -65,7 +65,7 @@ final class AnnotationReferenceTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
             $targets = $pdo->query(
-                "SELECT t.canonical_name FROM edges e JOIN nodes t ON t.id = e.target_id " .
+                'SELECT t.canonical_name FROM edges e JOIN nodes t ON t.id = e.target_id ' .
                 "WHERE e.kind = 'references' AND t.canonical_name LIKE 'App\\Behavior\\%' ORDER BY 1",
             )->fetchAll(\PDO::FETCH_COLUMN);
 

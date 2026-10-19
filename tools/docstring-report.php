@@ -37,6 +37,9 @@ require __DIR__ . '/lib/budget-numbers.php';
 // --root is the tree measured, this checkout when it is not given; --budgets the
 // floors, the root's maintainability-budgets.json when it is not given.
 $budgetPath = null;
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
         $root = rtrim(substr($argument, strlen('--root=')), '/');

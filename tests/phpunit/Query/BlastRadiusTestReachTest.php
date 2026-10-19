@@ -7,9 +7,10 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\BlastRadiusService;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Whether a ring's component is tested does not depend on how far out the

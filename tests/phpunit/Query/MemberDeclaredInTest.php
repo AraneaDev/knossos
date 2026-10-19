@@ -7,10 +7,11 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayNotHasKey;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Rust names a method after its type, so a method an impl block in another

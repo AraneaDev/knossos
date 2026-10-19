@@ -9,10 +9,11 @@ use Knossos\Query\ChangeImpactQueryService;
 use Knossos\Query\FileTestReach;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * How many tests reach each changed file, one file at a time: a count only

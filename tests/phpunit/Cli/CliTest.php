@@ -7,7 +7,6 @@ namespace Knossos\Tests\Phpunit\Cli;
 use InvalidArgumentException;
 use Knossos\Application;
 use Knossos\Cli\CliErrorRenderer;
-use Knossos\Cli\CliHelpRenderer;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Discovery\DiscoveryException;
@@ -134,7 +133,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->parse(['--=value']),
+            static fn() => $parser->parse(['--=value']),
             InvalidArgumentException::class,
         );
     }
@@ -206,7 +205,7 @@ final class CliTest extends KnossosTestCase
 
         $parser->validate(['json' => ['true'], 'limit' => ['10']], ['json', 'limit']);
         assertThrows(
-            static fn () => $parser->validate(['jsonn' => ['true']], ['json', 'limit']),
+            static fn() => $parser->validate(['jsonn' => ['true']], ['json', 'limit']),
             InvalidArgumentException::class,
         );
     }
@@ -235,7 +234,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->single(['name' => ['a', 'b']], 'name'),
+            static fn() => $parser->single(['name' => ['a', 'b']], 'name'),
             InvalidArgumentException::class,
         );
     }
@@ -246,7 +245,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->single(['name' => ['']], 'name'),
+            static fn() => $parser->single(['name' => ['']], 'name'),
             InvalidArgumentException::class,
         );
     }
@@ -291,7 +290,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->integer(['limit' => ['0']], 'limit', 5, 1, 100),
+            static fn() => $parser->integer(['limit' => ['0']], 'limit', 5, 1, 100),
             InvalidArgumentException::class,
         );
     }
@@ -302,7 +301,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->integer(['limit' => ['101']], 'limit', 5, 1, 100),
+            static fn() => $parser->integer(['limit' => ['101']], 'limit', 5, 1, 100),
             InvalidArgumentException::class,
         );
     }
@@ -313,7 +312,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->integer(['limit' => ['not-a-number']], 'limit', 5, 1, 100),
+            static fn() => $parser->integer(['limit' => ['not-a-number']], 'limit', 5, 1, 100),
             InvalidArgumentException::class,
         );
     }
@@ -324,7 +323,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->integer(['limit' => ['3.14']], 'limit', 5, 1, 100),
+            static fn() => $parser->integer(['limit' => ['3.14']], 'limit', 5, 1, 100),
             InvalidArgumentException::class,
         );
     }
@@ -376,7 +375,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->boundaries(['name:path']),
+            static fn() => $parser->boundaries(['name:path']),
             InvalidArgumentException::class,
         );
     }
@@ -387,7 +386,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->boundaries([':path:src/']),
+            static fn() => $parser->boundaries([':path:src/']),
             InvalidArgumentException::class,
         );
     }
@@ -398,7 +397,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->boundaries(['name:path:']),
+            static fn() => $parser->boundaries(['name:path:']),
             InvalidArgumentException::class,
         );
     }
@@ -409,7 +408,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->boundaries(['name:unknown:prefix']),
+            static fn() => $parser->boundaries(['name:unknown:prefix']),
             InvalidArgumentException::class,
         );
     }
@@ -420,7 +419,7 @@ final class CliTest extends KnossosTestCase
         $parser = new CliOptionParser();
 
         assertThrows(
-            static fn () => $parser->boundaries(['name:Path:src/']),
+            static fn() => $parser->boundaries(['name:Path:src/']),
             InvalidArgumentException::class,
         );
     }
@@ -731,7 +730,7 @@ final class CliTest extends KnossosTestCase
     public function testInputLoaderPoliciesRejectsMissingFile(): void
     {
         assertThrows(
-            static fn () => (new CliInputLoader())->policies('/nonexistent/policies.json'),
+            static fn() => (new CliInputLoader())->policies('/nonexistent/policies.json'),
             InvalidArgumentException::class,
         );
     }
@@ -743,7 +742,7 @@ final class CliTest extends KnossosTestCase
         file_put_contents($path, str_repeat('x', 1_000_001));
 
         assertThrows(
-            static fn () => (new CliInputLoader())->policies($path),
+            static fn() => (new CliInputLoader())->policies($path),
             InvalidArgumentException::class,
         );
         unlink($path);
@@ -768,7 +767,7 @@ final class CliTest extends KnossosTestCase
         file_put_contents($path, json_encode([1, 2, 3]));
 
         assertThrows(
-            static fn () => (new CliInputLoader())->jsonObject($path),
+            static fn() => (new CliInputLoader())->jsonObject($path),
             InvalidArgumentException::class,
         );
         unlink($path);
@@ -794,7 +793,7 @@ final class CliTest extends KnossosTestCase
         file_put_contents($path, str_repeat('x', 10_000_001));
 
         assertThrows(
-            static fn () => (new CliInputLoader())->bundle($path),
+            static fn() => (new CliInputLoader())->bundle($path),
             InvalidArgumentException::class,
         );
         unlink($path);

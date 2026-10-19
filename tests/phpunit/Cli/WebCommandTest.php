@@ -5,18 +5,19 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Cli;
 
 use Knossos\Cli\CliCommandContext;
+use Knossos\Cli\CliHelpRenderer;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\CliCommandSet;
 use Knossos\Cli\Command\WebCommand;
-use Knossos\Cli\CliHelpRenderer;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** `web`: the pane in a browser tab, which Node serves; the command checks Node and hands over to it. */
 final class WebCommandTest extends KnossosTestCase

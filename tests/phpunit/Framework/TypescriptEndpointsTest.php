@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Framework;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayHasKey;
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The URLs a TypeScript caller requests become `endpoint` nodes carrying the

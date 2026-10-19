@@ -6,9 +6,10 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\JsTestRunner;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A JavaScript test is run by the runner its nearest package.json names:

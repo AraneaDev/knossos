@@ -104,7 +104,7 @@ final class PythonFrameworkRoleRuleTest extends TestCase
         $facts = (new PythonFrameworkRoleRule())->classify($node);
 
         assertSame(2, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('django.model', $roles);
         assertArrayContains('python.task', $roles);
     }

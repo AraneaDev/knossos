@@ -7,10 +7,11 @@ namespace Knossos\Tests\Phpunit\Scan;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A request travels from the code that makes it, through the route that

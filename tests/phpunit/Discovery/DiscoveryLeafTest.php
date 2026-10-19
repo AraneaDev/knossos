@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Discovery;
 
 use InvalidArgumentException;
+use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\DiscoveryDiagnostic;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\DiscoveryResult;
-use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\ProjectUnit;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;

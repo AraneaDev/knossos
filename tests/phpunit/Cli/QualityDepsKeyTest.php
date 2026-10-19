@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Cli;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 use function PHPUnit\Framework\assertArrayHasKey;
 use function PHPUnit\Framework\assertMatchesRegularExpression;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
+use RuntimeException;
 
 /**
  * CI publishes the quality image's dependency stages once per value of

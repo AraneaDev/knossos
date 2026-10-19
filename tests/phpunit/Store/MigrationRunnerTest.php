@@ -102,7 +102,7 @@ final class MigrationRunnerTest extends TestCase
         $pdo->exec("UPDATE schema_migrations SET checksum = 'deadbeef' WHERE version = '001_create_a'");
 
         $error = captureThrows(
-            static fn () => $runner->migrate(),
+            static fn() => $runner->migrate(),
             RuntimeException::class,
         );
 
@@ -117,7 +117,7 @@ final class MigrationRunnerTest extends TestCase
         $target = sys_get_temp_dir() . '/knossos-does-not-exist-' . uniqid('', true);
 
         $error = captureThrows(
-            static fn () => (new MigrationRunner($pdo, $target))->migrate(),
+            static fn() => (new MigrationRunner($pdo, $target))->migrate(),
             RuntimeException::class,
         );
 
@@ -340,7 +340,7 @@ final class MigrationRunnerTest extends TestCase
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $error = captureThrows(
-            fn () => (new MigrationRunner($pdo, $this->tempDir))->migrate(),
+            fn() => (new MigrationRunner($pdo, $this->tempDir))->migrate(),
             RuntimeException::class,
         );
 
@@ -367,7 +367,7 @@ final class MigrationRunnerTest extends TestCase
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $error = captureThrows(
-            fn () => (new MigrationRunner($pdo, $this->tempDir))->migrate(),
+            fn() => (new MigrationRunner($pdo, $this->tempDir))->migrate(),
             RuntimeException::class,
         );
 

@@ -9,7 +9,6 @@ use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\DiscoveryDiagnostic;
 use Knossos\Discovery\DiscoveryResult;
 use Knossos\Reconciliation\ReconciliationResult;
-use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\LanguageScanResult;
 use Knossos\Scan\ScanPlan;
 use Knossos\Scan\ScanPreparation;

@@ -13,7 +13,6 @@ use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\ContributionDecoder;
 use Knossos\Scanner\Worker\WorkerException;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 

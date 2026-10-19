@@ -8,9 +8,10 @@ use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A project file no worker scans, such as a shell script, is a `file`

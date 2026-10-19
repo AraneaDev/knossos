@@ -102,7 +102,7 @@ final class MoveProjectToolTest extends KnossosTestCase
         $oldId = StableId::project('root:' . self::OLD_ROOT);
         (new SqliteGraphRepository($pdo))->saveProject($oldId, 'project', self::OLD_ROOT);
         $pdo->prepare(
-            "INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) " .
+            'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
             "VALUES (:project, 'App\\A', 'note', 'v', 'model', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
         )->execute(['project' => $oldId]);
         $newRoot = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));

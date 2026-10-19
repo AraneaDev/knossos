@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
+$argc = count($argv);
 if ($argc !== 4) {
     fwrite(STDERR, "usage: supply-chain-report.php RUNTIME_ID QUALITY_ID OUTPUT\n");
     exit(2);

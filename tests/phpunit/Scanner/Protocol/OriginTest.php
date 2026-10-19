@@ -30,7 +30,7 @@ final class OriginTest extends TestCase
     public static function originCaseProvider(): array
     {
         return array_map(
-            static fn (Origin $case): array => [$case],
+            static fn(Origin $case): array => [$case],
             Origin::cases(),
         );
     }

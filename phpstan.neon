@@ -1,10 +1,9 @@
 parameters:
     level: 5
-    paths:
-        - src
-        - bin
-        - workers/php/src
-        - tests/phpunit
+    # No `paths`: tools/quality hands PHPStan every PHP file git tracks, from
+    # tools/lint-files.txt, so a new tool or test is analysed from the commit
+    # that adds it. Run it the same way:
+    #   php tools/lint-files.php --run=php -- vendor/bin/phpstan analyse
     # The global assertion helpers the PHPUnit bootstrap loads, and the tools
     # library a test requires at runtime.
     bootstrapFiles:
@@ -15,9 +14,6 @@ parameters:
         - tools/lib/budget-numbers.php
         - tools/lib/coverage-budgets.php
         - tools/lib/benchmark-budgets.php
-    excludePaths:
-        analyse:
-            - bin/knossos
     tmpDir: /tmp/knossos-phpstan
     reportUnmatchedIgnoredErrors: true
     treatPhpDocTypesAsCertain: false

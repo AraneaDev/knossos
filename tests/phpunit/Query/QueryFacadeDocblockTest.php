@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
+
+use function PHPUnit\Framework\assertSame;
+
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
-
-use function PHPUnit\Framework\assertSame;
 
 /**
  * The query facade's methods carry one docblock each, so a static analyser

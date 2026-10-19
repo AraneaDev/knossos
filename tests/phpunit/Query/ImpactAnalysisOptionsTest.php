@@ -16,12 +16,13 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
 use Knossos\Tests\Phpunit\Support\QueryCountingStatement;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayNotHasKey;
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertNotContains;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The options the pane's rings needed, on the core query the agent uses:

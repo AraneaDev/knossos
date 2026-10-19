@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Store;
 
-use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;

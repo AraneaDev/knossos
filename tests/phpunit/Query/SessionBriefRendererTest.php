@@ -578,7 +578,13 @@ final class SessionBriefRendererTest extends TestCase
     public function testTheCheckLineStaysUnderATightBudgetAndNamesFive(): void
     {
         $brief = new SessionBrief(
-            'stale', 'project_1b4f41', 'Knossos-MCP', '/root/Knossos-MCP', 3600, 3, 402,
+            'stale',
+            'project_1b4f41',
+            'Knossos-MCP',
+            '/root/Knossos-MCP',
+            3600,
+            3,
+            402,
             [str_repeat('core -x-> php-worker, ', 200)],
             [str_repeat('a long note ', 300)],
             checks: ['App\\A', 'App\\B', 'App\\C', 'App\\D', 'App\\E', 'App\\F'],

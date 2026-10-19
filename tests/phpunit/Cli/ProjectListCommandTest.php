@@ -193,8 +193,8 @@ final class ProjectListCommandTest extends KnossosTestCase
         $pdo = $this->pdo();
         [, $repository, $ids] = $this->storeFixture(null, $pdo);
         $pdo->prepare(
-            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10050) "
-            . "INSERT INTO diagnostics (id, project_id, scan_id, file_id, severity, code, message, start_line, end_line, owner_key) "
+            'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10050) '
+            . 'INSERT INTO diagnostics (id, project_id, scan_id, file_id, severity, code, message, start_line, end_line, owner_key) '
             . "SELECT 'd' || i, ?, ?, ?, 'warning', 'W', 'w', i, i, 'test' FROM n",
         )->execute([$ids['project'], $ids['scan'], $ids['file']]);
         $repository->completeScan($ids['project'], $ids['scan']);

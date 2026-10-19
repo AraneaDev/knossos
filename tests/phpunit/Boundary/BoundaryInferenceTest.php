@@ -147,11 +147,11 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $namespaces = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'namespace:')));
+        $namespaces = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'namespace:')));
         assertSame(1, count($namespaces));
         assertSame('namespace:App', $namespaces[0]->name);
         // Source produces matcher value "App" . "\\" = "App\" (4 chars).
-        assertSame(['type' => 'namespace_prefix', 'value' => "App\\"], $namespaces[0]->matcher);
+        assertSame(['type' => 'namespace_prefix', 'value' => 'App\\'], $namespaces[0]->matcher);
         assertSame(['php:class:App\\Checkout\\Service'], $namespaces[0]->nodeReferences);
     }
 
@@ -162,7 +162,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $namespaces = array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'namespace:'));
+        $namespaces = array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'namespace:'));
         assertSame([], $namespaces);
     }
 
@@ -173,7 +173,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $modules = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'module:')));
+        $modules = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'module:')));
         assertSame(1, count($modules));
         $module = $modules[0];
         assertSame('module:packages', $module->name);
@@ -187,7 +187,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $modules = array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'module:'));
+        $modules = array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'module:'));
         assertSame([], $modules);
     }
 
@@ -198,7 +198,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $pkgs = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'python-package:')));
+        $pkgs = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'python-package:')));
         assertSame(1, count($pkgs));
         $pkg = $pkgs[0];
         assertSame('python-package:shop', $pkg->name);
@@ -213,7 +213,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $pkgs = array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'python-package:'));
+        $pkgs = array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'python-package:'));
         assertSame([], $pkgs);
     }
 
@@ -235,7 +235,7 @@ final class BoundaryInferenceTest extends TestCase
 
         // Explicit rules carry 'display' = $rule['name'], so BoundaryFact name uses that
         // fallback (display key wins over the 'explicit:' keyed name).
-        $exact = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'payments'));
+        $exact = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'payments'));
         assertSame(1, count($exact));
         assertSame('explicit', $exact[0]->source);
         assertSame(['type' => 'path_prefix', 'value' => 'src/payments/'], $exact[0]->matcher);
@@ -257,21 +257,21 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, $explicit);
 
-        $engines = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'engines'));
+        $engines = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'engines'));
         assertSame(1, count($engines));
         assertSame(['ts:class:src/engines/rust.ts#RustEngine'], $engines[0]->nodeReferences);
     }
 
     public function testInferWithExplicitNamespacePrefixCreatesExplicitBoundary(): void
     {
-        $explicit = [['name' => 'checkout', 'namespace_prefix' => "App\\Checkout\\"]];
+        $explicit = [['name' => 'checkout', 'namespace_prefix' => 'App\\Checkout\\']];
 
         $facts = (new BoundaryInference())->infer([], [], $explicit);
 
-        $exact = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'checkout'));
+        $exact = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'checkout'));
         assertSame(1, count($exact));
         // Source applies ltrim(..., '\\') to the namespace_prefix, removing leading backslashes.
-        assertSame(['type' => 'namespace_prefix', 'value' => "App\\Checkout\\"], $exact[0]->matcher);
+        assertSame(['type' => 'namespace_prefix', 'value' => 'App\\Checkout\\'], $exact[0]->matcher);
     }
 
     public function testInferWithExplicitBoundaryWithoutPrefixThrows(): void
@@ -329,7 +329,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, []);
 
-        $ns = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'namespace:App'));
+        $ns = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'namespace:App'));
         assertSame(1, count($ns));
         assertSame(['php:class:App\\Foo'], $ns[0]->nodeReferences);
     }
@@ -383,7 +383,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer($units, [$this->makeContribution([$node])], []);
 
-        $python = array_values(array_filter($facts, static fn (BoundaryFact $fact): bool => $fact->name === 'python:acme/py'));
+        $python = array_values(array_filter($facts, static fn(BoundaryFact $fact): bool => $fact->name === 'python:acme/py'));
         assertSame(1, count($python));
         assertSame('python:acme/py', $python[0]->identityName);
     }
@@ -399,7 +399,7 @@ final class BoundaryInferenceTest extends TestCase
         $facts = (new BoundaryInference())->infer($units, [], $explicit);
 
         assertSame(2, count($facts));
-        $inferred = array_values(array_filter($facts, static fn (BoundaryFact $fact): bool => $fact->source === 'inferred'));
+        $inferred = array_values(array_filter($facts, static fn(BoundaryFact $fact): bool => $fact->source === 'inferred'));
         assertSame(1, count($inferred));
         assertSame('composer:vendor/app (+node:web-app)', $inferred[0]->name);
     }
@@ -499,7 +499,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer($units, [], []);
 
-        $names = array_map(static fn (BoundaryFact $f): string => $f->name, $facts);
+        $names = array_map(static fn(BoundaryFact $f): string => $f->name, $facts);
         // Key order is "composer:a-dir/composer.json" before "composer:b-dir/composer.json",
         // so the a-dir unit's boundary (declared name "zzz-package") comes first even
         // though it was declared second and its name sorts after "aaa-package".
@@ -514,12 +514,12 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer($units, $contributions, []);
 
-        $composer = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => str_starts_with($f->name, 'composer:')));
+        $composer = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => str_starts_with($f->name, 'composer:')));
         assertSame(1, count($composer));
         assertSame(['php:class:App\\Payments\\Charge'], $composer[0]->nodeReferences);
 
         // The namespace:App boundary should ALSO contain the node.
-        $namespaces = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'namespace:App'));
+        $namespaces = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'namespace:App'));
         assertSame(1, count($namespaces));
         assertSame(['php:class:App\\Payments\\Charge'], $namespaces[0]->nodeReferences);
     }
@@ -534,7 +534,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], [], $explicit);
 
-        $exact = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'platform'));
+        $exact = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'platform'));
         assertSame(1, count($exact));
         $value = $exact[0]->matcher['value'];
         // Backslashes in the input are converted to slashes by pathPrefix().
@@ -544,13 +544,13 @@ final class BoundaryInferenceTest extends TestCase
 
     public function testInferNamespaceMatchingUsesBackslashTrimmedPrefix(): void
     {
-        $explicit = [['name' => 'trim-check', 'namespace_prefix' => "\\App\\Checkout\\"]];
+        $explicit = [['name' => 'trim-check', 'namespace_prefix' => '\\App\\Checkout\\']];
         $node = $this->makeNode('php:class:App\\Checkout\\Service', 'App\\Checkout\\Service', 'src/Checkout/Service.php');
         $contributions = [$this->makeContribution([$node])];
 
         $facts = (new BoundaryInference())->infer([], $contributions, $explicit);
 
-        $exact = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'trim-check'));
+        $exact = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'trim-check'));
         assertSame(1, count($exact));
         assertSame(['php:class:App\\Checkout\\Service'], $exact[0]->nodeReferences);
     }
@@ -562,7 +562,7 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], [$this->makeContribution([$node])], $explicit);
 
-        $app = array_values(array_filter($facts, static fn (BoundaryFact $fact): bool => $fact->name === 'app'));
+        $app = array_values(array_filter($facts, static fn(BoundaryFact $fact): bool => $fact->name === 'app'));
         assertSame(1, count($app));
         assertSame(['php:class:App\\Service'], $app[0]->nodeReferences);
     }
@@ -579,9 +579,9 @@ final class BoundaryInferenceTest extends TestCase
 
         $facts = (new BoundaryInference())->infer([], $contributions, $explicit);
 
-        $exact = array_values(array_filter($facts, static fn (BoundaryFact $f): bool => $f->name === 'app'));
+        $exact = array_values(array_filter($facts, static fn(BoundaryFact $f): bool => $f->name === 'app'));
         assertSame(1, count($exact));
-        assertSame(['type' => 'namespace_prefix', 'value' => "App\\"], $exact[0]->matcher);
+        assertSame(['type' => 'namespace_prefix', 'value' => 'App\\'], $exact[0]->matcher);
         assertSame(['php:class:App\\Service'], $exact[0]->nodeReferences);
     }
 
@@ -672,7 +672,7 @@ final class BoundaryInferenceTest extends TestCase
         $facts = (new BoundaryInference())->infer($units, []);
 
         assertSame(3, count($facts));
-        $identities = array_map(static fn (BoundaryFact $f): ?string => $f->identityName, $facts);
+        $identities = array_map(static fn(BoundaryFact $f): ?string => $f->identityName, $facts);
         assertSame(3, count(array_unique($identities)));
         assertSame(true, in_array('path:composer:packages/a/composer.json', $identities, true));
         foreach ($identities as $identity) {
@@ -824,7 +824,7 @@ final class BoundaryInferenceTest extends TestCase
 
     private function makeContribution(array $nodes): ScanContribution
     {
-        $localIds = array_map(static fn (NodeFact $n): string => 'knossos.php:file:' . $n->evidence->relativePath, $nodes);
+        $localIds = array_map(static fn(NodeFact $n): string => 'knossos.php:file:' . $n->evidence->relativePath, $nodes);
         $ownerKey = empty($localIds) ? 'knossos.php:file:empty' : $localIds[0];
 
         return new ScanContribution($ownerKey, $nodes, [], []);

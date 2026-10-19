@@ -74,7 +74,7 @@ final class SqliteConnectionTest extends TestCase
     public function testOpenEmptyPathThrows(): void
     {
         $error = captureThrows(
-            static fn () => SqliteConnection::open(''),
+            static fn() => SqliteConnection::open(''),
             InvalidArgumentException::class,
         );
 
@@ -86,7 +86,7 @@ final class SqliteConnectionTest extends TestCase
         $missingDir = sys_get_temp_dir() . '/knossos-missing-' . uniqid('', true);
 
         $error = captureThrows(
-            static fn () => SqliteConnection::open($missingDir . '/db.sqlite'),
+            static fn() => SqliteConnection::open($missingDir . '/db.sqlite'),
             InvalidArgumentException::class,
         );
 
@@ -100,7 +100,7 @@ final class SqliteConnectionTest extends TestCase
         $pdo = SqliteConnection::open($path);
 
         $error = captureThrows(
-            static fn () => $pdo->exec('CREATE TABLE no_such_thing_then_select'),
+            static fn() => $pdo->exec('CREATE TABLE no_such_thing_then_select'),
             \PDOException::class,
         );
 

@@ -15,8 +15,22 @@ trivy image --quiet --skip-db-update --format cyclonedx --output "$report_dir/qu
 trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
     --format json --output "$report_dir/runtime-vulnerabilities.json" "$runtime_image" \
     || { trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --format table "$runtime_image" >&2; exit 1; }
+# The quality image is the gate's own toolchain and is never shipped, so its
+# scan does not fail on Trivy's verdict. Its findings are held to a committed
+# allowlist instead (tools/trivy-allowlist.php), so a new HIGH or CRITICAL
+# fails the lane the day it appears rather than sitting unread in a report.
 trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --exit-code 0 \
     --format json --output "$report_dir/quality-vulnerabilities.json" "$quality_image"
+#
+# KNOSSOS_QUALITY_IMAGE_FINDINGS=report, which CI sets on pull requests, prints
+# a new finding without failing: it comes from a database update, not from the
+# pull request. Anything else, a push to main, the release and a local run,
+# fails on it.
+if [ "${KNOSSOS_QUALITY_IMAGE_FINDINGS:-fail}" = "report" ]; then
+    php tools/trivy-allowlist.php --report-only "$report_dir/quality-vulnerabilities.json"
+else
+    php tools/trivy-allowlist.php "$report_dir/quality-vulnerabilities.json"
+fi
 trivy config --quiet --ignorefile .trivyignore --severity HIGH,CRITICAL --exit-code 1 \
     --format json --output "$report_dir/dockerfile-misconfigurations.json" Dockerfile \
     || { trivy config --ignorefile .trivyignore --severity HIGH,CRITICAL --format table Dockerfile >&2; exit 1; }
@@ -25,6 +39,9 @@ runtime_id=$(docker image inspect --format '{{.Id}}' "$runtime_image")
 quality_id=$(docker image inspect --format '{{.Id}}' "$quality_image")
 php tools/supply-chain-report.php "$runtime_id" "$quality_id" "$report_dir/provenance.json"
 
+# A smoke test, not a gate: the key pair is made on the spot and thrown away,
+# so the verification can only fail if cosign itself is broken. It proves the
+# signing path works; it says nothing about who built the image.
 key_dir=$(mktemp -d /tmp/knossos-cosign-XXXXXX)
 trap 'rm -f "$key_dir/cosign.key" "$key_dir/cosign.pub" "$key_dir/signing-config.json"; rmdir "$key_dir"' EXIT
 COSIGN_PASSWORD=knossos-ci-ephemeral cosign generate-key-pair --output-key-prefix "$key_dir/cosign" >/dev/null
@@ -37,4 +54,4 @@ COSIGN_PASSWORD=knossos-ci-ephemeral cosign sign-blob --yes \
 cosign verify-blob --insecure-ignore-tlog --key "$key_dir/cosign.pub" \
     --bundle "$report_dir/provenance.sigstore.json" "$report_dir/provenance.json" >/dev/null
 
-echo "Supply-chain reports, vulnerability gates, provenance, and signature verification passed."
+echo "Supply-chain reports, vulnerability gates and provenance passed; the signature check is a smoke test with a throwaway key (cosign sign and verify work, nothing more)."

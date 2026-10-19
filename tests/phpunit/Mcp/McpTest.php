@@ -634,7 +634,7 @@ final class McpTest extends KnossosTestCase
     {
         [$pdo] = $this->storeFixture();
         $tools = new ToolService(
-            new class () implements \Knossos\Scan\ProjectScanner {
+            new class implements \Knossos\Scan\ProjectScanner {
                 public function scan(
                     string $root,
                     ?string $name = null,

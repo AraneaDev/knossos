@@ -16,9 +16,10 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A person flags a model note for the model to look at again: a `check`

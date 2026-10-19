@@ -11,9 +11,10 @@ use Knossos\Query\GraphSearchService;
 use Knossos\Query\PathBetweenService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The person in the pane and the agent through MCP ask the same questions:

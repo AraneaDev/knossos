@@ -15,6 +15,9 @@ declare(strict_types=1);
  * The project is the one whose root is <project-root>.
  */
 
+require_once dirname(__DIR__) . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 [, $command, $db, $root] = $argv + [null, null, null, null];
 $file = $argv[4] ?? null;
 if (!in_array($command, ['clear', 'export', 'import'], true) || !is_string($db) || !is_string($root) || ($command !== 'clear' && !is_string($file))) {

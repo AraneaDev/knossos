@@ -8,7 +8,6 @@ use Knossos\Query\ArchitectureQueryService;
 use Knossos\Store\GraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
 /**

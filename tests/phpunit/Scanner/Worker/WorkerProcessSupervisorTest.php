@@ -93,7 +93,7 @@ final class WorkerProcessSupervisorTest extends TestCase
         $supervisor = new WorkerProcessSupervisor(['/nonexistent/knossos-worker-binary-xyz']);
 
         $error = captureThrows(
-            static fn () => $supervisor->start(),
+            static fn() => $supervisor->start(),
             WorkerException::class,
         );
 

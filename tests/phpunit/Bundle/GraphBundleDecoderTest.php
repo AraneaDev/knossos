@@ -161,7 +161,7 @@ final class GraphBundleDecoderTest extends TestCase
     public function testDecodeRejectsEmptyString(): void
     {
         $error = captureThrows(
-            static fn () => (new GraphBundleDecoder())->decodeAndValidate(''),
+            static fn() => (new GraphBundleDecoder())->decodeAndValidate(''),
             InvalidArgumentException::class,
         );
 
@@ -175,7 +175,7 @@ final class GraphBundleDecoderTest extends TestCase
         $oversized = str_repeat('a', GraphBundleDecoder::MAX_COMPRESSED_BYTES + 1);
 
         $error = captureThrows(
-            static fn () => (new GraphBundleDecoder())->decodeAndValidate($oversized),
+            static fn() => (new GraphBundleDecoder())->decodeAndValidate($oversized),
             InvalidArgumentException::class,
         );
 
@@ -194,7 +194,7 @@ final class GraphBundleDecoderTest extends TestCase
         $this->assertLessThan(GraphBundleDecoder::MAX_COMPRESSED_BYTES, strlen($compressed));
 
         $error = captureThrows(
-            static fn () => (new GraphBundleDecoder())->decodeAndValidate($compressed),
+            static fn() => (new GraphBundleDecoder())->decodeAndValidate($compressed),
             InvalidArgumentException::class,
         );
 
@@ -205,7 +205,7 @@ final class GraphBundleDecoderTest extends TestCase
     {
         // A short, non-gzip byte string.
         $error = captureThrows(
-            static fn () => (new GraphBundleDecoder())->decodeAndValidate('not-gzip-data'),
+            static fn() => (new GraphBundleDecoder())->decodeAndValidate('not-gzip-data'),
             InvalidArgumentException::class,
         );
 
@@ -667,7 +667,7 @@ final class GraphBundleDecoderTest extends TestCase
     private function expectBundleError(string $bundle, string $messageSubstring): void
     {
         $error = captureThrows(
-            static fn () => (new GraphBundleDecoder())->decodeAndValidate($bundle),
+            static fn() => (new GraphBundleDecoder())->decodeAndValidate($bundle),
             InvalidArgumentException::class,
         );
 

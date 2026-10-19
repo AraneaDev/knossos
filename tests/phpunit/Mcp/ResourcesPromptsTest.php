@@ -353,7 +353,7 @@ final class ResourcesPromptsTest extends KnossosTestCase
     private function readSession(string $uri): array
     {
         return array_map(
-            static fn (array $message): string => json_encode($message, JSON_THROW_ON_ERROR) . "\n",
+            static fn(array $message): string => json_encode($message, JSON_THROW_ON_ERROR) . "\n",
             [
                 ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => McpDispatcher::PROTOCOL_VERSION]],
                 ['jsonrpc' => '2.0', 'method' => 'notifications/initialized'],

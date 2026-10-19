@@ -11,9 +11,8 @@ use Knossos\Query\DashboardService;
 use Knossos\Query\FileFanInQuery;
 use Knossos\Query\PolicyScope;
 use Knossos\Scan\ProjectScanService;
-use PDO;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
+use PDO;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertGreaterThan;
@@ -23,6 +22,8 @@ use function PHPUnit\Framework\assertLessThanOrEqual;
 use function PHPUnit\Framework\assertNotContains;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The project-wide picture: hubs, hotspots, cycles, trend, freshness and the
@@ -909,12 +910,12 @@ final class DashboardServiceTest extends KnossosTestCase
             $coreId = (string) $pdo->query("SELECT id FROM boundaries WHERE name = 'Core'")->fetchColumn();
             // An inferred twin of Edge that holds Core's members.
             $twin = $pdo->prepare(
-                "INSERT INTO boundaries (id, project_id, name, matcher_json, source, last_scan_id) "
+                'INSERT INTO boundaries (id, project_id, name, matcher_json, source, last_scan_id) '
                 . "SELECT 'inferred-edge', project_id, 'Edge', :matcher, 'inferred', last_scan_id FROM boundaries WHERE id = :core",
             );
             $twin->execute(['matcher' => json_encode(['type' => 'namespace_prefix', 'value' => 'App\\']), 'core' => $coreId]);
             $members = $pdo->prepare(
-                "INSERT INTO boundary_memberships (boundary_id, project_id, node_id, last_scan_id) "
+                'INSERT INTO boundary_memberships (boundary_id, project_id, node_id, last_scan_id) '
                 . "SELECT 'inferred-edge', project_id, node_id, last_scan_id FROM boundary_memberships WHERE boundary_id = :core",
             );
             $members->execute(['core' => $coreId]);

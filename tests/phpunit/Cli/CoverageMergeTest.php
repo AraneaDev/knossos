@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Cli;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\DataProvider;
 
 use function PHPUnit\Framework\assertFileDoesNotExist;
 use function PHPUnit\Framework\assertFileExists;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * The merge job enforces the coverage floors from the shards' combined data.
@@ -178,6 +179,91 @@ final class CoverageMergeTest extends KnossosTestCase
         assertStringContainsString('is not a directory of shard results', $errors);
     }
 
+    /**
+     * The shards together may skip as many tests as the budget's
+     * `skipped_tests`, and one more is refused with every skipped test named.
+     * A skip passes without asserting anything, and PHPUnit's exit status does
+     * not change for it, so nothing else would notice a suite losing branches
+     * to skips.
+     */
+    public function testRefusesMoreSkippedTestsThanTheBudgetAllows(): void
+    {
+        $this->writeShards(3);
+        $this->plantSkips(1, ['OneTest::testNeedsATool']);
+        $this->plantSkips(3, ['FourTest::testNeedsRoot']);
+
+        [$exit, $output, $errors] = $this->merge($this->budgets(2));
+        assertSame(0, $exit, $errors);
+        assertStringContainsString('2 skipped tests of 2 allowed', $output);
+
+        $this->runFixtureCommand(['rm', '-rf', $this->directory . '/into']);
+        mkdir($this->directory . '/into', 0o700, true);
+        $this->plantSkips(2, ['TwoTest::testNeedsANetwork']);
+
+        [$exit, , $errors] = $this->merge($this->budgets(2));
+        assertNotSame(0, $exit, 'the merge accepted a skip over the budget');
+        assertStringContainsString('3 tests were skipped, over the skipped_tests budget of 2', $errors);
+        assertStringContainsString('skipped: TwoTest::testNeedsANetwork', $errors);
+        assertFileDoesNotExist($this->directory . '/into/php/pcov-merged.json', 'a refused merge wrote data');
+    }
+
+    /** A budget file whose skip budget could not act is refused before anything is merged. */
+    public function testRefusesABudgetWithoutASkipBudget(): void
+    {
+        $this->writeShards(3);
+        $budgets = json_decode((string) file_get_contents(self::repositoryRoot() . '/coverage-budgets.json'), true, 512, JSON_THROW_ON_ERROR);
+        unset($budgets['skipped_tests']);
+        file_put_contents($this->directory . '/budgets.json', json_encode($budgets, JSON_THROW_ON_ERROR));
+
+        [$exit, , $errors] = $this->merge($this->directory . '/budgets.json');
+
+        assertNotSame(0, $exit);
+        assertStringContainsString('skipped_tests is missing.', $errors);
+    }
+
+    /** The unsharded run's log is held to the same budget by tools/skipped-tests.php. */
+    public function testAnUnshardedRunIsHeldToTheSkipBudget(): void
+    {
+        $this->writeShards(1);
+        $this->plantSkips(1, ['OneTest::testNeedsATool', 'TwoTest::testNeedsRoot']);
+        $log = $this->directory . '/raw/coverage-shard-1/junit.xml';
+
+        [$exit, $output, $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('skipped-tests.php'), '--budgets=' . $this->budgets(2), $log]);
+        assertSame(0, $exit, $errors);
+        assertStringContainsString('skipped tests: 2 of 2 allowed', $output);
+
+        [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('skipped-tests.php'), '--budgets=' . $this->budgets(1), $log]);
+        assertNotSame(0, $exit, 'a run over the skip budget passed');
+        assertStringContainsString('2 tests were skipped, over the skipped_tests budget of 1', $errors);
+    }
+
+    /** A copy of the repository's budget file with `skipped_tests` set to $allowed; returns its path. */
+    private function budgets(int $allowed): string
+    {
+        $budgets = json_decode((string) file_get_contents(self::repositoryRoot() . '/coverage-budgets.json'), true, 512, JSON_THROW_ON_ERROR);
+        $budgets['skipped_tests'] = $allowed;
+        $file = $this->directory . "/budgets-{$allowed}.json";
+        file_put_contents($file, json_encode($budgets, JSON_THROW_ON_ERROR));
+
+        return $file;
+    }
+
+    /**
+     * Add skipped test cases to a shard's JUnit log, as PHPUnit writes them.
+     *
+     * @param list<string> $tests `Class::method`
+     */
+    private function plantSkips(int $shard, array $tests): void
+    {
+        $cases = '';
+        foreach ($tests as $test) {
+            [$class, $method] = explode('::', $test);
+            $cases .= sprintf('<testcase name="%s" class="%s"><skipped/></testcase>', $method, $class);
+        }
+        $file = $this->directory . "/raw/coverage-shard-{$shard}/junit.xml";
+        file_put_contents($file, str_replace('</testsuite></testsuites>', $cases . '</testsuite></testsuites>', (string) file_get_contents($file)));
+    }
+
     /** Lay out $count complete shards the way the artifact download does, each file in its assigned shard. */
     private function writeShards(int $count): void
     {
@@ -206,7 +292,8 @@ final class CoverageMergeTest extends KnossosTestCase
     {
         $suites = '';
         foreach ($files as $file) {
-            $suites .= sprintf('<testsuite name="%s" file="%s/%s" tests="1"/>', basename($file, '.php'), self::repositoryRoot(), $file);
+            // Absolute, under the root of the merge being run, as PHPUnit writes them.
+            $suites .= sprintf('<testsuite name="%s" file="%s/%s" tests="1"/>', basename($file, '.php'), dirname(self::guardTool('coverage-merge.php'), 2), $file);
         }
         file_put_contents(
             $this->directory . "/raw/coverage-shard-{$shard}/junit.xml",
@@ -228,14 +315,15 @@ final class CoverageMergeTest extends KnossosTestCase
     }
 
     /** @return array{0: int, 1: string, 2: string} */
-    private function merge(): array
+    private function merge(?string $budgets = null): array
     {
         return $this->runFixtureCommandOutput([
             PHP_BINARY,
-            self::repositoryRoot() . '/tools/coverage-merge.php',
+            self::guardTool('coverage-merge.php'),
             $this->directory . '/raw',
             '--into=' . $this->directory . '/into',
             '--files-from=' . $this->directory . '/files.txt',
+            ...($budgets === null ? [] : ['--budgets=' . $budgets]),
         ]);
     }
 }

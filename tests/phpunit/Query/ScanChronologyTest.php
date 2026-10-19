@@ -8,10 +8,11 @@ use Knossos\Query\ProjectCatalogQueryService;
 use Knossos\Query\StalenessProbe;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Which scan came last follows the order the scans were made in, not their

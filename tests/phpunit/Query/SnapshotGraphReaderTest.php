@@ -10,10 +10,11 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Store\SnapshotPayload;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A snapshot's graph read with only the columns a comparison uses: the same

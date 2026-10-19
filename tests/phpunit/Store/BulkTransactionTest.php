@@ -29,10 +29,35 @@ final class BulkTransactionTest extends KnossosTestCase
         $repository->bulkTransaction(function (GraphRepository $repository) use ($ids, $source): void {
             $repository->saveEdge(
                 StableId::edge($ids['project'], 'calls', $source, $ids['invoice'], 'src/Later.php:4'),
-                $ids['project'], 'calls', $source, $ids['invoice'], $ids['file'], 4, 4, 'ast', 'certain', [], 'php:file:src/Later.php', $ids['scan'],
+                $ids['project'],
+                'calls',
+                $source,
+                $ids['invoice'],
+                $ids['file'],
+                4,
+                4,
+                'ast',
+                'certain',
+                [],
+                'php:file:src/Later.php',
+                $ids['scan'],
             );
             $repository->saveNode(
-                $source, $ids['project'], 'php', 'class', 'App\\Later', 'Later', null, $ids['file'], 1, 9, 'ast', 'certain', [], 'php:file:src/Later.php', $ids['scan'],
+                $source,
+                $ids['project'],
+                'php',
+                'class',
+                'App\\Later',
+                'Later',
+                null,
+                $ids['file'],
+                1,
+                9,
+                'ast',
+                'certain',
+                [],
+                'php:file:src/Later.php',
+                $ids['scan'],
             );
         });
 
@@ -49,7 +74,18 @@ final class BulkTransactionTest extends KnossosTestCase
             fn() => $repository->bulkTransaction(function (GraphRepository $repository) use ($ids, $missing): void {
                 $repository->saveEdge(
                     StableId::edge($ids['project'], 'calls', $missing, $ids['invoice'], 'src/Ghost.php:4'),
-                    $ids['project'], 'calls', $missing, $ids['invoice'], $ids['file'], 4, 4, 'ast', 'certain', [], 'php:file:src/Ghost.php', $ids['scan'],
+                    $ids['project'],
+                    'calls',
+                    $missing,
+                    $ids['invoice'],
+                    $ids['file'],
+                    4,
+                    4,
+                    'ast',
+                    'certain',
+                    [],
+                    'php:file:src/Ghost.php',
+                    $ids['scan'],
                 );
             }),
             RuntimeException::class,
@@ -68,7 +104,18 @@ final class BulkTransactionTest extends KnossosTestCase
         self::assertThrowsWith(
             fn() => $repository->saveEdge(
                 StableId::edge($ids['project'], 'calls', $missing, $ids['invoice'], 'src/Ghost.php:9'),
-                $ids['project'], 'calls', $missing, $ids['invoice'], $ids['file'], 9, 9, 'ast', 'certain', [], 'php:file:src/Ghost.php', $ids['scan'],
+                $ids['project'],
+                'calls',
+                $missing,
+                $ids['invoice'],
+                $ids['file'],
+                9,
+                9,
+                'ast',
+                'certain',
+                [],
+                'php:file:src/Ghost.php',
+                $ids['scan'],
             ),
             \PDOException::class,
         );

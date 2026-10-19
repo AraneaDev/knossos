@@ -18,11 +18,11 @@ use Knossos\Cli\Command\ServeCommand;
 use Knossos\Cli\Command\WatchCommand;
 use Knossos\Reconciliation\GraphReconciler;
 use Knossos\Runtime\RuntimeFactory;
-use Knossos\Tests\Phpunit\Runtime\DoctorInstallation;
-use Knossos\Store\StableId;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Store\SqliteGraphRepository;
+use Knossos\Store\StableId;
+use Knossos\Tests\Phpunit\Runtime\DoctorInstallation;
 use PHPUnit\Framework\Attributes\Group;
 
 /**

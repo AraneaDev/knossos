@@ -98,8 +98,8 @@ final class ReturnedReceiverTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
             $calls = $pdo->query(
-                "SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e " .
-                "JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id " .
+                'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
+                'JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id ' .
                 "WHERE e.kind = 'calls' AND t.display_name IN ('label', 'run') ORDER BY s.canonical_name",
             )->fetchAll();
 
@@ -182,8 +182,8 @@ final class ReturnedReceiverTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
             $calls = $pdo->query(
-                "SELECT s.canonical_name AS source, t.canonical_name AS target, t.kind AS target_kind FROM edges e " .
-                "JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id " .
+                'SELECT s.canonical_name AS source, t.canonical_name AS target, t.kind AS target_kind FROM edges e ' .
+                'JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id ' .
                 "WHERE e.kind = 'calls' AND t.display_name = 'isTerminal' ORDER BY s.canonical_name",
             )->fetchAll();
 
@@ -211,11 +211,11 @@ final class ReturnedReceiverTest extends KnossosTestCase
         // it were an observation.
         $root = sys_get_temp_dir() . '/knossos-incremental-returned-' . bin2hex(random_bytes(6));
         try {
-                    if (!mkdir($root . '/src', 0o755, true)) {
-                        throw new \RuntimeException('Unable to create fixture tree.');
-                    }
-                    file_put_contents($root . '/composer.json', json_encode(['name' => 'fixture/unconfirmed'], JSON_THROW_ON_ERROR));
-                    file_put_contents($root . '/src/Service.php', <<<'PHP'
+            if (!mkdir($root . '/src', 0o755, true)) {
+                throw new \RuntimeException('Unable to create fixture tree.');
+            }
+            file_put_contents($root . '/composer.json', json_encode(['name' => 'fixture/unconfirmed'], JSON_THROW_ON_ERROR));
+            file_put_contents($root . '/src/Service.php', <<<'PHP'
                         <?php
 
                         namespace Fixture;
@@ -245,18 +245,18 @@ final class ReturnedReceiverTest extends KnossosTestCase
                             }
                         }
                         PHP);
-                    $pdo = SqliteConnection::open($root . '/graph.sqlite');
-                    (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+            $pdo = SqliteConnection::open($root . '/graph.sqlite');
+            (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
 
-                    (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
-                    // No node, external or otherwise, is invented for the unresolved members.
-                    assertSame(0, (int) $pdo->query(
-                        "SELECT COUNT(*) FROM nodes WHERE canonical_name LIKE '%method_of_return%' OR display_name IN ('send', 'use')",
-                    )->fetchColumn());
-                    assertSame(0, (int) $pdo->query(
-                        "SELECT COUNT(*) FROM edges e JOIN nodes t ON t.id = e.target_id WHERE t.display_name IN ('send', 'use')",
-                    )->fetchColumn());
+            // No node, external or otherwise, is invented for the unresolved members.
+            assertSame(0, (int) $pdo->query(
+                "SELECT COUNT(*) FROM nodes WHERE canonical_name LIKE '%method_of_return%' OR display_name IN ('send', 'use')",
+            )->fetchColumn());
+            assertSame(0, (int) $pdo->query(
+                "SELECT COUNT(*) FROM edges e JOIN nodes t ON t.id = e.target_id WHERE t.display_name IN ('send', 'use')",
+            )->fetchColumn());
         } finally {
             unset($pdo);
             $this->removeFixtureTree($root);
@@ -310,8 +310,8 @@ final class ReturnedReceiverTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
             $calls = $pdo->query(
-                "SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e " .
-                "JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id " .
+                'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
+                'JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id ' .
                 "WHERE e.kind = 'calls' AND t.display_name IN ('check', 'evaluate') ORDER BY s.canonical_name",
             )->fetchAll();
 

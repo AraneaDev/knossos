@@ -11,9 +11,10 @@ use Knossos\Store\SqliteStatementCache;
 use Knossos\Store\SqliteTransactions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A snapshot past the row cap keeps no facts, but what SQL can count without

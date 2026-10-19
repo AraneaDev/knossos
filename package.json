@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint:js": "eslint workers/typescript/bin workers/typescript/src hooks tools/lint-md.mjs tools/lint-md.spec.mjs tools/capture tools/eval web",
+    "lint:js": "php tools/lint-files.php --run=js -- eslint --max-warnings 0",
     "format:check": "prettier --check \"**/*.{js,json,jsonc,yaml,yml,md}\"",
     "format:write": "prettier --write \"**/*.{js,json,jsonc,yaml,yml,md}\"",
     "lint:md": "node tools/lint-md.mjs",

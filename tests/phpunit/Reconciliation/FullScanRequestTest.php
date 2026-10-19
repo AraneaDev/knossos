@@ -252,7 +252,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsOnEmptyProjectIdentity(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['projectIdentity' => '']),
+            static fn() => self::buildRequest(['projectIdentity' => '']),
             InvalidArgumentException::class,
         );
     }
@@ -260,7 +260,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsOnEmptyProjectName(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['projectName' => '']),
+            static fn() => self::buildRequest(['projectName' => '']),
             InvalidArgumentException::class,
         );
     }
@@ -275,7 +275,7 @@ final class FullScanRequestTest extends TestCase
         // tripped PHP's parser in earlier iterations.
         $notAList = ['not-a-zero-key' => new ScannerManifest('a', '0.1', '1.0', '1.0', ['php'], ['php'], [])];
         assertThrows(
-            static fn () => self::buildRequest(['scanners' => $notAList]),
+            static fn() => self::buildRequest(['scanners' => $notAList]),
             InvalidArgumentException::class,
         );
     }
@@ -283,7 +283,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenScannersContainsNonManifestValue(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['scanners' => [new \stdClass()]]),
+            static fn() => self::buildRequest(['scanners' => [new \stdClass()]]),
             InvalidArgumentException::class,
         );
     }
@@ -299,7 +299,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenContributionsIsAssociativeNotList(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['contributions' => ['k' => self::minimalScanContribution()]]),
+            static fn() => self::buildRequest(['contributions' => ['k' => self::minimalScanContribution()]]),
             InvalidArgumentException::class,
         );
     }
@@ -307,7 +307,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenContributionsContainsNonContributionValue(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['contributions' => ['not-an-object']]),
+            static fn() => self::buildRequest(['contributions' => ['not-an-object']]),
             InvalidArgumentException::class,
         );
     }
@@ -323,7 +323,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenClassificationsIsAssociativeNotList(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['classifications' => ['k' => self::minimalClassification()]]),
+            static fn() => self::buildRequest(['classifications' => ['k' => self::minimalClassification()]]),
             InvalidArgumentException::class,
         );
     }
@@ -331,7 +331,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenClassificationsContainsNonClassificationValue(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['classifications' => [new \stdClass()]]),
+            static fn() => self::buildRequest(['classifications' => [new \stdClass()]]),
             InvalidArgumentException::class,
         );
     }
@@ -347,7 +347,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenBoundariesIsAssociativeNotList(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['boundaries' => ['k' => self::minimalBoundary()]]),
+            static fn() => self::buildRequest(['boundaries' => ['k' => self::minimalBoundary()]]),
             InvalidArgumentException::class,
         );
     }
@@ -355,7 +355,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenBoundariesContainsNonBoundaryValue(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['boundaries' => ['plain-string']]),
+            static fn() => self::buildRequest(['boundaries' => ['plain-string']]),
             InvalidArgumentException::class,
         );
     }
@@ -371,7 +371,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenContributionCacheIsAssociativeNotList(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['contributionCache' => ['k' => self::minimalContributionCacheEntry()]]),
+            static fn() => self::buildRequest(['contributionCache' => ['k' => self::minimalContributionCacheEntry()]]),
             InvalidArgumentException::class,
         );
     }
@@ -379,7 +379,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsWhenContributionCacheContainsNonEntryValue(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['contributionCache' => [new \stdClass()]]),
+            static fn() => self::buildRequest(['contributionCache' => [new \stdClass()]]),
             InvalidArgumentException::class,
         );
     }
@@ -408,7 +408,7 @@ final class FullScanRequestTest extends TestCase
     {
         // Strict in_array check rejects case-mismatched modes.
         assertThrows(
-            static fn () => self::buildRequest(['mode' => 'FULL']),
+            static fn() => self::buildRequest(['mode' => 'FULL']),
             InvalidArgumentException::class,
         );
     }
@@ -416,7 +416,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsOnUnknownMode(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['mode' => 'partial']),
+            static fn() => self::buildRequest(['mode' => 'partial']),
             InvalidArgumentException::class,
         );
     }
@@ -424,7 +424,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsOnEmptyMode(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['mode' => '']),
+            static fn() => self::buildRequest(['mode' => '']),
             InvalidArgumentException::class,
         );
     }
@@ -471,7 +471,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsOnRetentionBelowZero(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['projectConfig' => ['snapshot_retention' => -1]]),
+            static fn() => self::buildRequest(['projectConfig' => ['snapshot_retention' => -1]]),
             InvalidArgumentException::class,
         );
     }
@@ -479,7 +479,7 @@ final class FullScanRequestTest extends TestCase
     public function testThrowsOnRetentionAboveTwenty(): void
     {
         assertThrows(
-            static fn () => self::buildRequest(['projectConfig' => ['snapshot_retention' => 21]]),
+            static fn() => self::buildRequest(['projectConfig' => ['snapshot_retention' => 21]]),
             InvalidArgumentException::class,
         );
     }
@@ -488,11 +488,11 @@ final class FullScanRequestTest extends TestCase
     {
         // kills `is_int($retention)` mutation — strings / floats must fail.
         assertThrows(
-            static fn () => self::buildRequest(['projectConfig' => ['snapshot_retention' => '5']]),
+            static fn() => self::buildRequest(['projectConfig' => ['snapshot_retention' => '5']]),
             InvalidArgumentException::class,
         );
         assertThrows(
-            static fn () => self::buildRequest(['projectConfig' => ['snapshot_retention' => 5.0]]),
+            static fn() => self::buildRequest(['projectConfig' => ['snapshot_retention' => 5.0]]),
             InvalidArgumentException::class,
         );
     }

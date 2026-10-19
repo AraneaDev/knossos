@@ -10,14 +10,20 @@
 // Files git ignores are skipped as well (the config's `gitignore: true`):
 // local agent scratch directories never reach CI, so linting them would fail
 // a developer's run over files that are not part of the repository.
+//
+// `--root=DIR` lints another tree, with that tree's .markdownlint-cli2.jsonc;
+// the tests use it to plant a bad file. A run that finds no Markdown at all
+// fails: a linter that read nothing has not passed anything.
 import { execFileSync, spawnSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { lint } from "markdownlint/promise";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const configFile = path.join(root, ".markdownlint-cli2.jsonc");
+const repositoryRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+);
 
 // The only directory skipped by name: git's own metadata. Every other
 // dot-directory (.github, .claude-plugin) is walked, as the old linter did.
@@ -69,9 +75,10 @@ export function parseJsonc(text) {
  * Whether git is usable here. The quality image carries no .git, and the
  * previous linter then fell back to reading .gitignore files itself.
  *
+ * @param {string} root
  * @returns {boolean}
  */
-function insideGitCheckout() {
+function insideGitCheckout(root) {
     try {
         execFileSync(
             "git",
@@ -87,11 +94,12 @@ function insideGitCheckout() {
 /**
  * Drop the files git ignores, asking git itself.
  *
+ * @param {string} root
  * @param {string[]} files
  * @returns {string[]}
  */
-function withoutGitIgnored(files) {
-    if (files.length === 0 || !insideGitCheckout()) return files;
+function withoutGitIgnored(root, files) {
+    if (files.length === 0 || !insideGitCheckout(root)) return files;
     const result = spawnSync(
         "git",
         ["-C", root, "check-ignore", "--stdin", "-z"],
@@ -155,14 +163,45 @@ export async function markdownFiles(base, relative = "") {
     return found;
 }
 
-/** Lint every Markdown file and report. */
-async function main() {
-    const config = parseJsonc(await readFile(configFile, "utf8"));
+/**
+ * The tree to lint: `--root=DIR` when given, else the repository.
+ *
+ * @param {string[]} args
+ * @returns {string}
+ */
+export function rootFrom(args) {
+    let root = repositoryRoot;
+    for (const arg of args) {
+        if (arg.startsWith("--root=") && arg.length > 7) {
+            root = path.resolve(arg.slice(7));
+        } else {
+            throw new Error(`usage: node tools/lint-md.mjs [--root=DIR]`);
+        }
+    }
+    return root;
+}
+
+/**
+ * Lint every Markdown file under `root` and report; exits 1 on any issue,
+ * and when there is no Markdown to lint.
+ *
+ * @param {string} root
+ */
+export async function main(root) {
+    const config = parseJsonc(
+        await readFile(path.join(root, ".markdownlint-cli2.jsonc"), "utf8"),
+    );
     const ignores = [...excludedPatterns, ...(config.ignores ?? [])];
     const found = (await markdownFiles(root)).filter(
         (file) => !matchesAny(file, ignores),
     );
-    const files = (config.gitignore ? withoutGitIgnored(found) : found).sort();
+    const files = (
+        config.gitignore ? withoutGitIgnored(root, found) : found
+    ).sort();
+    if (files.length === 0) {
+        console.log(`Linting: no files under ${root}`);
+        process.exit(1);
+    }
 
     const results = await lint({
         files: files.map((f) => path.join(root, f)),
@@ -185,4 +224,5 @@ async function main() {
     process.exit(errors === 0 ? 0 : 1);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
+if (process.argv[1] === fileURLToPath(import.meta.url))
+    await main(rootFrom(process.argv.slice(2)));

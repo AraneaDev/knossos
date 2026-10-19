@@ -46,7 +46,7 @@ final class MoveProjectCommandTest extends KnossosTestCase
         $oldId = StableId::project('root:' . $oldRoot);
         (new SqliteGraphRepository($pdo))->saveProject($oldId, 'project', $oldRoot);
         $pdo->prepare(
-            "INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) " .
+            'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
             "VALUES (:project, 'App\\A', 'note', 'v', 'model', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
         )->execute(['project' => $oldId]);
         $newRoot = $this->tempDir . '/project';

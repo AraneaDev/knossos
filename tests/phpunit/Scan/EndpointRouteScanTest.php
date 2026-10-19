@@ -8,9 +8,10 @@ use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\FileFanInQuery;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Whole-project scans of small trees, for the cases where the join of an

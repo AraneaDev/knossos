@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Mcp;
 
 use InvalidArgumentException;
-use Knossos\Mcp\{NextStepPlanner, ResultEnricher, ToolService};
 use Knossos\Maintenance\DatabaseMaintenanceService;
+use Knossos\Mcp\{NextStepPlanner, ResultEnricher, ToolService};
 use Knossos\Query\{ArchitectureQueryService, StalenessProbe};
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\{assertContains, assertSame};
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** The `file_context` tool: one file's context from the server itself, so no second tool host has to answer it. */
 final class FileContextToolTest extends KnossosTestCase

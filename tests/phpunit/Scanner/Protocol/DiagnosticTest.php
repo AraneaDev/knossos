@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner\Protocol;
 
 use InvalidArgumentException;
-use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Scanner\Protocol\Evidence;
-use Knossos\Scanner\Protocol\Origin;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;

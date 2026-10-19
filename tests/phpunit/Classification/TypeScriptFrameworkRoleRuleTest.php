@@ -161,7 +161,7 @@ final class TypeScriptFrameworkRoleRuleTest extends TestCase
         $facts = (new TypeScriptFrameworkRoleRule())->classify($node);
 
         assertSame(3, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('nextjs.page', $roles);
         assertArrayContains('react.component', $roles);
         assertArrayContains('vue.component', $roles);

@@ -10,9 +10,10 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\BusyWriteStatement;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The pane's Notes tab: every note in the project, grouped so what needs the

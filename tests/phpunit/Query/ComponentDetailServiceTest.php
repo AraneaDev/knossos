@@ -7,13 +7,14 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\ComponentDetailService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertGreaterThanOrEqual;
 use function PHPUnit\Framework\assertLessThanOrEqual;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * One component as the architecture pane shows it, addressed by a path in

@@ -211,7 +211,7 @@ final class JsonConfigStripperTest extends KnossosTestCase
     #[Group('discovery')]
     public function testADocumentThatStopsAfterACommaIsRefused(): void
     {
-        assertThrows(static fn() => JsonConfig::decode("{\"a\": 1,   ", true), DiscoveryException::class);
+        assertThrows(static fn() => JsonConfig::decode('{"a": 1,   ', true), DiscoveryException::class);
         assertThrows(static fn() => JsonConfig::decode('{"a": 1', true), DiscoveryException::class);
     }
 

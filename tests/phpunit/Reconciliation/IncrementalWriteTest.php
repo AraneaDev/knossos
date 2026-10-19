@@ -8,7 +8,6 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -102,8 +101,8 @@ final class IncrementalWriteTest extends KnossosTestCase
             foreach (['files', 'nodes', 'edges', 'classifications', 'boundaries', 'boundary_memberships'] as $table) {
                 $statement = $pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE last_scan_id <> :scan', $table));
                 $statement->execute(['scan' => $active]);
-                    assertSame(0, (int) $statement->fetchColumn(), $table . ' has rows attributed to an older scan');
-                }
+                assertSame(0, (int) $statement->fetchColumn(), $table . ' has rows attributed to an older scan');
+            }
         } finally {
             unset($pdo);
             $this->removeFixtureTree($root);

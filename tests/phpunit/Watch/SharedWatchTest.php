@@ -6,21 +6,22 @@ namespace Knossos\Tests\Phpunit\Watch;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Discovery\AllowedRoots;
-use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanLedger;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Watch\SharedWatch;
 use Knossos\Watch\WatchLock;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The live watcher the Claude Code mod starts: only an existing project in

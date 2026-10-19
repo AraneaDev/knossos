@@ -35,5 +35,6 @@ require $autoload;
 // php.ini, so a scan that fits on one host does not die on another.
 \Knossos\Runtime\MemoryLimit::apply();
 
+// $argv is a global only where register_argc_argv is on; the CLI fills $_SERVER['argv'] either way.
+$argv = is_array($_SERVER['argv'] ?? null) ? array_values(array_map(static fn(mixed $argument): string => (string) $argument, $_SERVER['argv'])) : [];
 exit((new Application())->run(array_slice($argv, 1)));
-

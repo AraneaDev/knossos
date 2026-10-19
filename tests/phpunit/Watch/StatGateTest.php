@@ -6,9 +6,10 @@ namespace Knossos\Tests\Phpunit\Watch;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Watch\StatGate;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** An idle tree costs stat calls, not hashes: the gate opens only when something the fingerprint saw moved. */
 final class StatGateTest extends KnossosTestCase

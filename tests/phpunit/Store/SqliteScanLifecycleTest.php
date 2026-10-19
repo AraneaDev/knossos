@@ -103,7 +103,7 @@ final class SqliteScanLifecycleTest extends KnossosTestCase
         $lifecycle = self::lifecycle($pdo);
 
         $insertScan = $pdo->prepare(
-            "INSERT INTO scans(id, project_id, mode, status, scanner_set_hash, started_at, finished_at) " .
+            'INSERT INTO scans(id, project_id, mode, status, scanner_set_hash, started_at, finished_at) ' .
             "VALUES (:id, :project, 'full', 'complete', 'h', :ts, :ts)",
         );
         $insertSnapshot = $pdo->prepare(
@@ -146,7 +146,7 @@ final class SqliteScanLifecycleTest extends KnossosTestCase
             $pdo = $this->freshTestDatabase();
             $service = new \Knossos\Scan\ProjectScanService($pdo, self::repositoryRoot(), [$root]);
             $metrics = $pdo->prepare(
-                "INSERT OR IGNORE INTO snapshot_metrics(scan_id, fingerprint, captured_at, byte_size, payload_json) " .
+                'INSERT OR IGNORE INTO snapshot_metrics(scan_id, fingerprint, captured_at, byte_size, payload_json) ' .
                 "SELECT scan_id, 'f', captured_at, byte_size, '{}' FROM scan_snapshots",
             );
             foreach ([1, 2, 3] as $version) {
@@ -171,7 +171,7 @@ final class SqliteScanLifecycleTest extends KnossosTestCase
     {
         [$pdo, , $ids] = $this->storeFixture();
         $insertScan = $pdo->prepare(
-            "INSERT INTO scans(id, project_id, mode, status, scanner_set_hash, started_at, finished_at) " .
+            'INSERT INTO scans(id, project_id, mode, status, scanner_set_hash, started_at, finished_at) ' .
             "VALUES (:id, :project, 'full', 'complete', 'h', :ts, :ts)",
         );
         $insertSnapshot = $pdo->prepare(
@@ -186,7 +186,7 @@ final class SqliteScanLifecycleTest extends KnossosTestCase
 
         self::lifecycle($pdo)->completeScan($ids['project'], $ids['scan']);
 
-        $kept = $pdo->query("SELECT scan_id FROM scan_snapshots ORDER BY captured_at")->fetchAll(PDO::FETCH_COLUMN);
+        $kept = $pdo->query('SELECT scan_id FROM scan_snapshots ORDER BY captured_at')->fetchAll(PDO::FETCH_COLUMN);
         assertSame(GraphRepository::DEFAULT_SNAPSHOT_RETENTION, count($kept));
         assertSame(['snap-3', 'snap-4', 'snap-5', 'snap-6', 'snap-7'], array_map('strval', $kept));
     }

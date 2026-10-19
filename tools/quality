@@ -14,6 +14,13 @@ case "$lane" in
         exit 64
         ;;
 esac
+# CI's lanes leave PHPUnit to the coverage lane, which only the `full` profile
+# has. Under `fast` the variable would skip the suite with nothing else running
+# it, so it is refused rather than obeyed.
+if [ "${KNOSSOS_PHPUNIT_IN_COVERAGE:-0}" = "1" ] && [ "$profile" != "full" ]; then
+    echo "tools/quality: KNOSSOS_PHPUNIT_IN_COVERAGE=1 hands PHPUnit to the coverage lane, which only the full profile runs; refusing to skip it under $profile" >&2
+    exit 64
+fi
 
 # Which lanes a run performs. `all` is the local default and keeps this script
 # a single linear gate; CI passes one lane per job so the five run in parallel.
@@ -31,6 +38,20 @@ in_lane() {
 # The repository root as an absolute path, for the steps that hand it to a
 # process running somewhere else.
 root=$(unset CDPATH; cd -- "$(dirname -- "$0")/.." && pwd)
+
+# Every check that cannot run says so (tools/lib/quality-skips.sh), and the
+# run ends with the list of them, however it ends.
+. "$root/tools/lib/quality-skips.sh"
+skips=$(mktemp)
+quality_skips_begin "$skips"
+finish() {
+    quality_skips_end
+    finish_status=$?
+    rm -f "$skips"
+    return "$finish_status"
+}
+trap finish EXIT
+trap 'exit 130' INT TERM
 
 # Run the PHPUnit suite, and with it the SessionStart hook's shell-level
 # failure-mode tests: `composer test` runs both, because the hook's fail-silent
@@ -53,7 +74,7 @@ run_test_suite() {
     suite='test'
     if [ "${KNOSSOS_PHPUNIT_IN_COVERAGE:-0}" = "1" ]; then
         suite='test:shell'
-        echo 'tests lane: PHPUnit runs in the coverage shards (KNOSSOS_PHPUNIT_IN_COVERAGE=1); running the shell tests only'
+        quality_opted_out 'PHPUnit in the tests lane' 'KNOSSOS_PHPUNIT_IN_COVERAGE=1: it runs in the coverage lane'
     fi
     if [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ] && [ "$(id -u)" = "0" ]; then
         runuser -u knossos -- env HOME=/home/knossos composer "$suite"
@@ -75,11 +96,15 @@ run_test_suite() {
 # The Claude CLI is pinned in the Dockerfile's quality stage, so CI always
 # runs this. A machine without it says so plainly instead of passing quietly.
 #
-# The type-check needs the engine's API declarations, which the CLI only writes
-# when a session loads the plugin (`.claude-plugin/types/claude-code/index.d.ts`)
-# or invokes its plugin-authoring skill. A headless gate can trigger neither, so
-# the check runs where that file exists, or where KNOSSOS_CLAUDE_CODE_TYPES
-# names it, and says it did not run everywhere else.
+# The type-check needs the engine's API declarations. The CLI does not ship
+# them: it builds them at run time and writes them beside a mod when a session
+# loads it. tools/claude-code-types generates them that way for the version
+# the Dockerfile pins and commits them to tools/claude-code-api, and the static
+# lane refuses a copy from another version (tools/claude-code-types-check.php).
+# KNOSSOS_CLAUDE_CODE_TYPES names another engine index.d.ts to check against.
+# Where the declarations are missing the check is reported as not run, which in
+# the quality container is a failure: a gate that cannot type-check the mod
+# must not pass as if it had.
 run_mod_checks() (
     stage=$(mktemp -d)
     trap 'rm -rf "$stage"' EXIT INT TERM
@@ -88,41 +113,63 @@ run_mod_checks() (
     claude plugin validate "$stage/plugin"
     claude plugin test "$stage/plugin"
 
-    types="${KNOSSOS_CLAUDE_CODE_TYPES:-$root/.claude-plugin/types/claude-code/index.d.ts}"
-    if [ -f "$types" ]; then
+    types="${KNOSSOS_CLAUDE_CODE_TYPES:-$root/tools/claude-code-api/claude-code/index.d.ts}"
+    # The built-in tools' input types merge into the same module, from the
+    # directory beside the engine's.
+    tool_types="$(dirname -- "$(dirname -- "$types")")/claude-code-tools/index.d.ts"
+    if [ -f "$types" ] && [ -f "$tool_types" ]; then
         # Absolute paths, so the file can live in the temp directory beside the
         # staging copy rather than in the tree.
         printf '%s\n' '{"compilerOptions":{"target":"es2023","lib":["es2023"],"types":[],' \
             '"module":"esnext","moduleResolution":"bundler","strict":true,' \
             '"noUncheckedIndexedAccess":true,"noEmit":true,"skipLibCheck":true,' \
             '"jsx":"react","jsxFactory":"h","jsxFragmentFactory":"Fragment"},' \
-            "\"include\":[\"$types\",\"$stage/plugin/types/index.d.ts\"," \
+            "\"include\":[\"$types\",\"$tool_types\",\"$stage/plugin/types/index.d.ts\"," \
             "\"$stage/plugin/hooks/register.tsx\",\"$stage/plugin/hooks/register.test.ts\"]}" \
             > "$stage/tsconfig.json"
         "$root/node_modules/.bin/tsc" -p "$stage/tsconfig.json"
     else
-        printf 'knossos mod: Claude Code API types not found; register.tsx checked against hooks/engine.d.ts only (typecheck:mod)\n' >&2
+        quality_not_run 'the staged register.tsx type-check against the Claude Code API' \
+            "types not provided: no $types or $tool_types; run tools/claude-code-types, or set KNOSSOS_CLAUDE_CODE_TYPES to the engine's index.d.ts"
     fi
 )
 
 run_mod_checks_if_available() {
-    if command -v claude >/dev/null 2>&1; then
+    if quality_has claude 'claude plugin validate, claude plugin test and the staged register.tsx type-check'; then
         run_mod_checks
-    else
-        printf 'knossos mod: claude CLI not found; plugin validate, plugin test and the type-check NOT run\n' >&2
     fi
 }
 
 if in_lane static; then
+# The linters below read their files from tools/lint-files.txt, which is derived
+# from `git ls-files` and committed, because the image carries no .git. Here it
+# is derived again from the checkout and compared, so a file git tracks cannot
+# be missing from it. The container is handed the checkout on a mount
+# (KNOSSOS_GATE_REPO); a host run reads the repository it is inside.
+lint_repo="${KNOSSOS_GATE_REPO:-$root}"
+if git -c safe.directory="$lint_repo" -C "$lint_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    php tools/lint-files.php --check --repo="$lint_repo"
+else
+    quality_not_run 'the lint list freshness check (tools/lint-files.php --check)' \
+        "no git checkout at $lint_repo; mount the checkout and name it with KNOSSOS_GATE_REPO"
+fi
+
+# The declarations the staged register.tsx type-check reads must come from the
+# Claude Code version this image runs.
+php tools/claude-code-types-check.php
+
 composer validate --strict
 composer --working-dir=workers/php validate --strict
 composer install --dry-run --no-interaction --no-scripts
 npm ci --dry-run --ignore-scripts --no-audit --no-fund
 npm --prefix workers/typescript ci --dry-run --ignore-scripts --no-audit --no-fund
 
+# php -l, PHP-CS-Fixer, PHPStan and ESLint all read the lists in
+# tools/lint-files.txt: composer lint and lint:js through tools/lint-files.php,
+# PHP-CS-Fixer through its config, PHPStan from the paths handed to it here.
 composer lint
 vendor/bin/php-cs-fixer check --using-cache=no --allow-risky=yes --sequential
-vendor/bin/phpstan analyse --no-progress --debug --memory-limit=1G
+php tools/lint-files.php --run=php -- vendor/bin/phpstan analyse --no-progress --debug --memory-limit=1G
 npm run lint:js
 # The mod's sources under hooks/lib, then every module and spec under
 # hooks/lib and hooks/mod. Vitest strips the specs' types without reading
@@ -146,13 +193,10 @@ python3 -m pytest workers/python
 fi
 
 if in_lane rust; then
-if command -v cargo >/dev/null 2>&1; then
+if quality_has cargo 'cargo fmt, clippy and test of the Rust worker'; then
     cargo fmt --manifest-path workers/rust/Cargo.toml --check
     cargo clippy --locked --manifest-path workers/rust/Cargo.toml --all-targets -- -D warnings
     cargo test --locked --manifest-path workers/rust/Cargo.toml
-elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-    echo "cargo is required in the quality container" >&2
-    exit 1
 fi
 fi
 
@@ -168,9 +212,8 @@ fi
 if in_lane rust; then
 if [ -x "$root/workers/rust/bin/knossos-rust-worker" ]; then
     tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes -- workers/rust/bin/knossos-rust-worker
-elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-    echo "the Rust worker binary is required in the quality container" >&2
-    exit 1
+else
+    quality_not_run 'scanner conformance of the Rust worker' 'workers/rust/bin/knossos-rust-worker is not built'
 fi
 fi
 if in_lane tests; then
@@ -184,40 +227,24 @@ tools/scanner-conformance --require=partial_ast --require=content_hash --require
 fi
 
 if in_lane static; then
-if command -v pre-commit >/dev/null 2>&1; then
+if quality_has pre-commit 'pre-commit validate-config'; then
     pre-commit validate-config .pre-commit-config.yaml
-elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-    echo "pre-commit is required in the quality container" >&2
-    exit 1
 fi
 
-if command -v shellcheck >/dev/null 2>&1; then
-    shellcheck tools/quality tools/quality-container tools/quality-deps-key tools/dependency-image-key tools/coverage tools/install-hooks tools/benchmark \
-        tools/mcp-serve tools/mutation-diff tools/release-lifecycle tools/supply-chain tools/install \
-        hooks/scripts/session-brief.sh hooks/scripts/session-brief-container.sh \
-        hooks/scripts/knossos-run.sh hooks/scripts/knossos-run-container.sh hooks/scripts/lib.sh \
-        tools/check-commit-style.sh tools/ci/release-pr tools/ci/quality-verdict tools/ci/release-rollback tools/gate-baseline \
-        tests/shell/session-brief-hook.sh tests/shell/knossos-run-hook.sh tests/shell/install-hooks.sh tests/shell/check-commit-style.sh \
-        tests/shell/release-pr.sh tests/shell/quality-verdict.sh tests/shell/release-rollback.sh tests/shell/gate-baseline.sh \
-        tests/shell/mutation-gate.sh tests/shell/mutation-diff.sh \
-        web/fixtures/knossos-run.sh
-elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-    echo "shellcheck is required in the quality container" >&2
-    exit 1
+if quality_has shellcheck 'ShellCheck'; then
+    php tools/lint-files.php --run=shell -- shellcheck
 fi
 
-if command -v hadolint >/dev/null 2>&1; then
+if quality_has hadolint 'Hadolint'; then
     hadolint Dockerfile
-elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-    echo "hadolint is required in the quality container" >&2
-    exit 1
 fi
 
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+# `docker compose version` fails both without docker and without its compose
+# plugin, and either way the check cannot run.
+if docker compose version >/dev/null 2>&1; then
     KNOSSOS_HTTP_BEARER_TOKEN=quality-gate-placeholder docker compose config --quiet
-elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-    echo "docker compose is required in the quality container" >&2
-    exit 1
+else
+    quality_not_run 'docker compose config' 'docker compose not available'
 fi
 fi
 
@@ -232,11 +259,8 @@ if [ "$profile" = "full" ] && in_lane release; then
     composer audit --locked --no-interaction
     npm audit --audit-level=high
     npm --prefix workers/typescript audit --audit-level=high
-    if command -v cargo-audit >/dev/null 2>&1; then
+    if quality_has cargo-audit 'cargo audit of the Rust worker'; then
         cargo audit --file workers/rust/Cargo.lock
-    elif [ "${KNOSSOS_QUALITY_CONTAINER:-0}" = "1" ]; then
-        echo "cargo-audit is required in the quality container" >&2
-        exit 1
     fi
     # Skipped where a failure would block rather than inform. This check asks
     # whether a web server is answering right now, which is not a property of
@@ -247,15 +271,24 @@ if [ "$profile" = "full" ] && in_lane release; then
     # affected, it runs in the static lane and is entirely ours to keep true.
     if [ "${KNOSSOS_EXTERNAL_LINKS:-1}" = "1" ]; then
         php tools/documentation-check.php --external
+    else
+        quality_opted_out 'the external link check' 'KNOSSOS_EXTERNAL_LINKS=0'
     fi
     # Inspector 2 takes the server command first and its own options after
     # `--`. Version 1 read its package.json through a path it tested against
     # the working directory but imported relative to its own module, so it
     # crashed whenever the directory above the checkout held a package.json,
     # and passed only where it did not, as in the image's /opt.
+    #
+    # Its exit status says only that the server answered. The answer is held
+    # to the catalogue (tools/inspector-tools-check.php), so a server that
+    # starts but advertises a tool short, or none, fails here.
+    inspector_out=$(mktemp)
     npm_config_cache=/tmp/knossos-inspector-cache npx -y @modelcontextprotocol/inspector@2.9.0 --cli \
         php "$root/bin/knossos" serve --allow-root="$root" \
-        --db=/tmp/knossos-inspector.sqlite -- --method tools/list
+        --db=/tmp/knossos-inspector.sqlite -- --method tools/list > "$inspector_out"
+    php tools/inspector-tools-check.php "$inspector_out"
+    rm -f "$inspector_out"
     # CI builds this target in its own job, through buildx against a layer
     # cache, and loads it into the daemon before the lane starts, saying so
     # with KNOSSOS_RUNTIME_IMAGE_GIVEN; rebuilding it here would throw that
@@ -319,7 +352,7 @@ if [ "$profile" = "full" ] && in_lane gate; then
     gate_dir=$(mktemp -d)
     # `set -e` skips the rest of the lane on a failure, so the directory is
     # removed on the way out however the gate ends.
-    trap 'rm -rf "$gate_dir"' EXIT INT TERM
+    trap 'rm -rf "$gate_dir"; finish' EXIT
 
     # Budgets and policies are read from the tree under test rather than the
     # baseline, so a change that needs a limit raised is reviewed as the diff

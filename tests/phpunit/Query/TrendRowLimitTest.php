@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
-use Knossos\Store\SnapshotBounds;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\DashboardService;
+use Knossos\Store\SnapshotBounds;
 use Knossos\Store\SnapshotPayload;
 use Knossos\Store\SqliteValues;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayNotHasKey;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A snapshot past the rows the trend reads a snapshot whole within costs the
@@ -30,8 +31,8 @@ final class TrendRowLimitTest extends KnossosTestCase
         try {
             $scan = (string) $pdo->query("SELECT active_scan_id FROM projects WHERE id = '{$projectId}'")->fetchColumn();
             $pdo->prepare(
-                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < " . (SnapshotBounds::MAX_ROWS_PER_TABLE + 1) . ") "
-                . "INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, origin, confidence, owner_key, last_scan_id) "
+                'WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < ' . (SnapshotBounds::MAX_ROWS_PER_TABLE + 1) . ') '
+                . 'INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, origin, confidence, owner_key, last_scan_id) '
                 . "SELECT 'bulk-' || x, :project, 'php', 'function', 'bulk' || x, 'bulk' || x, 'ast', 'certain', 'bulk', :scan FROM n",
             )->execute(['project' => $projectId, 'scan' => $scan]);
             $rows = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE project_id = '{$projectId}'")->fetchColumn();

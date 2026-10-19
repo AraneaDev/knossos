@@ -24,6 +24,9 @@ const MAINTAINABILITY_METRICS = ['cross_file_duplicate_blocks', 'max_php_functio
 $root = dirname(__DIR__);
 $budgetPath = null;
 $reportPath = null;
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
         $root = rtrim(substr($argument, strlen('--root=')), '/');

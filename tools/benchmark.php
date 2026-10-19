@@ -128,6 +128,9 @@ function removeTree(string $path): void
 $budgetPath = BENCHMARK_ROOT . '/benchmarks/budgets.json';
 $reportPath = BENCHMARK_ROOT . '/coverage/benchmarks/report.json';
 $positional = [];
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
         $budgetPath = substr($argument, strlen('--budgets='));

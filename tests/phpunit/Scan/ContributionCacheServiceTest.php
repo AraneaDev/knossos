@@ -14,9 +14,9 @@ use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Protocol\{Confidence, Diagnostic, Evidence, NodeFact, Origin};
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
-use Knossos\Store\SqliteConnection;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
+use Knossos\Store\SqliteConnection;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 

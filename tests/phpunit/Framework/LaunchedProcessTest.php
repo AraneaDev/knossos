@@ -8,10 +8,11 @@ use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A process started from a literal argv runs a file of the project: the code
@@ -151,9 +152,9 @@ final class LaunchedProcessTest extends KnossosTestCase
             "    spawn('node');",
             "    spawn('node', dynamic);",
             "    spawn(dynamic, ['x/y.js']);",
-            "    fork(dynamic);",
+            '    fork(dynamic);',
             "    const options = ['node', '--inspect=9229', 'notes/', '--', 'plain'];",
-            "    const nothing = [];",
+            '    const nothing = [];',
             "    const allLiteral = [path.join('k', 'l.js')];",
             "    const named = [process.argv, 'm/n.js'];",
             "    dynamic.call(['node', 'o/p.js']);",

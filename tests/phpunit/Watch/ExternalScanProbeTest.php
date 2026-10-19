@@ -6,10 +6,11 @@ namespace Knossos\Tests\Phpunit\Watch;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Watch\ExternalScanProbe;
-use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
+use RuntimeException;
 
 /**
  * What the watcher says about scans another process runs, poll by poll: a
