@@ -153,6 +153,8 @@ async function scan(io: Port): Promise<void> {
     // Only a watcher that is running now: the header's state alone may outlive it.
     const watching = mod.watcher !== null && isWatching(await io.state.live.read())
     if (watching) await settleWatcher(io)
+    // What the turn's shell commands wrote, as the watcher took it in, counts as the edits do.
+    for (const file of await shellFiles(io)) if (!files.includes(file)) files.push(file)
     const args = [...files.map(f => `--files=${f}`), ...(base === null ? [] : [`--since=${base}`]), ...(watching ? ['--reuse-scan'] : []), ...(mod.enforce ? [] : ['--no-policies'])]
     parsed = parseTurnBrief(await exclusively(() => wrapper(io, 'turn-brief', args, BRIEF_TIMEOUT_MS)))
   } finally {
@@ -195,6 +197,40 @@ async function attributeScan(io: Port, snapshot: string, started: number, ended:
   const { from, to } = scanWindow(started, ended, lookbackMs(mod.watchPollMs, WATCH_DEBOUNCE_MS), mod.lastScan)
   mod.lastScan = { start: started, end: ended }
   if (activeBetween(mod.activity, from, to)) await keepScan(io, snapshot)
+  // A shell command's changes: the files this scan changed are the turn's, as an edit's are (see mod.shellActivity).
+  if (activeBetween(mod.shellActivity, from, to)) {
+    mod.shellScans.add(snapshot)
+    shellChanged()
+  }
+}
+
+/**
+ * A change a shell command made marks the turn for its brief, from the graph
+ * as it stood before (the turn's start, when no edit set one). Marked as soon
+ * as the watcher notices the change, not only once its scan lands, so a turn
+ * that ends while the scan runs still briefs it; one noticed after the turn
+ * ended is the next turn's.
+ */
+function shellChanged(): void {
+  mod.dirty = true
+  mod.turnBase ??= mod.snapshot
+}
+
+/**
+ * The files the scans that took in a shell command's changes changed, as the
+ * scan ledger lists them (read afresh: the watcher has just scanned); none
+ * when the ledger cannot say. The scans are drained: each is reported once.
+ */
+async function shellFiles(io: Port): Promise<string[]> {
+  if (mod.shellScans.size === 0) return []
+  const scans = mod.shellScans
+  mod.shellScans = new Set()
+  await loadLedger(io)
+  const ledger = await io.state.sessionLedger.read()
+  if (ledger?.status !== 'ok') return []
+  return Object.entries(ledger.files)
+    .filter(([, file]) => (file.scans ?? []).some(s => scans.has(s)))
+    .map(([path]) => path)
 }
 
 /**
@@ -298,7 +334,7 @@ async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
         await onWatchEvent(io, event)
       }
       // Its last word: the child ends on its own after it.
-      if (got.events.some(e => e.event === 'refused' || e.event === 'stopped' || e.status === 'no-binary')) break
+      if (got.events.some(e => e.event === 'refused' || e.event === 'stopped' || e.status === 'no-binary' || e.status === 'refused')) break
     }
   } catch {
     // A child that could not start, or a stream torn down under the loop: what follows decides.
@@ -325,9 +361,20 @@ async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
 /** What one watcher event changes: the phase, whether changes wait, and the dashboard when the snapshot moved. */
 async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
   if (event.status === 'no-binary') return disable(io)
+  // The wrapper refused the watcher's own call: it never runs, so it is not asked again, and the log says why.
+  if (event.status === 'refused') {
+    mod.watchRefused = true
+    await io.ui.log(`knossos: the wrapper refused watch (${event.reason ?? 'no reason given'}); no live watcher this session`, { to: 'debug' })
+    return
+  }
   if (event.event === 'refused') mod.watchRefused = true
   if (event.event === 'ready' || event.event === 'following') mod.watchFailures = 0
   if (event.event === 'changes') mod.watchPending = true
+  // Noticed while a shell command ran, or a moment after: the command's.
+  if (event.event === 'changes') {
+    const now = await io.clock.now()
+    if (activeBetween(mod.shellActivity, now - lookbackMs(mod.watchPollMs, WATCH_DEBOUNCE_MS), now)) shellChanged()
+  }
   if (event.event === 'scan_completed' || event.event === 'absorbed' || event.event === 'stopped') mod.watchPending = false
   if (typeof event.pid === 'number' && Number.isInteger(event.pid) && event.pid > 1) mod.watcherPid = event.pid
   const before = await io.state.live.read()

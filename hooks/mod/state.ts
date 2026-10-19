@@ -202,6 +202,17 @@ export const mod = {
   activity: noActivity() as Activity,
   /** Numbers each call the activity keeps, so two calls never share an id. */
   callSeq: 0,
+  /**
+   * When the session's shell commands ran that left HEAD where it was: a
+   * watcher scan whose changes were noticed while one ran took in what the
+   * command wrote (`sed -i`, a heredoc, a formatter), and those files count
+   * toward the turn's brief as an edit's do. A command that moved HEAD by
+   * more than a commit (a checkout, a reset, a pull) is left out: the files
+   * it brought are not the model's to answer for.
+   */
+  shellActivity: noActivity() as Activity,
+  /** The snapshots of the watcher scans that took in a shell command's changes since the last brief: their files are the turn's. */
+  shellScans: new Set<string>(),
   /** When the scan on its way began (the watcher's `scan_started`, or the leader's while following); null when none is. */
   scanStartedAt: null as number | null,
   /** When the last scan the mod heard of began and landed: a change made while it ran is noticed only after it. */
@@ -324,6 +335,8 @@ export function reset(options: PluginOptions): void {
   mod.lastEditAt = 0
   mod.activity = noActivity()
   mod.callSeq = 0
+  mod.shellActivity = noActivity()
+  mod.shellScans = new Set()
   mod.scanStartedAt = null
   mod.lastScan = null
   mod.searchFlight = null

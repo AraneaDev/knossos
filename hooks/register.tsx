@@ -8,7 +8,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { begin, counts, finish } from './lib/activity'
-import { committedSince } from './lib/agent'
+import { committedSince, movedTree } from './lib/agent'
 import { copyCommand, focusLanded, focusMoved, handlersOf, wheelScrolled } from './mod/actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
 import { cellChange, INITIAL } from './mod/cells'
@@ -18,12 +18,6 @@ import { drawBand, drawPane } from './mod/render'
 import { endSession, endTurn, openPane, registerCommand, retryRegister, runCommand, startUp } from './mod/session'
 import { editedPath, mod, PANE, reset, takeNoteSlot } from './mod/state'
 
-/**
- * Whether a Bash call marks the turn dirty. Off: a no-change incremental scan
- * of a real project takes about four seconds, over the two-second budget that
- * made scanning after every shell command acceptable. One line to turn back on.
- */
-const BASH_MARKS_DIRTY = false
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
 /** The Bash commands kept per turn to tell whether it ran the tests. */
 const COMMANDS_KEPT = 50
@@ -222,20 +216,43 @@ export const register: Register = (on, options) => {
   })
 
   // Every command is kept for the turn-end note, which leaves out the tests the turn already ran.
+  // A command marks the turn for its brief only on a cheap signal, never by a scan of its own (an incremental scan of
+  // a real project takes seconds): a change the live watcher noticed while it ran (see mod.shellActivity and
+  // ./mod/watcher), or HEAD moved by more than a commit.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const io = portOf($)
     // Where the project's HEAD stood before the command: only a command that moved it can have committed there.
-    const repo = mod.disabled || !mod.notesOn ? null : await projectRoot(io)
+    const repo = mod.disabled ? null : await projectRoot(io)
     const before = repo === null ? null : await headAt(io, repo)
-    const ran = await next(e)
+    const id = `${++mod.callSeq}`
+    if (!mod.disabled) begin(mod.shellActivity, id, await $.clock.now())
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } catch (err) {
+      mod.shellActivity.running.delete(id)
+      throw err
+    }
     const command = (e as { command?: unknown }).command
     if (ran.deny === undefined && typeof command === 'string' && mod.ranCommands.length < COMMANDS_KEPT) mod.ranCommands.push(command)
-    if (BASH_MARKS_DIRTY) mod.dirty = true
+    // HEAD after it, and its reflog only when it moved: read once, for the turn and for the commit note.
+    const after = repo === null || before === null ? null : await headAt(io, repo)
+    const reflog = repo === null || after === null || after === before ? '' : await reflogAt(io, repo)
+    if (ran.deny !== undefined || movedTree(before, after, reflog, ran.text ?? '')) {
+      // A denied command wrote nothing. One that brought another tree in (a checkout, a reset, a pull) leaves its
+      // files out of the verdict, along with anything a scan took in while it ran; the turn's brief still runs, so
+      // the band and the Changes tab show where the checkout stands now.
+      mod.shellActivity.running.delete(id)
+      if (ran.deny === undefined && !mod.disabled) {
+        mod.shellScans.clear()
+        mod.dirty = true
+      }
+    } else {
+      finish(mod.shellActivity, id, await $.clock.now().catch(() => mod.shellActivity.running.get(id) ?? 0))
+    }
     // A commit, in any loop: what it carries that the graph knows of, said once.
-    if (mod.disabled || ran.deny !== undefined || repo === null || before === null) return ran
+    if (mod.disabled || !mod.notesOn || ran.deny !== undefined || repo === null || before === null) return ran
     return noteSafely(io, ran, async () => {
-      const after = await headAt(io, repo)
-      const reflog = after === null || after === before ? '' : await reflogAt(io, repo)
       if (!committedSince(before, after, reflog, ran.text ?? '')) return ran
       const note = await commitNoteFor(io, e.agentId ?? '')
       return note === null ? ran : { ...ran, context: [...(ran.context ?? []), note] }
