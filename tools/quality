@@ -271,9 +271,16 @@ if [ "$profile" = "full" ] && in_lane release; then
     # the working directory but imported relative to its own module, so it
     # crashed whenever the directory above the checkout held a package.json,
     # and passed only where it did not, as in the image's /opt.
+    #
+    # Its exit status says only that the server answered. The answer is held
+    # to the catalogue (tools/inspector-tools-check.php), so a server that
+    # starts but advertises a tool short, or none, fails here.
+    inspector_out=$(mktemp)
     npm_config_cache=/tmp/knossos-inspector-cache npx -y @modelcontextprotocol/inspector@2.9.0 --cli \
         php "$root/bin/knossos" serve --allow-root="$root" \
-        --db=/tmp/knossos-inspector.sqlite -- --method tools/list
+        --db=/tmp/knossos-inspector.sqlite -- --method tools/list > "$inspector_out"
+    php tools/inspector-tools-check.php "$inspector_out"
+    rm -f "$inspector_out"
     # CI builds this target in its own job, through buildx against a layer
     # cache, and loads it into the daemon before the lane starts, saying so
     # with KNOSSOS_RUNTIME_IMAGE_GIVEN; rebuilding it here would throw that
