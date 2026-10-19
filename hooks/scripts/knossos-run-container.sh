@@ -142,10 +142,18 @@ esac
 # The bound is a whole number of seconds above 0: `timeout` reads 0 as no
 # bound at all, and a value it cannot read makes every run fail, which would
 # look like a binary with nothing to say.
+# Leading zeros go first, so the length below counts digits that matter; a day
+# is the most any run may take, and a longer bound would overflow the shell's
+# arithmetic before it meant anything.
 case $LIMIT in
     '' | *[!0-9]*) refuse 'KNOSSOS_RUN_TIMEOUT is not a whole number of seconds' ;;
 esac
-[ "$SUBCOMMAND" = watch ] || [ "$LIMIT" -gt 0 ] 2>/dev/null || refuse 'KNOSSOS_RUN_TIMEOUT is not above 0'
+LIMIT=${LIMIT#"${LIMIT%%[!0]*}"}
+LIMIT=${LIMIT:-0}
+if [ "$SUBCOMMAND" != watch ]; then
+    [ "$LIMIT" != 0 ] || refuse 'KNOSSOS_RUN_TIMEOUT is not above 0'
+    { [ "${#LIMIT}" -le 5 ] && [ "$LIMIT" -le 86400 ]; } || refuse 'KNOSSOS_RUN_TIMEOUT is more than a day'
+fi
 
 # component-detail takes exactly one component name, which may not read as an
 # option: `--db=...` would point the read at another graph.
@@ -356,6 +364,27 @@ fi
 # gives the container its image's own working directory rather than this one,
 # so the bind mount below is what actually carries the project in; entering it
 # here keeps a caller from mounting one directory and reading another.
+# Whether "$1", a path under the project directory, stays inside it once every
+# symbolic link on the way is followed: `src/x.php` may be a link to a file
+# anywhere, and the binary would read that file. The directories are resolved
+# physically, each link's target read in turn (at most 16), and the path is
+# refused once one lands outside. A path whose directory does not exist names
+# nothing to read, so it stays.
+inside_project() (
+    path=$1
+    hops=0
+    while :; do
+        dir=$(CDPATH='' cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd -P) || exit 0
+        case $dir/ in "$PROJECT_DIR"/*) ;; *) exit 1 ;; esac
+        name=${path##*/}
+        [ -L "$dir/$name" ] || exit 0
+        hops=$((hops + 1))
+        [ "$hops" -le 16 ] || exit 1
+        link=$(readlink -- "$dir/$name") || exit 1
+        case $link in /*) path=$link ;; *) path=$dir/$link ;; esac
+    done
+)
+
 CDPATH='' cd -- "$PROJECT_DIR" 2>/dev/null || exit 0
 # Absolute from here on: a relative path would mean something else to the binary, the mount and the find below once the directory changes.
 PROJECT_DIR=$(pwd -P) || exit 0
@@ -364,6 +393,7 @@ TARGET=$PROJECT_DIR
 if [ "$SUBCOMMAND" = file-detail ] || [ "$SUBCOMMAND" = file-context ]; then
     TARGET="$PROJECT_DIR/$1"
     shift
+    inside_project "$TARGET" || refuse "$SUBCOMMAND reads nothing outside the project"
 fi
 
 # The one failure that is not silent: with no docker there is nothing to

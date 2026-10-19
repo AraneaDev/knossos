@@ -268,8 +268,9 @@ of the trend query does. None of them ever creates a database.
   brief keeps working.
 
 A call the wrapper refuses (a subcommand it does not run, an argument it does
-not let through, a `KNOSSOS_RUN_TIMEOUT` that is not a whole number of seconds
-above 0) is not silent: the wrapper prints
+not let through, a file that is a link out of the project, a
+`KNOSSOS_RUN_TIMEOUT` that is not a whole number of seconds from 1 to 86,400)
+is not silent: the wrapper prints
 `{"status":"refused","by":"wrapper","reason":"..."}`, the mod writes one debug
 log line naming the subcommand and the reason, and reads the answer as no data.
 

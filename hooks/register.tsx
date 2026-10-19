@@ -16,7 +16,7 @@ import { freshDig, observe } from './mod/dig'
 import type { Port } from './mod/port'
 import { drawBand, drawPane } from './mod/render'
 import { endSession, endTurn, openPane, registerCommand, retryRegister, runCommand, startUp } from './mod/session'
-import { editedPath, mod, PANE, reset, takeNoteSlot } from './mod/state'
+import { editedPath, fence, mod, PANE, reset, takeNoteSlot } from './mod/state'
 
 const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const
 /** The Bash commands kept per turn to tell whether it ran the tests. */
@@ -225,7 +225,9 @@ export const register: Register = (on, options) => {
     const repo = mod.disabled ? null : await projectRoot(io)
     const before = repo === null ? null : await headAt(io, repo)
     const id = `${++mod.callSeq}`
-    if (!mod.disabled) begin(mod.shellActivity, id, await $.clock.now())
+    // A clock torn down under the call (the session ending) keeps no span for it.
+    const startedAt = mod.disabled ? null : await $.clock.now().catch(() => null)
+    if (startedAt !== null) begin(mod.shellActivity, id, startedAt)
     let ran: Awaited<ReturnType<typeof next>>
     try {
       ran = await next(e)
@@ -246,6 +248,10 @@ export const register: Register = (on, options) => {
       if (ran.deny === undefined && !mod.disabled) {
         mod.shellScans.clear()
         mod.dirty = true
+        // A scan that lands later and reaches back over this command is the checkout's, even when an earlier command
+        // ran inside the same window: fenced off (see fenced in ./mod/watcher).
+        const endedAt = await $.clock.now().catch(() => null)
+        if (startedAt !== null && endedAt !== null) fence(startedAt, endedAt)
       }
     } else {
       finish(mod.shellActivity, id, await $.clock.now().catch(() => mod.shellActivity.running.get(id) ?? 0))

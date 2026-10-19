@@ -97,7 +97,7 @@ export async function editMarked(io: Port): Promise<void> {
 }
 
 /** The wrapper's argv for a question's write. */
-function argsOf(q: NotesAsk): { sub: string; args: string[] } {
+export function argsOf(q: NotesAsk): { sub: string; args: string[] } {
   const author = q.author === 'model' ? ['--author=model'] : []
   const kind = q.kind === 'note' ? [] : [`--kind=${q.kind}`]
   if (q.action === 'remove') return { sub: 'annotate', args: [`--component=${q.component}`, '--remove', ...author, ...kind, '--execute'] }

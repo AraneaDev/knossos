@@ -4074,6 +4074,17 @@ describe('the live watcher', () => {
     expect(w.watcher.starts).toHaveLength(1)
   })
 
+  test("the wrapper's refusal of the watcher's call is logged, and the watcher is not asked again", async ($, on) => {
+    const w = world(on, { dashboard: [{ stdout: paneDashboard() }], watch: [[{ status: 'refused', by: 'wrapper', reason: 'watch does not take these arguments' }], [READY]] })
+    await $.session.start(START)
+    await w.clock.settle()
+    await w.clock.advance(100)
+    expect(w.logs.filter(l => l.text.includes('the wrapper refused watch'))).toEqual([{ text: 'knossos: the wrapper refused watch (watch does not take these arguments); no live watcher this session', to: 'debug' }])
+    // Refused, not ended: no restart after the pause a watcher that ended on its own gets.
+    await w.clock.advance(120_000)
+    expect(w.watcher.starts).toHaveLength(1)
+  })
+
   test('a watcher that ran and then ended on its own is started again after a pause', async ($, on) => {
     const w = world(on, { watch: [[READY], [READY]] })
     await $.session.start(START)
@@ -5201,6 +5212,34 @@ describe('a turn that changed files only through the shell', () => {
     await bash($, 'git checkout topic')
     await $.turn.complete(TURN)
     await w.clock.settle()
+    expect(w.briefRuns()).toHaveLength(1)
+    expect(w.briefRuns()[0]!.filter(a => a.startsWith('--files='))).toEqual([])
+  })
+
+  test("a scan that lands after a checkout is the checkout's, even with a quick command just before it", async ($, on) => {
+    const w = world(on, {
+      watch: [[READY]],
+      bashMs: 100,
+      brief: [{ stdout: shelled }],
+      ledger: [{ stdout: ledger }],
+      git: command => (command.startsWith('git checkout') ? ['checkout: moving from main to feature'] : []),
+      bashOutput: command => (command.startsWith('git checkout') ? "Switched to branch 'feature'" : 'done'),
+    })
+    await $.session.start(START)
+    await w.clock.settle()
+    const listed = bash($, 'ls')
+    await w.clock.advance(150)
+    await listed
+    const switched = bash($, 'git checkout feature')
+    await w.clock.advance(150)
+    await switched
+    // The watcher notices the branch's files and scans them, within the lookback of both commands.
+    w.watchSend({ event: 'changes', changes: 40 })
+    w.watchSend({ event: 'scan_started', mode: 'incremental', changes: 40 })
+    w.watchSend({ event: 'scan_completed', mode: 'incremental', snapshot_id: 's2', parsed_files: 40 })
+    await w.clock.advance(100)
+    await $.turn.complete(TURN)
+    await w.clock.advance(3_000)
     expect(w.briefRuns()).toHaveLength(1)
     expect(w.briefRuns()[0]!.filter(a => a.startsWith('--files='))).toEqual([])
   })

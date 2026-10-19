@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_WATCH_POLL_MS, isWatching, liveAfter, liveChanged, parseWatchEvent, phaseAfter, snapshotOf, watchLines, watchPollMsOf } from './live'
 
 describe('the watcher lines', () => {
+  it("reads the wrapper's refusal of the watcher's call as an event, but not the binary's own refused status", () => {
+    expect(parseWatchEvent('{"status":"refused","by":"wrapper","reason":"watch does not take these arguments"}')).toEqual({ status: 'refused', by: 'wrapper', reason: 'watch does not take these arguments' })
+    expect(parseWatchEvent('{"status":"refused","reason":"x"}')).toBeNull()
+  })
   it('reads complete lines across pieces, keeping an unfinished one for the next', () => {
     const first = watchLines('', '{"event":"ready","snapshot_id":"s1"}\n{"event":"chan')
     expect(first.events).toEqual([{ event: 'ready', snapshot_id: 's1' }])

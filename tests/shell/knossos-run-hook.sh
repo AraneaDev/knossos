@@ -79,9 +79,16 @@ else
 fi
 # A bound the wrapper cannot use is refused, never handed to timeout: 0 is no
 # bound at all, and a word fails every run.
-for bad in 0 00 1s abc -1; do
+for bad in 0 00 1s abc -1 86401 99999999999999999999; do
     expect_refused "KNOSSOS_RUN_TIMEOUT='$bad' is refused" env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_RUN_TIMEOUT="$bad" /bin/sh "$RUN" dashboard "$STUBS/proj"
 done
+expect_output 'a bound with leading zeros is the number it spells' "dashboard|$ABS_PROJ|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_RUN_TIMEOUT=0086400 /bin/sh "$RUN" dashboard "$STUBS/proj"
+out=$(env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_RUN_TIMEOUT=99999999999999999999 /bin/sh "$RUN" dashboard "$STUBS/proj" 2>/dev/null)
+case "$out" in
+    *'more than a day'*) printf 'ok   %s\n' 'an overflowing bound is refused as more than a day' ;;
+    *) printf 'FAIL %s (output %s)\n' 'an overflowing bound is refused as more than a day' "$out"; failures=$((failures + 1)) ;;
+esac
 expect_output 'watch takes no bound, whatever KNOSSOS_RUN_TIMEOUT says' "watch|$ABS_PROJ|--shared|" \
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_RUN_TIMEOUT=0 /bin/sh "$RUN" watch "$STUBS/proj"
 expect_refused 'unknown subcommand' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" bogus /tmp
@@ -190,6 +197,27 @@ for path in '..' '../x.php' 'src/../../etc/passwd' 'src/..'; do
 done
 expect_refused 'file-context with a file that reads as an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp --db=/elsewhere
 expect_refused 'file-context without a file' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" file-context /tmp
+# A file under the project that is a link out of it (directly, through a
+# linked directory or a chain of links) is refused: the binary would read the
+# file it lands on. A link that stays inside is followed.
+mkdir -p "$STUBS/outside" "$STUBS/proj/src"
+printf 'secret\n' > "$STUBS/outside/secret.php"
+ln -s "$STUBS/outside/secret.php" "$STUBS/proj/src/escape.php"
+ln -s "$STUBS/outside" "$STUBS/proj/linked"
+ln -s escape.php "$STUBS/proj/src/chain.php"
+ln -s ../../outside/secret.php "$STUBS/proj/src/relative.php"
+printf 'ok\n' > "$STUBS/proj/src/real.php"
+ln -s real.php "$STUBS/proj/src/inside.php"
+for sub in file-detail file-context; do
+    for path in src/escape.php linked/secret.php src/chain.php src/relative.php; do
+        expect_refused "$sub refuses $path, a link out of the project" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" "$sub" "$STUBS/proj" "$path"
+    done
+    expect_output "$sub follows a link that stays inside" "$sub|$ABS_PROJ/src/inside.php|--json|" \
+        env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" "$sub" "$STUBS/proj" src/inside.php
+    expect_output "$sub reads a file that is not there yet" "$sub|$ABS_PROJ/src/gone.php|--json|" \
+        env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" "$sub" "$STUBS/proj" src/gone.php
+done
+
 # graph-search: what was typed into the finder, one printable line and nothing else.
 expect_output 'graph-search passes what was typed' "graph-search|$ABS_PROJ|--query=dash svc|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" graph-search "$STUBS/proj" '--query=dash svc'
@@ -508,6 +536,10 @@ expect_refused 'container session-diff refuses a commit that is not hex' \
 expect_output 'container without docker says so' "$NO_BINARY" \
     env PATH="$STUBS/bare" /bin/sh "$STUBS/container/knossos-run.sh" dashboard "$STUBS/proj"
 printf '#!/bin/sh\nexit 1\n' > "$STUBS/dockerbin-failing"; mkdir -p "$STUBS/dockerfail"; mv "$STUBS/dockerbin-failing" "$STUBS/dockerfail/docker"; chmod +x "$STUBS/dockerfail/docker"
+for path in src/escape.php linked/secret.php src/chain.php src/relative.php; do
+    expect_refused "container file-detail refuses $path, a link out of the project" \
+        env PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" file-detail "$STUBS/proj" "$path"
+done
 expect_refused 'container refuses a bound of 0' \
     env KNOSSOS_RUN_TIMEOUT=0 PATH="$STUBS/dockerbin:$PATH" /bin/sh "$STUBS/container/knossos-run.sh" dashboard "$STUBS/proj"
 expect_refused 'container refuses an unknown subcommand' \

@@ -21,6 +21,20 @@ import type { Port } from './port'
 import { startMotion } from './motion'
 import { exclusively, mod } from './state'
 
+/** What `session-changes` is asked: the changes since the snapshot the session began at, or (`null`, the web host) what git says is not committed. */
+export const ledgerArgs = (since: string | null): string[] => [since === null ? '--working-tree' : `--since=${since}`]
+
+/** What a turn brief is asked: the turn's files, the snapshot it began at, whether the watcher's scan is reused, and whether policies count. */
+export const briefArgs = (files: string[], base: string | null, watching: boolean, enforce: boolean): string[] => [
+  ...files.map(f => `--files=${f}`),
+  ...(base === null ? [] : [`--since=${base}`]),
+  ...(watching ? ['--reuse-scan'] : []),
+  ...(enforce ? [] : ['--no-policies']),
+]
+
+/** What the live watcher is started with: its poll interval. */
+export const watchArgs = (pollMs: number): string[] => [`--poll-ms=${pollMs}`]
+
 /** The wrapper bounds a turn brief at 60 s, plus room for it to exit on its own. */
 const BRIEF_TIMEOUT_MS = 70_000
 
@@ -63,7 +77,7 @@ async function loadLedger(io: Port): Promise<void> {
   const web = mod.host === 'web'
   const since = web ? null : await io.state.sessionStart.read()
   if ((!web && since === null) || mod.disabled) return
-  const parsed = parseSessionLedger(await wrapper(io, 'session-changes', [web ? '--working-tree' : `--since=${since}`], LEDGER_TIMEOUT_MS))
+  const parsed = parseSessionLedger(await wrapper(io, 'session-changes', ledgerArgs(web ? null : since), LEDGER_TIMEOUT_MS))
   if (parsed?.status === 'no-binary') return disable(io)
   if (web && (parsed?.status === 'no-git' || (parsed?.status === 'error' && (await io.state.sessionLedger.read())?.status !== 'ok'))) {
     await io.state.sessionLedger.update(() => parsed)
@@ -155,7 +169,7 @@ async function scan(io: Port): Promise<void> {
     if (watching) await settleWatcher(io)
     // What the turn's shell commands wrote, as the watcher took it in, counts as the edits do.
     for (const file of await shellFiles(io)) if (!files.includes(file)) files.push(file)
-    const args = [...files.map(f => `--files=${f}`), ...(base === null ? [] : [`--since=${base}`]), ...(watching ? ['--reuse-scan'] : []), ...(mod.enforce ? [] : ['--no-policies'])]
+    const args = briefArgs(files, base, watching, mod.enforce)
     parsed = parseTurnBrief(await exclusively(() => wrapper(io, 'turn-brief', args, BRIEF_TIMEOUT_MS)))
   } finally {
     // A brief that never ran its scan (silence, an error, a refused root) saw none of these edits:
@@ -198,10 +212,19 @@ async function attributeScan(io: Port, snapshot: string, started: number, ended:
   mod.lastScan = { start: started, end: ended }
   if (activeBetween(mod.activity, from, to)) await keepScan(io, snapshot)
   // A shell command's changes: the files this scan changed are the turn's, as an edit's are (see mod.shellActivity).
-  if (activeBetween(mod.shellActivity, from, to)) {
+  if (activeBetween(mod.shellActivity, from, to) && !fenced(from, to)) {
     mod.shellScans.add(snapshot)
     shellChanged()
   }
+}
+
+/**
+ * Whether a scan's window, `from` to `to`, reaches over a shell command that
+ * moved HEAD by more than a commit: what it took in may be the checkout's, so
+ * none of it is a shell command's, whatever else ran in the window.
+ */
+function fenced(from: number, to: number): boolean {
+  return mod.shellFences.some(f => f.start <= to && f.end >= from)
 }
 
 /**
@@ -314,7 +337,7 @@ async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
   if (gen !== mod.watchGen) return
   let stream: AsyncGenerator<{ stream: string; text: string }, unknown>
   try {
-    stream = io.process.spawn({ argv: ['sh', `${io.plugin.root}/hooks/scripts/knossos-run.sh`, 'watch', root, `--poll-ms=${mod.watchPollMs}`] })
+    stream = io.process.spawn({ argv: ['sh', `${io.plugin.root}/hooks/scripts/knossos-run.sh`, 'watch', root, ...watchArgs(mod.watchPollMs)] })
   } catch {
     mod.watchRefused = true
     return
@@ -334,7 +357,7 @@ async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
         await onWatchEvent(io, event)
       }
       // Its last word: the child ends on its own after it.
-      if (got.events.some(e => e.event === 'refused' || e.event === 'stopped' || e.status === 'no-binary' || e.status === 'refused')) break
+      if (got.events.some(e => e.event === 'refused' || e.event === 'stopped' || e.status === 'no-binary' || (e.status === 'refused' && e.by === 'wrapper'))) break
     }
   } catch {
     // A child that could not start, or a stream torn down under the loop: what follows decides.
@@ -362,7 +385,7 @@ async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
 async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
   if (event.status === 'no-binary') return disable(io)
   // The wrapper refused the watcher's own call: it never runs, so it is not asked again, and the log says why.
-  if (event.status === 'refused') {
+  if (event.status === 'refused' && event.by === 'wrapper') {
     mod.watchRefused = true
     await io.ui.log(`knossos: the wrapper refused watch (${event.reason ?? 'no reason given'}); no live watcher this session`, { to: 'debug' })
     return
@@ -373,7 +396,8 @@ async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
   // Noticed while a shell command ran, or a moment after: the command's.
   if (event.event === 'changes') {
     const now = await io.clock.now()
-    if (activeBetween(mod.shellActivity, now - lookbackMs(mod.watchPollMs, WATCH_DEBOUNCE_MS), now)) shellChanged()
+    const from = now - lookbackMs(mod.watchPollMs, WATCH_DEBOUNCE_MS)
+    if (activeBetween(mod.shellActivity, from, now) && !fenced(from, now)) shellChanged()
   }
   if (event.event === 'scan_completed' || event.event === 'absorbed' || event.event === 'stopped') mod.watchPending = false
   if (typeof event.pid === 'number' && Number.isInteger(event.pid) && event.pid > 1) mod.watcherPid = event.pid
