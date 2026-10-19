@@ -5,6 +5,9 @@ declare(strict_types=1);
 require __DIR__ . '/lib/git-ignore.php';
 
 $root = dirname(__DIR__);
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach ($argv as $argument) {
     // A throwaway tree, so the checker itself can be tested against fixtures.
     if (str_starts_with($argument, '--root=')) {

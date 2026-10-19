@@ -955,6 +955,7 @@ php	tools/generate-reference.php
 php	tools/inspector-tools-check.php
 php	tools/lib/benchmark-budgets.php
 php	tools/lib/budget-numbers.php
+php	tools/lib/cli-arguments.php
 php	tools/lib/coverage-budgets.php
 php	tools/lib/dependency-fanout.php
 php	tools/lib/docblocks.php

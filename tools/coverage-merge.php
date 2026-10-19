@@ -61,6 +61,9 @@ $raw = null;
 $into = $root . '/coverage';
 $filesFrom = null;
 $budgetFile = $root . '/coverage-budgets.json';
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--into=') && strlen($argument) > 7) {
         $into = substr($argument, 7);

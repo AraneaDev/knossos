@@ -22,6 +22,9 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 $root = dirname(__DIR__);
 $check = false;
 $docs = $root . '/docs/reference';
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if ($argument === '--check') {
         $check = true;

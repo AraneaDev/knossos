@@ -19,6 +19,9 @@ declare(strict_types=1);
 
 $catalog = dirname(__DIR__) . '/docs/reference/mcp-tools.md';
 $output = null;
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--catalog=') && strlen($argument) > 10) {
         $catalog = substr($argument, 10);

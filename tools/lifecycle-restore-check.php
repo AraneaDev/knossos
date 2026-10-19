@@ -17,6 +17,10 @@ declare(strict_types=1);
  * called wrong.
  */
 
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
+$argc = count($argv);
 if ($argc !== 4) {
     fwrite(STDERR, "usage: php tools/lifecycle-restore-check.php BEFORE UPGRADED RESTORED\n");
     exit(64);

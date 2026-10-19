@@ -195,6 +195,9 @@ $kind = null;
 $repo = $root;
 $listFile = $root . '/tools/lint-files.txt';
 $command = [];
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 $arguments = array_slice($argv, 1);
 while ($arguments !== []) {
     $argument = array_shift($arguments);

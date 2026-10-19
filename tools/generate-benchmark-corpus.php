@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
+$argc = count($argv);
 if ($argc !== 3 || !preg_match('/^[1-9][0-9]*$/', $argv[2])) {
     fwrite(STDERR, "usage: generate-benchmark-corpus.php OUTPUT FILES_PER_LANGUAGE\n");
     exit(2);

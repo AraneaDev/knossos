@@ -14,6 +14,10 @@ declare(strict_types=1);
  * failed or none ran, since a gate that checked nothing proves nothing; 2 when
  * the file is not a gate result.
  */
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
+$argc = count($argv);
 if ($argc !== 2) {
     fwrite(STDERR, "usage: php tools/gate-report.php GATE_JSON\n");
     exit(2);

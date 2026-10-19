@@ -16,6 +16,9 @@ require __DIR__ . '/lib/skipped-tests.php';
 
 $budgetFile = dirname(__DIR__) . '/coverage-budgets.json';
 $logs = [];
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--budgets=') && strlen($argument) > 10) {
         $budgetFile = substr($argument, 10);

@@ -12,6 +12,9 @@ declare(strict_types=1);
  * undocumented contract in one to see the check refuse.
  */
 $root = dirname(__DIR__);
+require_once __DIR__ . '/lib/cli-arguments.php';
+// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
+$argv = cliArguments();
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--root=') && strlen($argument) > 7) {
         $root = rtrim(substr($argument, 7), '/');
