@@ -21,7 +21,16 @@ trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL -
 # fails the lane the day it appears rather than sitting unread in a report.
 trivy image --quiet --skip-db-update --ignore-unfixed --severity HIGH,CRITICAL --exit-code 0 \
     --format json --output "$report_dir/quality-vulnerabilities.json" "$quality_image"
-php tools/trivy-allowlist.php "$report_dir/quality-vulnerabilities.json"
+#
+# KNOSSOS_QUALITY_IMAGE_FINDINGS=report, which CI sets on pull requests, prints
+# a new finding without failing: it comes from a database update, not from the
+# pull request. Anything else, a push to main, the release and a local run,
+# fails on it.
+if [ "${KNOSSOS_QUALITY_IMAGE_FINDINGS:-fail}" = "report" ]; then
+    php tools/trivy-allowlist.php --report-only "$report_dir/quality-vulnerabilities.json"
+else
+    php tools/trivy-allowlist.php "$report_dir/quality-vulnerabilities.json"
+fi
 trivy config --quiet --ignorefile .trivyignore --severity HIGH,CRITICAL --exit-code 1 \
     --format json --output "$report_dir/dockerfile-misconfigurations.json" Dockerfile \
     || { trivy config --ignorefile .trivyignore --severity HIGH,CRITICAL --format table Dockerfile >&2; exit 1; }

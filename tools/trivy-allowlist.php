@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Hold the quality image's Trivy findings to a committed allowlist.
  *
- *   php tools/trivy-allowlist.php [--allowlist=FILE] REPORT
+ *   php tools/trivy-allowlist.php [--allowlist=FILE] [--report-only] REPORT
  *
  * REPORT is Trivy's JSON for the quality image, already narrowed to fixed
  * HIGH and CRITICAL findings. That image is the gate's own toolchain, never
@@ -15,14 +15,24 @@ declare(strict_types=1);
  * (or FILE), one `ID<tab>package` per line; any finding not on that list fails
  * the run, so a new HIGH or CRITICAL is seen the day it lands. An entry no
  * longer found is reported so the list can shrink, and does not fail.
+ *
+ * With --report-only a new finding is printed under "NEW FINDINGS (report
+ * only on PRs)" and the exit status is 0. Pull requests run that way: a
+ * finding in the gate's own toolchain appears on the day a database update
+ * names it, whatever the pull request changed, and blocking every pull
+ * request on it would block the fix as well. A push to main and the release
+ * run without the flag, and fail.
  * Exit 0 passes, 1 refuses, 64 means it was called wrong.
  */
 
 $allowlist = __DIR__ . '/quality-image-vulnerabilities.txt';
 $report = null;
+$reportOnly = false;
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--allowlist=') && strlen($argument) > 12) {
         $allowlist = substr($argument, 12);
+    } elseif ($argument === '--report-only') {
+        $reportOnly = true;
     } elseif (!str_starts_with($argument, '--') && $report === null) {
         $report = $argument;
     } else {
@@ -31,7 +41,7 @@ foreach (array_slice($argv, 1) as $argument) {
     }
 }
 if ($report === null) {
-    fwrite(STDERR, "usage: php tools/trivy-allowlist.php [--allowlist=FILE] REPORT\n");
+    fwrite(STDERR, "usage: php tools/trivy-allowlist.php [--allowlist=FILE] [--report-only] REPORT\n");
     exit(64);
 }
 
@@ -83,6 +93,15 @@ if ($new !== []) {
     $lines = [];
     foreach ($new as $key => $severity) {
         $lines[] = sprintf('  %s %s', $severity, str_replace("\t", ' in ', $key));
+    }
+    if ($reportOnly) {
+        printf(
+            "quality image vulnerabilities: NEW FINDINGS (report only on PRs): %d finding(s) not on %s; a push to main fails on them:\n%s\n",
+            count($new),
+            $allowlist,
+            implode("\n", $lines),
+        );
+        exit(0);
     }
     trivyRefuse(sprintf(
         "%d finding(s) not on %s; fix them, or add them in a reviewed change that says why:\n%s",

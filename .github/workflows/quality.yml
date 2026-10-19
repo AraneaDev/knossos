@@ -323,6 +323,9 @@ jobs:
           # PHPUnit runs once, in the coverage shards. Running it here as well
           # doubled the slowest work of a run on main for no new verdict.
           PHPUNIT_IN_COVERAGE: "1"
+          # New Trivy findings in the quality image are reported on a pull
+          # request and fail a push to main (tools/trivy-allowlist.php).
+          QUALITY_IMAGE_FINDINGS: ${{ github.event_name == 'pull_request' && 'report' || 'fail' }}
         run: |
           mkdir -p "$RUNNER_TEMP/trivy-cache"
           docker run --name knossos-quality -e KNOSSOS_QUALITY_CONTAINER=1 \
@@ -330,6 +333,7 @@ jobs:
             -e TRIVY_CACHE_DIR=/tmp/trivy-cache \
             -e KNOSSOS_EXTERNAL_LINKS="$EXTERNAL_LINKS" \
             -e KNOSSOS_PHPUNIT_IN_COVERAGE="$PHPUNIT_IN_COVERAGE" \
+            -e KNOSSOS_QUALITY_IMAGE_FINDINGS="$QUALITY_IMAGE_FINDINGS" \
             -e KNOSSOS_GATE_REPO=/workspace \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$RUNNER_TEMP/trivy-cache:/tmp/trivy-cache" \

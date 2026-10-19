@@ -119,6 +119,33 @@ final class ReleaseChecksTest extends KnossosTestCase
         assertContains('it has no Results', $errors);
     }
 
+    /**
+     * On a pull request a new finding is reported, clearly, without failing:
+     * it arrives with a database update, not with the change. Every other run
+     * fails on it, which is the test above.
+     */
+    public function testANewQualityImageFindingIsOnlyReportedOnAPullRequest(): void
+    {
+        $allowlist = $this->write('allowlist.txt', "CVE-2026-0001\tstdlib\n");
+        $planted = [
+            ['VulnerabilityID' => 'CVE-2026-0001', 'PkgName' => 'stdlib', 'Severity' => 'HIGH'],
+            ['VulnerabilityID' => 'CVE-2026-9999', 'PkgName' => 'openssl', 'Severity' => 'CRITICAL'],
+        ];
+
+        [$exit, $output, $errors] = $this->scanCheck($allowlist, [['Target' => 'debian', 'Vulnerabilities' => $planted]], true);
+        assertSame(0, $exit, 'a pull request failed on a finding it did not cause: ' . $errors);
+        assertContains('NEW FINDINGS (report only on PRs): 1 finding(s) not on', $output);
+        assertContains('CRITICAL CVE-2026-9999 in openssl', $output);
+
+        [$exit, , $errors] = $this->scanCheck($allowlist, [['Target' => 'debian', 'Vulnerabilities' => $planted]]);
+        assertSame(1, $exit, 'a push to main passed a new finding');
+
+        $supplyChain = (string) file_get_contents(self::guardTool('supply-chain'));
+        assertContains('if [ "${KNOSSOS_QUALITY_IMAGE_FINDINGS:-fail}" = "report" ]; then', $supplyChain);
+        $workflow = (string) file_get_contents(self::repositoryRoot() . '/.github/workflows/quality.yml');
+        assertContains("QUALITY_IMAGE_FINDINGS: \${{ github.event_name == 'pull_request' && 'report' || 'fail' }}", $workflow);
+    }
+
     /** The committed allowlist is well formed, so the release lane reads it rather than refusing it. */
     public function testTheRepositoryAllowlistIsWellFormed(): void
     {
@@ -167,10 +194,10 @@ final class ReleaseChecksTest extends KnossosTestCase
      * @param list<array<string, mixed>>|null $results
      * @return array{0: int, 1: string, 2: string}
      */
-    private function scanCheck(string $allowlist, ?array $results): array
+    private function scanCheck(string $allowlist, ?array $results, bool $reportOnly = false): array
     {
         $report = $this->write('report.json', json_encode($results === null ? ['SchemaVersion' => 2] : ['Results' => $results], JSON_THROW_ON_ERROR));
 
-        return $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('trivy-allowlist.php'), '--allowlist=' . $allowlist, $report]);
+        return $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('trivy-allowlist.php'), '--allowlist=' . $allowlist, ...($reportOnly ? ['--report-only'] : []), $report]);
     }
 }
