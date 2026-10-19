@@ -8,6 +8,9 @@ $pidFile = $argv[2] ?? null;
 // files than this is treated as too big to answer.
 $threshold = (int) ($argv[3] ?? 0);
 $cancelled = [];
+// How many requests `inputs_undiscovered_then_missing` has answered so far,
+// across the whole conversation; only the first carries its input hashes.
+$undiscoveredRequests = 0;
 
 while (($line = fgets(STDIN)) !== false) {
     $request = json_decode($line, true);
@@ -110,7 +113,7 @@ while (($line = fgets(STDIN)) !== false) {
         // Never quiet long enough for the core to wait: frames are always
         // buffered by the time it reads.
         if ($mode === 'heartbeat_flood') {
-            while (true) {
+            for (;;) {
                 writeMessage(['jsonrpc' => '2.0', 'method' => 'scan/heartbeat']);
             }
         }
@@ -251,7 +254,7 @@ while (($line = fgets(STDIN)) !== false) {
                     // A read no disk state matches, then a language fault on
                     // the next request: the result without its input_hashes.
                     $inputs[$dependency] = hash('sha256', 'never on disk');
-                    $undiscoveredRequests = ($undiscoveredRequests ?? 0) + 1;
+                    ++$undiscoveredRequests;
                 } elseif ($mode === 'inputs_undiscovered_edited_unreported') {
                     // Not read by this request at all, but changed while it
                     // runs: only a stored read of a reused file names it.
