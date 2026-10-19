@@ -40,9 +40,13 @@ full-src run takes hours, which is too slow to gate a push. It runs in the
 `Mutation` workflow, on a schedule (07:00 UTC every Monday) and on demand from
 the Actions tab (`workflow_dispatch`). The workflow splits `src` into four
 shards that run side by side, each over every fourth file, and an `msi-gate` job
-then enforces the floor on the aggregate of the four shard logs. It fails when a
-shard log is missing, so a smaller tree is never reported as a pass. To run it
-locally:
+runs `tools/mutation-gate` on the aggregate of the four shard logs. It fails when
+a shard log is missing, so a smaller tree is never reported as a pass; when MSI
+is below `minMsi` or covered MSI is below `minCoveredMsi`; and when the tested or
+ignored mutant count moved more than the tolerance in
+`tools/mutation-population.json` since the last full run, because a score over
+fewer mutants can clear a floor while measuring less of the code. Update that
+file in the same commit as the floor, from the same run. To run it locally:
 
 ```sh
 php -d pcov.enabled=1 vendor/bin/infection --no-interaction --no-progress --threads=4

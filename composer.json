@@ -49,7 +49,8 @@
       "php -l tools/lib/coverage-budgets.php",
       "php -l tools/docstring-report.php",
       "php -l tools/lib/benchmark-budgets.php",
-      "php -l tools/gate-report.php"
+      "php -l tools/gate-report.php",
+      "php -l tools/mutation-gate"
     ],
     "test": [
       "phpunit",
@@ -63,7 +64,9 @@
       "sh tests/shell/release-pr.sh",
       "sh tests/shell/quality-verdict.sh",
       "sh tests/shell/release-rollback.sh",
-      "sh tests/shell/gate-baseline.sh"
+      "sh tests/shell/gate-baseline.sh",
+      "sh tests/shell/mutation-gate.sh",
+      "sh tests/shell/mutation-diff.sh"
     ],
     "check:quick": [
       "@composer validate --strict",
