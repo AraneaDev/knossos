@@ -293,7 +293,11 @@ nothing about the result. Three now hand their output to a check of its own:
 - The quality image's Trivy scan keeps `--exit-code 0`, because that image is the
   gate's own toolchain and is never shipped, but its fixed HIGH and CRITICAL
   findings are held to `tools/quality-image-vulnerabilities.txt`
-  (`tools/trivy-allowlist.php`). A finding not on that list fails the lane; one
+  (`tools/trivy-allowlist.php`). On a pull request a finding not on that list
+  is printed under `NEW FINDINGS (report only on PRs)` and does not fail,
+  because it arrives with a database update, not with the change. A push to
+  `main`, the release and a local run fail on it. CI chooses with
+  `KNOSSOS_QUALITY_IMAGE_FINDINGS` (`report` or `fail`, the default). A finding
   that is no longer found is printed, so the list can shrink.
 
 The Cosign signature check is a smoke test and says so: the key pair is made on
@@ -314,12 +318,32 @@ where they run:
   (`@anthropic-ai/claude-code@2.1.287`). A machine without the `claude` command
   reports them as not run.
 - The staged `register.tsx` type-check runs in `tests` against the engine's own
-  declarations, `.claude-plugin/types/claude-code/index.d.ts`, or the file
-  `KNOSSOS_CLAUDE_CODE_TYPES` names. The CLI writes that file only when a
-  session loads the mod; it builds the declarations at run time, and neither its
-  npm package nor any headless command puts them on disk. Where the file is
-  missing the check is reported as not run, which fails the quality container
-  until the declarations are provided.
+  declarations, committed in `tools/claude-code-api/`, or the `index.d.ts`
+  `KNOSSOS_CLAUDE_CODE_TYPES` names. Where they are missing the check is
+  reported as not run, which fails the quality container.
+
+### Regenerating the Claude Code declarations
+
+The CLI does not ship its API declarations. It builds them at run time and
+writes them beside a mod when a session loads it, so they are generated and
+committed:
+
+```sh
+tools/claude-code-types
+```
+
+It installs the Claude Code version the Dockerfile pins into a temporary
+prefix, stages the plugin, and starts one headless session with the plugin
+loaded, its own empty config directory and an invalid API key. The session
+writes the declarations and stops at the first API call, so nothing reaches
+your account. The script copies `claude-code/` and `claude-code-tools/` into
+`tools/claude-code-api/` and records the version in
+`tools/claude-code-api/VERSION`. It needs npm, node and the network.
+
+The `static` lane runs `php tools/claude-code-types-check.php`, which fails when
+the Dockerfile's pin, the `VERSION` stamp and the version the declarations
+name in their first line disagree. When you move the pin, run the script and
+commit what it writes in the same change.
 
 ## Tool inventory
 
