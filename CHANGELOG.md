@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.1](https://github.com/AraneaDev/knossos/compare/v0.33.0...v0.33.1) (2026-10-19)
+
+
+### Fixes
+
+* **typescript:** count a table lookup as a reference to the functions it can reach ([#370](https://github.com/AraneaDev/knossos/issues/370)) ([0ae90da](https://github.com/AraneaDev/knossos/commit/0ae90dae9d402911cb79fed5c3aeadbe6b409822))
+
 ## [0.33.0](https://github.com/AraneaDev/knossos/compare/v0.32.1...v0.33.0) (2026-10-19)
 
 
