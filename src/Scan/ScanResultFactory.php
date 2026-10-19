@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
-use Knossos\Reconciliation\ReconciliationResult;
+use Knossos\Reconciliation\{Milliseconds, ReconciliationResult};
 use Knossos\Result\ResultEnvelope;
 
 /**
@@ -69,7 +69,7 @@ final readonly class ScanResultFactory
                 'quality_budgets' => $plan->preparation->configuration->qualityBudgets,
             ],
             'metrics' => [
-                'elapsed_ms' => round((hrtime(true) - $startedAt) / 1_000_000, 3),
+                'elapsed_ms' => Milliseconds::since($startedAt),
                 'peak_memory_bytes' => memory_get_peak_usage(true),
                 'discovered_files' => count($plan->preparation->discovery->files),
                 'parsed_files' => $language->parsed,

@@ -24,7 +24,7 @@ final readonly class AgentBriefService extends AbstractArchitectureQueryService
     }
     /** A Markdown orientation brief for an agent starting work on a project. */
 
-    public function exportAgentBrief(string $projectId, int $maxChars = 4000): ResultEnvelope
+    public function exportAgentBrief(string $projectId, int $maxChars): ResultEnvelope
     {
         if ($maxChars < 1000 || $maxChars > 20_000) {
             throw new \InvalidArgumentException('max_chars must be between 1000 and 20000.');

@@ -35,18 +35,17 @@
   // and exposed a real bug. A blanket exclusion would have hidden that.
   mutators: {
     "@default": true,
-    // Integer mutations on a declaration default: byte caps, TTLs, pool sizes.
-    // The exact value of `int $maxLineBytes = 1_048_576` is a tuning knob, not
-    // behaviour, and it is unobservable through the public API: killing 1048576
-    // -> 1048575 needs either a megabyte-sized fixture per assertion or a test
-    // that restates the constant. Scoped to declaration defaults so index and
-    // offset arithmetic is still mutated.
+    // Deliberately NOT excluded either: integer mutations on a declaration
+    // default (byte caps, TTLs, page sizes, timeouts). They are killable, by a
+    // test that crosses the boundary through the default or a fixture as large
+    // as the cap, so they stay counted whether or not that test exists yet.
+    //
     // A `break N;` level is not a value, it is a count of enclosing loops, and
-    // every one of the three in src is `break 2;` at a nesting depth of exactly
-    // two. Raising it emits `break 3;`, which PHP rejects at COMPILE time —
-    // "Cannot 'break' 3 levels" — so the mutant can never run, let alone be
-    // killed by a test. Measured: the 2026-08-09 full-src run reported exactly
-    // one `error` mutant, IncrementInteger on
+    // every one of the six in src (`break 2;` or `continue 2;`) sits at a
+    // nesting depth of exactly two. Raising it emits `break 3;`, which PHP
+    // rejects at COMPILE time ("Cannot 'break' 3 levels"), so the mutant can
+    // never run, let alone be killed by a test. Measured: the 2026-08-09
+    // full-src run reported exactly one `error` mutant, IncrementInteger on
     // AbstractArchitectureQueryService.php:240.
     //
     // It has to be excluded rather than tolerated because Infection counts an
@@ -56,23 +55,23 @@
     // wrong.
     //
     // Scoped to IncrementInteger, and NOT mirrored into DecrementInteger below:
-    // `break 2;` -> `break 1;` compiles and changes behaviour — it escapes only
-    // the inner loop — which is a real mutant worth killing. `continue` is
-    // included though none exists today: the mechanism is identical, and its
-    // absence would show up as a silently inflated score rather than a failure
-    // anyone would notice.
+    // `break 2;` -> `break 1;` compiles and changes behaviour (it escapes only
+    // the inner loop), which is a real mutant worth killing.
     //
     // The pattern is matched by Infection as `^-\s*<regex>$` against the
-    // mutant's diff, so it targets the original line.
-    // The nanosecond-to-millisecond divisor on an `hrtime(true)` reading is a
-    // unit conversion, not a tuning knob. Off-by-one on it (999999, 1000001)
-    // shifts the result by one part in a million — under a microsecond on any
-    // duration this codebase measures, and erased entirely by the `(int)` cast
-    // and the `round(…, 3)` that follow. No test can distinguish it without
-    // restating the divisor, so these are equivalent mutants. Measured on
-    // GitProcessRunner.php:169 and GraphReconciler.php:86, both survivors of the
-    // 2026-09-10 run. Only the integer mutators are excluded: `Minus` on the
-    // same line (`hrtime(true) + $start`) is a real defect and stays reported.
+    // mutant's diff, so it targets the original line. A line-wide pattern
+    // hides EVERY integer mutant on that line, which is why the patterns below
+    // name the whole shape of the line and not just the literal they are about.
+    //
+    // The nanosecond-to-millisecond divisor in `(int) ((hrtime(true) - $start)
+    // / 1_000_000)`. Off-by-one on it (999999, 1000001) moves the reading by
+    // one part in a million, a few nanoseconds on the hardening step it times,
+    // which the `(int)` cast to whole milliseconds erases. No test can tell it
+    // apart without restating the divisor. Measured on GitProcessRunner.php:169
+    // (now :199), a survivor of the 2026-09-10 run; it is the only site. Every
+    // other timing goes through Reconciliation\Milliseconds, whose divisor and
+    // `round(…, 3)` precision are mutated and killed by MillisecondsTest.
+    //
     // The look-ahead row on a paged query: `LIMIT :limit` bound to `$max + 1`
     // fetches one row past the page only to learn whether a further page
     // exists. Raising it to `$max + 2` fetches a second spare row, and every
@@ -81,10 +80,10 @@
     // is a wasted row read. Survived and confirmed by hand three times in the
     // 2026-09-10/11 runs (ProjectCatalogQueryService listProjects, and
     // LocationSuggestionService's member and edge queries). The pattern matches
-    // eight lines in src, and each was read before excluding it: seven slice
-    // with count()/array_slice(), and ArchitectureHealthQuery's node query
-    // feeds streamBounded(), which stops on the first row past $maxRows and so
-    // never reads a second spare row either. Re-check any new match.
+    // six lines in src, and each was read before excluding it: five slice with
+    // count()/array_slice(), and LocationSuggestionService's member query feeds
+    // streamBounded(), which stops on the first row past $maxRows and so never
+    // reads a second spare row either.
     // IncrementInteger only: DecrementInteger turns `+ 1` into `+ 0`, which
     // does break overflow detection, and stays reported. The same holds for
     // ChangeImpactQueryService's direct-component query, which spells its
@@ -94,27 +93,31 @@
     // A millisecond timeout becomes a nanosecond deadline as `$timeoutMs *
     // 1_000_000`, the inverse of the divisor above and equivalent for the same
     // reason: 999999 or 1000001 moves a deadline by one part in a million.
-    // Eight sites, all `$deadline = <clock> + ($timeoutMs * 1_000_000)`.
+    // Nine sites, all `$deadline = <clock> + ($timeoutMs * 1_000_000)`.
     //
     // SQL placeholder lists are built as `implode(',', array_fill(0, count($x),
     // '?'))`. implode() reads values, never keys, so the start index of the
-    // fill (-1 or 1 for 0) produces the identical string. Thirty-two sites, all
-    // of that exact shape; the count argument is not an integer literal and
-    // keeps its mutants. Confirmed on ChangeImpactQueryService.php:180 in the
-    // 2026-09-11 run.
+    // fill (-1 or 1 for 0) produces the identical string. Fifty sites, all of
+    // that exact shape and with no other integer literal on the line; the count
+    // argument is not an integer literal and keeps its mutants. Confirmed on
+    // ChangeImpactQueryService.php:180 in the 2026-09-11 run.
     //
     // `array_chunk($rows, N)` batch sizes are throughput knobs: every chunk is
     // written, deleted or queried the same way, so N +/- 1 yields the same rows.
     // Each size already sits well under SQLite's variable limit (the writer's
     // 15-column node batch of 60 is 900 of the historic 999 floor; this build
-    // allows 32766), so one more row per batch cannot cross it. Ten sites:
-    // SqliteGraphWriter x5, SqliteGraphPruner x2, DeadCodeAnalysis x3.
-    // Confirmed on SqliteGraphPruner.php:87 and :108 in the 2026-09-11 run.
+    // allows 32766), so one more row per batch cannot cross it. Nine sites:
+    // SqliteGraphWriter x5, SqliteGraphPruner x2, ScanLedger's delete, and
+    // AnnotationNotes, which sorts the merged rows on a full key afterwards so
+    // the batch boundary cannot reorder them. Confirmed on
+    // SqliteGraphPruner.php:87 and :108 in the 2026-09-11 run.
+    //
+    // InfectionExclusionsTest pins every pattern here to the file:line set it
+    // matches, so a new or moved match fails until it is read and recorded.
     IncrementInteger: {
       ignoreSourceCodeByRegex: [
-        ".*(?:private|protected|public)[^;{]*int \\$[A-Za-z_]\\w* = \\d[\\d_]{3,}.*",
         "(?:break|continue) \\d+;",
-        ".*hrtime\\(true\\).*/ 1_000_000.*",
+        ".*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);",
         ".*bindValue\\(':limit', \\$\\w+ \\+ 1, PDO::PARAM_INT\\).*",
         ".*LIMIT %d', self::\\w+ \\+ 1\\).*",
         ".*\\$timeoutMs \\* 1_000_000.*",
@@ -124,8 +127,7 @@
     },
     DecrementInteger: {
       ignoreSourceCodeByRegex: [
-        ".*(?:private|protected|public)[^;{]*int \\$[A-Za-z_]\\w* = \\d[\\d_]{3,}.*",
-        ".*hrtime\\(true\\).*/ 1_000_000.*",
+        ".*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);",
         ".*\\$timeoutMs \\* 1_000_000.*",
         ".*implode\\(',', array_fill\\(0, count\\(.*",
         ".*array_chunk\\(\\$\\w+, \\d+\\).*",
@@ -135,7 +137,7 @@
     // `stream_set_read_buffer($input, 0)` was verified by hand to leave the stdio
     // suite entirely green: the read loop still frames every message correctly, it
     // just does so against PHP's default buffer. Killing it would need a test that
-    // measures syscall timing, which asserts on the platform rather than on us.
+    // measures syscall timing, which asserts on the platform rather than on this code.
     //
     // Note what is NOT here: fflush(). Dropping a flush is unobservable against a
     // php://temp fixture but deadlocks a real client waiting on a response, so it
@@ -143,20 +145,6 @@
     FunctionCallRemoval: {
       ignoreSourceCodeByRegex: [
         ".*stream_set_(?:read|write|chunk)_buffer\\(.*",
-      ],
-    },
-    // InputHashesMap::decode() lower-cases RelativePath::assertValid()'s
-    // message before appending it to its own "sent ..." sentence. The
-    // message always starts with self::FIELD . ' key ' . $path, and FIELD is
-    // the literal 'input_hashes', which already starts lower-case, so
-    // lcfirst() never changes the string: unwrapping it (UnwrapLcFirst)
-    // produces byte-identical output on every input. No test can kill an
-    // equivalent mutant without asserting on behaviour that cannot differ.
-    // Scoped to this exact call so a future lcfirst() elsewhere in src still
-    // gets mutated.
-    UnwrapLcFirst: {
-      ignoreSourceCodeByRegex: [
-        ".*lcfirst\\(rtrim\\(\\$error->getMessage\\(\\), '\\.'\\)\\).*",
       ],
     },
   },

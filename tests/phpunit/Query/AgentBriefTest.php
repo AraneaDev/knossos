@@ -31,6 +31,8 @@ final class AgentBriefTest extends KnossosTestCase
         assertSame(true, str_contains($markdown, 'scan_project')); // closing pointer
         assertSame([], $result->data['omitted_sections']);
         assertSame(true, strlen($markdown) <= 4000);
+        // The budget a caller gets without asking for one, as the envelope reports it.
+        assertSame(4000, $result->data['max_chars']);
     }
 
     #[Group('query')]
