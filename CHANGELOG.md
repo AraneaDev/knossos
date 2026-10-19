@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/AraneaDev/knossos/compare/v0.33.1...v0.34.0) (2026-10-19)
+
+
+### Features
+
+* **web:** polish terminal workspace and document browser client ([#372](https://github.com/AraneaDev/knossos/issues/372)) ([bdda3c6](https://github.com/AraneaDev/knossos/commit/bdda3c6a7cd0c2320eb657fea379e4c14770f2a7))
+
 ## [0.33.1](https://github.com/AraneaDev/knossos/compare/v0.33.0...v0.33.1) (2026-10-19)
 
 
