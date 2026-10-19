@@ -333,12 +333,14 @@ tools/claude-code-types
 ```
 
 It installs the Claude Code version the Dockerfile pins into a temporary
-prefix, stages the plugin, and starts one headless session with the plugin
-loaded, its own empty config directory and an invalid API key. The session
-writes the declarations and stops at the first API call, so nothing reaches
-your account. The script copies `claude-code/` and `claude-code-tools/` into
-`tools/claude-code-api/` and records the version in
-`tools/claude-code-api/VERSION`. It needs npm, node and the network.
+prefix, stages the plugin, and starts one interactive session under `script`
+with the plugin loaded, its own config directory and an invalid API key. A
+headless `claude -p` run no longer writes the declarations as of 2.1.303. The
+session writes them as soon as it loads the mod and is stopped there, so nothing
+reaches your account or your own configuration. The script copies
+`claude-code/` and `claude-code-tools/` into `tools/claude-code-api/` and
+records the version in `tools/claude-code-api/VERSION`. It needs npm, node,
+`script` from util-linux and the network.
 
 The `static` lane runs `php tools/claude-code-types-check.php`, which fails when
 the Dockerfile's pin, the `VERSION` stamp and the version the declarations
