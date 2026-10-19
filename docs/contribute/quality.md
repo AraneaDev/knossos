@@ -51,6 +51,48 @@ tools/quality full static
 Omitting the argument runs every lane the profile has, which is the local
 default.
 
+### Checks that do not run
+
+A check whose tool is missing is not skipped in silence. It prints
+`NOT run: <check> (<reason>)` where it would have run, and the run ends with a
+list of every check that did not run, whether it passed or failed:
+
+```text
+tools/quality: 2 check(s) NOT run:
+  - Hadolint (hadolint not found)
+  - the external link check (KNOSSOS_EXTERNAL_LINKS=0)
+```
+
+On your machine that is a warning: install the tool, or use
+`tools/quality-container`, to run the check. In the quality container
+(`KNOSSOS_QUALITY_CONTAINER=1`) the image is built to hold every tool, so a
+missing one fails the run at once. That covers cargo and the Rust worker's
+conformance, cargo-audit, pre-commit, ShellCheck, Hadolint, `docker compose`, the
+Claude CLI, the staged `register.tsx` type-check and the lint list freshness
+check. A check you turn off on purpose, such as the external links with
+`KNOSSOS_EXTERNAL_LINKS=0` or PHPUnit in the `tests` lane with
+`KNOSSOS_PHPUNIT_IN_COVERAGE=1`, is listed the same way and never fails the run.
+`KNOSSOS_PHPUNIT_IN_COVERAGE=1` is refused with exit 64 under `fast`, which has
+no coverage lane to run PHPUnit instead.
+
+### The lint lists
+
+`php -l`, PHP-CS-Fixer, PHPStan, ESLint and ShellCheck read their files from
+`tools/lint-files.txt`, which `php tools/lint-files.php --write` derives from
+`git ls-files`: every tracked file of its kind, by extension or by its `#!` line,
+except the scanner input under `tests/Fixtures/`. The quality image carries no
+`.git`, so the list is committed, and the `static` lane derives it again and
+refuses a committed copy that differs. When you add, rename or remove a script,
+a PHP file or a JavaScript or TypeScript module, run:
+
+```sh
+php tools/lint-files.php --write
+```
+
+and commit the result. ESLint runs with `--max-warnings 0`, so a warning fails
+the lane. The container lanes need the checkout for this: `tools/quality-container`
+and CI mount it read-only at `/workspace` and name it with `KNOSSOS_GATE_REPO`.
+
 The split follows independence. Coverage shows why it cannot follow language: a
 single PHPUnit run under pcov produces the PHP figure and, from the worker
 subprocesses that run drives, the JavaScript and Python figures. Splitting it per
@@ -211,7 +253,11 @@ Fenced code is not prose and is skipped, following the CommonMark fence rules.
 `php tools/generate-reference.php --check` fails when `docs/reference/cli.md`,
 `mcp-tools.md` or `api.md` differ from what the code generates, and
 `php tools/api-documentation-check.php` and `php tools/docstring-report.php`
-hold the docblock coverage.
+hold the docblock coverage. The API check also fails when it finds no interface
+method to check at all, and `npm run lint:md` fails when it finds no Markdown to
+lint. Each of these checks takes another tree (`--docs=DIR` for the reference,
+`--root=DIR` for the other two), which is how the tests plant a stale or
+undocumented file without touching the repository.
 
 External links are fetched only by `php tools/documentation-check.php --external`,
 in the `release` lane. A dead link there fails the lane. `tools/quality` runs the
@@ -234,6 +280,26 @@ answering right now is not a property of the change under review. Set it to `0`
 yourself to skip the fetch locally. The badge hosts `img.shields.io` and
 `mcpobservatory.com` are counted but never fetched.
 
+## What the release lane holds its reports to
+
+Four steps of the `release` lane used to pass on an exit status that said
+nothing about the result. Three now hand their output to a check of its own:
+
+- The MCP Inspector's `tools/list` answer must name exactly the tools in
+  `docs/reference/mcp-tools.md` (`tools/inspector-tools-check.php`).
+- The lifecycle rollback must leave the database holding the backup's snapshots,
+  with the same one active, after an upgrade scan that added one
+  (`tools/lifecycle-restore-check.php`).
+- The quality image's Trivy scan keeps `--exit-code 0`, because that image is the
+  gate's own toolchain and is never shipped, but its fixed HIGH and CRITICAL
+  findings are held to `tools/quality-image-vulnerabilities.txt`
+  (`tools/trivy-allowlist.php`). A finding not on that list fails the lane; one
+  that is no longer found is printed, so the list can shrink.
+
+The Cosign signature check is a smoke test and says so: the key pair is made on
+the spot and thrown away, so it shows that signing and verifying work, not who
+built the image.
+
 ## The Claude Code mod
 
 The mod has three checks of its own, and
@@ -246,7 +312,14 @@ where they run:
 - `claude plugin validate` and `claude plugin test` run in `tests`, against a
   staging copy of the plugin. The quality image pins the Claude CLI
   (`@anthropic-ai/claude-code@2.1.287`). A machine without the `claude` command
-  prints that they were not run.
+  reports them as not run.
+- The staged `register.tsx` type-check runs in `tests` against the engine's own
+  declarations, `.claude-plugin/types/claude-code/index.d.ts`, or the file
+  `KNOSSOS_CLAUDE_CODE_TYPES` names. The CLI writes that file only when a
+  session loads the mod; it builds the declarations at run time, and neither its
+  npm package nor any headless command puts them on disk. Where the file is
+  missing the check is reported as not run, which fails the quality container
+  until the declarations are provided.
 
 ## Tool inventory
 
@@ -263,12 +336,12 @@ where they run:
 | Dockerfile                   | Hadolint 2.14.0, digest-pinned base images, clean build/doctor                  |
 | Dependencies                 | Composer validation/audit, npm lock integrity/audit                             |
 | Repository hygiene           | private-key/access-key patterns, 2 MB file cap, conflict markers, line endings  |
-| MCP contract                 | test suite plus Inspector 2.9.0 `tools/list` smoke                              |
+| MCP contract                 | test suite plus Inspector 2.9.0 `tools/list` held to the tool catalogue         |
 | Adversarial testing          | fixed-seed properties/fuzz, differential scans, semantic mutation score         |
 | Mutation testing             | Infection 0.34 over `src`, scheduled workflow (not a profile gate)              |
 | Performance                  | mixed-language cold/incremental/query/RSS/SQLite budgets                        |
 | Documentation                | generated CLI/MCP contracts, internal links, anchors and images, external links |
-| Supply chain                 | CycloneDX SBOMs, Trivy runtime/config gates, provenance, Cosign verification    |
+| Supply chain                 | CycloneDX SBOMs, Trivy gates, quality image allowlist, provenance, Cosign smoke |
 | Maintainability              | per-file size/decision metrics and normalized cross-file duplication report     |
 
 ## The PHP test suite
@@ -359,7 +432,7 @@ for the tool run with `npm run test:mod`.
 The `static` lane publishes `coverage/quality/maintainability.json` and
 fails when any checked-in budget in `maintainability-budgets.json` regresses.
 The report covers all first-party PHP, TypeScript/JavaScript, and Python runtime
-sources. The Rust worker is the one first-party runtime outside it: `tools/quality` runs formatting, Clippy with `-D warnings`, and tests only when `cargo` is available; missing Cargo skips these checks outside the quality container, while the quality container treats its absence as a failure.
+sources. The Rust worker is the one first-party runtime outside it: `tools/quality` runs formatting, Clippy with `-D warnings`, and tests only when `cargo` is available; without Cargo they are reported as not run outside the quality container, while the quality container treats its absence as a failure.
 
 The budgets in `maintainability-budgets.json` are:
 
