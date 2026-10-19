@@ -1,11 +1,11 @@
 /*
  * The page's layout: a monospace grid, one line per row, as wide as the
- * window. It states no colour: the ground, the default ink, a card's
+ * workspace. The ground, the default ink, a card's
  * ground and a hotkey's accent are the frame's (--ground, --text, --card,
  * --suggestion), set by app.mjs, and every segment carries its own.
  */
 :root {
-    --line: 1.25;
+    --line: 1.6;
     color-scheme: light dark;
 }
 
@@ -32,7 +32,6 @@ body {
 #view.pinned {
     display: flex;
     flex-direction: column;
-    height: 100vh;
 }
 
 #view.pinned .pane-body {
@@ -53,6 +52,18 @@ body {
     overflow: hidden;
 }
 
+/* The frame supplies cell widths. Font substitutions must not move the
+ * start of the next segment or the right-hand card in a wide row. */
+.row {
+    display: grid;
+    justify-content: start;
+}
+
+.row > * {
+    min-width: 0;
+    overflow: hidden;
+}
+
 .row > *,
 .line > * {
     flex: none;
@@ -66,6 +77,7 @@ button {
     padding: 0;
     margin: 0;
     white-space: pre;
+    text-align: left;
     cursor: pointer;
 }
 
@@ -136,4 +148,248 @@ button.hidden {
     padding: 0.25em 1ch;
     white-space: pre-wrap;
     user-select: text;
+}
+
+/* Browser chrome stays outside the shared character grid. Grid rows and
+ * controls keep their cell dimensions for hit testing and shared layouts. */
+:root {
+    /* Aranea desktop: obsidian / mint / violet (design/tokens.toml). */
+    --chrome: #08090b;
+    --edge: #33424b;
+    --muted: #8b96a6;
+    --accent: #3bff9e;
+    --accent-secondary: #7a5cff;
+    --chrome-text: #edf3f6;
+}
+
+html,
+body {
+    height: 100%;
+    background: var(--chrome);
+}
+
+body {
+    background-image:
+        radial-gradient(ellipse at 0% 0%, #3bff9e0b, transparent 42%),
+        radial-gradient(ellipse at 100% 100%, #7a5cff10, transparent 42%),
+        linear-gradient(#edf3f603 1px, transparent 1px),
+        linear-gradient(90deg, #edf3f603 1px, transparent 1px);
+    background-size:
+        auto,
+        auto,
+        40px 40px,
+        40px 40px;
+}
+
+.workspace {
+    box-sizing: border-box;
+    height: 100dvh;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    max-width: 2400px;
+    margin: auto;
+}
+
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 88px;
+    flex: none;
+    color: var(--chrome-text);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.brand-mark {
+    display: block;
+    width: 48px;
+    height: 48px;
+    filter: drop-shadow(0 0 12px #3bff9e12);
+}
+
+.brand-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.brand-version {
+    color: var(--muted);
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+}
+
+.brand strong {
+    display: block;
+    font-size: 20px;
+    font-weight: 750;
+    line-height: 1.25;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.brand-caption {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 1rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.terminal-frame {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 1px;
+    background: linear-gradient(
+        120deg,
+        #3bff9e70,
+        #33424b 24%,
+        #33424b 76%,
+        #7a5cff90
+    );
+    clip-path: polygon(
+        0 0,
+        calc(100% - 14px) 0,
+        100% 14px,
+        100% 100%,
+        14px 100%,
+        0 calc(100% - 14px)
+    );
+}
+
+.terminal-frame::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 22px;
+    width: 54px;
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
+}
+
+#view,
+#view.pinned {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    overflow-y: auto;
+    background: var(--ground);
+    clip-path: polygon(
+        0 0,
+        calc(100% - 14px) 0,
+        100% 14px,
+        100% 100%,
+        14px 100%,
+        0 calc(100% - 14px)
+    );
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: #33424b var(--ground);
+}
+
+.app-hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    row-gap: 4px;
+    flex: none;
+    min-height: 38px;
+    color: var(--muted);
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+}
+
+.shell-signature {
+    color: #8b96a6;
+}
+
+button:not(.hidden) {
+    border-radius: 4px;
+    transition: box-shadow 100ms ease;
+}
+
+button:not(.hidden):hover {
+    box-shadow: inset 0 -2px var(--suggestion);
+    filter: brightness(1.15);
+}
+
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--suggestion);
+    outline-offset: -2px;
+}
+
+.row[data-key="tabs"] button:not(.hidden) {
+    border-radius: 5px;
+}
+
+.row[data-key="head-rule"] {
+    opacity: 0.35;
+}
+
+.row > input {
+    border-radius: 3px;
+    box-shadow: inset 0 -1px var(--edge);
+}
+
+#cards > .card {
+    border-radius: 8px;
+    box-shadow:
+        0 0 0 1px var(--edge),
+        0 8px 28px #00000030;
+    overflow: hidden;
+}
+
+.toast {
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 10px 16px;
+    max-width: min(60ch, 80vw);
+    box-shadow: 0 8px 28px #00000020;
+}
+
+@media (max-width: 640px) {
+    .workspace {
+        padding: 0 10px;
+    }
+    .app-header {
+        min-height: 72px;
+    }
+    .brand {
+        gap: 10px;
+    }
+    .brand-mark {
+        width: 40px;
+        height: 40px;
+    }
+    .brand strong {
+        font-size: 17px;
+    }
+    .brand-caption {
+        letter-spacing: 0.08em;
+    }
+    html,
+    body {
+        font-size: 12px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button:not(.hidden) {
+        transition: none;
+    }
 }

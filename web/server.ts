@@ -220,6 +220,12 @@ export async function startServer(o: {
     } catch {
       return void res.writeHead(404).end()
     }
+    // Additive browser metadata; release automation already maintains this file.
+    if (named === 'version.txt') {
+      const version = await readFile(join(PUBLIC, '..', '..', 'version.txt'), 'utf8').catch(() => null)
+      if (version === null) return void res.writeHead(404).end()
+      return void res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }).end(version)
+    }
     // The hover card's rule is the hooks module's own file, as JavaScript: made here, so no copy of it exists.
     if (named === 'place.mjs') {
       let script: string

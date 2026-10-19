@@ -1,4 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-    <rect width="64" height="64" rx="12" fill="#1e1e1e" />
-    <path d="M32 10a22 22 0 1 0 22 22M32 18a14 14 0 1 0 14 14M32 26a6 6 0 1 0 6 6" fill="none" stroke="#b1b9f9" stroke-width="4" stroke-linecap="round" />
+<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="64"
+    height="64"
+    viewBox="100 220 400 400"
+    fill="none"
+>
+    <title>Knossos sigil</title>
+    <style>
+        @media (prefers-color-scheme: light) {
+            .backplate {
+                fill: #08090b;
+            }
+        }
+    </style>
+    <rect
+        class="backplate"
+        x="100"
+        y="220"
+        width="400"
+        height="400"
+        rx="32"
+        fill="none"
+    />
+    <path
+        d="M124 272Q199 288 274 287V240H320V287Q395 288 470 272V322Q444 326 418 326V384L470 405V454L418 433V560H456V601H376V494L310 458L267 487V601H230V468L310 413L376 451V327H318V392L230 454V413L274 379V327H218V601H138V560H176V433L124 454V405L176 384V326Q150 326 124 322Z"
+        fill="#3bff9e"
+    />
+    <path d="M333 351H362V380H333Z" fill="#7a5cff" />
 </svg>

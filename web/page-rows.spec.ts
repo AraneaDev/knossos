@@ -8,6 +8,13 @@ import type { Colour } from './page-rows'
 const dark: Colour = key => themeColour(key, 'dark')
 
 describe('pageRow', () => {
+  it('adds display widths for combining marks, CJK names and emoji without changing their text', () => {
+    const texts = ['ASCII', 'e\u0301', '漢字', '👩‍💻', '▁▂█', '\u0301']
+    const drawn = pageRow({ key: 'unicode', segments: texts.map(text => ({ text })) }, dark, 80)
+    expect(drawn.segments.map(s => s.text)).toEqual(texts)
+    expect(drawn.segments.map(s => s.columns)).toEqual([5, 1, 4, 2, 3, 0])
+  })
+
   it("resolves each segment's look as textStyle has it: its colour, else inactive when dim, bold, its ground", () => {
     const row: Row = { key: 'a', segments: [{ text: 'dim', dim: true }, { text: 'red', color: 'error', bold: true, bg: 'userMessageBackground' }, { text: 'plain' }] }
     expect(pageRow(row, dark, 80).segments.map(s => s.look)).toEqual([

@@ -3,8 +3,11 @@
 `knossos web` serves the [Claude Code pane](../claude-code/pane/index.md) in a
 browser tab, for one project, with no Claude Code session around it. The tabs,
 keys, figures and colours are the pane's own: the browser draws the rows the
-same layout code lays out for Claude Code, so a change to the pane shows on
-both.
+same layout code lays out for Claude Code. Its surrounding interface and
+styles live in `web/public`, so browser presentation can change independently
+of the native mod.
+
+![The web client's Overview, with the Knossos sigil, project statistics, composition charts and dependency views in the browser's dark application frame](../images/web-client/overview.png)
 
 ## Starting it
 
@@ -31,6 +34,12 @@ Press Ctrl-C to stop it.
 
 An option it does not know stops it with its usage line, before anything
 starts.
+
+Start with Overview for project counts and dependency patterns. Click the numbered
+tabs or use their digit keys to switch views. Press `f`, type part of a component's
+name, and press Enter to open its detail; use `e` on a file to open it in your editor.
+The Changes tab shows uncommitted work against the last commit, and Notes lets you
+read and maintain the project's recorded knowledge.
 
 ## Opening files in your editor
 
@@ -123,8 +132,12 @@ watcher: without one it is read again every few seconds while a tab is open.
 ## In the browser
 
 Light and dark follow your system's colour scheme. The pane is laid out for the
-tab's size in characters, so a narrow tab gets the narrow layout and a wide one
-the wide layout.
+available workspace in characters, so a narrow tab gets the narrow layout and
+a wide one the wide layout. The browser adds an Aranea-inspired obsidian,
+mint and violet application frame, a custom kanji-inspired sigil, and a scrollable
+workspace. Shell labels and the version beside the title use the terminal's font
+size. The terminal keeps its own light and dark colours. Keyboard focus
+and hover states make the pane's controls easier to find.
 
 Keys work as in Claude Code: a tab's digit, a press's letter, and the arrow
 keys move between the things you can press. Resting the pointer on a name that

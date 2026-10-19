@@ -1,4 +1,5 @@
 import { request } from 'node:http'
+import { readFileSync } from 'node:fs'
 import type { IncomingMessage } from 'node:http'
 import { stripTypeScriptTypes } from 'node:module'
 import { networkInterfaces } from 'node:os'
@@ -107,6 +108,15 @@ function events(url: string): Promise<{ frames: Frame[]; next(match: (f: Frame) 
 }
 
 describe('startServer', () => {
+  it('serves the canonical release version to authenticated browser shells', async () => {
+    const { url, token } = await started()
+    const base = url.slice(0, url.indexOf('?'))
+    const got = await get(`${base}static/version.txt?t=${token}`)
+    expect(got.status).toBe(200)
+    expect(got.body).toBe(readFileSync(new URL('../version.txt', import.meta.url), 'utf8'))
+    expect((await get(`${base}static/version.txt`)).status).toBe(403)
+  })
+
   it('refuses a request without the token', async () => {
     const { url, token } = await started()
     const base = url.slice(0, url.indexOf('?'))
@@ -254,7 +264,7 @@ describe('startServer', () => {
   it('serves the page and its files, and nothing at an address it does not know', async () => {
     const { url, token } = await started()
     const base = url.slice(0, url.indexOf('?'))
-    expect((await get(`${base}?t=${token}`)).body).toContain('<main id="view">')
+    expect((await get(`${base}?t=${token}`)).body).toMatch(/<main\s+id="view"/)
     expect((await get(`${base}static/draw.mjs?t=${token}`)).body).toContain('export function patchPlan')
     expect((await get(`${base}static/missing.mjs?t=${token}`)).status).toBe(404)
     expect((await get(`${base}elsewhere?t=${token}`)).status).toBe(404)
