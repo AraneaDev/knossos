@@ -51,6 +51,19 @@ The config's practice is right, written down here as a rule:
 - A new exclusion costs a measured survivor, a comment that argues why no test
   can kill it, and an entry in the pin. Excluding a mutator class wholesale
   (every `IncrementInteger` in `src`) is ruled out by point 2.
+- A pattern that can match a newline (`\s`, a negated class, an `s` flag and
+  the like) is refused outright. Infection matches a pattern against a mutant's
+  whole diff, context lines included, so such a pattern can hide mutants on
+  lines its pin never lists.
+- Excluding is not the only way a mutant leaves the score. Infection skips a
+  mutant whose covering tests add up to more than the per-mutant `timeout`,
+  and leaves it out of both denominators. The last full run skipped 16% of all
+  mutants this way, among them every mutant of `Reconciliation\Milliseconds`,
+  which every scan test covers: `MillisecondsTest` kills each of them when
+  applied by hand, yet none counts. Coverage attributes cannot narrow that,
+  because the suite forbids them (`NoCoverageTargetAttributesTest`).
+  `tools/mutation-gate` refuses a run whose skipped or timed-out count moved
+  past its tolerance, so the gap cannot grow unseen, but it is a known gap.
 - A refactor that moves an excluded line fails the pin. Update the pin's
   `file:line` set in the same change, after you check the moved line still has
   the shape the exclusion's comment argues about.

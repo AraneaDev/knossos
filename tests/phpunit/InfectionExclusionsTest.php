@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit;
 
 use Infection\Differ\DiffSourceCodeMatcher;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
 /**
  * Pins every `ignoreSourceCodeByRegex` exclusion in infection.json5 to the exact
- * `file:line` set it matches under src/.
+ * `file:line` set it matches under src/, and refuses every other way the
+ * config or the source could hide a mutant.
  *
  * A pattern hides every mutant of its mutator on each line it matches, so a
  * new line of the same shape is hidden the moment it is written, without
@@ -20,8 +22,21 @@ use RuntimeException;
  * fails with the mutator and the pattern, so you know which comment to re-read
  * before you update the list below.
  *
- * Lines are matched with Infection's own DiffSourceCodeMatcher, so the pin sees
- * a line as hidden exactly when Infection does.
+ * Infection matches `^-\s*<regex>$` with the `m` flag against a mutant's whole
+ * unified diff, context lines included. A pattern that can match a newline can
+ * therefore start on the removed line and run on into the lines after it,
+ * hiding mutants the line-by-line pin below never sees. So a pattern is refused
+ * outright when it holds any construct that can match a newline (`\s`, a
+ * negated class, `\D`, `\W`, `\R`, an `s` flag and the like), and only then is
+ * it matched line by line, with Infection's own DiffSourceCodeMatcher, against
+ * a removed line alone. Under that rule the two agree: a pattern that cannot
+ * leave its line matches the diff exactly when it matches the removed line.
+ *
+ * The other ways to hide a mutant are refused rather than pinned, because none
+ * is in use: a mutator or profile switched off, `global-ignore`,
+ * `global-ignoreSourceCodeByRegex`, a mutator's `ignore` list,
+ * `source.excludes`, a source tree other than src/, and an
+ * `@infection-ignore-all` annotation in the source.
  */
 #[Group('quality')]
 final class InfectionExclusionsTest extends KnossosTestCase
@@ -53,18 +68,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Query/ProjectCatalogQueryService.php:167',
             ],
             '.*LIMIT %d\', self::\\w+ \\+ 1\\).*' => [
-                'src/Query/ChangeImpactQueryService.php:372',
-            ],
-            '.*\\$timeoutMs \\* 1_000_000.*' => [
-                'src/Git/GitProcessRunner.php:552',
-                'src/Query/ArchitectureHealthQuery.php:62',
-                'src/Query/ArchitecturePolicyQueryService.php:93',
-                'src/Query/ChangeImpactQueryService.php:157',
-                'src/Query/ChangeImpactQueryService.php:219',
-                'src/Query/DependencyCycleQuery.php:61',
-                'src/Query/FlowQuery.php:92',
-                'src/Query/ImpactAnalysisQuery.php:64',
-                'src/Query/LocationSuggestionService.php:41',
+                'src/Query/ChangeImpactQueryService.php:375',
             ],
             '.*implode\\(\',\', array_fill\\(0, count\\(.*' => [
                 'src/Query/AnnotationNotes.php:48',
@@ -75,7 +79,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Query/ArchitecturePolicyQueryService.php:292',
                 'src/Query/BoundaryMatrix.php:278',
                 'src/Query/CandidateGraphFacts.php:302',
-                'src/Query/ChangeImpactQueryService.php:363',
+                'src/Query/ChangeImpactQueryService.php:366',
                 'src/Query/ComponentQueryService.php:212',
                 'src/Query/ComponentQueryService.php:313',
                 'src/Query/ComponentQueryService.php:314',
@@ -134,17 +138,6 @@ final class InfectionExclusionsTest extends KnossosTestCase
             '.*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);' => [
                 'src/Git/GitProcessRunner.php:199',
             ],
-            '.*\\$timeoutMs \\* 1_000_000.*' => [
-                'src/Git/GitProcessRunner.php:552',
-                'src/Query/ArchitectureHealthQuery.php:62',
-                'src/Query/ArchitecturePolicyQueryService.php:93',
-                'src/Query/ChangeImpactQueryService.php:157',
-                'src/Query/ChangeImpactQueryService.php:219',
-                'src/Query/DependencyCycleQuery.php:61',
-                'src/Query/FlowQuery.php:92',
-                'src/Query/ImpactAnalysisQuery.php:64',
-                'src/Query/LocationSuggestionService.php:41',
-            ],
             '.*implode\\(\',\', array_fill\\(0, count\\(.*' => [
                 'src/Query/AnnotationNotes.php:48',
                 'src/Query/AnnotationNotes.php:111',
@@ -154,7 +147,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Query/ArchitecturePolicyQueryService.php:292',
                 'src/Query/BoundaryMatrix.php:278',
                 'src/Query/CandidateGraphFacts.php:302',
-                'src/Query/ChangeImpactQueryService.php:363',
+                'src/Query/ChangeImpactQueryService.php:366',
                 'src/Query/ComponentQueryService.php:212',
                 'src/Query/ComponentQueryService.php:313',
                 'src/Query/ComponentQueryService.php:314',
@@ -216,6 +209,14 @@ final class InfectionExclusionsTest extends KnossosTestCase
         ],
     ];
 
+    /**
+     * Escapes that can match a newline: whitespace, the negations of digit,
+     * word and horizontal space, any newline sequence, vertical space, a whole
+     * grapheme, a single byte, and any way of spelling a character by number,
+     * control letter or Unicode property.
+     */
+    private const NEWLINE_ESCAPES = ['s', 'D', 'W', 'H', 'R', 'v', 'X', 'C', 'n', 'r', 'f', 'x', 'o', 'c', 'p', 'P', '0', 'N{'];
+
     public function testEveryExclusionIsPinned(): void
     {
         $patterns = [];
@@ -232,6 +233,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
         }
 
         self::assertSame($pinned, $patterns, 'Every ignoreSourceCodeByRegex entry in infection.json5 needs its sites pinned here, in the same order.');
+        self::assertSame([], self::refusals(self::repositoryRoot()));
     }
 
     public function testEachExclusionMatchesExactlyItsPinnedSites(): void
@@ -270,6 +272,88 @@ final class InfectionExclusionsTest extends KnossosTestCase
         }
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function patternsThatCanCrossANewline(): iterable
+    {
+        yield 'whitespace' => ['.*int \$\w+ =\s*\d+.*'];
+        yield 'a negated class' => ['.*int \$\w+ = [^;]*'];
+        yield 'not a digit' => ['.*int \$\w+ =\D+\d+.*'];
+        yield 'not a word character' => ['.*int\W+\$\w+.*'];
+        yield 'any newline sequence' => ['.*\R.*'];
+        yield 'vertical space' => ['.*int\v.*'];
+        yield 'a character by number' => ['.*\x0a.*'];
+        yield 'a dot-all flag' => ['(?s).*int \$\w+ = \d+.*'];
+        yield 'a scoped dot-all flag' => ['(?is:.*int \$\w+ = \d+.*)'];
+        yield 'a newline convention verb' => ['(*CR).*int.*'];
+        yield 'a POSIX class' => ['.*int[[:space:]]+\$\w+.*'];
+        yield 'a class range from a numbered character' => ['.*int[\t-z]+.*'];
+    }
+
+    #[DataProvider('patternsThatCanCrossANewline')]
+    public function testAPatternThatCanCrossANewlineIsRefusedByName(string $pattern): void
+    {
+        $refusals = self::refusalsWith(static function (array $config) use ($pattern): array {
+            $config['mutators']['IncrementInteger']['ignoreSourceCodeByRegex'][] = $pattern;
+
+            return $config;
+        });
+
+        self::assertCount(1, $refusals);
+        self::assertStringStartsWith(sprintf('IncrementInteger exclusion `%s` can match a newline (', $pattern), $refusals[0]);
+    }
+
+    /** @return iterable<string, array{callable(array<string, mixed>): array<string, mixed>, string}> */
+    public static function otherWaysToHideAMutant(): iterable
+    {
+        yield 'a global source pattern' => [static function (array $c): array {
+            $c['mutators']['global-ignoreSourceCodeByRegex'] = ['.*foo.*'];
+            return $c;
+        }, 'mutators.global-ignoreSourceCodeByRegex is set'];
+        yield 'a global ignore list' => [static function (array $c): array {
+            $c['mutators']['global-ignore'] = ['Knossos\\Mcp\\StdioServer'];
+            return $c;
+        }, 'mutators.global-ignore is set'];
+        yield "a mutator's ignore list" => [static function (array $c): array {
+            $c['mutators']['IncrementInteger']['ignore'] = ['Knossos\\Mcp\\StdioServer::run'];
+            return $c;
+        }, 'mutators.IncrementInteger.ignore is set'];
+        yield 'an excluded source directory' => [static function (array $c): array {
+            $c['source']['excludes'] = ['Mcp'];
+            return $c;
+        }, 'source.excludes is set'];
+        yield 'a source tree other than src' => [static function (array $c): array {
+            $c['source']['directories'] = ['src/Query'];
+            return $c;
+        }, 'source.directories must be exactly ["src"]'];
+        yield 'a mutator switched off' => [static function (array $c): array {
+            $c['mutators']['Plus'] = false;
+            return $c;
+        }, 'mutators.Plus is switched off'];
+        yield 'the default profile switched off' => [static function (array $c): array {
+            $c['mutators']['@default'] = false;
+            return $c;
+        }, 'mutators.@default is switched off'];
+    }
+
+    /** @param callable(array<string, mixed>): array<string, mixed> $edit */
+    #[DataProvider('otherWaysToHideAMutant')]
+    public function testEveryOtherWayToHideAMutantIsRefusedByKey(callable $edit, string $refusal): void
+    {
+        self::assertSame([$refusal], self::refusalsWith($edit));
+    }
+
+    public function testAnIgnoreAnnotationInTheSourceIsRefusedWhereItIs(): void
+    {
+        $root = self::scratchCopy();
+        try {
+            file_put_contents($root . '/src/Planted.php', "<?php\n\n/** @infection-ignore-all */\nfunction planted(): int\n{\n    return 1;\n}\n");
+
+            self::assertSame(['src/Planted.php:3 has an @infection-ignore-all annotation'], self::refusals($root));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /**
      * Each difference between what the patterns in `$root/infection.json5`
      * match under `$root/src` and what PINS records, one sentence per site.
@@ -286,9 +370,9 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 $found = [];
                 foreach ($files as $relative => $lines) {
                     foreach ($lines as $index => $line) {
-                        // Infection matches `^-\s*<regex>$` against the
-                        // mutant's diff, where the original line is the one
-                        // prefixed with a minus.
+                        // The removed line alone, prefixed with a minus as in
+                        // the diff. That is all of the diff a pattern can see
+                        // once refusals() has ruled out crossing a newline.
                         if ($matcher->matches('-' . $line, $regex)) {
                             $found[] = $relative . ':' . ($index + 1);
                         }
@@ -309,16 +393,146 @@ final class InfectionExclusionsTest extends KnossosTestCase
     }
 
     /**
-     * @return array<string, list<string>> mutator to its patterns, as configured
+     * Every way `$root/infection.json5` or `$root/src` hides a mutant other
+     * than a pinned pattern, and every pattern that can cross a newline.
+     *
+     * @return list<string>
      */
-    private static function exclusions(string $root): array
+    private static function refusals(string $root): array
+    {
+        $config = self::config($root);
+        $refusals = [];
+        foreach (self::exclusions($root) as $mutator => $regexes) {
+            foreach ($regexes as $regex) {
+                $constructs = self::newlineConstructs($regex);
+                if ($constructs !== []) {
+                    $refusals[] = sprintf('%s exclusion `%s` can match a newline (%s), so it hides more of the diff than its pinned lines', $mutator, $regex, implode(', ', $constructs));
+                }
+            }
+        }
+        foreach (['global-ignore', 'global-ignoreSourceCodeByRegex'] as $key) {
+            if (array_key_exists($key, $config['mutators'])) {
+                $refusals[] = "mutators.{$key} is set";
+            }
+        }
+        foreach ($config['mutators'] as $mutator => $settings) {
+            if ($settings === false) {
+                $refusals[] = "mutators.{$mutator} is switched off";
+            } elseif (is_array($settings) && array_key_exists('ignore', $settings)) {
+                $refusals[] = "mutators.{$mutator}.ignore is set";
+            }
+        }
+        $source = is_array($config['source'] ?? null) ? $config['source'] : [];
+        if (array_key_exists('excludes', $source)) {
+            $refusals[] = 'source.excludes is set';
+        }
+        if (($source['directories'] ?? null) !== ['src']) {
+            $refusals[] = 'source.directories must be exactly ["src"]';
+        }
+        foreach (self::sourceFiles($root) as $relative => $lines) {
+            foreach ($lines as $index => $line) {
+                if (str_contains($line, '@infection-ignore-all')) {
+                    $refusals[] = sprintf('%s:%d has an @infection-ignore-all annotation', $relative, $index + 1);
+                }
+            }
+        }
+
+        return $refusals;
+    }
+
+    /**
+     * The constructs in a pattern that can match a newline, as written.
+     *
+     * Read conservatively: a construct that could match one in some context is
+     * named even if it cannot in this one, because the cost of a false refusal
+     * is rewriting a pattern and the cost of a miss is a hidden mutant.
+     *
+     * @return list<string>
+     */
+    private static function newlineConstructs(string $regex): array
+    {
+        $found = [];
+        $length = strlen($regex);
+        $inClass = false;
+        for ($i = 0; $i < $length; $i++) {
+            $char = $regex[$i];
+            if ($char === "\n" || $char === "\r") {
+                $found[] = 'a literal line break';
+            } elseif ($char === '\\' && $i + 1 < $length) {
+                $next = $regex[$i + 1];
+                $escape = $next === 'N' && ($regex[$i + 2] ?? '') === '{' ? 'N{' : $next;
+                if (in_array($escape, self::NEWLINE_ESCAPES, true)) {
+                    $found[] = '\\' . $escape;
+                } elseif ($inClass && ($regex[$i + 2] ?? '') === '-' && ($regex[$i + 3] ?? ']') !== ']') {
+                    $found[] = 'a class range from \\' . $next;
+                }
+                $i++;
+            } elseif ($inClass) {
+                if ($char === ']') {
+                    $inClass = false;
+                } elseif ($char === '[' && ($regex[$i + 1] ?? '') === ':') {
+                    $found[] = 'a POSIX class';
+                }
+            } elseif ($char === '[') {
+                $inClass = true;
+                if (($regex[$i + 1] ?? '') === '^') {
+                    $found[] = 'a negated class';
+                    $i++;
+                }
+                // A `]` straight after the opener is a literal, not the close.
+                if (($regex[$i + 1] ?? '') === ']') {
+                    $i++;
+                }
+            } elseif ($char === '(' && ($regex[$i + 1] ?? '') === '*') {
+                $found[] = 'a (* verb';
+            } elseif ($char === '(' && ($regex[$i + 1] ?? '') === '?'
+                && preg_match('/\G\(\?[a-zA-Z^-]*s[a-zA-Z-]*[:)]/', $regex, $flags, 0, $i) === 1) {
+                $found[] = 'an s flag';
+            }
+        }
+
+        return array_values(array_unique($found));
+    }
+
+    /**
+     * The refusals for a scratch copy whose infection.json5 is $edit applied
+     * to the repository's own, written back as plain JSON (valid JSON5).
+     *
+     * @param callable(array<string, mixed>): array<string, mixed> $edit
+     * @return list<string>
+     */
+    private static function refusalsWith(callable $edit): array
+    {
+        $root = self::scratchCopy();
+        try {
+            file_put_contents($root . '/infection.json5', json_encode($edit(self::config($root)), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+
+            return self::refusals($root);
+        } finally {
+            (new class {
+                use Support\TempTrees;
+            })->removeTempTree($root);
+        }
+    }
+
+    /** @return array{mutators: array<string, mixed>, source?: mixed} */
+    private static function config(string $root): array
     {
         $config = json5_decode((string) file_get_contents($root . '/infection.json5'), true);
         if (!is_array($config) || !is_array($config['mutators'] ?? null)) {
             throw new RuntimeException('infection.json5 has no mutators object.');
         }
+
+        return $config;
+    }
+
+    /**
+     * @return array<string, list<string>> mutator to its patterns, as configured
+     */
+    private static function exclusions(string $root): array
+    {
         $exclusions = [];
-        foreach ($config['mutators'] as $mutator => $settings) {
+        foreach (self::config($root)['mutators'] as $mutator => $settings) {
             if (is_array($settings) && is_array($settings['ignoreSourceCodeByRegex'] ?? null)) {
                 $exclusions[(string) $mutator] = array_values(array_map('strval', $settings['ignoreSourceCodeByRegex']));
             }

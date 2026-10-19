@@ -46,7 +46,7 @@
     // rejects at COMPILE time ("Cannot 'break' 3 levels"), so the mutant can
     // never run, let alone be killed by a test. Measured: the 2026-08-09
     // full-src run reported exactly one `error` mutant, IncrementInteger on
-    // AbstractArchitectureQueryService.php:240.
+    // AbstractArchitectureQueryService.php:240 (the `break 2;` now at :370).
     //
     // It has to be excluded rather than tolerated because Infection counts an
     // errored mutant as DETECTED, so leaving it in credits the suite for a
@@ -70,7 +70,10 @@
     // apart without restating the divisor. Measured on GitProcessRunner.php:169
     // (now :199), a survivor of the 2026-09-10 run; it is the only site. Every
     // other timing goes through Reconciliation\Milliseconds, whose divisor and
-    // `round(…, 3)` precision are mutated and killed by MillisecondsTest.
+    // `round(…, 3)` precision are mutated, not excluded. MillisecondsTest kills
+    // each of them when applied by hand, but a full run SKIPS them: every scan
+    // test covers the class, and their summed time is past `timeout`. They
+    // leave both scores rather than count as killed (ADR 0005, consequences).
     //
     // The look-ahead row on a paged query: `LIMIT :limit` bound to `$max + 1`
     // fetches one row past the page only to learn whether a further page
@@ -90,17 +93,19 @@
     // look-ahead as `LIMIT %d` over `self::MAX_DIRECT_COMPONENTS + 1` and
     // slices to the bound before use.
     //
-    // A millisecond timeout becomes a nanosecond deadline as `$timeoutMs *
-    // 1_000_000`, the inverse of the divisor above and equivalent for the same
-    // reason: 999999 or 1000001 moves a deadline by one part in a million.
-    // Nine sites, all `$deadline = <clock> + ($timeoutMs * 1_000_000)`.
+    // Deliberately NOT excluded: `$deadline = <clock> + ($timeoutMs *
+    // 1_000_000)`. Eight of the nine sites read the injectable query clock, and
+    // DeadlineBoundaryTest kills both integer mutants at each by stepping that
+    // clock to the deadline and one nanosecond past it. GitProcessRunner's
+    // deadline reads hrtime() directly, so its two mutants stay counted.
     //
     // SQL placeholder lists are built as `implode(',', array_fill(0, count($x),
     // '?'))`. implode() reads values, never keys, so the start index of the
     // fill (-1 or 1 for 0) produces the identical string. Fifty sites, all of
     // that exact shape and with no other integer literal on the line; the count
     // argument is not an integer literal and keeps its mutants. Confirmed on
-    // ChangeImpactQueryService.php:180 in the 2026-09-11 run.
+    // ChangeImpactQueryService.php:180 in the 2026-09-11 run, the changeSet()
+    // placeholder list now at :366.
     //
     // `array_chunk($rows, N)` batch sizes are throughput knobs: every chunk is
     // written, deleted or queried the same way, so N +/- 1 yields the same rows.
@@ -120,7 +125,6 @@
         ".*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);",
         ".*bindValue\\(':limit', \\$\\w+ \\+ 1, PDO::PARAM_INT\\).*",
         ".*LIMIT %d', self::\\w+ \\+ 1\\).*",
-        ".*\\$timeoutMs \\* 1_000_000.*",
         ".*implode\\(',', array_fill\\(0, count\\(.*",
         ".*array_chunk\\(\\$\\w+, \\d+\\).*",
       ],
@@ -128,7 +132,6 @@
     DecrementInteger: {
       ignoreSourceCodeByRegex: [
         ".*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);",
-        ".*\\$timeoutMs \\* 1_000_000.*",
         ".*implode\\(',', array_fill\\(0, count\\(.*",
         ".*array_chunk\\(\\$\\w+, \\d+\\).*",
       ],
