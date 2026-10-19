@@ -1,8 +1,9 @@
 #!/bin/sh
 # tools/mutation-gate decides the sharded mutation run: every shard's log must
 # be there, MSI and covered MSI must each clear their own floor in the config,
-# and the tested and ignored mutant counts must stay within the population
-# file's tolerance. Each case below breaks one of those on a copy of the
+# and the tested, ignored, skipped and timed-out mutant counts must stay within
+# the population file's tolerance (the last two move the score without any
+# exclusion changing). Each case below breaks one of those on a copy of the
 # fixture shards and expects the refusal to say which.
 set -u
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
@@ -48,10 +49,11 @@ expect() {
 
 good=$(shards good)
 expect 'four shards above both floors and on the recorded population pass' 0 '' 'mutation-gate:' "$good"
-if grep -qF 'MSI: 84.21% (floor 80%)  Covered MSI: 88.89% (floor 85%)' "$work/out"; then
-    printf 'ok   %s\n' 'and the pass prints both scores against both floors'
+if grep -qF 'MSI: 84.21% (floor 80%)  Covered MSI: 88.89% (floor 85%)' "$work/out" \
+    && grep -qF 'Skipped: 100, 2.50% of all mutants, left out of both scores' "$work/out"; then
+    printf 'ok   %s\n' 'and the pass prints both scores against both floors, and the skipped share'
 else
-    printf 'FAIL %s\n' 'and the pass prints both scores against both floors'
+    printf 'FAIL %s\n' 'and the pass prints both scores against both floors, and the skipped share'
     sed 's/^/     out: /' "$work/out"
     failures=$((failures + 1))
 fi
@@ -83,6 +85,18 @@ set_stat "$ignored" totalMutantsCount 1025
 expect 'twice the ignored mutants is refused although MSI is unchanged' 1 \
     'ignored mutants moved from 100 to 200, more than 10%' 'below' "$ignored"
 
+skipped=$(shards skipped)
+set_stat "$skipped" skippedCount 50
+set_stat "$skipped" totalMutantsCount 1025
+expect 'twice the skipped mutants is refused although MSI is unchanged' 1 \
+    'skipped mutants moved from 100 to 200, more than 10%' 'below' "$skipped"
+
+timed=$(shards timed)
+set_stat "$timed" timeOutCount 20
+set_stat "$timed" killedCount 770
+expect 'twice the timed-out mutants is refused although MSI is unchanged' 1 \
+    'timed_out mutants moved from 40 to 80, more than 10%' 'below' "$timed"
+
 grown=$(shards grown)
 set_stat "$grown" totalMutantsCount 1200
 set_stat "$grown" killedCount 980
@@ -106,8 +120,8 @@ broken=$(shards broken)
 printf '{"stats": {}}\n' > "$broken/mutation-shard-1.json"
 expect 'a shard log without its counts is refused' 1 'has no count for stats.totalMutantsCount' '' "$broken"
 
-printf '{"tested": 3800}\n' > "$work/thin-population.json"
-expect 'a population file without its tolerance is refused' 1 'must hold integer tested' '' "$good" '' "$work/thin-population.json"
+printf '{"tested": 3800, "ignored": 100, "tolerance_percent": 10}\n' > "$work/thin-population.json"
+expect 'a population file without its skipped and timed-out counts is refused' 1 'must hold integer tested' '' "$good" '' "$work/thin-population.json"
 
 if [ "$failures" -gt 0 ]; then
     printf '%s mutation-gate case(s) failed\n' "$failures"

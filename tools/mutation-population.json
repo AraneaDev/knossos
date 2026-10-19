@@ -3,5 +3,7 @@
   "commit": "854af842e8f5f1382cb46543e02e90fef5134ab3",
   "tested": 23185,
   "ignored": 310,
+  "skipped": 4621,
+  "timed_out": 181,
   "tolerance_percent": 10
 }

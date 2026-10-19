@@ -77,6 +77,18 @@ git -C "$work/moved" checkout -q work
 printf 'b\n' > "$work/moved/docs/a.md"
 expect "a src change the base made after the branch left it is not the branch's to mutate" 0 no 'nothing to mutate' "$work/moved"
 
+repo untracked
+printf '<?php\n\nreturn 5;\n' > "$work/untracked/src/B.php"
+expect 'a new src file git does not track is refused, naming it and the remedy' 64 no '  src/B.php' "$work/untracked"
+if grep -qF "run 'git add -N' on them" "$work/err"; then
+    printf 'ok   %s\n' 'and the refusal says how to include it'
+else
+    printf 'FAIL %s\n' 'and the refusal says how to include it'
+    failures=$((failures + 1))
+fi
+git -C "$work/untracked" add -N src/B.php
+expect 'the same file after git add -N is mutated' 0 yes 'mutating lines changed since main' "$work/untracked"
+
 repo missing
 expect 'a base that does not exist is refused' 64 no "base ref 'nope' does not exist" "$work/missing" nope
 

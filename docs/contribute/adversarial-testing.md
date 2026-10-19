@@ -55,7 +55,8 @@ php -d pcov.enabled=1 vendor/bin/infection --no-interaction --no-progress --thre
 Scope it while iterating with `--filter=src/Mcp` (or any path) to keep the
 feedback loop short. To check only what your change touched, run
 `tools/mutation-diff [base-ref] [min-msi]`: it mutates the added and modified
-lines against `origin/main` by default, and holds them to 85%, above the
+lines of your working tree against `origin/main` by default (it refuses while a
+file under `src/` is untracked; `git add -N` it), and holds them to 85%, above the
 tree's floor, because new work should be better tested than the historic
 average. Inside the quality image, where there is no git, pass the changed files
 as `KNOSSOS_MUTATION_FILES=src/A.php,src/B.php tools/mutation-diff '' [min-msi]`.

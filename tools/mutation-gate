@@ -20,13 +20,19 @@ declare(strict_types=1);
  *    measurement of the tree, so a missing shard never reads as a smaller pass;
  *  - MSI is below `minMsi`, or covered MSI is below `minCoveredMsi`. Both
  *    floors are enforced, each against its own number;
- *  - the tested or the ignored mutant count moved by more than the population
- *    file's tolerance. MSI is a ratio, so a run that tests fewer mutants (a
- *    widened exclusion, a mutator dropped by an Infection upgrade, slow tests
- *    pushing mutants past the timeout into "skipped") can clear the floor while
- *    measuring less of the code. A deliberate change of population is recorded
- *    by updating that file, in the same commit as the floor it was measured
- *    with.
+ *  - the tested, ignored, skipped or timed-out mutant count moved by more
+ *    than the population file's tolerance. MSI is a ratio, so a run that
+ *    tests fewer mutants (a widened exclusion, a mutator dropped by an
+ *    Infection upgrade) can clear the floor while measuring less of the code.
+ *    Two counts move it without touching any exclusion: Infection SKIPS a
+ *    mutant whose covering tests add up to more than the per-mutant timeout
+ *    and drops it from both denominators, and counts a TIMED-OUT mutant as
+ *    detected. Slower tests raise both, and both raise the score. Each count
+ *    is held to the same tolerance as the others rather than to a cap on its
+ *    share of the total: a cap would be a second floor nobody has measured,
+ *    while the tolerance only asks that the count stay near the last run that
+ *    was. A deliberate change of population is recorded by updating that
+ *    file, in the same commit as the floor it was measured with.
  *
  * The arithmetic is Infection's own, transcribed from Calculator::fromMetrics
  * in 0.34. Two parts are easy to get wrong and both inflate the score: syntax
@@ -126,8 +132,10 @@ $expectedPopulation = is_file($population) ? json_decode((string) file_get_conte
 if (!is_array($expectedPopulation)
     || !is_int($expectedPopulation['tested'] ?? null) || $expectedPopulation['tested'] < 1
     || !is_int($expectedPopulation['ignored'] ?? null) || $expectedPopulation['ignored'] < 0
+    || !is_int($expectedPopulation['skipped'] ?? null) || $expectedPopulation['skipped'] < 0
+    || !is_int($expectedPopulation['timed_out'] ?? null) || $expectedPopulation['timed_out'] < 0
     || !is_int($expectedPopulation['tolerance_percent'] ?? null) || $expectedPopulation['tolerance_percent'] < 0 || $expectedPopulation['tolerance_percent'] > 100) {
-    refuse(["{$population} must hold integer tested (above 0), ignored, and tolerance_percent (0 to 100)."]);
+    refuse(["{$population} must hold integer tested (above 0), ignored, skipped, timed_out, and tolerance_percent (0 to 100)."]);
 }
 
 $tested = $sum['totalMutantsCount'] - $sum['skippedCount'] - $sum['ignoredCount'];
@@ -139,7 +147,8 @@ if ($tested < 1 || $covered < 1) {
 $msi = round($detected * 100 / $tested, 2);
 $coveredMsi = round($detected * 100 / $covered, 2);
 
-printf("Shards: %d  mutants: %d  tested: %d  detected: %d  not covered: %d  skipped: %d  ignored: %d\n", count($logs), $sum['totalMutantsCount'], $tested, $detected, $sum['notCoveredCount'], $sum['skippedCount'], $sum['ignoredCount']);
+printf("Shards: %d  mutants: %d  tested: %d  detected: %d  not covered: %d  ignored: %d  timed out: %d\n", count($logs), $sum['totalMutantsCount'], $tested, $detected, $sum['notCoveredCount'], $sum['ignoredCount'], $sum['timeOutCount']);
+printf("Skipped: %d, %.2f%% of all mutants, left out of both scores\n", $sum['skippedCount'], $sum['totalMutantsCount'] > 0 ? $sum['skippedCount'] * 100 / $sum['totalMutantsCount'] : 0);
 printf("MSI: %.2f%% (floor %s%%)  Covered MSI: %.2f%% (floor %s%%)\n", $msi, $floors['minMsi'], $coveredMsi, $floors['minCoveredMsi']);
 
 $reasons = [];
@@ -150,7 +159,7 @@ if ($coveredMsi < $floors['minCoveredMsi']) {
     $reasons[] = sprintf('covered MSI %.2f%% is below minCoveredMsi %s%% in %s.', $coveredMsi, $floors['minCoveredMsi'], $config);
 }
 $tolerance = $expectedPopulation['tolerance_percent'];
-foreach (['tested' => $tested, 'ignored' => $sum['ignoredCount']] as $name => $actual) {
+foreach (['tested' => $tested, 'ignored' => $sum['ignoredCount'], 'skipped' => $sum['skippedCount'], 'timed_out' => $sum['timeOutCount']] as $name => $actual) {
     $was = $expectedPopulation[$name];
     if (abs($actual - $was) * 100 > $was * $tolerance) {
         $reasons[] = sprintf('%s mutants moved from %d to %d, more than %d%%. If that is deliberate, record the new count in %s with the floor it was measured with.', $name, $was, $actual, $tolerance, $population);
