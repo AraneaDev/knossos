@@ -51,13 +51,18 @@ function lintFilesRefuse(string $message, int $status = 1): never
  *
  * tests/Fixtures holds input for the scanners, some of it invalid on purpose,
  * so it is linted by none of them. The one exception is tests/Fixtures/workers,
- * which holds a worker the suite runs as code.
+ * which holds a worker the suite runs as code. tools/claude-code-api holds the
+ * declarations the Claude Code CLI wrote, which are its output, not ours.
  *
  * @return list<string>
  */
 function lintKindsOf(string $path, string $firstLine): array
 {
     if (str_starts_with($path, 'tests/Fixtures/') && !str_starts_with($path, 'tests/Fixtures/workers/')) {
+        return [];
+    }
+    // Written by the Claude Code CLI (tools/claude-code-types), not by hand.
+    if (str_starts_with($path, 'tools/claude-code-api/')) {
         return [];
     }
     if (str_ends_with($path, '.sh') || preg_match('~^#!\s*(?:/usr)?/bin/(?:env\s+)?(?:sh|bash|dash)\b~', $firstLine) === 1) {

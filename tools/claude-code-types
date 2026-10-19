@@ -1,0 +1,57 @@
+#!/bin/sh
+# Regenerates tools/claude-code-api: the Claude Code API declarations the
+# staged register.tsx type-check in tools/quality reads.
+#
+# Usage: tools/claude-code-types
+#
+# The CLI does not ship these declarations. It builds them at run time from its
+# own tool schemas and writes them beside a mod each time a session loads it,
+# as .claude-plugin/types/claude-code/index.d.ts and claude-code-tools/. So
+# this installs the version the Dockerfile pins into a temporary prefix,
+# stages the plugin the way an install does, and starts one headless session
+# with the staged plugin loaded. The session has its own empty config
+# directory and a key that is not valid: it loads the mod, writes the
+# declarations, and stops at the first API call, so nothing reaches your
+# account or your own Claude Code configuration.
+#
+# The version is recorded in tools/claude-code-api/VERSION, and the static
+# lane (tools/claude-code-types-check.php) refuses a copy whose version is not
+# the one the Dockerfile pins. Run this after moving that pin. It needs npm,
+# node and the network.
+set -eu
+
+root=$(unset CDPATH; cd -- "$(dirname -- "$0")/.." && pwd)
+version=$(sed -n 's/.*@anthropic-ai\/claude-code@\([0-9][0-9.]*\).*/\1/p' "$root/Dockerfile" | head -n 1)
+if [ -z "$version" ]; then
+    echo "claude-code-types: the Dockerfile pins no @anthropic-ai/claude-code version" >&2
+    exit 1
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT INT TERM
+mkdir -p "$work/prefix" "$work/home" "$work/config"
+npm install --prefix "$work/prefix" "@anthropic-ai/claude-code@$version" --no-audit --no-fund >/dev/null
+# The package puts its native binary in place from a postinstall script that
+# npm does not run for it, as the Dockerfile notes.
+node "$work/prefix/node_modules/@anthropic-ai/claude-code/install.cjs" >/dev/null
+claude="$work/prefix/node_modules/.bin/claude"
+php "$root/bin/knossos" install-agent-plugin --out="$work/plugin" --data=/nonexistent >/dev/null
+
+# The session is expected to fail at the API; what matters is what it wrote.
+env -i PATH="$PATH" HOME="$work/home" CLAUDE_CONFIG_DIR="$work/config" ANTHROPIC_API_KEY=invalid \
+    "$claude" -p 'load the plugin' --plugin-dir "$work/plugin" --max-turns 1 >/dev/null 2>&1 || true
+
+written="$work/plugin/.claude-plugin/types"
+first=$(head -n 1 "$written/claude-code/index.d.ts" 2>/dev/null || true)
+if [ "$first" != "// Written by Claude Code $version." ] || [ ! -f "$written/claude-code-tools/index.d.ts" ]; then
+    echo "claude-code-types: Claude Code $version did not write its declarations into the staged plugin" >&2
+    exit 1
+fi
+
+out="$root/tools/claude-code-api"
+rm -rf "$out/claude-code" "$out/claude-code-tools"
+mkdir -p "$out/claude-code" "$out/claude-code-tools"
+cp "$written/claude-code/index.d.ts" "$out/claude-code/index.d.ts"
+cp "$written/claude-code-tools/index.d.ts" "$out/claude-code-tools/index.d.ts"
+printf '%s\n' "$version" > "$out/VERSION"
+printf 'claude-code-types: wrote the declarations of Claude Code %s to tools/claude-code-api\n' "$version"

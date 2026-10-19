@@ -96,14 +96,15 @@ run_test_suite() {
 # The Claude CLI is pinned in the Dockerfile's quality stage, so CI always
 # runs this. A machine without it says so plainly instead of passing quietly.
 #
-# The type-check needs the engine's API declarations, which the CLI only writes
-# when a session loads the plugin (`.claude-plugin/types/claude-code/index.d.ts`)
-# or invokes its plugin-authoring skill. The CLI builds them at run time from
-# its own tool schemas; neither its npm package nor any headless command puts
-# them on disk, so the image cannot bake them. The check runs where that file
-# exists, or where KNOSSOS_CLAUDE_CODE_TYPES names it. Anywhere else it is
-# reported as not run, which in the quality container is a failure: a gate
-# that cannot type-check the mod must not pass as if it had.
+# The type-check needs the engine's API declarations. The CLI does not ship
+# them: it builds them at run time and writes them beside a mod when a session
+# loads it. tools/claude-code-types generates them that way for the version
+# the Dockerfile pins and commits them to tools/claude-code-api, and the static
+# lane refuses a copy from another version (tools/claude-code-types-check.php).
+# KNOSSOS_CLAUDE_CODE_TYPES names another engine index.d.ts to check against.
+# Where the declarations are missing the check is reported as not run, which in
+# the quality container is a failure: a gate that cannot type-check the mod
+# must not pass as if it had.
 run_mod_checks() (
     stage=$(mktemp -d)
     trap 'rm -rf "$stage"' EXIT INT TERM
@@ -112,21 +113,24 @@ run_mod_checks() (
     claude plugin validate "$stage/plugin"
     claude plugin test "$stage/plugin"
 
-    types="${KNOSSOS_CLAUDE_CODE_TYPES:-$root/.claude-plugin/types/claude-code/index.d.ts}"
-    if [ -f "$types" ]; then
+    types="${KNOSSOS_CLAUDE_CODE_TYPES:-$root/tools/claude-code-api/claude-code/index.d.ts}"
+    # The built-in tools' input types merge into the same module, from the
+    # directory beside the engine's.
+    tool_types="$(dirname -- "$(dirname -- "$types")")/claude-code-tools/index.d.ts"
+    if [ -f "$types" ] && [ -f "$tool_types" ]; then
         # Absolute paths, so the file can live in the temp directory beside the
         # staging copy rather than in the tree.
         printf '%s\n' '{"compilerOptions":{"target":"es2023","lib":["es2023"],"types":[],' \
             '"module":"esnext","moduleResolution":"bundler","strict":true,' \
             '"noUncheckedIndexedAccess":true,"noEmit":true,"skipLibCheck":true,' \
             '"jsx":"react","jsxFactory":"h","jsxFragmentFactory":"Fragment"},' \
-            "\"include\":[\"$types\",\"$stage/plugin/types/index.d.ts\"," \
+            "\"include\":[\"$types\",\"$tool_types\",\"$stage/plugin/types/index.d.ts\"," \
             "\"$stage/plugin/hooks/register.tsx\",\"$stage/plugin/hooks/register.test.ts\"]}" \
             > "$stage/tsconfig.json"
         "$root/node_modules/.bin/tsc" -p "$stage/tsconfig.json"
     else
         quality_not_run 'the staged register.tsx type-check against the Claude Code API' \
-            "types not provided: no $types; set KNOSSOS_CLAUDE_CODE_TYPES to the engine's index.d.ts (register.tsx is still checked against hooks/engine.d.ts by typecheck:mod)"
+            "types not provided: no $types or $tool_types; run tools/claude-code-types, or set KNOSSOS_CLAUDE_CODE_TYPES to the engine's index.d.ts"
     fi
 )
 
@@ -149,6 +153,10 @@ else
     quality_not_run 'the lint list freshness check (tools/lint-files.php --check)' \
         "no git checkout at $lint_repo; mount the checkout and name it with KNOSSOS_GATE_REPO"
 fi
+
+# The declarations the staged register.tsx type-check reads must come from the
+# Claude Code version this image runs.
+php tools/claude-code-types-check.php
 
 composer validate --strict
 composer --working-dir=workers/php validate --strict

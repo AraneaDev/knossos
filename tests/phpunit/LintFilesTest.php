@@ -31,6 +31,7 @@ final class LintFilesTest extends KnossosTestCase
         'tests/Fixtures/scanner/Broken.php' => ["<?php class {\n", null],
         'tests/Fixtures/scanner/input.js' => ["let\n", null],
         'tests/Fixtures/workers/fake-worker.php' => ["<?php\necho 1;\n", 'php'],
+        'tools/claude-code-api/claude-code/index.d.ts' => ["// Written by Claude Code 1.0.0.\n", null],
         'README.md' => ["# Readme\n", null],
         'tools/data.json' => ["{}\n", null],
     ];

@@ -10,6 +10,8 @@ shell	tests/shell/check-commit-style.sh
 shell	tests/shell/gate-baseline.sh
 shell	tests/shell/install-hooks.sh
 shell	tests/shell/knossos-run-hook.sh
+shell	tests/shell/mutation-diff.sh
+shell	tests/shell/mutation-gate.sh
 shell	tests/shell/quality-verdict.sh
 shell	tests/shell/release-pr.sh
 shell	tests/shell/release-rollback.sh
@@ -20,6 +22,7 @@ shell	tools/check-commit-style.sh
 shell	tools/ci/quality-verdict
 shell	tools/ci/release-pr
 shell	tools/ci/release-rollback
+shell	tools/claude-code-types
 shell	tools/coverage
 shell	tools/dependency-image-key
 shell	tools/gate-baseline
@@ -285,6 +288,7 @@ php	src/Reconciliation/EndpointRouteBinder.php
 php	src/Reconciliation/EndpointRouteBinding.php
 php	src/Reconciliation/FullScanRequest.php
 php	src/Reconciliation/GraphReconciler.php
+php	src/Reconciliation/Milliseconds.php
 php	src/Reconciliation/NamedFiles.php
 php	src/Reconciliation/NodeReferenceIndex.php
 php	src/Reconciliation/PhaseTimer.php
@@ -438,6 +442,7 @@ php	tests/phpunit/Classification/TestModuleRulePathsTest.php
 php	tests/phpunit/Classification/TestModuleRuleTest.php
 php	tests/phpunit/Classification/ToolConfigModuleRuleTest.php
 php	tests/phpunit/Classification/TypeScriptFrameworkRoleRuleTest.php
+php	tests/phpunit/ClaudeCodeTypesTest.php
 php	tests/phpunit/Cli/BriefCommandTest.php
 php	tests/phpunit/Cli/CliDocumentedOptionsTest.php
 php	tests/phpunit/Cli/CliHelpersTest.php
@@ -533,6 +538,7 @@ php	tests/phpunit/Git/GitLogRecordsTest.php
 php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
 php	tests/phpunit/Git/ProcessGitProviderTest.php
 php	tests/phpunit/Git/RecordingGitRunner.php
+php	tests/phpunit/InfectionExclusionsTest.php
 php	tests/phpunit/InterfacesStubsTest.php
 php	tests/phpunit/KnossosTestCase.php
 php	tests/phpunit/KnossosTestCaseTest.php
@@ -554,6 +560,7 @@ php	tests/phpunit/Mcp/HttpEndpointHeaderTest.php
 php	tests/phpunit/Mcp/HttpLegacySessionTest.php
 php	tests/phpunit/Mcp/HttpRouterInProcessTest.php
 php	tests/phpunit/Mcp/HttpRouterTest.php
+php	tests/phpunit/Mcp/HttpSessionStoreDefaultsTest.php
 php	tests/phpunit/Mcp/HttpTest.php
 php	tests/phpunit/Mcp/JsonRpcConformanceTest.php
 php	tests/phpunit/Mcp/MaxCharsTest.php
@@ -606,6 +613,7 @@ php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CyclesTest.php
 php	tests/phpunit/Query/DashboardServiceTest.php
+php	tests/phpunit/Query/DeadlineBoundaryTest.php
 php	tests/phpunit/Query/DeclaredPolicyCheckTest.php
 php	tests/phpunit/Query/DiagnosticSourceTest.php
 php	tests/phpunit/Query/DiagnosticsContextTest.php
@@ -726,6 +734,7 @@ php	tests/phpunit/Reconciliation/IncrementalLanguageTest.php
 php	tests/phpunit/Reconciliation/IncrementalTest.php
 php	tests/phpunit/Reconciliation/IncrementalWriteTest.php
 php	tests/phpunit/Reconciliation/MaintenanceTest.php
+php	tests/phpunit/Reconciliation/MillisecondsTest.php
 php	tests/phpunit/Reconciliation/NodeReferenceIndexTest.php
 php	tests/phpunit/Reconciliation/ReconciliationExceptionTest.php
 php	tests/phpunit/Reconciliation/ReconciliationResultTest.php
@@ -935,6 +944,7 @@ php	tests/phpunit/bootstrap.php
 php	tools/api-documentation-check.php
 php	tools/benchmark.php
 php	tools/check-coverage-budgets.php
+php	tools/claude-code-types-check.php
 php	tools/coverage-merge.php
 php	tools/docstring-report.php
 php	tools/documentation-check.php
@@ -954,6 +964,7 @@ php	tools/lib/skipped-tests.php
 php	tools/lifecycle-restore-check.php
 php	tools/lint-files.php
 php	tools/maintainability-report.php
+php	tools/mutation-gate
 php	tools/pcov-prepend.php
 php	tools/pcov-report.php
 php	tools/phpunit-shard
