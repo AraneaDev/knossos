@@ -18,6 +18,36 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const seg = (text, more = {}) => ({ text, look: {}, ...more });
 
 describe("rowHtml", () => {
+    it("keeps Unicode names, drawing glyphs and fields in their allocated cells, skipping hidden hotkeys", () => {
+        const html = rowHtml({
+            key: "table",
+            segments: [
+                seg("", {
+                    hidden: true,
+                    press: { id: "key", label: "", title: "key", hotkey: "k" },
+                }),
+                seg("漢字", { columns: 4 }),
+                seg("e\u0301", { columns: 1 }),
+                seg("👩‍💻", { columns: 2 }),
+                seg("██▁", { columns: 3 }),
+                seg("", {
+                    columns: 0,
+                    field: {
+                        id: "find",
+                        value: "x",
+                        placeholder: "",
+                        width: 12,
+                    },
+                }),
+            ],
+        });
+        expect(html).toContain(
+            'style="grid-template-columns:4ch 1ch 2ch 3ch 12ch"',
+        );
+        expect(html).toContain("漢字");
+        expect(html).toContain('data-field="find"');
+    });
+
     it("draws a press as a button with its id, hotkey and full name, a hidden twin out of sight", () => {
         const html = rowHtml({
             key: "tabs",
@@ -37,7 +67,7 @@ describe("rowHtml", () => {
                 }),
             ],
         });
-        expect(html).toMatch(/^<div class="row" data-key="tabs">/);
+        expect(html).toMatch(/^<div class="row" data-key="tabs" style=/);
         expect(html).toContain(
             '<button class="hidden" data-press="tabkey:hubs" data-hotkey="2" tabindex="-1" aria-label="Hubs"></button>',
         );
@@ -150,7 +180,7 @@ describe("cards", () => {
     it("marks the segment a card hangs from, and draws the card apart, in the cards' layer, not inside its row", () => {
         const row = rowHtml(rows[0]);
         expect(row).toBe(
-            '<div class="row" data-key="hub-0"><span class="hover" data-card="card-0"><span>Router</span></span></div>',
+            '<div class="row" data-key="hub-0" style="grid-template-columns:6ch"><span class="hover" data-card="card-0"><span>Router</span></span></div>',
         );
         expect(drawCards(rows)).toEqual([
             {
@@ -231,13 +261,13 @@ describe("drawRows", () => {
         expect(drawRows(body)).toEqual([
             {
                 key: "b",
-                html: '<div class="row" data-key="b"><span>body</span></div>',
+                html: '<div class="row" data-key="b" style="grid-template-columns:4ch"><span>body</span></div>',
             },
         ]);
         expect(drawRows(footer)).toEqual([
             {
                 key: "f",
-                html: '<div class="row" data-key="f"><span>foot</span></div>',
+                html: '<div class="row" data-key="f" style="grid-template-columns:4ch"><span>foot</span></div>',
             },
         ]);
         expect(drawCards([...body, ...footer])).toEqual([]);
@@ -247,8 +277,12 @@ describe("drawRows", () => {
 describe("style.css", () => {
     const css = readFileSync(join(HERE, "public/style.css"), "utf8");
 
-    it("states no colour: every colour comes from the frame", () => {
-        expect(css).not.toMatch(/#[0-9a-f]{3,6}|rgb\(/i);
+    it("keeps pane colours from the frame while browser chrome has its own palette", () => {
+        expect(css).toContain("background: var(--ground)");
+        expect(css).toContain("color: var(--text)");
+        expect(css).toContain("color: var(--suggestion)");
+        expect(css).toContain("background: var(--card)");
+        expect(css).not.toMatch(/!important/);
     });
 
     it("draws cards in a layer of their own, which no row's clipping reaches", () => {

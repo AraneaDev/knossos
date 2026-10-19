@@ -187,13 +187,38 @@ export async function start() {
         document.head.append(
             Object.assign(document.createElement("link"), { rel, href }),
         );
-    link("stylesheet", withToken("style.css"));
-    link("icon", withToken("icon.svg"));
+    const stylesheet = new Promise((resolve, reject) => {
+        const sheet = Object.assign(document.createElement("link"), {
+            rel: "stylesheet",
+            href: withToken("style.css"),
+            onload: resolve,
+            onerror: () =>
+                reject(new Error("Could not load the interface stylesheet")),
+        });
+        document.head.append(sheet);
+    });
+    const favicon = document.querySelector('link[rel="icon"]');
+    favicon.type = "image/svg+xml";
+    favicon.href = withToken("icon.svg");
+    document.getElementById("brand-icon").src = withToken("icon.svg");
+    // Version metadata is optional, so an older host can still draw the pane.
+    void fetch(withToken("version.txt"))
+        .then((response) => (response.ok ? response.text() : ""))
+        .then((text) => {
+            const version = text.trim();
+            if (!/^\d+\.\d+\.\d+(?:[-+][\w.+-]+)?$/.test(version)) return;
+            const label = document.getElementById("brand-version");
+            label.textContent = `v${version}`;
+            label.hidden = false;
+            document.title = "Knossos - Architecture Explorer";
+        })
+        .catch(() => {});
     // The server makes the manifest: its addresses carry the token.
     link("manifest", `/manifest.webmanifest?t=${encodeURIComponent(token)}`);
     const draw = await import(`./draw.mjs${query}`);
     // The server makes this one from the hooks module's own file: the rule Claude Code places a card with.
     const { cardPlace } = await import(`./place.mjs${query}`);
+    await stylesheet;
     const name = location.hash.replace(/^#\/?/, "");
     const view = VIEWS[name] ?? VIEWS.pane;
     view(document.getElementById("view"), { token, draw, cardPlace });
@@ -310,7 +335,7 @@ function paneView(root, { token, draw: drawn, cardPlace }) {
     let cell = cellOf(root);
     const size = () => ({
         cols: Math.floor(root.clientWidth / cell.width),
-        rows: Math.floor(window.innerHeight / cell.height),
+        rows: Math.floor(root.clientHeight / cell.height),
     });
     const toasts = document.getElementById("toasts");
     const toast = (text) => {

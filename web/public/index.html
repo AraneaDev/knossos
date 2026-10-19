@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Knossos</title>
+        <title>Knossos - Architecture Explorer</title>
         <!-- No /favicon.ico: it would be asked for without the token. -->
         <link rel="icon" href="data:," />
         <!-- Every file this page loads carries its token: app.mjs adds the stylesheet, the icon and the manifest. -->
@@ -13,7 +13,36 @@
         </script>
     </head>
     <body>
-        <main id="view"></main>
+        <div class="workspace">
+            <header class="app-header">
+                <div class="brand">
+                    <img
+                        id="brand-icon"
+                        class="brand-mark"
+                        alt=""
+                        width="48"
+                        height="48"
+                    />
+                    <div>
+                        <div class="brand-title">
+                            <strong>Knossos</strong>
+                            <span
+                                id="brand-version"
+                                class="brand-version"
+                                hidden
+                            ></span>
+                        </div>
+                        <span class="brand-caption">Architecture explorer</span>
+                    </div>
+                </div>
+            </header>
+            <div class="terminal-frame">
+                <main id="view" aria-label="Project architecture"></main>
+            </div>
+            <footer class="app-hint">
+                <span class="shell-signature">Architecture, untangled.</span>
+            </footer>
+        </div>
         <div id="cards"></div>
         <div id="toasts" aria-live="polite"></div>
     </body>

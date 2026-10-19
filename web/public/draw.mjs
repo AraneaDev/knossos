@@ -81,7 +81,25 @@ export function rowHtml(row) {
         );
         return `<div class="code" data-key="${escapeHtml(row.key)}">${lines.join("")}</div>`;
     }
-    return `<div class="row" data-key="${escapeHtml(row.key)}">${row.segments.map(segmentOf).join("")}</div>`;
+    // Every segment occupies the cells allocated by the shared layout.
+    // Tracks use the row's regular font, so bold text and fallback drawing
+    // glyphs cannot push later columns out of place. Hidden hotkeys take no
+    // track; fields use their allocated room rather than their empty text.
+    // The fallback also supports frames from hosts predating width metadata.
+    const tracks = styleOf(
+        {},
+        {
+            "grid-template-columns":
+                row.segments
+                    .filter((s) => !s.hidden)
+                    .map(
+                        (s) =>
+                            `${s.field?.width ?? s.columns ?? Array.from(s.text).length}ch`,
+                    )
+                    .join(" ") || "none",
+        },
+    );
+    return `<div class="row" data-key="${escapeHtml(row.key)}"${tracks}>${row.segments.map(segmentOf).join("")}</div>`;
 }
 
 /** Keys made unique in order: a key seen before gets `#2`, `#3`, … so every node of a list has a key of its own. */

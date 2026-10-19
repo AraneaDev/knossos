@@ -10,7 +10,7 @@
  */
 import { parseHunks } from '../hooks/lib/diff'
 import type { Row, Segment } from '../hooks/lib/layout'
-import { pressLabel, textStyle } from '../hooks/lib/rows'
+import { cells, pressLabel, textStyle } from '../hooks/lib/rows'
 import { fieldRooms } from '../hooks/mod/frame'
 
 /** A look with its colours resolved: what an element's inline style takes. */
@@ -20,6 +20,8 @@ export type Look = { color?: string; background?: string; bold?: true }
 export type PageSegment = {
   text: string
   look: Look
+  /** Display cells from the shared layout, independent of browser font metrics. */
+  columns?: number
   press?: { id: string; label: string; title: string; hotkey?: string; dim?: true }
   hidden?: true
   field?: { id: string; value: string; placeholder: string; width: number }
@@ -63,7 +65,7 @@ function linesOf(source: string, colour: Colour): PageLine[] {
 
 /** One segment ready to draw; a field `width` cells wide. */
 function segmentOf(s: Segment, colour: Colour, columns: number, width: number | undefined): PageSegment {
-  const out: PageSegment = { text: s.text, look: lookOf(s, colour) }
+  const out: PageSegment = { text: s.text, look: lookOf(s, colour), columns: cells(s.text) }
   if (s.press !== undefined) {
     out.press = { id: s.press.id, label: pressLabel(s), title: s.press.label, ...(s.press.hotkey === undefined ? {} : { hotkey: s.press.hotkey }), ...(s.dim === true ? { dim: true as const } : {}) }
   }

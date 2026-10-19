@@ -50,6 +50,8 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
   (Overview, Hubs, Boundaries, Cycles, Issues, Changes, Branch, Churn and Notes), with a detail
   for every component and file, its blast radius as rings, and the route between any two
   components
+- **The web client**: `knossos web` opens the same architecture workspace in your browser,
+  with keyboard navigation, search, diffs and notes, without a Claude Code session
 - **The band**: after a turn that edited files, one line above the prompt says how far the
   change reaches: the files, their dependents, the tests that reach them, the boundaries hit
 - **Notes on components**: facts worth keeping, yours and the agent's, kept across rescans. The
@@ -104,7 +106,8 @@ knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 Start a new session. The brief appears at its start, and `/knossos` opens the pane.
 
 - **Codex or another MCP client**: [Codex and other MCP clients](docs/agents/clients.md). The
-  pane and the messages are Claude Code hooks; every other client gets the MCP tools.
+  native pane and the messages are Claude Code hooks; every other client gets the MCP tools
+  and can use the [web client](#web-client) to browse the graph.
 - **No PHP on the host**: [Running Knossos in Docker](docs/operate/container.md).
 - **When it does not start**: [installation pitfalls](docs/get-started/installation.md#installation-pitfalls),
   such as an unpinned data directory that gives the server and the plugin two different graphs.
@@ -164,7 +167,33 @@ The band: after a turn that edited files, how far the change reaches, with the p
 
 Every tab, key and setting is in [the pane guide](docs/claude-code/pane/index.md).
 
-The same pane runs in a browser tab, without a Claude Code session: `knossos web` in a project. See [the pane in a browser](docs/guides/web-pane.md).
+## Web client
+
+Browse your project's architecture in a browser while working in Codex, another editor,
+or outside an agent session:
+
+```sh
+cd /path/to/your-project
+knossos web
+```
+
+![The Knossos web client's Overview: a kanji-inspired sigil and dark application frame around the terminal workspace, with project stats, composition charts, dependency concentration and cross-boundary flows](docs/images/web-client/overview.png)
+
+The local server opens your browser with the same nine tabs, finder, component and file
+details, blast radius, diffs and notes as the native pane. Click a tab or use its number;
+press `f` to find a component. The Changes tab follows uncommitted work against the last
+commit, without needing a Claude Code session.
+
+Keep the command running while you use the client; `Ctrl-C` stops it. To name another project
+or choose a port without opening a browser automatically:
+
+```sh
+knossos web /path/to/your-project --port=8123 --no-open
+```
+
+Use the printed address, including its token. See [the web client guide](docs/guides/web-pane.md)
+for editor integration, keyboard controls, bookmarks, installing it as an app, and the
+differences from the Claude Code pane.
 
 ## What your agent gets
 
