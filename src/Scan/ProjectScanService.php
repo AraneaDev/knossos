@@ -8,7 +8,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
-use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, NamedFiles, ReconciliationResult};
+use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, Milliseconds, NamedFiles, ReconciliationResult};
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ScanBusyException;
@@ -344,7 +344,7 @@ final class ProjectScanService implements ProjectScanner
 
     private static function elapsedMilliseconds(int $startedAt): float
     {
-        return round((hrtime(true) - $startedAt) / 1_000_000, 3);
+        return Milliseconds::since($startedAt);
     }
 
     /**

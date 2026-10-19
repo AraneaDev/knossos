@@ -1,0 +1,7 @@
+{
+  "tested": 3800,
+  "ignored": 100,
+  "skipped": 100,
+  "timed_out": 40,
+  "tolerance_percent": 10
+}

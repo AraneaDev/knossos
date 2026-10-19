@@ -1,0 +1,171 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Decides whether a sharded mutation run passes, from the shards' JSON logs.
+ *
+ *   tools/mutation-gate --shards=DIR --expected=N [--config=PATH] [--population=PATH]
+ *
+ * DIR holds one Infection JSON log per shard, named mutation-shard-*.json at
+ * any depth (download-artifact may nest them). --config is the Infection
+ * config the floors are read from, infection.json5 unless given. --population
+ * is the mutant population of the last full run, tools/mutation-population.json
+ * unless given.
+ *
+ * It refuses, and says why, when:
+ *
+ *  - the number of shard logs is not N. An aggregate over a subset is not a
+ *    measurement of the tree, so a missing shard never reads as a smaller pass;
+ *  - MSI is below `minMsi`, or covered MSI is below `minCoveredMsi`. Both
+ *    floors are enforced, each against its own number;
+ *  - the tested, ignored, skipped or timed-out mutant count moved by more
+ *    than the population file's tolerance. MSI is a ratio, so a run that
+ *    tests fewer mutants (a widened exclusion, a mutator dropped by an
+ *    Infection upgrade) can clear the floor while measuring less of the code.
+ *    Two counts move it without touching any exclusion: Infection SKIPS a
+ *    mutant whose covering tests add up to more than the per-mutant timeout
+ *    and drops it from both denominators, and counts a TIMED-OUT mutant as
+ *    detected. Slower tests raise both, and both raise the score. Each count
+ *    is held to the same tolerance as the others rather than to a cap on its
+ *    share of the total: a cap would be a second floor nobody has measured,
+ *    while the tolerance only asks that the count stay near the last run that
+ *    was. A deliberate change of population is recorded by updating that
+ *    file, in the same commit as the floor it was measured with.
+ *
+ * The arithmetic is Infection's own, transcribed from Calculator::fromMetrics
+ * in 0.34. Two parts are easy to get wrong and both inflate the score: syntax
+ * errors count as detected alongside errors, and the denominator is the
+ * *tested* population, so skipped and ignored mutants are excluded, not
+ * merely undetected.
+ *
+ *   detected = killed + killedByStaticAnalysis + errors + syntaxErrors + timeouts
+ *   tested   = total - skipped - ignored
+ *   MSI      = detected / tested
+ *   covered  = detected / (tested - notCovered)
+ *
+ * Each percentage is rounded to two decimals before it is compared, as
+ * Infection rounds the figure it prints and checks.
+ *
+ * The floors are read with a pattern rather than a JSON5 parser, because the
+ * workflow job that runs this has no vendor directory. A floor that is missing,
+ * repeated or not a number is a refusal, never a floor of zero.
+ *
+ * Exit status: 0 when the run passes, 1 when it does not, 2 on a usage error.
+ */
+
+$root = dirname(__DIR__);
+$shards = null;
+$expected = null;
+$config = $root . '/infection.json5';
+$population = $root . '/tools/mutation-population.json';
+
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--shards=')) {
+        $shards = substr($argument, 9);
+    } elseif (str_starts_with($argument, '--expected=') && ctype_digit(substr($argument, 11))) {
+        $expected = (int) substr($argument, 11);
+    } elseif (str_starts_with($argument, '--config=')) {
+        $config = substr($argument, 9);
+    } elseif (str_starts_with($argument, '--population=')) {
+        $population = substr($argument, 13);
+    } else {
+        fwrite(STDERR, "mutation-gate: unknown argument {$argument}\n");
+        exit(2);
+    }
+}
+if ($shards === null || $shards === '' || $expected === null || $expected < 1) {
+    fwrite(STDERR, "usage: tools/mutation-gate --shards=DIR --expected=N [--config=PATH] [--population=PATH]\n");
+    exit(2);
+}
+
+/** @param list<string> $reasons */
+function refuse(array $reasons): never
+{
+    foreach ($reasons as $reason) {
+        fwrite(STDERR, "mutation-gate: {$reason}\n");
+    }
+    exit(1);
+}
+
+$logs = [];
+if (is_dir($shards)) {
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($shards, FilesystemIterator::SKIP_DOTS)) as $item) {
+        if ($item instanceof SplFileInfo && preg_match('/\Amutation-shard-.*\.json\z/', $item->getFilename()) === 1) {
+            $logs[] = $item->getPathname();
+        }
+    }
+}
+sort($logs);
+if (count($logs) !== $expected) {
+    refuse([sprintf('expected %d shard logs in %s, found %d. An aggregate over a subset is not a measurement of the tree.', $expected, $shards, count($logs))]);
+}
+
+$keys = ['totalMutantsCount', 'killedCount', 'killedByStaticAnalysisCount', 'notCoveredCount', 'errorCount', 'syntaxErrorCount', 'skippedCount', 'ignoredCount', 'timeOutCount'];
+$sum = array_fill_keys($keys, 0);
+foreach ($logs as $log) {
+    $decoded = json_decode((string) file_get_contents($log), true);
+    $stats = is_array($decoded) ? ($decoded['stats'] ?? null) : null;
+    if (!is_array($stats)) {
+        refuse(["{$log} is not an Infection JSON log: it has no stats object."]);
+    }
+    foreach ($keys as $key) {
+        if (!is_int($stats[$key] ?? null) || $stats[$key] < 0) {
+            refuse(["{$log} has no count for stats.{$key}."]);
+        }
+        $sum[$key] += $stats[$key];
+    }
+}
+
+$text = is_file($config) ? (string) file_get_contents($config) : '';
+$floors = [];
+foreach (['minMsi', 'minCoveredMsi'] as $name) {
+    $found = preg_match_all('/^\s*' . $name . ':\s*(\d+(?:\.\d+)?)\s*,?\s*$/m', $text, $matches);
+    if ($found !== 1) {
+        refuse([sprintf('could not read exactly one numeric %s from %s (found %d).', $name, $config, (int) $found)]);
+    }
+    $floors[$name] = (float) $matches[1][0];
+}
+
+$expectedPopulation = is_file($population) ? json_decode((string) file_get_contents($population), true) : null;
+if (!is_array($expectedPopulation)
+    || !is_int($expectedPopulation['tested'] ?? null) || $expectedPopulation['tested'] < 1
+    || !is_int($expectedPopulation['ignored'] ?? null) || $expectedPopulation['ignored'] < 0
+    || !is_int($expectedPopulation['skipped'] ?? null) || $expectedPopulation['skipped'] < 0
+    || !is_int($expectedPopulation['timed_out'] ?? null) || $expectedPopulation['timed_out'] < 0
+    || !is_int($expectedPopulation['tolerance_percent'] ?? null) || $expectedPopulation['tolerance_percent'] < 0 || $expectedPopulation['tolerance_percent'] > 100) {
+    refuse(["{$population} must hold integer tested (above 0), ignored, skipped, timed_out, and tolerance_percent (0 to 100)."]);
+}
+
+$tested = $sum['totalMutantsCount'] - $sum['skippedCount'] - $sum['ignoredCount'];
+$detected = $sum['killedCount'] + $sum['killedByStaticAnalysisCount'] + $sum['errorCount'] + $sum['syntaxErrorCount'] + $sum['timeOutCount'];
+$covered = $tested - $sum['notCoveredCount'];
+if ($tested < 1 || $covered < 1) {
+    refuse([sprintf('no mutant was tested (%d tested, %d of them covered); there is nothing to score.', $tested, $covered)]);
+}
+$msi = round($detected * 100 / $tested, 2);
+$coveredMsi = round($detected * 100 / $covered, 2);
+
+printf("Shards: %d  mutants: %d  tested: %d  detected: %d  not covered: %d  ignored: %d  timed out: %d\n", count($logs), $sum['totalMutantsCount'], $tested, $detected, $sum['notCoveredCount'], $sum['ignoredCount'], $sum['timeOutCount']);
+printf("Skipped: %d, %.2f%% of all mutants, left out of both scores\n", $sum['skippedCount'], $sum['totalMutantsCount'] > 0 ? $sum['skippedCount'] * 100 / $sum['totalMutantsCount'] : 0);
+printf("MSI: %.2f%% (floor %s%%)  Covered MSI: %.2f%% (floor %s%%)\n", $msi, $floors['minMsi'], $coveredMsi, $floors['minCoveredMsi']);
+
+$reasons = [];
+if ($msi < $floors['minMsi']) {
+    $reasons[] = sprintf('MSI %.2f%% is below minMsi %s%% in %s.', $msi, $floors['minMsi'], $config);
+}
+if ($coveredMsi < $floors['minCoveredMsi']) {
+    $reasons[] = sprintf('covered MSI %.2f%% is below minCoveredMsi %s%% in %s.', $coveredMsi, $floors['minCoveredMsi'], $config);
+}
+$tolerance = $expectedPopulation['tolerance_percent'];
+foreach (['tested' => $tested, 'ignored' => $sum['ignoredCount'], 'skipped' => $sum['skippedCount'], 'timed_out' => $sum['timeOutCount']] as $name => $actual) {
+    $was = $expectedPopulation[$name];
+    if (abs($actual - $was) * 100 > $was * $tolerance) {
+        $reasons[] = sprintf('%s mutants moved from %d to %d, more than %d%%. If that is deliberate, record the new count in %s with the floor it was measured with.', $name, $was, $actual, $tolerance, $population);
+    }
+}
+if ($reasons !== []) {
+    refuse($reasons);
+}
+echo "mutation-gate: passed\n";

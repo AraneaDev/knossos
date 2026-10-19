@@ -106,6 +106,72 @@ final class LimitsTest extends KnossosTestCase
     }
 
     /**
+     * The caps a server built without them enforces, which is how the MCP
+     * entry point builds it: one mebibyte, newline included, and one byte
+     * more is refused.
+     */
+    #[Group('limits')]
+    public function testTheDefaultLineCapIsOneMebibyte(): void
+    {
+        $tools = $this->toolService();
+
+        $atCap = $this->runFrameUnderDefaults($tools, self::initializeFrameOfExactly(1_048_576));
+        assertSame('2025-11-25', $atCap['result']['protocolVersion']);
+
+        $overCap = $this->runFrameUnderDefaults($tools, self::initializeFrameOfExactly(1_048_577));
+        assertSame(-32700, $overCap['error']['code']);
+    }
+
+    #[Group('limits')]
+    public function testTheDefaultResponseCapIsOneMebibyte(): void
+    {
+        $tools = $this->toolService();
+        // The line cap is raised so the request can be as large as the answer
+        // it provokes; only the response cap is left at its default.
+        $atCap = $this->runFrameUnderDefaults($tools, self::unknownToolFrameAnsweredIn(1_048_576), maxLineBytes: 2_097_152);
+        assertSame(-32602, $atCap['error']['code']);
+
+        $overCap = $this->runFrameUnderDefaults($tools, self::unknownToolFrameAnsweredIn(1_048_577), maxLineBytes: 2_097_152);
+        assertSame(-32001, $overCap['error']['code']);
+    }
+
+    /**
+     * Run one frame through a server built with only the caps named here.
+     *
+     * @return array<string, mixed>
+     */
+    private function runFrameUnderDefaults(ToolService $tools, string $frame, ?int $maxLineBytes = null): array
+    {
+        $input = fopen('php://temp', 'r+');
+        $output = fopen('php://temp', 'r+');
+        $errors = fopen('php://temp', 'r+');
+        fwrite($input, $frame);
+        rewind($input);
+        $server = $maxLineBytes === null
+            ? new StdioServer(new McpDispatcher($tools))
+            : new StdioServer(new McpDispatcher($tools), maxLineBytes: $maxLineBytes);
+        $server->run($input, $output, $errors);
+        rewind($output);
+
+        return json_decode(trim((string) stream_get_contents($output)), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * A tools/call frame for an unknown tool whose error answer, which names
+     * the tool, encodes to exactly $bytes.
+     */
+    private static function unknownToolFrameAnsweredIn(int $bytes): string
+    {
+        $answer = static fn(string $name): string => json_encode(
+            ['jsonrpc' => '2.0', 'id' => 1, 'error' => ['code' => -32602, 'message' => 'Unknown tool: ' . $name]],
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
+        );
+        $name = str_repeat('p', $bytes - strlen($answer('')));
+
+        return json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => ['name' => $name, 'arguments' => []]], JSON_THROW_ON_ERROR) . "\n";
+    }
+
+    /**
      * Run one frame through a server with the given caps and decode its reply.
      *
      * @return array<string, mixed>

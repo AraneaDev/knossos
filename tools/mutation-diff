@@ -88,7 +88,25 @@ fi
 
 # Nothing changed under src/ means nothing to mutate. Exit 0 rather than letting
 # Infection fail on an empty mutant set: "no mutants" is a pass, not a problem.
-if [ -z "$(git diff --name-only --diff-filter=AM "$base"...HEAD -- src | head -1)" ]; then
+#
+# The question is asked the way Infection's --git-diff-base answers it: the
+# working tree against where HEAD left the base. `base...HEAD` would compare
+# commits only, so a change you have not committed yet read as nothing to
+# mutate and the run passed without mutating it.
+#
+# A file git does not track yet is in neither answer, so a new class would pass
+# unmutated. That is refused rather than skipped: `git add -N` puts the file in
+# the diff without staging its content.
+untracked=$(git ls-files --others --exclude-standard -- src)
+if [ -n "$untracked" ]; then
+    echo "mutation-diff: these files under src/ are not tracked, so neither this check nor Infection's diff would mutate them:" >&2
+    printf '%s\n' "$untracked" | sed 's/^/  /' >&2
+    echo "mutation-diff: run 'git add -N' on them, then run this again." >&2
+    exit 64
+fi
+
+since=$(git merge-base "$base" HEAD 2>/dev/null) || since=$base
+if [ -z "$(git diff --name-only --diff-filter=AM "$since" -- src | head -1)" ]; then
     echo "mutation-diff: no added or modified files under src/ versus $base; nothing to mutate."
     exit 0
 fi

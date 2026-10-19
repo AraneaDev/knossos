@@ -28,7 +28,7 @@ final class PhaseTimer
     /** Close the running phase under this name and open the next. */
     public function mark(string $phase): void
     {
-        $this->phases[$phase] = round((hrtime(true) - $this->started) / 1_000_000, 3);
+        $this->phases[$phase] = Milliseconds::since($this->started);
         $this->started = hrtime(true);
     }
 
