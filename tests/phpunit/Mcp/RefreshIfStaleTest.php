@@ -807,7 +807,7 @@ final class RefreshIfStaleTest extends KnossosTestCase
             file_put_contents($file, "\n// drift\n", FILE_APPEND);
             touch($file, filemtime($file) + 60);
             $tools = new ToolService(
-                new class () implements \Knossos\Scan\ProjectScanner {
+                new class implements \Knossos\Scan\ProjectScanner {
                     public function scan(
                         string $root,
                         ?string $name = null,

@@ -7,11 +7,12 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\RescanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertIsInt;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The pane's rescan: an incremental scan of an existing project inside an

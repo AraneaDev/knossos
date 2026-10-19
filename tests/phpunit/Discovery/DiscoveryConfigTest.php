@@ -40,7 +40,7 @@ final class DiscoveryConfigTest extends TestCase
     public function testEmptyAllowedRootsThrows(): void
     {
         $error = captureThrows(
-            static fn () => new DiscoveryConfig(allowedRoots: []),
+            static fn() => new DiscoveryConfig(allowedRoots: []),
             InvalidArgumentException::class,
         );
 
@@ -50,7 +50,7 @@ final class DiscoveryConfigTest extends TestCase
     public function testZeroMaxFilesThrows(): void
     {
         $error = captureThrows(
-            static fn () => new DiscoveryConfig(allowedRoots: ['/projects'], maxFiles: 0),
+            static fn() => new DiscoveryConfig(allowedRoots: ['/projects'], maxFiles: 0),
             InvalidArgumentException::class,
         );
 
@@ -60,7 +60,7 @@ final class DiscoveryConfigTest extends TestCase
     public function testNegativeMaxFilesThrows(): void
     {
         $error = captureThrows(
-            static fn () => new DiscoveryConfig(allowedRoots: ['/projects'], maxFiles: -10),
+            static fn() => new DiscoveryConfig(allowedRoots: ['/projects'], maxFiles: -10),
             InvalidArgumentException::class,
         );
 
@@ -70,7 +70,7 @@ final class DiscoveryConfigTest extends TestCase
     public function testZeroMaxFileBytesThrows(): void
     {
         $error = captureThrows(
-            static fn () => new DiscoveryConfig(allowedRoots: ['/projects'], maxFileBytes: 0),
+            static fn() => new DiscoveryConfig(allowedRoots: ['/projects'], maxFileBytes: 0),
             InvalidArgumentException::class,
         );
 
@@ -80,7 +80,7 @@ final class DiscoveryConfigTest extends TestCase
     public function testNegativeMaxFileBytesThrows(): void
     {
         $error = captureThrows(
-            static fn () => new DiscoveryConfig(allowedRoots: ['/projects'], maxFileBytes: -100),
+            static fn() => new DiscoveryConfig(allowedRoots: ['/projects'], maxFileBytes: -100),
             InvalidArgumentException::class,
         );
 

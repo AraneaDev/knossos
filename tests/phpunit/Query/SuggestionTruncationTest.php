@@ -80,7 +80,18 @@ final class SuggestionTruncationTest extends KnossosTestCase
         $repository->saveBoundaryMembership($billing, $ids['project'], $ids['invoice'], $ids['scan']);
         $repository->saveEdge(
             StableId::edge($ids['project'], 'calls', $ids['invoice'], $ids['checkout'], 'truncation-reverse'),
-            $ids['project'], 'calls', $ids['invoice'], $ids['checkout'], $ids['file'], 30, 30, 'ast', 'certain', [], 'truncation:file:src/Invoice.php', $ids['scan'],
+            $ids['project'],
+            'calls',
+            $ids['invoice'],
+            $ids['checkout'],
+            $ids['file'],
+            30,
+            30,
+            'ast',
+            'certain',
+            [],
+            'truncation:file:src/Invoice.php',
+            $ids['scan'],
         );
         $repository->completeScan($ids['project'], $ids['scan']);
 

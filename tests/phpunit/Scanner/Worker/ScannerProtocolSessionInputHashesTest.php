@@ -244,7 +244,10 @@ final class ScannerProtocolSessionInputHashesTest extends TestCase
         $channel = new class ([$manifest, ...$scanMessages]) implements RpcChannelInterface {
             /** @param list<array<string, mixed>> $messages */
             public function __construct(private array $messages) {}
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -258,11 +261,26 @@ final class ScannerProtocolSessionInputHashesTest extends TestCase
         };
         $process = new class implements ProcessSupervisorInterface {
             public function start(): void {}
-            public function isRunning(): bool { return false; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => false, 'signaled' => false, 'stopped' => false, 'exitcode' => 0, 'termsig' => 0, 'stopsig' => 0]; }
+            public function isRunning(): bool
+            {
+                return false;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => false, 'signaled' => false, 'stopped' => false, 'exitcode' => 0, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 

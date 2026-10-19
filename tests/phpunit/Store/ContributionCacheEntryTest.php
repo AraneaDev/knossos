@@ -51,7 +51,7 @@ final class ContributionCacheEntryTest extends TestCase
     {
         $ref = new ReflectionClass(ContributionCacheEntry::class);
         $publicProps = array_map(
-            static fn (\ReflectionProperty $p): string => $p->getName(),
+            static fn(\ReflectionProperty $p): string => $p->getName(),
             $ref->getProperties(\ReflectionProperty::IS_PUBLIC),
         );
         assertSame(
@@ -87,7 +87,7 @@ final class ContributionCacheEntryTest extends TestCase
     public function testThrowsOnEmptyFilePath(): void
     {
         $error = captureThrows(
-            static fn () => self::buildEntry(['filePath' => '']),
+            static fn() => self::buildEntry(['filePath' => '']),
             InvalidArgumentException::class,
         );
         assertSame('Contribution cache metadata must not be empty.', $error->getMessage());
@@ -96,7 +96,7 @@ final class ContributionCacheEntryTest extends TestCase
     public function testThrowsOnEmptyContentHash(): void
     {
         $error = captureThrows(
-            static fn () => self::buildEntry(['contentHash' => '']),
+            static fn() => self::buildEntry(['contentHash' => '']),
             InvalidArgumentException::class,
         );
         assertSame('Contribution cache metadata must not be empty.', $error->getMessage());
@@ -105,7 +105,7 @@ final class ContributionCacheEntryTest extends TestCase
     public function testThrowsOnEmptyScannerId(): void
     {
         $error = captureThrows(
-            static fn () => self::buildEntry(['scannerId' => '']),
+            static fn() => self::buildEntry(['scannerId' => '']),
             InvalidArgumentException::class,
         );
         assertSame('Contribution cache metadata must not be empty.', $error->getMessage());
@@ -114,7 +114,7 @@ final class ContributionCacheEntryTest extends TestCase
     public function testThrowsOnEmptyScannerVersion(): void
     {
         $error = captureThrows(
-            static fn () => self::buildEntry(['scannerVersion' => '']),
+            static fn() => self::buildEntry(['scannerVersion' => '']),
             InvalidArgumentException::class,
         );
         assertSame('Contribution cache metadata must not be empty.', $error->getMessage());
@@ -123,7 +123,7 @@ final class ContributionCacheEntryTest extends TestCase
     public function testThrowsOnEmptyConfigurationHash(): void
     {
         $error = captureThrows(
-            static fn () => self::buildEntry(['configurationHash' => '']),
+            static fn() => self::buildEntry(['configurationHash' => '']),
             InvalidArgumentException::class,
         );
         assertSame('Contribution cache metadata must not be empty.', $error->getMessage());
@@ -138,7 +138,7 @@ final class ContributionCacheEntryTest extends TestCase
         // with the canonical message. This kills mutations like `continue` instead of
         // `throw` that would let the loop iterate further, or aggregate-error mutations.
         $error = captureThrows(
-            static fn () => self::buildEntry([
+            static fn() => self::buildEntry([
                 'filePath' => '',
                 'contentHash' => '',
                 'scannerId' => '',

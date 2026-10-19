@@ -24,4 +24,3 @@ if (!is_file($autoload)) {
 require $autoload;
 
 exit((new KnossosPhpScanner\WorkerServer())->run());
-

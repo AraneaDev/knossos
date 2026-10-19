@@ -9,10 +9,11 @@ use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
-use ReflectionMethod;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
+use ReflectionMethod;
 
 /**
  * Per-file fan-in: distinct dependent files, never edges, never the file itself.

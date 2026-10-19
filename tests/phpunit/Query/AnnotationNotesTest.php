@@ -74,7 +74,9 @@ final class AnnotationNotesTest extends KnossosTestCase
         $names = [];
         for ($i = 1; $i <= 12; $i++) {
             $names[] = 'App\\Upcoming' . $i;
-            $queries->upsertAnnotation($ids['project'], 'App\\Upcoming' . $i, 'note', str_repeat('x', match ($i) { 1 => 1200, 2 => 980, default => 10 }), execute: true);
+            $queries->upsertAnnotation($ids['project'], 'App\\Upcoming' . $i, 'note', str_repeat('x', match ($i) {
+                1 => 1200, 2 => 980, default => 10,
+            }), execute: true);
         }
 
         $notes = (new AnnotationNotes($pdo))->forComponents($ids['project'], $names);

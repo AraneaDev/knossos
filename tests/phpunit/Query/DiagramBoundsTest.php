@@ -175,7 +175,18 @@ final class DiagramBoundsTest extends KnossosTestCase
         foreach ([['Aaa', 'Bbb'], ['Aaa', 'Xxx'], ['Aaa', 'Yyy'], ['Bbb', 'Xxx']] as [$from, $to]) {
             $repository->saveEdge(
                 StableId::edge($ids['project'], 'calls', $nodes[$from], $nodes[$to], $from . $to),
-                $ids['project'], 'calls', $nodes[$from], $nodes[$to], $ids['file'], 5, 5, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan'],
+                $ids['project'],
+                'calls',
+                $nodes[$from],
+                $nodes[$to],
+                $ids['file'],
+                5,
+                5,
+                'ast',
+                'certain',
+                [],
+                'php:file:src/Checkout.php',
+                $ids['scan'],
             );
         }
         $repository->completeScan($ids['project'], $ids['scan']);
@@ -206,7 +217,18 @@ final class DiagramBoundsTest extends KnossosTestCase
             if ($previous !== null) {
                 $repository->saveEdge(
                     StableId::edge($ids['project'], 'calls', $previous, $id, 'chain-' . $index),
-                    $ids['project'], 'calls', $previous, $id, $ids['file'], 10 + $index, 10 + $index, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan'],
+                    $ids['project'],
+                    'calls',
+                    $previous,
+                    $id,
+                    $ids['file'],
+                    10 + $index,
+                    10 + $index,
+                    'ast',
+                    'certain',
+                    [],
+                    'php:file:src/Checkout.php',
+                    $ids['scan'],
                 );
             }
             $previous = $id;

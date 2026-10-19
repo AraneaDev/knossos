@@ -28,8 +28,15 @@ final class ScannerProtocolSessionTest extends TestCase
             public array $responses = [];
             public int $responseIndex = 0;
 
-            public function beginRequest(): int { ++$this->beginCount; return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sent[] = $message; }
+            public function beginRequest(): int
+            {
+                ++$this->beginCount;
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sent[] = $message;
+            }
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
                 if ($this->responseIndex < count($this->responses)) {
@@ -46,22 +53,52 @@ final class ScannerProtocolSessionTest extends TestCase
     {
         $process = new class implements ProcessSupervisorInterface {
             public bool $started = false;
-            public function start(): void { $this->started = true; }
-            public function isRunning(): bool { return false; }
-            public function stdin() { throw new \RuntimeException('should not be called'); }
-            public function stdout() { throw new \RuntimeException('should not be called'); }
-            public function stderr() { throw new \RuntimeException('should not be called'); }
+            public function start(): void
+            {
+                $this->started = true;
+            }
+            public function isRunning(): bool
+            {
+                return false;
+            }
+            public function stdin()
+            {
+                throw new \RuntimeException('should not be called');
+            }
+            public function stdout()
+            {
+                throw new \RuntimeException('should not be called');
+            }
+            public function stderr()
+            {
+                throw new \RuntimeException('should not be called');
+            }
             /** @return array{command: string, pid: int, running: bool, signaled: bool, stopped: bool, exitcode: int, termsig: int, stopsig: int} */
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => false, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => false, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 
         $channel = new class implements RpcChannelInterface {
             public bool $sendCalled = false;
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sendCalled = true; }
-            public function readMessage(int $deadline, ?callable $cancelled = null): array { return []; }
-            public function stderr(): string { return ''; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sendCalled = true;
+            }
+            public function readMessage(int $deadline, ?callable $cancelled = null): array
+            {
+                return [];
+            }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -88,20 +125,47 @@ final class ScannerProtocolSessionTest extends TestCase
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
             /** @return array{command: string, pid: int, running: bool, signaled: bool, stopped: bool, exitcode: int, termsig: int, stopsig: int} */
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+            }
         };
 
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
-            public function readMessage(int $deadline, ?callable $cancelled = null): array { return []; }
-            public function stderr(): string { return ''; }
+            public function readMessage(int $deadline, ?callable $cancelled = null): array
+            {
+                return [];
+            }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -123,20 +187,47 @@ final class ScannerProtocolSessionTest extends TestCase
         $process = new class implements ProcessSupervisorInterface {
             public bool $closeCalled = false;
             public function start(): void {}
-            public function isRunning(): bool { return false; }
-            public function stdin() { throw new \RuntimeException('should not be called'); }
-            public function stdout() { throw new \RuntimeException('should not be called'); }
-            public function stderr() { throw new \RuntimeException('should not be called'); }
+            public function isRunning(): bool
+            {
+                return false;
+            }
+            public function stdin()
+            {
+                throw new \RuntimeException('should not be called');
+            }
+            public function stdout()
+            {
+                throw new \RuntimeException('should not be called');
+            }
+            public function stderr()
+            {
+                throw new \RuntimeException('should not be called');
+            }
             /** @return array{command: string, pid: int, running: bool, signaled: bool, stopped: bool, exitcode: int, termsig: int, stopsig: int} */
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => false, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->closeCalled = true; }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => false, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->closeCalled = true;
+            }
         };
 
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
-            public function readMessage(int $deadline, ?callable $cancelled = null): array { return []; }
-            public function stderr(): string { return ''; }
+            public function readMessage(int $deadline, ?callable $cancelled = null): array
+            {
+                return [];
+            }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -154,8 +245,14 @@ final class ScannerProtocolSessionTest extends TestCase
             public array $sent = [];
             private bool $responseReturned = false;
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sent[] = $message; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sent[] = $message;
+            }
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
                 if (!$this->responseReturned) {
@@ -172,18 +269,39 @@ final class ScannerProtocolSessionTest extends TestCase
                 }
                 throw new WorkerException('WORKER_TIMEOUT', 'No more responses.');
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public bool $closed = false;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->closed = true; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->closed = true;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -201,7 +319,11 @@ final class ScannerProtocolSessionTest extends TestCase
         $channel = new class implements RpcChannelInterface {
             public int $beginCount = 0;
 
-            public function beginRequest(): int { ++$this->beginCount; return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                ++$this->beginCount;
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -215,16 +337,34 @@ final class ScannerProtocolSessionTest extends TestCase
                     'capabilities' => [],
                 ]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 
@@ -241,30 +381,54 @@ final class ScannerProtocolSessionTest extends TestCase
     public function testInitializeClosesOnManifestInvalid(): void
     {
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
                 return ['id' => 1, 'result' => ['id' => 42]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
 
         assertThrows(
-            static fn () => $session->initialize(),
+            static fn() => $session->initialize(),
             WorkerException::class,
         );
         assertSame(true, $process->lastTerminate);
@@ -273,7 +437,10 @@ final class ScannerProtocolSessionTest extends TestCase
     public function testInitializeClosesOnProtocolVersionMismatch(): void
     {
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -287,24 +454,45 @@ final class ScannerProtocolSessionTest extends TestCase
                     'capabilities' => [],
                 ]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
 
         $error = captureThrows(
-            static fn () => $session->initialize(),
+            static fn() => $session->initialize(),
             WorkerException::class,
         );
         assertSame('WORKER_PROTOCOL_VERSION_MISMATCH', $error->diagnosticCode);
@@ -315,7 +503,10 @@ final class ScannerProtocolSessionTest extends TestCase
     public function testInitializeClosesOnSchemaVersionMismatch(): void
     {
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -329,24 +520,45 @@ final class ScannerProtocolSessionTest extends TestCase
                     'capabilities' => [],
                 ]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
 
         $error = captureThrows(
-            static fn () => $session->initialize(),
+            static fn() => $session->initialize(),
             WorkerException::class,
         );
         assertSame('WORKER_OUTPUT_SCHEMA_MISMATCH', $error->diagnosticCode);
@@ -359,7 +571,10 @@ final class ScannerProtocolSessionTest extends TestCase
     public function testRequireCapabilitiesReturnsManifestWhenAllPresent(): void
     {
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -373,16 +588,34 @@ final class ScannerProtocolSessionTest extends TestCase
                     'capabilities' => ['framework_detection', 'symbol_extraction'],
                 ]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 
@@ -395,7 +628,10 @@ final class ScannerProtocolSessionTest extends TestCase
     public function testRequireCapabilitiesThrowsWhenMissing(): void
     {
         $channel = new class implements RpcChannelInterface {
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -409,24 +645,45 @@ final class ScannerProtocolSessionTest extends TestCase
                     'capabilities' => ['framework_detection'],
                 ]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
 
         $error = captureThrows(
-            static fn () => $session->requireCapabilities(['missing_cap']),
+            static fn() => $session->requireCapabilities(['missing_cap']),
             WorkerException::class,
         );
         assertSame('WORKER_CAPABILITY_MISMATCH', $error->diagnosticCode);
@@ -442,7 +699,10 @@ final class ScannerProtocolSessionTest extends TestCase
             private array $queue = [];
             private int $index = 0;
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -479,16 +739,34 @@ final class ScannerProtocolSessionTest extends TestCase
                 }
                 throw new WorkerException('WORKER_TIMEOUT', 'No more responses.');
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 
@@ -544,7 +822,10 @@ final class ScannerProtocolSessionTest extends TestCase
         $channel = new class ($messages) implements RpcChannelInterface {
             /** @param list<array<string, mixed>> $messages */
             public function __construct(private array $messages) {}
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -561,8 +842,14 @@ final class ScannerProtocolSessionTest extends TestCase
             public array $sent = [];
             private bool $initReturned = false;
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sent[] = $message; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sent[] = $message;
+            }
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
                 if (!$this->initReturned) {
@@ -580,26 +867,48 @@ final class ScannerProtocolSessionTest extends TestCase
                 // readMessage should not be reached in scan loop because cancel fires first
                 throw new WorkerException('WORKER_TIMEOUT', 'should not reach');
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public bool $isRunning = true;
             public function start(): void {}
-            public function isRunning(): bool { return $this->isRunning; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => $this->isRunning, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; $this->isRunning = false; }
+            public function isRunning(): bool
+            {
+                return $this->isRunning;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => $this->isRunning, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+                $this->isRunning = false;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
 
         assertThrows(
             static function () use ($session): void {
-                foreach ($session->scan(['path' => '/test'], static fn () => true) as $_) {
+                foreach ($session->scan(['path' => '/test'], static fn() => true) as $_) {
                 }
             },
             WorkerException::class,
@@ -623,7 +932,10 @@ final class ScannerProtocolSessionTest extends TestCase
             public array $queue = [];
             public int $index = 0;
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -666,18 +978,39 @@ final class ScannerProtocolSessionTest extends TestCase
                 }
                 throw new WorkerException('WORKER_TIMEOUT', 'No more responses.');
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public bool $closed = false;
             public function start(): void {}
-            public function isRunning(): bool { return !$this->closed; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => !$this->closed, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->closed = true; }
+            public function isRunning(): bool
+            {
+                return !$this->closed;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => !$this->closed, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->closed = true;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -697,7 +1030,10 @@ final class ScannerProtocolSessionTest extends TestCase
         $channel = new class implements RpcChannelInterface {
             private int $readCount = 0;
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -715,18 +1051,39 @@ final class ScannerProtocolSessionTest extends TestCase
                 }
                 return ['id' => 2, 'result' => [1, 2, 3]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -748,19 +1105,46 @@ final class ScannerProtocolSessionTest extends TestCase
         $channel = new class implements RpcChannelInterface {
             public array $sent = [];
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sent[] = $message; }
-            public function readMessage(int $deadline, ?callable $cancelled = null): array { return []; }
-            public function stderr(): string { return ''; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sent[] = $message;
+            }
+            public function readMessage(int $deadline, ?callable $cancelled = null): array
+            {
+                return [];
+            }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 
@@ -779,25 +1163,53 @@ final class ScannerProtocolSessionTest extends TestCase
         $channel = new class implements RpcChannelInterface {
             public array $sent = [];
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sent[] = $message; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sent[] = $message;
+            }
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
                 return ['id' => 1, 'result' => ['ok' => true]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public bool $closed = false;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; $this->closed = true; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+                $this->closed = true;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -814,25 +1226,53 @@ final class ScannerProtocolSessionTest extends TestCase
         $channel = new class implements RpcChannelInterface {
             public array $sent = [];
 
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
-            public function send(array $message, ?callable $cancelled = null): void { $this->sent[] = $message; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
+            public function send(array $message, ?callable $cancelled = null): void
+            {
+                $this->sent[] = $message;
+            }
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
                 throw new WorkerException('WORKER_TIMEOUT', 'shutdown timeout');
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public ?bool $lastTerminate = null;
             public bool $closed = false;
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
-            public function close(bool $terminate): void { $this->lastTerminate = $terminate; $this->closed = true; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
+            public function close(bool $terminate): void
+            {
+                $this->lastTerminate = $terminate;
+                $this->closed = true;
+            }
         };
 
         $session = new ScannerProtocolSession($process, $channel);
@@ -850,7 +1290,10 @@ final class ScannerProtocolSessionTest extends TestCase
     {
         $channel = new class implements RpcChannelInterface {
             public int $requestCount = 0;
-            public function beginRequest(): int { return hrtime(true) + 10_000_000_000; }
+            public function beginRequest(): int
+            {
+                return hrtime(true) + 10_000_000_000;
+            }
             public function send(array $message, ?callable $cancelled = null): void {}
             public function readMessage(int $deadline, ?callable $cancelled = null): array
             {
@@ -864,16 +1307,34 @@ final class ScannerProtocolSessionTest extends TestCase
                     'capabilities' => [],
                 ]];
             }
-            public function stderr(): string { return ''; }
+            public function stderr(): string
+            {
+                return '';
+            }
         };
 
         $process = new class implements ProcessSupervisorInterface {
             public function start(): void {}
-            public function isRunning(): bool { return true; }
-            public function stdin() { return fopen('php://temp', 'r+'); }
-            public function stdout() { return fopen('php://temp', 'r+'); }
-            public function stderr() { return fopen('php://temp', 'r+'); }
-            public function status(): array { return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0]; }
+            public function isRunning(): bool
+            {
+                return true;
+            }
+            public function stdin()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stdout()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function stderr()
+            {
+                return fopen('php://temp', 'r+');
+            }
+            public function status(): array
+            {
+                return ['command' => '', 'pid' => 0, 'running' => true, 'signaled' => false, 'stopped' => false, 'exitcode' => -1, 'termsig' => 0, 'stopsig' => 0];
+            }
             public function close(bool $terminate): void {}
         };
 

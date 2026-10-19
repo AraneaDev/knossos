@@ -45,7 +45,7 @@ final class GitIgnoreRulesTest extends KnossosTestCase
         yield 'a negated class excludes its characters' => ['file[!0-9].ts', 'file7.ts', false, false];
         yield 'a comment is not a pattern' => ['# cache', '# cache', false, false];
         yield 'an escaped hash is a literal' => ['\\#notes.ts', '#notes.ts', false, true];
-        yield 'trailing spaces are dropped' => ["cache   ", 'cache', true, true];
+        yield 'trailing spaces are dropped' => ['cache   ', 'cache', true, true];
         yield 'a bare double star matches everything' => ['**', 'a/b.ts', false, true];
         yield 'a class may open with a closing bracket' => ['file[]x].ts', 'file].ts', false, true];
         yield 'a negated class may open with a closing bracket' => ['file[!]].ts', 'fileA.ts', false, true];

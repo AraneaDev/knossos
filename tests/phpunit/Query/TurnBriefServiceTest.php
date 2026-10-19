@@ -6,21 +6,22 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Query\LedgeredScanner;
-use Knossos\Scan\ScanLedger;
 use Knossos\Query\TurnBriefService;
-use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ProjectWriterLock;
+use Knossos\Scan\ScanLedger;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertGreaterThanOrEqual;
-use function PHPUnit\Framework\assertLessThan;
 use function PHPUnit\Framework\assertIsInt;
+use function PHPUnit\Framework\assertLessThan;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * What one turn did to the graph: changed, added and deleted files with their

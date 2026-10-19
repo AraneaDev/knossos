@@ -11,13 +11,14 @@ use Knossos\Cli\Command\SessionDiffCommand;
 use Knossos\Query\SessionDiffService;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
 use function PHPUnit\Framework\assertStringStartsWith;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * One file's change since the commit a session started at: commits made

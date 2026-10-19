@@ -125,8 +125,8 @@ final class PropertyReceiverTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
             $calls = $pdo->query(
-                "SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e " .
-                "JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id " .
+                'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
+                'JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id ' .
                 "WHERE e.kind = 'calls' AND t.kind = 'method' ORDER BY s.canonical_name, t.canonical_name",
             )->fetchAll();
 
@@ -222,8 +222,8 @@ final class PropertyReceiverTest extends KnossosTestCase
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
 
             $calls = $pdo->query(
-                "SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e " .
-                "JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id " .
+                'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
+                'JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id ' .
                 "WHERE e.kind = 'calls' AND t.kind = 'method' ORDER BY s.canonical_name, t.canonical_name",
             )->fetchAll();
 

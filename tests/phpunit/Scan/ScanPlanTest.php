@@ -6,7 +6,6 @@ namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Configuration\ProjectConfiguration;
 use Knossos\Discovery\DiscoveryConfig;
-use Knossos\Discovery\DiscoveryResult;
 use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Scan\ScanPlan;
 use Knossos\Scan\ScanPreparation;

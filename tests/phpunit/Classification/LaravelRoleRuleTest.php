@@ -189,7 +189,7 @@ final class LaravelRoleRuleTest extends TestCase
         $facts = (new LaravelRoleRule())->classify($node);
 
         assertSame(2, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('laravel.controller', $roles);
         assertArrayContains('laravel.queued', $roles);
     }
@@ -205,7 +205,7 @@ final class LaravelRoleRuleTest extends TestCase
         $facts = (new LaravelRoleRule())->classify($node);
 
         assertSame(2, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('laravel.queued', $roles);
         assertArrayContains('laravel.event_dispatcher', $roles);
     }

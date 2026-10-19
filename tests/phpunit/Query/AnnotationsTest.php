@@ -411,7 +411,7 @@ final class AnnotationsTest extends KnossosTestCase
         $queries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'x', execute: true, evidencePaths: ['/workspace/fixture-shop/src/Checkout.php']);
         assertSame(['src/Checkout.php'], array_column(json_decode((string) $pdo->query("SELECT basis_json FROM annotations WHERE canonical_name = 'App\\InvoiceService'")->fetchColumn(), true), 'path'));
 
-        $pdo->exec("DELETE FROM annotations");
+        $pdo->exec('DELETE FROM annotations');
         // A name two nodes share is written by stable id; the basis still covers both declarations.
         $queries->upsertAnnotation($ids['project'], $ids['checkout'], 'note', 'split across two files', execute: true);
         $paths = array_column(json_decode((string) $pdo->query('SELECT basis_json FROM annotations')->fetchColumn(), true), 'path');

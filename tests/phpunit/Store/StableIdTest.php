@@ -117,28 +117,28 @@ final class StableIdTest extends TestCase
 
     public function testEmptyProjectIdentityThrows(): void
     {
-        $error = captureThrows(static fn () => StableId::project(''), InvalidArgumentException::class);
+        $error = captureThrows(static fn() => StableId::project(''), InvalidArgumentException::class);
 
         assertSame('project ID parts must not be empty.', $error->getMessage());
     }
 
     public function testEmptyFileRelativePathThrows(): void
     {
-        $error = captureThrows(static fn () => StableId::file('proj-1', ''), InvalidArgumentException::class);
+        $error = captureThrows(static fn() => StableId::file('proj-1', ''), InvalidArgumentException::class);
 
         assertSame('file ID parts must not be empty.', $error->getMessage());
     }
 
     public function testEmptyFileProjectIdThrows(): void
     {
-        $error = captureThrows(static fn () => StableId::file('', 'src/Foo.php'), InvalidArgumentException::class);
+        $error = captureThrows(static fn() => StableId::file('', 'src/Foo.php'), InvalidArgumentException::class);
 
         assertSame('file ID parts must not be empty.', $error->getMessage());
     }
 
     public function testEmptyScanNonceThrows(): void
     {
-        $error = captureThrows(static fn () => StableId::scan('proj-1', ''), InvalidArgumentException::class);
+        $error = captureThrows(static fn() => StableId::scan('proj-1', ''), InvalidArgumentException::class);
 
         assertSame('scan ID parts must not be empty.', $error->getMessage());
     }
@@ -146,7 +146,7 @@ final class StableIdTest extends TestCase
     public function testEmptySymbolKindThrows(): void
     {
         $error = captureThrows(
-            static fn () => StableId::symbol('proj-1', 'php', '', 'App\\Foo'),
+            static fn() => StableId::symbol('proj-1', 'php', '', 'App\\Foo'),
             InvalidArgumentException::class,
         );
 
@@ -166,7 +166,7 @@ final class StableIdTest extends TestCase
     public function testEmptyEdgeEvidenceIdentityThrows(): void
     {
         $error = captureThrows(
-            static fn () => StableId::edge('proj-1', 'calls', 'a', 'b', ''),
+            static fn() => StableId::edge('proj-1', 'calls', 'a', 'b', ''),
             InvalidArgumentException::class,
         );
 

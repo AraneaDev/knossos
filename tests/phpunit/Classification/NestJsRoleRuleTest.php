@@ -85,7 +85,7 @@ final class NestJsRoleRuleTest extends TestCase
         $facts = (new NestJsRoleRule())->classify($node);
 
         assertSame(2, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('nestjs.module', $roles);
         assertArrayContains('nestjs.controller', $roles);
     }

@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Cli;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The image is built from the working tree, and docker reads .dockerignore,

@@ -54,9 +54,7 @@ final class ClassificationEngineTest extends TestCase
     {
         return new class ($id, $facts) implements ClassificationRule {
             /** @param list<ClassificationFact> $facts */
-            public function __construct(private string $id, private array $facts)
-            {
-            }
+            public function __construct(private string $id, private array $facts) {}
 
             public function id(): string
             {
@@ -85,9 +83,13 @@ final class ClassificationEngineTest extends TestCase
     {
         $engine = new ClassificationEngine([
             self::stubRule('rule.empty', new ClassificationFact(
-                'unused', 'role.nope', 'rule.empty',
-                Origin::FrameworkConvention, Confidence::Probable,
-                self::evidence('src/X.php', 1, 1), [],
+                'unused',
+                'role.nope',
+                'rule.empty',
+                Origin::FrameworkConvention,
+                Confidence::Probable,
+                self::evidence('src/X.php', 1, 1),
+                [],
             )),
         ]);
 
@@ -109,14 +111,22 @@ final class ClassificationEngineTest extends TestCase
     public function testClassifyEmitsOneFactPerRulePerNode(): void
     {
         $factForN1FromR1 = new ClassificationFact(
-            'n1', 'http.controller', 'rule.r1',
-            Origin::FrameworkConvention, Confidence::Probable,
-            self::evidence('src/Foo.php', 1, 1), [],
+            'n1',
+            'http.controller',
+            'rule.r1',
+            Origin::FrameworkConvention,
+            Confidence::Probable,
+            self::evidence('src/Foo.php', 1, 1),
+            [],
         );
         $factForN1FromR2 = new ClassificationFact(
-            'n1', 'event.listener', 'rule.r2',
-            Origin::FrameworkConvention, Confidence::Probable,
-            self::evidence('src/Foo.php', 1, 1), [],
+            'n1',
+            'event.listener',
+            'rule.r2',
+            Origin::FrameworkConvention,
+            Confidence::Probable,
+            self::evidence('src/Foo.php', 1, 1),
+            [],
         );
 
         $engine = new ClassificationEngine([
@@ -138,7 +148,7 @@ final class ClassificationEngineTest extends TestCase
 
     public function testClassifyWalksEveryNodeInOrder(): void
     {
-        $captureRule = new class () implements ClassificationRule {
+        $captureRule = new class implements ClassificationRule {
             /** @var list<string> */
             public array $capturedOrder = [];
 
@@ -152,8 +162,11 @@ final class ClassificationEngineTest extends TestCase
                 $this->capturedOrder[] = $node->localId;
 
                 return [new ClassificationFact(
-                    $node->localId, 'seen', 'rule.capture',
-                    Origin::Ast, Confidence::Certain,
+                    $node->localId,
+                    'seen',
+                    'rule.capture',
+                    Origin::Ast,
+                    Confidence::Certain,
                     new Evidence(relativePath: 'src/' . $node->localId . '.php', startLine: 1, endLine: 1),
                     [],
                 )];
@@ -167,7 +180,7 @@ final class ClassificationEngineTest extends TestCase
         ]);
 
         assertSame(['alpha', 'bravo', 'charlie'], $captureRule->capturedOrder);
-        assertSame(['alpha', 'bravo', 'charlie'], array_map(static fn (ClassificationFact $f): string => $f->nodeReference, $facts));
+        assertSame(['alpha', 'bravo', 'charlie'], array_map(static fn(ClassificationFact $f): string => $f->nodeReference, $facts));
     }
 
     public function testClassifyEmitsMultipleFactsForSameNodeFromSameRule(): void
@@ -183,7 +196,7 @@ final class ClassificationEngineTest extends TestCase
         // Engine sorts dedup keys via ksort(SORT_STRING). Comparing
         // "n1\0http.controller\0rule.multi" vs "n1\0event.listener\0rule.multi",
         // 'e' (101) < 'h' (104), so event.listener sorts first.
-        assertSame(['event.listener', 'http.controller'], array_map(static fn (ClassificationFact $f): string => $f->role, $facts));
+        assertSame(['event.listener', 'http.controller'], array_map(static fn(ClassificationFact $f): string => $f->role, $facts));
     }
 
     // ----- dedup -----
@@ -240,9 +253,7 @@ final class ClassificationEngineTest extends TestCase
         // matches the node currently being classified; this models a real rule that
         // emits exactly one fact per node without conflating ownership.
         $nodeAwareRule = new class ($f1, $f2) implements ClassificationRule {
-            public function __construct(private ClassificationFact $f1, private ClassificationFact $f2)
-            {
-            }
+            public function __construct(private ClassificationFact $f1, private ClassificationFact $f2) {}
 
             public function id(): string
             {
@@ -279,7 +290,7 @@ final class ClassificationEngineTest extends TestCase
         $engine = new ClassificationEngine([self::stubRule('rule.A', $bad)]);
 
         $error = captureThrows(
-            static fn () => $engine->classify([self::contribution('owner-1', self::node('n1', 'Foo'))]),
+            static fn() => $engine->classify([self::contribution('owner-1', self::node('n1', 'Foo'))]),
             InvalidArgumentException::class,
         );
 
@@ -294,7 +305,7 @@ final class ClassificationEngineTest extends TestCase
         $engine = new ClassificationEngine([self::stubRule('rule.A', $bad)]);
 
         $error = captureThrows(
-            static fn () => $engine->classify([self::contribution('owner-1', self::node('n1', 'Foo'))]),
+            static fn() => $engine->classify([self::contribution('owner-1', self::node('n1', 'Foo'))]),
             InvalidArgumentException::class,
         );
 
@@ -307,9 +318,13 @@ final class ClassificationEngineTest extends TestCase
     {
         $engine = new ClassificationEngine([
             self::stubRule('rule.r', new ClassificationFact(
-                'pn1', 'role', 'rule.r',
-                Origin::Ast, Confidence::Certain,
-                self::evidence('src/A.php', 1, 1), [],
+                'pn1',
+                'role',
+                'rule.r',
+                Origin::Ast,
+                Confidence::Certain,
+                self::evidence('src/A.php', 1, 1),
+                [],
             )),
         ]);
 

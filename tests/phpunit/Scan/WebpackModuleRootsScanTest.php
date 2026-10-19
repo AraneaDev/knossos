@@ -7,13 +7,14 @@ namespace Knossos\Tests\Phpunit\Scan;
 use Knossos\Query\StalenessProbe;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertNotContains;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * A webpack project declaring its module roots in `resolve.modules`, and a
@@ -153,7 +154,7 @@ final class WebpackModuleRootsScanTest extends KnossosTestCase
             $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
             assertSame([], $result->data['degraded_languages']);
             $imports = $pdo->query(
-                "SELECT t.canonical_name FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id "
+                'SELECT t.canonical_name FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id '
                 . "WHERE e.kind = 'imports' AND s.canonical_name = 'src/main.js'",
             )->fetchAll(\PDO::FETCH_COLUMN);
             assertContains('src/checkout/Search.vue', $imports);

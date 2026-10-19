@@ -6,12 +6,13 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\GraphSearchService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertNotContains;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The pane's finder: components and files whose name holds the typed

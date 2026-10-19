@@ -82,7 +82,7 @@ final class NoCoverageTargetAttributesTest extends KnossosTestCase
         self::assertSame(
             [],
             $offenders,
-            "Coverage-target attributes break `infection --filter` for the whole repository "
+            'Coverage-target attributes break `infection --filter` for the whole repository '
             . "(see this class's docblock). Remove them from:\n  " . implode("\n  ", $offenders),
         );
     }

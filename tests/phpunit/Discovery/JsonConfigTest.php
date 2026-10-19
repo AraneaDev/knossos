@@ -42,7 +42,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeStripsOnlyOneByteOrderMark(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode("\xEF\xBB\xBF\xEF\xBB\xBF{}"),
+            static fn() => JsonConfig::decode("\xEF\xBB\xBF\xEF\xBB\xBF{}"),
             DiscoveryException::class,
         );
 
@@ -59,7 +59,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeThrowsOnMalformedJson(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode('{not valid json'),
+            static fn() => JsonConfig::decode('{not valid json'),
             DiscoveryException::class,
         );
 
@@ -69,7 +69,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeChainsOriginalJsonExceptionAsPrevious(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode('{'),
+            static fn() => JsonConfig::decode('{'),
             DiscoveryException::class,
         );
 
@@ -80,7 +80,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeRejectsJsonArrayRoot(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode('[1, 2, 3]'),
+            static fn() => JsonConfig::decode('[1, 2, 3]'),
             DiscoveryException::class,
         );
 
@@ -90,7 +90,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeRejectsEmptyJsonArrayRoot(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode('[]'),
+            static fn() => JsonConfig::decode('[]'),
             DiscoveryException::class,
         );
 
@@ -100,7 +100,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeRejectsScalarRoot(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode('42'),
+            static fn() => JsonConfig::decode('42'),
             DiscoveryException::class,
         );
 
@@ -110,7 +110,7 @@ final class JsonConfigTest extends TestCase
     public function testDecodeRejectsStringRoot(): void
     {
         $error = captureThrows(
-            static fn () => JsonConfig::decode('"plain string"'),
+            static fn() => JsonConfig::decode('"plain string"'),
             DiscoveryException::class,
         );
 
@@ -152,7 +152,7 @@ final class JsonConfigTest extends TestCase
         $json = '{"key": "value" /* with comment */}';
 
         $error = captureThrows(
-            static fn () => JsonConfig::decode($json),
+            static fn() => JsonConfig::decode($json),
             DiscoveryException::class,
         );
 

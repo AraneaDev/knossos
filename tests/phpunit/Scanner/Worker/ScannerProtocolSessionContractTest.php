@@ -235,7 +235,7 @@ final class ScannerProtocolSessionContractTest extends TestCase
                 $this->closes[] = $terminate;
             }
         };
-        $channel = new class($script) implements RpcChannelInterface {
+        $channel = new class ($script) implements RpcChannelInterface {
             /** @var list<array<string, mixed>> */
             public array $sent = [];
             /** @var list<int> */

@@ -497,12 +497,12 @@ final class ProjectDiscovererTest extends KnossosTestCase
 
         $result = (new ProjectDiscoverer(new DiscoveryConfig([$this->root])))->discover($this->root);
 
-        $kinds = array_map(static fn (ProjectUnit $unit): string => $unit->kind . ':' . $unit->configPath, $result->units);
+        $kinds = array_map(static fn(ProjectUnit $unit): string => $unit->kind . ':' . $unit->configPath, $result->units);
         $this->assertContains('composer:composer.json', $kinds);
         $this->assertContains('node:package.json', $kinds);
         assertSame([], array_values(array_filter(
             $result->diagnostics,
-            static fn ($diagnostic): bool => $diagnostic->code === 'DISCOVERY_CONFIG_INVALID',
+            static fn($diagnostic): bool => $diagnostic->code === 'DISCOVERY_CONFIG_INVALID',
         )));
     }
 
@@ -1033,11 +1033,13 @@ final class ProjectDiscovererTest extends KnossosTestCase
     {
         // pyproject.toml without a name field — exercises the
         // preg_match === 0 branch in readUnit().
-        file_put_contents($this->root . '/pyproject.toml', <<<'TOML'
+        file_put_contents(
+            $this->root . '/pyproject.toml',
+            <<<'TOML'
 [project]
 # no name field here
 dependencies = []
-TOML
+TOML,
         );
 
         $discoverer = new ProjectDiscoverer(new DiscoveryConfig([$this->root]));
@@ -1065,7 +1067,8 @@ TOML
 
     public function testDiscoverReadsPythonDependenciesAndOptionalGroups(): void
     {
-        $unit = $this->pythonUnit(<<<'TOML'
+        $unit = $this->pythonUnit(
+            <<<'TOML'
 [project]
 name = "demo"
 dependencies = [
@@ -1077,7 +1080,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8"]
 docs = ["sphinx"]
-TOML
+TOML,
         );
         $requires = $unit->metadata['requires'];
         assertSame(['django', 'fastapi', 'pytest', 'requests', 'sphinx'], array_keys($requires));
@@ -1085,15 +1088,16 @@ TOML
 
     public function testDiscoverReadsPythonScriptsAsEntryPoints(): void
     {
-        $unit = $this->pythonUnit(<<<'TOML'
+        $unit = $this->pythonUnit(
+            <<<'TOML'
 [project]
 name = "demo"
 
 [project.scripts]
 cli = "demo.cli:main"
 worker = "demo.jobs.worker:run"
-TOML
-);
+TOML,
+        );
         assertSame(['demo/cli.py', 'demo/jobs/worker.py'], $unit->metadata['entry_points']);
     }
 
@@ -2525,7 +2529,7 @@ TOML);
     {
         file_put_contents($this->root . '/vitest.config.ts', implode("\n", [
             'export default {',
-            "  test: {",
+            '  test: {',
             "    setupFiles: ['./setup.ts'],",
             "    exclude: ['src/legacy/old.ts'],",
             "    coverage: { exclude: ['src/generated/client.ts'] },",

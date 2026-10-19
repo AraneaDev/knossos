@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Store;
 
-use InvalidArgumentException;
 use Knossos\Store\SqliteGraphWriter;
 use Knossos\Store\SqliteStatementCache;
 use Knossos\Store\StableId;

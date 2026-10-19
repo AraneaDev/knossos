@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\LedgeredScanner;
-use Knossos\Scan\ScanLedger;
 use Knossos\Query\SessionChangesService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanLedger;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertCount;
-use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertFalse;
+use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * What changed in a project since a session began, whoever changed it, read

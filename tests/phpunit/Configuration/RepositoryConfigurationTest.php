@@ -7,11 +7,12 @@ namespace Knossos\Tests\Phpunit\Configuration;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertStringContainsString;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * This repository's own `knossos.json`, which the architecture gate scans with.

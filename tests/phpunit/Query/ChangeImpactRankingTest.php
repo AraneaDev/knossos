@@ -317,14 +317,25 @@ final class ChangeImpactRankingTest extends KnossosTestCase
     {
         $this->repository->saveEdge(
             StableId::edge($this->ids['project'], 'calls', $source, $target, $source . '>' . $target),
-            $this->ids['project'], 'calls', $source, $target, null, null, null, 'ast', $confidence, [], 'test:' . $source . '>' . $target, $this->ids['scan'],
+            $this->ids['project'],
+            'calls',
+            $source,
+            $target,
+            null,
+            null,
+            null,
+            'ast',
+            $confidence,
+            [],
+            'test:' . $source . '>' . $target,
+            $this->ids['scan'],
         );
     }
 
     /** @param array<string, array{commit_count: int, authors: list<string>, last_changed_at: string}> $files */
     private static function history(array $files, bool $truncated = false): GitHistoryProvider
     {
-        return new class($files, $truncated) implements GitHistoryProvider {
+        return new class ($files, $truncated) implements GitHistoryProvider {
             /** @param array<string, array{commit_count: int, authors: list<string>, last_changed_at: string}> $files */
             public function __construct(private array $files, private bool $truncated) {}
 

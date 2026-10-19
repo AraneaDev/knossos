@@ -348,7 +348,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-bad-mode');
 
         $error = captureThrows(
-            fn () => $this->repository->createScan('scan-x', 'proj-bad-mode', 'partial', 'hash-1'),
+            fn() => $this->repository->createScan('scan-x', 'proj-bad-mode', 'partial', 'hash-1'),
             InvalidArgumentException::class,
         );
 
@@ -373,7 +373,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-no-scan');
 
         $error = captureThrows(
-            fn () => $this->repository->completeScan('proj-no-scan', 'scan-y'),
+            fn() => $this->repository->completeScan('proj-no-scan', 'scan-y'),
             InvalidArgumentException::class,
         );
 
@@ -387,7 +387,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-snap');
 
         $error = captureThrows(
-            fn () => $this->repository->archiveActiveSnapshot('proj-snap', 'cfg-h', -1),
+            fn() => $this->repository->archiveActiveSnapshot('proj-snap', 'cfg-h', -1),
             InvalidArgumentException::class,
         );
 
@@ -469,10 +469,18 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-diag-dangling');
 
         $error = captureThrows(
-            fn () => $this->repository->bulkTransaction(function (GraphRepository $repo): void {
+            fn() => $this->repository->bulkTransaction(function (GraphRepository $repo): void {
                 $repo->saveDiagnostic(
-                    'd-dangling', 'proj-diag-dangling', 'scan-never-created', null,
-                    'info', 'code', 'a dangling diagnostic', null, null, 'owner',
+                    'd-dangling',
+                    'proj-diag-dangling',
+                    'scan-never-created',
+                    null,
+                    'info',
+                    'code',
+                    'a dangling diagnostic',
+                    null,
+                    null,
+                    'owner',
                 );
             }),
             \RuntimeException::class,
@@ -683,16 +691,38 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedScan('proj-upsert-node', 'scan-upsert-node');
 
         $this->repository->saveNode(
-            'n', 'proj-upsert-node', 'php', 'class', 'Foo', 'Foo',
-            null, null, null, null,
-            Origin::Ast->value, 'probable', ['v' => 1],
-            'owner-1', 'scan-upsert-node',
+            'n',
+            'proj-upsert-node',
+            'php',
+            'class',
+            'Foo',
+            'Foo',
+            null,
+            null,
+            null,
+            null,
+            Origin::Ast->value,
+            'probable',
+            ['v' => 1],
+            'owner-1',
+            'scan-upsert-node',
         );
         $this->repository->saveNode(
-            'n', 'proj-upsert-node', 'php', 'interface', 'Foo', 'IFoo',
-            null, null, 1, 5,
-            Origin::FrameworkConvention->value, 'certain', ['v' => 2],
-            'owner-2', 'scan-upsert-node',
+            'n',
+            'proj-upsert-node',
+            'php',
+            'interface',
+            'Foo',
+            'IFoo',
+            null,
+            null,
+            1,
+            5,
+            Origin::FrameworkConvention->value,
+            'certain',
+            ['v' => 2],
+            'owner-2',
+            'scan-upsert-node',
         );
 
         $row = $this->pdo->query("SELECT kind, canonical_name, attributes_json FROM nodes WHERE id = 'n'")->fetch(\PDO::FETCH_ASSOC);
@@ -712,9 +742,19 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->repository->saveNode('n2', 'proj-edge', 'php', 'class', 'B', 'B', null, null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-edge');
 
         $this->repository->saveEdge(
-            'e1', 'proj-edge', 'calls', 'n1', 'n2',
-            null, 10, 15, Origin::Ast->value, 'probable',
-            ['resolved' => true], 'owner', 'scan-edge',
+            'e1',
+            'proj-edge',
+            'calls',
+            'n1',
+            'n2',
+            null,
+            10,
+            15,
+            Origin::Ast->value,
+            'probable',
+            ['resolved' => true],
+            'owner',
+            'scan-edge',
         );
 
         $row = $this->pdo->query("SELECT source_id, target_id, kind, attributes_json FROM edges WHERE id = 'e1'")->fetch(\PDO::FETCH_ASSOC);
@@ -733,9 +773,16 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedScan('proj-diag', 'scan-diag');
 
         $this->repository->saveDiagnostic(
-            'd1', 'proj-diag', 'scan-diag', null,
-            'info', 'compilation_skipped', 'partial',
-            null, null, 'owner-diag',
+            'd1',
+            'proj-diag',
+            'scan-diag',
+            null,
+            'info',
+            'compilation_skipped',
+            'partial',
+            null,
+            null,
+            'owner-diag',
         );
 
         $row = $this->pdo->query("SELECT severity, code, message, file_id, start_line, end_line FROM diagnostics WHERE id = 'd1'")->fetch(\PDO::FETCH_ASSOC);
@@ -757,17 +804,39 @@ final class SqliteGraphRepositoryTest extends TestCase
 
         for ($i = 0; $i < 3; ++$i) {
             $this->repository->saveNode(
-                "n-displ-$i", 'proj-find', 'php', 'class', "Other$i", 'Target',
-                null, null, null, null,
-                Origin::Ast->value, 'certain', [],
-                'owner', 'scan-find',
+                "n-displ-$i",
+                'proj-find',
+                'php',
+                'class',
+                "Other$i",
+                'Target',
+                null,
+                null,
+                null,
+                null,
+                Origin::Ast->value,
+                'certain',
+                [],
+                'owner',
+                'scan-find',
             );
         }
         $this->repository->saveNode(
-            'n-canonical', 'proj-find', 'php', 'class', 'Target', 'Target',
-            null, null, null, null,
-            Origin::Ast->value, 'certain', [],
-            'owner', 'scan-find',
+            'n-canonical',
+            'proj-find',
+            'php',
+            'class',
+            'Target',
+            'Target',
+            null,
+            null,
+            null,
+            null,
+            Origin::Ast->value,
+            'certain',
+            [],
+            'owner',
+            'scan-find',
         );
 
         $rows = $this->repository->findNodesByName('proj-find', 'Target', limit: 50);
@@ -781,7 +850,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-limit');
 
         $error = captureThrows(
-            fn () => $this->repository->findNodesByName('proj-limit', 'x', limit: 0),
+            fn() => $this->repository->findNodesByName('proj-limit', 'x', limit: 0),
             InvalidArgumentException::class,
         );
 
@@ -797,9 +866,18 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->repository->saveNode('n', 'proj-class', 'php', 'class', 'Foo', 'Foo', null, null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-class');
 
         $this->repository->saveClassification(
-            'c1', 'proj-class', 'n', 'http.controller',
-            Origin::FrameworkConvention->value, 'probable', 'laravel-rules-v1',
-            null, 5, 10, ['route' => '/'], 'scan-class',
+            'c1',
+            'proj-class',
+            'n',
+            'http.controller',
+            Origin::FrameworkConvention->value,
+            'probable',
+            'laravel-rules-v1',
+            null,
+            5,
+            10,
+            ['route' => '/'],
+            'scan-class',
         );
 
         $row = $this->pdo->query("SELECT role, origin, confidence, rule_id, attributes_json FROM classifications WHERE id = 'c1'")->fetch(\PDO::FETCH_ASSOC);
@@ -861,8 +939,8 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->repository->saveNode('b', 'proj-out', 'php', 'class', 'B', 'B', null, null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-out');
         $this->repository->saveNode('c', 'proj-out', 'php', 'class', 'C', 'C', null, null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-out');
 
-        $this->repository->saveEdge('e-calls', 'proj-out', 'calls',  'a', 'b', null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-out');
-        $this->repository->saveEdge('e-imports','proj-out', 'imports', 'a', 'c', null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-out');
+        $this->repository->saveEdge('e-calls', 'proj-out', 'calls', 'a', 'b', null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-out');
+        $this->repository->saveEdge('e-imports', 'proj-out', 'imports', 'a', 'c', null, null, null, Origin::Ast->value, 'certain', [], 'owner', 'scan-out');
 
         $all = $this->repository->outgoing('proj-out', 'a', limit: 50);
         $onlyCalls = $this->repository->outgoing('proj-out', 'a', kind: 'calls', limit: 50);
@@ -879,7 +957,7 @@ final class SqliteGraphRepositoryTest extends TestCase
         $this->seedProject('proj-out-limit');
 
         $error = captureThrows(
-            fn () => $this->repository->outgoing('proj-out-limit', 'any-id', limit: 0),
+            fn() => $this->repository->outgoing('proj-out-limit', 'any-id', limit: 0),
             InvalidArgumentException::class,
         );
 

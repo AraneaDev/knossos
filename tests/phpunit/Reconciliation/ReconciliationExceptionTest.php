@@ -49,7 +49,7 @@ final class ReconciliationExceptionTest extends TestCase
     public function testThrownExceptionCarriesMessage(): void
     {
         $error = captureThrows(
-            static fn () => throw new ReconciliationException('kapow'),
+            static fn() => throw new ReconciliationException('kapow'),
             ReconciliationException::class,
         );
         assertSame('kapow', $error->getMessage());
@@ -59,7 +59,7 @@ final class ReconciliationExceptionTest extends TestCase
     {
         $previous = new LogicException('original');
         $error = captureThrows(
-            static fn () => throw new ReconciliationException('kapow', 42, $previous),
+            static fn() => throw new ReconciliationException('kapow', 42, $previous),
             ReconciliationException::class,
         );
         assertSame('kapow', $error->getMessage());
@@ -72,7 +72,7 @@ final class ReconciliationExceptionTest extends TestCase
         // Kills a mutation that makes the parent a non-RuntimeException class
         // by demonstrating we can catch via the RuntimeException type.
         $caught = captureThrows(
-            static fn () => throw new ReconciliationException('kapow'),
+            static fn() => throw new ReconciliationException('kapow'),
             RuntimeException::class,
         );
         $this->assertInstanceOf(ReconciliationException::class, $caught);

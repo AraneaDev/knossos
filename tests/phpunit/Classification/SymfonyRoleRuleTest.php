@@ -274,7 +274,7 @@ final class SymfonyRoleRuleTest extends TestCase
         $facts = (new SymfonyRoleRule())->classify($node);
 
         assertSame(2, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('symfony.controller', $roles);
         assertArrayContains('symfony.event_subscriber', $roles);
     }
@@ -294,7 +294,7 @@ final class SymfonyRoleRuleTest extends TestCase
         $facts = (new SymfonyRoleRule())->classify($node);
 
         assertSame(2, count($facts));
-        $roles = array_map(static fn ($f): string => $f->role, $facts);
+        $roles = array_map(static fn($f): string => $f->role, $facts);
         assertArrayContains('symfony.route_handler', $roles);
         assertArrayContains('symfony.event_listener', $roles);
     }

@@ -145,7 +145,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $this->pdo->exec("CREATE TRIGGER fail_project_delete BEFORE DELETE ON projects BEGIN SELECT RAISE(ABORT, 'forced'); END");
 
         captureThrows(
-            fn () => $this->makeService()->removeProject('proj-1', true),
+            fn() => $this->makeService()->removeProject('proj-1', true),
             PDOException::class,
         );
 
@@ -158,7 +158,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
     public function testRemoveProjectThrowsForUnknownProject(): void
     {
         $error = captureThrows(
-            fn () => $this->makeService()->removeProject('proj-X', false),
+            fn() => $this->makeService()->removeProject('proj-X', false),
             InvalidArgumentException::class,
         );
         assertSame(true, str_contains($error->getMessage(), 'proj-X'));
@@ -172,7 +172,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $service = $this->makeService();
         foreach ([0, -1, 8761] as $bad) {
             $error = captureThrows(
-                fn () => $service->cleanupStaleScans('proj-1', $bad, false),
+                fn() => $service->cleanupStaleScans('proj-1', $bad, false),
                 InvalidArgumentException::class,
             );
             assertSame(true, str_contains($error->getMessage(), 'between 1 and 8760'));
@@ -192,7 +192,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
     public function testCleanupStaleScansThrowsForUnknownProject(): void
     {
         $error = captureThrows(
-            fn () => $this->makeService()->cleanupStaleScans('proj-X', 24, false),
+            fn() => $this->makeService()->cleanupStaleScans('proj-X', 24, false),
             InvalidArgumentException::class,
         );
 
@@ -340,7 +340,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $this->pdo->exec("CREATE TRIGGER fail_scan_delete BEFORE DELETE ON scans BEGIN SELECT RAISE(ABORT, 'forced'); END");
 
         captureThrows(
-            fn () => $this->makeService()->cleanupStaleScans('proj-1', 24, true),
+            fn() => $this->makeService()->cleanupStaleScans('proj-1', 24, true),
             PDOException::class,
         );
 
@@ -355,7 +355,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $service = $this->makeService();
         foreach (['bogus', 'INTEGRITY', '', 'integrity ', 'integrit'] as $bad) {
             $error = captureThrows(
-                fn () => $service->maintain($bad, false),
+                fn() => $service->maintain($bad, false),
                 InvalidArgumentException::class,
             );
 
@@ -385,7 +385,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         // The stub deliberately does NOT implement __call — every method used by
         // DatabaseMaintenanceService is explicitly forwarded so future API drift
         // fails loudly at test time instead of silently passing.
-        $stubPdo = new class($this->dbPath) extends PDO {
+        $stubPdo = new class ($this->dbPath) extends PDO {
             private PDO $real;
 
             public function __construct(string $path)
@@ -530,7 +530,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $service = $this->makeService(':memory:');
 
         $error = captureThrows(
-            fn () => $service->maintain('backup', false),
+            fn() => $service->maintain('backup', false),
             InvalidArgumentException::class,
         );
 
@@ -542,7 +542,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $service = $this->makeService(':memory:');
 
         $error = captureThrows(
-            fn () => $service->maintain('backup', true),
+            fn() => $service->maintain('backup', true),
             InvalidArgumentException::class,
         );
 
@@ -554,7 +554,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $service = $this->makeService();
         foreach (['../escape.sqlite', 'foo/bar.sqlite', '.hidden.sqlite', 'no-ext', ' has space.sqlite'] as $bad) {
             $error = captureThrows(
-                fn () => $service->maintain('backup', false, $bad),
+                fn() => $service->maintain('backup', false, $bad),
                 InvalidArgumentException::class,
             );
             assertSame(true, str_contains($error->getMessage(), 'simple .sqlite filename'));
@@ -580,7 +580,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         file_put_contents($target, 'pre-existing-content');
 
         $error = captureThrows(
-            fn () => $this->makeService()->maintain('backup', true, 'existing-target.sqlite'),
+            fn() => $this->makeService()->maintain('backup', true, 'existing-target.sqlite'),
             InvalidArgumentException::class,
         );
 
@@ -597,7 +597,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         file_put_contents($badBackupsDir, 'i am not a directory');
 
         $error = captureThrows(
-            fn () => $this->makeService()->maintain('backup', true, 'fail-dir.sqlite'),
+            fn() => $this->makeService()->maintain('backup', true, 'fail-dir.sqlite'),
             RuntimeException::class,
         );
 
@@ -613,7 +613,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $other = (new ProjectWriterLock($this->pdo))->acquire('proj-b');
         try {
             captureThrows(
-                fn () => $this->makeService()->maintain('optimize', true),
+                fn() => $this->makeService()->maintain('optimize', true),
                 ScanBusyException::class,
             );
 
@@ -637,7 +637,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         }
 
         $error = captureThrows(
-            fn () => $this->makeService()->maintain('optimize', true),
+            fn() => $this->makeService()->maintain('optimize', true),
             RuntimeException::class,
         );
 
@@ -653,7 +653,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
 
         // After successful completion both leases are released (phpunit destructor +
         // finally block). The scan_locks table must be empty.
-        assertSame(0, (int) $this->pdo->query("SELECT COUNT(*) FROM scan_locks")->fetchColumn());
+        assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM scan_locks')->fetchColumn());
     }
 
     public function testMaintainIntegrityIgnoresExecuteFlag(): void
@@ -746,7 +746,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $this->pdo->exec("UPDATE projects SET active_scan_id = 'scan-A' WHERE id = 'proj-1'");
         $this->pdo->exec("CREATE TRIGGER fail_project_delete BEFORE DELETE ON projects BEGIN SELECT RAISE(ABORT, 'forced'); END");
 
-        $error = captureThrows(fn () => $this->makeService()->removeProject('proj-1', true), PDOException::class);
+        $error = captureThrows(fn() => $this->makeService()->removeProject('proj-1', true), PDOException::class);
 
         assertSame(true, str_contains($error->getMessage(), 'forced'), 'The original failure, not one raised while rolling back.');
         assertSame(false, $this->pdo->inTransaction());
@@ -778,7 +778,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
         $this->seedScan('old', 'proj-1', 'failed', '2000-01-01T00:00:00Z');
         $this->pdo->exec("CREATE TRIGGER fail_scan_delete BEFORE DELETE ON scans BEGIN SELECT RAISE(ABORT, 'forced'); END");
 
-        $error = captureThrows(fn () => $this->makeService()->cleanupStaleScans('proj-1', 24, true), PDOException::class);
+        $error = captureThrows(fn() => $this->makeService()->cleanupStaleScans('proj-1', 24, true), PDOException::class);
 
         assertSame(true, str_contains($error->getMessage(), 'forced'));
         assertSame(false, $this->pdo->inTransaction());

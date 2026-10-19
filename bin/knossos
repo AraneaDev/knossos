@@ -36,4 +36,3 @@ require $autoload;
 \Knossos\Runtime\MemoryLimit::apply();
 
 exit((new Application())->run(array_slice($argv, 1)));
-

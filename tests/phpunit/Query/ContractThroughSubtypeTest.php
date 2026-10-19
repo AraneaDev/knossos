@@ -45,7 +45,7 @@ final class ContractThroughSubtypeTest extends KnossosTestCase
                 // interface is used as a type, so its member is carried.
                 'export interface Locator { instructionFiles(): string[]; }',
                 'export class LocatorBase {',
-                "    instructionFiles(): string[] { return []; }",
+                '    instructionFiles(): string[] { return []; }',
                 '}',
                 'export class FileLocator extends LocatorBase implements Locator {}',
                 'export function locator(): Locator { return new FileLocator(); }',

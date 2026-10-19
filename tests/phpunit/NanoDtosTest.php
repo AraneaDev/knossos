@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit;
 
 use Knossos\Configuration\ProjectConfiguration;
+use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\DiscoveryDiagnostic;
 use Knossos\Discovery\DiscoveryResult;
-use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\ProjectUnit;
 use Knossos\Reconciliation\ReconciliationResult;
 use Knossos\Scan\ScanAnalysis;

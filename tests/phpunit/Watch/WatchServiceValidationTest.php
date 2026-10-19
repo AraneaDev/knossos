@@ -21,7 +21,7 @@ final class WatchServiceValidationTest extends TestCase
     /** @param list<string> $allowedRoots */
     private static function serviceWith(array $allowedRoots): WatchService
     {
-        $scanner = new class () implements ProjectScanner {
+        $scanner = new class implements ProjectScanner {
             public function scan(
                 string $root,
                 ?string $name = null,
@@ -61,7 +61,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, ...[...$arguments, 'maxPolls' => 0]),
+            static fn() => $service->run(self::ROOT, ...[...$arguments, 'maxPolls' => 0]),
             InvalidArgumentException::class,
         );
 
@@ -88,7 +88,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, pollMs: 0, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, pollMs: 0, maxPolls: 0),
             InvalidArgumentException::class,
         );
 
@@ -100,7 +100,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, pollMs: 60_001, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, pollMs: 60_001, maxPolls: 0),
             InvalidArgumentException::class,
         );
 
@@ -112,7 +112,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, debounceMs: -1, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, debounceMs: -1, maxPolls: 0),
             InvalidArgumentException::class,
         );
 
@@ -124,7 +124,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, debounceMs: 60_001, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, debounceMs: 60_001, maxPolls: 0),
             InvalidArgumentException::class,
         );
 
@@ -136,7 +136,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, maxQueue: 0, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, maxQueue: 0, maxPolls: 0),
             InvalidArgumentException::class,
         );
 
@@ -148,7 +148,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, maxQueue: 10_001, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, maxQueue: 10_001, maxPolls: 0),
             InvalidArgumentException::class,
         );
 
@@ -160,7 +160,7 @@ final class WatchServiceValidationTest extends TestCase
         $service = self::serviceWith([self::ROOT]);
 
         $error = captureThrows(
-            static fn () => $service->run(self::ROOT, maxPolls: 0),
+            static fn() => $service->run(self::ROOT, maxPolls: 0),
             InvalidArgumentException::class,
         );
 

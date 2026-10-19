@@ -528,8 +528,8 @@ final class PluginCommandTest extends KnossosTestCase
             }
         }
         $sources = array_values(array_filter(
-            array_map(static fn (string $path): string => substr($path, strlen($root)), $found),
-            static fn (string $path): bool => self::isModSource($path)
+            array_map(static fn(string $path): string => substr($path, strlen($root)), $found),
+            static fn(string $path): bool => self::isModSource($path)
                 && !str_ends_with($path, '.spec.ts')
                 && !str_contains($path, '/__tests__/'),
         ));
@@ -569,7 +569,7 @@ final class PluginCommandTest extends KnossosTestCase
             assertSame(0, $status);
             $decoded = json_decode(trim($output), true, 8, JSON_THROW_ON_ERROR);
 
-            $shipped = array_map(static fn (string $file): string => '/' . $file, $decoded['files']);
+            $shipped = array_map(static fn(string $file): string => '/' . $file, $decoded['files']);
             $shippedSources = array_values(array_filter($shipped, self::isModSource(...)));
             sort($shippedSources);
             $onDisk = self::modSourcesOnDisk();
@@ -582,7 +582,7 @@ final class PluginCommandTest extends KnossosTestCase
             sort($listed);
             assertSame($onDisk, $listed);
             $installed = array_values(array_filter(
-                array_map(static fn (string $file): string => '/' . $file, self::INSTALLED),
+                array_map(static fn(string $file): string => '/' . $file, self::INSTALLED),
                 self::isModSource(...),
             ));
             assertSame($onDisk, $installed);
@@ -979,7 +979,7 @@ final class PluginCommandTest extends KnossosTestCase
         $recorded = is_file($log) ? (string) file_get_contents($log) : '';
         exec('rm -rf ' . escapeshellarg($bin));
 
-        return array_values(array_filter(explode("\n", trim($recorded)), static fn (string $line): bool => $line !== ''));
+        return array_values(array_filter(explode("\n", trim($recorded)), static fn(string $line): bool => $line !== ''));
     }
 
     /** Every file under $directory, as paths relative to it, sorted. */
@@ -1064,7 +1064,7 @@ final class PluginCommandTest extends KnossosTestCase
         $this->runWithStubbedClaude($root, ['execute' => ['true']]);
 
         assertSame(
-            array_map(static fn (string $file): string => '/' . $file, self::INSTALLED),
+            array_map(static fn(string $file): string => '/' . $file, self::INSTALLED),
             $this->treeOf($root . '/.plugin'),
         );
         // The descriptor belongs to the materialised directory now. Writing one
@@ -1145,7 +1145,7 @@ final class PluginCommandTest extends KnossosTestCase
         return [
             'status' => $status,
             'output' => $output,
-            'recorded' => array_values(array_filter(explode("\n", trim($recorded)), static fn (string $line): bool => $line !== '')),
+            'recorded' => array_values(array_filter(explode("\n", trim($recorded)), static fn(string $line): bool => $line !== '')),
             'error' => $error,
         ];
     }
@@ -1401,7 +1401,7 @@ final class PluginCommandTest extends KnossosTestCase
         $this->runWithStubbedClaude($root, ['execute' => ['true']]);
 
         assertSame(
-            array_map(static fn (string $file): string => '/' . $file, self::INSTALLED),
+            array_map(static fn(string $file): string => '/' . $file, self::INSTALLED),
             $this->treeOf($root . '/.plugin'),
         );
 

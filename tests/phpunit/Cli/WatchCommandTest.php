@@ -11,11 +11,12 @@ use Knossos\Cli\Command\WatchCommand;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** `watch --shared`: the mod's live watcher answers every refusal as an event, exits 0 and never creates a database. */
 final class WatchCommandTest extends KnossosTestCase

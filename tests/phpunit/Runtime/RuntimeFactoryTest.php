@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Runtime;
 
 use Knossos\Runtime\RuntimeFactory;
-use Knossos\Store\MigrationRunner;
-use Knossos\Store\SqliteConnection;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;

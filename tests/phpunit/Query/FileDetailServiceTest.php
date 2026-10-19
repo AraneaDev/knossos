@@ -7,11 +7,12 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\FileDetailService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertGreaterThanOrEqual;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * One file as the architecture pane shows it, addressed by its own path: the

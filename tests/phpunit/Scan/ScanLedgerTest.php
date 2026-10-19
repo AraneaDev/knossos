@@ -12,7 +12,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PDOStatement;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertFalse;
@@ -21,6 +20,8 @@ use function PHPUnit\Framework\assertNotFalse;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** What each recorded scan changed, read back in order from the snapshot a turn began at. */
 final class ScanLedgerTest extends KnossosTestCase

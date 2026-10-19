@@ -27,7 +27,7 @@ final class CancellationTokenTest extends TestCase
 
     public function testPollFieldIsReadonly(): void
     {
-        $poll = static fn (): bool => false;
+        $poll = static fn(): bool => false;
         $pollRef = (new ReflectionClass(CancellationToken::class))->getProperty('poll');
         $this->assertTrue($pollRef->isReadOnly());
         // A promoted readonly parameter has no default; asking for its value is
@@ -94,13 +94,13 @@ final class CancellationTokenTest extends TestCase
 
     public function testIsCancelledSetsStateWhenPollReturnsTrue(): void
     {
-        $token = new CancellationToken(static fn (): bool => true);
+        $token = new CancellationToken(static fn(): bool => true);
         assertSame(true, $token->isCancelled());
     }
 
     public function testIsCancelledLeavesStateFalseWhenPollReturnsFalse(): void
     {
-        $token = new CancellationToken(static fn (): bool => false);
+        $token = new CancellationToken(static fn(): bool => false);
         assertSame(false, $token->isCancelled());
     }
 
@@ -139,7 +139,7 @@ final class CancellationTokenTest extends TestCase
         $token->cancel();
 
         $error = captureThrows(
-            static fn () => $token->throwIfCancelled(),
+            static fn() => $token->throwIfCancelled(),
             ScanCancelledException::class,
         );
         assertSame('Scan was cancelled.', $error->getMessage());
@@ -147,10 +147,10 @@ final class CancellationTokenTest extends TestCase
 
     public function testThrowIfCancelledThrowsAfterPollReturnsTrue(): void
     {
-        $token = new CancellationToken(static fn (): bool => true);
+        $token = new CancellationToken(static fn(): bool => true);
 
         $error = captureThrows(
-            static fn () => $token->throwIfCancelled(),
+            static fn() => $token->throwIfCancelled(),
             ScanCancelledException::class,
         );
         assertSame('Scan was cancelled.', $error->getMessage());

@@ -49,7 +49,7 @@ final class GraphBundleServiceTest extends TestCase
     public function testServiceExposesNoPublicMethodsBeyondConstructorAndTwoMethods(): void
     {
         $methods = array_map(
-            static fn (\ReflectionMethod $m): string => $m->getName(),
+            static fn(\ReflectionMethod $m): string => $m->getName(),
             (new \ReflectionClass(GraphBundleService::class))->getMethods(\ReflectionMethod::IS_PUBLIC),
         );
         sort($methods);
@@ -554,7 +554,7 @@ final class GraphBundleServiceTest extends TestCase
         $this->seedProjectAndScan('proj-1', 'scan-1');
 
         $error = captureThrows(
-            fn () => $this->service->export('proj-1', 'wat'),
+            fn() => $this->service->export('proj-1', 'wat'),
             InvalidArgumentException::class,
         );
 
@@ -564,7 +564,7 @@ final class GraphBundleServiceTest extends TestCase
     public function testExportRejectsNonexistentProject(): void
     {
         $error = captureThrows(
-            fn () => $this->service->export('nonexistent', 'none'),
+            fn() => $this->service->export('nonexistent', 'none'),
             InvalidArgumentException::class,
         );
 
@@ -580,7 +580,7 @@ final class GraphBundleServiceTest extends TestCase
         ]);
 
         $error = captureThrows(
-            fn () => $this->service->export('proj-1', 'none'),
+            fn() => $this->service->export('proj-1', 'none'),
             InvalidArgumentException::class,
         );
 
@@ -603,7 +603,7 @@ final class GraphBundleServiceTest extends TestCase
         ]);
 
         $error = captureThrows(
-            fn () => $this->service->export('proj-1', 'none'),
+            fn() => $this->service->export('proj-1', 'none'),
             InvalidArgumentException::class,
         );
 
@@ -679,7 +679,7 @@ final class GraphBundleServiceTest extends TestCase
         $this->service->import($bundle);
 
         $error = captureThrows(
-            fn () => $this->service->import($bundle),
+            fn() => $this->service->import($bundle),
             InvalidArgumentException::class,
         );
 
@@ -710,7 +710,7 @@ final class GraphBundleServiceTest extends TestCase
             ->execute(['id' => 'proj-1', 'name' => 'P']);
 
         $error = captureThrows(
-            fn () => $this->service->export('proj-1', 'none'),
+            fn() => $this->service->export('proj-1', 'none'),
             InvalidArgumentException::class,
         );
 
@@ -756,7 +756,7 @@ final class GraphBundleServiceTest extends TestCase
         ]);
 
         $error = captureThrows(
-            fn () => $this->service->import($bundle),
+            fn() => $this->service->import($bundle),
             InvalidArgumentException::class,
         );
 
@@ -777,7 +777,7 @@ final class GraphBundleServiceTest extends TestCase
         ]);
 
         $error = captureThrows(
-            fn () => $this->service->import($bundle),
+            fn() => $this->service->import($bundle),
             InvalidArgumentException::class,
         );
 
@@ -789,7 +789,8 @@ final class GraphBundleServiceTest extends TestCase
 
     private function buildSchema(PDO $pdo): void
     {
-        $pdo->exec(<<<'SQL'
+        $pdo->exec(
+            <<<'SQL'
 CREATE TABLE projects (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -892,7 +893,7 @@ CREATE TABLE diagnostics (
     end_line INTEGER,
     owner_key TEXT
 );
-SQL
+SQL,
         );
     }
 

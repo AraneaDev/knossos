@@ -7,11 +7,12 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\SupertypeMethods;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertArrayNotHasKey;
 use function PHPUnit\Framework\assertEqualsCanonicalizing;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** The supertype methods a method fulfils: the same-named methods of its class's ancestors. */
 final class SupertypeMethodsTest extends KnossosTestCase

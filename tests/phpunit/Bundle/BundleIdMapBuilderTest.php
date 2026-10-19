@@ -200,7 +200,7 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         $error = captureThrows(
-            static fn () => $builder->build('proj', [
+            static fn() => $builder->build('proj', [
                 'files' => [['id' => 'f-1'], 'not-an-object'],
                 'nodes' => [],
                 'boundaries' => [],
@@ -216,7 +216,7 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         $error = captureThrows(
-            static fn () => $builder->build('proj', [
+            static fn() => $builder->build('proj', [
                 'files' => [['id' => 'f-1']],
                 'nodes' => [['id' => 'n-1'], [1, 2, 3]], // list, not object
                 'boundaries' => [],
@@ -232,7 +232,7 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         $error = captureThrows(
-            static fn () => $builder->build('proj', [
+            static fn() => $builder->build('proj', [
                 'files' => [['relative_path' => 'src/A.php']], // no 'id' key
                 'nodes' => [],
                 'boundaries' => [],
@@ -248,7 +248,7 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         $error = captureThrows(
-            static fn () => $builder->build('proj', [
+            static fn() => $builder->build('proj', [
                 'files' => [['id' => 42]],
                 'nodes' => [],
                 'boundaries' => [],
@@ -264,7 +264,7 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         $error = captureThrows(
-            static fn () => $builder->build('proj', [
+            static fn() => $builder->build('proj', [
                 'files' => [['id' => '']],
                 'nodes' => [],
                 'boundaries' => [],
@@ -280,7 +280,7 @@ final class BundleIdMapBuilderTest extends TestCase
         $builder = new BundleIdMapBuilder();
 
         $error = captureThrows(
-            static fn () => $builder->build('proj', [
+            static fn() => $builder->build('proj', [
                 'files' => [['id' => null]],
                 'nodes' => [],
                 'boundaries' => [],
@@ -305,7 +305,7 @@ final class BundleIdMapBuilderTest extends TestCase
             $payload = ['files' => [], 'nodes' => [], 'boundaries' => []];
             $payload[$table] = ['not-an-object'];
             $error = captureThrows(
-                static fn () => $builder->build('proj', $payload),
+                static fn() => $builder->build('proj', $payload),
                 InvalidArgumentException::class,
             );
             $this->assertStringContainsString('Bundle ' . $table . ' row must be an object.', $error->getMessage());

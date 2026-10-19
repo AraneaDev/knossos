@@ -45,7 +45,7 @@ final class ScanBusyExceptionTest extends TestCase
     public function testThrownExceptionCarriesMessage(): void
     {
         $error = captureThrows(
-            static fn () => throw new ScanBusyException('scan X is busy'),
+            static fn() => throw new ScanBusyException('scan X is busy'),
             ScanBusyException::class,
         );
         assertSame('scan X is busy', $error->getMessage());
@@ -55,7 +55,7 @@ final class ScanBusyExceptionTest extends TestCase
     {
         $previous = new LogicException('lock contention');
         $error = captureThrows(
-            static fn () => throw new ScanBusyException('busy', 7, $previous),
+            static fn() => throw new ScanBusyException('busy', 7, $previous),
             ScanBusyException::class,
         );
         assertSame('busy', $error->getMessage());
@@ -68,7 +68,7 @@ final class ScanBusyExceptionTest extends TestCase
         // Prove the throw site is polymorphic against the supertype — kills any
         // mutation that changes `extends RuntimeException` to something else.
         $caught = captureThrows(
-            static fn () => throw new ScanBusyException('busy'),
+            static fn() => throw new ScanBusyException('busy'),
             RuntimeException::class,
         );
         $this->assertInstanceOf(ScanBusyException::class, $caught);

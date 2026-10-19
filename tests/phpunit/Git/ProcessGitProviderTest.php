@@ -92,7 +92,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
 
     public function testChangesReturnsEmptyForCleanWorkingTree(): void
     {
-        $mock = $this->mockRunner('a'.str_repeat('b', 39) . "\n");
+        $mock = $this->mockRunner('a' . str_repeat('b', 39) . "\n");
         $provider = new ProcessGitWorkingTreeProvider(runner: $mock);
         $result = $provider->changes($this->existingDir, 'HEAD', 10, 100);
 
@@ -142,7 +142,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         $mock = $this->mockRunner(
             "M\x0src/a.php\x0" .
             "M\x0src/b.php\x0" .
-            "M\x0src/c.php\x0"
+            "M\x0src/c.php\x0",
         );
         $provider = new ProcessGitWorkingTreeProvider(runner: $mock);
         $result = $provider->changes($this->existingDir, null, 2, 100);
@@ -668,7 +668,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
 
     private function mockRunner(string $returnValue): GitProcessRunnerInterface
     {
-        return new class($returnValue) implements GitProcessRunnerInterface {
+        return new class ($returnValue) implements GitProcessRunnerInterface {
             public function __construct(private readonly string $returnValue) {}
 
             public function run(array $command, int $timeoutMs, string $operation): string

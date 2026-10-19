@@ -112,7 +112,18 @@ final class ComponentBoundsTest extends KnossosTestCase
             $repository->saveNode($ledger, $ids['project'], 'php', 'class', 'App\\Ledger', 'Ledger', null, $ids['file'], 40, 50, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
             $repository->saveEdge(
                 StableId::edge($ids['project'], 'calls', $ids['checkout'], $ledger, 'src/Checkout.php:14'),
-                $ids['project'], 'calls', $ids['checkout'], $ledger, $ids['file'], 14, 14, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan'],
+                $ids['project'],
+                'calls',
+                $ids['checkout'],
+                $ledger,
+                $ids['file'],
+                14,
+                14,
+                'ast',
+                'certain',
+                [],
+                'php:file:src/Checkout.php',
+                $ids['scan'],
             );
         }
         $repository->completeScan($ids['project'], $ids['scan']);

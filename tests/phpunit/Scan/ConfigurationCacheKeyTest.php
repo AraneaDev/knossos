@@ -6,9 +6,10 @@ namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The contribution cache is keyed on the knossos.json settings that change

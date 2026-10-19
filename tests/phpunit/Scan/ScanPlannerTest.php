@@ -335,7 +335,7 @@ TOML);
         self::assertNotNull($incremental->cachedReads);
         self::assertArrayNotHasKey('payload_json', $incremental->cacheByScannerPath["php-scanner\0reader.php"]);
 
-        $pdo->exec("UPDATE projects SET active_scan_id = NULL");
+        $pdo->exec('UPDATE projects SET active_scan_id = NULL');
         $full = $planner->finalize($this->makePreparation($root));
 
         assertSame([], $full->invalidatedOwners);
@@ -535,8 +535,8 @@ TOML);
             $planner = new ScanPlanner($pdo, [sys_get_temp_dir()]);
             $before = $planner->prepare($dir, null, null, null, null, null, null);
 
-            file_put_contents($dir . '/requirements.txt', "fastapi==0.136.1
-");
+            file_put_contents($dir . '/requirements.txt', 'fastapi==0.136.1
+');
             $after = $planner->prepare($dir, null, null, null, null, null, null);
 
             $this->assertNotSame(

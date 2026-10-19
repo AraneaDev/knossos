@@ -12,11 +12,12 @@ use Knossos\Query\PathBetweenService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\Group;
+use RuntimeException;
 
 /**
  * The architecture pane's wider reads and its one write: churn hotspots, a

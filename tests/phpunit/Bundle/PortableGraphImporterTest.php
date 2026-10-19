@@ -163,7 +163,7 @@ final class PortableGraphImporterTest extends TestCase
         $manifest = $this->manifestWith([]);
 
         $error = captureThrows(
-            fn () => $this->callImport($payload, $manifest),
+            fn() => $this->callImport($payload, $manifest),
             InvalidArgumentException::class,
         );
 
@@ -177,7 +177,7 @@ final class PortableGraphImporterTest extends TestCase
         $manifest = $this->manifestWith([]);
 
         $error = captureThrows(
-            fn () => $this->callImport($payload, $manifest),
+            fn() => $this->callImport($payload, $manifest),
             InvalidArgumentException::class,
         );
 
@@ -486,7 +486,7 @@ final class PortableGraphImporterTest extends TestCase
         $payload = $this->payloadWith([]);
         $payload['scan']['finished_at'] = 'not-a-timestamp';
         $error = captureThrows(
-            fn () => $this->callImportWithPayload($payload),
+            fn() => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
         $this->assertStringContainsString('timestamp', $error->getMessage());
@@ -497,7 +497,7 @@ final class PortableGraphImporterTest extends TestCase
         $payload = $this->payloadWith([]);
         $payload['scan']['finished_at'] = str_repeat('9', 50);
         $error = captureThrows(
-            fn () => $this->callImportWithPayload($payload),
+            fn() => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
         $this->assertStringContainsString('timestamp', $error->getMessage());
@@ -517,7 +517,7 @@ final class PortableGraphImporterTest extends TestCase
         $payload = $this->payloadWith([]);
         $payload['scan']['scanner_set_hash'] = ['not', 'a', 'string'];
         $error = captureThrows(
-            fn () => $this->callImportWithPayload($payload),
+            fn() => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
         $this->assertStringContainsString('hash is malformed', $error->getMessage());
@@ -584,7 +584,7 @@ final class PortableGraphImporterTest extends TestCase
         $payload = $this->minimalPayload();
         $payload['files'] = [['this-is', 'a-list']];
         $error = captureThrows(
-            fn () => $this->callImportWithPayload($payload),
+            fn() => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
 
@@ -596,7 +596,7 @@ final class PortableGraphImporterTest extends TestCase
         $payload = $this->minimalPayload();
         $payload['files'] = ['not-an-object-string'];
         $error = captureThrows(
-            fn () => $this->callImportWithPayload($payload),
+            fn() => $this->callImportWithPayload($payload),
             InvalidArgumentException::class,
         );
 
@@ -832,7 +832,8 @@ final class PortableGraphImporterTest extends TestCase
 
     private function buildSchema(PDO $pdo): void
     {
-        $pdo->exec(<<<'SQL'
+        $pdo->exec(
+            <<<'SQL'
 CREATE TABLE projects (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -935,7 +936,7 @@ CREATE TABLE diagnostics (
     end_line INTEGER,
     owner_key TEXT
 );
-SQL
+SQL,
         );
     }
 
@@ -1231,7 +1232,7 @@ SQL
     private function expectImportError(array $payloadOverrides): \Throwable
     {
         return captureThrows(
-            fn () => $this->callImportWithPayload($this->payloadWith($payloadOverrides)),
+            fn() => $this->callImportWithPayload($this->payloadWith($payloadOverrides)),
             InvalidArgumentException::class,
         );
     }

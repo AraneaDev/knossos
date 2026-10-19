@@ -6,9 +6,10 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\FileContextService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** One file's context for the model's tool: boundary, dependents, tests and latest commits, each cut short. */
 final class FileContextServiceTest extends KnossosTestCase
