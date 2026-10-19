@@ -1089,6 +1089,7 @@ js	hooks/lib/views.ts
 js	hooks/mod/actions.allow.spec.ts
 js	hooks/mod/actions.editor.spec.ts
 js	hooks/mod/actions.finder.spec.ts
+js	hooks/mod/actions.finder.wrapper.spec.ts
 js	hooks/mod/actions.focus.spec.ts
 js	hooks/mod/actions.note.spec.ts
 js	hooks/mod/actions.notes.spec.ts
@@ -1132,6 +1133,7 @@ js	hooks/mod/watcher.rescan.spec.ts
 js	hooks/mod/watcher.scan.spec.ts
 js	hooks/mod/watcher.spec.ts
 js	hooks/mod/watcher.ts
+js	hooks/mod/wrapper.contract.spec.ts
 js	hooks/register.test.ts
 js	hooks/register.tsx
 js	tools/capture/driver.mjs
