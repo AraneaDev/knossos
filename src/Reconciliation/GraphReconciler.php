@@ -348,8 +348,7 @@ final readonly class GraphReconciler
         foreach ($contributions as $contribution) {
             $scanner = $this->scannerFromOwner($contribution->ownerKey);
             foreach ($contribution->nodes as $node) {
-                $language = $this->languageFromReference($node->localId);
-                $id = StableId::symbol($projectId, $language, $node->kind, $node->canonicalName);
+                [$language, $id] = self::nodeIdentity($projectId, $node);
                 if (isset($references[$node->localId]) && $references[$node->localId] !== $id) {
                     throw new ReconciliationException(sprintf('Conflicting scanner reference: %s', $node->localId));
                 }
@@ -739,9 +738,25 @@ final readonly class GraphReconciler
         $parts = explode(':', $owner, 2);
         return $parts[0];
     }
+    /**
+     * The language and stable id a reported node gets.
+     *
+     * The one place this is computed, so whoever needs a native node's stable
+     * id before reconcile runs (the enrichment pass) cannot drift from the id
+     * the reconciler assigns.
+     *
+     * @return array{0: string, 1: string} [language, stable id]
+     */
+    public static function nodeIdentity(string $projectId, NodeFact $node): array
+    {
+        $language = self::languageFromReference($node->localId);
+
+        return [$language, StableId::symbol($projectId, $language, $node->kind, $node->canonicalName)];
+    }
+
     /** The language a canonical reference belongs to, used when synthesising an external node. */
 
-    private function languageFromReference(string $reference): string
+    private static function languageFromReference(string $reference): string
     {
         $parts = explode(':', $reference, 2);
         if (count($parts) !== 2 || $parts[0] === '') {

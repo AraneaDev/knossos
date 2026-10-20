@@ -21,4 +21,6 @@ enum Origin: string
     case FrameworkConvention = 'framework_convention';
     case Derived = 'derived';
     case UserRule = 'user_rule';
+    /** A fact an installation-registered external enricher contributed; never the same as vendor code. */
+    case Enricher = 'enricher';
 }
