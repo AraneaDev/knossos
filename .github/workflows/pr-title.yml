@@ -21,6 +21,11 @@ permissions:
 
 jobs:
   conventional-title:
+    # A closed pull request's title no longer reaches main. release-please
+    # relabels its pull request after the merge, and by then the head is part
+    # of the base branch, so the release-PR check sees an empty diff and would
+    # refuse the release subject.
+    if: github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
