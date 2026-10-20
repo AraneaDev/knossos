@@ -385,6 +385,7 @@ final class ScanBatchQueue
             ),
             $error,
             $error->terminatingSignal,
+            exitCode: $error->exitCode,
         );
     }
 

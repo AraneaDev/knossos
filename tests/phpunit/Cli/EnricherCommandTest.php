@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Cli;
 
 use InvalidArgumentException;
+use Knossos\Application;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliInputLoader;
@@ -236,6 +237,51 @@ final class EnricherCommandTest extends KnossosTestCase
         assertSame(['endpoints'], array_keys((new EnrichersFile($dataDir . '/enrichers.json'))->read()));
     }
 
+    public function testAFileLocatedFromTheWorkingDirectorySaysSo(): void
+    {
+        // With nothing naming the location, the file is wherever the shell
+        // is, which is rarely the one the server's scans read.
+        $previousCwd = (string) getcwd();
+        $previousHome = getenv('HOME');
+        putenv('KNOSSOS_DATA_DIR');
+        putenv('HOME=' . $this->tempDir);
+        chdir($this->tempDir);
+        try {
+            $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), null);
+            [, $added] = $this->invoke(['add', 'endpoints', '--', 'x'], $context);
+            [, $removed] = $this->invoke(['remove', 'endpoints', '--json'], $context);
+        } finally {
+            chdir($previousCwd);
+            putenv($previousHome === false ? 'HOME' : 'HOME=' . $previousHome);
+        }
+
+        assertContains($this->tempDir . '/.knossos/enrichers.json', $added);
+        assertContains('came from the working directory', $added);
+        assertContains('server_info', $added);
+        assertSame('working-directory', json_decode($removed, true, 16, JSON_THROW_ON_ERROR)['enrichers_file_source']);
+    }
+
+    public function testANamedLocationNeedsNoWarning(): void
+    {
+        [, $output] = $this->invoke(['add', 'endpoints', '--', 'x']);
+
+        assertSame(false, str_contains($output, 'working directory'));
+    }
+
+    public function testADuplicateExitsTwoThroughTheCli(): void
+    {
+        $this->writeEntries([['name' => 'endpoints', 'command' => ['old']]]);
+        $errors = fopen('php://memory', 'w+');
+        assert(is_resource($errors));
+
+        $exit = (new Application($errors))->run(['enricher', 'add', 'endpoints', '--db=' . $this->tempDir . '/knossos.sqlite', '--', 'new']);
+
+        rewind($errors);
+        assertSame(CliCommand::EXIT_ERROR, $exit);
+        assertContains('already defined', (string) stream_get_contents($errors));
+        assertSame(['old'], $this->definitions()['endpoints']->command);
+    }
+
     public function testAddRefusesADuplicateName(): void
     {
         $this->writeEntries([['name' => 'endpoints', 'command' => ['old']]]);
@@ -336,7 +382,7 @@ final class EnricherCommandTest extends KnossosTestCase
         [$exit, $output] = $this->invoke(['remove', 'endpoints', '--json']);
 
         assertSame(CliCommand::EXIT_GATE_FAILED, $exit);
-        assertSame(['name' => 'endpoints', 'enrichers_file' => $this->enrichersFile(), 'removed' => false], json_decode($output, true, 16, JSON_THROW_ON_ERROR));
+        assertSame(['name' => 'endpoints', 'enrichers_file' => $this->enrichersFile(), 'enrichers_file_source' => 'named', 'removed' => false], json_decode($output, true, 16, JSON_THROW_ON_ERROR));
         assertSame($before, file_get_contents($this->enrichersFile()));
     }
 

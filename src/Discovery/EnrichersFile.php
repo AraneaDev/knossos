@@ -97,8 +97,8 @@ final readonly class EnrichersFile
      * The fields are the ones {@see load()} reads, every one written out, so
      * the file reads back as exactly these definitions. Mode 0600 whatever the
      * file had before: `env` may carry a credential. The temporary file is
-     * given its mode before the rename, so the file is never in place, even
-     * briefly, readable by anyone else.
+     * created under umask 077, so neither it nor the file it becomes is ever
+     * readable by anyone else, not even before the rename.
      *
      * @param list<EnricherDefinition> $definitions
      */
@@ -118,9 +118,15 @@ final readonly class EnrichersFile
         ], $definitions);
         $encoded = json_encode(['enrichers' => $entries], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $temporary = $directory . '/.enrichers.json.' . bin2hex(random_bytes(8)) . '.tmp';
-        if (@file_put_contents($temporary, $encoded . PHP_EOL) === false
-            || !@chmod($temporary, 0o600)
-            || !@rename($temporary, $this->path)) {
+        // Created owner-only, before the first byte of an env value is in it;
+        // the chmod after only matters on a filesystem that ignores the umask.
+        $umask = umask(0o077);
+        try {
+            $written = @file_put_contents($temporary, $encoded . PHP_EOL);
+        } finally {
+            umask($umask);
+        }
+        if ($written === false || !@chmod($temporary, 0o600) || !@rename($temporary, $this->path)) {
             @unlink($temporary);
             throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
         }

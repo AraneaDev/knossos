@@ -25,6 +25,13 @@ use Knossos\Discovery\RootsFile;
  */
 final class RootsCommand implements CliCommand
 {
+    /**
+     * What a command that writes a file beside the database says when nothing
+     * named that location. Shared with `enricher`, whose file sits beside this one.
+     */
+    public const WORKING_DIRECTORY_WARNING = 'That location came from the working directory, not from KNOSSOS_ROOTS_FILE or KNOSSOS_DATA_DIR, '
+        . 'so it may not be the file your server reads. Check server_info.';
+
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
@@ -94,7 +101,7 @@ final class RootsCommand implements CliCommand
             $fresh => 'That is a NEW roots file at a location that came from the working directory, '
                 . 'not from KNOSSOS_ROOTS_FILE or KNOSSOS_DATA_DIR. A server started anywhere else reads a '
                 . 'different one and will not see this grant. Check server_info.',
-            default => 'That location came from the working directory, not from KNOSSOS_ROOTS_FILE or KNOSSOS_DATA_DIR, so it may not be the file your server reads. Check server_info.',
+            default => self::WORKING_DIRECTORY_WARNING,
         };
 
         // Existing entries are compared normalised but rewritten verbatim: a
@@ -205,7 +212,7 @@ final class RootsCommand implements CliCommand
      * running server reads and is therefore worth disclosing rather than
      * asserting a restart-free effect the caller cannot rely on.
      */
-    private static function locationWasNamed(CliCommandContext $context): bool
+    public static function locationWasNamed(CliCommandContext $context): bool
     {
         foreach (['KNOSSOS_ROOTS_FILE', 'KNOSSOS_DATA_DIR'] as $variable) {
             $value = getenv($variable);

@@ -150,9 +150,9 @@ final class EnricherCommand implements CliCommand
         $definitions[$name] = $definition;
         $file->write(array_values($definitions));
         $context->output(
-            ['name' => $name, 'enrichers_file' => $file->path, 'added' => !$replacing, 'replaced' => $replacing],
+            ['name' => $name, 'enrichers_file' => $file->path, 'enrichers_file_source' => self::source($context), 'added' => !$replacing, 'replaced' => $replacing],
             $context->options->flag($options, 'json'),
-            sprintf('%s enricher %s %s %s.', $replacing ? 'Replaced' : 'Added', $name, $replacing ? 'in' : 'to', $file->path),
+            sprintf('%s enricher %s %s %s.', $replacing ? 'Replaced' : 'Added', $name, $replacing ? 'in' : 'to', $file->path) . self::disclosure($context),
         );
 
         return CliCommand::EXIT_OK;
@@ -212,14 +212,26 @@ final class EnricherCommand implements CliCommand
             $file->write(array_values($definitions));
         }
         $context->output(
-            ['name' => $name, 'enrichers_file' => $file->path, 'removed' => $present],
+            ['name' => $name, 'enrichers_file' => $file->path, 'enrichers_file_source' => self::source($context), 'removed' => $present],
             $json,
-            $present
+            ($present
                 ? sprintf('Removed enricher %s from %s.', $name, $file->path)
-                : sprintf('No enricher named %s is defined in %s. Nothing to remove.', $name, $file->path),
+                : sprintf('No enricher named %s is defined in %s. Nothing to remove.', $name, $file->path)) . self::disclosure($context),
         );
 
         return $present ? CliCommand::EXIT_OK : CliCommand::EXIT_GATE_FAILED;
+    }
+
+    /** Whether somebody named the file's location (`named`) or it came from the working directory. */
+    private static function source(CliCommandContext $context): string
+    {
+        return RootsCommand::locationWasNamed($context) ? 'named' : 'working-directory';
+    }
+
+    /** The warning, on a line of its own, when the file's location came from the working directory; else nothing. */
+    private static function disclosure(CliCommandContext $context): string
+    {
+        return RootsCommand::locationWasNamed($context) ? '' : PHP_EOL . RootsCommand::WORKING_DIRECTORY_WARNING;
     }
 
     /**

@@ -200,6 +200,24 @@ final class EnrichersFileTest extends TestCase
         assertSame(['enrichers.json'], array_values(array_diff(scandir($this->directory) ?: [], ['.', '..'])));
     }
 
+    public function testTheFileIsOwnerOnlyWhateverTheUmaskAndTheUmaskIsRestored(): void
+    {
+        // The temporary file is created under umask 077, so not even the
+        // moment between writing the env values and the rename leaves them
+        // readable; that moment cannot be observed from here, so this pins the
+        // result and that the caller's umask comes back.
+        $file = new EnrichersFile($this->directory . '/enrichers.json');
+        $previous = umask(0);
+        try {
+            $file->write([new EnricherDefinition('plain', ['x'], environment: ['TOKEN' => 'secret'])]);
+            assertSame(0, umask());
+        } finally {
+            umask($previous);
+        }
+
+        assertSame(0o600, fileperms($file->path) & 0o777);
+    }
+
     public function testWritingCreatesTheDirectory(): void
     {
         $file = new EnrichersFile($this->directory . '/enrichers.json');
