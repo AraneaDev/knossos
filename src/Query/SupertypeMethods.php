@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
@@ -85,7 +86,8 @@ final class SupertypeMethods
         $read = array_fill_keys($frontier, true);
         for ($level = 0; $level < self::MAX_DEPTH && $frontier !== []; ++$level) {
             $next = [];
-            $sql = "SELECT {$from}, {$to} FROM edges WHERE project_id = ? AND kind IN ('extends', 'implements') AND {$from} IN (%s)";
+            // An enricher's inheritance claim is a guess; only native edges make a hop.
+            $sql = "SELECT {$from}, {$to} FROM edges WHERE project_id = ? AND kind IN ('extends', 'implements')" . EnrichedFacts::nativeCondition('edges') . " AND {$from} IN (%s)";
             foreach (ChunkedInQuery::rows($pdo, $sql, $frontier, [$projectId], mode: PDO::FETCH_NUM) as [$class, $related]) {
                 $links[(string) $class][] = (string) $related;
                 if (!isset($read[(string) $related])) {

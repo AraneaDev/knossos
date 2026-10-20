@@ -170,6 +170,22 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         assertSame($plain, $enriched);
     }
 
+    public function testInheritanceClaimAddsNoSupertypeStep(): void
+    {
+        // Were the claim read, Base::handle would reach Orphan::handle as an unlabelled implemented_by hop.
+        $this->setEnricherFlowMode($this->project['installation'], 'ok-extends');
+        $this->scanBoth();
+        assertSame(1, (int) $this->enriched->query("SELECT COUNT(*) FROM edges WHERE kind = 'extends' AND origin = 'enricher'")->fetchColumn());
+
+        $answers = fn(PDO $pdo): array => [
+            $this->strip($this->query($pdo)->impactAnalysis($this->projectId, 'backend.app.handlers.Orphan::handle')->data),
+            $this->strip($this->query($pdo)->explainFlow($this->projectId, 'backend.app.handlers.Base::handle', 'backend.app.handlers.Orphan::handle')->data),
+            $this->strip($this->query($pdo)->impactAnalysis($this->projectId, 'backend.app.handlers.Base::handle')->data),
+        ];
+
+        assertSame($answers($this->plain), $answers($this->enriched));
+    }
+
     public function testBriefFindingsAndFanInUnchanged(): void
     {
         // Each database is read right after its own scan, so both see a tree that matches it.
