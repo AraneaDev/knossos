@@ -322,7 +322,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
             }
             $kept = [];
             foreach ($value as $key => $item) {
-                if (is_string($key) && preg_match('/(^|_)(scan_id|snapshot_id|snapshot|set_hash|at|time|elapsed_ms|duration_ms)$/', $key) === 1) {
+                if (is_string($key) && preg_match('/(^|_)(scan_id|snapshot_id|snapshot|set_hash|at|time|age_seconds|elapsed_ms|duration_ms)$/', $key) === 1) {
                     continue;
                 }
                 $kept[$key] = $strip($item);
