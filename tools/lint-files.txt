@@ -384,6 +384,7 @@ php	src/Scanner/Worker/WorkerSignal.php
 php	src/Store/ChunkedInQuery.php
 php	src/Store/ContributionCacheEntry.php
 php	src/Store/CountedSnapshotFigures.php
+php	src/Store/EnrichedFacts.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
 php	src/Store/ScanBusyException.php
@@ -649,6 +650,7 @@ php	tests/phpunit/Query/Drift/WalkDriftOracleAdditionsTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleTest.php
 php	tests/phpunit/Query/EloquentFactoryStatesTest.php
 php	tests/phpunit/Query/EloquentMagicReferencesTest.php
+php	tests/phpunit/Query/EnrichedFactsExclusionTest.php
 php	tests/phpunit/Query/EntryPointCriteriaTest.php
 php	tests/phpunit/Query/ExplainFlowBoundsTest.php
 php	tests/phpunit/Query/ExternalPolicyTargetTest.php

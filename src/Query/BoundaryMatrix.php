@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
@@ -274,7 +275,8 @@ final readonly class BoundaryMatrix
     private function walk(string $projectId, callable $visit): array
     {
         $statement = $this->pdo->prepare(sprintf(
-            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN (%s) LIMIT ?',
+            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND %s AND kind IN (%s) LIMIT ?',
+            EnrichedFacts::excludeSql('edges'),
             implode(',', array_fill(0, count(AbstractArchitectureQueryService::POLICY_EDGE_KINDS), '?')),
         ));
         foreach ([$projectId, ...AbstractArchitectureQueryService::POLICY_EDGE_KINDS, $this->maxEdges + 1] as $position => $value) {

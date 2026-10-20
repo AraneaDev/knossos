@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use Throwable;
 
@@ -300,7 +301,9 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
             // An npm package the TypeScript worker imports is a `package` node marked external, vendor code all the same.
             "json_extract(target.attributes_json, '$.external') AS target_external FROM edges e " .
             'JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
-            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? ' .
+            // A policy judges native code by native facts: an enricher's edge is a guess, and
+            // judging it would let an enricher's output fail a quality gate.
+            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders($kinds)) .
             "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
             ($sourceFiles === [] ? '' : sprintf(

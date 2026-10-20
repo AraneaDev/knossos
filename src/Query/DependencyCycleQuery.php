@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EnrichedFacts;
 
 /**
  * Dependency cycles: the strongly connected components of the selected dependency graph.
@@ -14,7 +15,9 @@ use Knossos\Store\ChunkedInQuery;
  * Its own class because three answers lean on it: `dependency_cycles` itself,
  * the cycle signal `architecture_health` folds into its hotspots, and the
  * cycles `review_diff` reports. Each reaches the same search with the same
- * bounds, so none of them can come to count a cycle the others do not.
+ * bounds, so none of them can come to count a cycle the others do not. A
+ * cycle is a fact about native code, so enriched edges never close one
+ * ({@see EnrichedFacts}).
  */
 final readonly class DependencyCycleQuery extends AbstractArchitectureQueryService
 {
@@ -217,7 +220,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         // of any other kind are never decoded, so they are not read either.
         $statement = $this->pdo->prepare(
             "SELECT e.id, e.kind, e.source_id, e.target_id, CASE WHEN e.kind IN ('imports', 're_exports') THEN e.attributes_json END AS attributes_json " .
-            'FROM edges e WHERE e.project_id = ? ' .
+            'FROM edges e WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders) .
             "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
             'ORDER BY e.source_id, e.target_id, e.kind, e.id LIMIT ?',

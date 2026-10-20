@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
@@ -15,6 +16,9 @@ use PDO;
  * the node, edge and time bounds the walks carry. The walks themselves live
  * apart, one question each: {@see FlowQuery}, {@see ImpactAnalysisQuery},
  * {@see DependencyCycleQuery} and {@see ArchitectureHealthQuery}.
+ *
+ * Node and relationship counts leave out what an enricher contributed
+ * ({@see EnrichedFacts}): the summary describes the native graph.
  */
 final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
 {
@@ -28,8 +32,8 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         $files = $this->counts('files', $projectId, $limit, 'language');
         $roles = $this->counts('classifications', $projectId, $limit, 'role');
         $diagnostics = $this->scalar('SELECT COUNT(*) FROM diagnostics WHERE project_id = :project', $projectId);
-        $totalNodes = $this->scalar('SELECT COUNT(*) FROM nodes WHERE project_id = :project', $projectId);
-        $totalEdges = $this->scalar('SELECT COUNT(*) FROM edges WHERE project_id = :project', $projectId);
+        $totalNodes = $this->scalar('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . self::native('nodes'), $projectId);
+        $totalEdges = $this->scalar('SELECT COUNT(*) FROM edges WHERE project_id = :project' . self::native('edges'), $projectId);
 
         return new ResultEnvelope(
             $projectId,
@@ -119,9 +123,10 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
     private function counts(string $table, string $projectId, int $limit, string $column = 'kind'): array
     {
         $statement = $this->pdo->prepare(sprintf(
-            'SELECT %1$s AS kind, COUNT(*) AS count FROM %2$s WHERE project_id = :project GROUP BY %1$s ORDER BY count DESC, %1$s LIMIT :limit',
+            'SELECT %1$s AS kind, COUNT(*) AS count FROM %2$s WHERE project_id = :project%3$s GROUP BY %1$s ORDER BY count DESC, %1$s LIMIT :limit',
             $column,
             $table,
+            self::native($table),
         ));
         $statement->bindValue(':project', $projectId);
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -139,7 +144,13 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
     /** Count of distinct values, used for the graph-size figures. */
     private function distinctCount(string $table, string $projectId, string $column = 'kind'): int
     {
-        return $this->scalar(sprintf('SELECT COUNT(DISTINCT %s) FROM %s WHERE project_id = :project', $column, $table), $projectId);
+        return $this->scalar(sprintf('SELECT COUNT(DISTINCT %s) FROM %s WHERE project_id = :project%s', $column, $table, self::native($table)), $projectId);
+    }
+
+    /** The condition, joined with AND, that leaves enriched rows of `$table` out; empty for a table without them. */
+    private static function native(string $table): string
+    {
+        return in_array($table, EnrichedFacts::TABLES, true) ? ' AND ' . EnrichedFacts::excludeSql($table) : '';
     }
     /**
      * A bounded sample of a boundary's members, since listing every one is unhelpful.
@@ -151,7 +162,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         $statement = $this->pdo->prepare(
             'SELECT n.id, n.kind, n.canonical_name, n.start_line, n.end_line, f.relative_path ' .
             'FROM boundary_memberships bm JOIN nodes n ON n.id = bm.node_id LEFT JOIN files f ON f.id = n.file_id ' .
-            'WHERE bm.boundary_id = :boundary ORDER BY n.canonical_name LIMIT :limit',
+            'WHERE bm.boundary_id = :boundary AND ' . EnrichedFacts::excludeSql('n') . ' ORDER BY n.canonical_name LIMIT :limit',
         );
         $statement->bindValue(':boundary', $boundaryId);
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
