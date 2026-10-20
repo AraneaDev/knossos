@@ -111,6 +111,7 @@ final class WatchTest extends KnossosTestCase
                     ?int $snapshotRetention = null,
                     ?int $workerTimeoutMs = null,
                     ?int $workerMemoryMb = null,
+                    bool $runEnrichers = false,
                 ): ResultEnvelope {
                     $index = $this->calls;
                     ++$this->calls;

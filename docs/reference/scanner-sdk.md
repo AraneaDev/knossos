@@ -5,6 +5,11 @@ The stable contract is protocol `1.0` plus output schema `1.0`; workers are
 processes, not in-process PHP plugins, so their implementation language and
 dependency graph remain independent from Knossos core.
 
+An enricher, a process that adds project-specific facts to a scanned graph
+rather than scanning a language, uses the same protocol with one extra
+capability. [`enrichers.md`](enrichers.md) covers its registration, input,
+output rules and failure handling, with a minimal Python example.
+
 ## Published artifacts
 
 - [`scanner-protocol-v1.md`](scanner-protocol-v1.md) defines lifecycle,

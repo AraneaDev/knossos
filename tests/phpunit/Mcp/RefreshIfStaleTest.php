@@ -819,6 +819,7 @@ final class RefreshIfStaleTest extends KnossosTestCase
                         ?int $snapshotRetention = null,
                         ?int $workerTimeoutMs = null,
                         ?int $workerMemoryMb = null,
+                        bool $runEnrichers = false,
                     ): ResultEnvelope {
                         throw new \RuntimeException('SQLSTATE[HY000]: /srv/internal/knossos.sqlite is locked');
                     }

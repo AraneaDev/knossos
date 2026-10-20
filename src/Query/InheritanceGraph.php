@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
@@ -22,6 +23,8 @@ use PDO;
  * and the closure walk over it made one 190-line method together with the
  * per-method decision that consumes them. Not readonly: the ancestor closure
  * of a class is memoized, since every method of a class asks for it again.
+ * Only native edges count: an enricher's `implements` between two native
+ * types must not excuse a native method from the dead-code candidates.
  */
 final class InheritanceGraph
 {
@@ -64,7 +67,7 @@ final class InheritanceGraph
         $parents = self::ancestorEdges($pdo, $projectId, array_values(array_unique([...$classIds, ...$subtypeIds])));
         $ancestorIds = array_values(array_unique(array_merge(...array_values($parents) ?: [[]])));
         $meta = [];
-        foreach (ChunkedInQuery::rows($pdo, 'SELECT id, kind, canonical_name, display_name, origin FROM nodes WHERE project_id = ? AND id IN (%s)', $ancestorIds, [$projectId]) as $row) {
+        foreach (ChunkedInQuery::rows($pdo, 'SELECT id, kind, canonical_name, display_name, origin FROM nodes WHERE project_id = ?' . EnrichedFacts::nativeCondition('nodes') . ' AND id IN (%s)', $ancestorIds, [$projectId]) as $row) {
             $meta[$row['id']] = $row;
         }
         $internalAncestors = array_values(array_filter($ancestorIds, static fn(string $id): bool => !self::externalMeta($meta[$id] ?? null)));
@@ -235,7 +238,7 @@ final class InheritanceGraph
             // `returns` edge, so the class case is untouched.
             foreach (ChunkedInQuery::rows(
                 $pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('implements', 'extends', 'returns') AND source_id IN (%s)",
+                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('implements', 'extends', 'returns')" . EnrichedFacts::nativeCondition('edges') . ' AND source_id IN (%s)',
                 $pending,
                 [$projectId],
             ) as $row) {
@@ -266,7 +269,7 @@ final class InheritanceGraph
             $found = [];
             foreach (ChunkedInQuery::rows(
                 $pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('extends', 'uses_trait') AND target_id IN (%s)",
+                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('extends', 'uses_trait')" . EnrichedFacts::nativeCondition('edges') . ' AND target_id IN (%s)',
                 $frontier,
                 [$projectId],
             ) as $row) {
@@ -307,7 +310,7 @@ final class InheritanceGraph
         foreach (ChunkedInQuery::rows(
             $pdo,
             'SELECT e.source_id, n.display_name FROM edges e JOIN nodes n ON n.id = e.target_id ' .
-            "WHERE e.project_id = ? AND e.kind = 'contains' AND e.source_id IN (%s)",
+            "WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id IN (%s)',
             $typeIds,
             [$projectId],
         ) as $row) {
@@ -336,7 +339,7 @@ final class InheritanceGraph
         $subtypesOf = [];
         foreach (ChunkedInQuery::rows(
             $pdo,
-            "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('implements', 'extends') AND target_id IN (%s)",
+            "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('implements', 'extends')" . EnrichedFacts::nativeCondition('edges') . ' AND target_id IN (%s)',
             $typeIds,
             [$projectId],
         ) as $row) {
@@ -355,7 +358,7 @@ final class InheritanceGraph
             $found = [];
             foreach (ChunkedInQuery::rows(
                 $pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('extends', 'uses_trait') AND source_id IN (%s)",
+                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('extends', 'uses_trait')" . EnrichedFacts::nativeCondition('edges') . ' AND source_id IN (%s)',
                 $frontier,
                 [$projectId],
             ) as $row) {

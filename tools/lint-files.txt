@@ -104,6 +104,8 @@ php	src/Discovery/DiscoveryConfig.php
 php	src/Discovery/DiscoveryDiagnostic.php
 php	src/Discovery/DiscoveryException.php
 php	src/Discovery/DiscoveryResult.php
+php	src/Discovery/EnricherDefinition.php
+php	src/Discovery/EnrichersFile.php
 php	src/Discovery/EntryPointResolver.php
 php	src/Discovery/FileContent.php
 php	src/Discovery/FileContentReader.php
@@ -149,6 +151,14 @@ php	src/Discovery/TreeWalkState.php
 php	src/Discovery/TreeWalker.php
 php	src/Discovery/UnitInputSet.php
 php	src/Discovery/UnitReader.php
+php	src/Enrichment/EnricherCarryOver.php
+php	src/Enrichment/EnricherOutcome.php
+php	src/Enrichment/EnricherRunner.php
+php	src/Enrichment/EnrichmentChannel.php
+php	src/Enrichment/EnrichmentPhase.php
+php	src/Enrichment/EnrichmentValidator.php
+php	src/Enrichment/NativeNodeIndex.php
+php	src/Enrichment/ValidatedEnrichment.php
 php	src/Filesystem/RegularFileOpener.php
 php	src/Git/DirtyPathResolver.php
 php	src/Git/DirtyPathSet.php
@@ -374,6 +384,7 @@ php	src/Scanner/Worker/WorkerSignal.php
 php	src/Store/ChunkedInQuery.php
 php	src/Store/ContributionCacheEntry.php
 php	src/Store/CountedSnapshotFigures.php
+php	src/Store/EnrichedFacts.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
 php	src/Store/ScanBusyException.php
@@ -494,6 +505,7 @@ php	tests/phpunit/Discovery/DiscoveryGuardsTest.php
 php	tests/phpunit/Discovery/DiscoveryLeafTest.php
 php	tests/phpunit/Discovery/DiscoveryResultTest.php
 php	tests/phpunit/Discovery/DiscoveryTest.php
+php	tests/phpunit/Discovery/EnrichersFileTest.php
 php	tests/phpunit/Discovery/EntryPointResolverTest.php
 php	tests/phpunit/Discovery/FileFingerprintTest.php
 php	tests/phpunit/Discovery/GitIgnoreRulesTest.php
@@ -516,6 +528,11 @@ php	tests/phpunit/Discovery/RootsFileTest.php
 php	tests/phpunit/Discovery/ShebangDiscoveryTest.php
 php	tests/phpunit/Discovery/SourceClassifierTest.php
 php	tests/phpunit/Discovery/UnitReadConsistencyTest.php
+php	tests/phpunit/Enrichment/EnricherCarryOverTest.php
+php	tests/phpunit/Enrichment/EnricherRunnerTest.php
+php	tests/phpunit/Enrichment/EnrichmentPhaseTest.php
+php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
+php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php
 php	tests/phpunit/FailOnWarningTest.php
 php	tests/phpunit/Framework/ClassificationTest.php
@@ -633,6 +650,7 @@ php	tests/phpunit/Query/Drift/WalkDriftOracleAdditionsTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleTest.php
 php	tests/phpunit/Query/EloquentFactoryStatesTest.php
 php	tests/phpunit/Query/EloquentMagicReferencesTest.php
+php	tests/phpunit/Query/EnrichedFactsExclusionTest.php
 php	tests/phpunit/Query/EntryPointCriteriaTest.php
 php	tests/phpunit/Query/ExplainFlowBoundsTest.php
 php	tests/phpunit/Query/ExternalPolicyTargetTest.php
@@ -686,6 +704,7 @@ php	tests/phpunit/Query/QueryDefaultsAgreementTest.php
 php	tests/phpunit/Query/QueryFacadeDocblockTest.php
 php	tests/phpunit/Query/QueryTest.php
 php	tests/phpunit/Query/RefreshPolicyTest.php
+php	tests/phpunit/Query/RepresentsTraversalTest.php
 php	tests/phpunit/Query/RescanServiceTest.php
 php	tests/phpunit/Query/ReviewDiffReportTest.php
 php	tests/phpunit/Query/ReviewDiffTest.php
@@ -760,6 +779,7 @@ php	tests/phpunit/Scan/ContributionOrderTest.php
 php	tests/phpunit/Scan/ContributionPartitionTest.php
 php	tests/phpunit/Scan/EndpointRouteFlowTest.php
 php	tests/phpunit/Scan/EndpointRouteScanTest.php
+php	tests/phpunit/Scan/EnrichmentScanTest.php
 php	tests/phpunit/Scan/FailedScanTest.php
 php	tests/phpunit/Scan/FastPathTest.php
 php	tests/phpunit/Scan/IncrementalReadsScanTest.php
@@ -923,6 +943,7 @@ php	tests/phpunit/Support/BusyWriteStatement.php
 php	tests/phpunit/Support/CountingDriftOracle.php
 php	tests/phpunit/Support/CountingStreamWrapper.php
 php	tests/phpunit/Support/EndpointRouteFixtures.php
+php	tests/phpunit/Support/EnricherFlowScans.php
 php	tests/phpunit/Support/Fixtures.php
 php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/Processes.php

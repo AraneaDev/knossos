@@ -40,7 +40,8 @@
             "composer",
             "config",
             "framework_convention",
-            "derived"
+            "derived",
+            "enricher"
           ]
         },
         "confidence": { "enum": ["certain", "probable", "possible"] },

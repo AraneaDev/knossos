@@ -8,6 +8,7 @@ use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\CountedSnapshotFigures;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotPayload;
 use PDO;
 
@@ -146,7 +147,8 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                     'locations' => [['physicalLocation' => ['artifactLocation' => ['uri' => $evidence['path']], 'region' => ['startLine' => $evidence['start_line'] ?? 1]]]]];
             }
             // Read for SARIF alone, and only as many as the 200 results allow.
-            $diagnostics = $this->pdo->prepare("SELECT severity, code, message FROM diagnostics WHERE project_id = ? AND severity IN ('error', 'warning') ORDER BY +id LIMIT ?");
+            // Not an enricher's diagnostics: like the budgets, the gate's findings describe the code.
+            $diagnostics = $this->pdo->prepare("SELECT severity, code, message FROM diagnostics WHERE project_id = ? AND severity IN ('error', 'warning')" . EnrichedFacts::nativeCondition('diagnostics') . ' ORDER BY +id LIMIT ?');
             $diagnostics->bindValue(1, $projectId);
             $diagnostics->bindValue(2, max(0, 200 - count($results)), PDO::PARAM_INT);
             $diagnostics->execute();

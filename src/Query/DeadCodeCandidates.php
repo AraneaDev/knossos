@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
@@ -272,7 +273,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
         $kinds = implode(',', array_fill(0, count(DeadCodeAnalysis::CANDIDATE_KINDS), '?'));
         $statement = $this->pdo->prepare(
             'SELECT n.id FROM nodes n '
-            . sprintf('WHERE n.project_id = ? AND n.kind IN (%s) AND ', $kinds) . $condition
+            . sprintf('WHERE n.project_id = ? AND %s AND n.kind IN (%s) AND ', EnrichedFacts::excludeSql('n'), $kinds) . $condition
             . ' ORDER BY n.canonical_name, n.id',
         );
         $inbound = [];
@@ -295,7 +296,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
     {
         $rows = [];
         $sql = 'SELECT n.id, n.language, n.kind, n.canonical_name, n.display_name, n.origin, n.confidence, n.attributes_json, '
-            . 'n.start_line, n.end_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' WHERE n.id IN (%s)';
+            . 'n.start_line, n.end_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' WHERE n.id IN (%s) AND ' . EnrichedFacts::excludeSql('n');
         foreach (ChunkedInQuery::rows($this->pdo, $sql, array_values(array_unique($ids)), size: self::CHUNK) as $row) {
             $rows[(string) $row['id']] = $row;
         }
@@ -311,7 +312,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      */
     private function inbound(array $edgeKinds): string
     {
-        return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id '
+        return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id AND ' . EnrichedFacts::excludeSql('e') . ' '
             . sprintf('AND e.kind IN (%s) ', implode(',', array_fill(0, count($edgeKinds), '?')))
             . "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
     }

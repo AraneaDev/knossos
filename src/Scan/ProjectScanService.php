@@ -6,6 +6,8 @@ namespace Knossos\Scan;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
+use Knossos\Discovery\EnrichersFile;
+use Knossos\Enrichment\EnrichmentPhase;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, Milliseconds, NamedFiles, ReconciliationResult};
@@ -32,12 +34,15 @@ final class ProjectScanService implements ProjectScanner
     private readonly ScanAnalysisPipeline $analysisPipeline;
     private readonly ScanSnapshotValidator $snapshotValidator;
     private readonly ScanResultFactory $resultFactory;
+    private readonly EnrichmentPhase $enrichment;
 
     /**
      * @param \Knossos\Discovery\AllowedRoots|list<string> $allowedRoots
      * @param ?GitHeadResolver $gitHead injected only so a test can drive the
      *        commit capture without a subprocess; production builds its own.
      * @param ?DirtyPathResolver $dirtyPaths injected for the same reason.
+     * @param ?EnrichersFile $enrichers the installation's enrichers file; null
+     *        means the installation defines no enrichers.
      */
     public function __construct(
         private PDO $pdo,
@@ -45,6 +50,7 @@ final class ProjectScanService implements ProjectScanner
         \Knossos\Discovery\AllowedRoots|array $allowedRoots,
         ?GitHeadResolver $gitHead = null,
         ?DirtyPathResolver $dirtyPaths = null,
+        ?EnrichersFile $enrichers = null,
     ) {
         $this->planner = new ScanPlanner($pdo, $allowedRoots, $gitHead, $dirtyPaths);
         $this->workerPool = new LanguageWorkerPool();
@@ -58,6 +64,7 @@ final class ProjectScanService implements ProjectScanner
         $this->analysisPipeline = new ScanAnalysisPipeline();
         $this->snapshotValidator = new ScanSnapshotValidator();
         $this->resultFactory = new ScanResultFactory();
+        $this->enrichment = new EnrichmentPhase($pdo, $enrichers);
     }
     /** Shut the worker pool down, including when a scan failed or was cancelled. */
 
@@ -76,6 +83,7 @@ final class ProjectScanService implements ProjectScanner
     public static function cancellationIn(array $options): ?CancellationToken
     {
         // `$cancellation` is scan()'s seventh parameter: the sixth after the root.
+        // Parameters added since (`$runEnrichers`, `$lease`) come after it, so its position holds.
         $cancellation = $options['cancellation'] ?? $options[5] ?? null;
 
         return $cancellation instanceof CancellationToken ? $cancellation : null;
@@ -95,6 +103,10 @@ final class ProjectScanService implements ProjectScanner
      * passes it as `$lease`: the scan writes under it and leaves releasing it
      * to the caller. A lease for another project is not used.
      *
+     * An explicit scan (`$runEnrichers`) runs the project's external enrichers
+     * and so always reconciles: their facts come from sources Knossos does
+     * not hash, so an unchanged tree says nothing about them.
+     *
      * @param list<array<string, mixed>>|null $explicitBoundaries
      */
     public function scan(
@@ -108,6 +120,7 @@ final class ProjectScanService implements ProjectScanner
         ?int $snapshotRetention = null,
         ?int $workerTimeoutMs = null,
         ?int $workerMemoryMb = null,
+        bool $runEnrichers = false,
         ?ProjectWriterLease $lease = null,
     ): ResultEnvelope {
         $startedAt = hrtime(true);
@@ -181,14 +194,23 @@ final class ProjectScanService implements ProjectScanner
             $projectConfig = $this->projectConfig($preparation);
             $namedFiles = new NamedFiles($this->pdo);
             $named = $namedFiles->contribution($projectId, $preparation->discovery, $preparation->configuration->ignores, $language->contributions);
+            // Enough to hash the scanner set; the enrichers themselves wait until the fast path is ruled out.
+            $this->enrichment->prepare($preparation->configuration);
             // A note added or removed changes the file components with nothing changed on disk.
             $sameNamedFiles = array_map(static fn($node): string => $node->canonicalName, $named->nodes) === $namedFiles->current($projectId);
-            $fastPath = $sameNamedFiles
+            $fastPath = $sameNamedFiles && !($runEnrichers && $preparation->configuration->enrichers !== [])
                 ? $this->noChangeFastPath($plan, $language, $preparation, $projectConfig, $name, $verifyUndiscovered, $repository)
                 : null;
             if ($fastPath !== null) {
                 $stageMilliseconds['reconciliation'] = self::elapsedMilliseconds($reconciliationStarted);
                 return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $stageMilliseconds, 'no_change');
+            }
+            $scanId = \Knossos\Store\StableId::scan($projectId, bin2hex(random_bytes(16)));
+            $discovered = array_fill_keys(array_map(static fn($file): string => $file->relativePath, $preparation->discovery->files), true);
+            $enriched = $this->enrichment->contributions($preparation->configuration, $projectId, $scanId, $preparation->discovery->rootRealpath, $language->contributions, $discovered, $runEnrichers, $cancellation);
+            if ($enriched !== []) {
+                // Enrichers can take minutes; a scan cancelled meanwhile stops here, before the write.
+                $cancellation->throwIfCancelled();
             }
             // Refresh the lease immediately before the exclusive reconcile write. A
             // legitimately long scan can outlive the lease window; if another scanner
@@ -198,7 +220,7 @@ final class ProjectScanService implements ProjectScanner
                 throw new ScanBusyException(sprintf('The writer lease for project %s was lost during the scan; another writer took over.', $projectId));
             }
             $result = (new GraphReconciler($repository))->reconcile(
-                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name, [...$language->contributions, $named]),
+                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name, [...$language->contributions, $named, ...$enriched], $this->enrichment->active(), $scanId),
                 $verifyUndiscovered,
             );
             foreach ($result->phaseMilliseconds as $phase => $milliseconds) {
@@ -287,7 +309,8 @@ final class ProjectScanService implements ProjectScanner
      * What reconciliation is asked to write for this scan.
      *
      * @param array<string, mixed> $projectConfig
-     * @param list<\Knossos\Scanner\Protocol\ScanContribution> $contributions every language's, then the file components (NamedFiles)
+     * @param list<\Knossos\Scanner\Protocol\ScanContribution> $contributions every language's, then the file components (NamedFiles), then the enrichers'
+     * @param list<\Knossos\Discovery\EnricherDefinition> $enrichers the active enrichers, for the scanner-set hash
      */
     private static function fullScanRequest(
         ScanPreparation $preparation,
@@ -297,6 +320,8 @@ final class ProjectScanService implements ProjectScanner
         array $projectConfig,
         ?string $name,
         array $contributions,
+        array $enrichers,
+        string $scanId,
     ): FullScanRequest {
         return new FullScanRequest(
             'root:' . $preparation->discovery->rootRealpath,
@@ -316,6 +341,8 @@ final class ProjectScanService implements ProjectScanner
             $preparation->dirtyPaths,
             self::workerInputs($language, $plan, $preparation->discovery->hashedPaths()),
             $language->readGroups,
+            $enrichers,
+            $scanId,
         );
     }
 
@@ -491,7 +518,7 @@ final class ProjectScanService implements ProjectScanner
         if ($stored !== $projectConfig) {
             return null;
         }
-        if ($row['scanner_set_hash'] !== GraphReconciler::scannerSetHash($language->manifests)) {
+        if ($row['scanner_set_hash'] !== GraphReconciler::scannerSetHash($language->manifests, $this->enrichment->active())) {
             return null;
         }
         $verifyUndiscovered();

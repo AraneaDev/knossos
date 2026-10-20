@@ -646,6 +646,7 @@ final class McpTest extends KnossosTestCase
                     ?int $snapshotRetention = null,
                     ?int $workerTimeoutMs = null,
                     ?int $workerMemoryMb = null,
+                    bool $runEnrichers = false,
                 ): \Knossos\Result\ResultEnvelope {
                     throw \Knossos\Scan\ScanSnapshotChangedException::contentChanged('src/Checkout.php');
                 }

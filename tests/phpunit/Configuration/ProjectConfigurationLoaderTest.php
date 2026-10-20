@@ -441,6 +441,58 @@ JSON;
         assertSame(['vendor/', '*.bak'], $config->ignores);
     }
 
+    // ----- enrichers -----
+
+    public function testEnrichersListIsLoaded(): void
+    {
+        $root = $this->writeConfig('knossos.json', json_encode(['version' => 1, 'enrichers' => ['acme-rest', 'legacy_urls', 'acme-rest']]));
+
+        assertSame(['acme-rest', 'legacy_urls'], ProjectConfigurationLoader::load($root, [$root])->enrichers);
+    }
+
+    public function testEnrichersDefaultsToEmpty(): void
+    {
+        $root = $this->writeConfig('knossos.json', self::minimalValidJson());
+
+        assertSame([], ProjectConfigurationLoader::load($root, [$root])->enrichers);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function commandLikeEnricherNames(): array
+    {
+        return [
+            'an absolute path' => ['/usr/bin/x'],
+            'a command with arguments' => ['python mapper.py'],
+            'a parent traversal' => ['../x'],
+            'an uppercase name' => ['Acme'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('commandLikeEnricherNames')]
+    public function testEnricherNameThatLooksLikeACommandIsRejected(string $name): void
+    {
+        $root = $this->writeConfig('knossos.json', json_encode(['version' => 1, 'enrichers' => [$name]]));
+
+        $error = captureThrows(
+            static fn() => ProjectConfigurationLoader::load($root, [$root]),
+            DiscoveryException::class,
+        );
+
+        $this->assertStringStartsWith('PROJECT_CONFIG_INVALID', $error->getMessage());
+    }
+
+    public function testEnrichersMustBeAList(): void
+    {
+        $root = $this->writeConfig('knossos.json', '{"version": 1, "enrichers": {"a": "b"}}');
+
+        $error = captureThrows(
+            static fn() => ProjectConfigurationLoader::load($root, [$root]),
+            DiscoveryException::class,
+        );
+
+        $this->assertStringStartsWith('PROJECT_CONFIG_INVALID', $error->getMessage());
+    }
+
     // ----- web roots -----
 
     public function testLoaderAcceptsWebRoots(): void

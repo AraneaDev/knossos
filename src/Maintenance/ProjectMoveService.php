@@ -77,7 +77,8 @@ final readonly class ProjectMoveService
         $data['executed'] = true;
         $data['roots'] = $roots?->replace($source['root'], $target);
         if (!$targetExists) {
-            $scanner->scan($target);
+            // Asked for, so explicit: enrichers run, since the old project's enriched facts are not moved.
+            $scanner->scan($target, runEnrichers: true);
             $data['scanned'] = true;
         }
         $this->moveAndRemove($source['id'], $targetId, $conflicts);

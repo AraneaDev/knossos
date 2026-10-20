@@ -426,11 +426,15 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      */
     private function impactHop(array $edge): array
     {
+        $step = self::hopStep($edge['kind']);
+
         return [
-            'edge_id' => $edge['id'], 'kind' => $edge['kind'], 'source_id' => $edge['source_id'],
+            'edge_id' => $edge['id'], 'kind' => $edge['kind'], 'step' => $step, 'source_id' => $edge['source_id'],
             'target_id' => $edge['target_id'], 'origin' => $edge['origin'], 'confidence' => $edge['confidence'],
             'attributes' => self::decode($edge['attributes_json']),
-            'explanation' => sprintf('%s depends through --%s (%s, %s)--> %s', $edge['source_name'], $edge['kind'], $edge['confidence'], $edge['origin'], $edge['target_name']),
+            'explanation' => $step === 'identity'
+                ? self::identityExplanation($edge)
+                : sprintf('%s depends through --%s (%s, %s)--> %s', $edge['source_name'], $edge['kind'], $edge['confidence'], $edge['origin'], $edge['target_name']),
             'evidence' => $edge['relative_path'] === null ? null : [
                 'path' => $edge['relative_path'], 'start_line' => $edge['start_line'], 'end_line' => $edge['end_line'],
             ],

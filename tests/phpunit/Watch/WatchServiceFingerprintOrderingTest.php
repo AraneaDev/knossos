@@ -44,6 +44,7 @@ final class WatchServiceFingerprintOrderingTest extends TestCase
                 ?int $snapshotRetention = null,
                 ?int $workerTimeoutMs = null,
                 ?int $workerMemoryMb = null,
+                bool $runEnrichers = false,
             ): ResultEnvelope {
                 ++$this->calls;
                 if ($this->calls === 1) {
@@ -123,6 +124,7 @@ final class WatchServiceFingerprintOrderingTest extends TestCase
                 ?int $snapshotRetention = null,
                 ?int $workerTimeoutMs = null,
                 ?int $workerMemoryMb = null,
+                bool $runEnrichers = false,
             ): ResultEnvelope {
                 // Written during a scan, with an old mtime, so only the
                 // directory holding it shows the change.

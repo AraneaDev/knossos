@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Discovery\AllowedRoots;
+use Knossos\Discovery\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectPathResolver;
 use Knossos\Scan\ProjectScanner;
@@ -60,11 +61,12 @@ final readonly class LedgeredScanner implements ProjectScanner
      * A ledgered scan with a {@see ProjectScanService} of `$roots` as the scan itself.
      *
      * @param AllowedRoots|list<string> $roots
+     * @param ?EnrichersFile $enrichers the installation's enrichers; null for none
      */
-    public static function local(PDO $pdo, string $installationRoot, AllowedRoots|array $roots, ?array $policies = null): self
+    public static function local(PDO $pdo, string $installationRoot, AllowedRoots|array $roots, ?array $policies = null, ?EnrichersFile $enrichers = null): self
     {
         $allowed = AllowedRoots::of($roots);
-        return new self($pdo, new ProjectScanService($pdo, $installationRoot, $allowed), $allowed, $policies);
+        return new self($pdo, new ProjectScanService($pdo, $installationRoot, $allowed, enrichers: $enrichers), $allowed, $policies);
     }
 
     /**

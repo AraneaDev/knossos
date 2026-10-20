@@ -55,6 +55,13 @@ final class Protocol
      */
     public const CAPABILITY_ADDED_FILES_AFFECT_ALL = 'added_files_affect_all';
 
+    /**
+     * An external enricher declaring this says it takes the native nodes of a
+     * scan as input and contributes `ext:` facts about them. Workers of a
+     * language never declare it.
+     */
+    public const CAPABILITY_ENRICHMENT = 'enrichment';
+
     public const METHOD_INITIALIZE = 'initialize';
     public const METHOD_SCAN = 'scan';
     public const METHOD_CANCEL = 'cancel';

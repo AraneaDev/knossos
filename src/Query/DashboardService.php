@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use Knossos\Query\Drift\DriftCounts;
 use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
@@ -232,7 +233,7 @@ final readonly class DashboardService
         }
         $statement = $this->pdo->prepare(
             'SELECT e.target_id, COUNT(DISTINCT e.file_id) AS files FROM edges e JOIN nodes n ON n.id = e.target_id ' .
-            'WHERE e.file_id IS NOT NULL AND e.file_id IS NOT n.file_id AND e.target_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') GROUP BY e.target_id',
+            'WHERE e.file_id IS NOT NULL AND e.file_id IS NOT n.file_id AND ' . EnrichedFacts::excludeSql('e') . ' AND e.target_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') GROUP BY e.target_id',
         );
         $statement->execute($ids);
         $counts = [];
@@ -381,7 +382,7 @@ final readonly class DashboardService
             'SELECT target_id, relative_path FROM (SELECT e.target_id, f.relative_path, ' .
             'ROW_NUMBER() OVER (PARTITION BY e.target_id ORDER BY COUNT(*) DESC, f.relative_path) AS nth ' .
             'FROM edges e JOIN nodes n ON n.id = e.target_id JOIN files f ON f.id = e.file_id ' .
-            'WHERE e.file_id IS NOT NULL AND e.file_id IS NOT n.file_id AND e.target_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ' .
+            'WHERE e.file_id IS NOT NULL AND e.file_id IS NOT n.file_id AND ' . EnrichedFacts::excludeSql('e') . ' AND e.target_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ' .
             'GROUP BY e.target_id, e.file_id) WHERE nth <= ? ORDER BY target_id, nth',
         );
         foreach ([...$ids, self::TOP_DEPENDENTS] as $position => $value) {

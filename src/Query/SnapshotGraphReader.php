@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotBounds;
 use Knossos\Store\SnapshotPayload;
 use PDO;
@@ -74,11 +75,13 @@ final readonly class SnapshotGraphReader
             $select = array_map(static fn(string $column): string => $table === 'edges' && $column === 'attributes_json'
                 ? sprintf("CASE WHEN kind IN ('%s') THEN attributes_json END AS attributes_json", implode("', '", ErasedTypeEdge::KINDS))
                 : $column, $columns);
-            $statement = $this->pdo->prepare(sprintf('SELECT %s FROM %s WHERE project_id = :project ORDER BY +id LIMIT %d', implode(', ', $select), $table, self::ROW_LIMIT + 1));
+            // Native rows only, as the archive stores them ({@see EnrichedFacts}).
+            $native = EnrichedFacts::nativeCondition($table);
+            $statement = $this->pdo->prepare(sprintf('SELECT %s FROM %s WHERE project_id = :project%s ORDER BY +id LIMIT %d', implode(', ', $select), $table, $native, self::ROW_LIMIT + 1));
             $statement->execute(['project' => $projectId]);
             $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
             if (count($rows) > self::ROW_LIMIT) {
-                $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project', $table));
+                $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project%s', $table, $native));
                 $count->execute(['project' => $projectId]);
                 throw new SnapshotTooLargeException($scanId, $table, (int) $count->fetchColumn(), self::ROW_LIMIT);
             }

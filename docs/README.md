@@ -102,6 +102,8 @@ What to ask the graph for one kind of task, through the MCP tools or the CLI.
   scanner worker read and write on the wire?
 - [Scanner and enricher SDK](reference/scanner-sdk.md): how do I add a scanner
   for another language?
+- [External enrichers](reference/enrichers.md): how do I add project-specific
+  facts from my own tool to a scanned graph?
 
 Generated pages are rebuilt by `php tools/generate-reference.php`. Edit the
 help text and schemas they come from, never the Markdown.

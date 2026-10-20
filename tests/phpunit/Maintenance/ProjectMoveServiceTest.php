@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Maintenance;
 
 use InvalidArgumentException;
+use Knossos\Discovery\EnrichersFile;
 use Knossos\Maintenance\ProjectMoveService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Store\SqliteGraphRepository;
@@ -63,6 +64,31 @@ final class ProjectMoveServiceTest extends KnossosTestCase
             self::assertSame($oldId, $result->data['removed_project']);
         } finally {
             $this->removeTempTree($newRoot);
+        }
+    }
+
+    /** A move is asked for, so its scan of the new root is explicit and runs the project's enrichers. */
+    #[Group('maintenance')]
+    public function testTheMoveScanRunsTheProjectsEnrichers(): void
+    {
+        [$pdo, , $newRoot] = $this->movedCheckout();
+        $installation = sys_get_temp_dir() . '/knossos-stale-move-enrichers-' . bin2hex(random_bytes(6));
+        mkdir($installation);
+        try {
+            $marker = $installation . '/started';
+            file_put_contents($installation . '/enrichers.json', json_encode(['enrichers' => [[
+                'name' => 'fixture',
+                'command' => [PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/enrichers/fixture-enricher.php', 'ok', $marker],
+            ]]], JSON_UNESCAPED_SLASHES));
+            file_put_contents($newRoot . '/knossos.json', '{"version": 1, "enrichers": ["fixture"]}');
+            $scanner = new ProjectScanService($pdo, self::repositoryRoot(), [$newRoot], enrichers: new EnrichersFile($installation . '/enrichers.json'));
+
+            $this->service($pdo)->move(self::OLD_ROOT, $newRoot, true, $scanner);
+
+            self::assertFileExists($marker);
+        } finally {
+            $this->removeTempTree($newRoot);
+            $this->removeTempTree($installation);
         }
     }
 

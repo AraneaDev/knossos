@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
@@ -285,10 +286,10 @@ final class CandidateGraphFacts
         }
     }
 
-    /** The kind and confidence conditions every degree counts under, as SQL. */
+    /** The kind and confidence conditions every degree counts under, as SQL, over native edges only. */
     private function edgeFilter(): string
     {
-        return sprintf('AND kind IN (%s) ', self::placeholders($this->edgeKinds))
+        return 'AND ' . EnrichedFacts::excludeSql('edges') . ' ' . sprintf('AND kind IN (%s) ', self::placeholders($this->edgeKinds))
             . "AND CASE confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
     }
 

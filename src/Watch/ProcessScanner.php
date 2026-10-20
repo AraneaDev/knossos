@@ -56,7 +56,8 @@ final readonly class ProcessScanner
     /** Runs one scan of `$root` in `$mode` and reads back its result. */
     public function scan(string $root, ?string $mode = null, ?CancellationToken $cancellation = null): ResultEnvelope
     {
-        $argv = [PHP_BINARY, $this->installationRoot . '/bin/knossos', 'scan', $root, '--db=' . $this->databasePath, '--json'];
+        // A watcher's scan is a background scan: it carries enricher facts over rather than running enrichers.
+        $argv = [PHP_BINARY, $this->installationRoot . '/bin/knossos', 'scan', $root, '--db=' . $this->databasePath, '--json', '--no-enrichers'];
         if ($mode !== null) {
             $argv[] = '--mode=' . $mode;
         }

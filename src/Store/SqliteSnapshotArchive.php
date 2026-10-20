@@ -12,7 +12,9 @@ use PDO;
  *
  * Captures exactly the tables a scan writes, handed in by the repository that
  * owns that list, so a snapshot can never silently miss a table a scan
- * produces. Their order fixes the key order of every stored payload.
+ * produces. Their order fixes the key order of every stored payload. Enriched
+ * nodes and edges stay out ({@see EnrichedFacts}): a snapshot records native
+ * facts, so a gate, a diff or a trend never moves with an enricher's output.
  */
 final class SqliteSnapshotArchive
 {
@@ -109,7 +111,7 @@ final class SqliteSnapshotArchive
     private function overRowLimit(string $projectId): bool
     {
         foreach ($this->capturedTables as $table) {
-            $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project', $table));
+            $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project%s', $table, EnrichedFacts::nativeCondition($table)));
             $count->execute(['project' => $projectId]);
             if ((int) $count->fetchColumn() > $this->maxRowsPerTable) {
                 return true;
@@ -136,7 +138,7 @@ final class SqliteSnapshotArchive
         $factCount = 0;
         foreach ($this->capturedTables as $index => $table) {
             $order = $table === 'boundary_memberships' ? 'boundary_id, node_id' : 'id';
-            $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project ORDER BY %s', $table, $order));
+            $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project%s ORDER BY %s', $table, EnrichedFacts::nativeCondition($table), $order));
             $statement->execute(['project' => $projectId]);
             $writer->write(sprintf('%s"%s":[', $index === 0 ? '' : ',', $table));
             $first = true;

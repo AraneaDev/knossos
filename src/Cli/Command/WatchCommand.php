@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\ProjectDatabaseLocator;
+use Knossos\Discovery\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Scan\ProjectScanService;
@@ -51,7 +52,7 @@ final class WatchCommand implements CliCommand
         if ($context->options->flag($options, 'shared')) {
             return $this->shared($root, $options, $context);
         }
-        $scanner = new ProjectScanService($context->database(), $context->installationRoot(), [$root]);
+        $scanner = new ProjectScanService($context->database(), $context->installationRoot(), [$root], enrichers: EnrichersFile::forDatabase($context->databasePath()));
         $observer = static function (array $event): void {
             fwrite(STDERR, json_encode($event, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . PHP_EOL);
         };

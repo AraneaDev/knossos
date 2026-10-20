@@ -439,10 +439,20 @@ final class WorkerProcessSupervisor implements ProcessSupervisorInterface
      */
     private function resolveEnvironment(): array
     {
-        if ($this->environment !== null) {
-            return $this->environment;
-        }
+        return $this->environment ?? self::defaultEnvironment();
+    }
 
+    /**
+     * The allow-listed environment a worker gets when its caller supplies none.
+     *
+     * Public so a caller that adds variables of its own (an external enricher's
+     * configured `env`) starts from the same allow-list rather than from the
+     * whole parent environment.
+     *
+     * @return array<string, string>
+     */
+    public static function defaultEnvironment(): array
+    {
         $allowed = [
             'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL',
             'LANG', 'LC_ALL', 'LC_CTYPE',
