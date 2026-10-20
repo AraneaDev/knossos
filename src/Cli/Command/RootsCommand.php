@@ -9,6 +9,7 @@ use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\RootsFile;
+use Knossos\Runtime\RuntimeFactory;
 
 /**
  * Grants a project directory scan access, without hand-editing roots.json.
@@ -77,7 +78,7 @@ final class RootsCommand implements CliCommand
         $configPath = AllowedRoots::defaultConfigPath($context->databasePath());
         $fresh = !is_file($configPath);
         $json = $context->options->flag($options, 'json');
-        $named = self::locationWasNamed($context);
+        $named = self::locationIsKnown($context);
         // The natural way to grant a project is to run this from inside it,
         // and that is exactly the working directory that resolves the roots
         // file to a brand-new store under the project being granted. The
@@ -201,18 +202,23 @@ final class RootsCommand implements CliCommand
     }
 
     /**
-     * Whether somebody stated where the roots file lives.
+     * Whether the roots file's location is known rather than guessed from the working directory.
      *
-     * Three things count, and they are the three {@see AllowedRoots::defaultConfigPath()}
-     * and {@see \Knossos\Runtime\RuntimeFactory::defaultDatabasePath()} consult
-     * before falling back: `KNOSSOS_ROOTS_FILE`, which names the file outright;
+     * Four things make it known. Three are somebody naming it, and they are
+     * the three {@see AllowedRoots::defaultConfigPath()} and
+     * {@see RuntimeFactory::defaultDatabasePath()} consult before falling
+     * back: `KNOSSOS_ROOTS_FILE`, which names the file outright;
      * `KNOSSOS_DATA_DIR`, which names the directory it sits in; and `--db`,
-     * which names the database it sits beside. With none of them the location
-     * is whatever the working directory implies, which is rarely the file a
-     * running server reads and is therefore worth disclosing rather than
-     * asserting a restart-free effect the caller cannot rely on.
+     * which names the database it sits beside. The fourth is the
+     * installation's home graph, `~/.knossos/knossos.sqlite`, which the
+     * runtime picks when it exists: `tools/install` pins the server and hooks
+     * to it, so the file beside it is the one the server reads. With none of
+     * them the location is whatever the working directory implies, which is
+     * rarely the file a running server reads and is therefore worth
+     * disclosing rather than asserting a restart-free effect the caller
+     * cannot rely on.
      */
-    public static function locationWasNamed(CliCommandContext $context): bool
+    public static function locationIsKnown(CliCommandContext $context): bool
     {
         foreach (['KNOSSOS_ROOTS_FILE', 'KNOSSOS_DATA_DIR'] as $variable) {
             $value = getenv($variable);
@@ -220,7 +226,11 @@ final class RootsCommand implements CliCommand
                 return true;
             }
         }
+        if ($context->databasePathWasGiven()) {
+            return true;
+        }
+        $home = RuntimeFactory::homeDatabasePath();
 
-        return $context->databasePathWasGiven();
+        return $home !== null && $context->databasePath() === $home;
     }
 }

@@ -222,16 +222,16 @@ final class EnricherCommand implements CliCommand
         return $present ? CliCommand::EXIT_OK : CliCommand::EXIT_GATE_FAILED;
     }
 
-    /** Whether somebody named the file's location (`named`) or it came from the working directory. */
+    /** Whether the file's location is known (`named`, including the home graph) or it came from the working directory. */
     private static function source(CliCommandContext $context): string
     {
-        return RootsCommand::locationWasNamed($context) ? 'named' : 'working-directory';
+        return RootsCommand::locationIsKnown($context) ? 'named' : 'working-directory';
     }
 
     /** The warning, on a line of its own, when the file's location came from the working directory; else nothing. */
     private static function disclosure(CliCommandContext $context): string
     {
-        return RootsCommand::locationWasNamed($context) ? '' : PHP_EOL . RootsCommand::WORKING_DIRECTORY_WARNING;
+        return RootsCommand::locationIsKnown($context) ? '' : PHP_EOL . RootsCommand::WORKING_DIRECTORY_WARNING;
     }
 
     /**

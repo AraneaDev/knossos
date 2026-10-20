@@ -11,6 +11,7 @@ use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\EnricherCommand;
+use Knossos\Cli\Command\RootsCommand;
 use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\EnrichersFile;
 use Knossos\Runtime\RuntimeFactory;
@@ -256,9 +257,33 @@ final class EnricherCommandTest extends KnossosTestCase
         }
 
         assertContains($this->tempDir . '/.knossos/enrichers.json', $added);
-        assertContains('came from the working directory', $added);
+        assertContains(RootsCommand::WORKING_DIRECTORY_WARNING, $added);
         assertContains('server_info', $added);
         assertSame('working-directory', json_decode($removed, true, 16, JSON_THROW_ON_ERROR)['enrichers_file_source']);
+    }
+
+    public function testTheInstallationsHomeGraphNeedsNoWarning(): void
+    {
+        $home = $this->tempDir . '/home';
+        mkdir($home . '/.knossos', 0o700, true);
+        touch($home . '/.knossos/knossos.sqlite');
+        $previousCwd = (string) getcwd();
+        $previousHome = getenv('HOME');
+        putenv('KNOSSOS_DATA_DIR');
+        putenv('HOME=' . $home);
+        chdir($this->tempDir);
+        try {
+            $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), null);
+            [, $added] = $this->invoke(['add', 'endpoints', '--', 'x'], $context);
+            [, $removed] = $this->invoke(['remove', 'endpoints', '--json'], $context);
+        } finally {
+            chdir($previousCwd);
+            putenv($previousHome === false ? 'HOME' : 'HOME=' . $previousHome);
+        }
+
+        assertContains($home . '/.knossos/enrichers.json', $added);
+        assertSame(false, str_contains($added, RootsCommand::WORKING_DIRECTORY_WARNING));
+        assertSame('named', json_decode($removed, true, 16, JSON_THROW_ON_ERROR)['enrichers_file_source']);
     }
 
     public function testANamedLocationNeedsNoWarning(): void
