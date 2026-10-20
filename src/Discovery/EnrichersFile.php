@@ -27,26 +27,6 @@ final readonly class EnrichersFile
     }
 
     /**
-     * The valid definitions, keyed by name, in file order.
-     *
-     * @return array<string, EnricherDefinition>
-     */
-    public function read(): array
-    {
-        return $this->load()[0];
-    }
-
-    /**
-     * One line per entry or file that was skipped, naming the entry index.
-     *
-     * @return list<string>
-     */
-    public function problems(): array
-    {
-        return $this->load()[1];
-    }
-
-    /**
      * Read the file once and sort its entries into definitions and problems.
      *
      * A caller that wants both reads the file once through this method rather
