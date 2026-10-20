@@ -158,7 +158,7 @@ List every usage site of a symbol with file:line evidence: one row per occurrenc
 | `refresh_if_stale` | boolean | no | default=true |
 | `project_id` | string | yes | minLength=1 |
 | `symbol` | string | yes | minLength=1 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=500; default=100 |
 | `exclude_tests` | boolean | no | default=false |
@@ -273,7 +273,7 @@ Answer 'how does A reach B?' Traces evidence-backed static paths between two com
 | `to` | string | yes | minLength=1 |
 | `max_depth` | integer | no | minimum=1; maximum=12; default=6 |
 | `max_paths` | integer | no | minimum=1; maximum=20; default=5 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=3000 |
 | `both_directions` | boolean | no | default=false |
@@ -293,7 +293,7 @@ Before editing a symbol, find everything that depends on it. Answers 'what break
 | `symbol` | string | yes | minLength=1 |
 | `max_depth` | integer | no | minimum=1; maximum=8; default=6 |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 | `seed_members` | boolean | no | default=true |
@@ -311,7 +311,7 @@ Find circular dependencies. Use before a refactor to see which modules are tangl
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 |
 | `refresh_if_stale` | boolean | no | default=true |
 | `project_id` | string | yes | minLength=1 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=100; default=20 |
 | `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |
@@ -332,7 +332,7 @@ Rank the structural hotspots, hubs, and likely-dead code. Use to decide where cl
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 |
 | `refresh_if_stale` | boolean | no | default=true |
 | `project_id` | string | yes | minLength=1 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `limit` | integer | no | minimum=1; maximum=100; default=20 |
 | `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |
@@ -398,7 +398,7 @@ Blend static blast radius with recent Git churn to prioritize review. Use when y
 | `max_commits` | integer | no | minimum=1; maximum=5000; default=500 |
 | `max_depth` | integer | no | minimum=1; maximum=8; default=4 |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 
@@ -419,7 +419,7 @@ Map changed files to the components they affect, to scope review or tests to wha
 | `base_ref` | string | no | minLength=1; maxLength=200 |
 | `max_depth` | integer | no | minimum=1; maximum=8; default=4 |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 
@@ -440,7 +440,7 @@ Map a change set to the test files that statically exercise it, ranked by distan
 | `base_ref` | string | no | minLength=1; maxLength=200 |
 | `max_depth` | integer | no | minimum=1; maximum=8; default=4 |
 | `limit` | integer | no | minimum=1; maximum=100; default=100 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |
 
@@ -496,7 +496,7 @@ Render the current graph as Mermaid or PlantUML source. Use to embed an up-to-da
 | `project_id` | string | yes | minLength=1 |
 | `format` | string | no | default="mermaid"; enum=mermaid, plantuml |
 | `boundary` | string | no | minLength=1 |
-| `edge_kinds` | array | no | maxItems=22 |
+| `edge_kinds` | array | no | maxItems=23 |
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `direction` | string | no | default="LR"; enum=LR, TB |
 | `max_nodes` | integer | no | minimum=1; maximum=400; default=200 |

@@ -702,6 +702,7 @@ php	tests/phpunit/Query/QueryDefaultsAgreementTest.php
 php	tests/phpunit/Query/QueryFacadeDocblockTest.php
 php	tests/phpunit/Query/QueryTest.php
 php	tests/phpunit/Query/RefreshPolicyTest.php
+php	tests/phpunit/Query/RepresentsTraversalTest.php
 php	tests/phpunit/Query/RescanServiceTest.php
 php	tests/phpunit/Query/ReviewDiffReportTest.php
 php	tests/phpunit/Query/ReviewDiffTest.php
@@ -940,6 +941,7 @@ php	tests/phpunit/Support/BusyWriteStatement.php
 php	tests/phpunit/Support/CountingDriftOracle.php
 php	tests/phpunit/Support/CountingStreamWrapper.php
 php	tests/phpunit/Support/EndpointRouteFixtures.php
+php	tests/phpunit/Support/EnricherFlowScans.php
 php	tests/phpunit/Support/Fixtures.php
 php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/Processes.php

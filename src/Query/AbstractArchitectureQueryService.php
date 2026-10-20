@@ -22,23 +22,30 @@ use PDOStatement;
  */
 abstract readonly class AbstractArchitectureQueryService
 {
+    /**
+     * The edge an enricher draws from its record to the native symbol that record
+     * stands for. Flow and impact cross it as an identity step, not as a call.
+     */
+    public const IDENTITY_EDGE_KIND = 'represents';
     protected const FLOW_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs',
         'injects', 'binds', 'observes', 'depends_on', 'imports', 'uses_middleware',
-        'calls_endpoint', 'resolves_to', 'launches',
+        'calls_endpoint', 'resolves_to', 'launches', self::IDENTITY_EDGE_KIND,
     ];
     /** The relationships that count as one component depending on another, for impact; a policy check uses {@see self::POLICY_EDGE_KINDS}. */
     public const IMPACT_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs', 'injects',
         'binds', 'observes', 'depends_on', 'imports', 'uses_middleware', 'references',
         'extends', 'implements', 'returns', 'exports', 're_exports', 'uses_trait',
-        'calls_endpoint', 'resolves_to', 'launches',
+        'calls_endpoint', 'resolves_to', 'launches', self::IDENTITY_EDGE_KIND,
     ];
     /**
      * What a policy check and the boundary matrix count by default: the impact kinds but
-     * `launches`. Starting a worker in another process is how code is meant to cross an
-     * out-of-process boundary, not a dependency on its code; a policy that means to forbid
-     * it names the kind in `edge_kinds`.
+     * `launches` and `represents`. Starting a worker in another process is how code is
+     * meant to cross an out-of-process boundary, not a dependency on its code; a policy
+     * that means to forbid it names the kind in `edge_kinds`. A `represents` link is an
+     * enricher's claim about which native symbol its record stands for, and a policy
+     * must not judge native code by it.
      */
     public const POLICY_EDGE_KINDS = [
         'routes_to', 'calls', 'dispatches', 'handles', 'listens_to', 'constructs', 'injects',
@@ -66,6 +73,25 @@ abstract readonly class AbstractArchitectureQueryService
     protected static function isErasedTypeEdge(array $edge): bool
     {
         return ErasedTypeEdge::matches($edge);
+    }
+
+    /**
+     * What a hop along this edge kind is: `identity` for a `represents` link,
+     * which joins two records of one thing, `relation` for every other edge.
+     */
+    protected static function hopStep(string $kind): string
+    {
+        return $kind === self::IDENTITY_EDGE_KIND ? 'identity' : 'relation';
+    }
+
+    /**
+     * The explanation of an identity hop, worded so it cannot be read as a call.
+     *
+     * @param array<string, mixed> $edge An edge row carrying `source_name`, `target_name`, `confidence` and `origin`.
+     */
+    protected static function identityExplanation(array $edge): string
+    {
+        return sprintf('%s stands for %s (identity, %s, %s)', $edge['source_name'], $edge['target_name'], $edge['confidence'], $edge['origin']);
     }
 
     /**
