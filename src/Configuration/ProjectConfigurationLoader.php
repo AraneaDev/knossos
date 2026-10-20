@@ -30,7 +30,10 @@ final class ProjectConfigurationLoader
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
     public const FRAMEWORKS = ['laravel', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
-    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'web_roots'];
+    /** What an enricher name may look like; a path, a command line or a flag never matches. */
+    public const ENRICHER_NAME_PATTERN = '/^[a-z][a-z0-9_-]{0,63}$/';
+
+    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'web_roots', 'enrichers'];
     public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
 
     /**
@@ -173,7 +176,13 @@ final class ProjectConfigurationLoader
         }
         $suppressions = self::stringList($data['dead_code_suppressions'] ?? [], 'dead_code_suppressions', 200);
         $webRoots = self::webRoots($data['web_roots'] ?? []);
-        return new ProjectConfiguration(basename($path), $ignores, $maxFiles, $maxBytes, $workerTimeoutMs, $workerMemoryMb, $boundaries, array_values(array_unique($frameworks)), $retention, $policies, $typedBudgets, $suppressions, $watchScanTimeoutMs, $refreshBudgetMs, $webRoots);
+        $enrichers = self::stringList($data['enrichers'] ?? [], 'enrichers', 32);
+        foreach ($enrichers as $enricher) {
+            if (preg_match(self::ENRICHER_NAME_PATTERN, $enricher) !== 1) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: enricher ' . $enricher . ' is not a name. A project requests an installed enricher by name and never carries a command.');
+            }
+        }
+        return new ProjectConfiguration(basename($path), $ignores, $maxFiles, $maxBytes, $workerTimeoutMs, $workerMemoryMb, $boundaries, array_values(array_unique($frameworks)), $retention, $policies, $typedBudgets, $suppressions, $watchScanTimeoutMs, $refreshBudgetMs, $webRoots, array_values(array_unique($enrichers)));
     }
 
     /**

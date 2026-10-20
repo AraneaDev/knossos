@@ -162,6 +162,13 @@
       "items": { "type": "string", "minLength": 1 },
       "description": "Canonical names (exact, or prefix with a trailing *) never to report as dead-code candidates."
     },
+    "enrichers": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+      "description": "Names of enrichers the installation defines in enrichers.json, whose facts this project wants merged into its graph. A name only: the project never carries a command."
+    },
     "web_roots": {
       "type": "object",
       "maxProperties": 50,

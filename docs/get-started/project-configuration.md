@@ -40,6 +40,7 @@ Unknown keys are an error. These are the keys:
 | `quality_budgets`        | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                     |
 | `dead_code_suppressions` | up to 200 strings               | Components to leave out of the dead-code candidates.          |
 | `web_roots`              | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
+| `enrichers`              | up to 32 names                  | Installed enrichers whose facts this project wants.           |
 
 ### Ignores
 
@@ -211,6 +212,21 @@ warning; it is never looked for anywhere else.
 
 `web_roots` is new in Knossos 0.33.0. An older Knossos rejects a configuration
 that uses it with `PROJECT_CONFIG_UNKNOWN_KEY`.
+
+### Enrichers
+
+```json
+{
+    "version": 1,
+    "enrichers": ["acme-rest"]
+}
+```
+
+Each entry names an enricher that the installation defines in
+`enrichers.json`, beside `roots.json` in the data directory. A name starts with
+a lowercase letter and holds lowercase letters, digits, `_` and `-`, up to 64
+characters. A path, a command line or an uppercase name is rejected: the
+project requests an enricher by name, and never carries a command to run.
 
 ## Precedence
 

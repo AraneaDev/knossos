@@ -17,6 +17,7 @@ final readonly class ProjectConfiguration
      * @param int|null $watchScanTimeoutMs how long one scan of the shared watcher may run; null for its default
      * @param int|null $refreshBudgetMs how long refresh_if_stale may rescan inside a query, 0 for never; null for its default
      * @param array<string, string> $webRoots URL path prefix (`/static/`) => the project folder a web server serves it from (`web/public/`)
+     * @param list<string> $enrichers names of installation-defined enrichers the project asks for
      */
     public function __construct(
         public ?string $path = null,
@@ -34,5 +35,6 @@ final readonly class ProjectConfiguration
         public ?int $watchScanTimeoutMs = null,
         public ?int $refreshBudgetMs = null,
         public array $webRoots = [],
+        public array $enrichers = [],
     ) {}
 }
