@@ -19,11 +19,12 @@ use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\Fixtures;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\Group;
 
 #[Group('enrichment')]
 final class EnrichmentValidatorTest extends KnossosTestCase

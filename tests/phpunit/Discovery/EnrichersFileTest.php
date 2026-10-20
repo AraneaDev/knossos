@@ -6,13 +6,14 @@ namespace Knossos\Tests\Phpunit\Discovery;
 
 use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\EnrichersFile;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
 
 #[Group('enrichers-file')]
 final class EnrichersFileTest extends TestCase

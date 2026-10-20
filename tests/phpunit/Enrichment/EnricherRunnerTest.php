@@ -13,7 +13,6 @@ use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertFalse;
@@ -21,6 +20,8 @@ use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * One run of an external enricher over the worker protocol: what it is sent,

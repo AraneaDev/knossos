@@ -11,16 +11,17 @@ use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\Fixtures;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
-use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 #[Group('enrichment')]
 final class NativeNodeIndexTest extends KnossosTestCase
