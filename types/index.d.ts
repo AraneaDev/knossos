@@ -491,7 +491,9 @@ export type RingsState = { name: string; snapshot: string | null; phase: 'loadin
 /**
  * The `path-between` subcommand's answer, explain_flow's routes: from one
  * component to another, the strongest first, each its components and the
- * hops between them (kind, confidence, whether it is derived, such as an
+ * hops between them (kind, step (`identity` for a hop that is the same
+ * thing under another name), confidence, origin (`enricher` for a fact an
+ * external enricher added), whether it is derived, such as an
  * interface method to the one implementing it, its explanation, and where
  * the hop is written). `reversed` when only the other way had a route:
  * `from` and `to` stay as asked.
@@ -502,7 +504,7 @@ export type PathBetween = {
   from: RingItem | null
   to: RingItem | null
   reversed: boolean
-  routes: { nodes: RingItem[]; hops: { kind: string; confidence: string; derived?: boolean; explanation?: string; path: string | null; line: number | null }[] }[]
+  routes: { nodes: RingItem[]; hops: { kind: string; step?: string; confidence: string; origin?: string; derived?: boolean; explanation?: string; path: string | null; line: number | null }[] }[]
   truncated: boolean
   truncation_reasons?: string[]
 }

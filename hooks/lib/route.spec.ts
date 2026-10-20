@@ -143,5 +143,66 @@ describe("a route's hops", () => {
     const input = routeInput({ from: FROM.name, to: TO.name, snapshot: 's1', phase: 'done', answer }, FROM, TO, 0, ROOT)
     expect(input.routes[0]?.hops.map(h => [h.confidence, h.derived])).toEqual([['certain', false], ['probable', true]])
   })
-})
 
+  const enriched = {
+    nodes: [
+      { name: 'OrderList.vue', canonical: 'web/OrderList.vue', kind: 'file', boundary: null },
+      { name: '/task/search/', canonical: 'endpoint:/task/search/', kind: 'endpoint', boundary: null },
+      { name: 'urls.search', canonical: 'urls.search', kind: 'route', boundary: null },
+      { name: 'search_orders', canonical: 'views.search_orders', kind: 'function', boundary: null },
+    ],
+    hops: [
+      { kind: 'calls_endpoint', place: '', loc: null, confidence: 'probable', derived: false, step: 'relation', origin: 'enricher' },
+      { kind: 'represents', place: '', loc: null, confidence: 'probable', derived: false, step: 'identity', origin: 'enricher' },
+      { kind: 'calls', place: '', loc: null, confidence: 'certain', derived: false, step: 'relation', origin: 'native' },
+    ],
+  }
+
+  it('marks an enriched hop and draws an identity hop as same as, with its own arrow, in a narrow pane', () => {
+    const narrow = routeDiagram(enriched, 48, -1).rows.map(plainText)
+    expect(narrow.map(r => r.trim())).toEqual([
+      'OrderList.vue',
+      '↓ calls_endpoint · probable · enricher',
+      '/task/search/',
+      '⇓ same as · probable · enricher',
+      'urls.search',
+      '↓ calls',
+      'search_orders',
+    ])
+  })
+
+  it('draws an identity hop as a double line labelled same as in a wide pane', () => {
+    const wide = routeDiagram(enriched, 80, -1).rows.map(plainText)
+    const text = wide.join('\n')
+    expect(text).toContain('calls_endpoint · probable · enricher')
+    expect(text).toContain('same as · probable · enricher')
+    expect(text).not.toContain('represents')
+    // Only the identity hop's connector is doubled, and only along its straight stretch.
+    const doubled = wide.flatMap((r, y) => (r.includes('║') ? [y] : []))
+    const label = wide.findIndex(r => r.includes('same as'))
+    expect(doubled.length).toBeGreaterThan(0)
+    expect(doubled.every(y => Math.abs(y - label) <= 1)).toBe(true)
+    expect(text).not.toContain('┆')
+  })
+
+  it('reads the step and the origin from the answer', () => {
+    const answer: PathBetween = {
+      status: 'ok', from: node('App\\User::go'), to: node('App\\Adapter::run'), reversed: false, truncated: false,
+      routes: [{ nodes: [node('App\\User::go'), node('App\\Port::run'), node('App\\Adapter::run')], hops: [
+        { kind: 'calls_endpoint', step: 'relation', origin: 'enricher', confidence: 'probable', derived: false, path: null, line: null },
+        { kind: 'represents', step: 'identity', origin: 'enricher', confidence: 'probable', derived: false, path: null, line: null },
+      ] }],
+    }
+    const input = routeInput({ from: FROM.name, to: TO.name, snapshot: 's1', phase: 'done', answer }, FROM, TO, 0, ROOT)
+    expect(input.routes[0]?.hops.map(h => [h.step, h.origin])).toEqual([['relation', 'enricher'], ['identity', 'enricher']])
+  })
+
+  it('treats a hop without a step or an origin, from an older core, as a plain relation', () => {
+    const answer: PathBetween = {
+      status: 'ok', from: node('App\\User::go'), to: node('App\\Port::run'), reversed: false, truncated: false,
+      routes: [{ nodes: [node('App\\User::go'), node('App\\Port::run')], hops: [{ kind: 'calls', confidence: 'certain', path: null, line: null }] }],
+    }
+    const input = routeInput({ from: FROM.name, to: TO.name, snapshot: 's1', phase: 'done', answer }, FROM, TO, 0, ROOT)
+    expect(routeDiagram(input.routes[0]!, 48, -1).rows.map(plainText).join('\n')).toContain('↓ calls')
+  })
+})

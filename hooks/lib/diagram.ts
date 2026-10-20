@@ -137,6 +137,18 @@ export function dotted(c: Canvas, x: number, y: number): void {
 }
 
 /**
+ * The straight vertical stretch of a connector at `x`, `y` drawn doubled (`║`):
+ * a step that says its two ends are one thing under two names, not that one
+ * reaches the other. A cell that is no plain vertical line is left as it is,
+ * as {@link dotted} leaves it.
+ */
+export function doubled(c: Canvas, x: number, y: number): void {
+  const cell = at(c, x, y)
+  if (cell === undefined || cell.kind !== 'line' || cell.mask !== (UP | DOWN)) return
+  c.grid[y]![x] = { ch: '║', kind: 'text', mask: 0, style: cell.style }
+}
+
+/**
  * A connector through `points` (each turn a point), each leg straight along
  * a row or a column. With `arrow`, its last point is an arrowhead pointing the
  * way the last leg runs.
