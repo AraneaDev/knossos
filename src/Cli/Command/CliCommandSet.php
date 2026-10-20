@@ -40,6 +40,7 @@ final readonly class CliCommandSet
             new BriefCommand(),
             new SessionDiffCommand(),
             new RootsCommand(),
+            new EnricherCommand(),
             new PluginCommand($version),
             new MaintenanceCommand(),
             new ServeCommand(),

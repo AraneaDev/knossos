@@ -82,6 +82,7 @@ php	src/Cli/CliOptionParser.php
 php	src/Cli/Command/BriefCommand.php
 php	src/Cli/Command/BundleCommand.php
 php	src/Cli/Command/CliCommandSet.php
+php	src/Cli/Command/EnricherCommand.php
 php	src/Cli/Command/MaintenanceCommand.php
 php	src/Cli/Command/MetaCommand.php
 php	src/Cli/Command/PluginCommand.php
@@ -466,6 +467,7 @@ php	tests/phpunit/Cli/DependencyFanoutTest.php
 php	tests/phpunit/Cli/DockerIgnoreTest.php
 php	tests/phpunit/Cli/DocstringCoverageTest.php
 php	tests/phpunit/Cli/DocumentationTest.php
+php	tests/phpunit/Cli/EnricherCommandTest.php
 php	tests/phpunit/Cli/GateReportTest.php
 php	tests/phpunit/Cli/GitIgnoreTest.php
 php	tests/phpunit/Cli/MoveProjectCommandTest.php

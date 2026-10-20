@@ -223,7 +223,9 @@ that uses it with `PROJECT_CONFIG_UNKNOWN_KEY`.
 ```
 
 Each entry names an enricher that the installation defines in
-`enrichers.json`, beside `roots.json` in the data directory. A name starts with
+`enrichers.json`, beside `roots.json` in the data directory, with
+`knossos enricher add` or by hand (see
+[External enrichers](../reference/enrichers.md#registering-an-enricher)). A name starts with
 a lowercase letter and holds lowercase letters, digits, `_` and `-`, up to 64
 characters. A path, a command line or an uppercase name is rejected: the
 project requests an enricher by name, and never carries a command to run.

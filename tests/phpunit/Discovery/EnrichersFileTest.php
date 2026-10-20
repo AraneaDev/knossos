@@ -8,6 +8,7 @@ use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\EnrichersFile;
 
 use function PHPUnit\Framework\assertCount;
+use function PHPUnit\Framework\assertEquals;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
 
@@ -166,5 +167,47 @@ final class EnrichersFileTest extends TestCase
         putenv('KNOSSOS_ROOTS_FILE');
 
         assertSame('/d/enrichers.json', EnrichersFile::forDatabase('/d/knossos.sqlite')->path);
+    }
+
+    public function testWrittenDefinitionsReadBackUnchanged(): void
+    {
+        $file = new EnrichersFile($this->directory . '/enrichers.json');
+        $written = [
+            new EnricherDefinition('acme-rest', ['python3', '/opt/m.py'], 60, ['A' => '1'], ['method', 'route']),
+            new EnricherDefinition('plain', ['x']),
+        ];
+
+        $file->write($written);
+
+        [$definitions, $problems] = $file->load();
+        assertSame([], $problems);
+        assertEquals(['acme-rest' => $written[0], 'plain' => $written[1]], $definitions);
+        $decoded = json_decode((string) file_get_contents($file->path), true, 16, JSON_THROW_ON_ERROR);
+        assertSame(['name', 'command', 'timeout_seconds', 'env', 'input_node_kinds'], array_keys($decoded['enrichers'][0]));
+        assertSame('{}', json_encode(json_decode((string) file_get_contents($file->path))->enrichers[1]->env));
+    }
+
+    public function testTheWriteIsAtomicAndOwnerOnly(): void
+    {
+        // The env values may hold credentials, so the file is never readable
+        // by anyone else, and a write never leaves its temporary file behind.
+        $file = $this->fileWith('{"enrichers":[]}');
+        chmod($file->path, 0o644);
+
+        $file->write([new EnricherDefinition('plain', ['x'])]);
+
+        assertSame(0o600, fileperms($file->path) & 0o777);
+        assertSame(['enrichers.json'], array_values(array_diff(scandir($this->directory) ?: [], ['.', '..'])));
+    }
+
+    public function testWritingCreatesTheDirectory(): void
+    {
+        $file = new EnrichersFile($this->directory . '/enrichers.json');
+        rmdir($this->directory);
+
+        $file->write([new EnricherDefinition('plain', ['x'])]);
+
+        assertSame(['plain'], array_keys($file->read()));
+        assertSame(0o700, fileperms($this->directory) & 0o777);
     }
 }

@@ -161,6 +161,10 @@ Usage:
                 (roots also come from KNOSSOS_ALLOWED_ROOTS and the roots
                  file beside the database, re-read on every request)
   knossos allow-root <path> [--execute]
+  knossos enricher list [--db=FILE] [--json]
+  knossos enricher add <name> [--timeout=N] [--env=NAME=VALUE]... [--kinds=a,b]
+                       [--replace] [--db=FILE] [--json] -- <command> [args...]
+  knossos enricher remove <name> [--db=FILE] [--json]
   knossos web [path] [--port=N] [--no-open] [--editor=<command>]
                 (the pane in a browser tab; runs until Ctrl-C, needs Node 24+)
 
