@@ -26,6 +26,9 @@ final class WorkerException extends RuntimeException
      *        told (null)
      * @param ?string $frameDescription for a frame that is not a file's answer,
      *        what it was, as a clause ("it was the worker's response to the request")
+     * @param ?int $exitCode for WORKER_EXITED, the status the worker exited
+     *        with on its own, 0 for a clean exit. Null when a signal ended it
+     *        or the status could no longer be read.
      */
     public function __construct(
         public readonly string $diagnosticCode,
@@ -34,6 +37,7 @@ final class WorkerException extends RuntimeException
         public readonly ?int $terminatingSignal = null,
         public readonly ?bool $frameIsAFilesAnswer = null,
         public readonly ?string $frameDescription = null,
+        public readonly ?int $exitCode = null,
     ) {
         parent::__construct($message, previous: $previous);
     }
