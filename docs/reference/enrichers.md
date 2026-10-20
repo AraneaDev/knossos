@@ -145,10 +145,13 @@ output.
 `end_line`), and the path must be a file this scan discovered. A diagnostic that
 cites an undiscovered file keeps its message and loses the citation.
 
-**Origin and confidence.** Every enriched fact gets origin `enricher`, whatever
-you declare, so you may leave `origin` out. Confidence `certain` is reserved for
-native facts: a declared `certain` is lowered to `probable`, and a missing
-confidence becomes `probable`. `possible` stays `possible`.
+**Origin and confidence.** The
+[contribution schema](../../schemas/scanner/v1/contribution.schema.json) requires
+`origin`, `confidence`, `evidence` and `attributes` on every node and edge.
+Send `"origin": "enricher"`, and an `attributes` object, empty when you have
+nothing to add. Every enriched fact ends up with origin `enricher` whatever you
+declare. Confidence `certain` is reserved for native facts: a declared `certain`
+is lowered to `probable`, and `possible` stays `possible`.
 
 **Attributes.** Your attributes are kept. Knossos adds `enricher` (the name),
 `enricher_scan_id` and `enricher_produced_at` (the scan and the time of the run
@@ -196,7 +199,10 @@ origin `enricher` and the `enricher` attribute: `explain_flow`,
 
 Everything that measures or judges the architecture counts native facts only:
 
-- the node and relationship counts of `architecture_summary`;
+- the node, relationship and diagnostic counts of `architecture_summary`, and
+  the node and relationship totals of `export_agent_brief`;
+- file fan-in, wherever it shows: the dashboard's fan-in list, complexity
+  hotspots and component counts, churn, and the dependents a brief lists;
 - `architecture_health`: hubs, hotspots, degrees and dead-code candidates (an
   enriched node is never a candidate, and an enriched edge never makes a native
   one look used);
@@ -204,8 +210,14 @@ Everything that measures or judges the architecture counts native facts only:
 - `check_architecture` and the boundary matrix: no policy judges native code by
   an enricher's guess, `represents` included;
 - snapshots, and so `snapshot_diff`, `review_diff`, `quality_gate` budgets and
-  `architecture_trends`. An enricher whose output changes with no code change
-  never shows up as drift and never fails a gate.
+  `architecture_trends`.
+
+The diagnostics an enricher owns (its own reports, the warnings for dropped
+facts and those about its runs) stay out of those counts too: the
+`error_diagnostics` and `warning_diagnostics` budgets, the gate's SARIF
+results, the snapshot and trend figures and the summary's diagnostic count.
+`list_diagnostics` still lists them. An enricher whose output changes with no
+code change, or that fails, never shows up as drift and never fails a gate.
 
 ## When enrichers run
 
@@ -315,15 +327,19 @@ def facts(native_nodes):
             "kind": "ext:endpoint",
             "canonical_name": url,
             "display_name": url,
+            "origin": "enricher",
             "confidence": "probable",
             "evidence": evidence,
+            "attributes": {},
         })
         edges.append({
             "kind": "represents",
             "source": local_id,
             "target": view["id"],
+            "origin": "enricher",
             "confidence": "probable",
             "evidence": evidence,
+            "attributes": {},
         })
     return nodes, edges
 
@@ -343,9 +359,10 @@ for line in sys.stdin:
         }})
     elif method == "scan":
         nodes, edges = facts(request["params"].get("native_nodes", []))
-        send({"jsonrpc": "2.0", "method": "scan/contribution", "params": {
-            "owner_key": "endpoints", "nodes": nodes, "edges": edges, "diagnostics": [],
-        }})
+        if nodes or edges:
+            send({"jsonrpc": "2.0", "method": "scan/contribution", "params": {
+                "owner_key": "endpoints", "nodes": nodes, "edges": edges, "diagnostics": [],
+            }})
         send({"jsonrpc": "2.0", "id": request_id, "result": {}})
     elif method == "shutdown":
         send({"jsonrpc": "2.0", "id": request_id, "result": {}})
@@ -354,6 +371,10 @@ for line in sys.stdin:
 
 Install it in `enrichers.json` with `input_node_kinds: ["function"]`, add
 `"enrichers": ["endpoints"]` to the project's `knossos.json`, and run
-`knossos scan`. `explain_flow` from `/task/search/` then shows the identity hop
-into the view, followed by the view's own calls. Anything the script writes to
+`knossos scan`. `explain_flow` from `/task/search/` to a function the view calls,
+such as `backend.app.search.search_orders`, then shows the identity hop into the
+view, followed by the view's call to it.
+
+`tools/scanner-conformance --require=enrichment -- python3 endpoints.py` checks
+the lifecycle: the manifest, an empty scan and the shutdown. Anything the script writes to
 standard output must be a protocol frame; write logs to standard error.
