@@ -24,6 +24,9 @@ use Throwable;
  * scan request: the project root and the native nodes of the kinds it asked
  * for. Whatever goes wrong becomes a failed outcome; nothing it does throws
  * into the scan.
+ *
+ * The definition's `timeout_seconds` bounds the whole run, start to answer:
+ * every protocol request gets what is left of one deadline, not a fresh one.
  */
 final class EnricherRunner
 {
@@ -33,22 +36,30 @@ final class EnricherRunner
         'WORKER_CAPABILITY_MISMATCH' => 'no_enrichment_capability',
         'WORKER_TIMEOUT' => 'timeout',
         'WORKER_EXITED' => 'exit_nonzero',
+        'WORKER_CANCELLED' => 'cancelled',
     ];
 
-    /** Start the enricher, send it the native nodes it declared, and decode what it contributes. */
-    public function run(EnricherDefinition $def, string $root, NativeNodeIndex $native): EnricherOutcome
+    /** The longest part of a failure's own message an outcome keeps. */
+    private const DETAIL_CHARACTERS = 200;
+
+    /**
+     * Start the enricher, send it the native nodes it declared, and decode what it contributes.
+     *
+     * @param (callable(): bool)|null $cancelled polled while waiting for the enricher; true stops it
+     */
+    public function run(EnricherDefinition $def, string $root, NativeNodeIndex $native, ?callable $cancelled = null): EnricherOutcome
     {
-        // The timeout bounds both a silent enricher and a busy one: an enricher
-        // that keeps sending heartbeats still stops at its configured time.
+        // Each request is capped at the timeout, and the channel caps it again
+        // at what is left of the run, so the whole run ends by the timeout.
         $milliseconds = $def->timeoutSeconds * 1000;
         $limits = new WorkerLimits(requestTimeoutMs: $milliseconds, maxRequestMs: $milliseconds);
         $process = new WorkerProcessSupervisor($def->command, array_replace(WorkerProcessSupervisor::defaultEnvironment(), $def->environment));
-        $channel = new EnrichmentChannel(new NdjsonRpcChannel($process, $limits));
+        $channel = new EnrichmentChannel(new NdjsonRpcChannel($process, $limits), hrtime(true) + $milliseconds * 1_000_000);
         $session = new ScannerProtocolSession($process, $channel);
         try {
             $session->requireCapabilities([Protocol::CAPABILITY_ENRICHMENT]);
             $request = ['root' => $root, 'native_nodes' => $native->nodesOfKinds($def->inputNodeKinds)];
-            foreach ($session->scan($request) as $ignored) {
+            foreach ($session->scan($request, $cancelled) as $ignored) {
                 // Every contribution is taken by the channel, so the session yields none.
             }
             $raw = self::decode($def->name, $channel->takeContributions());
@@ -56,12 +67,28 @@ final class EnricherRunner
 
             return EnricherOutcome::succeeded($def->name, $raw);
         } catch (WorkerException $error) {
-            return EnricherOutcome::failed($def->name, self::REASONS[$error->diagnosticCode] ?? 'protocol_error');
-        } catch (Throwable) {
-            return EnricherOutcome::failed($def->name, 'protocol_error');
+            return EnricherOutcome::failed($def->name, self::reason($error), self::detail($error));
+        } catch (Throwable $error) {
+            return EnricherOutcome::failed($def->name, 'protocol_error', self::detail($error));
         } finally {
             $session->close(true);
         }
+    }
+
+    /** The outcome reason for a protocol failure, telling a clean exit 0 apart from a crash. */
+    private static function reason(WorkerException $error): string
+    {
+        if ($error->diagnosticCode === 'WORKER_EXITED' && str_contains($error->getMessage(), '(exit 0)')) {
+            return 'exited_early';
+        }
+
+        return self::REASONS[$error->diagnosticCode] ?? 'protocol_error';
+    }
+
+    /** The first line of a failure's message, capped for a diagnostic. */
+    private static function detail(Throwable $error): string
+    {
+        return mb_substr(strtok($error->getMessage(), "\n") ?: get_class($error), 0, self::DETAIL_CHARACTERS);
     }
 
     /**

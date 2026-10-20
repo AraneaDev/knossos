@@ -529,6 +529,7 @@ php	tests/phpunit/Discovery/SourceClassifierTest.php
 php	tests/phpunit/Discovery/UnitReadConsistencyTest.php
 php	tests/phpunit/Enrichment/EnricherCarryOverTest.php
 php	tests/phpunit/Enrichment/EnricherRunnerTest.php
+php	tests/phpunit/Enrichment/EnrichmentPhaseTest.php
 php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
 php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php

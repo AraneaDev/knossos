@@ -22,6 +22,8 @@ declare(strict_types=1);
  *   stderr-then-garbage noise on stderr, then the same line
  *   hang                never answers scan
  *   exit-1              exits with status 1 on scan
+ *   exit-0              exits cleanly with status 0 on scan, without answering
+ *   slow-steps          answers initialize and scan 700 ms late each, so only a per-run timeout catches it
  */
 
 $mode = $argv[1] ?? 'ok';
@@ -42,6 +44,9 @@ while (($line = fgets(STDIN)) !== false) {
     $id = $request['id'] ?? null;
 
     if ($method === 'initialize') {
+        if ($mode === 'slow-steps') {
+            usleep(700_000);
+        }
         respond($id, [
             'id' => 'fixture.enricher',
             'version' => '0.1.0',
@@ -75,6 +80,12 @@ while (($line = fgets(STDIN)) !== false) {
         case 'hang':
             sleep(60);
             continue 2;
+        case 'exit-0':
+            exit(0);
+        case 'slow-steps':
+            usleep(700_000);
+            notify(chain($native, 'ok'));
+            break;
         case 'exit-1':
             fwrite(STDERR, "enricher failed\n");
             exit(1);
@@ -109,8 +120,8 @@ while (($line = fgets(STDIN)) !== false) {
  */
 function chain(array $native, string $mode): array
 {
-    $component = nativeId($native, 'module', 'frontend/src/components/OrderList.vue');
-    $view = nativeId($native, 'function', 'backend.app.urls.search');
+    $component = nativeNode($native, 'module', 'frontend/src/components/OrderList.vue')['id'] ?? null;
+    $view = nativeNode($native, 'function', 'backend.app.urls.search');
     $vue = 'frontend/src/components/OrderList.vue';
     $urls = 'backend/app/urls.py';
     $nodes = [node('call-search', 'ext:rest_call', 'GET /task/search/ from OrderList.vue', $vue, 9)];
@@ -127,7 +138,8 @@ function chain(array $native, string $mode): array
         $nodes[] = $endpoint;
         $edges[] = edge('calls_endpoint', 'call-search', 'endpoint-search', $vue, 9);
         if ($view !== null) {
-            $edges[] = edge('represents', 'endpoint-search', $view, $urls, 8);
+            // Cites the view's own declaration, as a represents link must.
+            $edges[] = edge('represents', 'endpoint-search', (string) $view['id'], (string) $view['file'], (int) $view['line']);
         }
     }
 
@@ -135,15 +147,16 @@ function chain(array $native, string $mode): array
 }
 
 /**
- * The stable id Knossos sent for a native node, by kind and qualified name.
+ * The native node Knossos sent, by kind and qualified name.
  *
  * @param list<array<string, mixed>> $native
+ * @return array<string, mixed>|null
  */
-function nativeId(array $native, string $kind, string $qualifiedName): ?string
+function nativeNode(array $native, string $kind, string $qualifiedName): ?array
 {
     foreach ($native as $node) {
         if (($node['kind'] ?? null) === $kind && ($node['qualified_name'] ?? null) === $qualifiedName) {
-            return (string) $node['id'];
+            return $node;
         }
     }
 

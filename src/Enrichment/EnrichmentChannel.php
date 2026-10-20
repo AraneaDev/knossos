@@ -6,6 +6,7 @@ namespace Knossos\Enrichment;
 
 use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Worker\RpcChannelInterface;
+use Knossos\Scanner\Worker\WorkerException;
 
 /**
  * The channel to an enricher, keeping its contributions raw.
@@ -17,6 +18,10 @@ use Knossos\Scanner\Worker\RpcChannelInterface;
  * so its previous facts are kept. So this channel takes each contribution
  * notification out of the stream before the session sees it, and hands the
  * session a notification it ignores in its place.
+ *
+ * It also holds the run to one deadline: each request's deadline is the
+ * earlier of its own and the run's, so an enricher's `timeout_seconds`
+ * bounds the handshake, the scan and the shutdown together.
  */
 final class EnrichmentChannel implements RpcChannelInterface
 {
@@ -26,12 +31,20 @@ final class EnrichmentChannel implements RpcChannelInterface
     /** @var list<mixed> the params of each contribution notification, in arrival order */
     private array $contributions = [];
 
-    public function __construct(private readonly RpcChannelInterface $inner) {}
+    /** @param int $runDeadline hrtime nanoseconds by which the whole run must be over */
+    public function __construct(
+        private readonly RpcChannelInterface $inner,
+        private readonly int $runDeadline = PHP_INT_MAX,
+    ) {}
 
     /** {@inheritDoc} */
     public function beginRequest(): int
     {
-        return $this->inner->beginRequest();
+        if (hrtime(true) >= $this->runDeadline) {
+            throw new WorkerException('WORKER_TIMEOUT', 'Enricher ran past its timeout.');
+        }
+
+        return min($this->inner->beginRequest(), $this->runDeadline);
     }
 
     /** {@inheritDoc} */

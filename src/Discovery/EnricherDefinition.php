@@ -17,6 +17,7 @@ final readonly class EnricherDefinition
     /** What an enricher name may look like; a path, a command line or a flag never matches. */
     public const NAME_PATTERN = '/^[a-z][a-z0-9_-]{0,63}$/';
 
+    /** How long one whole run may take, from start to answer, not each protocol request. */
     public const DEFAULT_TIMEOUT_SECONDS = 30;
     public const MIN_TIMEOUT_SECONDS = 1;
     public const MAX_TIMEOUT_SECONDS = 120;

@@ -194,13 +194,8 @@ final class ProjectScanService implements ProjectScanner
             $projectConfig = $this->projectConfig($preparation);
             $namedFiles = new NamedFiles($this->pdo);
             $named = $namedFiles->contribution($projectId, $preparation->discovery, $preparation->configuration->ignores, $language->contributions);
-            $scanId = \Knossos\Store\StableId::scan($projectId, bin2hex(random_bytes(16)));
-            $discovered = array_fill_keys(array_map(static fn($file): string => $file->relativePath, $preparation->discovery->files), true);
-            $enriched = $this->enrichment->contributions($preparation->configuration, $projectId, $scanId, $preparation->discovery->rootRealpath, $language->contributions, $discovered, $runEnrichers);
-            if ($enriched !== []) {
-                // Enrichers can take minutes; a scan cancelled meanwhile stops here, before the write.
-                $cancellation->throwIfCancelled();
-            }
+            // Enough to hash the scanner set; the enrichers themselves wait until the fast path is ruled out.
+            $this->enrichment->prepare($preparation->configuration);
             // A note added or removed changes the file components with nothing changed on disk.
             $sameNamedFiles = array_map(static fn($node): string => $node->canonicalName, $named->nodes) === $namedFiles->current($projectId);
             $fastPath = $sameNamedFiles && !($runEnrichers && $preparation->configuration->enrichers !== [])
@@ -209,6 +204,13 @@ final class ProjectScanService implements ProjectScanner
             if ($fastPath !== null) {
                 $stageMilliseconds['reconciliation'] = self::elapsedMilliseconds($reconciliationStarted);
                 return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $stageMilliseconds, 'no_change');
+            }
+            $scanId = \Knossos\Store\StableId::scan($projectId, bin2hex(random_bytes(16)));
+            $discovered = array_fill_keys(array_map(static fn($file): string => $file->relativePath, $preparation->discovery->files), true);
+            $enriched = $this->enrichment->contributions($preparation->configuration, $projectId, $scanId, $preparation->discovery->rootRealpath, $language->contributions, $discovered, $runEnrichers, $cancellation);
+            if ($enriched !== []) {
+                // Enrichers can take minutes; a scan cancelled meanwhile stops here, before the write.
+                $cancellation->throwIfCancelled();
             }
             // Refresh the lease immediately before the exclusive reconcile write. A
             // legitimately long scan can outlive the lease window; if another scanner

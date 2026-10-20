@@ -14,14 +14,16 @@ use Knossos\Scanner\Protocol\ScanContribution;
  */
 final readonly class EnricherOutcome
 {
-    /** One of `missing_command`, `no_enrichment_capability`, `timeout`, `protocol_error` or `exit_nonzero`. */
-    public const REASONS = ['missing_command', 'no_enrichment_capability', 'timeout', 'protocol_error', 'exit_nonzero'];
+    /** Why a run failed; `exited_early` is a clean exit 0 before the enricher answered, `exit_nonzero` any other exit. */
+    public const REASONS = ['missing_command', 'no_enrichment_capability', 'timeout', 'protocol_error', 'exit_nonzero', 'exited_early', 'cancelled'];
 
+    /** @param ?string $detail for a failure, the first line of what went wrong, short enough for a diagnostic */
     private function __construct(
         public bool $ok,
         public string $name,
         public ?ScanContribution $raw,
         public ?string $reason,
+        public ?string $detail = null,
     ) {}
 
     /** The enricher answered with a contribution that decoded. */
@@ -31,8 +33,8 @@ final readonly class EnricherOutcome
     }
 
     /** The enricher could not be run or did not answer usably; $reason is one of {@see REASONS}. */
-    public static function failed(string $name, string $reason): self
+    public static function failed(string $name, string $reason, ?string $detail = null): self
     {
-        return new self(false, $name, null, $reason);
+        return new self(false, $name, null, $reason, $detail);
     }
 }
