@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp;
 
+use Knossos\Enrichment\Profiles;
 use Knossos\Query\AbstractArchitectureQueryService;
 use Knossos\Query\QueryBounds;
 
@@ -404,6 +405,7 @@ final readonly class ToolCatalog
                         'min_confidence' => ['type' => 'string', 'enum' => ['certain', 'probable', 'possible'], 'default' => 'possible'],
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 3000],
                         'both_directions' => ['type' => 'boolean', 'default' => false, 'description' => 'When from reaches to by no route, look from to to from as well; the answer then says reversed.'],
+                        'profile' => ['type' => 'string', 'pattern' => Profiles::PATTERN, 'description' => 'Follow only paths valid in this profile (an enricher edge attribute, such as a brand): an enricher edge tagged only with other profiles is not followed, and unprofiled edges always are. Without it, the first profiled edge a path crosses binds that path.'],
                     ],
                     'required' => ['project_id', 'from', 'to'],
                     'additionalProperties' => false,

@@ -16,6 +16,9 @@ declare(strict_types=1);
  *   ok-changed          as ok, with the endpoint renamed and its confidence lowered to possible
  *   ok-extends          as ok, plus an extends edge between two native classes of the enricher-flow fixture
  *   ok-reporting        as ok, plus a warning and an error diagnostic of the enricher's own
+ *   ok-profiles         as ok tagged brand_a, plus a brand_b chain to the same view and the facts profile tests
+ *                       need (see profiles()); for the enricher-flow fixture
+ *   bad-profiles        as ok, plus a second rest call, each edge carrying an invalid profile
  *   env                 one node reporting FIXTURE_FLAG, whether a test secret leaked, and whether PATH is set
  *   echo-input          one ext:echo node per native node received, carrying it in `received`
  *   no-confidence       one node and no confidence on it
@@ -113,6 +116,12 @@ while (($line = fgets(STDIN)) !== false) {
                 ['severity' => 'error', 'code' => 'FIXTURE_FAULT', 'message' => 'An error of the enricher\'s own.'],
             ]);
             break;
+        case 'ok-profiles':
+            notify(profiles($native));
+            break;
+        case 'bad-profiles':
+            notify(badProfiles($native));
+            break;
         default:
             notify(chain($native, $mode));
     }
@@ -162,6 +171,82 @@ function chain(array $native, string $mode): array
 }
 
 /**
+ * Two brands of one application, for profile-compatible flow paths:
+ *
+ *   OrderList.vue -[a]-> call-search -[a]-> endpoint-search -represents-> view
+ *   OrderList.vue -[b]-> call-search-b -[b]-> endpoint-search-b -represents-> view
+ *   endpoint-search-b -calls [b]-> helper           brand B reaches the helper directly
+ *   view -calls [b]-> call-search-b                 brand B only, after shared native code
+ *   view -dispatches [a, b]-> export-orders         an edge valid in both brands
+ *   helper -calls [a]-> export-orders               two routes with one node sequence,
+ *   helper -dispatches [b]-> export-orders          one per brand
+ *
+ * The view natively calls the helper; that hop and every represents link are unprofiled.
+ *
+ * @param list<array<string, mixed>> $native
+ * @return array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+ */
+function profiles(array $native): array
+{
+    $facts = chain($native, 'ok');
+    foreach ($facts['edges'] as $index => $fact) {
+        if ($fact['kind'] === 'calls_endpoint') {
+            $facts['edges'][$index]['attributes'] = (object) ['profile' => 'brand_a'];
+        }
+    }
+    $component = nativeNode($native, 'module', 'frontend/src/components/OrderList.vue');
+    $view = nativeNode($native, 'function', 'backend.app.urls.search');
+    $helper = nativeNode($native, 'function', 'backend.app.search.search_orders');
+    if ($component === null || $view === null || $helper === null) {
+        return $facts;
+    }
+    $vue = 'frontend/src/components/OrderList.vue';
+    $urls = 'backend/app/urls.py';
+    $search = 'backend/app/search.py';
+    $a = ['profile' => 'brand_a'];
+    $b = ['profile' => 'brand_b'];
+    $facts['nodes'][] = node('call-search-b', 'ext:rest_call', 'GET /b/task/search/ from OrderList.vue', $vue, 9);
+    $facts['nodes'][] = node('endpoint-search-b', 'ext:endpoint', '/b/task/search/', $urls, 10);
+    $facts['nodes'][] = node('export-orders', 'ext:task', 'export orders', $search, 1);
+    array_push(
+        $facts['edges'],
+        edge('calls_endpoint', (string) $component['id'], 'call-search-b', $vue, 9, $b),
+        edge('calls_endpoint', 'call-search-b', 'endpoint-search-b', $vue, 9, $b),
+        edge('represents', 'endpoint-search-b', (string) $view['id'], (string) $view['file'], (int) $view['line']),
+        edge('calls', 'endpoint-search-b', (string) $helper['id'], $urls, 10, $b),
+        edge('calls', (string) $view['id'], 'call-search-b', $urls, 7, $b),
+        edge('dispatches', (string) $view['id'], 'export-orders', $urls, 7, ['profile' => ['brand_a', 'brand_b']]),
+        edge('calls', (string) $helper['id'], 'export-orders', $search, 2, $a),
+        edge('dispatches', (string) $helper['id'], 'export-orders', $search, 2, $b),
+    );
+
+    return $facts;
+}
+
+/**
+ * The ok facts plus a second rest call, every edge carrying a profile the validator must remove.
+ *
+ * @param list<array<string, mixed>> $native
+ * @return array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+ */
+function badProfiles(array $native): array
+{
+    $facts = chain($native, 'ok');
+    $component = nativeNode($native, 'module', 'frontend/src/components/OrderList.vue');
+    $vue = 'frontend/src/components/OrderList.vue';
+    if ($component !== null) {
+        $facts['nodes'][] = node('call-search-b', 'ext:rest_call', 'GET /b/task/search/ from OrderList.vue', $vue, 9);
+        $facts['edges'][] = edge('calls_endpoint', (string) $component['id'], 'call-search-b', $vue, 9);
+    }
+    $invalid = [[], 5, ['ok', 'bad value'], str_repeat('a', 65)];
+    foreach ($facts['edges'] as $index => $fact) {
+        $facts['edges'][$index]['attributes'] = (object) ['profile' => $invalid[$index % count($invalid)]];
+    }
+
+    return $facts;
+}
+
+/**
  * The native node Knossos sent, by kind and qualified name.
  *
  * @param list<array<string, mixed>> $native
@@ -196,8 +281,11 @@ function node(string $id, string $kind, string $name, string $path, int $line, a
     ];
 }
 
-/** @return array<string, mixed> */
-function edge(string $kind, string $source, string $target, string $path, int $line): array
+/**
+ * @param array<string, mixed> $attributes
+ * @return array<string, mixed>
+ */
+function edge(string $kind, string $source, string $target, string $path, int $line, array $attributes = []): array
 {
     return [
         'kind' => $kind,
@@ -206,7 +294,7 @@ function edge(string $kind, string $source, string $target, string $path, int $l
         'origin' => 'enricher',
         'confidence' => 'probable',
         'evidence' => ['path' => $path, 'start_line' => $line, 'end_line' => $line],
-        'attributes' => (object) [],
+        'attributes' => (object) $attributes,
     ];
 }
 

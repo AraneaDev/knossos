@@ -107,6 +107,7 @@ final class RefreshIfStaleTest extends KnossosTestCase
         yield 'boundary source' => ['list_boundaries', ['source' => 'bogus'], 'source must be explicit or inferred.'];
         yield 'annotation kind' => ['list_annotations', ['kind' => 'bogus'], 'kind must be one of: intended_boundary, confirmed_dead, false_positive, intentional, note, check.'];
         yield 'confidence filter items' => ['search_architecture', ['query' => 'checkout', 'confidences' => ['bogus']], 'confidence filter is invalid.'];
+        yield 'a flow profile' => ['explain_flow', ['from' => 'Checkout', 'to' => 'Invoice', 'profile' => 'bad value'], 'profile must be 1 to 64 letters, digits, "_", "." or "-".'];
         // Policy and budget contents, by the validators the services use.
         yield 'a policy id' => ['check_architecture', ['policies' => [['id' => '', 'from_boundary' => 'core', 'deny_targets' => ['tests']]]], 'Policy id must be a non-empty string of at most 100 characters.'];
         yield 'a budget name' => ['quality_gate', ['baseline_snapshot' => 'active', 'budgets' => ['bogus' => 1]], 'budgets must contain one or more supported quality limits.'];

@@ -159,7 +159,7 @@ final class EnrichmentValidator
                 Origin::Enricher,
                 self::confidence($edge->confidence),
                 $edge->evidence,
-                $stamp + $edge->attributes,
+                $stamp + self::profiled($enricher, $edge, $dropped),
             );
         }
 
@@ -270,6 +270,54 @@ final class EnrichmentValidator
         }
 
         return $kept;
+    }
+
+    /**
+     * The edge's own attributes, with its profile deduplicated, or removed with a warning when it is invalid.
+     *
+     * A bad profile costs the edge its profile, never the edge: an unprofiled
+     * edge is unknown, which is the honest reading of a value that says nothing.
+     *
+     * @param list<Diagnostic> $dropped
+     * @return array<string, mixed>
+     */
+    private static function profiled(string $enricher, EdgeFact $edge, array &$dropped): array
+    {
+        $attributes = $edge->attributes;
+        if (!array_key_exists(Profiles::ATTRIBUTE, $attributes)) {
+            return $attributes;
+        }
+        $profile = $attributes[Profiles::ATTRIBUTE];
+        $names = Profiles::names($profile);
+        if ($names !== null) {
+            $attributes[Profiles::ATTRIBUTE] = is_array($profile) ? $names : $profile;
+
+            return $attributes;
+        }
+        unset($attributes[Profiles::ATTRIBUTE]);
+        $dropped[] = self::warning('ENRICHER_PROFILE_INVALID', sprintf(
+            'Enricher %s: %s edge from %s to %s kept without its profile: %s',
+            $enricher,
+            $edge->kind,
+            $edge->sourceReference,
+            $edge->targetReference,
+            self::profileProblem($profile),
+        ));
+
+        return $attributes;
+    }
+
+    /** Why a `profile` value that {@see Profiles::names()} refused is invalid, in words for the warning. */
+    private static function profileProblem(mixed $value): string
+    {
+        $names = is_array($value) && array_is_list($value) ? $value : [$value];
+        foreach ($names as $name) {
+            if (!Profiles::isName($name)) {
+                return sprintf('%s is not a profile name; a name is 1 to 64 letters, digits, "_", "." or "-".', json_encode($name, JSON_UNESCAPED_SLASHES));
+            }
+        }
+
+        return 'the list of profiles is empty.';
     }
 
     /** `certain` is reserved for native facts, so an enricher's claim is lowered to `probable`. */

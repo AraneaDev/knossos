@@ -1,0 +1,381 @@
+{
+    "forward": {
+        "project_id": "<project>",
+        "snapshot_id": "<scan>",
+        "summary": "Found 1 plausible static flow.",
+        "data": {
+            "from": {
+                "id": "<node module frontend/src/components/OrderList.vue>",
+                "kind": "module",
+                "canonical_name": "frontend/src/components/OrderList.vue",
+                "display_name": "OrderList.vue",
+                "confidence": "certain"
+            },
+            "to": {
+                "id": "<node function backend.app.search.search_orders>",
+                "kind": "function",
+                "canonical_name": "backend.app.search.search_orders",
+                "display_name": "search_orders",
+                "confidence": "certain"
+            },
+            "paths": [
+                {
+                    "nodes": [
+                        {
+                            "id": "<node module frontend/src/components/OrderList.vue>",
+                            "kind": "module",
+                            "canonical_name": "frontend/src/components/OrderList.vue",
+                            "display_name": "OrderList.vue",
+                            "confidence": "certain"
+                        },
+                        {
+                            "id": "<node ext:rest_call GET /task/search/ from OrderList.vue>",
+                            "kind": "ext:rest_call",
+                            "canonical_name": "GET /task/search/ from OrderList.vue",
+                            "display_name": "GET /task/search/ from OrderList.vue",
+                            "confidence": "probable"
+                        },
+                        {
+                            "id": "<node ext:endpoint /task/search/>",
+                            "kind": "ext:endpoint",
+                            "canonical_name": "/task/search/",
+                            "display_name": "/task/search/",
+                            "confidence": "probable"
+                        },
+                        {
+                            "id": "<node function backend.app.urls.search>",
+                            "kind": "function",
+                            "canonical_name": "backend.app.urls.search",
+                            "display_name": "search",
+                            "confidence": "certain"
+                        },
+                        {
+                            "id": "<node function backend.app.search.search_orders>",
+                            "kind": "function",
+                            "canonical_name": "backend.app.search.search_orders",
+                            "display_name": "search_orders",
+                            "confidence": "certain"
+                        }
+                    ],
+                    "hops": [
+                        {
+                            "edge_id": "<edge calls_endpoint frontend/src/components/OrderList.vue > GET /task/search/ from OrderList.vue>",
+                            "kind": "calls_endpoint",
+                            "step": "relation",
+                            "source_id": "<node module frontend/src/components/OrderList.vue>",
+                            "target_id": "<node ext:rest_call GET /task/search/ from OrderList.vue>",
+                            "origin": "enricher",
+                            "confidence": "probable",
+                            "attributes": {
+                                "enricher": "fixture",
+                                "enricher_scan_id": "<scan>",
+                                "enricher_produced_at": "<time>"
+                            },
+                            "explanation": "OrderList.vue --calls_endpoint (probable, enricher)--> GET /task/search/ from OrderList.vue",
+                            "evidence": {
+                                "path": "frontend/src/components/OrderList.vue",
+                                "start_line": 9,
+                                "end_line": 9
+                            }
+                        },
+                        {
+                            "edge_id": "<edge calls_endpoint GET /task/search/ from OrderList.vue > /task/search/>",
+                            "kind": "calls_endpoint",
+                            "step": "relation",
+                            "source_id": "<node ext:rest_call GET /task/search/ from OrderList.vue>",
+                            "target_id": "<node ext:endpoint /task/search/>",
+                            "origin": "enricher",
+                            "confidence": "probable",
+                            "attributes": {
+                                "enricher": "fixture",
+                                "enricher_scan_id": "<scan>",
+                                "enricher_produced_at": "<time>"
+                            },
+                            "explanation": "GET /task/search/ from OrderList.vue --calls_endpoint (probable, enricher)--> /task/search/",
+                            "evidence": {
+                                "path": "frontend/src/components/OrderList.vue",
+                                "start_line": 9,
+                                "end_line": 9
+                            }
+                        },
+                        {
+                            "edge_id": "<edge represents /task/search/ > backend.app.urls.search>",
+                            "kind": "represents",
+                            "step": "identity",
+                            "source_id": "<node ext:endpoint /task/search/>",
+                            "target_id": "<node function backend.app.urls.search>",
+                            "origin": "enricher",
+                            "confidence": "probable",
+                            "attributes": {
+                                "enricher": "fixture",
+                                "enricher_scan_id": "<scan>",
+                                "enricher_produced_at": "<time>"
+                            },
+                            "explanation": "/task/search/ stands for search (identity, probable, enricher)",
+                            "evidence": {
+                                "path": "backend/app/urls.py",
+                                "start_line": 6,
+                                "end_line": 6
+                            }
+                        },
+                        {
+                            "edge_id": "<edge calls backend.app.urls.search > backend.app.search.search_orders>",
+                            "kind": "calls",
+                            "step": "relation",
+                            "source_id": "<node function backend.app.urls.search>",
+                            "target_id": "<node function backend.app.search.search_orders>",
+                            "origin": "ast",
+                            "confidence": "certain",
+                            "attributes": [],
+                            "explanation": "search --calls (certain, ast)--> search_orders",
+                            "evidence": {
+                                "path": "backend/app/urls.py",
+                                "start_line": 7,
+                                "end_line": 7
+                            }
+                        }
+                    ],
+                    "score": {
+                        "minimum_confidence": 2,
+                        "hops": 4,
+                        "semantic_edges": 2
+                    },
+                    "signature": "<node module frontend/src/components/OrderList.vue>><node ext:rest_call GET /task/search/ from OrderList.vue>><node ext:endpoint /task/search/>><node function backend.app.urls.search>><node function backend.app.search.search_orders>"
+                }
+            ],
+            "bounds": {
+                "max_depth": 6,
+                "max_paths": 5,
+                "timeout_ms": 3000,
+                "visited_states": 4,
+                "queued_states": 4,
+                "truncation_reason": null,
+                "truncation_reasons": []
+            }
+        },
+        "evidence": [
+            {
+                "path_index": 0,
+                "hop_index": 0,
+                "path": "frontend/src/components/OrderList.vue",
+                "start_line": 9,
+                "end_line": 9
+            },
+            {
+                "path_index": 0,
+                "hop_index": 1,
+                "path": "frontend/src/components/OrderList.vue",
+                "start_line": 9,
+                "end_line": 9
+            },
+            {
+                "path_index": 0,
+                "hop_index": 2,
+                "path": "backend/app/urls.py",
+                "start_line": 6,
+                "end_line": 6
+            },
+            {
+                "path_index": 0,
+                "hop_index": 3,
+                "path": "backend/app/urls.py",
+                "start_line": 7,
+                "end_line": 7
+            }
+        ],
+        "warnings": [
+            "Flows are plausible statically supported paths, not proof of runtime execution."
+        ],
+        "truncated": false
+    },
+    "reversed": {
+        "project_id": "<project>",
+        "snapshot_id": "<scan>",
+        "summary": "Found 1 plausible static flow.",
+        "data": {
+            "reversed": true,
+            "from": {
+                "id": "<node module frontend/src/components/OrderList.vue>",
+                "kind": "module",
+                "canonical_name": "frontend/src/components/OrderList.vue",
+                "display_name": "OrderList.vue",
+                "confidence": "certain"
+            },
+            "to": {
+                "id": "<node function backend.app.search.search_orders>",
+                "kind": "function",
+                "canonical_name": "backend.app.search.search_orders",
+                "display_name": "search_orders",
+                "confidence": "certain"
+            },
+            "paths": [
+                {
+                    "nodes": [
+                        {
+                            "id": "<node module frontend/src/components/OrderList.vue>",
+                            "kind": "module",
+                            "canonical_name": "frontend/src/components/OrderList.vue",
+                            "display_name": "OrderList.vue",
+                            "confidence": "certain"
+                        },
+                        {
+                            "id": "<node ext:rest_call GET /task/search/ from OrderList.vue>",
+                            "kind": "ext:rest_call",
+                            "canonical_name": "GET /task/search/ from OrderList.vue",
+                            "display_name": "GET /task/search/ from OrderList.vue",
+                            "confidence": "probable"
+                        },
+                        {
+                            "id": "<node ext:endpoint /task/search/>",
+                            "kind": "ext:endpoint",
+                            "canonical_name": "/task/search/",
+                            "display_name": "/task/search/",
+                            "confidence": "probable"
+                        },
+                        {
+                            "id": "<node function backend.app.urls.search>",
+                            "kind": "function",
+                            "canonical_name": "backend.app.urls.search",
+                            "display_name": "search",
+                            "confidence": "certain"
+                        },
+                        {
+                            "id": "<node function backend.app.search.search_orders>",
+                            "kind": "function",
+                            "canonical_name": "backend.app.search.search_orders",
+                            "display_name": "search_orders",
+                            "confidence": "certain"
+                        }
+                    ],
+                    "hops": [
+                        {
+                            "edge_id": "<edge calls_endpoint frontend/src/components/OrderList.vue > GET /task/search/ from OrderList.vue>",
+                            "kind": "calls_endpoint",
+                            "step": "relation",
+                            "source_id": "<node module frontend/src/components/OrderList.vue>",
+                            "target_id": "<node ext:rest_call GET /task/search/ from OrderList.vue>",
+                            "origin": "enricher",
+                            "confidence": "probable",
+                            "attributes": {
+                                "enricher": "fixture",
+                                "enricher_scan_id": "<scan>",
+                                "enricher_produced_at": "<time>"
+                            },
+                            "explanation": "OrderList.vue --calls_endpoint (probable, enricher)--> GET /task/search/ from OrderList.vue",
+                            "evidence": {
+                                "path": "frontend/src/components/OrderList.vue",
+                                "start_line": 9,
+                                "end_line": 9
+                            }
+                        },
+                        {
+                            "edge_id": "<edge calls_endpoint GET /task/search/ from OrderList.vue > /task/search/>",
+                            "kind": "calls_endpoint",
+                            "step": "relation",
+                            "source_id": "<node ext:rest_call GET /task/search/ from OrderList.vue>",
+                            "target_id": "<node ext:endpoint /task/search/>",
+                            "origin": "enricher",
+                            "confidence": "probable",
+                            "attributes": {
+                                "enricher": "fixture",
+                                "enricher_scan_id": "<scan>",
+                                "enricher_produced_at": "<time>"
+                            },
+                            "explanation": "GET /task/search/ from OrderList.vue --calls_endpoint (probable, enricher)--> /task/search/",
+                            "evidence": {
+                                "path": "frontend/src/components/OrderList.vue",
+                                "start_line": 9,
+                                "end_line": 9
+                            }
+                        },
+                        {
+                            "edge_id": "<edge represents /task/search/ > backend.app.urls.search>",
+                            "kind": "represents",
+                            "step": "identity",
+                            "source_id": "<node ext:endpoint /task/search/>",
+                            "target_id": "<node function backend.app.urls.search>",
+                            "origin": "enricher",
+                            "confidence": "probable",
+                            "attributes": {
+                                "enricher": "fixture",
+                                "enricher_scan_id": "<scan>",
+                                "enricher_produced_at": "<time>"
+                            },
+                            "explanation": "/task/search/ stands for search (identity, probable, enricher)",
+                            "evidence": {
+                                "path": "backend/app/urls.py",
+                                "start_line": 6,
+                                "end_line": 6
+                            }
+                        },
+                        {
+                            "edge_id": "<edge calls backend.app.urls.search > backend.app.search.search_orders>",
+                            "kind": "calls",
+                            "step": "relation",
+                            "source_id": "<node function backend.app.urls.search>",
+                            "target_id": "<node function backend.app.search.search_orders>",
+                            "origin": "ast",
+                            "confidence": "certain",
+                            "attributes": [],
+                            "explanation": "search --calls (certain, ast)--> search_orders",
+                            "evidence": {
+                                "path": "backend/app/urls.py",
+                                "start_line": 7,
+                                "end_line": 7
+                            }
+                        }
+                    ],
+                    "score": {
+                        "minimum_confidence": 2,
+                        "hops": 4,
+                        "semantic_edges": 2
+                    },
+                    "signature": "<node module frontend/src/components/OrderList.vue>><node ext:rest_call GET /task/search/ from OrderList.vue>><node ext:endpoint /task/search/>><node function backend.app.urls.search>><node function backend.app.search.search_orders>"
+                }
+            ],
+            "bounds": {
+                "max_depth": 6,
+                "max_paths": 5,
+                "timeout_ms": 3000,
+                "visited_states": 4,
+                "queued_states": 4,
+                "truncation_reason": null,
+                "truncation_reasons": []
+            }
+        },
+        "evidence": [
+            {
+                "path_index": 0,
+                "hop_index": 0,
+                "path": "frontend/src/components/OrderList.vue",
+                "start_line": 9,
+                "end_line": 9
+            },
+            {
+                "path_index": 0,
+                "hop_index": 1,
+                "path": "frontend/src/components/OrderList.vue",
+                "start_line": 9,
+                "end_line": 9
+            },
+            {
+                "path_index": 0,
+                "hop_index": 2,
+                "path": "backend/app/urls.py",
+                "start_line": 6,
+                "end_line": 6
+            },
+            {
+                "path_index": 0,
+                "hop_index": 3,
+                "path": "backend/app/urls.py",
+                "start_line": 7,
+                "end_line": 7
+            }
+        ],
+        "warnings": [
+            "Flows are plausible statically supported paths, not proof of runtime execution."
+        ],
+        "truncated": false
+    }
+}

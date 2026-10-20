@@ -256,6 +256,68 @@ results, the snapshot and trend figures and the summary's diagnostic count.
 `list_diagnostics` still lists them. An enricher whose output changes with no
 code change, or that fails, never shows up as drift and never fails a gate.
 
+## Profiles
+
+One codebase often ships in several configurations, such as two brands of one
+application. An enricher can say which configuration an edge belongs to, and
+`explain_flow` then never composes a path that no single configuration could
+take.
+
+**The attribute.** Put `profile` in an edge's `attributes`: a name, or a
+non-empty list of names for an edge that is valid in several profiles. Each
+name is 1 to 64 letters, digits, `_`, `.` or `-`. A list is kept deduplicated,
+in your order. An edge without `profile` is unprofiled: its profile is unknown,
+not wrong, and every path may cross it. An invalid value is removed, the edge
+is kept as unprofiled, and the scan reports `ENRICHER_PROFILE_INVALID`. Names
+are not checked against any declared list, so a typo shows up as a path bound
+to a name you did not expect.
+
+**Only enricher edges count.** Native edges, derived `implemented_by` steps and
+`represents` links without a `profile` are all unprofiled. Shared native code
+therefore never breaks a path's binding, and never changes it either. Profiles
+apply to edges only, never to nodes.
+
+**How a path is bound.** Each path keeps the set of profiles it is still valid
+in. It starts unbound, and the first profiled edge it crosses binds it to that
+edge's profiles. Every later profiled edge narrows the set to the profiles both
+share. When they share none, that branch is cut off: the search does not follow
+the edge, and counts the branch. An unprofiled edge leaves the set as it is.
+
+**Pinning a profile.** Pass `profile` to `explain_flow` (`--profile=NAME` on
+the CLI) to start every path bound to that one profile. A path then follows only
+unprofiled edges and edges whose profiles include it. Without the argument, the
+first profiled edge binds each path, as above.
+
+**What the answer says.** Each path carries `profile`: the one name its own
+hops bind it to, a sorted list when they leave it valid in several, or `null`
+when no profiled edge bound it. `unprofiled_hops` lists the indexes, from 0, of
+the hops whose profile is unknown, so you can see how much of the path the
+profiles actually vouch for. Routes over the same components are shown as one
+path, through the strongest of them. Its `profile` stays the one its own hops
+prove, and `also_in` lists, sorted, the other profiles in which the same
+components connect through different edges. A route that no profiled edge bound
+adds nothing to `also_in`, and it is `[]` when there is nothing to add.
+
+The response carries `profile_filter`: `requested` is the pinned profile or
+`null`, and `pruned_branches` counts the partial paths a profile conflict cut
+off. The search does not continue past a conflict, so it counts the branches it
+cut, not the finished routes they might have led to. When the count is above 0,
+the summary says so, for example "3 branches were cut off by a profile
+conflict." With `both_directions`, the count belongs to the direction the answer
+comes from. When the answer is the reversed one, `forward_pruned_branches`
+counts the branches the forward search cut off, and the summary mentions them
+too when there are any. Impact, usages, metrics, gates and snapshots ignore
+profiles.
+
+**An example.** The rest call in brand A's Vue component is tagged
+`"profile": "brand_a"`, and it reaches a Django view through a `represents`
+link. In brand B, the same view also calls an endpoint tagged
+`"profile": "brand_b"`. A flow from brand A's rest call binds to `brand_a`,
+passes the unprofiled `represents` link and the view's native code, and stops
+before the brand-B call: that branch adds 1 to `pruned_branches`. A flow pinned
+to `brand_b` never takes brand A's rest call at all. An edge tagged
+`["brand_a", "brand_b"]` stays open to either.
+
 ## When enrichers run
 
 Enrichers run on explicit scans only: the MCP `scan_project` tool, the CLI
@@ -310,6 +372,7 @@ on the next background scan while the facts stay.
 | `ENRICHER_DUPLICATES_NATIVE`  | warning  | An edge repeats a native edge exactly. It is dropped, and the native fact stands.                                      |
 | `ENRICHER_UNDISCOVERED_FILE`  | warning  | A node's or edge's evidence cites a file the scan did not discover. The fact is dropped.                               |
 | `ENRICHER_REPRESENTS_INVALID` | warning  | A `represents` link failed one of its checks. The link is dropped.                                                     |
+| `ENRICHER_PROFILE_INVALID`    | warning  | An edge's `profile` is not a valid name or list of names. The attribute is removed and the edge is kept as unprofiled. |
 | `ENRICHER_REPORTED:<code>`    | as sent  | A diagnostic the enricher reported itself, with `error` lowered to `warning`.                                          |
 | `ENRICHER_NOT_INSTALLED`      | warning  | The project requests a name the installation does not define. It is skipped and its facts are removed.                 |
 | `ENRICHER_NOT_RUN`            | info     | A background scan did not run the enricher. Its previous facts are kept, and the message says when they were produced. |

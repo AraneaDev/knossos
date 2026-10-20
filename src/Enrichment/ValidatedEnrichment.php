@@ -16,7 +16,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
  */
 final readonly class ValidatedEnrichment
 {
-    /** @param list<Diagnostic> $dropped one warning per dropped fact */
+    /** @param list<Diagnostic> $dropped one warning per dropped fact, or per invalid profile removed from a kept edge */
     public function __construct(
         public ScanContribution $contribution,
         public array $dropped,
