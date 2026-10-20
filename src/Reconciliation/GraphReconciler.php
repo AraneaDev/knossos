@@ -745,11 +745,18 @@ final readonly class GraphReconciler
      * id before reconcile runs (the enrichment pass) cannot drift from the id
      * the reconciler assigns.
      *
+     * Native nodes keep the language their local id names; enriched nodes get `ext:<enricher>`.
+     *
      * @return array{0: string, 1: string} [language, stable id]
      */
     public static function nodeIdentity(string $projectId, NodeFact $node): array
     {
         $language = self::languageFromReference($node->localId);
+        // An enricher's local id is `ext:<enricher>/<id>`. The language names the enricher too, so two enrichers
+        // that report the same kind and canonical name get two stable ids and two nodes, each under its own owner.
+        if ($language === 'ext' && preg_match('#^ext:([^/]+)/#', $node->localId, $matches) === 1) {
+            $language = 'ext:' . $matches[1];
+        }
 
         return [$language, StableId::symbol($projectId, $language, $node->kind, $node->canonicalName)];
     }

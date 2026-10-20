@@ -64,7 +64,13 @@ final class NativeNodeIndex
         return $this->nodes[$stableId]['kind'] ?? null;
     }
 
-    /** Whether a native worker reported exactly this edge, by worker local ids. */
+    /**
+     * Whether a native worker reported exactly this edge, by worker local ids.
+     *
+     * Matches raw native references only: a native edge whose target the
+     * reconciler resolves later (an inherited member, an alias) is not
+     * recognised as a duplicate. Native facts are never overwritten either way.
+     */
     public function hasNativeEdge(string $sourceLocalId, string $targetLocalId, string $kind): bool
     {
         return isset($this->edges[self::edgeKey($sourceLocalId, $targetLocalId, $kind)]);

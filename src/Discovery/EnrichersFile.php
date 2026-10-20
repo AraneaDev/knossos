@@ -31,7 +31,7 @@ final readonly class EnrichersFile
      */
     public function read(): array
     {
-        return $this->parse()[0];
+        return $this->load()[0];
     }
 
     /**
@@ -41,15 +41,18 @@ final readonly class EnrichersFile
      */
     public function problems(): array
     {
-        return $this->parse()[1];
+        return $this->load()[1];
     }
 
     /**
      * Read the file once and sort its entries into definitions and problems.
      *
-     * @return array{array<string, EnricherDefinition>, list<string>}
+     * A caller that wants both reads the file once through this method rather
+     * than through {@see read()} and {@see problems()}.
+     *
+     * @return array{array<string, EnricherDefinition>, list<string>} [definitions by name, problem lines]
      */
-    private function parse(): array
+    public function load(): array
     {
         if (!is_file($this->path)) {
             return [[], []];
@@ -63,7 +66,7 @@ final readonly class EnrichersFile
         } catch (JsonException $error) {
             return [[], [sprintf('%s is not valid JSON (%s).', $this->path, $error->getMessage())]];
         }
-        $entries = is_array($decoded) ? ($decoded['enrichers'] ?? $decoded) : null;
+        $entries = is_array($decoded) ? ($decoded['enrichers'] ?? null) : null;
         if (!is_array($entries) || !array_is_list($entries)) {
             return [[], [sprintf('%s does not have the expected {"enrichers": [...]} shape.', $this->path)]];
         }
@@ -109,8 +112,8 @@ final readonly class EnrichersFile
             return null;
         }
         $environment = $entry['env'] ?? [];
-        if (!is_array($environment) || self::notAllStrings($environment, nonEmpty: false) || array_is_list($environment) && $environment !== []) {
-            $problem = sprintf('env of %s must be an object of string values.', $name);
+        if (!is_array($environment) || self::notAllStrings($environment, nonEmpty: false) || array_is_list($environment) && $environment !== [] || self::badEnvironmentName($environment)) {
+            $problem = sprintf('env of %s must be an object of string values with usable names (no empty name, no = or NUL).', $name);
             return null;
         }
         $kinds = $entry['input_node_kinds'] ?? [];
@@ -122,6 +125,23 @@ final readonly class EnrichersFile
         $checked = [$command, $environment, $kinds];
 
         return new EnricherDefinition($name, $checked[0], $timeout, $checked[1], $checked[2]);
+    }
+
+    /**
+     * True when an environment variable name is empty or holds `=` or NUL, which no process can receive.
+     *
+     * @param array<mixed> $environment
+     */
+    private static function badEnvironmentName(array $environment): bool
+    {
+        foreach (array_keys($environment) as $key) {
+            $key = (string) $key;
+            if ($key === '' || str_contains($key, '=') || str_contains($key, "\0")) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

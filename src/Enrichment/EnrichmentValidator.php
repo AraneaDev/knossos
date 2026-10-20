@@ -237,7 +237,11 @@ final class EnrichmentValidator
     }
 
     /**
-     * Keep the enricher's own diagnostics, minus evidence in files this scan did not discover.
+     * Keep the enricher's own diagnostics as warnings at most, under a code of their own.
+     *
+     * An enricher's `error` would count toward the error budget of a quality
+     * gate, and its code could imitate a native one; both are made
+     * impossible. Evidence in a file this scan did not discover is removed.
      *
      * @param list<Diagnostic> $diagnostics
      * @return list<Diagnostic>
@@ -248,7 +252,12 @@ final class EnrichmentValidator
         foreach ($diagnostics as $diagnostic) {
             $evidence = $diagnostic->evidence;
             $citesUndiscovered = $evidence !== null && !isset($this->discoveredPaths[$evidence->relativePath]);
-            $kept[] = $citesUndiscovered ? new Diagnostic($diagnostic->severity, $diagnostic->code, $diagnostic->message) : $diagnostic;
+            $kept[] = new Diagnostic(
+                $diagnostic->severity === 'error' ? 'warning' : $diagnostic->severity,
+                'ENRICHER_REPORTED:' . $diagnostic->code,
+                $diagnostic->message,
+                $citesUndiscovered ? null : $evidence,
+            );
         }
 
         return $kept;

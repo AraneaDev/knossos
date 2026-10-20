@@ -48,7 +48,7 @@ final class EnrichersFileTest extends TestCase
         return new EnrichersFile($path);
     }
 
-    /** @param array<string, mixed> $entry */
+    /** @param array<string, mixed> ...$entries */
     private function fileWithEntries(array ...$entries): EnrichersFile
     {
         return $this->fileWith(json_encode(['enrichers' => $entries], JSON_THROW_ON_ERROR));
@@ -95,6 +95,9 @@ final class EnrichersFileTest extends TestCase
             'a command given as a string' => [['name' => 'bad', 'command' => 'python3 m.py']],
             'a bad name' => [['name' => 'Bad Name', 'command' => ['x']]],
             'timeout 0' => [['name' => 'bad', 'command' => ['x'], 'timeout_seconds' => 0]],
+            'an env name with =' => [['name' => 'bad', 'command' => ['x'], 'env' => ['A=B' => '1']]],
+            'an empty env name' => [['name' => 'bad', 'command' => ['x'], 'env' => ['' => '1']]],
+            'an env name with NUL' => [['name' => 'bad', 'command' => ['x'], 'env' => ["A\0B" => '1']]],
             'timeout 121' => [['name' => 'bad', 'command' => ['x'], 'timeout_seconds' => 121]],
         ];
     }
@@ -122,6 +125,24 @@ final class EnrichersFileTest extends TestCase
         $problems = $file->problems();
         assertCount(1, $problems);
         assertStringContainsString('entry 1', $problems[0]);
+    }
+
+    public function testABareTopLevelListIsNotAValidShape(): void
+    {
+        $file = $this->fileWith('[{"name":"plain","command":["x"]}]');
+
+        assertSame([], $file->read());
+        assertCount(1, $file->problems());
+    }
+
+    public function testLoadReturnsDefinitionsAndProblemsTogether(): void
+    {
+        $file = $this->fileWithEntries(['name' => 'good', 'command' => ['x']], ['name' => 'Bad', 'command' => ['x']]);
+
+        [$definitions, $problems] = $file->load();
+
+        assertSame(['good'], array_keys($definitions));
+        assertCount(1, $problems);
     }
 
     public function testUnreadableJsonIsAProblemNotAnException(): void

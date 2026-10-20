@@ -140,6 +140,42 @@ final class EnrichmentValidatorTest extends KnossosTestCase
         assertSame(['enricher:a', 'enricher:b'], $owners);
     }
 
+    public function testTwoEnrichersSameKindAndCanonicalNameDoNotCollide(): void
+    {
+        [$pdo, $reconciler, $request] = $this->reconciliationFixture();
+        $index = NativeNodeIndex::build(StableId::project($request->projectIdentity), $request->contributions);
+        $validator = new EnrichmentValidator($index, ['src/CheckoutService.php' => true]);
+        $node = static fn(): NodeFact => new NodeFact('x', 'ext:call', 'GET /same', 'same', Origin::Ast, Confidence::Probable, new Evidence('src/CheckoutService.php', 7, 9));
+        $a = $validator->validate('a', self::SCAN, self::AT, new ScanContribution('a', [$node()]));
+        $b = $validator->validate('b', self::SCAN, self::AT, new ScanContribution('b', [$node()]));
+
+        $reconciler->reconcile(new FullScanRequest(
+            $request->projectIdentity,
+            $request->projectName,
+            $request->discovery,
+            [...$request->scanners, new ScannerManifest('enricher', '1.0.0', '1.0', '1.0', ['ext'], ['ext'], ['enrichment'])],
+            [...$request->contributions, $a->contribution, $b->contribution],
+        ));
+
+        $rows = $pdo->query("SELECT owner_key, attributes_json FROM nodes WHERE kind = 'ext:call' ORDER BY owner_key")->fetchAll(PDO::FETCH_ASSOC);
+        assertSame(['enricher:a', 'enricher:b'], array_column($rows, 'owner_key'));
+        assertSame(['a', 'b'], array_map(static fn(array $r): string => json_decode($r['attributes_json'], true)['enricher'], $rows));
+    }
+
+    public function testEnricherDiagnosticsAreCappedAtWarningAndPrefixed(): void
+    {
+        $raw = new ScanContribution('whatever', [], [], [
+            new \Knossos\Scanner\Protocol\Diagnostic('error', 'FOO', 'it broke'),
+            new \Knossos\Scanner\Protocol\Diagnostic('info', 'BAR', 'fyi', $this->ev('vendor/x.py')),
+        ]);
+
+        $diagnostics = $this->validator()->validate('acme', self::SCAN, self::AT, $raw)->contribution->diagnostics;
+
+        assertSame(['warning', 'info'], array_map(static fn($d): string => $d->severity, $diagnostics));
+        assertSame(['ENRICHER_REPORTED:FOO', 'ENRICHER_REPORTED:BAR'], array_map(static fn($d): string => $d->code, $diagnostics));
+        assertSame(null, $diagnostics[1]->evidence);
+    }
+
     public function testEdgeToUnknownIdIsDropped(): void
     {
         $result = $this->validate(
