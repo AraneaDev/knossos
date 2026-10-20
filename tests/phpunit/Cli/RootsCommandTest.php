@@ -115,6 +115,44 @@ final class RootsCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testTheInstallationsHomeGraphIsAKnownLocation(): void
+    {
+        // tools/install pins the server and hooks to ~/.knossos/knossos.sqlite,
+        // so with nothing named, the roots file beside it is the one the
+        // server reads, not a guess from the working directory.
+        $home = $this->tempDir . '/home';
+        mkdir($home . '/.knossos', 0o700, true);
+        touch($home . '/.knossos/knossos.sqlite');
+        $previousData = getenv('KNOSSOS_DATA_DIR');
+        $previousFile = getenv('KNOSSOS_ROOTS_FILE');
+        $previousHome = getenv('HOME');
+        $previousCwd = (string) getcwd();
+        putenv('KNOSSOS_DATA_DIR');
+        putenv('KNOSSOS_ROOTS_FILE');
+        putenv('HOME=' . $home);
+        chdir($this->tempDir);
+        try {
+            $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), null);
+            ob_start();
+            try {
+                (new RootsCommand())->run('allow-root', [$this->tempDir], [], $context);
+            } finally {
+                $output = (string) ob_get_clean();
+            }
+        } finally {
+            chdir($previousCwd);
+            putenv(is_string($previousData) ? 'KNOSSOS_DATA_DIR=' . $previousData : 'KNOSSOS_DATA_DIR');
+            putenv(is_string($previousFile) ? 'KNOSSOS_ROOTS_FILE=' . $previousFile : 'KNOSSOS_ROOTS_FILE');
+            putenv(is_string($previousHome) ? 'HOME=' . $previousHome : 'HOME');
+        }
+
+        assertContains($home . '/.knossos/roots.json', $output);
+        assertSame(false, str_contains($output, RootsCommand::WORKING_DIRECTORY_WARNING));
+        assertSame(false, str_contains($output, 'working directory'));
+        assertContains('A server configured with that roots file re-reads it per request', $output);
+    }
+
+    #[Group('cli')]
     public function testRefusesToCreateANewRootsFileInsideTheDirectoryBeingGranted(): void
     {
         // The natural way to grant a project is to run this from inside it,

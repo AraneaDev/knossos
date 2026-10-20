@@ -178,6 +178,23 @@ final class ScanBatchQueueTest extends TestCase
         assertContains('after 4 retries in smaller batches', $thrown->getMessage());
     }
 
+    public function testARetriedFailureKeepsHowTheWorkerEnded(): void
+    {
+        $sourceBytes = 10_000;
+        $queue = new ScanBatchQueue($this->files(64, 10), $this->descriptor(64, 10_000), $sourceBytes);
+        $error = new WorkerException('WORKER_EXITED', 'gone', terminatingSignal: null, exitCode: 3);
+        $batch = $queue->next();
+        for ($halving = 0; $halving < WorkerExecutionPolicy::MAX_SCAN_BATCH_HALVINGS; ++$halving) {
+            $queue->retry($batch, $error);
+            $batch = $queue->next();
+        }
+
+        $thrown = captureThrows(static fn() => $queue->retry($batch, $error), WorkerException::class);
+
+        assertContains('retries in smaller batches', $thrown->getMessage());
+        assertSame(3, $thrown->exitCode);
+    }
+
     public function testTheRequestCapIsNamedWhenReached(): void
     {
         $sourceBytes = 10_000;

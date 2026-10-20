@@ -78,7 +78,7 @@ final class EnricherRunner
     /** The outcome reason for a protocol failure, telling a clean exit 0 apart from a crash. */
     private static function reason(WorkerException $error): string
     {
-        if ($error->diagnosticCode === 'WORKER_EXITED' && str_contains($error->getMessage(), '(exit 0)')) {
+        if ($error->exitCode === 0) {
             return 'exited_early';
         }
 

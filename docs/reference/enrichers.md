@@ -25,7 +25,40 @@ The installation defines which enrichers exist and how to start them, in
 `enrichers.json` beside `roots.json`. That is `<KNOSSOS_DATA_DIR>/enrichers.json`
 (by default `~/.knossos/enrichers.json`). When `KNOSSOS_ROOTS_FILE` points the
 roots file elsewhere, `enrichers.json` moves with it, into that file's
-directory. There is no command to edit it: you write it by hand.
+directory.
+
+`knossos enricher` manages the file for you, at the location `--db`,
+`KNOSSOS_DATA_DIR` and `KNOSSOS_ROOTS_FILE` select, the same way they select
+`roots.json`:
+
+```sh
+knossos enricher add endpoints --timeout=30 --env=ENDPOINTS_MODE=strict \
+    --kinds=function,method -- python3 /opt/knossos-enrichers/endpoints.py
+knossos enricher list
+knossos enricher remove endpoints
+```
+
+- `add` checks the new entry by the same rules a scan reads the file with, and
+  refuses a name that is already defined unless you pass `--replace`. A refusal
+  exits 2 and leaves the file as it was. Everything after `--` is the command,
+  so its own flags reach it unchanged. `--env` can be repeated.
+- `--env=NAME=VALUE` puts the value in your shell history and in the `ps`
+  output of anyone on the machine while the command runs. For a secret, add the
+  enricher without it and write the value into the file by hand.
+- `list` prints each enricher with its command, timeout, input kinds and the
+  names of its `env` variables, never their values, followed by any problems in
+  the file. `--json` prints `{"enrichers": [...], "problems": [...]}`. It exits
+  1 when the file has problems.
+- `remove` exits 1 when no enricher has that name.
+
+`add` and `remove` refuse to touch a file that has problems, because rewriting
+it would drop the entries a scan skips. Fix those first, or edit the file
+yourself. Every write replaces the file atomically with mode 0600, since `env`
+may carry a credential. When neither `--db`, `KNOSSOS_DATA_DIR` nor
+`KNOSSOS_ROOTS_FILE` named the location, `add` and `remove` say so, because
+the file they changed may not be the one your server reads.
+
+You can also write the file by hand. This is what the `add` above produces:
 
 ```json
 {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery;
 
+use InvalidArgumentException;
 use JsonException;
 
 /**
@@ -12,7 +13,8 @@ use JsonException;
  * Sits beside `roots.json`, so `KNOSSOS_ROOTS_FILE` moves both. Read
  * tolerantly: a broken file or entry never fails a scan, it only shrinks the
  * set of enrichers and leaves a line in {@see problems()} for the scan to
- * report. There is no writer; the file is edited by hand.
+ * report. `knossos enricher` writes it through {@see write()}; editing it by
+ * hand works just as well.
  */
 final readonly class EnrichersFile
 {
@@ -74,7 +76,7 @@ final readonly class EnrichersFile
         $definitions = [];
         $problems = [];
         foreach ($entries as $index => $entry) {
-            $definition = is_array($entry) ? self::definition($entry, $problem) : null;
+            $definition = is_array($entry) ? self::entry($entry, $problem) : null;
             if ($definition === null) {
                 $problems[] = sprintf('enrichers.json entry %d skipped: %s', $index, $problem ?? 'it is not an object.');
                 continue;
@@ -90,11 +92,55 @@ final readonly class EnrichersFile
     }
 
     /**
-     * Validate one entry; null with a reason in $problem when it is unusable.
+     * Replace the file with these definitions, in order, atomically and owner-only.
+     *
+     * The fields are the ones {@see load()} reads, every one written out, so
+     * the file reads back as exactly these definitions. Mode 0600 whatever the
+     * file had before: `env` may carry a credential. The temporary file is
+     * created under umask 077, so neither it nor the file it becomes is ever
+     * readable by anyone else, not even before the rename.
+     *
+     * @param list<EnricherDefinition> $definitions
+     */
+    public function write(array $definitions): void
+    {
+        $directory = dirname($this->path);
+        if (!is_dir($directory) && !@mkdir($directory, 0o700, true)) {
+            throw new InvalidArgumentException(sprintf('Unable to create %s.', $directory));
+        }
+        $entries = array_map(static fn(EnricherDefinition $definition): array => [
+            'name' => $definition->name,
+            'command' => $definition->command,
+            'timeout_seconds' => $definition->timeoutSeconds,
+            // An object even when empty or numeric-keyed, which is the shape load() accepts.
+            'env' => (object) $definition->environment,
+            'input_node_kinds' => $definition->inputNodeKinds,
+        ], $definitions);
+        $encoded = json_encode(['enrichers' => $entries], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $temporary = $directory . '/.enrichers.json.' . bin2hex(random_bytes(8)) . '.tmp';
+        // Created owner-only, before the first byte of an env value is in it;
+        // the chmod after only matters on a filesystem that ignores the umask.
+        $umask = umask(0o077);
+        try {
+            $written = @file_put_contents($temporary, $encoded . PHP_EOL);
+        } finally {
+            umask($umask);
+        }
+        if ($written === false || !@chmod($temporary, 0o600) || !@rename($temporary, $this->path)) {
+            @unlink($temporary);
+            throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
+        }
+    }
+
+    /**
+     * Validate one entry as the file holds it; null with a reason in $problem when it is unusable.
+     *
+     * Public so a writer checks a new entry by exactly the rules the reader
+     * applies, and never writes one the next read would skip.
      *
      * @param array<mixed> $entry
      */
-    private static function definition(array $entry, ?string &$problem): ?EnricherDefinition
+    public static function entry(array $entry, ?string &$problem): ?EnricherDefinition
     {
         $name = $entry['name'] ?? null;
         if (!is_string($name) || preg_match(EnricherDefinition::NAME_PATTERN, $name) !== 1) {

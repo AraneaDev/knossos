@@ -8,6 +8,7 @@ use Knossos\Scanner\Worker\NdjsonRpcChannel;
 use Knossos\Scanner\Worker\ProcessSupervisorInterface;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -577,6 +578,36 @@ final class NdjsonRpcChannelTest extends TestCase
         );
 
         assertSame('WORKER_EXITED', $error->diagnosticCode);
+    }
+
+    /** @return iterable<string, array{bool, int, int, ?int}> */
+    public static function exitStatuses(): iterable
+    {
+        yield 'a clean exit' => [false, 0, 0, 0];
+        yield 'exit(3)' => [false, 3, 0, 3];
+        yield 'killed by a signal' => [true, -1, 15, null];
+        yield 'an exit status no longer available' => [false, -1, 0, null];
+    }
+
+    #[DataProvider('exitStatuses')]
+    public function testAnExitedWorkerCarriesItsExitStatusWhenItExitedOnItsOwn(bool $signaled, int $exitcode, int $termsig, ?int $expected): void
+    {
+        $process = $this->mockProcess();
+        $channel = new NdjsonRpcChannel($process, new WorkerLimits(requestTimeoutMs: 100));
+        $deadline = $channel->beginRequest();
+
+        $process->running = false;
+        $process->signaled = $signaled;
+        $process->exitcode = $exitcode;
+        $process->termsig = $termsig;
+        ftruncate($process->pipes[1], 0);
+        fclose($process->pipes[1]);
+        $process->pipes[1] = fopen('php://temp', 'r');
+
+        $error = captureThrows(static fn() => $channel->readMessage($deadline), WorkerException::class);
+
+        assertSame('WORKER_EXITED', $error->diagnosticCode);
+        assertSame($expected, $error->exitCode);
     }
 
     public function testAWorkerKilledBySignalSaysSoRatherThanReportingExitMinusOne(): void

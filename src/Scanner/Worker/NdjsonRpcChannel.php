@@ -300,10 +300,14 @@ final class NdjsonRpcChannel implements RpcChannelInterface
                 continue;
             }
             if (!$status['running'] && feof($stdout)) {
+                $signalled = $status['signaled'] && $status['termsig'] > 0;
                 throw new WorkerException(
                     'WORKER_EXITED',
                     $this->withStderr(self::exitDescription($status)),
-                    terminatingSignal: $status['signaled'] && $status['termsig'] > 0 ? $status['termsig'] : null,
+                    terminatingSignal: $signalled ? $status['termsig'] : null,
+                    // The same status the message is built from: the supervisor
+                    // keeps the first one read, as the OS reports it only once.
+                    exitCode: !$signalled && $status['exitcode'] >= 0 ? $status['exitcode'] : null,
                 );
             }
         }

@@ -12,7 +12,7 @@
 import type { PathBetween, RouteState } from '../../types'
 import { noteOf } from './cards'
 import type { Arrangement, Block } from './cards'
-import { box, boxWidth, canvas, DIAGRAM_MIN, dotted, LABEL_MAX, line, toRows, write } from './diagram'
+import { box, boxWidth, canvas, DIAGRAM_MIN, dotted, doubled, LABEL_MAX, line, toRows, write } from './diagram'
 import type { Canvas } from './diagram'
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
@@ -26,15 +26,33 @@ import { busy } from './motion'
 /** One component on a route. */
 export type RouteNode = { name: string; canonical: string; kind: string; boundary: string | null }
 /**
- * One hop of a route: its kind, where it is written, how sure it is, and
+ * One hop of a route: its kind, where it is written, how sure it is,
  * whether no edge holds it but the graph's reading does (`derived`: an
- * interface method to the one implementing it).
+ * interface method to the one implementing it), whether it only says two
+ * names are one thing (`step` `identity`), and where the fact came from
+ * (`origin`, `enricher` for one an external enricher added).
  */
-export type RouteHop = { kind: string; place: string; loc: Loc | null; confidence?: string; derived?: boolean }
+export type RouteHop = { kind: string; place: string; loc: Loc | null; confidence?: string; derived?: boolean; step?: string; origin?: string }
 
-/** What a hop's label says: its kind, how sure it is when it is not certain, whether it is derived, and where it is written. */
+/** Whether a hop says its two ends are one thing under two names, rather than one reaching the other. */
+const isIdentity = (hop: RouteHop): boolean => hop.step === 'identity'
+
+/**
+ * What a hop's label says: its kind (`same as` for an identity hop), how sure
+ * it is when it is not certain, whether it is derived or enriched, and where
+ * it is written.
+ */
 const hopText = (hop: RouteHop, place = true): string =>
-  [hop.kind, ...(hop.confidence === undefined || hop.confidence === 'certain' ? [] : [hop.confidence]), ...(hop.derived === true ? ['derived'] : []), ...(place && hop.place !== '' ? [hop.place] : [])].join(' · ')
+  [
+    isIdentity(hop) ? 'same as' : hop.kind,
+    ...(hop.confidence === undefined || hop.confidence === 'certain' ? [] : [hop.confidence]),
+    ...(hop.derived === true ? ['derived'] : []),
+    ...(hop.origin === 'enricher' ? ['enricher'] : []),
+    ...(place && hop.place !== '' ? [hop.place] : []),
+  ].join(' · ')
+
+/** The arrow a hop is drawn with as a line of text: doubled for an identity, dotted for a derived hop. */
+const hopArrow = (hop: RouteHop): string => (isIdentity(hop) ? '⇓' : hop.derived === true ? '⇣' : '↓')
 
 /** The route view's input. */
 export type RouteInput = {
@@ -63,7 +81,7 @@ export function routeInput(state: RouteState | null, from: { name: string; label
   if (answer.status !== 'ok') return { ...base, loading: false, said: ['knossos did not look for a route.'], warn: true }
   const routes = answer.routes.map(r => ({
     nodes: r.nodes.map(n => ({ name: displayName(n), canonical: n.canonical_name, kind: n.kind, boundary: n.boundary })),
-    hops: r.hops.map(h => ({ kind: h.kind, place: placeOf(h.path, h.line), loc: locIn(root, h.path, h.line), confidence: h.confidence, derived: h.derived === true })),
+    hops: r.hops.map(h => ({ kind: h.kind, place: placeOf(h.path, h.line), loc: locIn(root, h.path, h.line), confidence: h.confidence, derived: h.derived === true, ...(h.step === undefined ? {} : { step: h.step }), ...(h.origin === undefined ? {} : { origin: h.origin }) })),
   }))
   const shown = Math.min(Math.max(0, index), Math.max(0, routes.length - 1))
   const depth = `within ${plural(6, 'hop', 'hops')}`
@@ -96,8 +114,8 @@ export function routeDiagram(route: { nodes: RouteNode[]; hops: RouteHop[] }, co
       const own = chip(n.boundary, hues)
       const named: Row = { key: `route-node-${i}`, segments: [{ text: i === selected ? '›' : ' ', color: ACCENT, bold: true }, { text: ' ' }, button(`row:${i}`, fit(n.name, Math.max(4, columns - 3 - segmentsWidth(own) - 1))), ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])] }
       const hop = route.hops[i]
-      // A derived hop is a dotted arrow: no edge holds it.
-      return hop === undefined ? [named] : [named, { key: `route-hop-${i}`, segments: [{ text: hop.derived === true ? '   ⇣ ' : '   ↓ ', color: FAINT }, { text: fit(hopText(hop), Math.max(1, columns - 5)), dim: true }] }]
+      // A derived hop is a dotted arrow (no edge holds it), an identity hop a double one.
+      return hop === undefined ? [named] : [named, { key: `route-hop-${i}`, segments: [{ text: `   ${hopArrow(hop)} `, color: FAINT }, { text: fit(hopText(hop), Math.max(1, columns - 5)), dim: true }] }]
     })
     return { rows, canvas: null }
   }
@@ -116,8 +134,9 @@ export function routeDiagram(route: { nodes: RouteNode[]; hops: RouteHop[] }, co
     const hop = route.hops[i]
     if (hop === undefined) return
     line(c, [[centre, y + 2], [centre, y + 4]], { color: FAINT }, true)
-    // A derived hop runs dotted down to its arrowhead: no edge holds it.
-    if (hop.derived === true) for (const at of [y + 2, y + 3]) dotted(c, centre, at)
+    // A derived hop runs dotted down to its arrowhead (no edge holds it), an identity hop doubled.
+    if (isIdentity(hop)) for (const at of [y + 2, y + 3]) doubled(c, centre, at)
+    else if (hop.derived === true) for (const at of [y + 2, y + 3]) dotted(c, centre, at)
     const room = columns - centre - 3
     if (room > 4) {
       const kind = fit(hopText(hop, false), room)
