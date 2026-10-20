@@ -5,9 +5,21 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
+use Knossos\Cli\CliCommandContext;
+use Knossos\Cli\CliInputLoader;
+use Knossos\Cli\CliOptionParser;
+use Knossos\Cli\Command\QueryCommand;
+use Knossos\Enrichment\Profiles;
+use Knossos\Maintenance\DatabaseMaintenanceService;
+use Knossos\Mcp\NextStepPlanner;
+use Knossos\Mcp\ResultEnricher;
+use Knossos\Mcp\ToolService;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\DiagnosticsQueryService;
+use Knossos\Query\StalenessProbe;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Runtime\RuntimeFactory;
+use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\EnricherFlowScans;
 use PDO;
@@ -157,7 +169,11 @@ final class FlowProfilesTest extends KnossosTestCase
         assertSame('ast', $paths[0]['hops'][3]['origin']);
     }
 
-    /** Review focus 3: two compatible routes over one node sequence are one path with both profiles. */
+    /**
+     * Review focus 3: two compatible routes over one node sequence are one
+     * path. Its profile is the one its own hop proves; the other route's
+     * profile is listed in `also_in`.
+     */
     public function testSameNodeSequenceUnionsProfiles(): void
     {
         $this->scanWith('ok-profiles');
@@ -166,8 +182,12 @@ final class FlowProfilesTest extends KnossosTestCase
 
         assertCount(1, $paths);
         assertSame([self::HELPER, self::EXPORT], array_column($paths[0]['nodes'], 'canonical_name'));
-        assertSame(['brand_a', 'brand_b'], $paths[0]['profile']);
+        $own = $paths[0]['hops'][0]['attributes']['profile'];
+        assertSame($own, $paths[0]['profile']);
+        assertSame(array_values(array_diff(['brand_a', 'brand_b'], [$own])), $paths[0]['also_in']);
         assertSame([], $paths[0]['unprofiled_hops']);
+        // The semantic `dispatches` route outranks the `calls` one, so it is the witness shown.
+        assertSame(['dispatches', 'brand_b', ['brand_a']], [$paths[0]['hops'][0]['kind'], $paths[0]['profile'], $paths[0]['also_in']]);
     }
 
     public function testListEdgeIsCompatibleWithEitherPin(): void
@@ -197,6 +217,67 @@ final class FlowProfilesTest extends KnossosTestCase
 
         assertSame([], $flow->data['paths']);
         assertSame(['requested' => 'brand_c', 'pruned_branches' => 4], $flow->data['profile_filter']);
+        assertSame('No supported static flow was found within the configured bounds. 4 branches were cut off by a profile conflict.', $flow->summary);
+    }
+
+    public function testOneCutBranchIsSingular(): void
+    {
+        $this->scanWith('ok-profiles');
+
+        $flow = $this->flow(self::HELPER, self::COMPONENT, 'brand_b');
+
+        assertSame('No supported static flow was found within the configured bounds. 1 branch was cut off by a profile conflict.', $flow->summary);
+    }
+
+    /** Minor 2: a stored value the validator would refuse is read as no profile, not as one nothing matches. */
+    public function testAStoredInvalidProfileReadsAsUnprofiled(): void
+    {
+        $this->scanWith('ok-profiles');
+        $rest = 'GET /task/search/ from OrderList.vue';
+        $before = $this->flow(self::COMPONENT, $rest, 'brand_b');
+        assertSame([], $before->data['paths'], 'Tagged brand_a, the rest call is cut off under brand_b.');
+
+        $statement = $this->pdo->prepare("UPDATE edges SET attributes_json = json_set(attributes_json, '$.profile', 'bad value') WHERE source_id = ? AND target_id = ?");
+        $statement->execute([$this->idOf(self::COMPONENT), $this->idOf($rest)]);
+
+        $paths = $this->flow(self::COMPONENT, $rest, 'brand_b')->data['paths'];
+        assertCount(1, $paths);
+        assertSame('brand_b', $paths[0]['profile']);
+        assertSame([0], $paths[0]['unprofiled_hops']);
+    }
+
+    /** Important 2: the CLI's text output and the MCP tool both say how many branches a conflict cut off. */
+    public function testCutBranchesReachTheCliTextAndTheMcpSummary(): void
+    {
+        $database = sys_get_temp_dir() . '/knossos-stale-flow-profiles-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $runtime = new RuntimeFactory(self::repositoryRoot());
+        try {
+            $this->pdo = $runtime->database($database);
+            $project = $this->enricherFlowProject(mode: 'ok-profiles');
+            $this->projectId = $this->scanEnricherFlow($this->pdo, $project)->projectId;
+            $expected = 'No supported static flow was found within the configured bounds. 4 branches were cut off by a profile conflict.';
+
+            ob_start();
+            try {
+                (new QueryCommand())->run('explain-flow', [$this->projectId, self::VIEW, self::EXPORT], ['profile' => ['brand_c']], new CliCommandContext(new CliOptionParser(), new CliInputLoader(), $runtime, $database));
+            } finally {
+                $text = (string) ob_get_clean();
+            }
+            assertSame($expected . PHP_EOL, $text);
+
+            $tools = new ToolService(
+                new ProjectScanService($this->pdo, self::repositoryRoot(), [$project['root']]),
+                ArchitectureQueryService::forDatabase($this->pdo),
+                new DatabaseMaintenanceService($this->pdo, ':memory:'),
+                new ResultEnricher(new StalenessProbe($this->pdo), new NextStepPlanner()),
+            );
+            $answer = $tools->call('explain_flow', ['project_id' => $this->projectId, 'from' => self::VIEW, 'to' => self::EXPORT, 'profile' => 'brand_c']);
+            assertSame($expected, $answer->summary);
+        } finally {
+            foreach ([$database, $database . '-wal', $database . '-shm'] as $file) {
+                @unlink($file);
+            }
+        }
     }
 
     /**
@@ -215,13 +296,16 @@ final class FlowProfilesTest extends KnossosTestCase
 
         $actual = [];
         foreach ($flows as $name => $flow) {
-            assertSame(['requested' => null, 'pruned_branches' => 0], $flow->data['profile_filter']);
+            $this->assertNoContradictions($flow);
+            $reversed = $name === 'reversed' ? ['forward_pruned_branches' => 0] : [];
+            assertSame(['requested' => null, 'pruned_branches' => 0] + $reversed, $flow->data['profile_filter']);
             $data = $flow->data;
             unset($data['profile_filter']);
             foreach ($data['paths'] as $index => $path) {
                 assertSame(null, $path['profile']);
                 assertSame(array_keys($path['hops']), $path['unprofiled_hops']);
-                unset($data['paths'][$index]['profile'], $data['paths'][$index]['unprofiled_hops']);
+                assertSame([], $path['also_in']);
+                unset($data['paths'][$index]['profile'], $data['paths'][$index]['unprofiled_hops'], $data['paths'][$index]['also_in']);
             }
             $actual[$name] = $this->normalised($flow->withData($data));
         }
@@ -255,10 +339,23 @@ final class FlowProfilesTest extends KnossosTestCase
 
         // The helper reaches nothing that leads back, so the answer is the forward search, run as the reverse direction.
         assertSame(true, $reversed->data['reversed']);
-        assertSame($forward->data['profile_filter'], $reversed->data['profile_filter']);
+        // Its own count, plus the one branch the search from the helper cut off (minor 1).
+        assertSame($forward->data['profile_filter'] + ['forward_pruned_branches' => 1], $reversed->data['profile_filter']);
+        assertSame($forward->summary . ' 1 branch was cut off by a profile conflict in the forward search.', $reversed->summary);
+        $this->assertNoContradictions($reversed);
         assertSame(array_column($forward->data['paths'], 'signature'), array_column($reversed->data['paths'], 'signature'));
+        $this->assertNoContradictions($forward);
         $outbound = $query->explainFlow($this->projectId, self::HELPER, self::COMPONENT, profile: 'brand_b');
         assertSame(['requested' => 'brand_b', 'pruned_branches' => 1], $outbound->data['profile_filter'], 'The helper\'s brand-A export call, counted in its own direction only.');
+    }
+
+    /** Every path of the answer agrees with its own hops, and `also_in` never repeats its profile. */
+    private function assertNoContradictions(ResultEnvelope $flow): void
+    {
+        foreach ($flow->data['paths'] as $path) {
+            $this->assertNoContradiction($path);
+            assertSame([], array_values(array_intersect((array) $path['profile'], $path['also_in'])));
+        }
     }
 
     /**
@@ -270,7 +367,7 @@ final class FlowProfilesTest extends KnossosTestCase
     {
         $binding = (array) $path['profile'];
         foreach ($path['hops'] as $index => $hop) {
-            $profile = $hop['attributes']['profile'] ?? null;
+            $profile = $hop['origin'] === 'enricher' ? Profiles::names($hop['attributes']['profile'] ?? null) : null;
             if ($profile === null) {
                 assertContains($index, $path['unprofiled_hops']);
                 continue;
@@ -279,9 +376,13 @@ final class FlowProfilesTest extends KnossosTestCase
         }
     }
 
+    /** explain_flow from `$from` to `$to`, every path checked against its own hops. */
     private function flow(string $from, string $to, ?string $profile = null): ResultEnvelope
     {
-        return ArchitectureQueryService::forDatabase($this->pdo)->explainFlow($this->projectId, $from, $to, profile: $profile);
+        $flow = ArchitectureQueryService::forDatabase($this->pdo)->explainFlow($this->projectId, $from, $to, profile: $profile);
+        $this->assertNoContradictions($flow);
+
+        return $flow;
     }
 
     /**

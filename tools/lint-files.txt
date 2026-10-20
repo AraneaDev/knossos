@@ -159,6 +159,7 @@ php	src/Enrichment/EnrichmentChannel.php
 php	src/Enrichment/EnrichmentPhase.php
 php	src/Enrichment/EnrichmentValidator.php
 php	src/Enrichment/NativeNodeIndex.php
+php	src/Enrichment/Profiles.php
 php	src/Enrichment/ValidatedEnrichment.php
 php	src/Filesystem/RegularFileOpener.php
 php	src/Git/DirtyPathResolver.php

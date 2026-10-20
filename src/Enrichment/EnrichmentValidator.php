@@ -36,12 +36,6 @@ final class EnrichmentValidator
     /** Attributes the reconciler stamps itself; an enricher must not pre-empt them. */
     private const RESERVED_ATTRIBUTES = ['scanner', 'scanner_local_id'];
 
-    /** The edge attribute that names the profiles (brands, configurations) an enricher edge applies to. */
-    public const PROFILE_ATTRIBUTE = 'profile';
-
-    /** What one profile name may look like; `D` so a trailing newline does not pass. */
-    public const PROFILE_PATTERN = '/^[A-Za-z0-9_.-]{1,64}$/D';
-
     /** @param array<string, true> $discoveredPaths project-relative paths this scan discovered */
     public function __construct(
         private NativeNodeIndex $native,
@@ -290,43 +284,40 @@ final class EnrichmentValidator
     private static function profiled(string $enricher, EdgeFact $edge, array &$dropped): array
     {
         $attributes = $edge->attributes;
-        if (!array_key_exists(self::PROFILE_ATTRIBUTE, $attributes)) {
+        if (!array_key_exists(Profiles::ATTRIBUTE, $attributes)) {
             return $attributes;
         }
-        $profile = $attributes[self::PROFILE_ATTRIBUTE];
-        $problem = self::profileProblem($profile);
-        if ($problem === null) {
-            $attributes[self::PROFILE_ATTRIBUTE] = is_array($profile) ? array_values(array_unique($profile)) : $profile;
+        $profile = $attributes[Profiles::ATTRIBUTE];
+        $names = Profiles::names($profile);
+        if ($names !== null) {
+            $attributes[Profiles::ATTRIBUTE] = is_array($profile) ? $names : $profile;
 
             return $attributes;
         }
-        unset($attributes[self::PROFILE_ATTRIBUTE]);
+        unset($attributes[Profiles::ATTRIBUTE]);
         $dropped[] = self::warning('ENRICHER_PROFILE_INVALID', sprintf(
             'Enricher %s: %s edge from %s to %s kept without its profile: %s',
             $enricher,
             $edge->kind,
             $edge->sourceReference,
             $edge->targetReference,
-            $problem,
+            self::profileProblem($profile),
         ));
 
         return $attributes;
     }
 
-    /** Why a `profile` value is invalid, or null when it is a valid name or non-empty list of names. */
-    private static function profileProblem(mixed $value): ?string
+    /** Why a `profile` value that {@see Profiles::names()} refused is invalid, in words for the warning. */
+    private static function profileProblem(mixed $value): string
     {
         $names = is_array($value) && array_is_list($value) ? $value : [$value];
-        if ($names === []) {
-            return 'the list of profiles is empty.';
-        }
         foreach ($names as $name) {
-            if (!is_string($name) || preg_match(self::PROFILE_PATTERN, $name) !== 1) {
+            if (!Profiles::isName($name)) {
                 return sprintf('%s is not a profile name; a name is 1 to 64 letters, digits, "_", "." or "-".', json_encode($name, JSON_UNESCAPED_SLASHES));
             }
         }
 
-        return null;
+        return 'the list of profiles is empty.';
     }
 
     /** `certain` is reserved for native facts, so an enricher's claim is lowered to `probable`. */
