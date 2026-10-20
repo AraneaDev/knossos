@@ -288,18 +288,26 @@ the CLI) to start every path bound to that one profile. A path then follows only
 unprofiled edges and edges whose profiles include it. Without the argument, the
 first profiled edge binds each path, as above.
 
-**What the answer says.** Each path carries `profile`: the one name it is bound
-to, a sorted list when it is valid in several, or `null` when no profiled edge
-bound it. `unprofiled_hops` lists the indexes, from 0, of the hops whose
-profile is unknown, so you can see how much of the path the profiles actually
-vouch for. When two routes over the same components are both kept as one path,
-its `profile` lists the profiles of both, and is `null` if either was unbound.
+**What the answer says.** Each path carries `profile`: the one name its own
+hops bind it to, a sorted list when they leave it valid in several, or `null`
+when no profiled edge bound it. `unprofiled_hops` lists the indexes, from 0, of
+the hops whose profile is unknown, so you can see how much of the path the
+profiles actually vouch for. Routes over the same components are shown as one
+path, through the strongest of them. Its `profile` stays the one its own hops
+prove, and `also_in` lists, sorted, the other profiles in which the same
+components connect through different edges. A route that no profiled edge bound
+adds nothing to `also_in`, and it is `[]` when there is nothing to add.
+
 The response carries `profile_filter`: `requested` is the pinned profile or
 `null`, and `pruned_branches` counts the partial paths a profile conflict cut
 off. The search does not continue past a conflict, so it counts the branches it
-cut, not the finished routes they might have led to. With `both_directions`,
-the count belongs to the direction the answer comes from. Impact, usages,
-metrics, gates and snapshots ignore profiles.
+cut, not the finished routes they might have led to. When the count is above 0,
+the summary says so, for example "3 branches were cut off by a profile
+conflict." With `both_directions`, the count belongs to the direction the answer
+comes from. When the answer is the reversed one, `forward_pruned_branches`
+counts the branches the forward search cut off, and the summary mentions them
+too when there are any. Impact, usages, metrics, gates and snapshots ignore
+profiles.
 
 **An example.** The rest call in brand A's Vue component is tagged
 `"profile": "brand_a"`, and it reaches a Django view through a `represents`
