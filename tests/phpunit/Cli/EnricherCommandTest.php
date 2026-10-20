@@ -235,7 +235,7 @@ final class EnricherCommandTest extends KnossosTestCase
 
         $this->invoke(['add', 'endpoints', '--', 'x'], $context);
 
-        assertSame(['endpoints'], array_keys((new EnrichersFile($dataDir . '/enrichers.json'))->read()));
+        assertSame(['endpoints'], array_keys((new EnrichersFile($dataDir . '/enrichers.json'))->load()[0]));
     }
 
     public function testAFileLocatedFromTheWorkingDirectorySaysSo(): void

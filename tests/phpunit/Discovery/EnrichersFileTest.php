@@ -60,7 +60,7 @@ final class EnrichersFileTest extends TestCase
     {
         $file = $this->fileWith('{"enrichers":[{"name":"acme-rest","command":["python3","/opt/m.py"],"timeout_seconds":60,"env":{"A":"1"},"input_node_kinds":["method","route"]}]}');
 
-        $definitions = $file->read();
+        $definitions = $file->load()[0];
 
         assertSame(['acme-rest'], array_keys($definitions));
         $definition = $definitions['acme-rest'];
@@ -69,12 +69,12 @@ final class EnrichersFileTest extends TestCase
         assertSame(60, $definition->timeoutSeconds);
         assertSame(['A' => '1'], $definition->environment);
         assertSame(['method', 'route'], $definition->inputNodeKinds);
-        assertSame([], $file->problems());
+        assertSame([], $file->load()[1]);
     }
 
     public function testOptionalFieldsTakeTheirDefaults(): void
     {
-        $definition = $this->fileWithEntries(['name' => 'plain', 'command' => ['x']])->read()['plain'];
+        $definition = $this->fileWithEntries(['name' => 'plain', 'command' => ['x']])->load()[0]['plain'];
 
         assertSame(EnricherDefinition::DEFAULT_TIMEOUT_SECONDS, $definition->timeoutSeconds);
         assertSame([], $definition->environment);
@@ -85,8 +85,8 @@ final class EnrichersFileTest extends TestCase
     {
         $file = new EnrichersFile($this->directory . '/absent.json');
 
-        assertSame([], $file->read());
-        assertSame([], $file->problems());
+        assertSame([], $file->load()[0]);
+        assertSame([], $file->load()[1]);
     }
 
     /** @return array<string, array{array<string, mixed>}> */
@@ -110,8 +110,8 @@ final class EnrichersFileTest extends TestCase
     {
         $file = $this->fileWithEntries(['name' => 'good-one', 'command' => ['x']], $invalid);
 
-        assertSame(['good-one'], array_keys($file->read()));
-        $problems = $file->problems();
+        assertSame(['good-one'], array_keys($file->load()[0]));
+        $problems = $file->load()[1];
         assertCount(1, $problems);
         assertStringContainsString('entry 1', $problems[0]);
     }
@@ -123,8 +123,8 @@ final class EnrichersFileTest extends TestCase
             ['name' => 'twin', 'command' => ['second']],
         );
 
-        assertSame(['first'], $file->read()['twin']->command);
-        $problems = $file->problems();
+        assertSame(['first'], $file->load()[0]['twin']->command);
+        $problems = $file->load()[1];
         assertCount(1, $problems);
         assertStringContainsString('entry 1', $problems[0]);
     }
@@ -133,8 +133,8 @@ final class EnrichersFileTest extends TestCase
     {
         $file = $this->fileWith('[{"name":"plain","command":["x"]}]');
 
-        assertSame([], $file->read());
-        assertCount(1, $file->problems());
+        assertSame([], $file->load()[0]);
+        assertCount(1, $file->load()[1]);
     }
 
     public function testLoadReturnsDefinitionsAndProblemsTogether(): void
@@ -151,8 +151,8 @@ final class EnrichersFileTest extends TestCase
     {
         $file = $this->fileWith('{');
 
-        assertSame([], $file->read());
-        assertCount(1, $file->problems());
+        assertSame([], $file->load()[0]);
+        assertCount(1, $file->load()[1]);
     }
 
     public function testForDatabaseFollowsRootsFileOverride(): void
@@ -225,7 +225,7 @@ final class EnrichersFileTest extends TestCase
 
         $file->write([new EnricherDefinition('plain', ['x'])]);
 
-        assertSame(['plain'], array_keys($file->read()));
+        assertSame(['plain'], array_keys($file->load()[0]));
         assertSame(0o700, fileperms($this->directory) & 0o777);
     }
 }
