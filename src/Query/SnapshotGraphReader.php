@@ -76,7 +76,7 @@ final readonly class SnapshotGraphReader
                 ? sprintf("CASE WHEN kind IN ('%s') THEN attributes_json END AS attributes_json", implode("', '", ErasedTypeEdge::KINDS))
                 : $column, $columns);
             // Native rows only, as the archive stores them ({@see EnrichedFacts}).
-            $native = in_array($table, EnrichedFacts::TABLES, true) ? ' AND ' . EnrichedFacts::excludeSql($table) : '';
+            $native = EnrichedFacts::nativeCondition($table);
             $statement = $this->pdo->prepare(sprintf('SELECT %s FROM %s WHERE project_id = :project%s ORDER BY +id LIMIT %d', implode(', ', $select), $table, $native, self::ROW_LIMIT + 1));
             $statement->execute(['project' => $projectId]);
             $rows = $statement->fetchAll(PDO::FETCH_ASSOC);

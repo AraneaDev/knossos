@@ -111,7 +111,7 @@ final class SqliteSnapshotArchive
     private function overRowLimit(string $projectId): bool
     {
         foreach ($this->capturedTables as $table) {
-            $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project%s', $table, self::native($table)));
+            $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project%s', $table, EnrichedFacts::nativeCondition($table)));
             $count->execute(['project' => $projectId]);
             if ((int) $count->fetchColumn() > $this->maxRowsPerTable) {
                 return true;
@@ -138,7 +138,7 @@ final class SqliteSnapshotArchive
         $factCount = 0;
         foreach ($this->capturedTables as $index => $table) {
             $order = $table === 'boundary_memberships' ? 'boundary_id, node_id' : 'id';
-            $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project%s ORDER BY %s', $table, self::native($table), $order));
+            $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project%s ORDER BY %s', $table, EnrichedFacts::nativeCondition($table), $order));
             $statement->execute(['project' => $projectId]);
             $writer->write(sprintf('%s"%s":[', $index === 0 ? '' : ',', $table));
             $first = true;
@@ -166,11 +166,5 @@ final class SqliteSnapshotArchive
         }
 
         return [$writer->finish(), $factCount, $writer->byteSize()];
-    }
-
-    /** The condition, joined with AND, that leaves enriched rows of `$table` out; empty for a table without them. */
-    private static function native(string $table): string
-    {
-        return in_array($table, EnrichedFacts::TABLES, true) ? ' AND ' . EnrichedFacts::excludeSql($table) : '';
     }
 }

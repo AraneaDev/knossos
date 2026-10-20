@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 
 /**
@@ -17,7 +18,8 @@ use Knossos\Store\SharedNodeKinds;
  * `external_*` node stands for a symbol declared outside the project
  * (`sprintf`, a vendor class), and an `endpoint` for a URL. Each is filed
  * under whichever file first named it, so counting it would make that file
- * look depended on by every other caller of the same built-in or URL.
+ * look depended on by every other caller of the same built-in or URL. An
+ * enricher's edge never counts either: fan-in is a metric of native code.
  *
  * Each row carries two boundary answers that are easy to confuse:
  * `boundaries` lists the boundaries the file's dependents sit in (where a
@@ -118,7 +120,7 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN nodes tn ON tn.id = e.target_id
               JOIN files tf ON tf.id = tn.file_id
               JOIN nodes sn ON sn.id = e.source_id
-             WHERE e.project_id = ? AND e.kind IN ($kinds)
+             WHERE e.project_id = ? AND e.kind IN ($kinds) AND {$this->native('e')}
                AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id
                AND {$this->owned('sn')}
                AND {$this->owned('tn')}
@@ -165,7 +167,7 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN boundaries b ON b.id = bm.boundary_id
              WHERE tf.project_id = ? AND tf.relative_path IN (%s)
                AND e2.project_id = tf.project_id AND s2.file_id <> tf.id AND {$this->owned('s2')}
-               AND e2.kind IN ($kinds) AND {$this->owned('t2')}
+               AND e2.kind IN ($kinds) AND {$this->native('e2')} AND {$this->owned('t2')}
              GROUP BY tf.relative_path, b.name
              ORDER BY tf.relative_path, b.name
             SQL;
@@ -200,7 +202,7 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN nodes sn ON sn.id = e.source_id
               JOIN files sf ON sf.id = sn.file_id
              WHERE tf.project_id = ? AND tf.relative_path IN (%s)
-               AND e.project_id = tf.project_id AND sf.id <> tf.id AND e.kind IN ($kinds)
+               AND e.project_id = tf.project_id AND sf.id <> tf.id AND e.kind IN ($kinds) AND {$this->native('e')}
                AND {$this->owned('sn')}
                AND {$this->owned('tn')}
              ORDER BY tf.relative_path, sf.relative_path
@@ -228,7 +230,7 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
               JOIN files tf ON tf.id = tn.file_id
               JOIN nodes sn ON sn.id = e.source_id
               JOIN files sf ON sf.id = sn.file_id
-             WHERE e.project_id = ? AND e.kind IN ($kinds) AND tf.relative_path = ? AND sf.id <> tf.id
+             WHERE e.project_id = ? AND e.kind IN ($kinds) AND {$this->native('e')} AND tf.relative_path = ? AND sf.id <> tf.id
                AND {$this->owned('sn')}
                AND {$this->owned('tn')}
              ORDER BY sf.relative_path
@@ -264,7 +266,7 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
                   JOIN files tf ON tf.id = tn.file_id
                   JOIN nodes sn ON sn.id = e.source_id
                   JOIN files sf ON sf.id = sn.file_id
-                 WHERE e.project_id = ? AND e.kind IN ($kinds) AND tf.project_id = ? AND tf.relative_path IN ($listed) AND sf.id <> tf.id
+                 WHERE e.project_id = ? AND e.kind IN ($kinds) AND {$this->native('e')} AND tf.project_id = ? AND tf.relative_path IN ($listed) AND sf.id <> tf.id
                    AND {$this->owned('sn')} AND {$this->owned('tn')}
                  GROUP BY tf.id, sf.id
             ) WHERE nth <= ? ORDER BY target, nth
@@ -276,6 +278,12 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
             $top[(string) $row['target']][] = (string) $row['source'];
         }
         return $top;
+    }
+
+    /** The condition that an edge is native: fan-in is a metric, and an enricher's edge never counts; see {@see EnrichedFacts}. */
+    private function native(string $alias): string
+    {
+        return EnrichedFacts::excludeSql($alias);
     }
 
     /** The condition that a node's file stands for its owner; see {@see SharedNodeKinds}. */

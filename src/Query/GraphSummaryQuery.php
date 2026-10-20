@@ -31,9 +31,9 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         $edges = $this->counts('edges', $projectId, $limit);
         $files = $this->counts('files', $projectId, $limit, 'language');
         $roles = $this->counts('classifications', $projectId, $limit, 'role');
-        $diagnostics = $this->scalar('SELECT COUNT(*) FROM diagnostics WHERE project_id = :project', $projectId);
-        $totalNodes = $this->scalar('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . self::native('nodes'), $projectId);
-        $totalEdges = $this->scalar('SELECT COUNT(*) FROM edges WHERE project_id = :project' . self::native('edges'), $projectId);
+        $diagnostics = $this->scalar('SELECT COUNT(*) FROM diagnostics WHERE project_id = :project' . EnrichedFacts::nativeCondition('diagnostics'), $projectId);
+        $totalNodes = $this->scalar('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . EnrichedFacts::nativeCondition('nodes'), $projectId);
+        $totalEdges = $this->scalar('SELECT COUNT(*) FROM edges WHERE project_id = :project' . EnrichedFacts::nativeCondition('edges'), $projectId);
 
         return new ResultEnvelope(
             $projectId,
@@ -126,7 +126,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
             'SELECT %1$s AS kind, COUNT(*) AS count FROM %2$s WHERE project_id = :project%3$s GROUP BY %1$s ORDER BY count DESC, %1$s LIMIT :limit',
             $column,
             $table,
-            self::native($table),
+            EnrichedFacts::nativeCondition($table),
         ));
         $statement->bindValue(':project', $projectId);
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -144,14 +144,9 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
     /** Count of distinct values, used for the graph-size figures. */
     private function distinctCount(string $table, string $projectId, string $column = 'kind'): int
     {
-        return $this->scalar(sprintf('SELECT COUNT(DISTINCT %s) FROM %s WHERE project_id = :project%s', $column, $table, self::native($table)), $projectId);
+        return $this->scalar(sprintf('SELECT COUNT(DISTINCT %s) FROM %s WHERE project_id = :project%s', $column, $table, EnrichedFacts::nativeCondition($table)), $projectId);
     }
 
-    /** The condition, joined with AND, that leaves enriched rows of `$table` out; empty for a table without them. */
-    private static function native(string $table): string
-    {
-        return in_array($table, EnrichedFacts::TABLES, true) ? ' AND ' . EnrichedFacts::excludeSql($table) : '';
-    }
     /**
      * A bounded sample of a boundary's members, since listing every one is unhelpful.
      *

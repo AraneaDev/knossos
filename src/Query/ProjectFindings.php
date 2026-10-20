@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
+use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
@@ -53,7 +54,7 @@ final readonly class ProjectFindings
     public function __construct(private PDO $pdo, private ?Closure $clock = null) {}
 
     /**
-     * What the project holds: components (external symbols left out) by kind,
+     * What the project holds: components (external symbols and enriched records left out) by kind,
      * and files by language, the most common first.
      *
      * @return array<string, mixed>
@@ -61,7 +62,7 @@ final readonly class ProjectFindings
     public function summary(string $projectId): array
     {
         $kinds = $this->grouped(
-            "SELECT kind AS name, COUNT(*) AS n FROM nodes WHERE project_id = :project AND kind NOT LIKE 'external\\_%' ESCAPE '\\' GROUP BY kind",
+            "SELECT kind AS name, COUNT(*) AS n FROM nodes WHERE project_id = :project AND kind NOT LIKE 'external\\_%' ESCAPE '\\'" . EnrichedFacts::nativeCondition('nodes') . ' GROUP BY kind',
             $projectId,
         );
         $languages = $this->grouped('SELECT language AS name, COUNT(*) AS n FROM files WHERE project_id = :project GROUP BY language', $projectId);
@@ -141,7 +142,7 @@ final readonly class ProjectFindings
      * large file nothing uses and a small one everything uses both rank
      * low; a large file many depend on ranks high. Dependents are counted
      * as {@see FileFanInQuery} counts them (distinct files over the impact
-     * edges, external symbols left out), in one grouped pass over the edges.
+     * edges, external symbols and enriched edges left out), in one grouped pass over the edges.
      *
      * @return list<array{path: string, language: string, lines: int, dependent_files: int, score: int}>
      */
@@ -151,7 +152,7 @@ final readonly class ProjectFindings
         $statement = $this->pdo->prepare(
             'SELECT tf.relative_path, tf.language, tf.line_count, COUNT(DISTINCT sn.file_id) AS dependents FROM edges e '
             . 'JOIN nodes tn ON tn.id = e.target_id JOIN files tf ON tf.id = tn.file_id JOIN nodes sn ON sn.id = e.source_id '
-            . "WHERE e.project_id = ? AND e.kind IN ({$kinds}) AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id "
+            . "WHERE e.project_id = ? AND e.kind IN ({$kinds}) AND " . EnrichedFacts::excludeSql('e') . ' AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id '
             . 'AND ' . SharedNodeKinds::ownedByFileSql('tn.kind') . ' AND ' . SharedNodeKinds::ownedByFileSql('sn.kind') . ' AND tf.line_count > 0 '
             . 'GROUP BY tf.id ORDER BY tf.line_count * COUNT(DISTINCT sn.file_id) DESC, tf.relative_path LIMIT ?',
         );

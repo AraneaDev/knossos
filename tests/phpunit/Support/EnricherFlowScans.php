@@ -39,7 +39,7 @@ trait EnricherFlowScans
             'name' => 'fixture',
             'command' => [PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/enrichers/fixture-enricher.php', '@' . $installation . '/mode'],
             'timeout_seconds' => 10,
-            'input_node_kinds' => ['module', 'function'],
+            'input_node_kinds' => ['module', 'function', 'class'],
         ]]], JSON_UNESCAPED_SLASHES));
         $this->setEnricherFlowMode($installation, $mode);
 

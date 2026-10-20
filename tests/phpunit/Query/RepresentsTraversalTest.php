@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\AbstractArchitectureQueryService;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\PathBetweenService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\EnricherFlowScans;
 use PDO;
@@ -34,6 +35,7 @@ final class RepresentsTraversalTest extends KnossosTestCase
 
     private PDO $pdo;
     private string $projectId = '';
+    private string $root = '';
 
     protected function setUp(): void
     {
@@ -46,6 +48,7 @@ final class RepresentsTraversalTest extends KnossosTestCase
             'boundaries' => [['name' => 'Frontend', 'path_prefix' => 'frontend/'], ['name' => 'Backend', 'path_prefix' => 'backend/']],
         ]));
         $this->projectId = $this->scanEnricherFlow($this->pdo, $project)->projectId;
+        $this->root = $project['root'];
     }
 
     protected function tearDown(): void
@@ -76,18 +79,43 @@ final class RepresentsTraversalTest extends KnossosTestCase
 
     public function testImpactOnNativeMethodReachesEnrichedCaller(): void
     {
-        $impact = $this->query()->impactAnalysis($this->projectId, self::VIEW);
+        $dependants = $this->dependants(self::VIEW);
 
-        $reached = [];
-        foreach ($impact->data['dependants'] as $dependant) {
-            $reached[$dependant['node']['canonical_name']] = $dependant['node']['kind'];
-        }
-        assertSame('ext:endpoint', $reached['/task/search/'] ?? null);
-        assertSame('ext:rest_call', $reached['GET /task/search/ from OrderList.vue'] ?? null);
-        assertSame('module', $reached[self::COMPONENT] ?? null);
-        $endpoint = array_values(array_filter($impact->data['dependants'], static fn(array $row): bool => $row['node']['canonical_name'] === '/task/search/'))[0];
-        assertSame('identity', $endpoint['via']['step']);
-        assertSame('represents', $endpoint['via']['kind']);
+        // The record that stands for the view, through the identity hop into it.
+        $endpoint = $dependants['/task/search/'];
+        assertSame(['ext:endpoint', 1, 'represents', 'identity', 'enricher'], [$endpoint['node']['kind'], $endpoint['distance'], $endpoint['via']['kind'], $endpoint['via']['step'], $endpoint['via']['origin']]);
+        assertSame($this->idOf(self::VIEW), $endpoint['via']['target_id']);
+        // Then the enriched caller of that record, and the native component behind it.
+        $call = $dependants['GET /task/search/ from OrderList.vue'];
+        assertSame(['ext:rest_call', 2, 'calls_endpoint', 'relation'], [$call['node']['kind'], $call['distance'], $call['via']['kind'], $call['via']['step']]);
+        assertSame($endpoint['node']['id'], $call['via']['target_id']);
+        $component = $dependants[self::COMPONENT];
+        assertSame(['module', 3, 'calls_endpoint'], [$component['node']['kind'], $component['distance'], $component['via']['kind']]);
+        assertSame($call['node']['id'], $component['via']['target_id']);
+    }
+
+    public function testImpactOnNativeHelperReachesTheRecordThroughTheView(): void
+    {
+        $dependants = $this->dependants(self::HELPER);
+
+        $view = $dependants[self::VIEW];
+        assertSame(['calls', 'relation'], [$view['via']['kind'], $view['via']['step']]);
+        $endpoint = $dependants['/task/search/'];
+        assertSame(['represents', 'identity'], [$endpoint['via']['kind'], $endpoint['via']['step']]);
+        assertSame($view['node']['id'], $endpoint['via']['target_id']);
+        assertSame($view['distance'] + 1, $endpoint['distance']);
+    }
+
+    public function testPaneRoutesCarryTheIdentityStep(): void
+    {
+        $routes = (new PathBetweenService($this->pdo))->routes($this->root, '/task/search/', self::HELPER);
+
+        assertSame('ok', $routes['status']);
+        $hops = $routes['routes'][0]['hops'];
+        assertSame([['represents', 'identity', 'enricher', false], ['calls', 'relation', 'ast', false]], array_map(
+            static fn(array $hop): array => [$hop['kind'], $hop['step'], $hop['origin'], $hop['derived']],
+            $hops,
+        ));
     }
 
     public function testPolicyChecksIgnoreRepresents(): void
@@ -121,6 +149,32 @@ final class RepresentsTraversalTest extends KnossosTestCase
         $flow = $this->query()->explainFlow($this->projectId, self::COMPONENT, self::HELPER, minConfidence: 'certain');
 
         assertSame([], $flow->data['paths']);
+        // The enriched hops are probable, so a probable floor still finds the path.
+        $probable = $this->query()->explainFlow($this->projectId, self::COMPONENT, self::HELPER, minConfidence: 'probable');
+        assertSame(['calls_endpoint', 'calls_endpoint', 'represents', 'calls'], array_column($probable->data['paths'][0]['hops'], 'kind'));
+    }
+
+    /**
+     * The impact dependants of `$symbol`, by canonical name.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function dependants(string $symbol): array
+    {
+        $dependants = [];
+        foreach ($this->query()->impactAnalysis($this->projectId, $symbol)->data['dependants'] as $dependant) {
+            $dependants[$dependant['node']['canonical_name']] = $dependant;
+        }
+
+        return $dependants;
+    }
+
+    private function idOf(string $canonicalName): string
+    {
+        $statement = $this->pdo->prepare('SELECT id FROM nodes WHERE canonical_name = ?');
+        $statement->execute([$canonicalName]);
+
+        return (string) $statement->fetchColumn();
     }
 
     private function query(): ArchitectureQueryService

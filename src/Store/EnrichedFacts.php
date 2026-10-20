@@ -22,6 +22,9 @@ final class EnrichedFacts
     /** The tables whose rows carry an `origin`, and so can be enriched. */
     public const TABLES = ['nodes', 'edges'];
 
+    /** The owner key prefix of everything an enricher contributes, its diagnostics included. */
+    public const OWNER_PREFIX = 'enricher:';
+
     private function __construct() {}
 
     /**
@@ -32,5 +35,26 @@ final class EnrichedFacts
     public static function excludeSql(string $alias): string
     {
         return "{$alias}.origin <> '" . self::ORIGIN . "'";
+    }
+
+    /**
+     * The condition, joined with a leading ` AND `, that leaves out of `$table`
+     * what enrichers contributed: enriched nodes and edges, and the diagnostics
+     * an enricher owns (its own reports and those about its runs). Empty for a
+     * table enrichers never write.
+     *
+     * A diagnostic about an enricher still shows in `list_diagnostics`; it is
+     * left out of the counts that describe the project, so a failing enricher
+     * never moves a diagnostics budget.
+     *
+     * @param string $table an unaliased table name, which is also the alias the condition tests
+     */
+    public static function nativeCondition(string $table): string
+    {
+        if ($table === 'diagnostics') {
+            return " AND diagnostics.owner_key NOT LIKE '" . self::OWNER_PREFIX . "%'";
+        }
+
+        return in_array($table, self::TABLES, true) ? ' AND ' . self::excludeSql($table) : '';
     }
 }

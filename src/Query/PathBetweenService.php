@@ -10,9 +10,10 @@ use PDO;
 /**
  * The architecture pane's path explorer: the routes by which one component
  * reaches another, as {@see ArchitectureQueryService::explainFlow()} finds
- * them with the tool's own bounds, each hop with its kind, its confidence,
- * whether it is derived (an interface method to the one implementing it)
- * and where it is written.
+ * them with the tool's own bounds, each hop with its kind, its step
+ * (`identity` for an enricher's `represents` link, `relation` otherwise), its
+ * confidence, its origin, whether it is derived (an interface method to the
+ * one implementing it) and where it is written.
  *
  * Asked for both directions: a person who picked the two in the wrong order
  * still sees how they are joined. `from` and `to` stay as asked, and
@@ -78,7 +79,9 @@ final readonly class PathBetweenService
                 'nodes' => array_map($named, $route['nodes']),
                 'hops' => array_map(static fn(array $hop): array => [
                     'kind' => (string) $hop['kind'],
+                    'step' => (string) $hop['step'],
                     'confidence' => (string) $hop['confidence'],
+                    'origin' => (string) $hop['origin'],
                     'derived' => $hop['origin'] === 'derived',
                     'explanation' => (string) $hop['explanation'],
                     'path' => $hop['evidence']['path'] ?? null,

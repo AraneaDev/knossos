@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
@@ -114,8 +115,9 @@ final readonly class AgentBriefService extends AbstractArchitectureQueryService
         }
         return [
             'files' => $count('SELECT COUNT(*) FROM files WHERE project_id = :project'),
-            'nodes' => $count('SELECT COUNT(*) FROM nodes WHERE project_id = :project'),
-            'edges' => $count('SELECT COUNT(*) FROM edges WHERE project_id = :project'),
+            // Native facts only, like every count that describes the project.
+            'nodes' => $count('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . EnrichedFacts::nativeCondition('nodes')),
+            'edges' => $count('SELECT COUNT(*) FROM edges WHERE project_id = :project' . EnrichedFacts::nativeCondition('edges')),
             'languages' => implode(', ', $parts),
         ];
     }

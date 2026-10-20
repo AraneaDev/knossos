@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\DashboardService;
+use Knossos\Query\FileFanInQuery;
+use Knossos\Query\ProjectFindings;
 use Knossos\Query\SnapshotGraphReader;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\EnricherFlowScans;
 use PDO;
 
+use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertGreaterThan;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
@@ -152,6 +156,88 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         assertSame([], array_values(array_filter($kinds, static fn(string $kind): bool => str_starts_with($kind, 'ext:'))));
     }
 
+    public function testInheritanceClaimDoesNotExcuseDeadCode(): void
+    {
+        // The enricher claims Orphan extends Base, which would make Orphan::handle an override.
+        $this->setEnricherFlowMode($this->project['installation'], 'ok-extends');
+        $this->scanBoth();
+        assertSame(1, (int) $this->enriched->query("SELECT COUNT(*) FROM edges WHERE kind = 'extends' AND origin = 'enricher'")->fetchColumn());
+
+        $plain = $this->query($this->plain)->architectureHealth($this->projectId)->data['dead_code_candidates'];
+        $enriched = $this->query($this->enriched)->architectureHealth($this->projectId)->data['dead_code_candidates'];
+
+        assertContains('backend.app.handlers.Orphan::handle', array_column(array_column($plain, 'component'), 'canonical_name'));
+        assertSame($plain, $enriched);
+    }
+
+    public function testBriefFindingsAndFanInUnchanged(): void
+    {
+        // Each database is read right after its own scan, so both see a tree that matches it.
+        $this->projectId = $this->scanEnricherFlow($this->plain, $this->project)->projectId;
+        $plain = $this->metricAnswers($this->plain);
+        $this->request(true);
+        $this->scanEnricherFlow($this->enriched, $this->project);
+        assertGreaterThan(0, $this->enrichedRows($this->enriched));
+        $enriched = $this->metricAnswers($this->enriched);
+
+        // The enricher's rest call joins OrderList.vue to urls.py, which only an enriched edge would count.
+        assertSame([], $plain['dependents']['backend/app/urls.py'] ?? []);
+        assertSame($plain, $enriched);
+    }
+
+    public function testEnricherDiagnosticsLeaveGateAndSummaryCounts(): void
+    {
+        $budgets = ['error_diagnostics' => 0, 'warning_diagnostics' => 0];
+        $results = [];
+        foreach (['plain' => $this->plain, 'enriched' => $this->enriched] as $name => $pdo) {
+            $this->request(false);
+            $baseline = $this->scanEnricherFlow($pdo, $this->project);
+            $this->request($name === 'enriched');
+            $this->setEnricherFlowMode($this->project['installation'], 'ok-reporting');
+            // A native change, so the second scan is a snapshot of its own.
+            $settings = $this->project['root'] . '/backend/app/settings.py';
+            $original = (string) file_get_contents($settings);
+            file_put_contents($settings, "\n# touched\n", FILE_APPEND);
+            $this->scanEnricherFlow($pdo, $this->project);
+            file_put_contents($settings, $original);
+            $query = $this->query($pdo);
+            $results[$name] = [
+                'gate' => $this->comparable($query->qualityGate($baseline->projectId, $this->scanId($baseline), $budgets, sarif: true)),
+                'summary' => $this->comparable($query->architectureSummary($baseline->projectId)),
+                'trends' => $this->comparable($query->architectureTrends($baseline->projectId)),
+            ];
+            $this->projectId = $baseline->projectId;
+        }
+        $codes = array_column($this->query($this->enriched)->listDiagnostics($this->projectId)->data['diagnostics'], 'code');
+
+        assertContains('ENRICHER_REPORTED:FIXTURE_NOISE', $codes, 'list_diagnostics still lists them.');
+        assertContains('ENRICHER_REPORTED:FIXTURE_FAULT', $codes);
+        assertSame($results['plain'], $results['enriched']);
+        assertSame(true, $results['enriched']['gate']['passed']);
+    }
+
+    /**
+     * The brief, the dashboard findings and the file fan-in of the project in `$pdo`.
+     *
+     * @return array<string, mixed>
+     */
+    private function metricAnswers(PDO $pdo): array
+    {
+        $paths = array_map('strval', $pdo->query('SELECT relative_path FROM files ORDER BY relative_path')->fetchAll(PDO::FETCH_COLUMN));
+        $findings = new ProjectFindings($pdo);
+        $fanIn = new FileFanInQuery($pdo);
+
+        return [
+            'brief' => $this->comparable($this->query($pdo)->exportAgentBrief($this->projectId)),
+            'kinds' => $findings->summary($this->projectId),
+            'hotspots' => $findings->complexityHotspots($this->projectId),
+            'fan_in' => $fanIn->forPaths($this->projectId, $paths, 5),
+            'dependents' => $fanIn->dependentsOf($this->projectId, $paths),
+            'top_dependents' => $fanIn->topDependents($this->projectId, $paths, 5),
+            'dashboard' => $this->strip((new DashboardService($pdo))->dashboard($this->project['root'], 0)),
+        ];
+    }
+
     /** Scan the same copy into both databases: without the enricher, then with it. */
     private function scanBoth(): void
     {
@@ -198,13 +284,29 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
      */
     private function comparable(ResultEnvelope $envelope): array
     {
+        return $this->strip($envelope->data);
+    }
+
+    /**
+     * A value without its scan ids, scanner-set hashes and times, which differ
+     * between two databases for reasons other than the native graph.
+     *
+     * @param array<mixed> $value
+     * @return array<mixed>
+     */
+    private function strip(array $value): array
+    {
         $strip = static function (mixed $value) use (&$strip): mixed {
+            if (is_string($value)) {
+                // A time written into prose, such as the brief's opening line.
+                return preg_replace('/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ/', '<time>', $value);
+            }
             if (!is_array($value)) {
                 return $value;
             }
             $kept = [];
             foreach ($value as $key => $item) {
-                if (is_string($key) && preg_match('/(^|_)(scan_id|snapshot|at|time|elapsed_ms|duration_ms)$/', $key) === 1) {
+                if (is_string($key) && preg_match('/(^|_)(scan_id|snapshot_id|snapshot|set_hash|at|time|elapsed_ms|duration_ms)$/', $key) === 1) {
                     continue;
                 }
                 $kept[$key] = $strip($item);
@@ -213,7 +315,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
             return $kept;
         };
 
-        return $strip($envelope->data);
+        return $strip($value);
     }
 
     private function query(PDO $pdo): ArchitectureQueryService

@@ -14,6 +14,8 @@ declare(strict_types=1);
  *   ok                  the rest call -> endpoint -> Django view chain for the endpoint-routes fixture
  *   ok-less             as ok, without the endpoint node and the edges that touch it
  *   ok-changed          as ok, with the endpoint renamed and its confidence lowered to possible
+ *   ok-extends          as ok, plus an extends edge between two native classes of the enricher-flow fixture
+ *   ok-reporting        as ok, plus a warning and an error diagnostic of the enricher's own
  *   env                 one node reporting FIXTURE_FLAG, whether a test secret leaked, and whether PATH is set
  *   echo-input          one ext:echo node per native node received, carrying it in `received`
  *   no-confidence       one node and no confidence on it
@@ -105,6 +107,12 @@ while (($line = fgets(STDIN)) !== false) {
             unset($node['confidence']);
             notify(['nodes' => [$node], 'edges' => []]);
             break;
+        case 'ok-reporting':
+            notify(chain($native, 'ok'), [
+                ['severity' => 'warning', 'code' => 'FIXTURE_NOISE', 'message' => 'A warning of the enricher\'s own.'],
+                ['severity' => 'error', 'code' => 'FIXTURE_FAULT', 'message' => 'An error of the enricher\'s own.'],
+            ]);
+            break;
         default:
             notify(chain($native, $mode));
     }
@@ -141,6 +149,13 @@ function chain(array $native, string $mode): array
             // Cites the view's own declaration, as a represents link must.
             $edges[] = edge('represents', 'endpoint-search', (string) $view['id'], (string) $view['file'], (int) $view['line']);
         }
+    }
+
+    $orphan = nativeNode($native, 'class', 'backend.app.handlers.Orphan');
+    $base = nativeNode($native, 'class', 'backend.app.handlers.Base');
+    if ($mode === 'ok-extends' && $orphan !== null && $base !== null) {
+        // Native to native: an enricher's claim that Orphan inherits Base's handle().
+        $edges[] = edge('extends', (string) $orphan['id'], (string) $base['id'], (string) $orphan['file'], (int) $orphan['line']);
     }
 
     return ['nodes' => $nodes, 'edges' => $edges];
@@ -195,13 +210,16 @@ function edge(string $kind, string $source, string $target, string $path, int $l
     ];
 }
 
-/** @param array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>} $facts */
-function notify(array $facts): void
+/**
+ * @param array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>} $facts
+ * @param list<array<string, mixed>> $diagnostics
+ */
+function notify(array $facts, array $diagnostics = []): void
 {
     write([
         'jsonrpc' => '2.0',
         'method' => 'scan/contribution',
-        'params' => ['owner_key' => 'fixture', 'nodes' => $facts['nodes'], 'edges' => $facts['edges'], 'diagnostics' => []],
+        'params' => ['owner_key' => 'fixture', 'nodes' => $facts['nodes'], 'edges' => $facts['edges'], 'diagnostics' => $diagnostics],
     ]);
 }
 

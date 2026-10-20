@@ -179,7 +179,7 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
         // Each column with `+`: ordered by an index, SQLite would walk every project's rows rather than find this one's and sort them.
         $order = $table === 'boundary_memberships' ? '+boundary_id, +node_id' : '+id';
         // Native rows only, as the archive stores them: an enricher's output is never drift.
-        $native = in_array($table, EnrichedFacts::TABLES, true) ? ' AND ' . EnrichedFacts::excludeSql($table) : '';
+        $native = EnrichedFacts::nativeCondition($table);
         $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project%s ORDER BY %s LIMIT %d', $table, $native, $order, SnapshotBounds::MAX_ROWS_PER_TABLE + 1));
         $statement->execute(['project' => $projectId]);
         $rows = 0;
