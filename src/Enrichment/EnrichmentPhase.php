@@ -171,7 +171,7 @@ final class EnrichmentPhase
         if ($definition === null && $this->problems !== []) {
             // The file is broken, so it says nothing about whether the name is still defined.
             return self::carried($carryOver->previous($projectId, $name, $index), 'warning', 'ENRICHER_FAILED', sprintf(
-                'Enricher %s failed (config_invalid): enrichers.json has problems and does not define it as it stands; its previous facts are kept.',
+                'Enricher %s failed (config_invalid): enrichers.json has problems, so the name may be undefined or rejected; its previous facts are kept.',
                 $name,
             ));
         }

@@ -15,6 +15,10 @@ every answer that shows one says which enricher produced it.
 
 Two files take part, and they have different owners on purpose.
 
+The enricher is the trust boundary. Knossos never runs code the repository ships,
+but an enricher that imports the project's own modules (a Django URLconf mapper
+will) runs repository code with the installation's privileges.
+
 ### The installation's `enrichers.json`
 
 The installation defines which enrichers exist and how to start them, in
@@ -41,7 +45,7 @@ directory. There is no command to edit it: you write it by hand.
 | ------------------ | -------- | --------------------------------------------------------------------------------------- |
 | `name`             | yes      | Lowercase letter first, then up to 63 of `a-z`, `0-9`, `_` and `-`. Unique in the file. |
 | `command`          | yes      | The argv to start, a non-empty list of non-empty strings. No shell is involved.         |
-| `timeout_seconds`  | no       | 1 to 120, default 30. Bounds the whole run, from start to the scan answer.              |
+| `timeout_seconds`  | no       | 1 to 120, default 30. Bounds the whole run, shutdown included.                          |
 | `env`              | no       | Extra environment variables, an object of strings.                                      |
 | `input_node_kinds` | no       | The native node kinds sent to the enricher as input. Empty or missing sends none.       |
 
@@ -252,13 +256,17 @@ facts keep the `enricher_scan_id` and `enricher_produced_at` of the run that
 produced them, and the diagnostic for the scan repeats that time.
 
 An enricher's facts are pruned, rather than kept, when the project no longer
-requests it, or when a readable `enrichers.json` no longer defines it. That is a
-choice, not a failure.
+requests it, or when `enrichers.json` loads cleanly and does not define it. If
+the file has any problem, every requested name it does not define is carried
+over, since the file cannot say whether the name is gone or merely rejected.
+Pruning is a choice, not a failure.
 
 ## Diagnostics
 
 Every diagnostic below is reported with source `enricher`, through
-`list_diagnostics` like any other. Facts dropped by validation are warnings.
+`list_diagnostics` like any other. Facts dropped by validation are warnings. An enricher's own `ENRICHER_REPORTED:*`
+diagnostics are not re-emitted when its facts are carried over, so they disappear
+on the next background scan while the facts stay.
 
 | Code                          | Severity | Meaning                                                                                                                |
 | ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -286,7 +294,7 @@ The reason a failed run's message names is one of these:
 | `exit_nonzero`             | The process exited with a nonzero status before it answered.                         |
 | `exited_early`             | The process exited cleanly, with status 0, before it answered.                       |
 | `cancelled`                | The scan was cancelled while the enricher ran.                                       |
-| `config_invalid`           | `enrichers.json` has problems and does not define the enricher as it stands.         |
+| `config_invalid`           | `enrichers.json` has problems, so the name may be undefined or rejected.             |
 | `internal_error`           | Knossos itself could not handle the enricher. The message says what went wrong.      |
 
 ## A minimal enricher in Python
