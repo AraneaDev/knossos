@@ -277,6 +277,7 @@ Answer 'how does A reach B?' Traces evidence-backed static paths between two com
 | `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |
 | `timeout_ms` | integer | no | minimum=1; maximum=5000; default=3000 |
 | `both_directions` | boolean | no | default=false |
+| `profile` | string | no | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 

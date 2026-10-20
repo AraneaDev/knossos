@@ -193,6 +193,7 @@ final class QueryCommandContractTest extends KnossosTestCase
         yield 'architecture-health --candidate-confidence' => ['architecture-health', 1, ['candidate-confidence' => ['bogus']], 'candidate_confidence must be probable or possible.'];
         yield 'export-diagram --format' => ['export-diagram', 1, ['format' => ['bogus']], 'format must be mermaid or plantuml.'];
         yield 'export-diagram --direction' => ['export-diagram', 1, ['direction' => ['bogus']], 'direction must be LR or TB.'];
+        yield 'explain-flow --profile' => ['explain-flow', 3, ['profile' => ['bad value']], 'profile must be 1 to 64 letters, digits, "_", "." or "-".'];
         yield 'list-usages --edge-kind' => ['list-usages', 2, ['edge-kind' => ['bogus']], 'edge_kinds contains an unsupported dependency relationship.'];
     }
 

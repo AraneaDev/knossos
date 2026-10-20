@@ -174,6 +174,21 @@ final class McpTest extends KnossosTestCase
         assertSame('KNOSSOS_INVALID_ARGUMENT', $runtimeFailure['result']['structuredContent']['error']['code']);
     }
 
+    /** The `profile` argument reaches the flow search, which reports it back as the requested binding. */
+    #[Group('mcp')]
+    public function testExplainFlowPassesTheProfileThrough(): void
+    {
+        [$tools, $projectId] = $this->toolServiceWithScannedFixture();
+        $arguments = ['project_id' => $projectId, 'from' => 'CheckoutService', 'to' => 'Invoice'];
+
+        $pinned = $tools->call('explain_flow', $arguments + ['profile' => 'brand_a']);
+        $unpinned = $tools->call('explain_flow', $arguments);
+
+        $this->assertSame(['requested' => 'brand_a', 'pruned_branches' => 0], $pinned->data['profile_filter']);
+        $this->assertSame(['requested' => null, 'pruned_branches' => 0], $unpinned->data['profile_filter']);
+        assertThrows(fn() => $tools->call('explain_flow', $arguments + ['profile' => 'bad value']), InvalidArgumentException::class);
+    }
+
     #[Group('mcp')]
     public function testImpactAnalysisReturnsFlatDependantsAndCounts(): void
     {

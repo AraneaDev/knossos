@@ -6,6 +6,7 @@ namespace Knossos\Mcp;
 
 use InvalidArgumentException;
 use Knossos\Query\ArchitecturePolicyQueryService;
+use Knossos\Query\FlowQuery;
 use Knossos\Query\QualityGateQueryService;
 
 /**
@@ -20,13 +21,16 @@ use Knossos\Query\QualityGateQueryService;
 final class ToolArgumentPreflight
 {
     /**
-     * Refuse a call whose enums, policies or budgets the service would refuse.
+     * Refuse a call whose enums, flow profile, policies or budgets the service would refuse.
      *
      * @param array<string, mixed> $arguments
      */
     public static function check(string $tool, array $arguments): void
     {
         self::enums($arguments, (array) ToolCatalog::schemaFor($tool));
+        if ($tool === 'explain_flow' && is_string($arguments['profile'] ?? null)) {
+            FlowQuery::validateProfile(trim($arguments['profile']));
+        }
         $policies = $arguments['policies'] ?? null;
         // review_diff is left out on purpose: it reports invalid policies or
         // budgets as `not_evaluated` in a successful result rather than failing.

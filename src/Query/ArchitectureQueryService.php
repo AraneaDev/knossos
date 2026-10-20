@@ -388,8 +388,9 @@ final readonly class ArchitectureQueryService
         string $minConfidence = 'possible',
         int $timeoutMs = FlowQuery::DEFAULT_TIMEOUT_MS,
         bool $bothDirections = false,
+        ?string $profile = null,
     ): ResultEnvelope {
-        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs, $bothDirections));
+        return $this->withNotes($this->services->flowQueries->explainFlow($projectId, $from, $to, $maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs, $bothDirections, $profile));
     }
 
     /**

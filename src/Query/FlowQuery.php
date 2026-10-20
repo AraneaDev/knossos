@@ -40,6 +40,12 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     public const DEFAULT_TIMEOUT_MS = 3000;
 
     /**
+     * What a `profile` argument may be, the same names an enricher may tag an
+     * edge with; `D` so a trailing newline does not pass.
+     */
+    private const PROFILE_PATTERN = '/^[A-Za-z0-9_.-]{1,64}$/D';
+
+    /**
      * Paths by which one component can reach another, with the edges that justify each hop.
      *
      * Reads as its phases: validate the bounds, resolve both endpoints to one
@@ -49,18 +55,20 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param bool $bothDirections when `from` reaches `to` by no route, look the other way too (within a timeout of
      *                             its own): the answer then runs from `to` to `from`, and `reversed` says so. A
      *                             forward search a bound cut is answered as it is: it may have had a route left
+     * @param ?string $profile pins every path to this profile: no enricher edge tagged only with other profiles is
+     *                         followed. Without it, the first profiled edge a path crosses binds that path
      */
-    public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = self::DEFAULT_TIMEOUT_MS, bool $bothDirections = false): ResultEnvelope
+    public function explainFlow(string $projectId, string $from, string $to, int $maxDepth = 6, int $maxPaths = 5, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = self::DEFAULT_TIMEOUT_MS, bool $bothDirections = false, ?string $profile = null): ResultEnvelope
     {
         $project = $this->project($projectId);
-        [$confidenceRank, $edgeKinds] = $this->flowArguments($maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs);
+        [$confidenceRank, $edgeKinds] = $this->flowArguments($maxDepth, $maxPaths, $edgeKinds, $minConfidence, $timeoutMs, $profile);
 
         $fromCandidates = $this->resolve($projectId, $from);
         $toCandidates = $this->resolve($projectId, $to);
         if (count($fromCandidates) !== 1 || count($toCandidates) !== 1) {
-            return self::unresolvedFlow($project, $from, $to, $fromCandidates, $toCandidates);
+            return self::unresolvedFlow($project, $from, $to, $fromCandidates, $toCandidates, $profile);
         }
-        $bounds = [$maxDepth, $maxPaths, $edgeKinds, $confidenceRank[$minConfidence], $timeoutMs];
+        $bounds = [$maxDepth, $maxPaths, $edgeKinds, $confidenceRank[$minConfidence], $timeoutMs, $profile];
         $flow = $this->flowBetween($project, $fromCandidates[0], $toCandidates[0], ...$bounds);
         if (!$bothDirections) {
             return $flow;
@@ -83,7 +91,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param array<string, mixed> $target
      * @param list<string> $edgeKinds
      */
-    private function flowBetween(array $project, array $source, array $target, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $timeoutMs): ResultEnvelope
+    private function flowBetween(array $project, array $source, array $target, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $timeoutMs, ?string $profile): ResultEnvelope
     {
         $projectId = (string) $project['id'];
         $endpointTruncated = false;
@@ -91,7 +99,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $targetSet = $this->flowEndpointSet($projectId, $target, $endpointTruncated);
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
         $truncation = new Truncation();
-        $search = $this->searchFlows($projectId, $sourceSet, $targetSet, $maxDepth, $maxPaths, $edgeKinds, $minimumRank, $deadline, $truncation);
+        $search = $this->searchFlows($projectId, $sourceSet, $targetSet, $maxDepth, $maxPaths, $edgeKinds, $minimumRank, $deadline, $truncation, $profile);
         if ($endpointTruncated) {
             $truncation->add('endpoint_expansion_limit');
         }
@@ -102,6 +110,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             ['from' => $source, 'to' => $target, 'paths' => $paths],
             ['max_depth' => $maxDepth, 'max_paths' => $maxPaths, 'timeout_ms' => $timeoutMs, 'visited_states' => $search['visited'], 'queued_states' => $search['queued']],
             $truncation,
+            ['requested' => $profile, 'pruned_branches' => $search['pruned']],
         );
     }
 
@@ -112,7 +121,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param list<string> $edgeKinds
      * @return array{0: array<string, int>, 1: list<string>}
      */
-    private function flowArguments(int $maxDepth, int $maxPaths, array $edgeKinds, string $minConfidence, int $timeoutMs): array
+    private function flowArguments(int $maxDepth, int $maxPaths, array $edgeKinds, string $minConfidence, int $timeoutMs, ?string $profile): array
     {
         if ($maxDepth < 1 || $maxDepth > self::MAX_DEPTH) {
             throw new InvalidArgumentException(sprintf('max_depth must be between 1 and %d.', self::MAX_DEPTH));
@@ -121,8 +130,17 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             throw new InvalidArgumentException('max_paths must be between 1 and 20.');
         }
         $confidenceRank = $this->confidenceThreshold($timeoutMs, $minConfidence);
+        self::validateProfile($profile);
 
         return [$confidenceRank, self::selectedEdgeKinds($edgeKinds, self::FLOW_EDGE_KINDS, 'flow')];
+    }
+
+    /** Refuse a `profile` argument that no enricher edge could carry; null pins nothing and passes. */
+    public static function validateProfile(?string $profile): void
+    {
+        if ($profile !== null && preg_match(self::PROFILE_PATTERN, $profile) !== 1) {
+            throw new InvalidArgumentException('profile must be 1 to 64 letters, digits, "_", "." or "-".');
+        }
     }
 
     /**
@@ -136,7 +154,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param list<array<string, mixed>> $fromCandidates
      * @param list<array<string, mixed>> $toCandidates
      */
-    private static function unresolvedFlow(array $project, string $from, string $to, array $fromCandidates, array $toCandidates): ResultEnvelope
+    private static function unresolvedFlow(array $project, string $from, string $to, array $fromCandidates, array $toCandidates, ?string $profile): ResultEnvelope
     {
         $unmatched = [];
         if ($fromCandidates === []) {
@@ -163,6 +181,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 'from' => ['query' => $from, 'candidates' => $fromCandidates],
                 'to' => ['query' => $to, 'candidates' => $toCandidates],
                 'paths' => [],
+                'profile_filter' => ['requested' => $profile, 'pruned_branches' => 0],
             ],
             [],
             $warnings,
@@ -178,25 +197,31 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * symbols are one route written twice. Counting the copies let a hot pair
      * spend the whole search before any other route was reached.
      *
+     * Each queued path also carries its profile candidates (null while no
+     * profiled edge bound it) and the indexes of its unprofiled hops. An edge
+     * whose profiles the candidates exclude is not followed, and the branch it
+     * would have started is counted in `pruned`: profiles only remove states.
+     *
      * @param array<string, array<string, mixed>> $sourceSet
      * @param array<string, array<string, mixed>> $targetSet
      * @param list<string> $edgeKinds
-     * @return array{paths: array<string, array<string, mixed>>, visited: int, queued: int}
+     * @return array{paths: array<string, array<string, mixed>>, visited: int, queued: int, pruned: int}
      */
-    private function searchFlows(string $projectId, array $sourceSet, array $targetSet, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $deadline, Truncation $truncation): array
+    private function searchFlows(string $projectId, array $sourceSet, array $targetSet, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $deadline, Truncation $truncation, ?string $profile): array
     {
         // A head index instead of array_shift, which re-indexes the whole queue
         // on every pop; each popped slot is unset so its path copy is released.
         $queue = [];
         $head = 0;
         foreach ($sourceSet as $start) {
-            $queue[] = [[$start], [], [$start['id'] => true]];
+            $queue[] = [[$start], [], [$start['id'] => true], $profile === null ? null : [$profile], []];
         }
         // Every queued state carries a copy of its path, so the visit bound
         // alone let one wide node queue far more than it could ever visit.
         $queued = count($queue);
         $paths = [];
         $visited = 0;
+        $pruned = 0;
         $flowEdgesTruncated = false;
         $candidateCap = $maxPaths * 20;
         while (isset($queue[$head]) && count($paths) < $candidateCap) {
@@ -204,7 +229,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 $truncation->add('time_limit');
                 break;
             }
-            [$nodes, $hops, $seen] = $queue[$head];
+            [$nodes, $hops, $seen, $candidates, $unprofiled] = $queue[$head];
             unset($queue[$head]);
             ++$head;
             ++$visited;
@@ -230,6 +255,13 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 if (isset($seen[$edge['target_id']]) && !$isTarget) {
                     continue;
                 }
+                [$newCandidates, $unprofiledHop] = self::narrowProfiles($candidates, $edge, $edge['origin'] === 'enricher');
+                if ($newCandidates === []) {
+                    // The edge's profiles contradict the path's: no deployment takes both.
+                    ++$pruned;
+                    continue;
+                }
+                $newUnprofiled = $unprofiledHop ? [...$unprofiled, count($hops)] : $unprofiled;
                 // The edge query joins the target row, so a dangling target is
                 // already excluded and no lookup per edge is needed.
                 $next = [
@@ -239,14 +271,19 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 $newNodes = [...$nodes, $next];
                 $newHops = [...$hops, $edge];
                 if ($isTarget) {
-                    $candidate = $this->path($newNodes, $newHops);
+                    $candidate = $this->path($newNodes, $newHops, $newCandidates, $newUnprofiled);
                     $existing = $paths[$candidate['signature']] ?? null;
                     // Keep the best-scoring witness, not merely the first one
                     // found: two call sites for the same route can carry
                     // different confidence, and the answer should show the
-                    // strongest evidence that route has.
-                    if ($existing === null || self::comparePaths($candidate, $existing) < 0) {
+                    // strongest evidence that route has. Its profile is that of
+                    // every witness, since each is a route some profile takes.
+                    if ($existing === null) {
                         $paths[$candidate['signature']] = $candidate;
+                    } else {
+                        $kept = self::comparePaths($candidate, $existing) < 0 ? $candidate : $existing;
+                        $kept['profile'] = self::unitedProfile($existing['profile'], $candidate['profile']);
+                        $paths[$candidate['signature']] = $kept;
                     }
                     if (count($paths) >= $candidateCap) {
                         $truncation->add('candidate_limit');
@@ -264,7 +301,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 }
                 $newSeen = $seen;
                 $newSeen[$next['id']] = true;
-                $queue[] = [$newNodes, $newHops, $newSeen];
+                $queue[] = [$newNodes, $newHops, $newSeen, $newCandidates, $newUnprofiled];
                 ++$queued;
             }
         }
@@ -274,7 +311,90 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             $truncation->add('per_node_edge_limit');
         }
 
-        return ['paths' => $paths, 'visited' => $visited, 'queued' => $queued];
+        return ['paths' => $paths, 'visited' => $visited, 'queued' => $queued, 'pruned' => $pruned];
+    }
+
+    /**
+     * A path's profile candidates after it takes `$edge`, and whether that hop is unprofiled.
+     *
+     * Only an enricher edge can carry a profile; any other edge, and an
+     * enricher edge without one, leaves the candidates as they were. An
+     * unbound path (null) binds to the edge's profiles; a bound one keeps the
+     * profiles both share, and an empty list means they share none.
+     *
+     * @param ?list<string> $candidates sorted
+     * @param array<string, mixed> $edge
+     * @return array{0: ?list<string>, 1: bool}
+     */
+    private static function narrowProfiles(?array $candidates, array $edge, bool $enriched): array
+    {
+        $profiles = $enriched ? self::edgeProfiles((string) $edge['attributes_json']) : null;
+        if ($profiles === null) {
+            return [$candidates, true];
+        }
+        if ($candidates === null) {
+            return [$profiles, false];
+        }
+
+        return [array_values(array_intersect($candidates, $profiles)), false];
+    }
+
+    /**
+     * The sorted profiles an edge's attributes name, or null when they name none.
+     *
+     * The enrichment validator only stores a valid name or list, so anything
+     * else is read as no profile, never as a profile nothing matches.
+     *
+     * @return ?list<string>
+     */
+    private static function edgeProfiles(string $attributesJson): ?array
+    {
+        if (!str_contains($attributesJson, '"profile"')) {
+            return null;
+        }
+        $profile = self::decode($attributesJson)['profile'] ?? null;
+        $names = is_string($profile) ? [$profile] : (is_array($profile) && array_is_list($profile) ? $profile : []);
+        $names = array_values(array_unique(array_filter($names, 'is_string')));
+        if ($names === []) {
+            return null;
+        }
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * The profile a route keeps when two witnesses of it meet: every profile
+     * either was valid in, or unbound (null) when either was.
+     *
+     * @param string|list<string>|null $left
+     * @param string|list<string>|null $right
+     * @return string|list<string>|null
+     */
+    private static function unitedProfile(string|array|null $left, string|array|null $right): string|array|null
+    {
+        if ($left === null || $right === null) {
+            return null;
+        }
+
+        return self::reportedProfile([...(array) $left, ...(array) $right]);
+    }
+
+    /**
+     * A candidate set as a path reports it: the one name, the sorted names, or null when unbound.
+     *
+     * @param ?list<string> $candidates
+     * @return string|list<string>|null
+     */
+    private static function reportedProfile(?array $candidates): string|array|null
+    {
+        if ($candidates === null) {
+            return null;
+        }
+        $names = array_values(array_unique($candidates));
+        sort($names);
+
+        return count($names) === 1 ? $names[0] : $names;
     }
 
     /**
@@ -307,8 +427,9 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param array<string, mixed> $project
      * @param array{from: array<string, mixed>, to: array<string, mixed>, paths: list<array<string, mixed>>} $flow
      * @param array{max_depth: int, max_paths: int, timeout_ms: int, visited_states: int, queued_states: int} $bounds
+     * @param array{requested: ?string, pruned_branches: int} $profileFilter the pinned profile and the branches a profile conflict cut off
      */
-    private static function flowEnvelope(array $project, array $flow, array $bounds, Truncation $truncation): ResultEnvelope
+    private static function flowEnvelope(array $project, array $flow, array $bounds, Truncation $truncation, array $profileFilter): ResultEnvelope
     {
         $truncationReasons = $truncation->reasons();
         $evidence = [];
@@ -331,6 +452,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             $summary,
             $flow + [
                 'bounds' => $bounds + ['truncation_reason' => $truncationReasons[0] ?? null, 'truncation_reasons' => $truncationReasons],
+                'profile_filter' => $profileFilter,
             ],
             $evidence,
             ['Flows are plausible statically supported paths, not proof of runtime execution.'],
@@ -456,9 +578,12 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     /**
      * The evidence path for a node, or null when it has none.
      *
-     * @param list<array<string, mixed>> $nodes @param list<array<string, mixed>> $edges @return array<string, mixed>
+     * @param list<array<string, mixed>> $nodes @param list<array<string, mixed>> $edges
+     * @param ?list<string> $candidates the profiles the path is valid in, null when no profiled edge bound it
+     * @param list<int> $unprofiled indexes of the hops whose profile is unknown
+     * @return array<string, mixed>
      */
-    private function path(array $nodes, array $edges): array
+    private function path(array $nodes, array $edges, ?array $candidates, array $unprofiled): array
     {
         $rank = self::CONFIDENCE_RANK;
         $semantic = ['routes_to', 'dispatches', 'handles', 'listens_to', 'binds', 'observes', 'uses_middleware', 'calls_endpoint', 'resolves_to', 'launches'];
@@ -489,6 +614,8 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             'hops' => $hops,
             'score' => ['minimum_confidence' => $minimum, 'hops' => count($hops), 'semantic_edges' => $semanticCount],
             'signature' => implode('>', array_column($nodes, 'id')),
+            'profile' => self::reportedProfile($candidates),
+            'unprofiled_hops' => $unprofiled,
         ];
     }
 }

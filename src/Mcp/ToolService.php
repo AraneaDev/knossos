@@ -834,6 +834,7 @@ final readonly class ToolService
             array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
             ToolArguments::integer($arguments, 'timeout_ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000),
             ToolArguments::boolean($arguments, 'both_directions', false),
+            array_key_exists('profile', $arguments) ? ToolArguments::string($arguments, 'profile') : null,
         ];
 
         return fn(): ResultEnvelope => $this->queries->explainFlow(...$args);

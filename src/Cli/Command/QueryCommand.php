@@ -52,7 +52,7 @@ final class QueryCommand implements CliCommand
             'list-usages' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'exclude-tests'],
             'architecture-summary' => ['db', 'json', 'limit'],
             'file-metrics' => ['db', 'json', 'path', 'language', 'sort-by', 'order', 'limit', 'offset'],
-            'explain-flow' => ['db', 'json', 'max-depth', 'max-paths', 'edge-kind', 'min-confidence', 'timeout-ms'],
+            'explain-flow' => ['db', 'json', 'max-depth', 'max-paths', 'edge-kind', 'min-confidence', 'timeout-ms', 'profile'],
             'impact-analysis' => ['db', 'json', 'max-depth', 'limit', 'edge-kind', 'min-confidence', 'timeout-ms'],
             'dependency-cycles' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'max-nodes', 'max-edges', 'timeout-ms', 'include-self-loops', 'within-type'],
             'architecture-health' => ['db', 'json', 'edge-kind', 'min-confidence', 'limit', 'max-nodes', 'max-edges', 'timeout-ms', 'include-external', 'include-tests', 'candidate-confidence', 'candidate-offset', 'candidate-timeout'],
@@ -258,7 +258,7 @@ final class QueryCommand implements CliCommand
         $project = $this->project($p[0] ?? throw new InvalidArgumentException('Usage: knossos explain-flow <path|project-id> <from> <to> [options]'), $c);
         $from = $p[1] ?? throw new InvalidArgumentException('A flow source is required.');
         $to = $p[2] ?? throw new InvalidArgumentException('A flow target is required.');
-        $result = $this->queries($c)->explainFlow($project, $from, $to, $c->options->integer($o, 'max-depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH), $c->options->integer($o, 'max-paths', 5, 1, 20), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000));
+        $result = $this->queries($c)->explainFlow($project, $from, $to, $c->options->integer($o, 'max-depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH), $c->options->integer($o, 'max-paths', 5, 1, 20), $c->options->values($o, 'edge-kind'), $c->options->single($o, 'min-confidence') ?? 'possible', $c->options->integer($o, 'timeout-ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000), profile: $c->options->single($o, 'profile'));
         return $this->result($result, $o, $c);
     }
 
