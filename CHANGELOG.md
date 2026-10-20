@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.35.0](https://github.com/AraneaDev/knossos/compare/v0.34.0...v0.35.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** manage enrichers and mark identity hops in the pane ([#376](https://github.com/AraneaDev/knossos/issues/376)) ([d142d5b](https://github.com/AraneaDev/knossos/commit/d142d5b449743d704ed0b45106b709be5f0950a5))
+* **query:** keep flow paths within one enricher profile ([#377](https://github.com/AraneaDev/knossos/issues/377)) ([5b0f231](https://github.com/AraneaDev/knossos/commit/5b0f2319c01add5bc5e2629d9dd84dc2411f9b6b))
+* **scan:** add external enrichers and represents links ([#374](https://github.com/AraneaDev/knossos/issues/374)) ([98cd054](https://github.com/AraneaDev/knossos/commit/98cd054f743fea23dbd58200227046cf2b1807c1))
+
 ## [0.34.0](https://github.com/AraneaDev/knossos/compare/v0.33.1...v0.34.0) (2026-10-19)
 
 
