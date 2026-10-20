@@ -58,6 +58,26 @@ final class ProcessScannerTest extends KnossosTestCase
     }
 
     #[Group('watch')]
+    public function testTheWatchersScanDoesNotStartEnrichers(): void
+    {
+        // An installation whose `bin/knossos` only records the argv it was given, where its database would be.
+        $installation = sys_get_temp_dir() . '/knossos-stale-argv-' . bin2hex(random_bytes(6));
+        mkdir($installation . '/bin', 0o777, true);
+        file_put_contents($installation . '/bin/knossos', "<?php\nforeach (\$argv as \$a) { if (str_starts_with(\$a, '--db=')) { file_put_contents(substr(\$a, 5), json_encode(\$argv)); } }\nexit(1);\n");
+        try {
+            try {
+                (new ProcessScanner($installation, $this->pidFile, 10_000))->scan('/nowhere', 'incremental');
+            } catch (\Throwable) {
+                // The stand-in fails every scan; only the argv matters here.
+            }
+            $argv = json_decode((string) file_get_contents($this->pidFile), true);
+            assertSame(true, in_array('--no-enrichers', $argv, true), json_encode($argv));
+        } finally {
+            $this->removeTempTree($installation);
+        }
+    }
+
+    #[Group('watch')]
     public function testAScanPastItsLimitIsStoppedWithWhatItStarted(): void
     {
         $beats = 0;

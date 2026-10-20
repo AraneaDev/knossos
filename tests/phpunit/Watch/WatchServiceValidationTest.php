@@ -33,6 +33,7 @@ final class WatchServiceValidationTest extends TestCase
                 ?int $snapshotRetention = null,
                 ?int $workerTimeoutMs = null,
                 ?int $workerMemoryMb = null,
+                bool $runEnrichers = false,
             ): ResultEnvelope {
                 // always succeed; never reached by the validation tests below
                 return new ResultEnvelope('project-id', 'snapshot-id', 'ok', ['parsed_files' => 0]);

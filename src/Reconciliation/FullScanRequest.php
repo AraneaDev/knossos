@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Boundary\BoundaryFact;
 use Knossos\Classification\ClassificationFact;
 use Knossos\Discovery\DiscoveryResult;
+use Knossos\Discovery\EnricherDefinition;
 use Knossos\Git\DirtyPathSet;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
@@ -41,6 +42,11 @@ final readonly class FullScanRequest
      *        cached contributions and mark the graph stale.
      * @param array<string, array<string, ?string>> $readGroups the read sets shared
      *        by every file of one worker request, by group id, stored once.
+     * @param list<EnricherDefinition> $enrichers the external enrichers active for
+     *        the project, hashed into the scanner set whether or not this scan ran them.
+     * @param ?string $scanId the id the scan is written under, when the caller
+     *        needs it beforehand (enriched facts record the scan that produced
+     *        them); null has reconciliation make one.
      */
     public function __construct(
         public string $projectIdentity,
@@ -58,6 +64,8 @@ final readonly class FullScanRequest
         public ?DirtyPathSet $dirtyPaths = null,
         public array $workerInputs = [],
         public array $readGroups = [],
+        public array $enrichers = [],
+        public ?string $scanId = null,
     ) {
         if ($projectIdentity === '' || $projectName === '') {
             throw new InvalidArgumentException('Project identity and name must not be empty.');
@@ -74,6 +82,7 @@ final readonly class FullScanRequest
             throw new InvalidArgumentException('snapshot_retention must be an integer between 0 and 20.');
         }
         self::assertListOf($contributionCache, ContributionCacheEntry::class, 'contributionCache');
+        self::assertListOf($enrichers, EnricherDefinition::class, 'enrichers');
         self::assertWorkerDiagnostics($workerDiagnostics);
     }
 

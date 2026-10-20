@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Reconciliation;
 
 use Knossos\Discovery\DiscoveredFile;
+use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\UnitInputSet;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\Evidence;
@@ -79,8 +80,8 @@ final readonly class GraphReconciler
     private function prepare(FullScanRequest $request): PreparedGraph
     {
         $projectId = StableId::project($request->projectIdentity);
-        $scannerSetHash = self::scannerSetHash($request->scanners);
-        $scanId = StableId::scan($projectId, bin2hex(random_bytes(16)));
+        $scannerSetHash = self::scannerSetHash($request->scanners, $request->enrichers);
+        $scanId = $request->scanId ?? StableId::scan($projectId, bin2hex(random_bytes(16)));
 
         $fileIds = [];
         foreach ($request->discovery->files as $file) {
@@ -720,15 +721,31 @@ final readonly class GraphReconciler
     /**
      * Identity of the analyzer set, so a change invalidates incremental reuse.
      *
+     * The active external enrichers count too, by name, command and the
+     * native node kinds they take: adding, removing or changing one changes
+     * the facts a scan produces. Their timeout and environment do not. With
+     * no enrichers the hash is what it was before enrichers existed, so a
+     * stored graph keeps its fast path.
+     *
      * @param list<ScannerManifest> $scanners
+     * @param list<EnricherDefinition> $enrichers
      */
-    public static function scannerSetHash(array $scanners): string
+    public static function scannerSetHash(array $scanners, array $enrichers = []): string
     {
         $serialized = [];
         foreach ($scanners as $scanner) {
             $serialized[$scanner->id] = $scanner->jsonSerialize();
         }
         ksort($serialized, SORT_STRING);
+        if ($enrichers !== []) {
+            $active = [];
+            foreach ($enrichers as $enricher) {
+                $active[$enricher->name] = ['command' => $enricher->command, 'input_node_kinds' => $enricher->inputNodeKinds];
+            }
+            ksort($active, SORT_STRING);
+            // A key no scanner id takes, since none starts with a colon.
+            $serialized[':enrichers'] = $active;
+        }
         return hash('sha256', json_encode($serialized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }
     /** The owning scanner for a fact, from its owner key. */

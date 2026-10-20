@@ -86,6 +86,32 @@ final class ScanCommandTest extends KnossosTestCase
         self::assertSame('Custom', $this->column($this->pdo(), 'SELECT name FROM projects WHERE id = ?', [$json['project_id']]));
     }
 
+    public function testNoEnrichersKeepsTheProjectsEnrichersFromStarting(): void
+    {
+        // The installation's enrichers.json sits beside the roots file, so both move to a directory of this test's own.
+        $installation = sys_get_temp_dir() . '/knossos-stale-scan-enrichers-' . bin2hex(random_bytes(4));
+        mkdir($installation);
+        $marker = $installation . '/started';
+        file_put_contents($installation . '/enrichers.json', json_encode(['enrichers' => [[
+            'name' => 'fixture',
+            'command' => [PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/enrichers/fixture-enricher.php', 'ok', $marker],
+        ]]], JSON_UNESCAPED_SLASHES));
+        file_put_contents($this->root . '/knossos.json', '{"version": 1, "enrichers": ["fixture"]}');
+        $previous = getenv('KNOSSOS_ROOTS_FILE');
+        putenv('KNOSSOS_ROOTS_FILE=' . $installation . '/roots.json');
+        try {
+            [$exit] = $this->runScan([$this->root], ['no-enrichers' => ['']]);
+            self::assertSame(CliCommand::EXIT_OK, $exit);
+            self::assertFileDoesNotExist($marker, '--no-enrichers scans as a background scan does.');
+
+            $this->runScan([$this->root], []);
+            self::assertFileExists($marker, 'A plain scan is explicit and starts the enricher.');
+        } finally {
+            putenv(is_string($previous) ? 'KNOSSOS_ROOTS_FILE=' . $previous : 'KNOSSOS_ROOTS_FILE');
+            $this->removeTempTree($installation);
+        }
+    }
+
     /** @return iterable<string, array{string}> */
     public static function offValues(): iterable
     {
@@ -250,7 +276,7 @@ final class ScanCommandTest extends KnossosTestCase
         self::assertFalse($command->supports('Scan'));
         $allowed = $command->allowedOptions('scan');
         sort($allowed);
-        self::assertSame(['boundary', 'db', 'json', 'max-file-bytes', 'max-files', 'mode', 'name', 'snapshot-retention', 'worker-memory-mb', 'worker-timeout-ms'], $allowed);
+        self::assertSame(['boundary', 'db', 'json', 'max-file-bytes', 'max-files', 'mode', 'name', 'no-enrichers', 'snapshot-retention', 'worker-memory-mb', 'worker-timeout-ms'], $allowed);
     }
 
     /**

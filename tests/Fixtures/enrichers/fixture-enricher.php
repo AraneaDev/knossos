@@ -5,8 +5,10 @@ declare(strict_types=1);
 /*
  * A stand-in external enricher speaking the worker protocol over stdio.
  *
- * argv[1] is the mode, argv[2] an optional marker file written as soon as the
- * process starts, so a test can tell whether the enricher was started at all.
+ * argv[1] is the mode, or `@<file>` to read the mode from that file on each
+ * start (so a test can switch modes without changing the command). argv[2] is
+ * an optional marker file written as soon as the process starts, so a test can
+ * tell whether the enricher was started at all.
  *
  * Modes:
  *   ok                  the rest call -> endpoint -> Django view chain for the endpoint-routes fixture
@@ -23,6 +25,9 @@ declare(strict_types=1);
  */
 
 $mode = $argv[1] ?? 'ok';
+if (str_starts_with($mode, '@')) {
+    $mode = trim((string) file_get_contents(substr($mode, 1)));
+}
 $marker = $argv[2] ?? null;
 if (is_string($marker) && $marker !== '') {
     file_put_contents($marker, $mode . "\n", FILE_APPEND);

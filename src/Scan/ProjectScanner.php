@@ -17,6 +17,9 @@ interface ProjectScanner
      * Build or refresh a project's graph and return the result envelope.
      *
      * @param list<array<string, mixed>>|null $explicitBoundaries
+     * @param bool $runEnrichers true for an explicit scan, which starts the
+     *        project's external enrichers; a background scan (watch, refresh,
+     *        hook rescan) leaves it false and carries their last facts over
      */
     public function scan(
         string $root,
@@ -29,5 +32,6 @@ interface ProjectScanner
         ?int $snapshotRetention = null,
         ?int $workerTimeoutMs = null,
         ?int $workerMemoryMb = null,
+        bool $runEnrichers = false,
     ): ResultEnvelope;
 }

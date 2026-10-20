@@ -671,7 +671,8 @@ final readonly class ToolService
             array_key_exists('worker_timeout_ms', $arguments) ? ToolArguments::integer($arguments, 'worker_timeout_ms', 30_000, 1_000, 120_000) : null,
         ];
 
-        return fn(): ResultEnvelope => $this->scanner->scan(...$args);
+        // scan_project is an explicit scan: it runs the project's external enrichers.
+        return fn(): ResultEnvelope => $this->scanner->scan(...$args, runEnrichers: true);
     }
 
     /**
