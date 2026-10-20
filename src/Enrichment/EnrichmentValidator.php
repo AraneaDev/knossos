@@ -36,6 +36,12 @@ final class EnrichmentValidator
     /** Attributes the reconciler stamps itself; an enricher must not pre-empt them. */
     private const RESERVED_ATTRIBUTES = ['scanner', 'scanner_local_id'];
 
+    /** The edge attribute that names the profiles (brands, configurations) an enricher edge applies to. */
+    public const PROFILE_ATTRIBUTE = 'profile';
+
+    /** What one profile name may look like; `D` so a trailing newline does not pass. */
+    public const PROFILE_PATTERN = '/^[A-Za-z0-9_.-]{1,64}$/D';
+
     /** @param array<string, true> $discoveredPaths project-relative paths this scan discovered */
     public function __construct(
         private NativeNodeIndex $native,
@@ -159,7 +165,7 @@ final class EnrichmentValidator
                 Origin::Enricher,
                 self::confidence($edge->confidence),
                 $edge->evidence,
-                $stamp + $edge->attributes,
+                $stamp + self::profiled($enricher, $edge, $dropped),
             );
         }
 
@@ -270,6 +276,57 @@ final class EnrichmentValidator
         }
 
         return $kept;
+    }
+
+    /**
+     * The edge's own attributes, with its profile deduplicated, or removed with a warning when it is invalid.
+     *
+     * A bad profile costs the edge its profile, never the edge: an unprofiled
+     * edge is unknown, which is the honest reading of a value that says nothing.
+     *
+     * @param list<Diagnostic> $dropped
+     * @return array<string, mixed>
+     */
+    private static function profiled(string $enricher, EdgeFact $edge, array &$dropped): array
+    {
+        $attributes = $edge->attributes;
+        if (!array_key_exists(self::PROFILE_ATTRIBUTE, $attributes)) {
+            return $attributes;
+        }
+        $profile = $attributes[self::PROFILE_ATTRIBUTE];
+        $problem = self::profileProblem($profile);
+        if ($problem === null) {
+            $attributes[self::PROFILE_ATTRIBUTE] = is_array($profile) ? array_values(array_unique($profile)) : $profile;
+
+            return $attributes;
+        }
+        unset($attributes[self::PROFILE_ATTRIBUTE]);
+        $dropped[] = self::warning('ENRICHER_PROFILE_INVALID', sprintf(
+            'Enricher %s: %s edge from %s to %s kept without its profile: %s',
+            $enricher,
+            $edge->kind,
+            $edge->sourceReference,
+            $edge->targetReference,
+            $problem,
+        ));
+
+        return $attributes;
+    }
+
+    /** Why a `profile` value is invalid, or null when it is a valid name or non-empty list of names. */
+    private static function profileProblem(mixed $value): ?string
+    {
+        $names = is_array($value) && array_is_list($value) ? $value : [$value];
+        if ($names === []) {
+            return 'the list of profiles is empty.';
+        }
+        foreach ($names as $name) {
+            if (!is_string($name) || preg_match(self::PROFILE_PATTERN, $name) !== 1) {
+                return sprintf('%s is not a profile name; a name is 1 to 64 letters, digits, "_", "." or "-".', json_encode($name, JSON_UNESCAPED_SLASHES));
+            }
+        }
+
+        return null;
     }
 
     /** `certain` is reserved for native facts, so an enricher's claim is lowered to `probable`. */

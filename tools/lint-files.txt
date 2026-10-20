@@ -661,6 +661,7 @@ php	tests/phpunit/Query/FileDetailServiceTest.php
 php	tests/phpunit/Query/FileFanInQueryTest.php
 php	tests/phpunit/Query/FileMetricsBoundsTest.php
 php	tests/phpunit/Query/FileTestReachTest.php
+php	tests/phpunit/Query/FlowProfilesTest.php
 php	tests/phpunit/Query/FlowTest.php
 php	tests/phpunit/Query/FrameworkHookMethodsTest.php
 php	tests/phpunit/Query/FrameworkHookTestReachTest.php

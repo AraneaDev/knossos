@@ -20,10 +20,12 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\Fixtures;
 use PDO;
 
+use function PHPUnit\Framework\assertArrayNotHasKey;
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 #[Group('enrichment')]
@@ -378,5 +380,55 @@ final class EnrichmentValidatorTest extends KnossosTestCase
 
         $this->assertDropped($result, 'ENRICHER_CONFLICTING_ID', 'x');
         assertCount(1, $result->contribution->nodes);
+    }
+
+    public function testValidProfileStringIsKept(): void
+    {
+        $result = $this->validate([$this->extNode('x'), $this->extNode('y', canonical: 'GET /y')], [$this->profiledEdge('brand_a')]);
+
+        assertSame([], $result->dropped);
+        assertSame('brand_a', $result->contribution->edges[0]->attributes['profile']);
+    }
+
+    public function testValidProfileListIsKeptDeduplicated(): void
+    {
+        $result = $this->validate([$this->extNode('x'), $this->extNode('y', canonical: 'GET /y')], [$this->profiledEdge(['brand_b', 'brand-a.v2', 'brand_b'])]);
+
+        assertSame([], $result->dropped);
+        assertSame(['brand_b', 'brand-a.v2'], $result->contribution->edges[0]->attributes['profile']);
+    }
+
+    /** An invalid profile costs the edge its profile, never the edge itself. */
+    #[DataProvider('invalidProfiles')]
+    public function testInvalidProfileIsRemovedAndWarned(mixed $profile): void
+    {
+        $result = $this->validate([$this->extNode('x'), $this->extNode('y', canonical: 'GET /y')], [$this->profiledEdge($profile)]);
+
+        $this->assertDropped($result, 'ENRICHER_PROFILE_INVALID', 'x');
+        assertStringContainsString('y', $result->dropped[0]->message);
+        assertCount(1, $result->contribution->edges);
+        assertArrayNotHasKey('profile', $result->contribution->edges[0]->attributes);
+        assertSame('acme', $result->contribution->edges[0]->attributes['enricher']);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function invalidProfiles(): array
+    {
+        return [
+            'empty list' => [[]],
+            'number' => [5],
+            'empty string' => [''],
+            'list with a bad name' => [['ok', 'bad value']],
+            '65 characters' => [str_repeat('a', 65)],
+            'map' => [['a' => 'brand_a']],
+            'null' => [null],
+            'trailing newline' => ["brand_a\n"],
+            'nested list' => [[['brand_a']]],
+        ];
+    }
+
+    private function profiledEdge(mixed $profile): EdgeFact
+    {
+        return new EdgeFact('calls', 'x', 'y', Origin::Ast, Confidence::Probable, $this->ev(), ['profile' => $profile]);
     }
 }
