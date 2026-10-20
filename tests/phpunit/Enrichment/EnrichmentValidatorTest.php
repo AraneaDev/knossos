@@ -293,6 +293,48 @@ final class EnrichmentValidatorTest extends KnossosTestCase
         assertSame('php:run', $result->contribution->edges[0]->targetReference);
     }
 
+    public function testRepresentsCitingAnotherFileThanTheTargetsIsDropped(): void
+    {
+        $result = $this->validate([$this->extNode('x')], [$this->representsAt('src/B.php', 3)], validator: $this->validatorWithSecondFile());
+
+        $this->assertDropped($result, 'ENRICHER_REPRESENTS_INVALID', 'src/B.php');
+        assertSame([], $result->contribution->edges);
+    }
+
+    public function testRepresentsCitingALineOutsideTheTargetsDeclarationIsDropped(): void
+    {
+        foreach ([2, 6] as $line) {
+            $result = $this->validate([$this->extNode('x')], [$this->representsAt(self::PATH, $line)]);
+
+            $this->assertDropped($result, 'ENRICHER_REPRESENTS_INVALID', 'lines 3-5');
+            assertSame([], $result->contribution->edges, 'line ' . $line);
+        }
+    }
+
+    public function testRepresentsCitingALineInsideTheTargetsDeclarationIsKept(): void
+    {
+        foreach ([3, 5] as $line) {
+            $result = $this->validate([$this->extNode('x')], [$this->representsAt(self::PATH, $line)]);
+
+            assertSame([], $result->dropped, 'line ' . $line);
+            assertCount(1, $result->contribution->edges);
+        }
+    }
+
+    /** A `represents` from x to A::run whose evidence is one line of $path. */
+    private function representsAt(string $path, int $line): EdgeFact
+    {
+        return new EdgeFact('represents', 'x', $this->stable('method', 'A::run'), Origin::Ast, Confidence::Probable, new Evidence($path, $line, $line));
+    }
+
+    /** The usual native graph, with src/B.php discovered as well. */
+    private function validatorWithSecondFile(): EnrichmentValidator
+    {
+        $native = new ScanContribution('php:src/A.php', [$this->nativeNode('php:run', 'method', 'A::run')]);
+
+        return new EnrichmentValidator(NativeNodeIndex::build(self::PROJECT, [$native]), [self::PATH => true, 'src/B.php' => true]);
+    }
+
     public function testRepresentsToUnknownNativeIsDropped(): void
     {
         $result = $this->validate([$this->extNode('x')], [$this->extEdge('represents', 'x', $this->stable('method', 'A::missing'))]);

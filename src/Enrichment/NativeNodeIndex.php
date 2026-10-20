@@ -19,7 +19,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 final class NativeNodeIndex
 {
     /**
-     * @param array<string, array{local_id: string, kind: string, qualified_name: string, file: string, line: int}> $nodes by stable id, first declaration wins as in the reconciler
+     * @param array<string, array{local_id: string, kind: string, qualified_name: string, file: string, line: int, end_line: int}> $nodes by stable id, first declaration wins as in the reconciler
      * @param array<string, true> $edges native edges keyed by {@see edgeKey()}
      */
     private function __construct(private array $nodes, private array $edges) {}
@@ -42,6 +42,7 @@ final class NativeNodeIndex
                     'qualified_name' => $node->canonicalName,
                     'file' => $node->evidence->relativePath,
                     'line' => $node->evidence->startLine,
+                    'end_line' => $node->evidence->endLine,
                 ];
             }
             foreach ($contribution->edges as $edge) {
@@ -65,6 +66,18 @@ final class NativeNodeIndex
     }
 
     /**
+     * Where a native node is declared: its file and line span, or null when this scan has no such node.
+     *
+     * @return array{file: string, start_line: int, end_line: int}|null
+     */
+    public function declarationOf(string $stableId): ?array
+    {
+        $node = $this->nodes[$stableId] ?? null;
+
+        return $node === null ? null : ['file' => $node['file'], 'start_line' => $node['line'], 'end_line' => $node['end_line']];
+    }
+
+    /**
      * Whether a native worker reported exactly this edge, by worker local ids.
      *
      * Matches raw native references only: a native edge whose target the
@@ -80,7 +93,7 @@ final class NativeNodeIndex
      * The native nodes of the given kinds, in the shape an enricher receives them.
      *
      * @param list<string> $kinds
-     * @return list<array{id: string, kind: string, qualified_name: string, file: ?string, line: ?int}>
+     * @return list<array{id: string, kind: string, qualified_name: string, file: ?string, line: ?int, end_line: ?int}>
      */
     public function nodesOfKinds(array $kinds): array
     {
@@ -94,6 +107,7 @@ final class NativeNodeIndex
                     'qualified_name' => $node['qualified_name'],
                     'file' => $node['file'],
                     'line' => $node['line'],
+                    'end_line' => $node['end_line'],
                 ];
             }
         }

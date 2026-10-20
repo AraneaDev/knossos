@@ -57,7 +57,7 @@ final class NativeNodeIndexTest extends KnossosTestCase
     public function testKindsAndInputShape(): void
     {
         $index = NativeNodeIndex::build('proj', [new ScanContribution('php:a', [
-            $this->node('php:m', 'method', 'A::m', 'src/A.php', 7),
+            $this->node('php:m', 'method', 'A::m', 'src/A.php', 7, 9),
             $this->node('php:c', 'class', 'A', 'src/A.php', 1),
         ])]);
 
@@ -68,6 +68,9 @@ final class NativeNodeIndexTest extends KnossosTestCase
         assertSame('A::m', $methods[0]['qualified_name']);
         assertSame('src/A.php', $methods[0]['file']);
         assertSame(7, $methods[0]['line']);
+        assertSame(9, $methods[0]['end_line']);
+        assertSame(['file' => 'src/A.php', 'start_line' => 7, 'end_line' => 9], $index->declarationOf($methods[0]['id']));
+        assertNull($index->declarationOf('unknown'));
         assertSame('php:m', $index->localIdFor($methods[0]['id']));
         assertSame('method', $index->kindOf($methods[0]['id']));
         assertSame([], $index->nodesOfKinds([]));
@@ -85,8 +88,8 @@ final class NativeNodeIndexTest extends KnossosTestCase
         assertSame(false, $index->hasNativeEdge('php:b', 'php:a', 'calls'));
     }
 
-    private function node(string $local, string $kind, string $canonical, string $path, int $line): NodeFact
+    private function node(string $local, string $kind, string $canonical, string $path, int $line, ?int $endLine = null): NodeFact
     {
-        return new NodeFact($local, $kind, $canonical, $canonical, Origin::Ast, Confidence::Certain, new Evidence($path, $line, $line));
+        return new NodeFact($local, $kind, $canonical, $canonical, Origin::Ast, Confidence::Certain, new Evidence($path, $line, $endLine ?? $line));
     }
 }

@@ -19,6 +19,7 @@ use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
+use function PHPUnit\Framework\assertStringContainsString;
 use function PHPUnit\Framework\assertTrue;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -63,11 +64,12 @@ final class EnricherRunnerTest extends KnossosTestCase
         assertCount(1, $outcome->raw->nodes);
         $received = $outcome->raw->nodes[0]->attributes['received'];
         ksort($received);
-        assertSame(['file', 'id', 'kind', 'line', 'qualified_name'], array_keys($received));
+        assertSame(['end_line', 'file', 'id', 'kind', 'line', 'qualified_name'], array_keys($received));
         assertSame('function', $received['kind']);
         assertSame('backend.app.urls.search', $received['qualified_name']);
         assertSame('backend/app/urls.py', $received['file']);
         assertSame(4, $received['line']);
+        assertSame(5, $received['end_line']);
     }
 
     public function testMissingConfidenceDefaultsToProbable(): void
@@ -106,6 +108,36 @@ final class EnricherRunnerTest extends KnossosTestCase
     public function testNonZeroExitIsAFailure(): void
     {
         $this->assertFailure('exit_nonzero', $this->definition('exit-1'));
+    }
+
+    public function testTheTimeoutBoundsTheWholeRunNotEachRequest(): void
+    {
+        $this->assertFailure('timeout', $this->definition('slow-steps', timeoutSeconds: 1));
+    }
+
+    public function testACleanExitBeforeAnsweringIsToldApartFromACrash(): void
+    {
+        $this->assertFailure('exited_early', $this->definition('exit-0'));
+    }
+
+    public function testAFailureKeepsTheFirstLineOfWhatWentWrong(): void
+    {
+        $outcome = (new EnricherRunner())->run($this->definition('garbage'), '/tmp', $this->native());
+
+        assertSame('protocol_error', $outcome->reason);
+        assertStringContainsString('invalid JSON', (string) $outcome->detail);
+        assertTrue(mb_strlen((string) $outcome->detail) <= 200 && !str_contains((string) $outcome->detail, "\n"));
+    }
+
+    public function testACancelledScanStopsTheEnricherWithoutWaitingOutItsTimeout(): void
+    {
+        $started = hrtime(true);
+        $cancelled = static fn(): bool => hrtime(true) - $started > 300_000_000;
+
+        $outcome = (new EnricherRunner())->run($this->definition('hang', timeoutSeconds: 30), '/tmp', $this->native(), $cancelled);
+
+        assertSame('cancelled', $outcome->reason);
+        assertTrue(hrtime(true) - $started < 5_000_000_000, 'Stopped soon after the cancel, not at the 30 s timeout.');
     }
 
     public function testEnvironmentIsTheAllowListPlusTheDefinitions(): void

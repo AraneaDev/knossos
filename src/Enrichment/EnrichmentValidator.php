@@ -232,6 +232,15 @@ final class EnrichmentValidator
         if (!in_array($kind, self::REPRESENTABLE_KINDS, true)) {
             return sprintf('a %s cannot be represented; only %s can.', (string) $kind, implode(', ', self::REPRESENTABLE_KINDS));
         }
+        // The link has to point at the declaration it claims: the target's own file, a line of its span.
+        $declaration = $this->native->declarationOf($target['stable']);
+        $evidence = $edge->evidence;
+        if ($declaration !== null && $evidence->relativePath !== $declaration['file']) {
+            return sprintf('its evidence cites %s, but the target is declared in %s.', $evidence->relativePath, $declaration['file']);
+        }
+        if ($declaration !== null && ($evidence->startLine < $declaration['start_line'] || $evidence->startLine > $declaration['end_line'])) {
+            return sprintf('its evidence cites line %d, outside the target\'s declaration at lines %d-%d of %s.', $evidence->startLine, $declaration['start_line'], $declaration['end_line'], $declaration['file']);
+        }
 
         return isset($represented[$edge->sourceReference]) ? 'the source already represents another symbol.' : null;
     }

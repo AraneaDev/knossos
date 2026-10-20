@@ -213,6 +213,57 @@ final class EnrichmentScanTest extends KnossosTestCase
         assertSame(2, count($this->enrichedNodes()), 'The valid entry still runs.');
     }
 
+    public function testAnUnreadableEnrichersFileCarriesTheFactsOver(): void
+    {
+        $this->scan(true);
+        $before = [$this->enrichedNodes(), $this->enrichedEdges()];
+        file_put_contents($this->installation . '/enrichers.json', '{');
+
+        $this->scan(false);
+
+        $this->assertCarriedOverForBrokenConfiguration($before);
+    }
+
+    public function testARejectedEntryCarriesTheFactsOver(): void
+    {
+        $this->scan(true);
+        $before = [$this->enrichedNodes(), $this->enrichedEdges()];
+        $entries = json_decode((string) file_get_contents($this->installation . '/enrichers.json'), true);
+        $entries['enrichers'][0]['timeout_seconds'] = 0;
+        file_put_contents($this->installation . '/enrichers.json', json_encode($entries, JSON_UNESCAPED_SLASHES));
+
+        $this->scan(false);
+
+        $this->assertCarriedOverForBrokenConfiguration($before);
+    }
+
+    public function testAMovedTargetDropsRepresentsOnCarryOver(): void
+    {
+        $this->scan(true);
+        $urls = $this->root . '/backend/app/urls.py';
+        // Two lines above the view: the stored link now cites a line before its declaration.
+        file_put_contents($urls, "# moved\n# down\n" . (string) file_get_contents($urls));
+
+        $this->scan(false);
+
+        assertSame([
+            ['calls_endpoint', 'GET /task/search/ from OrderList.vue', '/task/search/'],
+            ['calls_endpoint', 'frontend/src/components/OrderList.vue', 'GET /task/search/ from OrderList.vue'],
+        ], $this->enrichedEdges());
+        assertStringContainsString('outside the target', $this->diagnostic('ENRICHER_REPRESENTS_INVALID')['message']);
+    }
+
+    /** @param array{list<mixed>, list<mixed>} $before */
+    private function assertCarriedOverForBrokenConfiguration(array $before): void
+    {
+        assertSame($before, [$this->enrichedNodes(), $this->enrichedEdges()]);
+        assertSame('warning', $this->diagnostic('ENRICHER_CONFIG_INVALID')['severity']);
+        $failed = $this->diagnostic('ENRICHER_FAILED');
+        assertStringContainsString('config_invalid', $failed['message']);
+        assertStringContainsString($this->producedAt(), $failed['message']);
+        assertNotContains('ENRICHER_NOT_INSTALLED', $this->codes());
+    }
+
     public function testScannerSetHashChangesWithEnricherCommand(): void
     {
         $definition = new EnricherDefinition('fixture', ['enricher', 'a'], inputNodeKinds: ['function']);

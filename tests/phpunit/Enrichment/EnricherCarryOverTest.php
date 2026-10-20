@@ -112,14 +112,20 @@ final class EnricherCarryOverTest extends KnossosTestCase
         return new EnricherCarryOver($this->pdo, array_fill_keys($statement->fetchAll(PDO::FETCH_COLUMN), true));
     }
 
-    /** The native nodes of the stored graph, as the workers reported them, leaving out one kind. */
+    /** The native nodes of the stored graph, where the workers declared them, leaving out one kind. */
     private function native(?string $without = null): NativeNodeIndex
     {
         $facts = [];
-        foreach ($this->pdo->query("SELECT kind, canonical_name, display_name, attributes_json FROM nodes WHERE origin <> 'enricher'", PDO::FETCH_ASSOC) as $row) {
+        $rows = $this->pdo->query(
+            "SELECT n.kind, n.canonical_name, n.display_name, n.attributes_json, f.relative_path, n.start_line, n.end_line
+             FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.origin <> 'enricher' AND n.start_line IS NOT NULL",
+            PDO::FETCH_ASSOC,
+        );
+        foreach ($rows as $row) {
             $local = json_decode((string) $row['attributes_json'], true)['scanner_local_id'] ?? null;
             if (is_string($local) && $row['kind'] !== $without) {
-                $facts[] = new NodeFact($local, $row['kind'], $row['canonical_name'], $row['display_name'], Origin::Ast, Confidence::Certain, new Evidence('a.py', 1, 1));
+                $evidence = new Evidence($row['relative_path'], (int) $row['start_line'], (int) $row['end_line']);
+                $facts[] = new NodeFact($local, $row['kind'], $row['canonical_name'], $row['display_name'], Origin::Ast, Confidence::Certain, $evidence);
             }
         }
 
