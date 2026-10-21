@@ -4,87 +4,10 @@
 # from the pinned Trivy, cosign and docker compose binaries, npm's own bundled
 # packages and a few Debian packages, which a release of those tools or the
 # next apt refresh fixes, not a change to this repository.
-# Any finding not listed fails the lane. Measured 2026-10-19 with the image's
-# own Trivy 0.69.3 (`trivy image --ignore-unfixed --severity HIGH,CRITICAL
-# --format json knossos:quality`) on a quality image built that day.
-CVE-2025-15558	github.com/docker/cli
+# Any finding not listed fails the lane. Pruned 2026-10-21 to what the release
+# lane still reported after the dependency update (`trivy image --ignore-unfixed
+# --severity HIGH,CRITICAL --format json knossos:quality`), with Trivy 0.76.1.
 CVE-2026-102276	brace-expansion
 CVE-2026-102278	brace-expansion
-CVE-2026-14257	brace-expansion
-CVE-2026-17106	github.com/moby/go-archive
 CVE-2026-19534	undici
-CVE-2026-25679	stdlib
-CVE-2026-25681	golang.org/x/net
-CVE-2026-27136	golang.org/x/net
-CVE-2026-27145	stdlib
-CVE-2026-29181	go.opentelemetry.io/otel
-CVE-2026-32280	stdlib
-CVE-2026-32281	stdlib
-CVE-2026-32283	stdlib
-CVE-2026-33186	google.golang.org/grpc
-CVE-2026-33747	github.com/moby/buildkit
-CVE-2026-33748	github.com/moby/buildkit
-CVE-2026-33811	stdlib
-CVE-2026-33814	golang.org/x/net
-CVE-2026-33814	stdlib
-CVE-2026-33818	stdlib
-CVE-2026-34986	github.com/go-jose/go-jose/v4
-CVE-2026-35469	github.com/moby/spdystream
-CVE-2026-39820	stdlib
-CVE-2026-39821	golang.org/x/net
-CVE-2026-39821	stdlib
-CVE-2026-39822	stdlib
-CVE-2026-39828	golang.org/x/crypto
-CVE-2026-39829	golang.org/x/crypto
-CVE-2026-39830	golang.org/x/crypto
-CVE-2026-39831	golang.org/x/crypto
-CVE-2026-39832	golang.org/x/crypto
-CVE-2026-39835	golang.org/x/crypto
-CVE-2026-39836	stdlib
-CVE-2026-39883	go.opentelemetry.io/otel/sdk
-CVE-2026-42499	stdlib
-CVE-2026-42504	stdlib
-CVE-2026-42508	golang.org/x/crypto
-CVE-2026-44973	github.com/go-git/go-billy/v5
-CVE-2026-45022	github.com/go-git/go-git/v5
-CVE-2026-46595	golang.org/x/crypto
-CVE-2026-46597	golang.org/x/crypto
-CVE-2026-4660	github.com/hashicorp/go-getter
-CVE-2026-46600	golang.org/x/net
-CVE-2026-46600	stdlib
-CVE-2026-46680	github.com/containerd/containerd
-CVE-2026-46680	github.com/containerd/containerd/v2
-CVE-2026-48702	github.com/sigstore/rekor
-CVE-2026-49478	github.com/sigstore/fulcio
-CVE-2026-50151	oras.land/oras-go/v2
-CVE-2026-50163	oras.land/oras-go/v2
-CVE-2026-53488	github.com/containerd/containerd
-CVE-2026-53488	github.com/containerd/containerd/v2
-CVE-2026-53489	github.com/containerd/containerd/v2
-CVE-2026-53492	github.com/containerd/containerd/v2
-CVE-2026-54448	github.com/aquasecurity/trivy
-CVE-2026-55092	github.com/aquasecurity/trivy
-CVE-2026-56851	golang.org/x/text
-CVE-2026-56852	golang.org/x/text
-CVE-2026-56853	stdlib
-CVE-2026-56854	golang.org/x/crypto
-CVE-2026-56858	stdlib
-CVE-2026-56859	stdlib
-CVE-2026-56860	stdlib
-CVE-2026-56862	stdlib
-CVE-2026-56864	golang.org/x/mod
-CVE-2026-56865	golang.org/x/mod
-CVE-2026-63209	github.com/klauspost/compress
-CVE-2026-69152	brace-expansion
-CVE-2026-69192	ip-address
-CVE-2026-71556	github.com/go-git/go-git/v5
-CVE-2026-73566	tar
-CVE-2026-78667	stdlib
 CVE-2026-78669	golang.org/x/net
-CVE-2026-78669	stdlib
-CVE-2026-84304	google.golang.org/grpc
-CVE-2026-84445	google.golang.org/grpc
-CVE-2026-85731	oras.land/oras-go/v2
-CVE-2026-95837	github.com/containerd/containerd/v2
-CVE-2026-97031	stdlib
-GHSA-hrxh-6v49-42gf	google.golang.org/grpc

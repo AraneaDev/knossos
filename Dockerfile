@@ -233,8 +233,8 @@ ENV PATH="/opt/quality-python/bin:${PATH}"
 
 RUN curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors \
         --output /tmp/trivy.tar.gz \
-        https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz \
-    && printf '%s  %s\n' e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7 /tmp/trivy.tar.gz \
+        https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz \
+    && printf '%s  %s\n' c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0 /tmp/trivy.tar.gz \
         > /tmp/trivy.sha256 \
     && sha256sum --check --strict /tmp/trivy.sha256 \
     && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
