@@ -349,7 +349,7 @@ final class PropertyReceiverTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
 
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
 
             $calls = $pdo->query(
                 'SELECT DISTINCT t.canonical_name AS target, e.confidence FROM edges e ' .

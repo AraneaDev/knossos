@@ -2827,7 +2827,7 @@ PYTHON);
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Class calls');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Class calls'));
             $statement = $pdo->query(
                 'SELECT target.canonical_name FROM edges e'
                 . ' JOIN nodes source ON source.id = e.source_id'

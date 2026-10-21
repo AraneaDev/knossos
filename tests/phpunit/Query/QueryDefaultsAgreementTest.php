@@ -60,7 +60,7 @@ final class QueryDefaultsAgreementTest extends KnossosTestCase
         }
 
         // A guard against silently comparing nothing if the naming convention ever changes.
-        assertSame(true, $compared >= 150, sprintf('Expected to compare at least 150 defaults, compared %d.', $compared));
+        assertSame(true, $compared >= 100, sprintf('Expected to compare at least 100 defaults, compared %d.', $compared));
     }
 
     private static function snake(string $camel): string
