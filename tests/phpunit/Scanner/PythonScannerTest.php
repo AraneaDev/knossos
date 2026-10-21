@@ -8,6 +8,7 @@ use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanInputHashes;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scan\UndiscoveredInputVerifier;
 use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Scanner\Protocol\EdgeFact;
@@ -887,7 +888,7 @@ PYTHON);
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
-            $first = $service->scan($root, 'Python Fixture');
+            $first = $service->scan($root, new ScanOptions('Python Fixture'));
             assertSame(7, $first->data['parsed_files']);
             assertSame('7', (string) $pdo->query("SELECT COUNT(*) FROM files WHERE language = 'python'")->fetchColumn());
             assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'application.service'")->fetchColumn());
@@ -895,7 +896,7 @@ PYTHON);
             assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM diagnostics WHERE code = 'PY_SYNTAX_ERROR'")->fetchColumn());
             assertSame('7', (string) $pdo->query("SELECT COUNT(*) FROM contribution_cache WHERE scanner_id = 'knossos.python'")->fetchColumn());
 
-            $second = $service->scan($root, 'Python Fixture');
+            $second = $service->scan($root, new ScanOptions('Python Fixture'));
             assertSame(0, $second->data['parsed_files']);
             assertSame(7, $second->data['unchanged_files']);
         } finally {
@@ -926,7 +927,7 @@ PYTHON);
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Escapes');
+            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Escapes'));
             assertSame([], $result->data['degraded_languages']);
             assertSame(2, $result->data['parsed_files']);
         } finally {

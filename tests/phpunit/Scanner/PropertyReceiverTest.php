@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -122,7 +123,7 @@ final class PropertyReceiverTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
 
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
 
             $calls = $pdo->query(
                 'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
@@ -219,7 +220,7 @@ final class PropertyReceiverTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
 
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
 
             $calls = $pdo->query(
                 'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .

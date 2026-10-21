@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\Fixtures;
 use PDO;
@@ -88,7 +89,7 @@ final class ShebangScanTest extends KnossosTestCase
         $pdo = $this->freshTestDatabase();
         $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
 
-        return [$pdo, $service->scan($root, maxFileBytes: $maxFileBytes)];
+        return [$pdo, $service->scan($root, new ScanOptions(maxFileBytes: $maxFileBytes))];
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -37,7 +38,7 @@ final class RefusedInputScanTest extends KnossosTestCase
         symlink($outside . '/linked.py', $root . '/pkg/linked.py');
         try {
             $pdo = $this->freshTestDatabase();
-            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, maxFileBytes: 300);
+            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(maxFileBytes: 300));
 
             assertSame('full', $result->data['mode']);
             $paths = $pdo->query('SELECT relative_path FROM files ORDER BY relative_path')->fetchAll(\PDO::FETCH_COLUMN);
@@ -109,7 +110,7 @@ final class RefusedInputScanTest extends KnossosTestCase
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
 
             $first = $service->scan($root);
-            $second = $service->scan($root, mode: 'full');
+            $second = $service->scan($root, new ScanOptions(mode: 'full'));
 
             foreach ([$first, $second] as $result) {
                 assertSame('full', $result->data['mode']);

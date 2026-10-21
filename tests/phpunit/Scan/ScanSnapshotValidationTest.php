@@ -8,6 +8,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Discovery\DiscoveredFile;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scan\ScanSnapshotValidator;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -50,7 +51,7 @@ final class ScanSnapshotValidationTest extends KnossosTestCase
 
             $error = captureThrows(
                 fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))
-                    ->scan($root, cancellation: $this->rewritingToken($file, $original . "\n// rewritten mid-scan\n")),
+                    ->scan($root, new ScanOptions(cancellation: $this->rewritingToken($file, $original . "\n// rewritten mid-scan\n"))),
                 ScanSnapshotChangedException::class,
             );
 
@@ -110,7 +111,7 @@ final class ScanSnapshotValidationTest extends KnossosTestCase
             });
 
             $error = captureThrows(
-                fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, cancellation: $token),
+                fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(cancellation: $token)),
                 ScanSnapshotChangedException::class,
             );
 
@@ -148,7 +149,7 @@ final class ScanSnapshotValidationTest extends KnossosTestCase
             )->fetchColumn();
 
             $error = captureThrows(
-                fn() => $service->scan($root, cancellation: $this->rewritingToken($file, $original . "\n// rewritten mid-scan\n")),
+                fn() => $service->scan($root, new ScanOptions(cancellation: $this->rewritingToken($file, $original . "\n// rewritten mid-scan\n"))),
                 ScanSnapshotChangedException::class,
             );
 

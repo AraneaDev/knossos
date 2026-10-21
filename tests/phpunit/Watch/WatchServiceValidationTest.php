@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Watch;
 
 use InvalidArgumentException;
-use Knossos\Cancellation\CancellationToken;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Watch\WatchService;
@@ -22,19 +21,8 @@ final class WatchServiceValidationTest extends TestCase
     private static function serviceWith(array $allowedRoots): WatchService
     {
         $scanner = new class implements ProjectScanner {
-            public function scan(
-                string $root,
-                ?string $name = null,
-                ?int $maxFiles = null,
-                ?int $maxFileBytes = null,
-                ?array $explicitBoundaries = null,
-                ?string $mode = null,
-                ?CancellationToken $cancellation = null,
-                ?int $snapshotRetention = null,
-                ?int $workerTimeoutMs = null,
-                ?int $workerMemoryMb = null,
-                bool $runEnrichers = false,
-            ): ResultEnvelope {
+            public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+            {
                 // always succeed; never reached by the validation tests below
                 return new ResultEnvelope('project-id', 'snapshot-id', 'ok', ['parsed_files' => 0]);
             }

@@ -8,6 +8,7 @@ use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
@@ -100,7 +101,7 @@ final class LaravelTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Laravel Fixture');
+            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Laravel Fixture'));
             assertSame(3, $result->data['diagnostics']);
             assertSame(4, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'route'")->fetchColumn());
             assertSame(3, (int) $pdo->query("SELECT COUNT(*) FROM edges WHERE kind = 'uses_middleware'")->fetchColumn());

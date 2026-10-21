@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\BranchDiffService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -33,7 +34,7 @@ final class BranchDiffServiceTest extends KnossosTestCase
     /** A scan that keeps its snapshot, as the watcher's do. */
     private function rescan(PDO $pdo, string $root): void
     {
-        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, snapshotRetention: 20);
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(snapshotRetention: 20));
     }
 
     /**

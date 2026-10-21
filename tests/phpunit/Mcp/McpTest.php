@@ -405,6 +405,54 @@ final class McpTest extends KnossosTestCase
         fclose($output);
     }
 
+    /**
+     * A request that arrives while a scan runs waits in line; a cancellation
+     * of it before its turn used to be parked behind it, so the request ran in
+     * full anyway. It is now taken out of line, unanswered, as MCP asks of a
+     * cancelled request, and no cancellation is left for the main loop.
+     */
+    #[Group('mcp')]
+    public function testARequestCancelledWhileItWaitsInLineNeverRuns(): void
+    {
+        [$pdo] = $this->storeFixture();
+        $tools = new ToolService(
+            new ProjectScanService($pdo, self::repositoryRoot(), [self::repositoryRoot() . '/tests/Fixtures/mixed']),
+            ArchitectureQueryService::forDatabase($pdo),
+            new DatabaseMaintenanceService($pdo, ':memory:'),
+            new \Knossos\Mcp\ResultEnricher(new \Knossos\Query\StalenessProbe($pdo), new \Knossos\Mcp\NextStepPlanner()),
+        );
+        $input = fopen('php://temp', 'w+');
+        $output = fopen('php://temp', 'w+');
+        if (!is_resource($input) || !is_resource($output)) {
+            throw new RuntimeException('Unable to allocate polling streams.');
+        }
+        fwrite($input, json_encode(['jsonrpc' => '2.0', 'id' => 'queued', 'method' => 'tools/list'], JSON_THROW_ON_ERROR) . "\n");
+        fwrite($input, json_encode(['jsonrpc' => '2.0', 'id' => 8, 'method' => 'tools/list'], JSON_THROW_ON_ERROR) . "\n");
+        fwrite($input, json_encode([
+            'jsonrpc' => '2.0', 'method' => 'notifications/cancelled', 'params' => ['requestId' => 'queued'],
+        ], JSON_THROW_ON_ERROR) . "\n");
+        fwrite($input, json_encode([
+            'jsonrpc' => '2.0', 'method' => 'notifications/cancelled', 'params' => ['requestId' => 'never-sent'],
+        ], JSON_THROW_ON_ERROR) . "\n");
+        rewind($input);
+        $server = new StdioServer(new McpDispatcher($tools));
+        (new ReflectionProperty($server, 'input'))->setValue($server, $input);
+        (new ReflectionProperty($server, 'output'))->setValue($server, $output);
+
+        assertSame(false, (new ReflectionMethod($server, 'pollCancellation'))->invoke($server, 'scan-1'));
+
+        $pending = array_map(
+            static fn(string $line): mixed => json_decode(trim($line), true, 512, JSON_THROW_ON_ERROR),
+            (new ReflectionProperty($server, 'pendingLines'))->getValue($server),
+        );
+        assertSame([8, null], array_map(static fn(mixed $message): mixed => is_array($message) ? ($message['id'] ?? null) : null, $pending));
+        assertSame('never-sent', $pending[1]['params']['requestId'] ?? null);
+        rewind($output);
+        assertSame('', (string) stream_get_contents($output));
+        fclose($input);
+        fclose($output);
+    }
+
     #[Group('mcp')]
     public function testIdleConnectionEmitsKeepalivePingsAndIgnoresTheirResponses(): void
     {
@@ -650,19 +698,8 @@ final class McpTest extends KnossosTestCase
         [$pdo] = $this->storeFixture();
         $tools = new ToolService(
             new class implements \Knossos\Scan\ProjectScanner {
-                public function scan(
-                    string $root,
-                    ?string $name = null,
-                    ?int $maxFiles = null,
-                    ?int $maxFileBytes = null,
-                    ?array $explicitBoundaries = null,
-                    ?string $mode = null,
-                    ?\Knossos\Cancellation\CancellationToken $cancellation = null,
-                    ?int $snapshotRetention = null,
-                    ?int $workerTimeoutMs = null,
-                    ?int $workerMemoryMb = null,
-                    bool $runEnrichers = false,
-                ): \Knossos\Result\ResultEnvelope {
+                public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): \Knossos\Result\ResultEnvelope
+                {
                     throw \Knossos\Scan\ScanSnapshotChangedException::contentChanged('src/Checkout.php');
                 }
             },

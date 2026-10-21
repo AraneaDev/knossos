@@ -8,7 +8,9 @@ use Closure;
 use Knossos\Discovery\EnrichersFile;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
+use Knossos\Result\PaneStatus;
 use Knossos\Scan\{ProjectScanService, ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
+use Knossos\Scan\ScanOptions;
 use PDO;
 use Throwable;
 
@@ -112,7 +114,7 @@ final readonly class TurnBriefService
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
-                $scan = $lease === null ? null : (new ProjectScanService($this->pdo, $this->installationRoot, $allowed, enrichers: EnrichersFile::forDatabase($this->databasePath)))->scan($root, mode: 'incremental', lease: $lease);
+                $scan = $lease === null ? null : (new ProjectScanService($this->pdo, $this->installationRoot, $allowed, enrichers: EnrichersFile::forDatabase($this->databasePath)))->scan($root, new ScanOptions(mode: 'incremental', lease: $lease));
                 // Read the moment the scan returns: the ledger work and the test
                 // search that follow are not the scan, and the search alone can
                 // take seconds.
@@ -150,7 +152,7 @@ final readonly class TurnBriefService
             'tests' => JsTestRunner::annotate($root, $tests['tests']),
             'tests_truncated' => $tests['truncated'],
             'policy' => $unreadable !== null
-                ? ['status' => 'config_invalid', 'message' => $unreadable, 'total' => 0, 'violations' => [], 'truncated' => false]
+                ? ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'total' => 0, 'violations' => [], 'truncated' => false]
                 : self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
         ] + $envelope;
     }
@@ -352,14 +354,14 @@ final readonly class TurnBriefService
     private static function policy(bool $enforce, array $live, ?array $before, ?array $after): array
     {
         if (!$enforce) {
-            return ['status' => 'disabled', 'total' => 0, 'violations' => [], 'truncated' => false];
+            return ['status' => PaneStatus::POLICY_DISABLED, 'total' => 0, 'violations' => [], 'truncated' => false];
         }
         if ($live === [] || $before === null || $after === null) {
-            return ['status' => 'not_evaluated', 'total' => 0, 'violations' => [], 'truncated' => false];
+            return ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false];
         }
         $introduced = array_values(array_diff_key($after['violations'], $before['violations']));
         return [
-            'status' => 'evaluated',
+            'status' => PaneStatus::POLICY_EVALUATED,
             'total' => count($introduced),
             'violations' => array_slice($introduced, 0, self::MAX_VIOLATIONS),
             'truncated' => $before['truncated'] || $after['truncated'],
@@ -374,7 +376,7 @@ final readonly class TurnBriefService
             'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'roots_file' => null, 'refused_root' => null,
             'changed_files' => [], 'added_files' => [], 'deleted_files' => [],
             'impact' => [], 'tests' => [], 'tests_truncated' => false,
-            'policy' => ['status' => 'not_evaluated', 'total' => 0, 'violations' => [], 'truncated' => false],
+            'policy' => ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false],
         ];
     }
 }

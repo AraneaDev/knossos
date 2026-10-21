@@ -14,6 +14,7 @@ use Knossos\Query\QueryBounds;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanner;
+use Knossos\Scan\ScanOptions;
 
 /**
  * The MCP tool surface: schemas, validation, and dispatch.
@@ -286,7 +287,7 @@ final readonly class ToolService
             return [['refresh_if_stale: the project root is unknown; serving the last complete graph.'], $snapshot];
         }
         try {
-            $this->scanner->scan($root, cancellation: $cancellation);
+            $this->scanner->scan($root, new ScanOptions(cancellation: $cancellation));
             return [[], null];
         } catch (\Knossos\Cancellation\ScanCancelledException $cancelled) {
             // A client-requested cancellation is not a rescan failure to paper
@@ -659,8 +660,8 @@ final readonly class ToolService
         $maxFiles = array_key_exists('max_files', $arguments) ? ToolArguments::integer($arguments, 'max_files', 100_000, 1, 100_000) : null;
         $maxBytes = array_key_exists('max_file_bytes', $arguments) ? ToolArguments::integer($arguments, 'max_file_bytes', 2_000_000, 1, 100_000_000) : null;
 
-        $args = [
-            $path,
+        // scan_project is an explicit scan: it runs the project's external enrichers.
+        $options = new ScanOptions(
             $name,
             $maxFiles,
             $maxBytes,
@@ -669,10 +670,10 @@ final readonly class ToolService
             $cancellation,
             array_key_exists('snapshot_retention', $arguments) ? ToolArguments::integer($arguments, 'snapshot_retention', 5, 0, 20) : null,
             array_key_exists('worker_timeout_ms', $arguments) ? ToolArguments::integer($arguments, 'worker_timeout_ms', 30_000, 1_000, 120_000) : null,
-        ];
+            runEnrichers: true,
+        );
 
-        // scan_project is an explicit scan: it runs the project's external enrichers.
-        return fn(): ResultEnvelope => $this->scanner->scan(...$args, runEnrichers: true);
+        return fn(): ResultEnvelope => $this->scanner->scan($path, $options);
     }
 
     /**

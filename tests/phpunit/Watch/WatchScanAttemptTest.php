@@ -25,19 +25,8 @@ final class WatchScanAttemptTest extends TestCase
     private static function successfulScanner(): ProjectScanner
     {
         return new class implements ProjectScanner {
-            public function scan(
-                string $root,
-                ?string $name = null,
-                ?int $maxFiles = null,
-                ?int $maxFileBytes = null,
-                ?array $explicitBoundaries = null,
-                ?string $mode = null,
-                ?CancellationToken $cancellation = null,
-                ?int $snapshotRetention = null,
-                ?int $workerTimeoutMs = null,
-                ?int $workerMemoryMb = null,
-                bool $runEnrichers = false,
-            ): ResultEnvelope {
+            public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+            {
                 return new ResultEnvelope('project-1', 'snapshot-1', 'ok', ['parsed_files' => 7]);
             }
         };
@@ -48,19 +37,8 @@ final class WatchScanAttemptTest extends TestCase
         return new class ($error) implements ProjectScanner {
             public function __construct(private \Throwable $error) {}
 
-            public function scan(
-                string $root,
-                ?string $name = null,
-                ?int $maxFiles = null,
-                ?int $maxFileBytes = null,
-                ?array $explicitBoundaries = null,
-                ?string $mode = null,
-                ?CancellationToken $cancellation = null,
-                ?int $snapshotRetention = null,
-                ?int $workerTimeoutMs = null,
-                ?int $workerMemoryMb = null,
-                bool $runEnrichers = false,
-            ): ResultEnvelope {
+            public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+            {
                 throw $this->error;
             }
         };
@@ -109,19 +87,8 @@ final class WatchScanAttemptTest extends TestCase
         $doesNotMatter = new class implements ProjectScanner {
             public int $invocations = 0;
 
-            public function scan(
-                string $root,
-                ?string $name = null,
-                ?int $maxFiles = null,
-                ?int $maxFileBytes = null,
-                ?array $explicitBoundaries = null,
-                ?string $mode = null,
-                ?CancellationToken $cancellation = null,
-                ?int $snapshotRetention = null,
-                ?int $workerTimeoutMs = null,
-                ?int $workerMemoryMb = null,
-                bool $runEnrichers = false,
-            ): ResultEnvelope {
+            public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+            {
                 ++$this->invocations;
 
                 throw new \LogicException('scan() must not be called when cancellation is pre-set');

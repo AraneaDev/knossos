@@ -12,6 +12,7 @@ use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scan\TreeFingerprint;
 use PDO;
 use Throwable;
@@ -71,10 +72,10 @@ final readonly class LedgeredScanner implements ProjectScanner
 
     /**
      * Scans `$root` as {@see ProjectScanService::scan()} does, with the same
-     * arguments (by position or by name), recording what the scan changed
-     * when it is a scan of an existing project.
+     * options, recording what the scan changed when it is a scan of an
+     * existing project. The scan runs under the lease taken here.
      */
-    public function scan(string $root, mixed ...$options): ResultEnvelope
+    public function scan(string $root, ScanOptions $options = new ScanOptions()): ResultEnvelope
     {
         $real = realpath($root) ?: $root;
         $project = (new ProjectPathResolver($this->pdo))->resolve($real);
@@ -82,22 +83,22 @@ final readonly class LedgeredScanner implements ProjectScanner
             // A first scan has no project yet, but its id is the root's: wait for
             // another writer's lease on it as a rescan does, and hand the lease on.
             $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))
-                ->acquire(ProjectScanService::projectIdOf($real), self::LEASE_WAIT_MS, ProjectScanService::cancellationIn($options));
+                ->acquire(ProjectScanService::projectIdOf($real), self::LEASE_WAIT_MS, $options->cancellation);
             try {
-                return $this->service->scan($root, ...$options, lease: $lease);
+                return $this->service->scan($root, $options->withLease($lease));
             } finally {
                 $lease->release();
             }
         }
         $projectId = (string) $project['id'];
         // Another writer's scan is mostly about to end: wait for it (unless the scan is cancelled), and scan what it left.
-        $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS, ProjectScanService::cancellationIn($options));
+        $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS, $options->cancellation);
         try {
             $ledger = new ScanLedger($this->pdo);
             $from = $ledger->activeSnapshot($projectId);
             $before = $ledger->hashes($projectId);
             $baselines = $this->baselines($projectId, $real, $before);
-            $result = $this->service->scan($root, ...$options, lease: $lease);
+            $result = $this->service->scan($root, $options->withLease($lease));
             $ledger->record($projectId, $from, $result->snapshotId, $before, $ledger->hashes($projectId), $baselines);
             return $result;
         } finally {

@@ -10,6 +10,7 @@ use Knossos\Query\DiagnosticsQueryService;
 use Knossos\Reconciliation\GraphReconciler;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -283,7 +284,7 @@ final class EnrichmentScanTest extends KnossosTestCase
     {
         $service = new ProjectScanService($this->pdo, self::repositoryRoot(), [$this->root], enrichers: new EnrichersFile($this->installation . '/enrichers.json'));
 
-        return $service->scan($this->root, runEnrichers: $runEnrichers);
+        return $service->scan($this->root, new ScanOptions(runEnrichers: $runEnrichers));
     }
 
     /** @param list<string> $names */

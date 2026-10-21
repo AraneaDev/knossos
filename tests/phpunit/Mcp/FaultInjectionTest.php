@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Mcp;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
@@ -51,7 +52,7 @@ final class FaultInjectionTest extends KnossosTestCase
             $first = $service->scan($root);
             $nodeCount = (int) $cachePdo->query('SELECT COUNT(*) FROM nodes')->fetchColumn();
             $cachePdo->exec("UPDATE contribution_cache SET payload_json = '{corrupt' ");
-            $recovered = $service->scan($root, mode: 'incremental');
+            $recovered = $service->scan($root, new ScanOptions(mode: 'incremental'));
             assertSame(true, $recovered->data['parsed_files'] > 0);
             assertSame($nodeCount, (int) $cachePdo->query('SELECT COUNT(*) FROM nodes')->fetchColumn());
             assertNotSame($first->snapshotId, $recovered->snapshotId);

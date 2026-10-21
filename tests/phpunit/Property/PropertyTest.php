@@ -12,6 +12,7 @@ use Knossos\Mcp\McpDispatcher;
 use Knossos\Mcp\ToolService;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -162,8 +163,8 @@ final class PropertyTest extends KnossosTestCase
             $fullDatabase = $this->freshTestDatabase();
             $incremental = new ProjectScanService($incrementalDatabase, self::repositoryRoot(), [$root]);
             $full = new ProjectScanService($fullDatabase, self::repositoryRoot(), [$root]);
-            $incremental->scan($root, mode: 'full');
-            $full->scan($root, mode: 'full');
+            $incremental->scan($root, new ScanOptions(mode: 'full'));
+            $full->scan($root, new ScanOptions(mode: 'full'));
             assertSame($this->graphSignature($fullDatabase), $this->graphSignature($incrementalDatabase), sprintf('seed 0x%X before any step', $seed));
 
             $state = $seed;
@@ -175,8 +176,8 @@ final class PropertyTest extends KnossosTestCase
                 $state = (int) (($state * 1664525 + 1013904223) & 0x7fffffff);
                 $description = $this->applyEdit($edit, $root, $state, $step, $edits);
 
-                $result = $incremental->scan($root, mode: 'incremental');
-                $full->scan($root, mode: 'full');
+                $result = $incremental->scan($root, new ScanOptions(mode: 'incremental'));
+                $full->scan($root, new ScanOptions(mode: 'full'));
                 $label = sprintf('seed 0x%X step %d: %s', $seed, $step, $description);
                 assertSame('incremental', $result->data['mode'], $label);
                 assertSame($this->graphSignature($fullDatabase), $this->graphSignature($incrementalDatabase), $label);

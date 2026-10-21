@@ -8,6 +8,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanLedger;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -169,7 +170,7 @@ final class SharedWatchTest extends KnossosTestCase
             }
             // Another writer scans while this session follows; then the leader goes.
             file_put_contents($root . '/src/Core/Greeter.php', "\n// touched\n", FILE_APPEND);
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'incremental');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'incremental'));
             $held->release();
         });
         $names = self::names($events);
@@ -191,7 +192,7 @@ final class SharedWatchTest extends KnossosTestCase
             }
             $touched = true;
             file_put_contents($root . '/src/Core/Greeter.php', "\n// touched\n", FILE_APPEND);
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'incremental');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'incremental'));
         });
         $names = self::names($events);
         assertContains('absorbed', $names);
@@ -244,6 +245,31 @@ final class SharedWatchTest extends KnossosTestCase
         $again = WatchLock::acquire($dir, 'project-a');
         assertNotNull($again);
         $again->release();
+    }
+
+    /**
+     * A state write that fails part way (here: a full device behind the
+     * temporary name) must not leave the temporary file behind; it used to
+     * be removed only when the rename failed.
+     */
+    #[Group('watch')]
+    public function testAFailedStateWriteLeavesNoTemporaryFile(): void
+    {
+        if (!is_writable('/dev/full')) {
+            self::markTestSkipped('needs /dev/full');
+        }
+        $dir = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->trees[] = $dir;
+        $lock = WatchLock::acquire($dir, 'project-a');
+        assertNotNull($lock);
+        $temporary = $dir . '/' . substr(hash('sha256', 'project-a'), 0, 24) . '.json.' . getmypid() . '.tmp';
+        symlink('/dev/full', $temporary);
+
+        $lock->write(['phase' => 'idle']);
+
+        assertSame(false, is_link($temporary) || file_exists($temporary));
+        assertNull(WatchLock::owner($dir, 'project-a'));
+        $lock->release();
     }
 
     /** Where the lock's state for `$projectId` lives beside `$database`. */

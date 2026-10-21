@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
+use Knossos\Result\PaneStatus;
 use Knossos\Scan\ProjectPathResolver;
 use PDO;
 use Throwable;
@@ -109,7 +110,7 @@ final readonly class BranchDiffService
         $comparison = ArchitectureQueryService::forDatabase($this->pdo)->branchComparison($id, $base['snapshot_id'], $policies, self::LIMIT);
         if ($unreadable !== null) {
             // Policies that could not be read were not checked: said so, never "no violations".
-            $comparison['violations'] = ['status' => 'config_invalid', 'message' => $unreadable, 'count' => 0, 'items' => [], 'truncated' => false];
+            $comparison['violations'] = ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'count' => 0, 'items' => [], 'truncated' => false];
         }
 
         return ['status' => $base['match'] === 'after' ? 'no-snapshot' : 'ok', 'comparison' => $comparison] + $envelope;

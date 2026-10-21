@@ -9,6 +9,7 @@ use Knossos\Bundle\GraphBundleService;
 use Knossos\Classification\TestModuleRule;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
@@ -32,7 +33,7 @@ final class BundleTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Bundle Source');
+            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Bundle Source'));
             $service = new GraphBundleService($pdo);
             $first = $service->export($scan->projectId);
             $second = $service->export($scan->projectId);
@@ -108,7 +109,7 @@ final class BundleTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $source = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Bundle Source')->projectId;
+            $source = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Bundle Source'))->projectId;
             $service = new GraphBundleService($pdo);
             $count = static function (string $table, string $project) use ($pdo): int {
                 $statement = $pdo->prepare('SELECT COUNT(*) FROM ' . $table . ' WHERE project_id = :project');
@@ -164,7 +165,7 @@ final class BundleTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Metrics Source');
+            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Metrics Source'));
             $queries = ArchitectureQueryService::forDatabase($pdo);
 
             $ranked = $queries->fileMetrics($scan->projectId);

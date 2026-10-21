@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Bundle;
 
 use Knossos\Bundle\GraphBundleService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -86,7 +87,7 @@ final class BundleRedactionLeakTest extends KnossosTestCase
     {
         $pdo = SqliteConnection::open($this->database);
         (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-        $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, 'Redaction Source')->projectId;
+        $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, new ScanOptions('Redaction Source'))->projectId;
         $this->assertTheFixtureExercisesEveryLanguage($pdo, $projectId);
 
         $bundle = (string) gzdecode((new GraphBundleService($pdo))->export($projectId, $mode));

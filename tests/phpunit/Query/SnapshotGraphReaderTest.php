@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use InvalidArgumentException;
 use Knossos\Query\SnapshotGraphReader;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\SnapshotPayload;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -37,7 +38,7 @@ final class SnapshotGraphReaderTest extends KnossosTestCase
         [$pdo, , $root] = $this->scanTempFixture('turn-brief');
         // A change, so the rescan replaces the graph and archives it.
         file_put_contents($root . '/src/Edge/Caller.php', (string) file_get_contents($root . '/src/Edge/Caller.php') . "\n");
-        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, snapshotRetention: 20);
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(snapshotRetention: 20));
         $row = $pdo->query('SELECT project_id, payload_json FROM scan_snapshots ORDER BY rowid DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC);
 
         return [$pdo, $root, (string) $row['project_id'], (string) $row['payload_json']];

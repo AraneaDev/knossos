@@ -75,7 +75,11 @@ final class WatchLock
         $parent = SessionLink::sessionProcess();
         $text = json_encode(['pid' => SessionLink::ownProcess(), 'parent_pid' => $parent, 'heartbeat' => time()] + $state, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
         $temporary = $this->statePath . '.' . getmypid() . '.tmp';
-        if ($text !== false && @file_put_contents($temporary, $text) !== false && !@rename($temporary, $this->statePath)) {
+        if ($text === false) {
+            return;
+        }
+        // A write that fails part way leaves a partial file, and a failed rename leaves the whole one.
+        if (@file_put_contents($temporary, $text) === false || !@rename($temporary, $this->statePath)) {
             @unlink($temporary);
         }
     }

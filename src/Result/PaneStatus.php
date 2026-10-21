@@ -66,5 +66,17 @@ final class PaneStatus
      * `knossos.json` cannot be read. Kept in step with `PolicyStatus` in
      * `types/index.d.ts`.
      */
-    public const POLICY = ['evaluated', 'not_evaluated', 'disabled', 'config_invalid'];
+    public const POLICY = [self::POLICY_EVALUATED, self::POLICY_NOT_EVALUATED, self::POLICY_DISABLED, self::POLICY_CONFIG_INVALID];
+
+    /** The policies were checked; the verdict counts what they found. */
+    public const POLICY_EVALUATED = 'evaluated';
+
+    /** No policies were checked: none declared, or nothing to check them against. */
+    public const POLICY_NOT_EVALUATED = 'not_evaluated';
+
+    /** A turn brief run without policies. */
+    public const POLICY_DISABLED = 'disabled';
+
+    /** The project's `knossos.json` cannot be read; the verdict carries a `message`. */
+    public const POLICY_CONFIG_INVALID = 'config_invalid';
 }

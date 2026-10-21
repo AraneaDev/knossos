@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -83,7 +84,7 @@ final class PythonIgnoredInputVerificationTest extends KnossosTestCase
             return false;
         });
 
-        $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, cancellation: $token);
+        $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, new ScanOptions(cancellation: $token));
 
         assertSame('full', $result->data['mode']);
         assertSame(4, $scanPolls);

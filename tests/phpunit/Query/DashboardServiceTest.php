@@ -11,6 +11,7 @@ use Knossos\Query\DashboardService;
 use Knossos\Query\FileFanInQuery;
 use Knossos\Query\PolicyScope;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -236,7 +237,7 @@ final class DashboardServiceTest extends KnossosTestCase
     private function rescan(PDO $pdo, string $root): void
     {
         // Retention at its ceiling so every scan stays a trend point.
-        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, snapshotRetention: 20);
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(snapshotRetention: 20));
     }
 
     #[Group('query')]

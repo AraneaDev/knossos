@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Discovery\{AllowedRoots, RootsFile};
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\{ProjectScanService, ProjectScanner, ProjectWriterLock};
+use Knossos\Scan\ScanOptions;
 use PDO;
 use Throwable;
 
@@ -78,7 +79,7 @@ final readonly class ProjectMoveService
         $data['roots'] = $roots?->replace($source['root'], $target);
         if (!$targetExists) {
             // Asked for, so explicit: enrichers run, since the old project's enriched facts are not moved.
-            $scanner->scan($target, runEnrichers: true);
+            $scanner->scan($target, new ScanOptions(runEnrichers: true));
             $data['scanned'] = true;
         }
         $this->moveAndRemove($source['id'], $targetId, $conflicts);

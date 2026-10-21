@@ -73,22 +73,6 @@ final class ProjectScanService implements ProjectScanner
         $this->workerPool->shutdown();
     }
 
-    /**
-     * The cancellation among {@see self::scan()}'s arguments after the root,
-     * passed by name or by position, for a caller that forwards them and
-     * waits before the scan starts.
-     *
-     * @param array<int|string, mixed> $options
-     */
-    public static function cancellationIn(array $options): ?CancellationToken
-    {
-        // `$cancellation` is scan()'s seventh parameter: the sixth after the root.
-        // Parameters added since (`$runEnrichers`, `$lease`) come after it, so its position holds.
-        $cancellation = $options['cancellation'] ?? $options[5] ?? null;
-
-        return $cancellation instanceof CancellationToken ? $cancellation : null;
-    }
-
     /** The id a project rooted at `$rootRealpath` has, known before its first scan registers it. */
     public static function projectIdOf(string $rootRealpath): string
     {
@@ -100,168 +84,211 @@ final class ProjectScanService implements ProjectScanner
      *
      * A caller that already holds the project's write lease (a scanner that
      * reads the graph before the scan and must know nobody wrote in between)
-     * passes it as `$lease`: the scan writes under it and leaves releasing it
-     * to the caller. A lease for another project is not used.
+     * passes it as the options' `lease`: the scan writes under it and leaves
+     * releasing it to the caller. A lease for another project is not used.
      *
-     * An explicit scan (`$runEnrichers`) runs the project's external enrichers
+     * An explicit scan (`runEnrichers`) runs the project's external enrichers
      * and so always reconciles: their facts come from sources Knossos does
      * not hash, so an unchanged tree says nothing about them.
-     *
-     * @param list<array<string, mixed>>|null $explicitBoundaries
      */
-    public function scan(
-        string $root,
-        ?string $name = null,
-        ?int $maxFiles = null,
-        ?int $maxFileBytes = null,
-        ?array $explicitBoundaries = null,
-        ?string $mode = null,
-        ?CancellationToken $cancellation = null,
-        ?int $snapshotRetention = null,
-        ?int $workerTimeoutMs = null,
-        ?int $workerMemoryMb = null,
-        bool $runEnrichers = false,
-        ?ProjectWriterLease $lease = null,
-    ): ResultEnvelope {
+    public function scan(string $root, ScanOptions $options = new ScanOptions()): ResultEnvelope
+    {
         $startedAt = hrtime(true);
-        $cancellation ??= new CancellationToken();
+        $cancellation = $options->cancellation ?? new CancellationToken();
         $cancellation->throwIfCancelled();
         $preparation = $this->planner->prepare(
             $root,
-            $maxFiles,
-            $maxFileBytes,
-            $explicitBoundaries,
-            $mode,
-            $snapshotRetention,
-            $workerTimeoutMs,
-            $workerMemoryMb,
+            $options->maxFiles,
+            $options->maxFileBytes,
+            $options->explicitBoundaries,
+            $options->mode,
+            $options->snapshotRetention,
+            $options->workerTimeoutMs,
+            $options->workerMemoryMb,
         );
-        $stageMilliseconds = [
-            'configuration' => $preparation->configurationMilliseconds,
-            'discovery' => $preparation->discoveryMilliseconds,
-        ];
+        $clock = new StageClock();
+        $clock->record('configuration', $preparation->configurationMilliseconds);
+        $clock->record('discovery', $preparation->discoveryMilliseconds);
         $planningStarted = hrtime(true);
         $cancellation->throwIfCancelled();
         $projectId = self::projectIdOf($preparation->discovery->rootRealpath);
         $existed = $this->projectExists($projectId);
+        $envelope = $this->withWriterLease($projectId, $options->lease, function (ProjectWriterLease $lease) use ($preparation, $options, $cancellation, $clock, $projectId, $planningStarted, $startedAt): ResultEnvelope {
+            $effectiveMode = 'full';
+            // One repository for the whole scan, built per scan rather than held by
+            // the service: a service lives across scans (a watcher, the MCP server),
+            // and the repository caches every statement it prepares, including
+            // pruning deletes whose SQL varies with the batch, so a held one would
+            // keep them all for the life of the process.
+            $repository = new SqliteGraphRepository($this->pdo);
+            try {
+                $plan = $this->planner->finalize($preparation);
+                $effectiveMode = $plan->effectiveMode;
+                $this->workerPool->prepare($preparation->executionPolicy);
+                $clock->record('planning', $preparation->planningMilliseconds + Milliseconds::since($planningStarted));
+
+                $language = $this->languageRunner->run($plan, $cancellation);
+                $clock->recordAll($language->stageMilliseconds);
+                // Cancellation wins over fidelity reporting: an abandoned scan
+                // must surface ScanCancelledException, not a worker degradation.
+                $cancellation->throwIfCancelled();
+                $this->refuseDegradedRescan($plan, $language, $projectId);
+                // The workers read every file themselves, so their facts descend
+                // from bytes this process never hashed. Discovery's own files are
+                // checked before analysis; undiscovered worker inputs are checked at
+                // the final write boundary below, after reconciliation preparation.
+                $clock->time('snapshot_validation', fn() => $this->snapshotValidator->validateDiscovery($preparation->discovery));
+                $analysis = $clock->time('analysis', fn(): ScanAnalysis => $this->analysisPipeline->analyze($plan, $language->contributions));
+                $cancellation->throwIfCancelled();
+
+                $reconciliationStarted = hrtime(true);
+                $projectConfig = $this->projectConfig($preparation);
+                $namedFiles = new NamedFiles($this->pdo);
+                $named = $namedFiles->contribution($projectId, $preparation->discovery, $preparation->configuration->ignores, $language->contributions);
+                // Enough to hash the scanner set; the enrichers themselves wait until the fast path is ruled out.
+                $this->enrichment->prepare($preparation->configuration);
+                // A note added or removed changes the file components with nothing changed on disk.
+                $sameNamedFiles = array_map(static fn($node): string => $node->canonicalName, $named->nodes) === $namedFiles->current($projectId);
+                $fastPath = $sameNamedFiles && !($options->runEnrichers && $preparation->configuration->enrichers !== [])
+                    ? $this->tryNoChangeFastPath($plan, $language, $preparation, $projectConfig, $options->name, $repository, $lease)
+                    : null;
+                if ($fastPath !== null) {
+                    $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
+                    return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $clock->stages(), 'no_change');
+                }
+                $result = $this->reconcileFull($preparation, $plan, $language, $analysis, $projectConfig, $named, $options, $cancellation, $lease, $repository, $clock);
+                $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
+                // What rebuilding this graph cost, end to end, recorded here
+                // because this is the only place that knows it: reconciliation
+                // completes the scan row but sees neither discovery nor analysis.
+                // RefreshPolicy reads it to decide whether repeating the work fits
+                // inside a query the caller is already waiting on.
+                $repository->recordScanDuration(
+                    $result->projectId,
+                    $result->scanId,
+                    (int) round(Milliseconds::since($startedAt)),
+                );
+
+                return $this->resultFactory->create($plan, $language, $result, $startedAt, $clock->stages());
+            } catch (\Throwable $error) {
+                self::recordFailedScan($repository, $projectId, $effectiveMode, $error);
+                throw $error;
+            }
+        });
+
+        return $existed ? $envelope : $this->orphanHint($envelope, $preparation->discovery->rootRealpath);
+    }
+
+    /**
+     * Runs `$work` under the project's write lease: `$lease` when it is the
+     * caller's for this project, otherwise one taken here and released once
+     * `$work` is done, however it ends.
+     *
+     * @param \Closure(ProjectWriterLease): ResultEnvelope $work
+     */
+    private function withWriterLease(string $projectId, ?ProjectWriterLease $lease, \Closure $work): ResultEnvelope
+    {
         $held = $lease !== null && $lease->projectId() === $projectId;
         if ($lease === null || !$held) {
             $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
         }
-        $effectiveMode = 'full';
-        // One repository for the whole scan, built per scan rather than held by
-        // the service: a service lives across scans (a watcher, the MCP server),
-        // and the repository caches every statement it prepares, including
-        // pruning deletes whose SQL varies with the batch, so a held one would
-        // keep them all for the life of the process.
-        $repository = new SqliteGraphRepository($this->pdo);
         try {
-            $plan = $this->planner->finalize($preparation);
-            $effectiveMode = $plan->effectiveMode;
-            $this->workerPool->prepare($preparation->executionPolicy);
-            $stageMilliseconds['planning'] = $preparation->planningMilliseconds + self::elapsedMilliseconds($planningStarted);
-
-            $language = $this->languageRunner->run($plan, $cancellation);
-            $stageMilliseconds += $language->stageMilliseconds;
-            // Cancellation wins over fidelity reporting: an abandoned scan
-            // must surface ScanCancelledException, not a worker degradation.
-            $cancellation->throwIfCancelled();
-            $this->refuseDegradedRescan($plan, $language, $projectId);
-            // The workers read every file themselves, so their facts descend
-            // from bytes this process never hashed. Discovery's own files are
-            // checked before analysis; undiscovered worker inputs are checked at
-            // the final write boundary below, after reconciliation preparation.
-            //
-            $validationStarted = hrtime(true);
-            $this->snapshotValidator->validateDiscovery($preparation->discovery);
-            $stageMilliseconds['snapshot_validation'] = self::elapsedMilliseconds($validationStarted);
-            $analysisStarted = hrtime(true);
-            $analysis = $this->analysisPipeline->analyze($plan, $language->contributions);
-            $stageMilliseconds['analysis'] = self::elapsedMilliseconds($analysisStarted);
-            $cancellation->throwIfCancelled();
-
-            // What this scan's requests read, and then what every kept entry
-            // read, reused ones included: a reused file sent no request, so a
-            // dependency of it edited since planning shows up only here.
-            $verifyUndiscovered = function () use ($preparation, $language, $plan): void {
-                $verifier = new UndiscoveredInputVerifier();
-                $root = $preparation->discovery->rootRealpath;
-                $verifier->verify($root, $language->undiscoveredInputs, $preparation->maxFileBytes);
-                $verifier->verify($root, self::entryReads($language, $plan, $preparation->discovery->hashedPaths()), $preparation->maxFileBytes);
-            };
-
-            $reconciliationStarted = hrtime(true);
-            $projectConfig = $this->projectConfig($preparation);
-            $namedFiles = new NamedFiles($this->pdo);
-            $named = $namedFiles->contribution($projectId, $preparation->discovery, $preparation->configuration->ignores, $language->contributions);
-            // Enough to hash the scanner set; the enrichers themselves wait until the fast path is ruled out.
-            $this->enrichment->prepare($preparation->configuration);
-            // A note added or removed changes the file components with nothing changed on disk.
-            $sameNamedFiles = array_map(static fn($node): string => $node->canonicalName, $named->nodes) === $namedFiles->current($projectId);
-            $fastPath = $sameNamedFiles && !($runEnrichers && $preparation->configuration->enrichers !== [])
-                ? $this->noChangeFastPath($plan, $language, $preparation, $projectConfig, $name, $verifyUndiscovered, $repository)
-                : null;
-            if ($fastPath !== null) {
-                $stageMilliseconds['reconciliation'] = self::elapsedMilliseconds($reconciliationStarted);
-                return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $stageMilliseconds, 'no_change');
-            }
-            $scanId = \Knossos\Store\StableId::scan($projectId, bin2hex(random_bytes(16)));
-            $discovered = array_fill_keys(array_map(static fn($file): string => $file->relativePath, $preparation->discovery->files), true);
-            $enriched = $this->enrichment->contributions($preparation->configuration, $projectId, $scanId, $preparation->discovery->rootRealpath, $language->contributions, $discovered, $runEnrichers, $cancellation);
-            if ($enriched !== []) {
-                // Enrichers can take minutes; a scan cancelled meanwhile stops here, before the write.
-                $cancellation->throwIfCancelled();
-            }
-            // Refresh the lease immediately before the exclusive reconcile write. A
-            // legitimately long scan can outlive the lease window; if another scanner
-            // expired-and-stole it in the meantime, renew() reports zero matched rows
-            // and we must not reconcile — two "exclusive" writers would corrupt the graph.
-            if (!$lease->renew()) {
-                throw new ScanBusyException(sprintf('The writer lease for project %s was lost during the scan; another writer took over.', $projectId));
-            }
-            $result = (new GraphReconciler($repository))->reconcile(
-                self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $name, [...$language->contributions, $named, ...$enriched], $this->enrichment->active(), $scanId),
-                $verifyUndiscovered,
-            );
-            foreach ($result->phaseMilliseconds as $phase => $milliseconds) {
-                $stageMilliseconds['reconciliation.' . $phase] = $milliseconds;
-            }
-            $stageMilliseconds['reconciliation'] = self::elapsedMilliseconds($reconciliationStarted);
-            // What rebuilding this graph cost, end to end, recorded here
-            // because this is the only place that knows it: reconciliation
-            // completes the scan row but sees neither discovery nor analysis.
-            // RefreshPolicy reads it to decide whether repeating the work fits
-            // inside a query the caller is already waiting on.
-            $repository->recordScanDuration(
-                $result->projectId,
-                $result->scanId,
-                (int) round(self::elapsedMilliseconds($startedAt)),
-            );
-
-            $envelope = $this->resultFactory->create($plan, $language, $result, $startedAt, $stageMilliseconds);
-        } catch (\Throwable $error) {
-            self::recordFailedScan($repository, $projectId, $effectiveMode, $error);
-            throw $error;
+            return $work($lease);
         } finally {
             if (!$held && $lease->release() === 0) {
                 error_log(sprintf('Knossos: writer lease for project %s released zero rows (already expired or stolen).', $projectId));
             }
         }
+    }
 
-        // Only the scan that created the project looks for one it replaces,
-        // and after the scan is committed and its lease released: a hint that
-        // cannot be worked out is no reason to report a good scan as failed.
-        if ($existed) {
-            return $envelope;
+    /**
+     * Rebuilds the graph from this scan's contributions, the enrichers' among
+     * them, and records each reconciliation phase on `$clock`.
+     *
+     * @param array<string, mixed> $projectConfig
+     */
+    private function reconcileFull(
+        ScanPreparation $preparation,
+        ScanPlan $plan,
+        LanguageScanResult $language,
+        ScanAnalysis $analysis,
+        array $projectConfig,
+        \Knossos\Scanner\Protocol\ScanContribution $named,
+        ScanOptions $options,
+        CancellationToken $cancellation,
+        ProjectWriterLease $lease,
+        SqliteGraphRepository $repository,
+        StageClock $clock,
+    ): ReconciliationResult {
+        $projectId = $plan->projectId;
+        $scanId = \Knossos\Store\StableId::scan($projectId, bin2hex(random_bytes(16)));
+        $discovered = array_fill_keys(array_map(static fn($file): string => $file->relativePath, $preparation->discovery->files), true);
+        $enriched = $this->enrichment->contributions($preparation->configuration, $projectId, $scanId, $preparation->discovery->rootRealpath, $language->contributions, $discovered, $options->runEnrichers, $cancellation);
+        if ($enriched !== []) {
+            // Enrichers can take minutes; a scan cancelled meanwhile stops here, before the write.
+            $cancellation->throwIfCancelled();
         }
+        // Refresh the lease immediately before the exclusive reconcile write.
+        self::renewLease($lease, $projectId);
+        $result = (new GraphReconciler($repository))->reconcile(
+            self::fullScanRequest($preparation, $plan, $language, $analysis, $projectConfig, $options->name, [...$language->contributions, $named, ...$enriched], $this->enrichment->active(), $scanId),
+            self::undiscoveredVerifier($preparation, $language, $plan),
+        );
+        $clock->recordAll($result->phaseMilliseconds, 'reconciliation.');
+
+        return $result;
+    }
+
+    /**
+     * Renews the write lease before a write. A legitimately long scan can
+     * outlive the lease window; if another scanner expired-and-stole it in the
+     * meantime, renew() reports zero matched rows and the scan must not write:
+     * two "exclusive" writers would corrupt the graph.
+     *
+     * @throws ScanBusyException when another writer holds the lease now
+     */
+    private static function renewLease(ProjectWriterLease $lease, string $projectId): void
+    {
+        if (!$lease->renew()) {
+            throw new ScanBusyException(sprintf('The writer lease for project %s was lost during the scan; another writer took over.', $projectId));
+        }
+    }
+
+    /**
+     * What this scan's requests read, and then what every kept entry read,
+     * reused ones included: a reused file sent no request, so a dependency of
+     * it edited since planning shows up only here. Checked at the final write
+     * boundary.
+     *
+     * @return \Closure(): void
+     */
+    private static function undiscoveredVerifier(ScanPreparation $preparation, LanguageScanResult $language, ScanPlan $plan): \Closure
+    {
+        return static function () use ($preparation, $language, $plan): void {
+            $verifier = new UndiscoveredInputVerifier();
+            $root = $preparation->discovery->rootRealpath;
+            $verifier->verify($root, $language->undiscoveredInputs, $preparation->maxFileBytes);
+            $verifier->verify($root, self::entryReads($language, $plan, $preparation->discovery->hashedPaths()), $preparation->maxFileBytes);
+        };
+    }
+
+    /**
+     * `$envelope` with a warning about an older project this new one replaces,
+     * if there is one. Only the scan that created the project looks, and after
+     * the scan is committed and its lease released: a hint that cannot be
+     * worked out is no reason to report a good scan as failed.
+     */
+    private function orphanHint(ResultEnvelope $envelope, string $rootRealpath): ResultEnvelope
+    {
         try {
-            $hint = (new OrphanedProjectHint($this->pdo))->warning($envelope->projectId, $preparation->discovery->rootRealpath);
+            $hint = (new OrphanedProjectHint($this->pdo))->warning($envelope->projectId, $rootRealpath);
         } catch (\Throwable) {
             $hint = null;
         }
 
         return $hint === null ? $envelope : $envelope->withWarnings([$hint]);
     }
+
     /** Whether a project row exists yet, read before the scan registers one. */
     private function projectExists(string $projectId): bool
     {
@@ -367,13 +394,6 @@ final class ProjectScanService implements ProjectScanner
         }
     }
 
-    /** Milliseconds since a hrtime() mark, for the stage timings. */
-
-    private static function elapsedMilliseconds(int $startedAt): float
-    {
-        return Milliseconds::since($startedAt);
-    }
-
     /**
      * Whether the project's graph holds any node owned by one of these scanners.
      *
@@ -475,12 +495,13 @@ final class ProjectScanService implements ProjectScanner
      * stored graph is already the correct result: skip teardown/rebuild and
      * snapshot archiving entirely. No graph row is rewritten and no scan row is
      * created; only the stored file mtimes and the active scan's finished_at are
-     * refreshed, so the staleness probe agrees with reality.
+     * refreshed, so the staleness probe agrees with reality. That refresh is a
+     * write like any other, so it too happens only under a renewed lease.
      *
      * @param array<string, mixed> $projectConfig
-     * @param callable(): void $verifyUndiscovered
+     * @throws ScanBusyException when another writer took the lease meanwhile
      */
-    private function noChangeFastPath(ScanPlan $plan, LanguageScanResult $language, ScanPreparation $preparation, array $projectConfig, ?string $name, callable $verifyUndiscovered, SqliteGraphRepository $repository): ?ReconciliationResult
+    private function tryNoChangeFastPath(ScanPlan $plan, LanguageScanResult $language, ScanPreparation $preparation, array $projectConfig, ?string $name, SqliteGraphRepository $repository, ProjectWriterLease $lease): ?ReconciliationResult
     {
         // A degraded language contributes nothing to added/changed, so those tallies
         // cannot see it, and the scanner-set hash only differs when the failed
@@ -521,7 +542,8 @@ final class ProjectScanService implements ProjectScanner
         if ($row['scanner_set_hash'] !== GraphReconciler::scannerSetHash($language->manifests, $this->enrichment->active())) {
             return null;
         }
-        $verifyUndiscovered();
+        self::undiscoveredVerifier($preparation, $language, $plan)();
+        self::renewLease($lease, $plan->projectId);
         $this->recordVerifiedGraph($repository, $plan->projectId, (string) $row['active_scan_id'], $preparation->discovery->files);
         return $this->currentGraphCounts($plan->projectId, (string) $row['active_scan_id']);
     }

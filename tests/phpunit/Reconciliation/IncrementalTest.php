@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Reconciliation;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -63,7 +64,7 @@ final class IncrementalTest extends KnossosTestCase
             assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM contribution_cache')->fetchColumn());
 
             $incrementalGraph = $this->graphSignature($pdo);
-            $full = $service->scan($root, mode: 'full');
+            $full = $service->scan($root, new ScanOptions(mode: 'full'));
             assertSame('full', $full->data['mode']);
             assertSame(2, $full->data['parsed_files']);
             assertSame($incrementalGraph, $this->graphSignature($pdo));

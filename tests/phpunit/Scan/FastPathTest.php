@@ -6,7 +6,10 @@ namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Query\StalenessProbe;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ProjectWriterLock;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Worker\WorkerException;
+use Knossos\Store\ScanBusyException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -27,6 +30,36 @@ final class FastPathTest extends KnossosTestCase
             assertSame(0, $result->data['parsed_files']);
             assertSame($before, $this->graphSignature($pdo));
             assertSame($scansBefore, (int) $pdo->query('SELECT COUNT(*) FROM scans')->fetchColumn());
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * The fast path writes too (file mtimes, the active scan's finished_at),
+     * so it renews the lease first, as the reconcile path does. It used to
+     * write without renewing, so a fast path that outlived its lease wrote
+     * alongside the writer that had taken it over.
+     */
+    #[Group('scan')]
+    public function testTheFastPathDoesNotWriteOnceItsLeaseIsLost(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('mixed');
+        try {
+            $finished = static fn(): string => (string) $pdo->query('SELECT s.finished_at FROM scans s JOIN projects p ON p.active_scan_id = s.id')->fetchColumn();
+            $before = $finished();
+            $lease = (new ProjectWriterLock($pdo))->acquire($projectId);
+            $pdo->prepare("UPDATE scan_locks SET owner_token = 'another-writer' WHERE project_id = :project")->execute(['project' => $projectId]);
+
+            $busy = null;
+            try {
+                (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(lease: $lease));
+            } catch (ScanBusyException $error) {
+                $busy = $error;
+            }
+
+            assertSame(true, $busy instanceof ScanBusyException);
+            assertSame($before, $finished());
         } finally {
             $this->removeTempTree($root);
         }
@@ -169,7 +202,7 @@ final class FastPathTest extends KnossosTestCase
         try {
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
 
-            $full = $service->scan($root, mode: 'full');
+            $full = $service->scan($root, new ScanOptions(mode: 'full'));
             assertSame(false, array_key_exists('fast_path', $full->data));
 
             $file = $root . '/src/CheckoutService.php';
@@ -196,9 +229,9 @@ final class FastPathTest extends KnossosTestCase
 
             // ...but explicit boundary overrides are not reflected in the stored
             // configuration hash, so they must bypass the fast path and reconcile.
-            $withBoundaries = $service->scan($root, explicitBoundaries: [
+            $withBoundaries = $service->scan($root, new ScanOptions(explicitBoundaries: [
                 ['name' => 'Custom', 'path_prefix' => 'src/'],
-            ]);
+            ]));
             assertSame(false, array_key_exists('fast_path', $withBoundaries->data));
         } finally {
             $this->removeTempTree($root);
@@ -217,14 +250,14 @@ final class FastPathTest extends KnossosTestCase
 
             // A rename argument differs from the stored project name, so the fast
             // path (which would discard the rename) must be bypassed.
-            $renamed = $service->scan($root, name: 'Renamed Project');
+            $renamed = $service->scan($root, new ScanOptions(name: 'Renamed Project'));
             assertSame(false, array_key_exists('fast_path', $renamed->data));
 
             $storedName = (string) $pdo->query('SELECT name FROM projects LIMIT 1')->fetchColumn();
             assertSame('Renamed Project', $storedName);
 
             // Re-scanning with the same (now-stored) name takes the fast path again.
-            $again = $service->scan($root, name: 'Renamed Project');
+            $again = $service->scan($root, new ScanOptions(name: 'Renamed Project'));
             assertSame('no_change', $again->data['fast_path']);
         } finally {
             $this->removeTempTree($root);
@@ -345,7 +378,7 @@ final class FastPathTest extends KnossosTestCase
             $activeBefore = (string) $pdo->query('SELECT active_scan_id FROM projects LIMIT 1')->fetchColumn();
             $graphBefore = $this->graphSignature($pdo);
 
-            $failure = captureThrows(fn() => (new ProjectScanService($pdo, $dead, [$root]))->scan($root, mode: 'full'), WorkerException::class);
+            $failure = captureThrows(fn() => (new ProjectScanService($pdo, $dead, [$root]))->scan($root, new ScanOptions(mode: 'full')), WorkerException::class);
 
             assertSame('WORKER_DEGRADED_INCREMENTAL', $failure->diagnosticCode);
             assertContains('Fix the worker (run `knossos doctor`) and rescan; the graph is unchanged.', $failure->getMessage());
@@ -376,7 +409,7 @@ final class FastPathTest extends KnossosTestCase
             assertSame(['knossos.typescript'], $first->data['degraded_languages']);
 
             file_put_contents($root . '/src/RefundService.php', "<?php\nfinal class RefundService {}\n");
-            $second = $service->scan($root, mode: 'full');
+            $second = $service->scan($root, new ScanOptions(mode: 'full'));
 
             assertSame(['knossos.typescript'], $second->data['degraded_languages']);
             assertSame($second->snapshotId, (string) $pdo->query('SELECT active_scan_id FROM projects LIMIT 1')->fetchColumn());
@@ -395,14 +428,14 @@ final class FastPathTest extends KnossosTestCase
         try {
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
 
-            $configChanged = $service->scan($root, snapshotRetention: 3);
+            $configChanged = $service->scan($root, new ScanOptions(snapshotRetention: 3));
             assertSame(false, array_key_exists('fast_path', $configChanged->data));
 
             $pdo->exec("UPDATE scans SET scanner_set_hash = 'not-the-real-hash' WHERE id = (SELECT active_scan_id FROM projects LIMIT 1)");
-            $hashChanged = $service->scan($root, snapshotRetention: 3);
+            $hashChanged = $service->scan($root, new ScanOptions(snapshotRetention: 3));
             assertSame(false, array_key_exists('fast_path', $hashChanged->data));
 
-            $result = $service->scan($root, snapshotRetention: 3);
+            $result = $service->scan($root, new ScanOptions(snapshotRetention: 3));
             assertSame('no_change', $result->data['fast_path']);
         } finally {
             $this->removeTempTree($root);

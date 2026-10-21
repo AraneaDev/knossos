@@ -9,6 +9,7 @@ use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\ToolService;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Store\StableId;
@@ -221,7 +222,7 @@ final class QueryTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Mixed Fixture');
+            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Mixed Fixture'));
             assertSame(3, $scan->data['files']);
             assertSame(true, $scan->data['nodes'] >= 4);
             assertSame(true, $scan->data['metrics']['elapsed_ms'] >= 0);

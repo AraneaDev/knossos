@@ -17,6 +17,7 @@ use Knossos\Scan\LanguageScanResult;
 use Knossos\Scan\LanguageScanRunner;
 use Knossos\Scan\LanguageWorkerPool;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanPlan;
 use Knossos\Scan\ScanPreparation;
 use Knossos\Scan\ScanSnapshotChangedException;
@@ -180,7 +181,7 @@ final class ProjectUnitVerificationTest extends KnossosTestCase
 
             try {
                 $error = captureThrows(
-                    fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, cancellation: $token),
+                    fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, new ScanOptions(cancellation: $token)),
                     ScanSnapshotChangedException::class,
                 );
             } finally {
@@ -213,7 +214,7 @@ final class ProjectUnitVerificationTest extends KnossosTestCase
             return false;
         });
 
-        $error = captureThrows(fn() => $service->scan($this->root, cancellation: $token), ScanSnapshotChangedException::class);
+        $error = captureThrows(fn() => $service->scan($this->root, new ScanOptions(cancellation: $token)), ScanSnapshotChangedException::class);
 
         assertSame(ScanSnapshotChangedException::contentChanged('composer.json')->getMessage(), $error->getMessage());
     }

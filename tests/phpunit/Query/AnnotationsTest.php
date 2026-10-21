@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use InvalidArgumentException;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -109,7 +110,7 @@ final class AnnotationsTest extends KnossosTestCase
             // which declares `namespace Fixture;`.
             $queries->upsertAnnotation($projectId, 'Fixture\\CheckoutService', 'confirmed_dead', 'checked by hand', execute: true);
             // Full rescan clears and rebuilds the graph; the annotation must survive.
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
             $list = $queries->listAnnotations($projectId);
             assertSame(1, count($list->data['annotations']));
             assertSame('confirmed_dead', $list->data['annotations'][0]['kind']);

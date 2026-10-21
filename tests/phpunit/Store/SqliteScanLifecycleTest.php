@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Store;
 
 use InvalidArgumentException;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\GraphRepository;
 use Knossos\Store\SqliteScanLifecycle;
 use Knossos\Store\SqliteStatementCache;
@@ -151,13 +152,13 @@ final class SqliteScanLifecycleTest extends KnossosTestCase
             );
             foreach ([1, 2, 3] as $version) {
                 file_put_contents($root . '/src/A.php', sprintf("<?php\nnamespace App;\nclass A%d {}\n", $version));
-                $service->scan($root, mode: 'full', snapshotRetention: 1);
+                $service->scan($root, new ScanOptions(mode: 'full', snapshotRetention: 1));
                 $metrics->execute();
             }
             self::assertGreaterThan(0, (int) $pdo->query('SELECT COUNT(*) FROM snapshot_metrics')->fetchColumn());
 
             file_put_contents($root . '/src/A.php', "<?php\nnamespace App;\nclass A4 {}\n");
-            $service->scan($root, mode: 'full', snapshotRetention: 1);
+            $service->scan($root, new ScanOptions(mode: 'full', snapshotRetention: 1));
 
             assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM snapshot_metrics WHERE scan_id NOT IN (SELECT scan_id FROM scan_snapshots)')->fetchColumn());
         } finally {

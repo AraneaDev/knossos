@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
+use Knossos\Result\PaneStatus;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
@@ -256,10 +257,10 @@ final readonly class ProjectFindings
      */
     public function policy(string $projectId, string $root, BoundaryLabels $labels): array
     {
-        $none = ['status' => 'not_evaluated', 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false];
+        $none = ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false];
         ['policies' => $policies, 'error' => $error] = FileViolationQuery::policies($root, null);
         if ($error !== null) {
-            return ['status' => 'config_invalid', 'message' => $error] + $none;
+            return ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $error] + $none;
         }
         if ($policies === []) {
             return $none;
@@ -279,7 +280,7 @@ final readonly class ProjectFindings
         }
 
         return [
-            'status' => 'evaluated',
+            'status' => PaneStatus::POLICY_EVALUATED,
             'total' => (int) $check->data['bounds']['violation_count'],
             'truncated' => $reasons !== [],
             'truncation_reasons' => $reasons,
@@ -313,7 +314,7 @@ final readonly class ProjectFindings
             'diagnostics' => ['total' => 0, 'errors' => 0, 'warnings' => 0, 'infos' => 0, 'items' => []],
             'complexity_hotspots' => [],
             'over_budget' => null,
-            'policy' => ['status' => 'not_evaluated', 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false],
+            'policy' => ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false],
         ];
     }
 

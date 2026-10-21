@@ -21,7 +21,8 @@ final class PaneStatusContractTest extends KnossosTestCase
     #[Group('quality')]
     public function testThePanesStatusSetsAreTheCoresSets(): void
     {
-        $declared = (new ReflectionClass(PaneStatus::class))->getConstants();
+        // The sets only: the single policy statuses are named apart for their producers.
+        $declared = array_filter((new ReflectionClass(PaneStatus::class))->getConstants(), 'is_array');
         unset($declared['POLICY']);
         $pane = self::paneSets((string) file_get_contents(self::repositoryRoot() . '/hooks/lib/envelopes.ts'));
 

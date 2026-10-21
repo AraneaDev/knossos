@@ -809,19 +809,8 @@ final class RefreshIfStaleTest extends KnossosTestCase
             touch($file, filemtime($file) + 60);
             $tools = new ToolService(
                 new class implements \Knossos\Scan\ProjectScanner {
-                    public function scan(
-                        string $root,
-                        ?string $name = null,
-                        ?int $maxFiles = null,
-                        ?int $maxFileBytes = null,
-                        ?array $explicitBoundaries = null,
-                        ?string $mode = null,
-                        ?\Knossos\Cancellation\CancellationToken $cancellation = null,
-                        ?int $snapshotRetention = null,
-                        ?int $workerTimeoutMs = null,
-                        ?int $workerMemoryMb = null,
-                        bool $runEnrichers = false,
-                    ): ResultEnvelope {
+                    public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+                    {
                         throw new \RuntimeException('SQLSTATE[HY000]: /srv/internal/knossos.sqlite is locked');
                     }
                 },

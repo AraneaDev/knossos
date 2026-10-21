@@ -10,6 +10,7 @@ use Knossos\Query\TurnBriefService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -644,7 +645,7 @@ final class TurnBriefServiceTest extends KnossosTestCase
     private function watcherScan(PDO $pdo, string $root): void
     {
         $roots = AllowedRoots::of([(string) realpath($root)]);
-        LedgeredScanner::local($pdo, self::repositoryRoot(), $roots, self::POLICIES)->scan($root, mode: 'incremental');
+        LedgeredScanner::local($pdo, self::repositoryRoot(), $roots, self::POLICIES)->scan($root, new ScanOptions(mode: 'incremental'));
     }
 
     /** Another writer scanned the turn's edit first: the ledger still makes it, and its violations, the turn's. */
@@ -678,7 +679,7 @@ final class TurnBriefServiceTest extends KnossosTestCase
         try {
             $since = (new ScanLedger($pdo))->activeSnapshot($projectId);
             $this->addCall($root, 'again');
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'incremental');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'incremental'));
             $brief = $this->service($pdo)->brief($root, [self::CALLER], self::POLICIES, true, $since, true);
             assertSame([self::CALLER], $brief['changed_files']);
             assertSame('not_evaluated', $brief['policy']['status']);

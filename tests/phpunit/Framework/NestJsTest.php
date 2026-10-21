@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Framework;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
@@ -48,7 +49,7 @@ final class NestJsTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Nest Fixture');
+            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Nest Fixture'));
             assertSame(2, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'route'")->fetchColumn());
             assertSame(3, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role LIKE 'nestjs.%'")->fetchColumn());
             assertSame(2, (int) $pdo->query("SELECT COUNT(*) FROM edges WHERE kind = 'routes_to'")->fetchColumn());

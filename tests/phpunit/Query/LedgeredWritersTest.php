@@ -12,6 +12,7 @@ use Knossos\Query\LedgeredScanner;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -104,7 +105,7 @@ final class LedgeredWritersTest extends KnossosTestCase
         try {
             self::touch($root);
             $lease = (new ProjectWriterLock($pdo))->acquire($projectId);
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'incremental', lease: $lease);
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'incremental', lease: $lease));
             assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM scan_locks')->fetchColumn());
             assertSame(1, $lease->release());
         } finally {
@@ -132,7 +133,7 @@ final class LedgeredWritersTest extends KnossosTestCase
             });
             $scanner = new LedgeredScanner($pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), AllowedRoots::of([(string) realpath($root)]), lock: $lock);
 
-            $scanner->scan($root, mode: 'incremental');
+            $scanner->scan($root, new ScanOptions(mode: 'incremental'));
 
             assertSame(1, $waits);
             assertSame(1, count(self::entries($pdo)));
@@ -170,7 +171,7 @@ final class LedgeredWritersTest extends KnossosTestCase
         }
     }
 
-    /** The scan's cancellation reaches the wait for another writer's lease, however the caller passed it. */
+    /** The scan's cancellation reaches the wait for another writer's lease. */
     #[Group('query')]
     public function testACancelledScanStopsWaitingForTheLease(): void
     {
@@ -178,20 +179,15 @@ final class LedgeredWritersTest extends KnossosTestCase
         try {
             $pdo->prepare('INSERT INTO scan_locks(project_id, owner_token, acquired_at) VALUES (?, ?, ?)')
                 ->execute([$projectId, getmypid() . '@' . gethostname() . ':' . str_repeat('a', 32), time()]);
-            foreach (['by name', 'by position'] as $how) {
-                $cancellation = new CancellationToken();
-                $waits = 0;
-                $lock = new ProjectWriterLock($pdo, sleep: static function () use (&$waits, $cancellation): void {
-                    ++$waits;
-                    $cancellation->cancel();
-                });
-                $scanner = new LedgeredScanner($pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), AllowedRoots::of([(string) realpath($root)]), lock: $lock);
-                $scan = $how === 'by name'
-                    ? static fn() => $scanner->scan($root, mode: 'incremental', cancellation: $cancellation)
-                    : static fn() => $scanner->scan($root, null, null, null, null, 'incremental', $cancellation);
-                captureThrows($scan, ScanCancelledException::class);
-                assertSame(1, $waits, $how);
-            }
+            $cancellation = new CancellationToken();
+            $waits = 0;
+            $lock = new ProjectWriterLock($pdo, sleep: static function () use (&$waits, $cancellation): void {
+                ++$waits;
+                $cancellation->cancel();
+            });
+            $scanner = new LedgeredScanner($pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), AllowedRoots::of([(string) realpath($root)]), lock: $lock);
+            captureThrows(static fn() => $scanner->scan($root, new ScanOptions(mode: 'incremental', cancellation: $cancellation)), ScanCancelledException::class);
+            assertSame(1, $waits);
         } finally {
             $this->removeTempTree($root);
         }

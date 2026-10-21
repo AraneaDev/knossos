@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Support;
 use Knossos\Discovery\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use PDO;
 
 /**
@@ -61,7 +62,7 @@ trait EnricherFlowScans
     {
         $service = new ProjectScanService($pdo, self::repositoryRoot(), [$project['root']], enrichers: new EnrichersFile($project['installation'] . '/enrichers.json'));
 
-        return $service->scan($project['root'], runEnrichers: true);
+        return $service->scan($project['root'], new ScanOptions(runEnrichers: true));
     }
 
     /** Remove the copies this test made. */

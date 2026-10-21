@@ -551,38 +551,54 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
         $observedExit = -1;
         $deadline = hrtime(true) + ($timeoutMs * 1_000_000);
         try {
-            while (true) {
-                $status = proc_get_status($process);
-                $stdout .= (string) stream_get_contents($pipes[1]);
-                $stderr .= (string) stream_get_contents($pipes[2]);
-                if (strlen($stdout) > $this->maxOutputBytes || strlen($stderr) > $this->maxErrorBytes) {
-                    throw new RuntimeException(sprintf('Git %s output exceeded its configured byte limit.', $operation));
+            try {
+                while (true) {
+                    $status = proc_get_status($process);
+                    $stdout .= (string) stream_get_contents($pipes[1]);
+                    $stderr .= (string) stream_get_contents($pipes[2]);
+                    $this->assertWithinLimits($stdout, $stderr, $operation);
+                    if (!$status['running']) {
+                        $observedExit = $status['exitcode'];
+                        break;
+                    }
+                    if (hrtime(true) > $deadline) {
+                        throw new RuntimeException(sprintf('Git %s timed out.', $operation));
+                    }
+                    $read = [$pipes[1], $pipes[2]];
+                    $write = $except = [];
+                    @stream_select($read, $write, $except, 0, 100_000);
                 }
-                if (!$status['running']) {
-                    $observedExit = $status['exitcode'];
-                    break;
-                }
-                if (hrtime(true) > $deadline) {
-                    throw new RuntimeException(sprintf('Git %s timed out.', $operation));
-                }
-                $read = [$pipes[1], $pipes[2]];
-                $write = $except = [];
-                @stream_select($read, $write, $except, 0, 100_000);
+            } catch (Throwable $error) {
+                proc_terminate($process, 9);
+                throw $error;
             }
-        } catch (Throwable $error) {
-            proc_terminate($process, 9);
-            throw $error;
+            // What the child wrote between the last read and its exit, read no
+            // further than one byte past each limit and held to it like the rest.
+            $stdout .= (string) stream_get_contents($pipes[1], $this->maxOutputBytes + 1 - strlen($stdout));
+            $stderr .= (string) stream_get_contents($pipes[2], $this->maxErrorBytes + 1 - strlen($stderr));
+            $this->assertWithinLimits($stdout, $stderr, $operation);
         } finally {
-            $stdout .= (string) stream_get_contents($pipes[1]);
-            $stderr .= (string) stream_get_contents($pipes[2]);
             fclose($pipes[1]);
             fclose($pipes[2]);
+            // Reaps the child on every path, the killed one included.
+            $closedExit = proc_close($process);
         }
-        $closedExit = proc_close($process);
         $exit = $observedExit >= 0 ? $observedExit : $closedExit;
         if ($exit !== 0) {
             throw new RuntimeException(sprintf('Git %s unavailable: %s', $operation, substr(trim($stderr), 0, 500)));
         }
         return $stdout;
+    }
+
+    /**
+     * Throws once either stream holds more than its configured limit.
+     *
+     * @throws RuntimeException naming the operation
+     */
+    private function assertWithinLimits(string $stdout, string $stderr, string $operation): void
+    {
+        if (strlen($stdout) > $this->maxOutputBytes || strlen($stderr) > $this->maxErrorBytes) {
+            throw new RuntimeException(sprintf('Git %s output exceeded its configured byte limit.', $operation));
+        }
     }
 }

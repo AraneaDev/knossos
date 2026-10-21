@@ -9,6 +9,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -92,7 +93,7 @@ final class FailedScanTest extends KnossosTestCase
 
             $threw = false;
             try {
-                (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, cancellation: $token);
+                (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(cancellation: $token));
             } catch (ScanCancelledException) {
                 $threw = true;
             }

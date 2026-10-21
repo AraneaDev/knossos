@@ -100,19 +100,8 @@ final class WatchTest extends KnossosTestCase
                 /** @param list<mixed> $outcomes */
                 public function __construct(private array $outcomes) {}
 
-                public function scan(
-                    string $root,
-                    ?string $name = null,
-                    ?int $maxFiles = null,
-                    ?int $maxFileBytes = null,
-                    ?array $explicitBoundaries = null,
-                    ?string $mode = null,
-                    ?CancellationToken $cancellation = null,
-                    ?int $snapshotRetention = null,
-                    ?int $workerTimeoutMs = null,
-                    ?int $workerMemoryMb = null,
-                    bool $runEnrichers = false,
-                ): ResultEnvelope {
+                public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+                {
                     $index = $this->calls;
                     ++$this->calls;
                     $outcome = $this->outcomes[$index] ?? $this->outcomes[array_key_last($this->outcomes)];

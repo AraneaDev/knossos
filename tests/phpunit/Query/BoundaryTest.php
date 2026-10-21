@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Boundary\BoundaryInference;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -29,11 +30,13 @@ final class BoundaryTest extends KnossosTestCase
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
             $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan(
                 $root,
-                'Mixed Boundaries',
-                explicitBoundaries: [
-                    ['name' => 'Backend', 'path_prefix' => 'src'],
-                    ['name' => 'Frontend', 'path_prefix' => 'frontend'],
-                ],
+                new ScanOptions(
+                    'Mixed Boundaries',
+                    explicitBoundaries: [
+                        ['name' => 'Backend', 'path_prefix' => 'src'],
+                        ['name' => 'Frontend', 'path_prefix' => 'frontend'],
+                    ],
+                ),
             );
             $query = ArchitectureQueryService::forDatabase($pdo);
             $explicit = $query->listBoundaries($scan->projectId, 'explicit');

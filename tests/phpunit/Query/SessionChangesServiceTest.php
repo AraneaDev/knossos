@@ -8,6 +8,7 @@ use Knossos\Query\LedgeredScanner;
 use Knossos\Query\SessionChangesService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanLedger;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -30,7 +31,7 @@ final class SessionChangesServiceTest extends KnossosTestCase
     /** A recorded scan, as the live watcher's. */
     private function ledgered(PDO $pdo, string $root): void
     {
-        LedgeredScanner::local($pdo, self::repositoryRoot(), [(string) realpath($root)])->scan($root, mode: 'incremental');
+        LedgeredScanner::local($pdo, self::repositoryRoot(), [(string) realpath($root)])->scan($root, new ScanOptions(mode: 'incremental'));
     }
 
     /** @return array<string, mixed> */
@@ -179,7 +180,7 @@ final class SessionChangesServiceTest extends KnossosTestCase
         try {
             $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
             file_put_contents($root . '/src/Core/Greeter.php', "\n// edited\n", FILE_APPEND);
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'incremental');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'incremental'));
             $changes = self::changes($pdo, $root, $since);
             assertSame('ok', $changes['status']);
             assertSame(false, $changes['complete']);

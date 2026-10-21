@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\ProjectConfig;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -35,7 +36,7 @@ final class ProjectConfigTest extends KnossosTestCase
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
-            $first = $service->scan($root, 'Configured Fixture');
+            $first = $service->scan($root, new ScanOptions('Configured Fixture'));
             assertSame('knossos.jsonc', $first->data['configuration']['source']);
             assertSame(40_000, $first->data['worker_execution']['request_timeout_ms']);
             assertSame(120_000, $first->data['worker_execution']['maximum_request_timeout_ms']);
@@ -43,7 +44,7 @@ final class ProjectConfigTest extends KnossosTestCase
             assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM files WHERE relative_path LIKE 'ignored/%'")->fetchColumn());
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM boundaries WHERE name = 'Configured Source' AND source = 'explicit'")->fetchColumn());
 
-            $overridden = $service->scan($root, 'Configured Fixture', 100, 100_000, [], 'full', snapshotRetention: 0, workerTimeoutMs: 30_000);
+            $overridden = $service->scan($root, new ScanOptions('Configured Fixture', 100, 100_000, [], 'full', snapshotRetention: 0, workerTimeoutMs: 30_000));
             assertSame(30_000, $overridden->data['worker_execution']['request_timeout_ms']);
             assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM boundaries WHERE name = 'Configured Source' AND source = 'explicit'")->fetchColumn());
         } finally {
