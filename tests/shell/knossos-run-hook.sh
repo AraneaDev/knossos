@@ -115,6 +115,22 @@ expect_silent_success 'unenterable project dir' env KNOSSOS_BIN="$STUBS/echoing"
 expect_output 'passes arguments with spaces intact' "turn-brief|$ABS_PROJ|--files=a, b.php|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" '--files=a, b.php'
 
+# dashboard and turn-brief take only the options the mod builds: `--db=...`
+# would point the run at another graph, `--policies=...` would read a file.
+expect_output 'dashboard passes its threshold and axes' "dashboard|$ABS_PROJ|--fan-in-threshold=20|--boundaries=100|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --fan-in-threshold=20 --boundaries=100
+expect_refused 'dashboard refuses --db' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'dashboard refuses --db after its own options' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --fan-in-threshold=20 --db=/tmp/other.sqlite
+expect_refused 'dashboard refuses a threshold that is no number' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --fan-in-threshold=2x
+expect_refused 'dashboard refuses its options out of order' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --boundaries=100 --fan-in-threshold=20
+expect_output 'turn-brief passes every option the mod builds' "turn-brief|$ABS_PROJ|--files=src/a.php|--files=/abs/b.php|--since=scan_1|--reuse-scan|--no-policies|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --files=src/a.php --files=/abs/b.php --since=scan_1 --reuse-scan --no-policies
+expect_refused 'turn-brief refuses --db' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'turn-brief refuses --db after its files' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --files=src/a.php --db=/tmp/other.sqlite
+expect_refused 'turn-brief refuses --policies' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --policies=/tmp/p.json
+expect_refused 'turn-brief refuses a file after a flag' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --no-policies --files=src/a.php
+expect_refused 'turn-brief refuses a snapshot that is no plain id' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" '--since=a b'
+
 # A relative project directory is resolved after the cd, so the binary and the
 # bind mount receive the absolute path rather than one that means nothing from
 # inside the directory.

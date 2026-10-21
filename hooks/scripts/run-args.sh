@@ -105,6 +105,47 @@ if [ "$SUBCOMMAND" = graph-search ]; then
     case "$1" in --query=) refuse ;; --query=*) ;; *) refuse ;; esac
     is_text_line "$1" 208 || refuse
 fi
+# dashboard takes, each at most once and in this order, the fan-in threshold
+# and the number of boundary axes, both whole numbers: any other option
+# (`--db=...`) would read another graph.
+if [ "$SUBCOMMAND" = dashboard ]; then
+    [ "$#" -le 2 ] || refuse
+    stage=0
+    for arg in "$@"; do
+        case "$arg" in
+            --fan-in-threshold=*[!0-9]* | --fan-in-threshold=) refuse ;;
+            --fan-in-threshold=*) step=1 ;;
+            --boundaries=*[!0-9]* | --boundaries=) refuse ;;
+            --boundaries=*) step=2 ;;
+            *) refuse ;;
+        esac
+        [ "${#arg}" -le 30 ] || refuse
+        [ "$step" -gt "$stage" ] || refuse
+        stage=$step
+    done
+fi
+# turn-brief takes, in this order, the files the turn edited (any number, each
+# one line of text), the snapshot the turn began at (a plain id), and the
+# flags `--reuse-scan` and `--no-policies`, each at most once. Nothing else:
+# `--db=...` would write into another graph, and `--policies=...` would read
+# a file the mod never names.
+if [ "$SUBCOMMAND" = turn-brief ]; then
+    stage=0
+    for arg in "$@"; do
+        case "$arg" in
+            --files=) refuse ;;
+            --files=*) is_text_line "$arg" 4104 || refuse; step=1 ;;
+            --since=*[!A-Za-z0-9_.:-]* | --since=) refuse ;;
+            --since=*) step=2 ;;
+            --reuse-scan) step=3 ;;
+            --no-policies) step=4 ;;
+            *) refuse ;;
+        esac
+        # Files repeat; every other option comes once, after them.
+        { [ "$step" -gt "$stage" ] || { [ "$step" -eq 1 ] && [ "$stage" -eq 1 ]; }; } || refuse
+        stage=$step
+    done
+fi
 # branch-diff takes nothing but the project.
 if [ "$SUBCOMMAND" = branch-diff ]; then
     [ "$#" -eq 0 ] || refuse

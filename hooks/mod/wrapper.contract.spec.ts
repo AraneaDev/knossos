@@ -206,6 +206,16 @@ describe('the local and the container wrapper accept and refuse the same argumen
     ['src/../../x'],
     ['src/A.php', 'x'],
     ['--fan-in-threshold=20'],
+    ['--fan-in-threshold=20', '--boundaries=100'],
+    ['--boundaries=100', '--fan-in-threshold=20'],
+    ['--fan-in-threshold=2x'],
+    ['--fan-in-threshold=20', '--db=/x'],
+    ['--files=src/A.php', '--files=/abs/b c.php', '--since=s1', '--reuse-scan', '--no-policies'],
+    ['--no-policies', '--files=src/A.php'],
+    ['--files=src/A.php', '--db=/x'],
+    ['--files=a\nb'],
+    ['--policies=/x'],
+    ['--reuse-scan', '--reuse-scan'],
     ['--query=dash svc'],
     ['--query='],
     ['--query=a\tb'],
@@ -287,10 +297,24 @@ describe('the local and the container wrapper accept and refuse the same argumen
     const cases = ARGUMENTS.map(args => [sub, project, ...args])
     const results = await Promise.all(cases.flatMap(argv => [outcome('local', argv, {}), outcome('container', argv, {})]))
     for (let i = 0; i < cases.length; i++) expect(results[2 * i + 1], cases[i]!.join(' ')).toBe(results[2 * i])
-    // Not vacuous: something was let through, and something refused but where a subcommand checks no options.
+    // Not vacuous: something was let through, and every subcommand refuses something.
     expect(results.some(r => r.includes('"binary":[['))).toBe(sub !== 'bogus')
-    expect(results.some(r => r.includes('refused'))).toBe(!['dashboard', 'turn-brief'].includes(sub))
+    expect(results.some(r => r.includes('refused'))).toBe(true)
   }, 60_000)
+
+  it.each([
+    ['dashboard', '--db=/x'],
+    ['dashboard', '--fan-in-threshold=20', '--boundaries=100', '--db=/x'],
+    ['turn-brief', '--db=/x'],
+    ['turn-brief', '--files=src/A.php', '--no-policies', '--db=/x'],
+    ['turn-brief', '--policies=/x'],
+  ])('%s refuses an option the mod never passes: %s', async (sub, ...args) => {
+    for (const variant of ['local', 'container'] as const) {
+      const result = JSON.parse(await outcome(variant, [sub, project, ...args], {})) as { stdout: string; binary: string[][] }
+      expect(result.binary, variant).toEqual([])
+      expect(result.stdout, variant).toContain('"status":"refused","by":"wrapper"')
+    }
+  })
 
   it.each(['0', '007', 'abc', '86401', '999999999999'])('KNOSSOS_RUN_TIMEOUT=%s', async limit => {
     for (const sub of ['dashboard', 'watch']) {
