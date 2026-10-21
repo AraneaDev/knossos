@@ -4,15 +4,37 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use InvalidArgumentException;
+
 /**
- * The SQL that ranks a stored confidence, so a query can filter and sort on it.
+ * The confidence vocabulary: the three names a fact's confidence can have,
+ * their ranks, and the SQL that ranks a stored confidence, so a query can
+ * filter and sort on it.
  *
- * Confidence is stored by name; the ranks are the ones
- * {@see AbstractArchitectureQueryService::CONFIDENCE_RANK} holds, and any
- * name it does not know ranks as `possible`.
+ * Confidence is stored by name; in SQL any name this does not know ranks as
+ * `possible`.
  */
 final class ConfidenceRank
 {
+    /** Each confidence name with its rank, lowest first, so two can be compared. */
+    public const NAMES = ['possible' => 1, 'probable' => 2, 'certain' => 3];
+
+    /** The rank of confidence `$name`, refusing a name that is none of {@see self::NAMES}. */
+    public static function rank(string $name): int
+    {
+        return self::NAMES[$name] ?? throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
+    }
+
+    /**
+     * The names as a tool schema lists them, highest first.
+     *
+     * @return list<string>
+     */
+    public static function enum(): array
+    {
+        return array_reverse(array_keys(self::NAMES));
+    }
+
     /** The rank of the confidence in `$column`, as a SQL expression. */
     public static function of(string $column): string
     {

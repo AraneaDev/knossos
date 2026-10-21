@@ -166,9 +166,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         self::assertLimit($maxRelationships);
         self::assertLimit($maxChildren);
         $confidenceRank = self::CONFIDENCE_RANK;
-        if (!isset($confidenceRank[$minConfidence])) {
-            throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
-        }
+        ConfidenceRank::rank($minConfidence);
         $matches = $this->resolve($projectId, $component);
         if (count($matches) !== 1) {
             return new ResultEnvelope(
@@ -290,9 +288,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             throw new InvalidArgumentException('limit must be between 1 and 500.');
         }
         $confidenceRank = self::CONFIDENCE_RANK;
-        if (!isset($confidenceRank[$minConfidence])) {
-            throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
-        }
+        ConfidenceRank::rank($minConfidence);
         $edgeKinds = self::selectedEdgeKinds($edgeKinds, self::IMPACT_EDGE_KINDS, 'dependency');
         $project = $this->project($projectId);
         $matches = $this->resolve($projectId, $symbol);

@@ -657,6 +657,7 @@ php	tests/phpunit/Query/ChangeImpactRankingTest.php
 php	tests/phpunit/Query/ComponentBoundsTest.php
 php	tests/phpunit/Query/ComponentDetailServiceTest.php
 php	tests/phpunit/Query/ComponentUsageTest.php
+php	tests/phpunit/Query/ConfidenceRankTest.php
 php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CyclesTest.php
