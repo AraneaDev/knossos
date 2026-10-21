@@ -1,6 +1,22 @@
 FROM node:26-trixie-slim@sha256:e556a144463cc8dc53afe8de6d2fa0db5c132fd39ffa232c17641bd40df2bf11 AS node_runtime
 
-RUN npm install --global npm@12.2.0 --ignore-scripts --no-audit --no-fund
+# npm 12.2.0 bundles brace-expansion 5.0.9 and undici 6.28.0, both with HIGH
+# findings fixed in later releases inside the ranges npm declares. Until an npm
+# release bundles them, the fixed tarballs replace the bundled copies.
+RUN npm install --global npm@12.2.0 --ignore-scripts --no-audit --no-fund \
+    && npm pack brace-expansion@5.0.12 undici@6.29.1 --pack-destination /tmp --silent \
+    && printf '%s  %s\n' \
+        ef8448ec78f20b692f04fa6d01f39b5ab34c66404bea3429f5a39c6c9e0be8b4 /tmp/brace-expansion-5.0.12.tgz \
+        29c4b8e0b2d86cb8795571c1959012ce057a14ecfd34858335f47c31e770a04f /tmp/undici-6.29.1.tgz \
+        > /tmp/npm-bundle.sha256 \
+    && sha256sum --check --strict /tmp/npm-bundle.sha256 \
+    && for package in brace-expansion-5.0.12 undici-6.29.1; do \
+        target="/usr/local/lib/node_modules/npm/node_modules/${package%-*}"; \
+        rm -rf "$target" && mkdir "$target" \
+        && tar -xzf "/tmp/$package.tgz" -C "$target" --strip-components=1 || exit 1; \
+    done \
+    && rm -f /tmp/brace-expansion-5.0.12.tgz /tmp/undici-6.29.1.tgz /tmp/npm-bundle.sha256 \
+    && npm --version
 
 FROM composer:2@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac AS composer_runtime
 

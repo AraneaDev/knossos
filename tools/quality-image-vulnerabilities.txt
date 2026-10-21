@@ -1,13 +1,10 @@
 # HIGH and CRITICAL findings with a fix, in the quality image, that the release
 # lane accepts (tools/trivy-allowlist.php). One `ID<tab>package` per line.
 # The quality image is the gate's own toolchain and is never shipped; these come
-# from the pinned Trivy, cosign and docker compose binaries, npm's own bundled
-# packages and a few Debian packages, which a release of those tools or the
-# next apt refresh fixes, not a change to this repository.
+# from pinned tool binaries (docker compose, Trivy, cosign) or Debian packages,
+# which a release of that tool or the next apt refresh fixes, not a change to
+# this repository.
 # Any finding not listed fails the lane. Pruned 2026-10-21 to what the release
 # lane still reported after the dependency update (`trivy image --ignore-unfixed
 # --severity HIGH,CRITICAL --format json knossos:quality`), with Trivy 0.76.1.
-CVE-2026-102276	brace-expansion
-CVE-2026-102278	brace-expansion
-CVE-2026-19534	undici
 CVE-2026-78669	golang.org/x/net
