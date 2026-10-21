@@ -163,6 +163,7 @@ php	src/Enrichment/NativeNodeIndex.php
 php	src/Enrichment/Profiles.php
 php	src/Enrichment/ValidatedEnrichment.php
 php	src/Filesystem/RegularFileOpener.php
+php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php
 php	src/Git/DirtyPathSet.php
 php	src/Git/GitHeadResolver.php
@@ -532,6 +533,7 @@ php	tests/phpunit/Discovery/JsonConfigTest.php
 php	tests/phpunit/Discovery/Manifest/DockerfileManifestTest.php
 php	tests/phpunit/Discovery/Manifest/HtmlManifestTest.php
 php	tests/phpunit/Discovery/Manifest/InlineScriptImportsTest.php
+php	tests/phpunit/Discovery/Manifest/ManifestPathsTest.php
 php	tests/phpunit/Discovery/Manifest/ManifestReadersTest.php
 php	tests/phpunit/Discovery/Manifest/NodeManifestTest.php
 php	tests/phpunit/Discovery/Manifest/TomlTest.php
@@ -551,6 +553,7 @@ php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
 php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php
 php	tests/phpunit/FailOnWarningTest.php
+php	tests/phpunit/Filesystem/RelativePathRuleTest.php
 php	tests/phpunit/Framework/ClassificationTest.php
 php	tests/phpunit/Framework/DjangoUrlconfTest.php
 php	tests/phpunit/Framework/LaravelRouteNamesTest.php
@@ -712,6 +715,7 @@ php	tests/phpunit/Query/PolicyBoundaryReferencesTest.php
 php	tests/phpunit/Query/PolicyTest.php
 php	tests/phpunit/Query/PolicyValidationBoundsTest.php
 php	tests/phpunit/Query/ProjectFileTest.php
+php	tests/phpunit/Query/ProjectRelativePathTest.php
 php	tests/phpunit/Query/PropertyReachTest.php
 php	tests/phpunit/Query/QualityGateBoundaryScanTest.php
 php	tests/phpunit/Query/QualityGateCyclesTest.php

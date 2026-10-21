@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Filesystem\RelativePathRule;
+
 /**
  * Reads a shell script for the programs it runs, which nothing imports.
  */
@@ -62,7 +64,7 @@ final class ShellManifest implements ManifestReader
         $anchors = [];
         foreach ($matches[1] as $target) {
             $target = rtrim(str_starts_with($target, './') ? substr($target, 2) : $target, '/');
-            if ($target === '' || in_array('..', explode('/', $target), true)) {
+            if ($target === '' || !RelativePathRule::isContained($target)) {
                 continue;
             }
             $anchors[$target] = true;

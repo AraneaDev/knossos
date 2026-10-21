@@ -248,6 +248,23 @@ final class PortableGraphImporterTest extends TestCase
         $this->assertStringContainsString('unsafe file path', $error->getMessage());
     }
 
+    /** The importer once let a drive letter and a leading backslash in. */
+    public function testImportRejectsFileWithDriveLetter(): void
+    {
+        $error = $this->expectImportError([
+            'files' => [$this->fileRow('f1', 'C:/abs/path')],
+        ]);
+        $this->assertStringContainsString('unsafe file path', $error->getMessage());
+    }
+
+    public function testImportRejectsFileWithLeadingBackslash(): void
+    {
+        $error = $this->expectImportError([
+            'files' => [$this->fileRow('f1', '\\abs\\path')],
+        ]);
+        $this->assertStringContainsString('unsafe file path', $error->getMessage());
+    }
+
     public function testImportRejectsFileWithEmptyRelativePath(): void
     {
         $error = $this->expectImportError([

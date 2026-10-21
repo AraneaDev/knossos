@@ -10,6 +10,7 @@ use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Discovery\JsonConfig;
 use Knossos\Discovery\RootGuard;
+use Knossos\Filesystem\RelativePathRule;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 
 /**
@@ -86,7 +87,7 @@ final class ProjectConfigurationLoader
             if (strlen($pattern) > 500) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: ignore patterns must be at most 500 bytes.');
             }
-            if (str_starts_with($pattern, '/') || str_contains($pattern, "\0") || in_array('..', explode('/', str_replace('\\', '/', $pattern)), true)) {
+            if (!RelativePathRule::isContained($pattern)) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: ignore patterns must be relative and may not contain parent traversal.');
             }
         }
@@ -141,7 +142,7 @@ final class ProjectConfigurationLoader
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: boundary must declare either path_prefix or namespace_prefix, not both.');
             }
             $pathPrefix = $boundary['path_prefix'] ?? null;
-            if ($pathPrefix !== null && (!is_string($pathPrefix) || str_starts_with($pathPrefix, '/') || in_array('..', explode('/', str_replace('\\', '/', $pathPrefix)), true))) {
+            if ($pathPrefix !== null && (!is_string($pathPrefix) || !RelativePathRule::isContained($pathPrefix))) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: boundary path_prefix must be project-relative.');
             }
             if (isset($boundary['namespace_prefix']) && !is_string($boundary['namespace_prefix'])) {
@@ -207,7 +208,7 @@ final class ProjectConfigurationLoader
             if (!is_string($folder) || $folder === '') {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: web_roots values must be non-empty strings.');
             }
-            if (str_starts_with($folder, '/') || preg_match('/^[A-Za-z]:/', $folder) === 1 || !str_ends_with($folder, '/') || str_contains($folder, "\0") || in_array('..', explode('/', str_replace('\\', '/', $folder)), true)) {
+            if (!str_ends_with($folder, '/') || !RelativePathRule::isContained($folder)) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: web_roots folders must be project-relative, end with /, and may not contain parent traversal.');
             }
         }

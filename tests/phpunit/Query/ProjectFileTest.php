@@ -31,6 +31,9 @@ final class ProjectFileTest extends KnossosTestCase
             self::assertFalse(ProjectFile::exists($root, 'tools/link'), 'A symlink out of the project is not its file.');
             self::assertFalse(ProjectFile::exists('', 'tools/quality'));
             self::assertFalse(ProjectFile::exists($root, ''));
+            // These once reached realpath(), which throws on a NUL byte.
+            self::assertFalse(ProjectFile::exists($root, "tools/quality\0"), 'A NUL byte names no file.');
+            self::assertFalse(ProjectFile::exists($root, 'C:/tools/quality'), 'A drive letter is not project-relative.');
         } finally {
             $this->removeTempTree($root);
             $this->removeTempTree($outside);

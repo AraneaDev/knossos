@@ -358,6 +358,39 @@ JSON;
         $this->assertStringContainsString('PROJECT_CONFIG_UNSAFE', $error->getMessage());
     }
 
+    /**
+     * The ignore check once accepted a drive letter and a leading backslash,
+     * which every other project-relative check refused.
+     */
+    public function testLoadRejectsIgnorePatternWithDriveLetterOrLeadingBackslash(): void
+    {
+        foreach (['C:/Windows', '\\abs\\path'] as $pattern) {
+            $root = self::isolatedRoot('knossos.json', '{"version": 1, "ignores": [' . json_encode($pattern, JSON_THROW_ON_ERROR) . ']}');
+
+            $error = captureThrows(
+                static fn() => ProjectConfigurationLoader::load($root, [$root]),
+                DiscoveryException::class,
+            );
+
+            $this->assertStringContainsString('PROJECT_CONFIG_UNSAFE', $error->getMessage(), $pattern);
+        }
+    }
+
+    /** The boundary check once accepted a NUL byte and a drive letter. */
+    public function testLoadRejectsBoundaryPathPrefixWithNulOrDriveLetter(): void
+    {
+        foreach (['src\u0000x', 'C:/src'] as $prefix) {
+            $root = self::isolatedRoot('knossos.json', '{"version": 1, "boundaries": [{"name": "Core", "path_prefix": "' . $prefix . '"}]}');
+
+            $error = captureThrows(
+                static fn() => ProjectConfigurationLoader::load($root, [$root]),
+                DiscoveryException::class,
+            );
+
+            $this->assertStringContainsString('PROJECT_CONFIG_UNSAFE', $error->getMessage(), $prefix);
+        }
+    }
+
     public function testLoadRejectsDuplicateBoundaryNames(): void
     {
         $root = $this->writeConfig('knossos.json', '{"version": 1, "boundaries": [{"name": "Core", "path_prefix": "src/A"}, {"name": "Core", "path_prefix": "src/B"}]}');
