@@ -7,7 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Query\BlastRadiusService;
 use Knossos\Query\ChurnService;
-use Knossos\Query\PaneQueries;
+use Knossos\Query\PaneCommands;
 use Knossos\Query\PathBetweenService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -24,7 +24,7 @@ use RuntimeException;
  * component's blast radius in rings, the routes between two components, and
  * a note on a component, previewed until confirmed.
  */
-final class PaneQueriesTest extends KnossosTestCase
+final class PaneCommandsTest extends KnossosTestCase
 {
     private const FIXTURE = 'turn-brief';
 
@@ -210,7 +210,7 @@ final class PaneQueriesTest extends KnossosTestCase
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
         try {
-            $queries = new PaneQueries($pdo);
+            $queries = new PaneCommands($pdo);
             $ask = fn(array $options): array => $queries->answer('annotate', $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
             $preview = $ask(['component' => 'App\\Greeter', 'value' => 'the one place greetings are worded']);
             assertSame(['ok', false, 'upsert', 'note', 'App\\Greeter'], [$preview['status'], $preview['executed'], $preview['action'], $preview['kind'], $preview['component']]);
@@ -236,7 +236,7 @@ final class PaneQueriesTest extends KnossosTestCase
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
         try {
-            $queries = new PaneQueries($pdo);
+            $queries = new PaneCommands($pdo);
             $ask = fn(array $options): array => $queries->answer('annotate', $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
             $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
             \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
@@ -260,15 +260,51 @@ final class PaneQueriesTest extends KnossosTestCase
     #[Group('query')]
     public function testEachCommandNamesItsOptions(): void
     {
-        assertSame(['component'], PaneQueries::options('blast-radius'));
-        assertSame(['from', 'to'], PaneQueries::options('path-between'));
-        assertSame(['component', 'kind', 'value', 'remove', 'author', 'execute'], PaneQueries::options('annotate'));
-        assertSame([], PaneQueries::options('churn'));
-        assertSame(['filter', 'text'], PaneQueries::options('notes'));
-        assertSame(['component', 'value', 'execute'], PaneQueries::options('note-adopt'));
-        assertSame(['component', 'to', 'kind', 'author', 'execute'], PaneQueries::options('note-move'));
-        assertSame(['component', 'value', 'remove', 'execute'], PaneQueries::options('note-check'));
-        assertSame(['component', 'execute'], PaneQueries::options('note-confirm'));
+        assertSame(['component'], PaneCommands::options('blast-radius'));
+        assertSame(['from', 'to'], PaneCommands::options('path-between'));
+        assertSame(['component', 'kind', 'value', 'remove', 'author', 'execute'], PaneCommands::options('annotate'));
+        assertSame([], PaneCommands::options('churn'));
+        assertSame(['filter', 'text'], PaneCommands::options('notes'));
+        assertSame(['component', 'value', 'execute'], PaneCommands::options('note-adopt'));
+        assertSame(['component', 'to', 'kind', 'author', 'execute'], PaneCommands::options('note-move'));
+        assertSame(['component', 'value', 'remove', 'execute'], PaneCommands::options('note-check'));
+        assertSame(['component', 'execute'], PaneCommands::options('note-confirm'));
+        assertSame(['fan-in-threshold', 'boundaries'], PaneCommands::options('dashboard'));
+        assertSame(['files', 'policies', 'no-policies', 'since', 'reuse-scan'], PaneCommands::options('turn-brief'));
+        assertSame([], PaneCommands::options('file-context'));
+    }
+
+    /**
+     * Every command the mod calls is one row: the wrapper supports exactly
+     * those, and a name that is none is refused rather than answered as a
+     * dashboard, which the wrapper's catch-all arm used to do.
+     */
+    #[Group('query')]
+    public function testAnUnknownCommandIsRefused(): void
+    {
+        assertSame(19, count(PaneCommands::commands()));
+        $wrapper = new \Knossos\Cli\Command\BriefCommand();
+        foreach (PaneCommands::commands() as $command) {
+            assertSame(true, $wrapper->supports($command), $command);
+        }
+        assertSame(false, $wrapper->supports('dashboards'));
+        assertSame('Unknown pane command dashboards.', captureThrows(static fn() => PaneCommands::options('dashboards'), \InvalidArgumentException::class)->getMessage());
+        assertSame('Unknown pane command dashboards.', captureThrows(static fn() => PaneCommands::target('dashboards', []), \InvalidArgumentException::class)->getMessage());
+        assertSame('Unknown pane command dashboards.', captureThrows(static fn() => (new PaneCommands(new PDO('sqlite::memory:')))->answer('dashboards', '/', static fn(): ?string => null, static fn(): bool => false), \InvalidArgumentException::class)->getMessage());
+    }
+
+    /** The positional shape each command reads: a path, a required file, or a path and a name. */
+    #[Group('query')]
+    public function testEachCommandReadsItsOwnPositionals(): void
+    {
+        assertSame(['/p', ''], PaneCommands::target('dashboard', ['/p']));
+        assertSame([(string) getcwd(), ''], PaneCommands::target('churn', []));
+        assertSame(['/p/a.php', ''], PaneCommands::target('file-context', ['/p/a.php']));
+        assertSame('A file path is required.', captureThrows(static fn() => PaneCommands::target('file-detail', []), \InvalidArgumentException::class)->getMessage());
+        assertSame(['/p', 'Greeter'], PaneCommands::target('component-detail', ['/p', 'Greeter']));
+        assertSame([(string) getcwd(), 'Greeter'], PaneCommands::target('component-detail', ['Greeter']));
+        assertSame('A component name is required.', captureThrows(static fn() => PaneCommands::target('component-detail', []), \InvalidArgumentException::class)->getMessage());
+        assertSame('Too many arguments.', captureThrows(static fn() => PaneCommands::target('dashboard', ['/p', 'x']), \InvalidArgumentException::class)->getMessage());
     }
 
     /** The Notes tab's read and its three writes answer through the pane's command, as the wrapper calls them. */
@@ -277,7 +313,7 @@ final class PaneQueriesTest extends KnossosTestCase
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
         try {
-            $queries = new PaneQueries($pdo);
+            $queries = new PaneCommands($pdo);
             $ask = fn(string $command, array $options): array => $queries->answer($command, $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
             $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
             \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
@@ -308,7 +344,7 @@ final class PaneQueriesTest extends KnossosTestCase
         try {
             $pdo->setAttribute(PDO::ATTR_STATEMENT_CLASS, [\Knossos\Tests\Phpunit\Support\BusyWriteStatement::class, []]);
             \Knossos\Tests\Phpunit\Support\BusyWriteStatement::$failOn = 'INSERT INTO annotations';
-            $answer = (new PaneQueries($pdo))->answer('annotate', $root, static fn(string $name): ?string => ['component' => 'App\\Greeter', 'value' => 'typed'][$name] ?? null, static fn(string $name): bool => $name === 'execute');
+            $answer = (new PaneCommands($pdo))->answer('annotate', $root, static fn(string $name): ?string => ['component' => 'App\\Greeter', 'value' => 'typed'][$name] ?? null, static fn(string $name): bool => $name === 'execute');
             \Knossos\Tests\Phpunit\Support\BusyWriteStatement::$failOn = null;
 
             assertSame(['error', 'KNOSSOS_DATABASE_BUSY'], [$answer['status'], $answer['code']]);

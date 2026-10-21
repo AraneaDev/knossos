@@ -179,7 +179,7 @@
   "tests/phpunit/Query/ManifestLibraryApiTest.php": 0.1,
   "tests/phpunit/Query/ObjectLiteralCallbackTest.php": 0.6,
   "tests/phpunit/Query/ObjectLiteralImplementationTest.php": 1.1,
-  "tests/phpunit/Query/PaneQueriesTest.php": 0.3,
+  "tests/phpunit/Query/PaneCommandsTest.php": 0.3,
   "tests/phpunit/Query/PolicyTest.php": 0.1,
   "tests/phpunit/Query/PolicyValidationBoundsTest.php": 0.1,
   "tests/phpunit/Query/QualityGateBoundaryScanTest.php": 0.6,
