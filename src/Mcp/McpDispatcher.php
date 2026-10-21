@@ -239,35 +239,7 @@ final class McpDispatcher
             return $this->success($id, ['tools' => $this->tools->definitions()]);
         }
         if ($method === 'tools/call') {
-            $name = $params['name'] ?? null;
-            $arguments = $params['arguments'] ?? [];
-            if (!is_string($name) || !is_array($arguments) || ($arguments !== [] && array_is_list($arguments))) {
-                return self::error($id, -32602, 'Tool name and object arguments are required.');
-            }
-            try {
-                $cancellation = new CancellationToken(fn(): bool => $this->cancellationRequested($id, $pollCancellation));
-                $envelope = $this->tools->call($name, $arguments, $cancellation);
-                $structured = $envelope->jsonSerialize();
-                $response = $this->success($id, [
-                    'content' => [['type' => 'text', 'text' => json_encode($structured, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE)]],
-                    'structuredContent' => $structured,
-                    'isError' => false,
-                ]);
-            } catch (ToolInputException $invalid) {
-                // Unknown tool or malformed arguments: a protocol-level invalid
-                // params error, not a tool that ran and failed.
-                $response = self::error($id, -32602, $invalid->getMessage());
-            } catch (ScanCancelledException $cancelled) {
-                if (isset($this->cancelledRequests[self::cancelKey($id)])) {
-                    // The client asked to cancel this request and is no longer
-                    // waiting; send nothing back (handle() drops the entry).
-                    return null;
-                }
-                $response = $this->toolError($id, ToolErrorMapper::code($cancelled), ToolErrorMapper::publicMessage($cancelled));
-            } catch (Throwable $error) {
-                $response = $this->toolError($id, ToolErrorMapper::code($error), ToolErrorMapper::publicMessage($error));
-            }
-            return $response;
+            return $this->callTool($id, $params, $pollCancellation);
         }
 
         if ($this->resources !== null && $method === 'resources/list') {
@@ -298,7 +270,7 @@ final class McpDispatcher
         if ($this->prompts !== null && $method === 'prompts/get') {
             $name = $params['name'] ?? null;
             $arguments = $params['arguments'] ?? [];
-            if (!is_string($name) || !is_array($arguments)) {
+            if (!is_string($name) || !self::isArgumentObject($arguments)) {
                 return self::error($id, -32602, 'Prompt name and object arguments are required.');
             }
             $result = $this->prompts->get($name, array_filter($arguments, 'is_string'));
@@ -308,6 +280,61 @@ final class McpDispatcher
         }
 
         return self::error($id, -32601, 'Method not found');
+    }
+
+    /**
+     * Run a `tools/call` request: the tool's envelope as structured content,
+     * a tool error for a tool that ran and failed, a protocol error for an
+     * unknown tool or malformed arguments, and nothing at all for a call the
+     * client cancelled and stopped waiting for.
+     *
+     * @param array<string, mixed> $params
+     * @param (Closure(int|string): bool)|null $pollCancellation
+     * @return array<string, mixed>|null
+     */
+    private function callTool(int|string $id, array $params, ?Closure $pollCancellation): ?array
+    {
+        $name = $params['name'] ?? null;
+        $arguments = $params['arguments'] ?? [];
+        if (!is_string($name) || !self::isArgumentObject($arguments)) {
+            return self::error($id, -32602, 'Tool name and object arguments are required.');
+        }
+        try {
+            $cancellation = new CancellationToken(fn(): bool => $this->cancellationRequested($id, $pollCancellation));
+            $envelope = $this->tools->call($name, $arguments, $cancellation);
+            $structured = $envelope->jsonSerialize();
+            $response = $this->success($id, [
+                'content' => [['type' => 'text', 'text' => json_encode($structured, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE)]],
+                'structuredContent' => $structured,
+                'isError' => false,
+            ]);
+        } catch (ToolInputException $invalid) {
+            // Unknown tool or malformed arguments: a protocol-level invalid
+            // params error, not a tool that ran and failed.
+            $response = self::error($id, -32602, $invalid->getMessage());
+        } catch (ScanCancelledException $cancelled) {
+            if (isset($this->cancelledRequests[self::cancelKey($id)])) {
+                // The client asked to cancel this request and is no longer
+                // waiting; send nothing back (handle() drops the entry).
+                return null;
+            }
+            $response = $this->toolError($id, ToolErrorMapper::code($cancelled), ToolErrorMapper::publicMessage($cancelled));
+        } catch (Throwable $error) {
+            $response = $this->toolError($id, ToolErrorMapper::code($error), ToolErrorMapper::publicMessage($error));
+        }
+        return $response;
+    }
+
+    /**
+     * Whether a request's `arguments` is a JSON object: an array that is
+     * empty or keyed by name. A non-empty list is positional arguments,
+     * which no tool or prompt takes.
+     *
+     * @phpstan-assert-if-true array<mixed> $arguments
+     */
+    private static function isArgumentObject(mixed $arguments): bool
+    {
+        return is_array($arguments) && ($arguments === [] || !array_is_list($arguments));
     }
 
     /**
