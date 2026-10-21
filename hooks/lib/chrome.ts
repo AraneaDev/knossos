@@ -165,10 +165,10 @@ export function tabRows(active: PaneTab, columns: number, terminal: boolean, bad
 /** The keys and what each does, for the key list. */
 const KEY_HELP: [string, string][] = [
   [`1–${TABS.length}`, 'switch tabs (or click one)'],
-  ['j k', 'move the marker (or Tab, or a click)'],
+  ['j k', 'move the marker (or Tab, the arrows, or a click)'],
   ['o', 'open the marked row: a component or a file shows what depends on it, an Overview bar the tab it counts'],
   ['e', "open the marked row's file in your editor"],
-  ['b', 'back from a detail'],
+  ['b', 'back from a detail or a route'],
   ['c', "copy the marked row's full name or path"],
   ['q', 'ask Claude about the marked row: your press sends the prompt'],
   ['d', 'list the files drifted since the snapshot, or hide them'],
