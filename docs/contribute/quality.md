@@ -315,7 +315,7 @@ where they run:
   `hooks/mod`, `tools/` and `tools/capture`.
 - `claude plugin validate` and `claude plugin test` run in `tests`, against a
   staging copy of the plugin. The quality image pins the Claude CLI
-  (`@anthropic-ai/claude-code@2.1.303`). A machine without the `claude` command
+  (`@anthropic-ai/claude-code@2.1.306`). A machine without the `claude` command
   reports them as not run.
 - The staged `register.tsx` type-check runs in `tests` against the engine's own
   declarations, committed in `tools/claude-code-api/`, or the `index.d.ts`
@@ -351,20 +351,20 @@ commit what it writes in the same change.
 
 | Surface                      | Enforced tools                                                                  |
 | ---------------------------- | ------------------------------------------------------------------------------- |
-| PHP                          | PHP syntax, PHP-CS-Fixer 3.95.12, PHPStan 2.2.5 (level 5, over the tests too)   |
-| JavaScript/TypeScript worker | ESLint 10.7.0, Prettier 3.9.5, TypeScript compiler checks, vitest suite         |
+| PHP                          | PHP syntax, PHP-CS-Fixer 3.95.27, PHPStan 2.3.1 (level 5, over the tests too)   |
+| JavaScript/TypeScript worker | ESLint 10.13.0, Prettier 3.9.10, TypeScript compiler checks, vitest suite       |
 | Claude Code mod              | ESLint, `npm run typecheck:mod`, vitest, `claude plugin validate`/`test`        |
-| Python worker                | Ruff 0.15.12, mypy 2.3.0, pytest, isolated compile/runtime tests                |
+| Python worker                | Ruff 0.17.1, mypy 2.4.0, pytest, isolated compile/runtime tests                 |
 | Rust worker                  | `cargo fmt`, Clippy with `-D warnings`, `cargo test`, `cargo audit`             |
-| Markdown                     | Prettier, markdownlint 0.41.1                                                   |
+| Markdown                     | Prettier, markdownlint 0.42.0                                                   |
 | JSON/JSONC/YAML              | Prettier, strict JSON decode, pre-commit JSON/YAML checks                       |
 | Shell                        | ShellCheck 0.9.0                                                                |
-| Dockerfile                   | Hadolint 2.14.0, digest-pinned base images, clean build/doctor                  |
+| Dockerfile                   | Hadolint 2.15.1, digest-pinned base images, clean build/doctor                  |
 | Dependencies                 | Composer validation/audit, npm lock integrity/audit                             |
 | Repository hygiene           | private-key/access-key patterns, 2 MB file cap, conflict markers, line endings  |
 | MCP contract                 | test suite plus Inspector 2.9.0 `tools/list` held to the tool catalogue         |
 | Adversarial testing          | fixed-seed properties/fuzz, differential scans, semantic mutation score         |
-| Mutation testing             | Infection 0.34 over `src`, scheduled workflow (not a profile gate)              |
+| Mutation testing             | Infection 0.35 over `src`, scheduled workflow (not a profile gate)              |
 | Performance                  | mixed-language cold/incremental/query/RSS/SQLite budgets                        |
 | Documentation                | generated CLI/MCP contracts, internal links, anchors and images, external links |
 | Supply chain                 | CycloneDX SBOMs, Trivy gates, quality image allowlist, provenance, Cosign smoke |
