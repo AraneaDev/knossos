@@ -8,7 +8,6 @@ use Closure;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Result\PaneStatus;
-use Knossos\Runtime\ScannerFactory;
 use Knossos\Scan\{ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
 use Knossos\Scan\ScanOptions;
 use PDO;

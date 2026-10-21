@@ -22,7 +22,8 @@ use Throwable;
  * {@see ScanLedger}: what every file it changed held before it, and the
  * policy violations those files held before it. Every writer the Claude
  * Code mod can meet scans through it: the pane's rescan, `knossos scan`
- * (and so the live watcher's scan processes) and the MCP `scan_project`.
+ * (and so the live watcher's scan processes), plain `knossos watch`,
+ * `knossos move-project` and the MCP `scan_project`.
  *
  * It takes the project's write lease first and reads the graph under it,
  * then scans under the same lease: no other writer can scan between the

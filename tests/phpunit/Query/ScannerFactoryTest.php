@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Runtime;
+namespace Knossos\Tests\Phpunit\Query;
 
-use Knossos\Runtime\ScannerFactory;
+use Knossos\Query\ScannerFactory;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;

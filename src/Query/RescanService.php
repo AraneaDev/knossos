@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Runtime\ScannerFactory;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanTarget;
 use PDO;

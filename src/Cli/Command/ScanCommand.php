@@ -7,7 +7,7 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
-use Knossos\Runtime\ScannerFactory;
+use Knossos\Query\ScannerFactory;
 use Knossos\Scan\ScanOptions;
 
 /**

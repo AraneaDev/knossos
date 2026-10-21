@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Runtime;
+namespace Knossos\Query;
 
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\EnrichersFile;
-use Knossos\Query\LedgeredScanner;
 use Knossos\Scan\ProjectScanService;
 use PDO;
 

@@ -85,7 +85,7 @@ final class MaintenanceCommand implements CliCommand
             ? $positionals
             : throw new InvalidArgumentException('Usage: knossos move-project <old root|project id> <new root> [--execute] [--db=PATH] [--json]');
         $target = realpath($to);
-        $scanner = (new \Knossos\Runtime\ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$target === false ? $to : $target]);
+        $scanner = (new \Knossos\Query\ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$target === false ? $to : $target]);
         $roots = new \Knossos\Discovery\RootsFile(\Knossos\Discovery\AllowedRoots::defaultConfigPath($context->databasePath()));
         $result = $context->maintenance()->moveProject($from, $to, $context->options->flag($options, 'execute'), $scanner, $roots);
         $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);

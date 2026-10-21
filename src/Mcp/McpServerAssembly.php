@@ -10,7 +10,7 @@ use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\StalenessProbe;
-use Knossos\Runtime\ScannerFactory;
+use Knossos\Query\ScannerFactory;
 use Knossos\Runtime\ServerEnvironment;
 use PDO;
 
