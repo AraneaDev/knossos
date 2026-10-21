@@ -894,6 +894,7 @@ php	tests/phpunit/Scanner/ScannerClientTest.php
 php	tests/phpunit/Scanner/ScannerSdkTest.php
 php	tests/phpunit/Scanner/TypescriptClassicScriptTest.php
 php	tests/phpunit/Scanner/TypescriptDeepImportChainTest.php
+php	tests/phpunit/Scanner/TypescriptDestructuredArgumentTest.php
 php	tests/phpunit/Scanner/TypescriptFallbackProgramTest.php
 php	tests/phpunit/Scanner/TypescriptFileDiagnosticsTest.php
 php	tests/phpunit/Scanner/TypescriptFunctionBindingTest.php
@@ -901,6 +902,7 @@ php	tests/phpunit/Scanner/TypescriptGlobalEditTest.php
 php	tests/phpunit/Scanner/TypescriptGlobalSetTest.php
 php	tests/phpunit/Scanner/TypescriptHeartbeatTest.php
 php	tests/phpunit/Scanner/TypescriptMemberValueTest.php
+php	tests/phpunit/Scanner/TypescriptMethodTableTest.php
 php	tests/phpunit/Scanner/TypescriptNestContractTest.php
 php	tests/phpunit/Scanner/TypescriptPackageNameTest.php
 php	tests/phpunit/Scanner/TypescriptProgramEnvironmentTest.php
@@ -1317,6 +1319,7 @@ js	workers/typescript/src/__tests__/supertype-members.test.js
 js	workers/typescript/src/__tests__/support/absent-alias-configs.mjs
 js	workers/typescript/src/__tests__/support/record-typescript-load.mjs
 js	workers/typescript/src/__tests__/support/require-candidates.mjs
+js	workers/typescript/src/__tests__/table-dispatch.test.js
 js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
@@ -1351,6 +1354,7 @@ js	workers/typescript/src/scanner.js
 js	workers/typescript/src/source-caches.js
 js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
+js	workers/typescript/src/table-dispatch.js
 js	workers/typescript/src/typescript-application-enricher.js
 js	workers/typescript/src/typescript-fact-utils.js
 js	workers/typescript/vitest.config.js
