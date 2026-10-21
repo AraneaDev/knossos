@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Enrichment;
 
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Enrichment\EnricherCarryOver;
 use Knossos\Enrichment\NativeNodeIndex;
 use Knossos\Scan\ProjectScanService;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Discovery;
+namespace Knossos\Roots;
 
 /**
  * The filesystem boundary: resolves a requested path or refuses it.
@@ -17,7 +17,7 @@ namespace Knossos\Discovery;
  * The two ways a path can be refused are separate types, not one message a
  * caller would have to match on: a path that is not there at all raises
  * {@see RootNotFoundException}, a path outside every root raises
- * {@see DiscoveryException} itself. Only the second is fixed by granting a
+ * {@see RootException} itself. Only the second is fixed by granting a
  * root, so anything that offers that remedy has to be able to tell them apart.
  */
 final readonly class RootGuard
@@ -57,12 +57,12 @@ final readonly class RootGuard
             }
         }
 
-        throw new DiscoveryException(self::rejection($requestedRoot, $allowedRoots, $this->roots->configPath()));
+        throw new RootException(self::rejection($requestedRoot, $allowedRoots, $this->roots->configPath()));
     }
 
     /**
      * Whether a root exists and lies outside every allowed root: exactly what
-     * {@see resolve()} rejects with a bare {@see DiscoveryException}. A missing
+     * {@see resolve()} rejects with a bare {@see RootException}. A missing
      * root is not refused (there is nothing to read), and neither is an
      * admitted one. Built on resolve() so the two cannot disagree.
      */
@@ -74,7 +74,7 @@ final readonly class RootGuard
             return false;
         } catch (RootNotFoundException) {
             return false;
-        } catch (DiscoveryException) {
+        } catch (RootException) {
             return true;
         }
     }

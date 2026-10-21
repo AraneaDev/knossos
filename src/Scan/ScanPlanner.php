@@ -6,11 +6,13 @@ namespace Knossos\Scan;
 
 use InvalidArgumentException;
 use Knossos\Configuration\{ProjectConfiguration, ProjectConfigurationLoader};
-use Knossos\Discovery\{AllowedRoots, DiscoveryConfig, ProjectDiscoverer, RootGuard};
+use Knossos\Discovery\{DiscoveryConfig, ProjectDiscoverer};
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\DirtyPathSet;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Reconciliation\Milliseconds;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootGuard;
 use Knossos\Store\ProjectRepository;
 use Knossos\Store\StableId;
 use PDO;

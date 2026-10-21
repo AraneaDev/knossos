@@ -160,40 +160,15 @@ pub(crate) fn index_project(
         heartbeat.beat(emit);
         let module = layout.module_of(relative);
         let (value, index) = if requested.contains(relative) {
-            let item = prepare_one(root, relative, max_file_bytes);
-            let index = match &item {
-                Prepared::Parsed { parsed, .. } => {
-                    Some(FileIndex::of(relative, &module, &parsed.items, layout))
-                }
-                Prepared::Err { .. } => None,
-            };
-            let value = read_value(&item);
+            let (item, value, index) =
+                index_requested(root, relative, &module, max_file_bytes, layout);
             prepared.push(item);
             (value, index)
         } else {
-            // An unrequested file is read and hashed on every request, as
-            // its read must be recorded, but parsed only when this worker
-            // has not indexed those bytes in that module before.
-            match read_safely(root, relative, max_file_bytes) {
-                Ok(bytes) => {
-                    let hash = sha256_hex(&bytes);
-                    let index = match memo.remove(&(relative.to_owned(), hash.clone())) {
-                        Some(index) => index,
-                        None => parse_source(&bytes)
-                            .ok()
-                            .map(|parsed| FileIndex::of(relative, &module, &parsed.items, layout)),
-                    };
-                    (Some(hash), index)
-                }
-                Err(_) => (None, None),
-            }
+            index_context_file(root, relative, &module, max_file_bytes, layout, &mut memo)
         };
         if let Some(index) = &index {
-            declarations.add_file(&index.declarations);
-            declarations.add_renames(&index.renames);
-            declarations.add_exports(&index.exports);
-            declarations.add_fields(&index.fields);
-            declarations.add_aliases(&index.aliases);
+            declarations.absorb(index);
             test_modules.extend(index.test_modules.iter().cloned());
         }
         if let Some(hash) = &value {
@@ -209,6 +184,65 @@ pub(crate) fn index_project(
         prepared,
         declarations,
         test_modules,
+    }
+}
+
+/// A requested file, read, validated and parsed into its [`Prepared`], with
+/// what it puts in `input_hashes` and its index entries when it parsed.
+fn index_requested(
+    root: &Path,
+    relative: &str,
+    module: &str,
+    max_file_bytes: u64,
+    layout: &Layout,
+) -> (Prepared, Option<String>, Option<FileIndex>) {
+    let item = prepare_one(root, relative, max_file_bytes);
+    let index = match &item {
+        Prepared::Parsed { parsed, .. } => {
+            Some(FileIndex::of(relative, module, &parsed.items, layout))
+        }
+        Prepared::Err { .. } => None,
+    };
+    let value = read_value(&item);
+    (item, value, index)
+}
+
+/// An unrequested file's hash and index entries, `None` both when the read
+/// is refused. It is read and hashed on every request, as its read must be
+/// recorded, but parsed only when this worker has not indexed those bytes in
+/// that module before (`memo`).
+fn index_context_file(
+    root: &Path,
+    relative: &str,
+    module: &str,
+    max_file_bytes: u64,
+    layout: &Layout,
+    memo: &mut IndexMemo,
+) -> (Option<String>, Option<FileIndex>) {
+    match read_safely(root, relative, max_file_bytes) {
+        Ok(bytes) => {
+            let hash = sha256_hex(&bytes);
+            let index = match memo.remove(&(relative.to_owned(), hash.clone())) {
+                Some(index) => index,
+                None => parse_source(&bytes)
+                    .ok()
+                    .map(|parsed| FileIndex::of(relative, module, &parsed.items, layout)),
+            };
+            (Some(hash), index)
+        }
+        Err(_) => (None, None),
+    }
+}
+
+impl Declarations {
+    /// Adds what one file declares, renames, exports, and aliases, and its
+    /// struct fields.
+    fn absorb(&mut self, index: &FileIndex) {
+        self.add_file(&index.declarations);
+        self.add_renames(&index.renames);
+        self.add_exports(&index.exports);
+        self.add_fields(&index.fields);
+        self.add_aliases(&index.aliases);
     }
 }
 

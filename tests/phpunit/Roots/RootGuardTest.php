@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Discovery;
+namespace Knossos\Tests\Phpunit\Roots;
 
-use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\RootGuard;
-use Knossos\Discovery\RootNotFoundException;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootGuard;
+use Knossos\Roots\RootNotFoundException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -60,7 +60,7 @@ final class RootGuardTest extends TestCase
 
         $error = captureThrows(
             static fn() => $guard->resolve(sys_get_temp_dir() . '/knossos-nonexistent-' . uniqid()),
-            DiscoveryException::class,
+            RootException::class,
         );
 
         $this->assertStringStartsWith('Project root does not exist or is not a directory:', $error->getMessage());
@@ -75,7 +75,7 @@ final class RootGuardTest extends TestCase
 
         $error = captureThrows(
             static fn() => $guard->resolve($file),
-            DiscoveryException::class,
+            RootException::class,
         );
 
         $this->assertStringStartsWith('Project root does not exist or is not a directory:', $error->getMessage());
@@ -87,7 +87,7 @@ final class RootGuardTest extends TestCase
         // A caller that offers `knossos allow-root` as the remedy has to know
         // which refusal it got: adding a root fixes the second and can do
         // nothing about the first. The narrower type is a subclass, so every
-        // existing `catch (DiscoveryException)` in the codebase keeps catching
+        // existing `catch (RootException)` in the codebase keeps catching
         // both, which is what makes this safe to introduce at all. Both halves
         // are asserted here, since the subclass relation is the whole load-
         // bearing claim.
@@ -101,11 +101,11 @@ final class RootGuardTest extends TestCase
         );
         $rejected = captureThrows(
             static fn() => $guard->resolve($outside),
-            DiscoveryException::class,
+            RootException::class,
         );
 
-        self::assertInstanceOf(DiscoveryException::class, $absent);
-        assertSame(DiscoveryException::class, $rejected::class);
+        self::assertInstanceOf(RootException::class, $absent);
+        assertSame(RootException::class, $rejected::class);
         assertSame(false, $rejected instanceof RootNotFoundException);
         rmdir($allowed);
         rmdir($outside);
@@ -136,7 +136,7 @@ final class RootGuardTest extends TestCase
 
         $error = captureThrows(
             static fn() => $guard->resolve($outside),
-            DiscoveryException::class,
+            RootException::class,
         );
 
         // The rejection must name the rejected path and the roots in force. A
@@ -158,7 +158,7 @@ final class RootGuardTest extends TestCase
 
         $error = captureThrows(
             static fn() => $guard->resolve(sys_get_temp_dir()),
-            DiscoveryException::class,
+            RootException::class,
         );
 
         $this->assertStringStartsWith('Project root is outside the configured allowed roots:', $error->getMessage());

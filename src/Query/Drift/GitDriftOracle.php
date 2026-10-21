@@ -177,6 +177,59 @@ final readonly class GitDriftOracle implements DriftOracle
         if (!is_string($head) || preg_match('/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/D', $head) !== 1) {
             return null;
         }
+        $recorded = $this->recordedInputs($activeScanId);
+        if ($recorded === null) {
+            return null;
+        }
+        $crossCheck = $this->trackedFileCount($projectId, $activeScanId) <= self::MAX_CROSS_CHECKED_FILES;
+        $listings = $this->gitListings($root, $head, $crossCheck);
+        if ($listings === null) {
+            return null;
+        }
+
+        $tracked = $crossCheck ? $this->trackedHashes($projectId, $activeScanId, null) : [];
+        if ($crossCheck) {
+            // Visible, not merely indexed: a path git can name by any of the
+            // three listings it was asked for is a path git can decide, even
+            // when the index alone does not hold it — an uncommitted new
+            // file lives only in `--others`, and a staged rename's or
+            // delete's old path lives only in `diff`. Checking the index in
+            // isolation declined on both of those, which are the normal shape
+            // of uncommitted work, not the gap this check exists to close.
+            $visible = $listings['indexed'] + $listings['untracked'] + $listings['changed'];
+            if (array_diff_key($tracked, $visible) !== []) {
+                // A tracked row git cannot name by any of its three listings:
+                // this oracle's view of the project is incomplete, not merely
+                // thin. Declining outright — null, not a zero or a partial
+                // count over just the candidates diff and untracked already
+                // named — is what lets the walk answer from a complete view
+                // instead. See the class docblock for where this guarantee
+                // holds, where it deliberately does not, and the residual
+                // spurious decline this same check can still produce.
+                return null;
+            }
+        }
+        $candidates = self::candidates($listings, $recorded);
+        if ($candidates === null) {
+            return null;
+        }
+        // Unioned with `+`, so a path that is both a `files` row and a
+        // manifest keeps the row's hash: one path, one stored answer.
+        $hashes = ($crossCheck ? $tracked : $this->trackedHashes($projectId, $activeScanId, array_keys($candidates)))
+            + $recorded['units']
+            + $recorded['worker_inputs'];
+
+        return $this->decide($projectId, $root, array_keys($candidates), $hashes);
+    }
+
+    /**
+     * What the scan recorded about its inputs beyond the files rows, or null
+     * when any of it is missing.
+     *
+     * @return array{dirty: array<string, true>, units: array<string, string>, worker_inputs: array<string, string>}|null
+     */
+    private function recordedInputs(string $activeScanId): ?array
+    {
         // Before any subprocess: a scan with no trustworthy dirty set cannot
         // be decided from git's listings at all, so there is nothing to spend
         // three git calls on.
@@ -195,7 +248,18 @@ final readonly class GitDriftOracle implements DriftOracle
         if ($workerInputs === null) {
             return null;
         }
-        $crossCheck = $this->trackedFileCount($projectId, $activeScanId) <= self::MAX_CROSS_CHECKED_FILES;
+
+        return ['dirty' => $dirty->asKeys(), 'units' => $units, 'worker_inputs' => $workerInputs];
+    }
+
+    /**
+     * The paths git names as changed since the head, untracked, and (for the
+     * cross-check only) indexed; null when git could not answer.
+     *
+     * @return array{changed: array<string, true>, untracked: array<string, true>, indexed: array<string, true>}|null
+     */
+    private function gitListings(string $root, string $head, bool $crossCheck): ?array
+    {
         try {
             // Verify first. Handing a garbage-collected or rebased-away commit
             // to `diff` fails anyway, but failing here says why, and says it
@@ -245,30 +309,22 @@ final readonly class GitDriftOracle implements DriftOracle
             }
         }
 
-        $changedEntries = self::entries($changedOutput);
-        $untrackedEntries = self::entries($untrackedOutput);
-        $tracked = $crossCheck ? $this->trackedHashes($projectId, $activeScanId, null) : [];
-        if ($crossCheck) {
-            // Visible, not merely indexed: a path git can name by any of the
-            // three listings it was asked for is a path git can decide, even
-            // when the index alone does not hold it — an uncommitted new
-            // file lives only in `--others`, and a staged rename's or
-            // delete's old path lives only in `diff`. Checking the index in
-            // isolation declined on both of those, which are the normal shape
-            // of uncommitted work, not the gap this check exists to close.
-            $visible = self::entries($indexedOutput) + $untrackedEntries + $changedEntries;
-            if (array_diff_key($tracked, $visible) !== []) {
-                // A tracked row git cannot name by any of its three listings:
-                // this oracle's view of the project is incomplete, not merely
-                // thin. Declining outright — null, not a zero or a partial
-                // count over just the candidates diff and untracked already
-                // named — is what lets the walk answer from a complete view
-                // instead. See the class docblock for where this guarantee
-                // holds, where it deliberately does not, and the residual
-                // spurious decline this same check can still produce.
-                return null;
-            }
-        }
+        return [
+            'changed' => self::entries($changedOutput),
+            'untracked' => self::entries($untrackedOutput),
+            'indexed' => self::entries($indexedOutput),
+        ];
+    }
+
+    /**
+     * Every path to decide, or null when there are more than this probe hashes.
+     *
+     * @param array{changed: array<string, true>, untracked: array<string, true>, indexed: array<string, true>} $listings
+     * @param array{dirty: array<string, true>, units: array<string, string>, worker_inputs: array<string, string>} $recorded
+     * @return array<string, true>|null
+     */
+    private static function candidates(array $listings, array $recorded): ?array
+    {
         // The dirty set and the recorded manifests join the candidates rather
         // than the drift count: each of their paths is still decided against
         // the hash the scan stored for it, so one that has not actually moved
@@ -281,24 +337,19 @@ final readonly class GitDriftOracle implements DriftOracle
         // the index (it was never added). Holding its stored hash while never
         // handing `decide()` its path meant it contributed nothing and the
         // oracle returned zero for a graph whose manifest had vanished.
-        $candidates = $changedEntries
-            + $untrackedEntries
-            + $dirty->asKeys()
-            + array_fill_keys(array_keys($units), true)
-            + array_fill_keys(array_keys($workerInputs), true);
+        $candidates = $listings['changed']
+            + $listings['untracked']
+            + $recorded['dirty']
+            + array_fill_keys(array_keys($recorded['units']), true)
+            + array_fill_keys(array_keys($recorded['worker_inputs']), true);
         // After the manifests join, not before: the bound has to govern the
         // real total this probe is about to hash, or it bounds something that
         // is not what runs.
         if (count($candidates) > self::MAX_CANDIDATES) {
             return null;
         }
-        // Unioned with `+`, so a path that is both a `files` row and a
-        // manifest keeps the row's hash: one path, one stored answer.
-        $hashes = ($crossCheck ? $tracked : $this->trackedHashes($projectId, $activeScanId, array_keys($candidates)))
-            + $units
-            + $workerInputs;
 
-        return $this->decide($projectId, $root, array_keys($candidates), $hashes);
+        return $candidates;
     }
 
     /**

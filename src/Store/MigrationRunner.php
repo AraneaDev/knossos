@@ -18,9 +18,15 @@ use Throwable;
  */
 final readonly class MigrationRunner
 {
+    /**
+     * @param string|null $lockPath a file whose exclusive flock serialises whole
+     *                              migrate() runs across processes; null (an
+     *                              in-memory database) takes no lock
+     */
     public function __construct(
         private PDO $pdo,
         private string $migrationDirectory,
+        private ?string $lockPath = null,
     ) {}
 
     /**
@@ -33,6 +39,38 @@ final readonly class MigrationRunner
         if (!is_dir($this->migrationDirectory)) {
             throw new RuntimeException(sprintf('Migration directory does not exist: %s', $this->migrationDirectory));
         }
+        if ($this->lockPath === null) {
+            return $this->migrateUnlocked();
+        }
+
+        // The per-version write lock does not span a no-transaction body, so
+        // two processes opening a fresh database (the server and a hook CLI)
+        // could both run the same table rebuild, and the loser's rebuild
+        // undoes indexes a later migration added. Holding one lock over the
+        // whole run makes the loser wait and then find every version recorded.
+        $handle = @fopen($this->lockPath, 'c');
+        if ($handle === false) {
+            throw new RuntimeException(sprintf('Unable to open the migration lock: %s', $this->lockPath));
+        }
+        try {
+            if (!flock($handle, LOCK_EX)) {
+                throw new RuntimeException(sprintf('Unable to take the migration lock: %s', $this->lockPath));
+            }
+
+            return $this->migrateUnlocked();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    /**
+     * Apply the unrecorded migrations, with only the per-version write lock.
+     *
+     * @return list<string> versions applied by this invocation
+     */
+    private function migrateUnlocked(): array
+    {
 
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS schema_migrations (' .
@@ -200,8 +238,11 @@ final readonly class MigrationRunner
             // The lock probe does not span the body, so another process
             // can finish the same rebuild first and this one then fails
             // on the objects it created. A version recorded by then was
-            // applied, just not by this process.
-            if (str_contains($error->getMessage(), 'already exists')) {
+            // applied, just not by this process. When the body ran through
+            // cleanly, the same loss shows as a UNIQUE failure on the version
+            // insert instead.
+            if (str_contains($error->getMessage(), 'already exists')
+                || str_contains($error->getMessage(), 'UNIQUE constraint failed: schema_migrations.version')) {
                 $existing = $this->recordedChecksum($version);
                 if ($existing !== null) {
                     $this->assertSameChecksum($existing, $checksum, $version);

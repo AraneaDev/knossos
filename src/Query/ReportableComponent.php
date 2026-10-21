@@ -23,7 +23,7 @@ use Knossos\Classification\TestModuleRule;
  * annotations, suppressions), so among components with no inbound edge at all
  * its candidate pool is a subset of the gate's. It additionally reports
  * components reached only from test code, which the gate counts as referenced —
- * see {@see \Knossos\Query\SnapshotMetrics::snapshotAnalysis()} for why that budget
+ * see {@see \Knossos\Query\SnapshotMetrics::unreferenced()} for why that budget
  * stays narrower.
  */
 final readonly class ReportableComponent
@@ -68,6 +68,38 @@ final readonly class ReportableComponent
      * exists for a script's module.
      */
     public const RUNTIME_LIFECYCLE_METHODS = ['__construct', '__destruct', 'constructor', '__init__', '__del__'];
+
+    /**
+     * The exclusion a component with no inbound edge falls under for a reason
+     * its own node and roles show, or null when they show none.
+     *
+     * These are the grounds `architecture_health` and the quality gate's
+     * `unreferenced_candidates` must agree on, so both ask this one method
+     * rather than each listing the predicates: a method fulfilling a
+     * supertype's member (`inherited`), one a runtime or foreign host calls
+     * (`constructors`), an executable script's module (`entry_scripts`), a
+     * type declaration (`type_declarations`), and, checked last, a component
+     * reached by convention (`convention_discovered`). Each has no inbound
+     * edge by construction. Exclusions that need more than the node, such as
+     * a contract member of a used type, stay with each caller.
+     *
+     * @param array<string, mixed> $node a node row: `kind`, `attributes_json`
+     * @param list<string> $roles
+     */
+    public static function graphLocalExclusion(array $node, array $roles): ?string
+    {
+        $kind = (string) $node['kind'];
+        $attributes = $node['attributes_json'] ?? null;
+
+        return match (true) {
+            self::isDeclaredOverride($kind, $attributes) => 'inherited',
+            self::isRuntimeInvoked($attributes) => 'constructors',
+            self::isExecutableScript($kind, $attributes) => 'entry_scripts',
+            self::isTypeDeclaration($attributes) => 'type_declarations',
+            self::isDiscoveredByConvention($roles) => 'convention_discovered',
+            default => null,
+        };
+    }
 
     /** Vendor code and unresolved references: not this project's to delete or restructure. */
     public static function isExternal(string $kind, ?string $origin): bool

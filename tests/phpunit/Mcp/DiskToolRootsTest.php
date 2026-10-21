@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Mcp;
 
-use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\DiscoveryException;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\McpServerAssembly;
 use Knossos\Mcp\NextStepPlanner;
@@ -16,6 +14,8 @@ use Knossos\Query\Drift\DriftCounts;
 use Knossos\Query\Drift\DriftOracle;
 use Knossos\Query\StalenessProbe;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootException;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -46,7 +46,7 @@ final class DiskToolRootsTest extends KnossosTestCase
                 ['test_impact', ['project_id' => $projectId, 'files' => ['src/CheckoutService.php']]],
                 ['architecture_context', ['project_id' => $projectId, 'task_description' => 'checkout', 'include_source' => true]],
             ] as [$name, $arguments]) {
-                assertThrows(fn() => $confined->call($name, $arguments), DiscoveryException::class);
+                assertThrows(fn() => $confined->call($name, $arguments), RootException::class);
             }
 
             // Graph-only answers stay available for every project in the database.
@@ -72,7 +72,7 @@ final class DiskToolRootsTest extends KnossosTestCase
 
         try {
             $this->toolsConfinedTo($pdo, ['/nonexistent-allowed-root'])->call('file_context', ['project_id' => $projectId, 'path' => 'src/CheckoutService.php']);
-        } catch (DiscoveryException $error) {
+        } catch (RootException $error) {
             self::fail('A vanished root was reported as outside the allowed roots: ' . $error->getMessage());
         } catch (\Throwable) {
             // Any other failure is the tool's own handling of a missing root.

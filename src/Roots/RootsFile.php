@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Discovery;
+namespace Knossos\Roots;
 
 use InvalidArgumentException;
 use JsonException;

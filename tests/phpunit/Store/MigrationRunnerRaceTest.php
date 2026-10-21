@@ -42,7 +42,7 @@ final class MigrationRunnerRaceTest extends TestCase
             }
             @rmdir($this->tempDir);
         }
-        foreach ([$this->tempSqlite, ...(glob($this->tempSqlite . '-*') ?: [])] as $f) {
+        foreach ([$this->tempSqlite, $this->tempSqlite . '.migrate.lock', ...(glob($this->tempSqlite . '-*') ?: [])] as $f) {
             if (is_file($f)) {
                 @unlink($f);
             }
@@ -239,6 +239,95 @@ final class MigrationRunnerRaceTest extends TestCase
         assertSame('Applied migration checksum changed: 002_rebuild', $error->getMessage());
         assertSame('1', $this->foreignKeys($pdo));
     }
+
+    public function testALostNoTransactionRebuildWhoseBodyRanCleanlyCountsAsAppliedOnTheUniqueFailure(): void
+    {
+        // The other process recorded the version while this one ran the body:
+        // the body succeeds and only the version insert fails, on UNIQUE.
+        [$pdo, , $checksum] = $this->lostRebuild(self::REBUILD, function (PDO $other, string $checksum): void {
+            $this->recordVersion($other, '002_rebuild', $checksum);
+        });
+
+        $applied = (new MigrationRunner($pdo, $this->tempDir))->migrate();
+
+        assertSame(['001_first'], $applied);
+        assertSame('1', $this->foreignKeys($pdo));
+        assertSame($checksum, $this->recorded($pdo)['002_rebuild']);
+        $this->assertNoOpenTransaction($pdo);
+    }
+
+    public function testALostNoTransactionRebuildWhoseBodyRanCleanlyUnderAnotherChecksumThrows(): void
+    {
+        [$pdo] = $this->lostRebuild(self::REBUILD, function (PDO $other): void {
+            $this->recordVersion($other, '002_rebuild', 'deadbeef');
+        });
+
+        $error = captureThrows(
+            fn() => (new MigrationRunner($pdo, $this->tempDir))->migrate(),
+            RuntimeException::class,
+        );
+
+        assertSame('Applied migration checksum changed: 002_rebuild', $error->getMessage());
+    }
+
+    // ----- the cross-process migration lock -----
+
+    /**
+     * A second process that starts while the first holds the migration lock
+     * waits for it and then finds every version recorded, instead of running
+     * the no-transaction rebuild a second time.
+     */
+    public function testASecondRunnerWaitsForTheMigrationLockAndAppliesNothing(): void
+    {
+        $this->writeMigration('001_first.sql', 'CREATE TABLE first (id INTEGER PRIMARY KEY);');
+        $this->writeMigration('002_rebuild.sql', self::REBUILD);
+        $lock = $this->tempSqlite . '.migrate.lock';
+        $holder = proc_open(
+            [PHP_BINARY, '-r', self::LOCK_HOLDER, dirname(__DIR__, 3) . '/vendor/autoload.php', $this->tempSqlite, $this->tempDir, $lock],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
+        self::assertIsResource($holder);
+        assertSame("locked\n", fgets($pipes[1]));
+
+        $applied = (new MigrationRunner(SqliteConnection::open($this->tempSqlite), $this->tempDir, $lock))->migrate();
+
+        $holderOutput = stream_get_contents($pipes[1]);
+        $holderErrors = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        assertSame(0, proc_close($holder), (string) $holderErrors);
+        assertSame([], $applied, 'the waiting runner must not apply a version a second time');
+        assertSame("001_first,002_rebuild\n", $holderOutput);
+    }
+
+    public function testAnUnopenableMigrationLockThrows(): void
+    {
+        $pdo = SqliteConnection::open($this->tempSqlite);
+        $lock = $this->tempDir . '/missing/dir/x.lock';
+
+        $error = captureThrows(
+            fn() => (new MigrationRunner($pdo, $this->tempDir, $lock))->migrate(),
+            RuntimeException::class,
+        );
+
+        assertSame('Unable to open the migration lock: ' . $lock, $error->getMessage());
+    }
+
+    /**
+     * Takes the migration lock, reports it, gives the test time to start its
+     * own runner, then migrates under the lock and prints what it applied.
+     */
+    private const LOCK_HOLDER = <<<'PHP'
+        require $argv[1];
+        $handle = fopen($argv[4], 'c');
+        flock($handle, LOCK_EX);
+        echo "locked\n";
+        usleep(400000);
+        $pdo = Knossos\Store\SqliteConnection::open($argv[2]);
+        echo implode(',', (new Knossos\Store\MigrationRunner($pdo, $argv[3]))->migrate()), "\n";
+        flock($handle, LOCK_UN);
+        PHP;
 
     public function testANoTransactionFailureOtherThanAlreadyExistsIsRethrownEvenWhenTheVersionIsRecorded(): void
     {

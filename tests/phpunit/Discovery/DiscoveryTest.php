@@ -8,6 +8,7 @@ use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\JsonConfig;
 use Knossos\Discovery\ProjectDiscoverer;
+use Knossos\Roots\RootException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -78,7 +79,7 @@ final class DiscoveryTest extends KnossosTestCase
             $result = $discoverer->discover($root);
             assertSame([], $result->files);
             assertSame('DISCOVERY_SYMLINK_ESCAPE', $result->diagnostics[0]->code);
-            assertThrows(fn() => $discoverer->discover($base), DiscoveryException::class);
+            assertThrows(fn() => $discoverer->discover($base), RootException::class);
         } finally {
             unlink($root . '/escape.php');
             unlink($outside);

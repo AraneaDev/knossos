@@ -1,16 +1,17 @@
 /**
  * The reads the pane and the notes draw from: the dashboard, the session's
- * baseline and where the checkout stands, and the reads keyed to what the
- * pane shows ({@link LOADERS}), all started through one keyed loader. Each
+ * stored baseline, and the reads keyed to what the pane shows
+ * ({@link LOADERS}), all started through one keyed loader; settling the
+ * baseline and reading where the checkout stands is session-baseline.ts's. Each
  * runs on a timer, never inside a render, and stores its answer only while
  * it is still the one wanted.
  */
-import type { BranchState, ChurnState, ComponentDetail, NotesFilter, NotesState, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState, SessionRev } from '../../types'
+import type { BranchState, ChurnState, ComponentDetail, NotesFilter, NotesState, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState } from '../../types'
 import { alertKeys, freshAlerts, readAgain } from '../lib/alerts'
 import { BASELINES_KEY, baselinesOf, remember } from '../lib/baseline'
 import { BOUNDARY_AXES } from '../lib/boundaries'
 import type { Baseline } from '../lib/baseline'
-import { parseBlastRadius, parseBranchDiff, parseChurn, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseNotes, parsePathBetween, parseSessionDiff, parseSessionHead, parseSessionRev } from '../lib/envelopes'
+import { parseBlastRadius, parseBranchDiff, parseChurn, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseNotes, parsePathBetween, parseSessionDiff } from '../lib/envelopes'
 import { flashKeys } from '../lib/flash'
 import { couplingPair } from '../lib/pane-list'
 import { PEEK_TABS } from '../lib/layout'
@@ -24,8 +25,7 @@ import { cyclesOf, mod } from './state'
 /** The wrapper's own limits (30 s and 15 s) plus room for it to exit on its own. */
 const DASHBOARD_TIMEOUT_MS = 35_000
 const DETAIL_TIMEOUT_MS = 20_000
-/** The wrapper bounds session-head and session-diff at 15 s. */
-const HEAD_TIMEOUT_MS = 20_000
+/** The wrapper bounds session-diff at 15 s. */
 const DIFF_TIMEOUT_MS = 20_000
 /** The wrapper bounds boundary-couplings at 15 s, and branch-diff (two whole graphs compared) at 30 s. */
 const COUPLINGS_TIMEOUT_MS = 20_000
@@ -421,7 +421,7 @@ async function load(io: Port, loader: AnyLoader, want: unknown, flight: string |
 }
 
 /** Starts reading a changed file's diff ({@link LOADERS}`.diff`). */
-function requestDiff(io: Port, shown: Inspected): Promise<void> {
+export function requestDiff(io: Port, shown: Inspected): Promise<void> {
   return request(io, 'diff', shown)
 }
 
@@ -440,50 +440,12 @@ export async function currentSession(io: Port): Promise<string | null> {
 }
 
 /** The baselines kept in the plugin's store, by session id; none when it cannot be read. */
-async function storedBaselines(io: Port): Promise<Record<string, Baseline>> {
+export async function storedBaselines(io: Port): Promise<Record<string, Baseline>> {
   return baselinesOf(await io.store.get(BASELINES_KEY).catch(() => undefined))
 }
 
-/**
- * Where the session began. A session this mod has seen before (continued
- * or resumed, in this process or another) gets its commit and its first
- * snapshot back from the store, so its Changes and diffs keep their
- * baseline; any other session records the commit it begins at. Either way
- * the baseline is stored under the session's id.
- */
-export async function settleBaseline(io: Port): Promise<void> {
-  const id = await currentSession(io)
-  const kept = id === null ? undefined : (await storedBaselines(io))[id]
-  if (id !== null && kept !== undefined) {
-    if (kept.rev !== null) await io.state.sessionRev.update(() => kept.rev)
-    if (kept.snapshot !== null) await io.state.sessionStart.update(() => kept.snapshot)
-    await io.state.sessionBegan.update(() => kept.startedAt)
-    mod.session.baselineOf = id
-    return rereadDiff(io)
-  }
-  // Asked once per session: a head read later would name a commit made during it.
-  if (!mod.session.headAsked) {
-    mod.session.headAsked = true
-    await recordHead(io)
-  }
-  await saveBaseline(io)
-  await rereadDiff(io)
-}
-
-/**
- * The diff of the file the detail still shows, read against the baseline
- * just settled: a session that followed a /clear or a resume dropped the
- * last one with its commit, and nothing else asks again until the graph
- * changes, so the card would say it is reading the change for good.
- */
-async function rereadDiff(io: Port): Promise<void> {
-  // A view torn down under it (the session ending again) asks for nothing.
-  const shown = (await io.state.view.read().catch(() => null))?.inspect ?? null
-  if (shown !== null) await requestDiff(io, shown)
-}
-
 /** Stores the session's baseline as it stands, under its id; a store that refuses is no failure. */
-async function saveBaseline(io: Port): Promise<void> {
+export async function saveBaseline(io: Port): Promise<void> {
   const id = await currentSession(io)
   if (id === null || mod.session.disabled) return
   const all = await storedBaselines(io)
@@ -492,48 +454,4 @@ async function saveBaseline(io: Port): Promise<void> {
   // A session saved before keeps the moment it began.
   await io.state.sessionBegan.update(() => all[id]?.startedAt ?? baseline.startedAt)
   mod.session.baselineOf = id
-}
-
-/**
- * Records the commit the project is at as the one the session began at,
- * unless one is recorded. Silence leaves none: a later read would name a
- * commit made during the session, and the diff would leave its changes out.
- */
-async function recordHead(io: Port): Promise<void> {
-  if (mod.session.disabled || (await io.state.sessionRev.read()) !== null) return
-  const stdout = await wrapper(io, 'session-head', [], HEAD_TIMEOUT_MS)
-  if (parseSessionDiff(stdout)?.status === 'no-binary') return disable(io)
-  const rev = parseSessionRev(stdout)
-  if (rev !== null) await io.state.sessionRev.update(() => rev)
-  await noteGitHead(io, stdout)
-}
-
-/**
- * Reads where the checkout stands, its commit and branch, for the header:
- * at start-up and after each of the main loop's turns (one may commit or
- * switch branches), always on a timer, never in a render.
- */
-export async function readGitHead(io: Port): Promise<void> {
-  await readHeadRev(io)
-}
-
-/** {@link readGitHead}, handing back the commit the answer names: null for silence, an error, or a mod turned off; `no-git` for a project git does not hold. */
-export async function readHeadRev(io: Port): Promise<SessionRev | null> {
-  if (mod.session.disabled) return null
-  const stdout = await wrapper(io, 'session-head', [], HEAD_TIMEOUT_MS)
-  if (parseSessionDiff(stdout)?.status === 'no-binary') {
-    await disable(io)
-    return null
-  }
-  await noteGitHead(io, stdout)
-  return parseSessionRev(stdout)
-}
-
-/** Keeps what a `session-head` answer says of the checkout; silence keeps what was read before. */
-async function noteGitHead(io: Port, stdout: string): Promise<void> {
-  mod.session.gitAsked = true
-  const head = parseSessionHead(stdout)
-  if (head !== undefined) await io.state.gitHead.update(() => head)
-  // The Churn tab's history ends at the checkout's commit: a new one reads it again.
-  await request(io, 'churn')
 }

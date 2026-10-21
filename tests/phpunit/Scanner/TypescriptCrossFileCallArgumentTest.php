@@ -40,7 +40,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         try {
             $contributions = iterator_to_array($client->scan([
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-cross-file-call-arguments',
-                'files' => ['src/devices.js', 'src/flash.js', 'src/handlers.js', 'src/lib/frame.js', 'src/lib/index.js', 'src/shoot.js', 'src/steps.js', 'src/typed.ts'],
+                'files' => ['src/cjs/deck.js', 'src/cjs/ejector.js', 'src/cjs/lib.js', 'src/cjs/rewinder.js', 'src/cjs/winder.js', 'src/devices.js', 'src/flash.js', 'src/handlers.js', 'src/lib/frame.js', 'src/lib/index.js', 'src/shoot.js', 'src/steps.js', 'src/typed.ts'],
                 'config_files' => ['tsconfig.json'],
             ]), false);
         } finally {
@@ -66,13 +66,19 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         // typed function keeps the one edge its declared type gives, though
         // `flash` hands it a camera, and `items.clear()` on a `Map` is no
         // member of this project. `recorder`'s `idle` is called by nothing.
+        // A CommonJS function expression has no node of its own, so what its
+        // body calls is its module's. Calling a module that assigns no
+        // `module.exports` adds nothing.
         self::assertSame([
             'certain ts:function:src/typed.ts#stopTyped -> recorder.{object}@3:12::stop []',
+            'probable ts:function:src/cjs/winder.js#wind -> camera.{object}@11:12::hold {"inferred_from":"call_argument"}',
             'probable ts:function:src/lib/frame.js#frame -> recorder.{object}@3:12::stop {"inferred_from":"call_argument"}',
             'probable ts:function:src/steps.js#cut -> recorder.{object}@3:12::stop {"inferred_from":"call_argument"}',
             'probable ts:function:src/steps.js#hold -> camera.{object}@11:12::hold {"inferred_from":"call_argument"}',
             'probable ts:function:src/steps.js#hold -> recorder.{object}@3:12::hold {"inferred_from":"call_argument"}',
             'probable ts:method:src/handlers.js#HANDLERS::roll -> recorder.{object}@3:12::hold {"inferred_from":"call_argument"}',
+            'probable ts:module:src/cjs/ejector.js -> camera.{object}@11:12::stop {"inferred_from":"call_argument"}',
+            'probable ts:module:src/cjs/rewinder.js -> camera.{object}@11:12::stop {"inferred_from":"call_argument"}',
         ], $calls);
     }
 
@@ -140,6 +146,48 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
 
         self::assertSame(['src/devices.js', 'src/other.js', 'src/shoot.js', 'src/steps.js'], $this->rescannedFiles($pdo));
         self::assertSame(['steps.js#hold -> recorder.{object}@2:12::hold'], $this->inferredCalls($pdo));
+        $this->assertMatchesAFullScan($pdo);
+    }
+
+    /**
+     * The same through CommonJS, `module.exports = function ({ tape }) {}`
+     * bound by `require`: a file that starts handing the callee a literal
+     * rebuilds the program, an edit of that call rebuilds only the caller and
+     * the callee, deleting it drops the edge, and each step ends with the
+     * graph a full scan of the same bytes gives.
+     */
+    public function testACommonJsCallerKeepsTheCalleesInferredCallCurrent(): void
+    {
+        $this->makeRoot();
+        $this->write('jsconfig.json', '{"compilerOptions": {"checkJs": false}, "include": ["src"]}' . "\n");
+        $this->write('src/devices.js', "function recorder() {\n    return { hold() {} };\n}\n\nfunction camera() {\n    return { hold() {} };\n}\n\nmodule.exports = { recorder, camera };\n");
+        $this->write('src/steps.js', "module.exports = function ({ tape }) {\n    tape.hold();\n};\n");
+        $this->write('src/shoot.js', "const hold = require('./steps.js');\nconst { recorder } = require('./devices.js');\n\nhold(recorder);\n");
+        $this->write('src/other.js', "module.exports = 1;\n");
+        $pdo = $this->freshTestDatabase();
+        $this->scan($pdo);
+        self::assertSame([], $this->inferredCalls($pdo));
+        $this->stampCacheRows($pdo);
+
+        $this->write('src/shoot.js', "const hold = require('./steps.js');\nconst { recorder } = require('./devices.js');\n\nhold({ tape: recorder() });\n");
+        $this->scan($pdo);
+
+        self::assertSame(['src/devices.js', 'src/other.js', 'src/shoot.js', 'src/steps.js'], $this->rescannedFiles($pdo));
+        self::assertSame(['steps.js -> recorder.{object}@2:12::hold'], $this->inferredCalls($pdo));
+        $this->assertMatchesAFullScan($pdo);
+        $this->stampCacheRows($pdo);
+
+        $this->write('src/shoot.js', "const hold = require('./steps.js');\nconst { camera } = require('./devices.js');\n\nhold({ tape: camera() });\n");
+        $this->scan($pdo);
+
+        self::assertSame(['src/shoot.js', 'src/steps.js'], $this->rescannedFiles($pdo));
+        self::assertSame(['steps.js -> camera.{object}@6:12::hold'], $this->inferredCalls($pdo));
+        $this->assertMatchesAFullScan($pdo);
+
+        unlink($this->root . '/src/shoot.js');
+        $this->scan($pdo);
+
+        self::assertSame([], $this->inferredCalls($pdo));
         $this->assertMatchesAFullScan($pdo);
     }
 

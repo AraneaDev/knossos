@@ -29,9 +29,9 @@ final readonly class DatabaseMaintenanceService
     /**
      * {@see ProjectMoveService::move()}
      *
-     * @param \Knossos\Discovery\RootsFile|null $roots null leaves roots.json alone
+     * @param \Knossos\Roots\RootsFile|null $roots null leaves roots.json alone
      */
-    public function moveProject(string $from, string $to, bool $execute, \Knossos\Scan\ProjectScanner $scanner, ?\Knossos\Discovery\RootsFile $roots = null): ResultEnvelope
+    public function moveProject(string $from, string $to, bool $execute, \Knossos\Scan\ProjectScanner $scanner, ?\Knossos\Roots\RootsFile $roots = null): ResultEnvelope
     {
         return (new ProjectMoveService($this->pdo))->move($from, $to, $execute, $scanner, $roots);
     }
@@ -269,7 +269,7 @@ final readonly class DatabaseMaintenanceService
      */
     private function acquireAllProjectLeases(): array
     {
-        $ids = $this->pdo->query('SELECT id FROM projects ORDER BY id LIMIT 1001')->fetchAll(PDO::FETCH_COLUMN);
+        $ids = (new ProjectRepository($this->pdo))->ids(1001);
         if (count($ids) > 1000) {
             throw new RuntimeException('Database maintenance is limited to 1000 projects per invocation.');
         }

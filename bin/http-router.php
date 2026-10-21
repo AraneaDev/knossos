@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Mcp\HttpEndpoint;
 use Knossos\Mcp\HttpSessionStore;
 use Knossos\Mcp\McpServerAssembly;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\RuntimeFactory;
 
 require dirname(__DIR__) . '/vendor/autoload.php';

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Discovery;
+namespace Knossos\Configuration;
 
 /**
  * One external enricher an installation defines in `enrichers.json`: the

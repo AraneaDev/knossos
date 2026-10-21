@@ -8,10 +8,9 @@ use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\ProjectDatabaseLocator;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Query\ScannerFactory;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\RuntimeFactory;
-use Knossos\Scan\ProjectScanService;
 use Knossos\Watch\SessionLink;
 use Knossos\Watch\SharedWatch;
 use Knossos\Watch\WatchService;
@@ -52,7 +51,8 @@ final class WatchCommand implements CliCommand
         if ($context->options->flag($options, 'shared')) {
             return $this->shared($root, $options, $context);
         }
-        $scanner = new ProjectScanService($context->database(), $context->installationRoot(), [$root], enrichers: EnrichersFile::forDatabase($context->databasePath()));
+        // Recorded in the scan ledger like every other writer, so a turn brief or the branch gate can account for it.
+        $scanner = (new ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$root]);
         $observer = static function (array $event): void {
             fwrite(STDERR, json_encode($event, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . PHP_EOL);
         };

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Knossos\Cli;
 
 use InvalidArgumentException;
-use Knossos\Scan\ProjectPathResolver;
 use Knossos\Store\ProjectRepository;
 use PDO;
 
@@ -41,7 +40,7 @@ final readonly class ProjectReference
      */
     public function find(string $argument): ?array
     {
-        $row = $this->byId($argument) ?? (new ProjectPathResolver($this->pdo))->resolve($argument);
+        $row = $this->byId($argument) ?? (new ProjectRepository($this->pdo))->resolvePath($argument);
 
         return is_array($row) ? ['id' => (string) $row['id'], 'root' => (string) ($row['root'] ?? $row['root_realpath'])] : null;
     }

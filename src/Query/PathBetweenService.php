@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -47,7 +47,7 @@ final readonly class PathBetweenService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'from' => null, 'to' => null, 'reversed' => false, 'routes' => [], 'truncated' => false, 'truncation_reasons' => []];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Filesystem\RelativePathRule;
+
 /**
  * Reads a YAML or NEON file for the source paths, class names and loaded
  * directories it names.
@@ -78,7 +80,7 @@ final class YamlManifest implements ManifestReader
             if (str_starts_with($directory, './')) {
                 $directory = substr($directory, 2);
             }
-            if ($directory !== '' && !str_starts_with($directory, '/') && !in_array('..', explode('/', $directory), true)) {
+            if ($directory !== '' && RelativePathRule::isContained($directory)) {
                 $directories[$directory] = true;
             }
         }
@@ -121,19 +123,7 @@ final class YamlManifest implements ManifestReader
                 $path = substr($path, strlen('%kernel.project_dir%/'));
                 $prefix = '';
             }
-            $segments = [];
-            foreach (explode('/', ($prefix === '' ? '' : $prefix . '/') . $path) as $segment) {
-                if ($segment === '..') {
-                    if ($segments === []) {
-                        return null;
-                    }
-                    array_pop($segments);
-                } elseif ($segment !== '' && $segment !== '.') {
-                    $segments[] = $segment;
-                }
-            }
-
-            return $segments === [] ? null : implode('/', $segments);
+            return ManifestPaths::withinProject(($prefix === '' ? '' : $prefix . '/') . $path);
         };
         $values = static fn(string $text): array => array_values(array_filter(array_map(
             static fn(string $item): string => trim($item, " '\"{}"),

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Mcp;
 
 use InvalidArgumentException;
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\{NextStepPlanner, ResultEnricher, ToolService};
 use Knossos\Query\{ArchitectureQueryService, StalenessProbe};
+use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Store\{SqliteGraphRepository, StableId};

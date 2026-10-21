@@ -8,6 +8,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Reconciliation\Milliseconds;
 use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerException;
 use PDO;
@@ -113,14 +114,14 @@ final readonly class LanguageScanRunner
         if ($files === []) {
             return null;
         }
-        // Read back by reference below: the narrowest budget an ordinary
+        // Read back from the accumulator below: the narrowest budget an ordinary
         // retry in this language settled on. Lower than the configured
         // value means a batch outgrew the worker's output cap or memory
         // and was re-split; a search for one oversized frame does not
         // count, since no batch of the language settled on it.
-        $sourceBytes = $batchBudgets[$owner]['source_bytes_used'];
+        $accumulator = new LanguageRunAccumulator($batchBudgets[$owner]['source_bytes_used']);
         try {
-            return $this->runLanguage($descriptor, $files, $plan, $cancellation, $sourceBytes);
+            return $this->runLanguage($descriptor, $files, $plan, $cancellation, $accumulator);
         } catch (Throwable $error) {
             // A cancellation is the caller's decision, not a worker fault: it
             // must reach the transport so the response is suppressed rather
@@ -152,7 +153,7 @@ final readonly class LanguageScanRunner
         } finally {
             // Updated on both paths: a degraded language is exactly the one
             // whose batch bounds the reader wants to see.
-            $batchBudgets[$owner]['source_bytes_used'] = $sourceBytes;
+            $batchBudgets[$owner]['source_bytes_used'] = $accumulator->sourceBytes;
         }
     }
 
@@ -282,7 +283,7 @@ final readonly class LanguageScanRunner
         $undiscovered->add($second['undiscovered_inputs']);
         $metadata = [];
         foreach (array_keys($first['scanner_metadata'] + $second['scanner_metadata']) as $scanner) {
-            $metadata[$scanner] = self::mergeScanResult($first['scanner_metadata'][$scanner] ?? [], $second['scanner_metadata'][$scanner] ?? []);
+            $metadata[$scanner] = LanguageRunAccumulator::mergeScanResult($first['scanner_metadata'][$scanner] ?? [], $second['scanner_metadata'][$scanner] ?? []);
         }
 
         return [
@@ -309,9 +310,9 @@ final readonly class LanguageScanRunner
      * failure here costs this language's facts and nothing else.
      *
      * @param list<object> $files
-     * @param int $sourceBytes the language's source-byte batch budget, read on
-     *        entry and written back as it is halved, so the caller can report
-     *        what the scan actually settled on even when this throws
+     * @param LanguageRunAccumulator $accumulator owned by the caller, so the
+     *        source-byte budget the batches settled on is readable even when
+     *        this throws
      * @return array{
      *     manifest: \Knossos\Scanner\Protocol\ScannerManifest,
      *     contributions: list<\Knossos\Scanner\Protocol\ScanContribution>,
@@ -333,7 +334,7 @@ final readonly class LanguageScanRunner
         array $files,
         ScanPlan $plan,
         CancellationToken $cancellation,
-        int &$sourceBytes,
+        LanguageRunAccumulator $accumulator,
     ): array {
         $started = hrtime(true);
         $cancellation->throwIfCancelled();
@@ -349,19 +350,7 @@ final readonly class LanguageScanRunner
             $plan->preparation->configurationHashes[$descriptor->key],
             $plan->preparation->executionPolicy->limits(),
         );
-        $partition = $this->cache->partition($files, $manifest, new PartitionContext(
-            $plan->preparation->configurationHashes[$descriptor->key],
-            $plan->cacheByScannerPath,
-            // Only a full scan forces everything. An incremental one rescans
-            // the owners a change reached, which the plan already named.
-            $plan->effectiveMode === 'full',
-            $analysisHash,
-            $leftOutHash,
-            $plan->invalidatedOwners,
-            $this->pdo,
-            $plan->projectId,
-            $plan->cachedReads,
-        ), $cancellation);
+        $partition = $this->partitionFor($descriptor, $files, $plan, $manifest, $analysisHash, $leftOutHash, $cancellation);
         $request = ScanRequestBuilder::build($descriptor, $plan, $files);
         // One request per batch: ScannerProtocolSession::scan() calls
         // beginRequest() per invocation, which resets both the cumulative
@@ -369,22 +358,14 @@ final readonly class LanguageScanRunner
         // one request made a 20 MB cap and a 30 s budget apply to the project
         // rather than to a batch, so a full scan of a mid-sized codebase failed
         // on limits sized for a batch.
-        $scanned = $metadata = [];
         $leftOut = new LeftOutFiles($this->cache, $manifest, $leftOutHash, $analysisHash);
         // Every path discovery hashed, not only this language's files: a worker
         // may read a file another language claims, or a manifest such as the
         // package.json module resolution reads or the Cargo.toml a crate is
         // named by, and that read is checked all the same.
         $discoveredByPath = $plan->preparation->discovery->hashedPaths();
-        // Reads of anything else, checked across this language's requests as
-        // they arrive and handed back for the pre-commit re-read.
-        $undiscovered = new UndiscoveredInputs();
-        // What each received contribution read, and the shared sets those
-        // name. A file retried in a later batch is overwritten there, like
-        // its contribution. The environment of every program the requests
-        // built, for the reused contributions to be compared against.
-        $readsByOwner = $groups = $environments = [];
-        $queue = new ScanBatchQueue($partition->filesToScan, $descriptor, $sourceBytes, $this->maxRequestsPerLanguage);
+        $queue = new ScanBatchQueue($partition->filesToScan, $descriptor, $accumulator->sourceBytes, $this->maxRequestsPerLanguage);
+        $run = new LanguageBatchRun($descriptor, $plan->preparation->executionPolicy, $request, $cancellation, $manifest->id, $queue, $leftOut);
         while (($item = $queue->next()) !== null) {
             // Held aside rather than appended directly: an overflowing
             // request has already streamed some contributions, and the
@@ -399,30 +380,79 @@ final readonly class LanguageScanRunner
                     $received[] = $contribution;
                 }
             } catch (WorkerException $error) {
-                $client = $this->afterFailure($queue, $leftOut, $item, $error, $received, $descriptor, $plan, $request, $cancellation, $manifest->id);
+                $client = $this->afterFailure($run, $item, $error, $received);
                 continue;
             }
-            $batchResult = $client->lastScanResult();
-            // Before this batch's contributions are kept: facts resolved against
-            // another file's bytes must match what discovery hashed for it too.
-            $verified = ScanInputHashes::verifyAll($batchResult, $manifest, $discoveredByPath);
-            $undiscovered->add($verified['undiscovered']);
-            $requestReads = RequestReads::forRequest($batchResult, $manifest, $verified['all'], $received, $requested);
-            $readsByOwner = $requestReads['owners'] + $readsByOwner;
-            $groups += $requestReads['groups'];
-            $environments = ProgramEnvironments::fromResult($batchResult, $manifest->id) + $environments;
-            // Evidence for these checks only, not statistics: kept out of the
-            // scanner metadata a scan report carries.
-            unset($batchResult['input_hashes'], $batchResult['reads'], $batchResult[RequestReads::UNATTRIBUTED], $batchResult[ProgramEnvironments::FIELD]);
-            foreach ($received as $contribution) {
-                $scanned[] = $contribution;
-            }
-            $metadata = self::mergeScanResult($metadata, $batchResult);
+            $accumulator->absorb($client->lastScanResult(), $manifest, $discoveredByPath, $received, $requested);
             // Inside the loop so a cancelled scan stops at the next batch
             // boundary instead of running the language to completion.
             $cancellation->throwIfCancelled();
         }
         self::assertNotEveryFileLeftOut(count($partition->filesToScan), count($leftOut->paths()));
+
+        return $this->assemble($descriptor, $plan, $manifest, $analysisHash, $partition, $leftOut, $accumulator, $started);
+    }
+
+    /**
+     * Split a language's files into what the cache can answer and what must be scanned.
+     *
+     * @param list<object> $files
+     */
+    private function partitionFor(
+        LanguageDescriptor $descriptor,
+        array $files,
+        ScanPlan $plan,
+        ScannerManifest $manifest,
+        string $analysisHash,
+        string $leftOutHash,
+        CancellationToken $cancellation,
+    ): ContributionPartition {
+        return $this->cache->partition($files, $manifest, new PartitionContext(
+            $plan->preparation->configurationHashes[$descriptor->key],
+            $plan->cacheByScannerPath,
+            // Only a full scan forces everything. An incremental one rescans
+            // the owners a change reached, which the plan already named.
+            $plan->effectiveMode === 'full',
+            $analysisHash,
+            $leftOutHash,
+            $plan->invalidatedOwners,
+            $this->pdo,
+            $plan->projectId,
+            $plan->cachedReads,
+        ), $cancellation);
+    }
+
+    /**
+     * The language's outcome: cached, scanned and left-out contributions with
+     * their cache entries and counts ({@see runLanguage()}).
+     *
+     * @return array{
+     *     manifest: ScannerManifest,
+     *     contributions: list<ScanContribution>,
+     *     cache_entries: list<\Knossos\Store\ContributionCacheEntry>,
+     *     parsed: int,
+     *     unchanged: int,
+     *     added: int,
+     *     changed: int,
+     *     left_out_paths: list<string>,
+     *     scanner_metadata: array<string, mixed>,
+     *     milliseconds: float,
+     *     undiscovered_inputs: array<string, string|null>,
+     *     read_groups: array<string, array<string, ?string>>,
+     *     program_environments: array<string, string>
+     * }
+     */
+    private function assemble(
+        LanguageDescriptor $descriptor,
+        ScanPlan $plan,
+        ScannerManifest $manifest,
+        string $analysisHash,
+        ContributionPartition $partition,
+        LeftOutFiles $leftOut,
+        LanguageRunAccumulator $accumulator,
+        int $started,
+    ): array {
+        $scanned = $accumulator->scanned();
         $recorded = $this->cache->entriesForScanned(
             $scanned,
             array_values(array_filter(
@@ -432,7 +462,7 @@ final readonly class LanguageScanRunner
             $manifest,
             $plan->preparation->configurationHashes[$descriptor->key],
             $analysisHash,
-            $readsByOwner,
+            $accumulator->readsByOwner(),
         );
 
         // In owner order, not cached-then-scanned: when two files declare one
@@ -452,11 +482,11 @@ final readonly class LanguageScanRunner
             'unchanged' => count($partition->cached) - count($partition->leftOutPaths),
             'added' => $partition->added,
             'changed' => $partition->changed,
-            'scanner_metadata' => $partition->filesToScan === [] ? [] : [$manifest->id => $metadata],
+            'scanner_metadata' => $partition->filesToScan === [] ? [] : [$manifest->id => $accumulator->metadata()],
             'milliseconds' => self::elapsedMilliseconds($started),
-            'undiscovered_inputs' => $undiscovered->all(),
-            'read_groups' => $groups,
-            'program_environments' => $environments,
+            'undiscovered_inputs' => $accumulator->undiscovered(),
+            'read_groups' => $accumulator->groups(),
+            'program_environments' => $accumulator->environments(),
         ];
     }
 
@@ -471,23 +501,16 @@ final readonly class LanguageScanRunner
      *
      * @param array{files: list<object>, budget: int, halvings: int, retries: int} $item
      * @param list<ScanContribution> $received what the worker answered before failing
-     * @param array<string, mixed> $request
      */
-    private function afterFailure(
-        ScanBatchQueue $queue,
-        LeftOutFiles $leftOut,
-        array $item,
-        WorkerException $error,
-        array $received,
-        LanguageDescriptor $descriptor,
-        ScanPlan $plan,
-        array $request,
-        CancellationToken $cancellation,
-        string $scannerId,
-    ): ProcessScannerClient {
+    private function afterFailure(LanguageBatchRun $run, array $item, WorkerException $error, array $received): ProcessScannerClient
+    {
+        $queue = $run->queue;
+        $leftOut = $run->leftOut;
+        $descriptor = $run->descriptor;
+        $cancellation = $run->cancellation;
         $queue->failed($error);
         if ($error->diagnosticCode === 'WORKER_FRAME_TOO_LARGE') {
-            $file = $queue->searchFrame($item, $error, $received, $scannerId);
+            $file = $queue->searchFrame($item, $error, $received, $run->scannerId);
             if ($cancellation->isCancelled()) {
                 throw $error;
             }
@@ -495,13 +518,13 @@ final readonly class LanguageScanRunner
                 $leftOut->add($file, $error);
             }
 
-            return $this->pool->restart($descriptor, $plan->preparation->executionPolicy);
+            return $this->pool->restart($descriptor, $run->policy);
         }
-        $retryable = OversizedBatch::signalledBy($descriptor, $error, $request) && !$cancellation->isCancelled();
+        $retryable = OversizedBatch::signalledBy($descriptor, $error, $run->request) && !$cancellation->isCancelled();
         if ($retryable && count($item['files']) === 1 && OversizedBatch::leavesAFileOut($error)) {
             $leftOut->add($item['files'][0], $error);
 
-            return $this->pool->restart($descriptor, $plan->preparation->executionPolicy);
+            return $this->pool->restart($descriptor, $run->policy);
         }
         // A single file cannot be split any further, so retrying it would
         // only burn worker restarts on the same failure.
@@ -512,7 +535,7 @@ final readonly class LanguageScanRunner
 
         // The failed request closed its session, so this language needs a
         // fresh worker before the smaller batches can be sent.
-        return $this->pool->restart($descriptor, $plan->preparation->executionPolicy);
+        return $this->pool->restart($descriptor, $run->policy);
     }
 
     /**
@@ -571,29 +594,6 @@ final readonly class LanguageScanRunner
             $descriptor->key,
             $memoryMb,
         );
-    }
-
-    /**
-     * Fold one batch's scan reply into the language's running scanner metadata.
-     *
-     * Every integer a worker reports is a count of what THAT request did —
-     * files_scanned, and TypeScript's programs and programs_reused — so they are
-     * summed. Keeping the last batch's value would report a fraction of the
-     * language's work as if it were the total. Non-integers (a parser name, a
-     * version) are not counts, so the newest batch's value wins.
-     *
-     * @param array<string, mixed> $metadata
-     * @param array<string, mixed> $batchResult
-     * @return array<string, mixed>
-     */
-    private static function mergeScanResult(array $metadata, array $batchResult): array
-    {
-        foreach ($batchResult as $field => $value) {
-            $running = $metadata[$field] ?? null;
-            $metadata[$field] = is_int($value) && is_int($running) ? $running + $value : $value;
-        }
-
-        return $metadata;
     }
 
     /** Milliseconds since a hrtime() mark, for the stage timings. */

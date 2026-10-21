@@ -35,7 +35,8 @@ final class RuntimeFactory
             throw new RuntimeException(sprintf('Unable to create data directory: %s', $directory));
         }
         $pdo = SqliteConnection::open($path);
-        (new MigrationRunner($pdo, $this->installationRoot . '/migrations'))->migrate();
+        $lockPath = $path === ':memory:' ? null : $path . '.migrate.lock';
+        (new MigrationRunner($pdo, $this->installationRoot . '/migrations', $lockPath))->migrate();
 
         return $pdo;
     }

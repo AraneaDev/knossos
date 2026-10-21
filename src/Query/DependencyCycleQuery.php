@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\NodeQueries;
 
 /**
  * Dependency cycles: the strongly connected components of the selected dependency graph.
@@ -222,7 +223,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
             "SELECT e.id, e.kind, e.source_id, e.target_id, CASE WHEN e.kind IN ('imports', 're_exports') THEN e.attributes_json END AS attributes_json " .
             'FROM edges e WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.source_id, e.target_id, e.kind, e.id LIMIT ?',
         );
         $statement->execute([$projectId, ...$edgeKinds, $minimumRank, $maxEdges + 1]);
@@ -407,14 +408,14 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         foreach ($inside as $index => $members) {
             $typeIds[$between + $index] = $declaringType[$members[0]] ?? null;
         }
-        $names = $this->rowsByIds('SELECT id, canonical_name FROM nodes WHERE id IN (%s)', array_values(array_unique(array_filter($typeIds, 'is_string'))));
+        $names = NodeQueries::canonicalNames($this->pdo, array_values(array_unique(array_filter($typeIds, 'is_string'))));
 
         return array_map(static function (array $cycle, int $index) use ($between, $typeIds, $names): array {
             $typeId = $typeIds[$index] ?? null;
 
             return $cycle + [
                 'within_type' => $index >= $between,
-                'type' => $typeId === null ? null : (string) ($names[$typeId]['canonical_name'] ?? $typeId),
+                'type' => $typeId === null ? null : ($names[$typeId] ?? $typeId),
             ];
         }, $cycles, array_keys($cycles));
     }

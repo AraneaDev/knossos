@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Mcp;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\NextStepPlanner;
 use Knossos\Mcp\Protocol\Profile20260728;
@@ -14,6 +13,7 @@ use Knossos\Mcp\ToolInputException;
 use Knossos\Mcp\ToolService;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\StalenessProbe;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Store\MigrationRunner;

@@ -91,15 +91,14 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     private function flowBetween(array $project, array $source, array $target, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $timeoutMs, ?string $profile, ?int $forwardPruned = null): ResultEnvelope
     {
         $projectId = (string) $project['id'];
-        $endpointTruncated = false;
-        $sourceSet = $this->flowEndpointSet($projectId, $source, $endpointTruncated);
-        $targetSet = $this->flowEndpointSet($projectId, $target, $endpointTruncated);
+        // Endpoint expansion is reported after whatever cut the search itself.
+        $endpointTruncation = new Truncation();
+        $sourceSet = $this->flowEndpointSet($projectId, $source, $endpointTruncation);
+        $targetSet = $this->flowEndpointSet($projectId, $target, $endpointTruncation);
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
         $truncation = new Truncation();
         $search = $this->searchFlows($projectId, $sourceSet, $targetSet, $maxDepth, $maxPaths, $edgeKinds, $minimumRank, $deadline, $truncation, $profile);
-        if ($endpointTruncated) {
-            $truncation->add('endpoint_expansion_limit');
-        }
+        $truncation->add(...$endpointTruncation->reasons());
         $paths = self::rankedPaths($search['paths'], $maxPaths, $truncation);
 
         return self::flowEnvelope(
@@ -211,7 +210,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $queue = [];
         $head = 0;
         foreach ($sourceSet as $start) {
-            $queue[] = [[$start], [], [$start['id'] => true], $profile === null ? null : [$profile], []];
+            $queue[] = FlowState::start($start, $profile);
         }
         // Every queued state carries a copy of its path, so the visit bound
         // alone let one wide node queue far more than it could ever visit.
@@ -221,23 +220,24 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $pruned = 0;
         // Each edge's profiles, read once per search: a wide node is expanded once per path that reaches it.
         $edgeProfiles = [];
-        $flowEdgesTruncated = false;
+        // Kept apart so a per-node cut is reported after whatever stopped the walk.
+        $edgePageTruncation = new Truncation();
         $candidateCap = $maxPaths * 20;
         while (isset($queue[$head]) && count($paths) < $candidateCap) {
             if ($this->now() > $deadline) {
                 $truncation->add('time_limit');
                 break;
             }
-            [$nodes, $hops, $seen, $candidates, $unprofiled] = $queue[$head];
+            $state = $queue[$head];
             unset($queue[$head]);
             ++$head;
             ++$visited;
-            if (count($hops) >= $maxDepth) {
+            if (count($state->hops) >= $maxDepth) {
                 continue;
             }
-            $last = $nodes[array_key_last($nodes)];
+            $last = $state->nodes[array_key_last($state->nodes)];
             $edges = [
-                ...$this->flowEdges($projectId, $last['id'], $edgeKinds, $minimumRank, $flowEdgesTruncated),
+                ...EdgePage::fetch($this->pdo, $projectId, Direction::Outgoing, $last['id'], $edgeKinds, $minimumRank, $edgePageTruncation),
                 ...$this->implementationSteps($projectId, $last['id'], $edgeKinds, $minimumRank),
             ];
             foreach ($edges as $index => $edge) {
@@ -251,29 +251,20 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 // source is pre-seeded, so a self-flow (from == to) depends on
                 // matching the target before the visited-guard skips it.
                 $isTarget = isset($targetSet[$edge['target_id']]);
-                if (isset($seen[$edge['target_id']]) && !$isTarget) {
+                if (isset($state->seen[$edge['target_id']]) && !$isTarget) {
                     continue;
                 }
                 if (!array_key_exists($edge['id'], $edgeProfiles)) {
                     $edgeProfiles[$edge['id']] = $edge['origin'] === 'enricher' ? self::edgeProfiles((string) $edge['attributes_json']) : null;
                 }
-                [$newCandidates, $unprofiledHop] = self::narrowProfiles($candidates, $edgeProfiles[$edge['id']]);
-                if ($newCandidates === []) {
+                $next = self::expand($state, $edge, $edgeProfiles[$edge['id']]);
+                if ($next === null) {
                     // The edge's profiles contradict the path's: no deployment takes both.
                     ++$pruned;
                     continue;
                 }
-                $newUnprofiled = $unprofiledHop ? [...$unprofiled, count($hops)] : $unprofiled;
-                // The edge query joins the target row, so a dangling target is
-                // already excluded and no lookup per edge is needed.
-                $next = [
-                    'id' => $edge['target_id'], 'kind' => $edge['target_kind'], 'canonical_name' => $edge['target_canonical_name'],
-                    'display_name' => $edge['target_display_name'], 'confidence' => $edge['target_confidence'],
-                ];
-                $newNodes = [...$nodes, $next];
-                $newHops = [...$hops, $edge];
                 if ($isTarget) {
-                    $candidate = $this->path($newNodes, $newHops, $newCandidates, $newUnprofiled);
+                    $candidate = $this->path($next->nodes, $next->hops, $next->candidates, $next->unprofiled);
                     $existing = $paths[$candidate['signature']] ?? null;
                     // Keep the best-scoring witness, not merely the first one
                     // found: two call sites for the same route can carry
@@ -295,19 +286,46 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                     $truncation->add('queue_limit');
                     continue;
                 }
-                $newSeen = $seen;
-                $newSeen[$next['id']] = true;
-                $queue[] = [$newNodes, $newHops, $newSeen, $newCandidates, $newUnprofiled];
+                $queue[] = $next;
                 ++$queued;
             }
         }
-        if ($flowEdgesTruncated) {
-            // A node with more than 500 outbound edges of the selected kinds had
-            // some silently dropped; record it rather than claim completeness.
-            $truncation->add('per_node_edge_limit');
-        }
+        // A node with more than 500 outbound edges of the selected kinds had
+        // some silently dropped; record it rather than claim completeness.
+        $truncation->add(...$edgePageTruncation->reasons());
 
         return ['paths' => $paths, 'visited' => $visited, 'queued' => $queued, 'pruned' => $pruned];
+    }
+
+    /**
+     * The state after `$state` takes `$edge`, or null when the edge's profiles contradict the path's.
+     *
+     * The edge query joins the target row, so a dangling target is already
+     * excluded and no lookup per edge is needed.
+     *
+     * @param array<string, mixed> $edge
+     * @param ?list<string> $profiles the edge's, sorted; null when it has none
+     */
+    private static function expand(FlowState $state, array $edge, ?array $profiles): ?FlowState
+    {
+        [$candidates, $unprofiledHop] = self::narrowProfiles($state->candidates, $profiles);
+        if ($candidates === []) {
+            return null;
+        }
+        $next = [
+            'id' => $edge['target_id'], 'kind' => $edge['target_kind'], 'canonical_name' => $edge['target_canonical_name'],
+            'display_name' => $edge['target_display_name'], 'confidence' => $edge['target_confidence'],
+        ];
+        $seen = $state->seen;
+        $seen[(string) $next['id']] = true;
+
+        return new FlowState(
+            [...$state->nodes, $next],
+            [...$state->hops, $edge],
+            $seen,
+            $candidates,
+            $unprofiledHop ? [...$state->unprofiled, count($state->hops)] : $state->unprofiled,
+        );
     }
 
     /**
@@ -483,7 +501,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param array<string, mixed> $node
      * @return array<string, array<string, mixed>> id => node row
      */
-    private function flowEndpointSet(string $projectId, array $node, bool &$truncated): array
+    private function flowEndpointSet(string $projectId, array $node, Truncation $truncation): array
     {
         $set = [$node['id'] => $node];
         if (!in_array($node['kind'], ['class', 'interface'], true)) {
@@ -497,40 +515,13 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $statement->execute(['project' => $projectId, 'source' => $node['id']]);
         $rows = $statement->fetchAll();
         if (count($rows) > 200) {
-            $truncated = true;
+            $truncation->add('endpoint_expansion_limit');
             $rows = array_slice($rows, 0, 200);
         }
         foreach ($rows as $row) {
             $set[$row['id']] = $row;
         }
         return $set;
-    }
-
-    /**
-     * Edge kinds that count as control or data flow for reachability.
-     *
-     * @param list<string> $edgeKinds @return list<array<string, mixed>>
-     */
-    private function flowEdges(string $projectId, string $sourceId, array $edgeKinds, int $minimumConfidence, bool &$truncated = false): array
-    {
-        $placeholders = implode(',', array_fill(0, count($edgeKinds), '?'));
-        $statement = $this->pdo->prepare(
-            'SELECT e.*, f.relative_path, source.display_name AS source_name, target.display_name AS target_name, ' .
-            'target.kind AS target_kind, target.canonical_name AS target_canonical_name, ' .
-            'target.display_name AS target_display_name, target.confidence AS target_confidence ' .
-            'FROM edges e JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
-            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND e.source_id = ? ' .
-            sprintf('AND e.kind IN (%s) ', $placeholders) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
-            'ORDER BY CASE e.confidence WHEN \'certain\' THEN 3 WHEN \'probable\' THEN 2 ELSE 1 END DESC, e.kind, e.id LIMIT 501',
-        );
-        $statement->execute([$projectId, $sourceId, ...$edgeKinds, $minimumConfidence]);
-        $rows = $statement->fetchAll();
-        if (count($rows) > 500) {
-            $truncated = true;
-            $rows = array_slice($rows, 0, 500);
-        }
-        return $rows;
     }
 
     /**

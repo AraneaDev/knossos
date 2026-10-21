@@ -126,9 +126,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         $stdoutOpen = true;
         $written = 0;
         while ($written < $length) {
-            if ($cancelled !== null && $cancelled()) {
-                throw new WorkerException('WORKER_CANCELLED', 'Scanner worker request was cancelled.');
-            }
+            self::throwIfCancelled($cancelled);
 
             $remaining = $this->deadline - hrtime(true);
             if ($remaining <= 0) {
@@ -149,24 +147,13 @@ final class NdjsonRpcChannel implements RpcChannelInterface
                 default => null,
             };
             $write = [$stdin];
-            $except = null;
-            $wait = $cancelled === null ? $remaining : min($remaining, 100_000_000);
-            $selected = @stream_select(
-                $read,
-                $write,
-                $except,
-                intdiv($wait, 1_000_000_000),
-                intdiv($wait % 1_000_000_000, 1_000),
-            );
-            if ($selected === false) {
-                throw new WorkerException('WORKER_IO_FAILED', $this->withStderr('Unable to write to scanner worker.'));
-            }
+            $selected = $this->select($read, $write, $remaining, $cancelled, 'Unable to write to scanner worker.');
             if ($selected === 0) {
                 continue;
             }
 
             foreach ($read ?? [] as $stream) {
-                if (!$this->absorb($stream, $stderr)) {
+                if (!$this->absorb($stream, $stderr, true)) {
                     continue;
                 }
                 if ($stream === $stderr) {
@@ -204,9 +191,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         // budget retry) is polled on its fresh stderr again.
         $stderrOpen = true;
         while (true) {
-            if ($cancelled !== null && $cancelled()) {
-                throw new WorkerException('WORKER_CANCELLED', 'Scanner worker request was cancelled.');
-            }
+            self::throwIfCancelled($cancelled);
             // The hard cap holds for frames already buffered too: a worker
             // writing faster than they are read would otherwise never let
             // the wait below, where the deadline is checked, come around.
@@ -242,18 +227,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
 
             $read = $stderrOpen ? [$stdout, $stderr] : [$stdout];
             $write = null;
-            $except = null;
-            $wait = $cancelled === null ? $remaining : min($remaining, 100_000_000);
-            $selected = @stream_select(
-                $read,
-                $write,
-                $except,
-                intdiv($wait, 1_000_000_000),
-                intdiv($wait % 1_000_000_000, 1_000),
-            );
-            if ($selected === false) {
-                throw new WorkerException('WORKER_IO_FAILED', $this->withStderr('Unable to read scanner worker pipes.'));
-            }
+            $selected = $this->select($read, $write, $remaining, $cancelled, 'Unable to read scanner worker pipes.');
             if ($selected === 0 && $cancelled !== null) {
                 continue;
             }
@@ -262,54 +236,90 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             }
 
             foreach ($read as $stream) {
-                $chunk = @fread($stream, self::READ_CHUNK_BYTES);
-                if ($chunk === false) {
-                    throw new WorkerException('WORKER_IO_FAILED', $this->withStderr('Unable to read scanner worker output.'));
+                // An exhausted stdout is not dropped: end-of-stream, not
+                // necessarily "no data yet". The terminal check below decides
+                // based on the worker's liveness so we never busy-spin on an
+                // EOF fd. An exhausted stderr is, not merely quiet: everything
+                // the worker wrote has been drained, so stop selecting on it.
+                if ($this->absorb($stream, $stderr, false) && $stream === $stderr) {
+                    $stderrOpen = false;
                 }
-                if ($stream === $stderr) {
-                    if (self::isExhausted($stderr, $chunk)) {
-                        // Exhausted, not merely quiet: everything the worker
-                        // wrote has been drained, so stop selecting on it.
-                        $stderrOpen = false;
-                        continue;
-                    }
-                    $this->appendStderr($chunk);
-                    continue;
-                }
-                if ($chunk === '') {
-                    // Empty read on stdout: end-of-stream, not necessarily "no
-                    // data yet". The terminal check below decides based on the
-                    // worker's liveness so we never busy-spin on an EOF fd.
-                    continue;
-                }
-                $this->appendStdout($chunk);
             }
 
-            // A worker that exited (crashed) without a terminating newline can
-            // never complete the frame — surface WORKER_EXITED immediately
-            // instead of busy-spinning on the instantly-ready EOF fd until the
-            // deadline and mislabelling the crash as TIMEOUT. The buffer here is
-            // only ever a partial frame (a complete one was returned by
-            // extractMessage() above), so the old stdoutBuffer==='' guard is
-            // intentionally dropped.
-            $status = $this->process->status();
-            // A worker can write a whole oversized frame and exit before it is
-            // read. That is still a frame too large, which splitting can act
-            // on, so the top of the loop reports it rather than the exit.
-            if (strlen($this->stdoutBuffer) - $this->stdoutOffset > $this->limits->maxLineBytes) {
-                continue;
-            }
-            if (!$status['running'] && feof($stdout)) {
-                $signalled = $status['signaled'] && $status['termsig'] > 0;
-                throw new WorkerException(
-                    'WORKER_EXITED',
-                    $this->withStderr(self::exitDescription($status)),
-                    terminatingSignal: $signalled ? $status['termsig'] : null,
-                    // The same status the message is built from: the supervisor
-                    // keeps the first one read, as the OS reports it only once.
-                    exitCode: !$signalled && $status['exitcode'] >= 0 ? $status['exitcode'] : null,
-                );
-            }
+            $this->throwIfExited($stdout);
+        }
+    }
+
+    /**
+     * Give up on a request the caller has cancelled.
+     *
+     * @param callable(): bool|null $cancelled
+     */
+    private static function throwIfCancelled(?callable $cancelled): void
+    {
+        if ($cancelled !== null && $cancelled()) {
+            throw new WorkerException('WORKER_CANCELLED', 'Scanner worker request was cancelled.');
+        }
+    }
+
+    /**
+     * Wait for the worker's pipes, up to the remaining time, or 100 ms when the
+     * wait has to come back round to poll for a cancellation.
+     *
+     * @param list<resource>|null $read
+     * @param list<resource>|null $write
+     * @param callable(): bool|null $cancelled
+     * @return int how many descriptors are ready; 0 when the wait timed out
+     */
+    private function select(?array &$read, ?array &$write, int $remaining, ?callable $cancelled, string $failure): int
+    {
+        $except = null;
+        $wait = $cancelled === null ? $remaining : min($remaining, 100_000_000);
+        $selected = @stream_select(
+            $read,
+            $write,
+            $except,
+            intdiv($wait, 1_000_000_000),
+            intdiv($wait % 1_000_000_000, 1_000),
+        );
+        if ($selected === false) {
+            throw new WorkerException('WORKER_IO_FAILED', $this->withStderr($failure));
+        }
+
+        return $selected;
+    }
+
+    /**
+     * Report a worker that exited without completing the frame it was writing.
+     *
+     * @param resource $stdout
+     */
+    private function throwIfExited($stdout): void
+    {
+        // A worker that exited (crashed) without a terminating newline can
+        // never complete the frame — surface WORKER_EXITED immediately
+        // instead of busy-spinning on the instantly-ready EOF fd until the
+        // deadline and mislabelling the crash as TIMEOUT. The buffer here is
+        // only ever a partial frame (a complete one was returned by
+        // extractMessage() in readMessage()), so the old stdoutBuffer==='' guard is
+        // intentionally dropped.
+        $status = $this->process->status();
+        // A worker can write a whole oversized frame and exit before it is
+        // read. That is still a frame too large, which splitting can act
+        // on, so the top of the read loop reports it rather than the exit.
+        if (strlen($this->stdoutBuffer) - $this->stdoutOffset > $this->limits->maxLineBytes) {
+            return;
+        }
+        if (!$status['running'] && feof($stdout)) {
+            $signalled = $status['signaled'] && $status['termsig'] > 0;
+            throw new WorkerException(
+                'WORKER_EXITED',
+                $this->withStderr(self::exitDescription($status)),
+                terminatingSignal: $signalled ? $status['termsig'] : null,
+                // The same status the message is built from: the supervisor
+                // keeps the first one read, as the OS reports it only once.
+                exitCode: !$signalled && $status['exitcode'] >= 0 ? $status['exitcode'] : null,
+            );
         }
     }
 
@@ -386,15 +396,17 @@ final class NdjsonRpcChannel implements RpcChannelInterface
     }
 
     /**
-     * Drain a readable stream during a send(): stderr is accumulated for
-     * diagnostics, stdout is buffered for the pending response.
+     * Drain a readable stream: stderr is accumulated for diagnostics, stdout
+     * is buffered for the pending response.
      *
      * @param resource $stream
      * @param resource $stderr
+     * @param bool $sending whether a send() is draining it, which bounds the
+     *        stdout it may buffer before the request is written
      * @return bool True once the stream is exhausted — an empty read at EOF —
      *              so the caller may drop the descriptor from its select set.
      */
-    private function absorb($stream, $stderr): bool
+    private function absorb($stream, $stderr, bool $sending): bool
     {
         $chunk = @fread($stream, self::READ_CHUNK_BYTES);
         if ($chunk === false) {
@@ -413,6 +425,9 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             return false;
         }
         $this->appendStdout($chunk);
+        if (!$sending) {
+            return false;
+        }
         // Nothing classifies these bytes until the send is done, and a worker
         // answers a request only once it has read the whole of it, so all a
         // well-behaved worker can have written meanwhile is the tail of what

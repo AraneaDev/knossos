@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use InvalidArgumentException;
+use Knossos\Filesystem\RelativePathRule;
 
 /**
  * A path a caller wrote, as the project-relative path the graph stores:
@@ -21,7 +22,7 @@ final class ProjectRelativePath
         $relative = str_starts_with($trimmed, '/')
             ? (str_starts_with($trimmed, $root . '/') ? substr($trimmed, strlen($root) + 1) : null)
             : preg_replace('#^(\./)+#', '', $trimmed);
-        if ($relative === null || $relative === '' || in_array('..', explode('/', $relative), true)) {
+        if ($relative === null || $relative === '' || !RelativePathRule::isContained($relative)) {
             throw new InvalidArgumentException(sprintf('%s is outside the project (%s).', $path, $root));
         }
 

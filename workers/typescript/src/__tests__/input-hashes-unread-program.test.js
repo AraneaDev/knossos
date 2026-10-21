@@ -57,7 +57,7 @@ describe("input_hashes for a program this request did not read", () => {
                 { root, files: ["src/a.ts"] },
                 () => {},
             );
-            instance.programCache.clear();
+            instance.programCache.programs.clear();
             return result;
         };
     }

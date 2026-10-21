@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Discovery;
+namespace Knossos\Configuration;
 
 use InvalidArgumentException;
 use JsonException;
+use Knossos\Roots\AllowedRoots;
 
 /**
  * The installation's `enrichers.json`: which external enrichers exist and how to start them.

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Discovery;
 
 use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\RootNotFoundException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -20,31 +19,11 @@ final class DiscoveryExceptionTest extends TestCase
         $this->assertTrue($reflection->isSubclassOf(RuntimeException::class));
     }
 
-    public function testIsOpenOnlySoFarAsRootNotFoundExceptionNeeds(): void
+    public function testIsFinalNowThatRootRefusalsHaveTheirOwnType(): void
     {
-        // Not final, and the only class in Discovery that is not: RootGuard has
-        // two refusals to report and every caller catches this one type, so the
-        // narrower one has to be reachable through it. The narrower one is
-        // final, so the opening stops here rather than becoming a hierarchy.
-        $this->assertFalse((new \ReflectionClass(DiscoveryException::class))->isFinal());
-        $this->assertTrue((new \ReflectionClass(RootNotFoundException::class))->isFinal());
-        assertSame(DiscoveryException::class, get_parent_class(RootNotFoundException::class));
-    }
-
-    public function testARootNotFoundExceptionIsCaughtByEveryExistingDiscoveryCatch(): void
-    {
-        // The one property that makes the split safe to introduce: nothing that
-        // already catches DiscoveryException had to change.
-        $caught = null;
-
-        try {
-            throw new RootNotFoundException('no such directory');
-        } catch (DiscoveryException $error) {
-            $caught = $error;
-        }
-
-        assertSame('no such directory', $caught->getMessage());
-        assertSame(RootNotFoundException::class, $caught::class);
+        // Root refusals have their own type in Roots, so nothing narrows this
+        // one any more.
+        $this->assertTrue((new \ReflectionClass(DiscoveryException::class))->isFinal());
     }
 
     public function testCanBeThrownWithMessageAndConstructedFromPrevious(): void

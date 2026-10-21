@@ -151,7 +151,7 @@ final class NdjsonRpcChannelTest extends TestCase
         $absorb = new \ReflectionMethod($channel, 'absorb');
 
         $error = captureThrows(
-            static fn() => $absorb->invoke($channel, $writeOnly, $stderr),
+            static fn() => $absorb->invoke($channel, $writeOnly, $stderr, true),
             WorkerException::class,
         );
 

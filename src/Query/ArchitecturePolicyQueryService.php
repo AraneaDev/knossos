@@ -364,7 +364,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
             // judging it would let an enricher's output fail a quality gate.
             'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders($kinds)) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             ($sourceFiles === [] ? '' : sprintf(
                 'AND source.file_id IN (SELECT id FROM files WHERE project_id = ? AND relative_path IN (%s)) ',
                 $placeholders($sourceFiles),

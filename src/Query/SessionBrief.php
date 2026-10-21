@@ -65,7 +65,7 @@ final readonly class SessionBrief
      * @param int $missingNotes notes on a name the active graph no longer has,
      *   left behind by a rename or a move; only their author can move them
      * @param string|null $rootsFile the roots file this brief actually read,
-     *   following {@see \Knossos\Discovery\AllowedRoots::defaultConfigPath()}'s
+     *   following {@see \Knossos\Roots\AllowedRoots::defaultConfigPath()}'s
      *   own precedence rather than guessing where roots live. Named in the
      *   not-allowed verdict because it is what makes that verdict checkable: a
      *   machine can have several, and the one a running server reads is not

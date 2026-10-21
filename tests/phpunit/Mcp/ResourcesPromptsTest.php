@@ -264,6 +264,25 @@ final class ResourcesPromptsTest extends KnossosTestCase
         }
     }
 
+    /** Positional arguments are refused for a prompt as they are for a tool, not silently dropped. */
+    #[Group('mcp')]
+    public function testPromptsGetRefusesListShapedArgumentsLikeToolsCall(): void
+    {
+        $pdo = (new \Knossos\Runtime\RuntimeFactory(self::repositoryRoot()))->database(':memory:');
+        $server = (new \Knossos\Mcp\McpServerAssembly($pdo, self::repositoryRoot(), ':memory:', \Knossos\Roots\AllowedRoots::of([])))->dispatcher();
+        $server->handle(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => McpDispatcher::PROTOCOL_VERSION]]);
+        $server->handle(['jsonrpc' => '2.0', 'method' => 'notifications/initialized']);
+
+        $prompt = $server->handle(['jsonrpc' => '2.0', 'id' => 2, 'method' => 'prompts/get', 'params' => ['name' => 'review_diff', 'arguments' => ['origin/main']]]);
+        $tool = $server->handle(['jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/call', 'params' => ['name' => 'list_projects', 'arguments' => ['x']]]);
+
+        assertSame(-32602, $prompt['error']['code']);
+        assertSame('Prompt name and object arguments are required.', $prompt['error']['message']);
+        assertSame(-32602, $tool['error']['code']);
+        $empty = $server->handle(['jsonrpc' => '2.0', 'id' => 4, 'method' => 'prompts/get', 'params' => ['name' => 'review_diff', 'arguments' => []]]);
+        assertSame(true, isset($empty['result']['messages']));
+    }
+
     #[Group('mcp')]
     public function testPromptsGetOrientVariants(): void
     {

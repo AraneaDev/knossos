@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Maintenance;
 
 use InvalidArgumentException;
-use Knossos\Discovery\{AllowedRoots, RootsFile};
 use Knossos\Result\ResultEnvelope;
+use Knossos\Roots\{AllowedRoots, RootsFile};
 use Knossos\Scan\{ProjectScanService, ProjectScanner, ProjectWriterLock};
 use Knossos\Scan\ScanOptions;
 use Knossos\Store\ProjectRepository;

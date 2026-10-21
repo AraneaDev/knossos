@@ -191,46 +191,7 @@ impl Calls<'_, '_> {
             if !attr.path().is_ident("serde") {
                 continue;
             }
-            let mut named: Vec<(syn::Path, bool)> = Vec::new();
-            let _ = attr.parse_nested_meta(|meta| {
-                let key = meta.path.get_ident().map(ident_name);
-                if meta.input.peek(syn::Token![=]) {
-                    let value: syn::Expr = meta.value()?.parse()?;
-                    if let (
-                        Some(key),
-                        syn::Expr::Lit(syn::ExprLit {
-                            lit: syn::Lit::Str(literal),
-                            ..
-                        }),
-                    ) = (key, value)
-                    {
-                        let with = key == "with";
-                        if with
-                            || matches!(
-                                key.as_str(),
-                                "default"
-                                    | "serialize_with"
-                                    | "deserialize_with"
-                                    | "skip_serializing_if"
-                                    | "getter"
-                            )
-                        {
-                            if let Ok(path) = literal.parse::<syn::Path>() {
-                                named.push((path, with));
-                            }
-                        }
-                    }
-                } else if meta.input.peek(syn::token::Paren) {
-                    meta.parse_nested_meta(|nested| {
-                        if nested.input.peek(syn::Token![=]) {
-                            let _: syn::Expr = nested.value()?.parse()?;
-                        }
-                        Ok(())
-                    })?;
-                }
-                Ok(())
-            });
-            for (path, with) in named {
+            for (path, with) in serde_function_paths(attr) {
                 let span = attr.span();
                 if with {
                     for function in ["serialize", "deserialize"] {
@@ -977,6 +938,52 @@ fn call_kind(canonical: &str) -> &'static str {
         Some(segment) if segment.starts_with(char::is_uppercase) => "method",
         _ => "function",
     }
+}
+
+/// The paths a `#[serde(...)]` attribute names functions by, each with
+/// whether it is a `with = "module"` whose `serialize`/`deserialize` are
+/// meant; what precedes a part that does not parse still counts.
+fn serde_function_paths(attr: &syn::Attribute) -> Vec<(syn::Path, bool)> {
+    let mut named: Vec<(syn::Path, bool)> = Vec::new();
+    let _ = attr.parse_nested_meta(|meta| {
+        let key = meta.path.get_ident().map(ident_name);
+        if meta.input.peek(syn::Token![=]) {
+            let value: syn::Expr = meta.value()?.parse()?;
+            if let (
+                Some(key),
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(literal),
+                    ..
+                }),
+            ) = (key, value)
+            {
+                let with = key == "with";
+                if with
+                    || matches!(
+                        key.as_str(),
+                        "default"
+                            | "serialize_with"
+                            | "deserialize_with"
+                            | "skip_serializing_if"
+                            | "getter"
+                    )
+                {
+                    if let Ok(path) = literal.parse::<syn::Path>() {
+                        named.push((path, with));
+                    }
+                }
+            }
+        } else if meta.input.peek(syn::token::Paren) {
+            meta.parse_nested_meta(|nested| {
+                if nested.input.peek(syn::Token![=]) {
+                    let _: syn::Expr = nested.value()?.parse()?;
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    });
+    named
 }
 
 #[cfg(test)]

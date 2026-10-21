@@ -6,11 +6,11 @@ namespace Knossos\Query;
 
 use Knossos\Boundary\BoundaryReferences;
 use Knossos\Configuration\ProjectConfigurationLoader;
-use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\RootGuard;
-use Knossos\Discovery\RootNotFoundException;
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootGuard;
+use Knossos\Roots\RootNotFoundException;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -73,11 +73,11 @@ final readonly class SessionBriefService
      */
     public function gather(string $path): SessionBrief
     {
-        $project = (new ProjectPathResolver($this->pdo))->resolve($path);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($path);
         if ($project === null) {
             return self::unscanned($path, $this->databasePath);
         }
-        // Canonicalised the same way ProjectPathResolver canonicalises before
+        // Canonicalised the same way ProjectRepository::resolvePath() canonicalises before
         // matching, so "the project root is the directory that was asked about"
         // is a string comparison rather than a second opinion about what two
         // paths mean. The resolver matched root_realpath against exactly this
@@ -182,7 +182,7 @@ final readonly class SessionBriefService
      */
     public static function unscanned(string $path, ?string $databasePath = null): SessionBrief
     {
-        // Resolve to an absolute path the same way ProjectPathResolver does
+        // Resolve to an absolute path the same way ProjectRepository::resolvePath() does
         // internally, so the verdict line can hand an agent a command it can
         // actually run. An MCP server has its own working directory and
         // allowed roots, so a relative argument here would be meaningless.
@@ -221,7 +221,7 @@ final readonly class SessionBriefService
      * dead end, in the feature that exists to stop the brief recommending
      * things that cannot work.
      *
-     * Only {@see DiscoveryException} and its subclasses are caught: that is
+     * Only {@see RootException} and its subclasses are caught: that is
      * RootGuard's own refusal signal, and nothing else may be silently read
      * as one.
      *
@@ -251,7 +251,7 @@ final readonly class SessionBriefService
         } catch (RootNotFoundException) {
             // Ordered before the parent type, which would otherwise swallow it.
             return ['exists' => false, 'allowed' => false, 'roots_file' => $configPath];
-        } catch (DiscoveryException) {
+        } catch (RootException) {
             return ['exists' => true, 'allowed' => false, 'roots_file' => $configPath];
         }
     }

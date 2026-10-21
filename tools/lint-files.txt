@@ -98,16 +98,15 @@ php	src/Cli/Command/WatchCommand.php
 php	src/Cli/Command/WebCommand.php
 php	src/Cli/ProjectDatabaseLocator.php
 php	src/Cli/ProjectReference.php
+php	src/Configuration/EnricherDefinition.php
+php	src/Configuration/EnrichersFile.php
 php	src/Configuration/ProjectConfiguration.php
 php	src/Configuration/ProjectConfigurationLoader.php
-php	src/Discovery/AllowedRoots.php
 php	src/Discovery/DiscoveredFile.php
 php	src/Discovery/DiscoveryConfig.php
 php	src/Discovery/DiscoveryDiagnostic.php
 php	src/Discovery/DiscoveryException.php
 php	src/Discovery/DiscoveryResult.php
-php	src/Discovery/EnricherDefinition.php
-php	src/Discovery/EnrichersFile.php
 php	src/Discovery/EntryPointResolver.php
 php	src/Discovery/FileContent.php
 php	src/Discovery/FileContentReader.php
@@ -145,9 +144,6 @@ php	src/Discovery/Manifest/YamlManifest.php
 php	src/Discovery/Manifest/YamlPaths.php
 php	src/Discovery/ProjectDiscoverer.php
 php	src/Discovery/ProjectUnit.php
-php	src/Discovery/RootGuard.php
-php	src/Discovery/RootNotFoundException.php
-php	src/Discovery/RootsFile.php
 php	src/Discovery/SourceClassifier.php
 php	src/Discovery/TreeWalkState.php
 php	src/Discovery/TreeWalker.php
@@ -163,6 +159,7 @@ php	src/Enrichment/NativeNodeIndex.php
 php	src/Enrichment/Profiles.php
 php	src/Enrichment/ValidatedEnrichment.php
 php	src/Filesystem/RegularFileOpener.php
+php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php
 php	src/Git/DirtyPathSet.php
 php	src/Git/GitHeadResolver.php
@@ -221,6 +218,7 @@ php	src/Query/ChurnService.php
 php	src/Query/ComponentDetailService.php
 php	src/Query/ComponentQueryService.php
 php	src/Query/CompositionRoots.php
+php	src/Query/ConfidenceRank.php
 php	src/Query/ConstructedClasses.php
 php	src/Query/DashboardService.php
 php	src/Query/DeadCodeAnalysis.php
@@ -232,6 +230,7 @@ php	src/Query/Diagram/DiagramRenderer.php
 php	src/Query/Diagram/MermaidRenderer.php
 php	src/Query/Diagram/PlantUmlRenderer.php
 php	src/Query/DiagramExportService.php
+php	src/Query/Direction.php
 php	src/Query/Drift/DriftCounts.php
 php	src/Query/Drift/DriftOracle.php
 php	src/Query/Drift/FirstAnsweringDriftOracle.php
@@ -241,6 +240,7 @@ php	src/Query/Drift/RecordedWorkerInputs.php
 php	src/Query/Drift/ScannedPaths.php
 php	src/Query/Drift/TrackedPathPredicate.php
 php	src/Query/Drift/WalkDriftOracle.php
+php	src/Query/EdgePage.php
 php	src/Query/EntryPointCriteria.php
 php	src/Query/ErasedTypeEdge.php
 php	src/Query/FileContextQueryService.php
@@ -251,6 +251,7 @@ php	src/Query/FileMetricsQueryService.php
 php	src/Query/FileTestReach.php
 php	src/Query/FileViolationQuery.php
 php	src/Query/FlowQuery.php
+php	src/Query/FlowState.php
 php	src/Query/FrameworkHookMethods.php
 php	src/Query/GraphSearchService.php
 php	src/Query/GraphSummaryQuery.php
@@ -280,6 +281,7 @@ php	src/Query/ReportableComponent.php
 php	src/Query/RescanService.php
 php	src/Query/ReviewDiffService.php
 php	src/Query/ReviewSection.php
+php	src/Query/ScannerFactory.php
 php	src/Query/SemanticRanker.php
 php	src/Query/SessionBrief.php
 php	src/Query/SessionBriefRenderer.php
@@ -305,6 +307,7 @@ php	src/Reconciliation/EdgeTargetResolver.php
 php	src/Reconciliation/EndpointRouteBinder.php
 php	src/Reconciliation/EndpointRouteBinding.php
 php	src/Reconciliation/FullScanRequest.php
+php	src/Reconciliation/GraphAssembler.php
 php	src/Reconciliation/GraphReconciler.php
 php	src/Reconciliation/Milliseconds.php
 php	src/Reconciliation/NamedFiles.php
@@ -320,8 +323,14 @@ php	src/Reconciliation/ScannerSetHash.php
 php	src/Reconciliation/UrlTemplate.php
 php	src/Result/PaneStatus.php
 php	src/Result/ResultEnvelope.php
+php	src/Roots/AllowedRoots.php
+php	src/Roots/RootException.php
+php	src/Roots/RootGuard.php
+php	src/Roots/RootNotFoundException.php
+php	src/Roots/RootsFile.php
 php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
+php	src/Runtime/ErrorCode.php
 php	src/Runtime/MemoryLimit.php
 php	src/Runtime/RuntimeFactory.php
 php	src/Runtime/RuntimeVersionRequirement.php
@@ -333,7 +342,9 @@ php	src/Scan/CachedReads.php
 php	src/Scan/ContributionCacheService.php
 php	src/Scan/ContributionPartition.php
 php	src/Scan/InvalidationWalk.php
+php	src/Scan/LanguageBatchRun.php
 php	src/Scan/LanguageDescriptor.php
+php	src/Scan/LanguageRunAccumulator.php
 php	src/Scan/LanguageScanResult.php
 php	src/Scan/LanguageScanRunner.php
 php	src/Scan/LanguageWorkerPool.php
@@ -342,7 +353,6 @@ php	src/Scan/OrphanedProjectHint.php
 php	src/Scan/OversizedBatch.php
 php	src/Scan/PartitionContext.php
 php	src/Scan/ProgramEnvironments.php
-php	src/Scan/ProjectPathResolver.php
 php	src/Scan/ProjectScanService.php
 php	src/Scan/ProjectScanner.php
 php	src/Scan/ProjectWriterLease.php
@@ -398,9 +408,11 @@ php	src/Scanner/Worker/WorkerSignal.php
 php	src/Store/ChunkedInQuery.php
 php	src/Store/ContributionCacheEntry.php
 php	src/Store/CountedSnapshotFigures.php
+php	src/Store/EdgeQueries.php
 php	src/Store/EnrichedFacts.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
+php	src/Store/NodeQueries.php
 php	src/Store/ProjectRepository.php
 php	src/Store/ScanBusyException.php
 php	src/Store/SharedNodeKinds.php
@@ -504,13 +516,13 @@ php	tests/phpunit/Cli/SessionCommandTest.php
 php	tests/phpunit/Cli/TestHomeIsolationTest.php
 php	tests/phpunit/Cli/WatchCommandTest.php
 php	tests/phpunit/Cli/WebCommandTest.php
+php	tests/phpunit/Configuration/EnrichersFileTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationBoundsTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationLoaderTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationSchemaAgreementTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationTest.php
 php	tests/phpunit/Configuration/RepositoryConfigurationTest.php
 php	tests/phpunit/CoverageBudgetsTest.php
-php	tests/phpunit/Discovery/AllowedRootsTest.php
 php	tests/phpunit/Discovery/BoundedContentReadTest.php
 php	tests/phpunit/Discovery/DiscoveredFileTest.php
 php	tests/phpunit/Discovery/DiscoveryConfigTest.php
@@ -521,7 +533,6 @@ php	tests/phpunit/Discovery/DiscoveryGuardsTest.php
 php	tests/phpunit/Discovery/DiscoveryLeafTest.php
 php	tests/phpunit/Discovery/DiscoveryResultTest.php
 php	tests/phpunit/Discovery/DiscoveryTest.php
-php	tests/phpunit/Discovery/EnrichersFileTest.php
 php	tests/phpunit/Discovery/EntryPointResolverTest.php
 php	tests/phpunit/Discovery/FileFingerprintTest.php
 php	tests/phpunit/Discovery/GitIgnoreRulesTest.php
@@ -532,6 +543,7 @@ php	tests/phpunit/Discovery/JsonConfigTest.php
 php	tests/phpunit/Discovery/Manifest/DockerfileManifestTest.php
 php	tests/phpunit/Discovery/Manifest/HtmlManifestTest.php
 php	tests/phpunit/Discovery/Manifest/InlineScriptImportsTest.php
+php	tests/phpunit/Discovery/Manifest/ManifestPathsTest.php
 php	tests/phpunit/Discovery/Manifest/ManifestReadersTest.php
 php	tests/phpunit/Discovery/Manifest/NodeManifestTest.php
 php	tests/phpunit/Discovery/Manifest/TomlTest.php
@@ -539,8 +551,6 @@ php	tests/phpunit/Discovery/ManifestRootDocumentationTest.php
 php	tests/phpunit/Discovery/ProjectDiscovererTest.php
 php	tests/phpunit/Discovery/ProjectUnitTest.php
 php	tests/phpunit/Discovery/RegularFileOpenerHelperTest.php
-php	tests/phpunit/Discovery/RootGuardTest.php
-php	tests/phpunit/Discovery/RootsFileTest.php
 php	tests/phpunit/Discovery/ShebangDiscoveryTest.php
 php	tests/phpunit/Discovery/SourceClassifierTest.php
 php	tests/phpunit/Discovery/UnitReadConsistencyTest.php
@@ -551,6 +561,7 @@ php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
 php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php
 php	tests/phpunit/FailOnWarningTest.php
+php	tests/phpunit/Filesystem/RelativePathRuleTest.php
 php	tests/phpunit/Framework/ClassificationTest.php
 php	tests/phpunit/Framework/DjangoUrlconfTest.php
 php	tests/phpunit/Framework/LaravelRouteNamesTest.php
@@ -712,6 +723,7 @@ php	tests/phpunit/Query/PolicyBoundaryReferencesTest.php
 php	tests/phpunit/Query/PolicyTest.php
 php	tests/phpunit/Query/PolicyValidationBoundsTest.php
 php	tests/phpunit/Query/ProjectFileTest.php
+php	tests/phpunit/Query/ProjectRelativePathTest.php
 php	tests/phpunit/Query/PropertyReachTest.php
 php	tests/phpunit/Query/QualityGateBoundaryScanTest.php
 php	tests/phpunit/Query/QualityGateCyclesTest.php
@@ -723,11 +735,13 @@ php	tests/phpunit/Query/QueryDefaultsAgreementTest.php
 php	tests/phpunit/Query/QueryFacadeDocblockTest.php
 php	tests/phpunit/Query/QueryTest.php
 php	tests/phpunit/Query/RefreshPolicyTest.php
+php	tests/phpunit/Query/ReportableComponentTest.php
 php	tests/phpunit/Query/RepresentsTraversalTest.php
 php	tests/phpunit/Query/RescanServiceTest.php
 php	tests/phpunit/Query/ReviewDiffReportTest.php
 php	tests/phpunit/Query/ReviewDiffTest.php
 php	tests/phpunit/Query/ScanChronologyTest.php
+php	tests/phpunit/Query/ScannerFactoryTest.php
 php	tests/phpunit/Query/SearchAnyTermFallbackTest.php
 php	tests/phpunit/Query/SearchMatchingTest.php
 php	tests/phpunit/Query/SemanticTest.php
@@ -784,10 +798,16 @@ php	tests/phpunit/Reconciliation/WatchTest.php
 php	tests/phpunit/ReleaseChecksTest.php
 php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
+php	tests/phpunit/Roots/AllowedRootsTest.php
+php	tests/phpunit/Roots/RootExceptionTest.php
+php	tests/phpunit/Roots/RootGuardContainmentTest.php
+php	tests/phpunit/Roots/RootGuardTest.php
+php	tests/phpunit/Roots/RootsFileTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php
 php	tests/phpunit/Runtime/DoctorServiceTest.php
+php	tests/phpunit/Runtime/ErrorCodeParityTest.php
 php	tests/phpunit/Runtime/MemoryLimitTest.php
 php	tests/phpunit/Runtime/RuntimeFactoryTest.php
 php	tests/phpunit/Runtime/RuntimeVersionRequirementTest.php
@@ -825,7 +845,6 @@ php	tests/phpunit/Scan/OversizedBatchTest.php
 php	tests/phpunit/Scan/ParsedContentVerificationTest.php
 php	tests/phpunit/Scan/PhpWorkerMemoryLimitTest.php
 php	tests/phpunit/Scan/ProgramEnvironmentsTest.php
-php	tests/phpunit/Scan/ProjectPathResolverTest.php
 php	tests/phpunit/Scan/ProjectScanServiceContractTest.php
 php	tests/phpunit/Scan/ProjectUnitVerificationTest.php
 php	tests/phpunit/Scan/ProjectWriterLeaseTest.php
@@ -940,6 +959,7 @@ php	tests/phpunit/Store/ContributionCacheEntryTest.php
 php	tests/phpunit/Store/ContributionCacheWriteTest.php
 php	tests/phpunit/Store/MigrationRunnerRaceTest.php
 php	tests/phpunit/Store/MigrationRunnerTest.php
+php	tests/phpunit/Store/ProjectRepositoryTest.php
 php	tests/phpunit/Store/ScanBusyExceptionTest.php
 php	tests/phpunit/Store/ScanDurationTest.php
 php	tests/phpunit/Store/ScanGitHeadTest.php
@@ -1189,6 +1209,7 @@ js	hooks/mod/render.band.spec.ts
 js	hooks/mod/render.pane.spec.ts
 js	hooks/mod/render.segments.spec.ts
 js	hooks/mod/render.tsx
+js	hooks/mod/session-baseline.ts
 js	hooks/mod/session.command.spec.ts
 js	hooks/mod/session.end-session.spec.ts
 js	hooks/mod/session.end-turn.spec.ts
@@ -1292,6 +1313,7 @@ js	web/server.ts
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js
 js	workers/typescript/src/__tests__/bundler-module-roots.test.js
+js	workers/typescript/src/__tests__/call-argument-sites.test.js
 js	workers/typescript/src/__tests__/component-source.test.js
 js	workers/typescript/src/__tests__/components.test.js
 js	workers/typescript/src/__tests__/config-ownership.test.js
@@ -1342,6 +1364,7 @@ js	workers/typescript/src/errors.js
 js	workers/typescript/src/exclusions.js
 js	workers/typescript/src/fact-accumulator.js
 js	workers/typescript/src/fallback-groups.js
+js	workers/typescript/src/file-facts.js
 js	workers/typescript/src/input-hashes-parts.js
 js	workers/typescript/src/input-reads.js
 js	workers/typescript/src/language-fact-collector.js
@@ -1349,6 +1372,7 @@ js	workers/typescript/src/launch-facts.js
 js	workers/typescript/src/module-entry.js
 js	workers/typescript/src/nestjs-fact-enricher.js
 js	workers/typescript/src/node-builtins.js
+js	workers/typescript/src/program-cache.js
 js	workers/typescript/src/program-diagnostics.js
 js	workers/typescript/src/program-host.js
 js	workers/typescript/src/project-paths.js

@@ -219,6 +219,10 @@ function renames(node) {
         return [["default", node.name.text]];
     if (ts.isExportAssignment(node) && ts.isIdentifier(node.expression))
         return [[node.expression.text, "default"]];
+    if (isAssignment(node) && ts.isIdentifier(node.right)) {
+        const exported = commonJsExport(node.left);
+        if (exported !== null) return [[node.right.text, exported]];
+    }
     if (
         ts.isVariableDeclaration(node) &&
         node.initializer !== undefined &&
@@ -234,6 +238,42 @@ function renames(node) {
             });
     }
     return [];
+}
+
+/**
+ * Whether a node is a plain `left = right` assignment. A source file, which
+ * declares a CommonJS module with no `module.exports =`, has no parent.
+ */
+function isAssignment(node) {
+    return (
+        node !== undefined &&
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    );
+}
+
+/**
+ * The name another file's `require` reads what is assigned to `target`
+ * under: `default` for `module.exports`, `run` for `exports.run` and
+ * `module.exports.run`; null for anything else.
+ */
+function commonJsExport(target) {
+    if (!ts.isPropertyAccessExpression(target)) return null;
+    if (isModuleExports(target)) return "default";
+    const object = target.expression;
+    return (ts.isIdentifier(object) && object.text === "exports") ||
+        isModuleExports(object)
+        ? target.name.text
+        : null;
+}
+
+function isModuleExports(expression) {
+    return (
+        ts.isPropertyAccessExpression(expression) &&
+        ts.isIdentifier(expression.expression) &&
+        expression.expression.text === "module" &&
+        expression.name.text === "exports"
+    );
 }
 
 function isRequire(expression) {
@@ -308,7 +348,9 @@ function argumentCallees(checker, call) {
 
 /**
  * The function a declaration is or holds: `function f`, `const f = () =>`,
- * `f: function () {}` and `export default (x) => ...`.
+ * `f: function () {}`, `export default (x) => ...`, and the CommonJS
+ * assignments `module.exports = function () {}` (declared as the whole
+ * assignment) and `exports.f = function () {}` (declared as its target).
  */
 function declaredFunction(declaration) {
     if (ts.isFunctionLike(declaration)) return declaration;
@@ -318,7 +360,12 @@ function declaredFunction(declaration) {
             ? declaration.initializer
             : ts.isExportAssignment(declaration)
               ? declaration.expression
-              : undefined;
+              : isAssignment(declaration)
+                ? declaration.right
+                : isAssignment(declaration.parent) &&
+                    declaration.parent.left === declaration
+                  ? declaration.parent.right
+                  : undefined;
     const fn = unwrapExpression(value);
     return fn !== undefined && ts.isFunctionLike(fn) ? fn : undefined;
 }

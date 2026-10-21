@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Discovery\RootGuard;
+use Knossos\Roots\RootGuard;
 
 /**
  * Reads a bounded window of scanned-project source at query time. The first

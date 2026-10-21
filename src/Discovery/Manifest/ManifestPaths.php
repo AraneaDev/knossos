@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Filesystem\RelativePathRule;
+
 /**
  * Path arithmetic every manifest reader and the cross-unit entry-point
  * passes share: a manifest's directory, a candidate entry point resolved
@@ -126,11 +128,35 @@ final class ManifestPaths
         if ($path === '.') {
             return '';
         }
-        if (str_starts_with($value, '/') || in_array('..', explode('/', $path), true)) {
+        if (!RelativePathRule::isContained(trim($value))) {
             return null;
         }
 
         return $path;
+    }
+
+    /**
+     * `$path` with its `.` and `..` segments folded, or null when it climbs
+     * above the project root.
+     */
+    public static function withinProject(string $path): ?string
+    {
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                if ($segments === []) {
+                    return null;
+                }
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+
+        return $segments === [] ? null : implode('/', $segments);
     }
 
     /** Two project-relative path parts joined, either of which may be the root `''`. */

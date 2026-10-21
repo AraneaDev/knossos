@@ -107,12 +107,12 @@ Mutation testing is in no profile, see [adversarial testing](adversarial-testing
 namespaces in four tiers. A namespace may depend on its own tier and the tiers
 below it, never on one above:
 
-| Tier       | Namespaces                                                               |
-| ---------- | ------------------------------------------------------------------------ |
-| foundation | Cancellation, Filesystem, Result, Scanner, Bundle, Classification, Store |
-| analysis   | Discovery, Boundary, Configuration, Git, Reconciliation, Scan            |
-| services   | Query, Maintenance, Runtime, Watch                                       |
-| adapters   | Mcp, Cli (and `Application` above them)                                  |
+| Tier       | Namespaces                                                                      |
+| ---------- | ------------------------------------------------------------------------------- |
+| foundation | Cancellation, Filesystem, Result, Scanner, Bundle, Classification, Store, Roots |
+| analysis   | Discovery, Boundary, Configuration, Git, Reconciliation, Enrichment, Scan       |
+| services   | Query, Maintenance, Runtime, Watch                                              |
+| adapters   | Mcp, Cli (and `Application` above them)                                         |
 
 Each language worker also may not depend on core or on another worker. A
 dependency that breaks either rule is a `boundary_violations` finding, so the

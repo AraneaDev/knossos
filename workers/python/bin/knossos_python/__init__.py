@@ -9,7 +9,8 @@ imports the package in one statement.
 from .ast_helpers import names_main_guard, prefixed_path, router_constructors, top_level_declarations
 from .collector import PythonAstFactCollector
 from .exclusions import Exclusions
-from .module_index import ProjectModuleIndex, module_name
+from .module_index import ProjectModuleIndex
+from .module_layout import module_name
 from .safe_io import (
     RefusedAfterRead,
     UnreadableInput,

@@ -130,19 +130,7 @@ final class ScannerProtocolSession
                 $message = $this->channel->readMessage($deadline, $cancelled);
                 if (!array_key_exists('id', $message)) {
                     if (($message['method'] ?? null) === Protocol::NOTIFICATION_INPUT_HASHES) {
-                        // Merge mutates an owned variable by reference so that
-                        // accumulating many parts stays linear in their total
-                        // size; `$inputHashes ?? []` would be a new expression
-                        // each time and PHP cannot bind a by-reference
-                        // parameter to it.
-                        $inputHashes ??= [];
-                        InputHashesMap::merge($inputHashes, $this->decodeInputHashesPart($message, $manifest));
-                        foreach (self::READS_FIELDS as $field) {
-                            if (array_key_exists($field, $message['params'])) {
-                                $readsParts[$field] ??= [];
-                                InputHashesMap::merge($readsParts[$field], ReadsMap::decode($message['params'][$field]));
-                            }
-                        }
+                        $this->absorbInputHashes($message, $manifest, $inputHashes, $readsParts);
                         continue;
                     }
                     $contribution = $this->decodeContribution($message);
@@ -152,21 +140,7 @@ final class ScannerProtocolSession
                     continue;
                 }
 
-                $this->assertResponseId($message, $id);
-                $this->throwRpcError($message);
-                $result = $message['result'] ?? null;
-                if (!is_array($result) || ($result !== [] && array_is_list($result))) {
-                    throw new WorkerException('WORKER_RESPONSE_INVALID', 'Worker scan result must be an object.');
-                }
-                if ($inputHashes !== null) {
-                    $result = $this->withInputHashesParts($result, $inputHashes, $manifest);
-                }
-                foreach ($readsParts as $field => $parts) {
-                    if ($parts !== null) {
-                        $result = self::withReadsParts($result, $field, $parts);
-                    }
-                }
-                $this->lastScanResult = $result;
+                $this->lastScanResult = $this->finalResult($message, $id, $manifest, $inputHashes, $readsParts);
                 $completed = true;
                 return;
             }
@@ -184,6 +158,60 @@ final class ScannerProtocolSession
                 $this->drainAbandonedScan($id);
             }
         }
+    }
+
+    /**
+     * Merge one input_hashes part, and the reads maps it carries, into what
+     * the request has received so far.
+     *
+     * @param array<string, mixed> $message
+     * @param array<string, string|null>|null $inputHashes null until the first part arrives
+     * @param-out array<string, string|null> $inputHashes
+     * @param array<string, array<string, string|null>|null> $readsParts per reads field, null until a part carries it
+     */
+    private function absorbInputHashes(array $message, ScannerManifest $manifest, ?array &$inputHashes, array &$readsParts): void
+    {
+        // Merge mutates an owned variable by reference so that
+        // accumulating many parts stays linear in their total
+        // size; `$inputHashes ?? []` would be a new expression
+        // each time and PHP cannot bind a by-reference
+        // parameter to it.
+        $inputHashes ??= [];
+        InputHashesMap::merge($inputHashes, $this->decodeInputHashesPart($message, $manifest));
+        foreach (self::READS_FIELDS as $field) {
+            if (array_key_exists($field, $message['params'])) {
+                $readsParts[$field] ??= [];
+                InputHashesMap::merge($readsParts[$field], ReadsMap::decode($message['params'][$field]));
+            }
+        }
+    }
+
+    /**
+     * The request's result, completed with the parts sent ahead of it.
+     *
+     * @param array<string, mixed> $message the response frame
+     * @param array<string, string|null>|null $inputHashes
+     * @param array<string, array<string, string|null>|null> $readsParts
+     * @return array<string, mixed>
+     */
+    private function finalResult(array $message, int $id, ScannerManifest $manifest, ?array $inputHashes, array $readsParts): array
+    {
+        $this->assertResponseId($message, $id);
+        $this->throwRpcError($message);
+        $result = $message['result'] ?? null;
+        if (!is_array($result) || ($result !== [] && array_is_list($result))) {
+            throw new WorkerException('WORKER_RESPONSE_INVALID', 'Worker scan result must be an object.');
+        }
+        if ($inputHashes !== null) {
+            $result = $this->withInputHashesParts($result, $inputHashes, $manifest);
+        }
+        foreach ($readsParts as $field => $parts) {
+            if ($parts !== null) {
+                $result = self::withReadsParts($result, $field, $parts);
+            }
+        }
+
+        return $result;
     }
 
     /**

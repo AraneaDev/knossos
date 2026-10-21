@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\TreeFingerprint;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -22,7 +22,8 @@ use Throwable;
  * {@see ScanLedger}: what every file it changed held before it, and the
  * policy violations those files held before it. Every writer the Claude
  * Code mod can meet scans through it: the pane's rescan, `knossos scan`
- * (and so the live watcher's scan processes) and the MCP `scan_project`.
+ * (and so the live watcher's scan processes), plain `knossos watch`,
+ * `knossos move-project` and the MCP `scan_project`.
  *
  * It takes the project's write lease first and reads the graph under it,
  * then scans under the same lease: no other writer can scan between the
@@ -78,7 +79,7 @@ final readonly class LedgeredScanner implements ProjectScanner
     public function scan(string $root, ScanOptions $options = new ScanOptions()): ResultEnvelope
     {
         $real = realpath($root) ?: $root;
-        $project = (new ProjectPathResolver($this->pdo))->resolve($real);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($real);
         if ($project === null || (string) $project['root_realpath'] !== $real) {
             // A first scan has no project yet, but its id is the root's: wait for
             // another writer's lease on it as a rescan does, and hand the lease on.

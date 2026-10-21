@@ -7,8 +7,8 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
-use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\RootsFile;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootsFile;
 use Knossos\Runtime\RuntimeFactory;
 
 /**

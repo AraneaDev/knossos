@@ -7,8 +7,8 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Mcp\McpServerAssembly;
+use Knossos\Roots\AllowedRoots;
 
 /** `serve`: run the MCP stdio server over the roots this installation may read. */
 final class ServeCommand implements CliCommand

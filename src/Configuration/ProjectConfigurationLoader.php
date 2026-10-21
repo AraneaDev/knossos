@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Knossos\Configuration;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Discovery\JsonConfig;
-use Knossos\Discovery\RootGuard;
+use Knossos\Filesystem\RelativePathRule;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootGuard;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 
 /**
@@ -53,11 +53,65 @@ final class ProjectConfigurationLoader
     /**
      * Resolve the root through the allow-list, then read and validate its configuration.
      *
-     * @param \Knossos\Discovery\AllowedRoots|list<string> $allowedRoots
+     * @param \Knossos\Roots\AllowedRoots|list<string> $allowedRoots
      */
     public static function load(string $requestedRoot, AllowedRoots|array $allowedRoots): ProjectConfiguration
     {
         $root = (new RootGuard($allowedRoots))->resolve($requestedRoot);
+        $file = self::readConfigFile($root);
+        if ($file === null) {
+            return new ProjectConfiguration();
+        }
+        [$path, $data] = $file;
+        self::knownKeys($data, self::ROOT_KEYS, 'project configuration');
+        if (($data['version'] ?? null) !== 1) {
+            throw new DiscoveryException('PROJECT_CONFIG_VERSION_UNSUPPORTED: version must be 1.');
+        }
+        $ignores = self::ignores($data['ignores'] ?? []);
+        $limits = self::limits($data['limits'] ?? []);
+        $retention = self::optionalInteger($data, 'snapshot_retention', 0, 20);
+        $frameworks = self::stringList($data['frameworks'] ?? [], 'frameworks', 20);
+        foreach ($frameworks as $framework) {
+            if (!in_array($framework, self::FRAMEWORKS, true)) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: unsupported framework hint ' . $framework . '.');
+            }
+        }
+        $boundaries = self::boundaries($data['boundaries'] ?? []);
+        $policies = self::policies($data['policies'] ?? []);
+        $budgets = self::budgets($data['quality_budgets'] ?? []);
+        $suppressions = self::stringList($data['dead_code_suppressions'] ?? [], 'dead_code_suppressions', 200);
+        $webRoots = self::webRoots($data['web_roots'] ?? []);
+        $enrichers = self::enrichers($data['enrichers'] ?? []);
+
+        return new ProjectConfiguration(
+            path: basename($path),
+            ignores: $ignores,
+            maxFiles: $limits['max_files'],
+            maxFileBytes: $limits['max_file_bytes'],
+            workerTimeoutMs: $limits['worker_timeout_ms'],
+            workerMemoryMb: $limits['worker_memory_mb'],
+            boundaries: $boundaries,
+            frameworks: array_values(array_unique($frameworks)),
+            snapshotRetention: $retention,
+            policies: $policies,
+            qualityBudgets: $budgets,
+            deadCodeSuppressions: $suppressions,
+            watchScanTimeoutMs: $limits['watch_scan_timeout_ms'],
+            refreshBudgetMs: $limits['refresh_budget_ms'],
+            webRoots: $webRoots,
+            enrichers: $enrichers,
+        );
+    }
+
+    /**
+     * The configuration file's path and decoded contents, or null when the
+     * project has none. `knossos.json` and `knossos.jsonc` side by side are
+     * refused rather than one picked silently.
+     *
+     * @return array{0: string, 1: array<string, mixed>}|null
+     */
+    private static function readConfigFile(string $root): ?array
+    {
         $json = $root . '/knossos.json';
         $jsonc = $root . '/knossos.jsonc';
         if (is_file($json) && is_file($jsonc)) {
@@ -65,7 +119,7 @@ final class ProjectConfigurationLoader
         }
         $path = is_file($jsonc) ? $jsonc : (is_file($json) ? $json : null);
         if ($path === null) {
-            return new ProjectConfiguration();
+            return null;
         }
         $size = filesize($path);
         if (!is_int($size) || $size > 1_000_000) {
@@ -75,52 +129,69 @@ final class ProjectConfigurationLoader
         if (!is_string($contents)) {
             throw new DiscoveryException('PROJECT_CONFIG_UNREADABLE: unable to read project configuration.');
         }
-        $data = JsonConfig::decode($contents, str_ends_with($path, '.jsonc'));
-        self::knownKeys($data, self::ROOT_KEYS, 'project configuration');
-        if (($data['version'] ?? null) !== 1) {
-            throw new DiscoveryException('PROJECT_CONFIG_VERSION_UNSUPPORTED: version must be 1.');
-        }
 
-        $ignores = self::stringList($data['ignores'] ?? [], 'ignores', 100);
+        return [$path, JsonConfig::decode($contents, str_ends_with($path, '.jsonc'))];
+    }
+
+    /**
+     * The ignore patterns, each bounded and project-relative, and compiled now
+     * so an invalid pattern is attributed to the configuration file rather
+     * than surfacing mid-discovery on an arbitrary path.
+     *
+     * @return list<string>
+     */
+    private static function ignores(mixed $value): array
+    {
+        $ignores = self::stringList($value, 'ignores', 100);
         foreach ($ignores as $pattern) {
             if (strlen($pattern) > 500) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: ignore patterns must be at most 500 bytes.');
             }
-            if (str_starts_with($pattern, '/') || str_contains($pattern, "\0") || in_array('..', explode('/', str_replace('\\', '/', $pattern)), true)) {
+            if (!RelativePathRule::isContained($pattern)) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: ignore patterns must be relative and may not contain parent traversal.');
             }
         }
-        // Compile now so an invalid pattern is attributed to the configuration
-        // file rather than surfacing mid-discovery on an arbitrary path.
         new IgnoreMatcher($ignores);
-        $limits = self::object($data['limits'] ?? [], 'limits');
+
+        return $ignores;
+    }
+
+    /**
+     * The `limits` object, every setting bounded and null when absent.
+     *
+     * @return array{max_files: ?int, max_file_bytes: ?int, worker_timeout_ms: ?int, worker_memory_mb: ?int, watch_scan_timeout_ms: ?int, refresh_budget_ms: ?int}
+     */
+    private static function limits(mixed $value): array
+    {
+        $limits = self::object($value, 'limits');
         self::knownKeys($limits, self::LIMIT_KEYS, 'limits');
-        $maxFiles = self::optionalInteger($limits, 'max_files', 1, 100_000);
-        $maxBytes = self::optionalInteger($limits, 'max_file_bytes', 1, 100_000_000);
-        $workerTimeoutMs = self::optionalInteger(
-            $limits,
-            'worker_timeout_ms',
-            WorkerExecutionPolicy::MIN_REQUEST_TIMEOUT_MS,
-            WorkerExecutionPolicy::MAX_REQUEST_TIMEOUT_MS,
-        );
-        $workerMemoryMb = self::optionalInteger(
-            $limits,
-            'worker_memory_mb',
-            64,
-            65536,
-        );
-        // How long one scan of the shared watcher may run: a project key, because the plugin's hooks start that watcher.
-        $watchScanTimeoutMs = self::optionalInteger($limits, 'watch_scan_timeout_ms', 10_000, 3_600_000);
-        // How long refresh_if_stale may rescan inside a query; read when the query runs, not by the scan.
-        $refreshBudgetMs = self::optionalInteger($limits, 'refresh_budget_ms', 0, 600_000);
-        $retention = self::optionalInteger($data, 'snapshot_retention', 0, 20);
-        $frameworks = self::stringList($data['frameworks'] ?? [], 'frameworks', 20);
-        foreach ($frameworks as $framework) {
-            if (!in_array($framework, self::FRAMEWORKS, true)) {
-                throw new DiscoveryException('PROJECT_CONFIG_INVALID: unsupported framework hint ' . $framework . '.');
-            }
-        }
-        $boundaries = self::objectList($data['boundaries'] ?? [], 'boundaries', 50);
+
+        return [
+            'max_files' => self::optionalInteger($limits, 'max_files', 1, 100_000),
+            'max_file_bytes' => self::optionalInteger($limits, 'max_file_bytes', 1, 100_000_000),
+            'worker_timeout_ms' => self::optionalInteger(
+                $limits,
+                'worker_timeout_ms',
+                WorkerExecutionPolicy::MIN_REQUEST_TIMEOUT_MS,
+                WorkerExecutionPolicy::MAX_REQUEST_TIMEOUT_MS,
+            ),
+            'worker_memory_mb' => self::optionalInteger($limits, 'worker_memory_mb', 64, 65536),
+            // How long one scan of the shared watcher may run: a project key, because the plugin's hooks start that watcher.
+            'watch_scan_timeout_ms' => self::optionalInteger($limits, 'watch_scan_timeout_ms', 10_000, 3_600_000),
+            // How long refresh_if_stale may rescan inside a query; read when the query runs, not by the scan.
+            'refresh_budget_ms' => self::optionalInteger($limits, 'refresh_budget_ms', 0, 600_000),
+        ];
+    }
+
+    /**
+     * The boundaries, each uniquely and not reservedly named, with exactly one
+     * of a project-relative `path_prefix` or a `namespace_prefix`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function boundaries(mixed $value): array
+    {
+        $boundaries = self::objectList($value, 'boundaries', 50);
         $seenBoundaryNames = [];
         foreach ($boundaries as $boundary) {
             self::knownKeys($boundary, self::BOUNDARY_KEYS, 'boundary');
@@ -141,14 +212,26 @@ final class ProjectConfigurationLoader
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: boundary must declare either path_prefix or namespace_prefix, not both.');
             }
             $pathPrefix = $boundary['path_prefix'] ?? null;
-            if ($pathPrefix !== null && (!is_string($pathPrefix) || str_starts_with($pathPrefix, '/') || in_array('..', explode('/', str_replace('\\', '/', $pathPrefix)), true))) {
+            if ($pathPrefix !== null && (!is_string($pathPrefix) || !RelativePathRule::isContained($pathPrefix))) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: boundary path_prefix must be project-relative.');
             }
             if (isset($boundary['namespace_prefix']) && !is_string($boundary['namespace_prefix'])) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: boundary namespace_prefix must be a string.');
             }
         }
-        $policies = self::objectList($data['policies'] ?? [], 'policies', 50);
+
+        return $boundaries;
+    }
+
+    /**
+     * The policies, each with an id, a source boundary and at least one
+     * target list, every list bounded.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function policies(mixed $value): array
+    {
+        $policies = self::objectList($value, 'policies', 50);
         foreach ($policies as $policy) {
             self::knownKeys($policy, self::POLICY_KEYS, 'policy');
             if (!is_string($policy['id'] ?? null) || $policy['id'] === '' || !is_string($policy['from_boundary'] ?? null) || $policy['from_boundary'] === '') {
@@ -163,24 +246,46 @@ final class ProjectConfigurationLoader
                 }
             }
         }
-        $budgets = self::object($data['quality_budgets'] ?? [], 'quality_budgets');
+
+        return $policies;
+    }
+
+    /**
+     * The `quality_budgets` object, each budget a known key with a bounded count.
+     *
+     * @return array<string, int>
+     */
+    private static function budgets(mixed $value): array
+    {
+        $budgets = self::object($value, 'quality_budgets');
         self::knownKeys($budgets, self::BUDGET_KEYS, 'quality_budgets');
         $typedBudgets = [];
-        foreach ($budgets as $key => $value) {
-            if (!is_int($value) || $value < 0 || $value > 100_000) {
+        foreach ($budgets as $key => $budget) {
+            if (!is_int($budget) || $budget < 0 || $budget > 100_000) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: quality budget ' . $key . ' must be between 0 and 100000.');
             }
-            $typedBudgets[$key] = $value;
+            $typedBudgets[$key] = $budget;
         }
-        $suppressions = self::stringList($data['dead_code_suppressions'] ?? [], 'dead_code_suppressions', 200);
-        $webRoots = self::webRoots($data['web_roots'] ?? []);
-        $enrichers = self::stringList($data['enrichers'] ?? [], 'enrichers', 32);
+
+        return $typedBudgets;
+    }
+
+    /**
+     * The enricher names the project requests, each once. A project names an
+     * installed enricher and never carries a command.
+     *
+     * @return list<string>
+     */
+    private static function enrichers(mixed $value): array
+    {
+        $enrichers = self::stringList($value, 'enrichers', 32);
         foreach ($enrichers as $enricher) {
             if (preg_match(EnricherDefinition::NAME_PATTERN, $enricher) !== 1) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: enricher ' . $enricher . ' is not a name. A project requests an installed enricher by name and never carries a command.');
             }
         }
-        return new ProjectConfiguration(basename($path), $ignores, $maxFiles, $maxBytes, $workerTimeoutMs, $workerMemoryMb, $boundaries, array_values(array_unique($frameworks)), $retention, $policies, $typedBudgets, $suppressions, $watchScanTimeoutMs, $refreshBudgetMs, $webRoots, array_values(array_unique($enrichers)));
+
+        return array_values(array_unique($enrichers));
     }
 
     /**
@@ -207,7 +312,7 @@ final class ProjectConfigurationLoader
             if (!is_string($folder) || $folder === '') {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: web_roots values must be non-empty strings.');
             }
-            if (str_starts_with($folder, '/') || preg_match('/^[A-Za-z]:/', $folder) === 1 || !str_ends_with($folder, '/') || str_contains($folder, "\0") || in_array('..', explode('/', str_replace('\\', '/', $folder)), true)) {
+            if (!str_ends_with($folder, '/') || !RelativePathRule::isContained($folder)) {
                 throw new DiscoveryException('PROJECT_CONFIG_UNSAFE: web_roots folders must be project-relative, end with /, and may not contain parent traversal.');
             }
         }

@@ -4,13 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Cli;
 
-use InvalidArgumentException;
-use Knossos\Cancellation\ScanCancelledException;
-use Knossos\Discovery\DiscoveryException;
-use Knossos\Scan\ScanSnapshotChangedException;
-use Knossos\Scanner\Worker\WorkerException;
-use Knossos\Store\ScanBusyException;
-use PDOException;
+use Knossos\Runtime\ErrorCode;
 use Throwable;
 
 /**
@@ -45,30 +39,30 @@ final class CliErrorRenderer
     }
 
     /**
-     * Stable diagnostic code for a throwable, independent of rendering. Exposed
-     * so the classification can be asserted directly without a stream.
+     * Stable diagnostic code for a throwable, independent of rendering: the
+     * one {@see ErrorCode} gives every adapter. Exposed so the classification
+     * can be asserted directly without a stream.
      */
     public static function diagnosticCode(Throwable $error): string
     {
-        return match (true) {
-            $error instanceof WorkerException => $error->diagnosticCode,
-            $error instanceof ScanBusyException => 'KNOSSOS_SCAN_BUSY',
-            $error instanceof ScanCancelledException => 'KNOSSOS_SCAN_CANCELLED',
-            // Its own code rather than the runtime default: a tree that moved
-            // under a scan is an expected, retryable condition an automated
-            // caller should be able to recognise without parsing prose.
-            $error instanceof ScanSnapshotChangedException => 'KNOSSOS_SCAN_SNAPSHOT_CHANGED',
-            $error instanceof DiscoveryException => 'KNOSSOS_DISCOVERY_ERROR',
-            $error instanceof PDOException => 'KNOSSOS_STORAGE_ERROR',
-            $error instanceof InvalidArgumentException => 'KNOSSOS_INVALID_ARGUMENT',
-            default => 'KNOSSOS_RUNTIME_ERROR',
-        };
+        return ErrorCode::for($error);
     }
-    /** Render a failure as a stable diagnostic code plus a human message. */
 
+    /**
+     * The message shown beside the code. The CLI runs for the operator on
+     * their own machine, so it shows the detail an MCP client is spared (a
+     * database or unexpected failure's own text); everywhere else it says
+     * what every adapter says.
+     */
+    public static function message(Throwable $error): string
+    {
+        return ErrorCode::withholdsDetail($error) ? $error->getMessage() : ErrorCode::publicMessage($error);
+    }
+
+    /** Render a failure as a stable diagnostic code plus a human message. */
     public function render(Throwable $error): int
     {
-        fwrite($this->stream, self::diagnosticCode($error) . ': ' . $error->getMessage() . PHP_EOL);
+        fwrite($this->stream, self::diagnosticCode($error) . ': ' . self::message($error) . PHP_EOL);
         return CliCommand::EXIT_ERROR;
     }
 }

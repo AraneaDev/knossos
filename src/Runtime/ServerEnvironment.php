@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Runtime;
 
-use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\RootGuard;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootGuard;
 use PDO;
 
 /**

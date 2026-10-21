@@ -6,7 +6,7 @@ namespace Knossos\Scan;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Enrichment\EnrichmentPhase;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
@@ -38,7 +38,7 @@ final class ProjectScanService implements ProjectScanner
     private readonly EnrichmentPhase $enrichment;
 
     /**
-     * @param \Knossos\Discovery\AllowedRoots|list<string> $allowedRoots
+     * @param \Knossos\Roots\AllowedRoots|list<string> $allowedRoots
      * @param ?GitHeadResolver $gitHead injected only so a test can drive the
      *        commit capture without a subprocess; production builds its own.
      * @param ?DirtyPathResolver $dirtyPaths injected for the same reason.
@@ -48,7 +48,7 @@ final class ProjectScanService implements ProjectScanner
     public function __construct(
         private PDO $pdo,
         string $installationRoot,
-        \Knossos\Discovery\AllowedRoots|array $allowedRoots,
+        \Knossos\Roots\AllowedRoots|array $allowedRoots,
         ?GitHeadResolver $gitHead = null,
         ?DirtyPathResolver $dirtyPaths = null,
         ?EnrichersFile $enrichers = null,
@@ -335,7 +335,7 @@ final class ProjectScanService implements ProjectScanner
      *
      * @param array<string, mixed> $projectConfig
      * @param list<\Knossos\Scanner\Protocol\ScanContribution> $contributions every language's, then the file components (NamedFiles), then the enrichers'
-     * @param list<\Knossos\Discovery\EnricherDefinition> $enrichers the active enrichers, for the scanner-set hash
+     * @param list<\Knossos\Configuration\EnricherDefinition> $enrichers the active enrichers, for the scanner-set hash
      */
     private static function fullScanRequest(
         ScanPreparation $preparation,
@@ -517,12 +517,8 @@ final class ProjectScanService implements ProjectScanner
         if ($preparation->explicitBoundaries !== []) {
             return null;
         }
-        $statement = $this->pdo->prepare(
-            'SELECT p.name, p.config_json, p.active_scan_id, s.scanner_set_hash FROM projects p JOIN scans s ON s.id = p.active_scan_id WHERE p.id = :id',
-        );
-        $statement->execute(['id' => $plan->projectId]);
-        $row = $statement->fetch();
-        if ($row === false) {
+        $row = (new ProjectRepository($this->pdo))->withActiveScan($plan->projectId);
+        if ($row === null) {
             return null;
         }
         if ($name !== null && $name !== (string) $row['name']) {

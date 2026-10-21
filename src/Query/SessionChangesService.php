@@ -8,9 +8,9 @@ use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Git\GitWorkingTreeProvider;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
-use Knossos\Scan\ProjectPathResolver;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanLedgerSpan;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -91,7 +91,7 @@ final readonly class SessionChangesService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = self::envelope($absolute, $since);
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }
@@ -126,7 +126,7 @@ final readonly class SessionChangesService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = self::envelope($absolute, 'HEAD');
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }
