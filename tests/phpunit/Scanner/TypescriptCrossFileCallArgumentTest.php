@@ -40,7 +40,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         try {
             $contributions = iterator_to_array($client->scan([
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-cross-file-call-arguments',
-                'files' => ['src/cjs/deck.js', 'src/cjs/ejector.js', 'src/cjs/rewinder.js', 'src/cjs/winder.js', 'src/devices.js', 'src/flash.js', 'src/handlers.js', 'src/lib/frame.js', 'src/lib/index.js', 'src/shoot.js', 'src/steps.js', 'src/typed.ts'],
+                'files' => ['src/cjs/deck.js', 'src/cjs/ejector.js', 'src/cjs/lib.js', 'src/cjs/rewinder.js', 'src/cjs/winder.js', 'src/devices.js', 'src/flash.js', 'src/handlers.js', 'src/lib/frame.js', 'src/lib/index.js', 'src/shoot.js', 'src/steps.js', 'src/typed.ts'],
                 'config_files' => ['tsconfig.json'],
             ]), false);
         } finally {
@@ -67,7 +67,8 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         // `flash` hands it a camera, and `items.clear()` on a `Map` is no
         // member of this project. `recorder`'s `idle` is called by nothing.
         // A CommonJS function expression has no node of its own, so what its
-        // body calls is its module's.
+        // body calls is its module's. Calling a module that assigns no
+        // `module.exports` adds nothing.
         self::assertSame([
             'certain ts:function:src/typed.ts#stopTyped -> recorder.{object}@3:12::stop []',
             'probable ts:function:src/cjs/winder.js#wind -> camera.{object}@11:12::hold {"inferred_from":"call_argument"}',

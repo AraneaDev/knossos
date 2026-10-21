@@ -240,9 +240,13 @@ function renames(node) {
     return [];
 }
 
-/** Whether a node is a plain `left = right` assignment. */
+/**
+ * Whether a node is a plain `left = right` assignment. A source file, which
+ * declares a CommonJS module with no `module.exports =`, has no parent.
+ */
 function isAssignment(node) {
     return (
+        node !== undefined &&
         ts.isBinaryExpression(node) &&
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken
     );
