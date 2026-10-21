@@ -3,16 +3,12 @@
  * request needs, builds or reuses each program, emits one contribution per
  * requested file, and attributes every read to the files it was made for.
  * What a file's facts are is the fact collector's concern
- * (language-fact-collector.js); how the scan reads the tree is the
- * project-paths, source-reading and input-reads modules'.
+ * (language-fact-collector.js, run per file by file-facts.js); which programs
+ * stay built between requests is program-cache.js's; how the scan reads the
+ * tree is the project-paths, source-reading and input-reads modules'.
  */
 import path from "node:path";
-import ts from "typescript";
-import {
-    callArgumentPairs,
-    callSitesInto,
-    destructuresUntyped,
-} from "./call-argument-sites.js";
+import { callArgumentPairs } from "./call-argument-sites.js";
 import { isStackOverflow } from "./errors.js";
 import { BUILT_IN_EXCLUSIONS, Exclusions } from "./exclusions.js";
 import {
@@ -23,18 +19,18 @@ import {
     fallbackMembers,
     fallbackProgramKey,
 } from "./fallback-groups.js";
+import { collectFile, OWNER_KEY_PREFIX } from "./file-facts.js";
 import {
     InputReadRecorder,
-    inRootFile,
     ReadAttribution,
     recordUnreadSourceFiles,
 } from "./input-reads.js";
-import { TypeScriptLanguageFactCollector } from "./language-fact-collector.js";
 import {
     anchoredAt,
     programDiagnostics,
     programWideCarrier,
 } from "./program-diagnostics.js";
+import { ProgramCache } from "./program-cache.js";
 import {
     createRestrictedProgram,
     outputSources,
@@ -54,19 +50,6 @@ import {
     validateRequestedFiles,
 } from "./request-validation.js";
 import { parsedContentHashes } from "./source-caches.js";
-
-// Every contribution's owner key is this prefix and the file's project path.
-const OWNER_KEY_PREFIX = "knossos.typescript:file:";
-
-// Each retained ts.Program holds its own parsed default library and type
-// checker (~100-120MB). A repo with many tsconfigs builds one program per
-// config within a single scan; retaining them all at once exhausts the
-// worker's --max-old-space-size cap. Bound the cache so peak live programs
-// stays small while still allowing incremental reuse across scans in watch
-// mode. A program is only needed until its files are emitted, so evicting the
-// least-recently-used program never affects correctness — an evicted config is
-// simply rebuilt from scratch on its next scan.
-const MAX_CACHED_PROGRAMS = 2;
 
 /**
  * Whether a config's program must be built for this request.
@@ -354,13 +337,10 @@ export class TypeScriptScanner {
      *   `--expose-gc` provides, and does nothing when the flag was not given.
      */
     constructor({ observeHostPath, collectGarbage } = {}) {
-        this.programCache = new Map();
+        this.programCache = new ProgramCache(
+            collectGarbage ?? (() => globalThis.gc?.()),
+        );
         this.observeHostPath = observeHostPath;
-        this.collectGarbage = collectGarbage ?? (() => globalThis.gc?.());
-        // Reset per request; see #cacheProgram.
-        this.programsBuiltThisRequest = 0;
-        // Set when a program leaves the cache; see #collectReleasedPrograms.
-        this.releasedSinceCollection = false;
     }
 
     /**
@@ -452,7 +432,7 @@ export class TypeScriptScanner {
         });
         let programs = 0;
         let programsReused = 0;
-        this.programsBuiltThisRequest = 0;
+        this.programCache.beginRequest();
         const tally = (outcome) => {
             if (outcome === undefined) return;
             ++programs;
@@ -595,8 +575,7 @@ export class TypeScriptScanner {
     #scanProgram(key, parsed, request) {
         const { root, maxFileBytes, reads, emitted, emit, exclusions } =
             request;
-        this.#reserveProgramSlot(key);
-        this.#collectReleasedPrograms();
+        this.programCache.reserve(key);
         const oldProgram = this.programCache.get(key);
         let program;
         try {
@@ -608,7 +587,7 @@ export class TypeScriptScanner {
                 reads,
                 exclusions,
             );
-            this.#cacheProgram(key, program);
+            this.programCache.store(key, program);
             recordUnreadSourceFiles(root, program, reads, maxFileBytes);
             this.#emitProgram(
                 program,
@@ -666,72 +645,6 @@ export class TypeScriptScanner {
             return undefined;
         }
         return { reused: oldProgram !== undefined };
-    }
-
-    // Free a slot before the next program is built. A program is constructed
-    // while the cache still holds its entries, so inserting first and evicting
-    // after leaves MAX_CACHED_PROGRAMS + 1 programs resident at the peak — the
-    // overshoot the cap exists to prevent, and enough to OOM the worker's
-    // 512 MB heap on a project with three tsconfigs over the same sources.
-    //
-    // The entry for `key` is never evicted: that program is handed back to
-    // createRestrictedProgram for incremental reuse, so dropping it would
-    // trade memory for a full rebuild of the very config being scanned.
-    #reserveProgramSlot(key) {
-        const limit = Math.max(0, MAX_CACHED_PROGRAMS - 1);
-        for (const oldest of [...this.programCache.keys()]) {
-            if (this.programCache.size <= limit) break;
-            if (oldest === key) continue;
-            this.programCache.delete(oldest);
-            this.releasedSinceCollection = true;
-        }
-    }
-
-    // A released program is only garbage until V8 collects it, and under the
-    // worker's 2 GB heap cap V8 has no reason to: on a project with nine
-    // programs per request the worker grew to 1.7 GB resident with under
-    // 0.5 GB live, and a host memory guard (earlyoom) SIGTERMed it as the
-    // largest process on the machine. Collecting before the next build keeps
-    // the process near its live set, about two programs: on that project the
-    // peak fell to 1.2 GB with no measurable change in scan time. Only when
-    // something was released, so a request within the cache's bound pays
-    // nothing.
-    #collectReleasedPrograms() {
-        if (!this.releasedSinceCollection) return;
-        this.releasedSinceCollection = false;
-        this.collectGarbage();
-    }
-
-    /**
-     * Insert a program as most-recently-used, or release the cache entirely
-     * once this request has outgrown it.
-     *
-     * The cache can only ever hit when a request builds no more programs than
-     * it holds. Above that it is evicted down to the last programs built,
-     * while the next request starts again at the first config, so it never
-     * hits: measured on a project with six programs per request, reuse was
-     * zero across six consecutive scans of an unchanged tree. Each retained
-     * program carries its own default library and type checker, so that was
-     * ~100-120MB apiece held back from a heap whose peak was already 1.35GB,
-     * bought nothing, and made the scan likelier to die of heap exhaustion.
-     *
-     * So a request that stays within the cap keeps its programs, and one that
-     * outgrows it drops them rather than paying to hold what it cannot use.
-     */
-    #cacheProgram(key, program) {
-        this.programsBuiltThisRequest += 1;
-        if (this.programsBuiltThisRequest > MAX_CACHED_PROGRAMS) {
-            this.programCache.clear();
-            this.releasedSinceCollection = true;
-            return;
-        }
-        this.programCache.delete(key);
-        this.programCache.set(key, program);
-        while (this.programCache.size > MAX_CACHED_PROGRAMS) {
-            const oldest = this.programCache.keys().next().value;
-            this.programCache.delete(oldest);
-            this.releasedSinceCollection = true;
-        }
     }
 
     /** @param {ScanRequest} request */
@@ -818,120 +731,6 @@ export class TypeScriptScanner {
             emit(contribution);
             emitted.add(relative);
         }
-    }
-}
-
-/**
- * One requested file's contribution, without its hash or reads.
- *
- * Collection is isolated per file: a single adversarial or minified file can
- * overflow the visitor recursion (RangeError), and one bad file must degrade
- * to a diagnostic, not discard the facts of every other file in the request.
- *
- * @param {ScanRequest} request
- * @param {{tracker: {checker: ts.TypeChecker}, probes: string[], belongs: (relative: string) => boolean}} reads the
- *   checker that notes declaration files, where the paths the file's facts
- *   asked about beyond its imports are listed, and which files the program
- *   describes (see programMembers)
- * @param {{own: object[], programWide: object[]}} diagnostics the compiler's
- *   diagnostics on this file, and the program-wide ones it carries
- */
-function collectFile(
-    { root, exclusions },
-    program,
-    sourceFile,
-    { tracker, probes, belongs },
-    diagnostics,
-) {
-    const relative = relativeInside(root, sourceFile.fileName);
-    try {
-        const collector = new FactCollector(root, sourceFile, tracker.checker, {
-            options: program.getCompilerOptions(),
-            exclusions,
-            sourceFileAt: (fileName) => {
-                probes.push(fileName);
-                return program.getSourceFile(fileName);
-            },
-            fileExists: (fileName) => {
-                probes.push(fileName);
-                return inRootFile(root, fileName);
-            },
-            // Whether the compiler resolved an import's specifier to any
-            // file, a dependency's included. An internal compiler method.
-            resolved: (specifier) =>
-                program.getResolvedModuleFromModuleSpecifier(
-                    specifier,
-                    sourceFile,
-                )?.resolvedModule !== undefined,
-            // The calls of other files that hand this file's functions an
-            // object literal, and the read each such file becomes.
-            callSitesInto: () =>
-                destructuresUntyped(sourceFile)
-                    ? callSitesInto(
-                          program,
-                          root,
-                          exclusions,
-                          sourceFile.fileName,
-                          belongs,
-                      )
-                    : [],
-            readCaller: (callerFile) => tracker.files.add(callerFile),
-        });
-        collector.collect();
-        return {
-            owner_key: `${OWNER_KEY_PREFIX}${relative}`,
-            nodes: collector.nodes,
-            edges: collector.edges,
-            diagnostics: [...diagnostics.own, ...diagnostics.programWide],
-        };
-    } catch (error) {
-        return {
-            owner_key: `${OWNER_KEY_PREFIX}${relative}`,
-            nodes: [],
-            edges: [],
-            diagnostics: [
-                {
-                    severity: "error",
-                    code: "TS_INTERNAL_ERROR",
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                    evidence: { path: relative, start_line: 1, end_line: 1 },
-                },
-                ...diagnostics.programWide,
-            ],
-        };
-    }
-}
-
-class FactCollector {
-    constructor(root, sourceFile, checker, project = {}) {
-        this.language = new TypeScriptLanguageFactCollector(
-            root,
-            sourceFile,
-            checker,
-            project,
-        );
-    }
-
-    get nodes() {
-        return this.language.nodes;
-    }
-
-    get edges() {
-        return this.language.edges;
-    }
-
-    collect() {
-        this.language.initialize();
-        this.visit(this.language.sourceFile);
-        this.language.finish();
-    }
-
-    visit(node) {
-        const pushed = this.language.enter(node);
-        this.language.handle(node);
-        ts.forEachChild(node, (child) => this.visit(child));
-        this.language.leave(pushed);
     }
 }
 
