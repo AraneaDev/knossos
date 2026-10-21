@@ -79,37 +79,61 @@ final class LanguageRunAccumulator
         $this->metadata = self::mergeScanResult($this->metadata, $batchResult);
     }
 
-    /** @return list<ScanContribution> every contribution kept, in arrival order */
+    /**
+     * The contributions kept so far.
+     *
+     * @return list<ScanContribution> every contribution kept, in arrival order
+     */
     public function scanned(): array
     {
         return $this->scanned;
     }
 
-    /** @return array<string, mixed> the language's merged scanner metadata */
+    /**
+     * The scanner metadata of every batch so far, merged.
+     *
+     * @return array<string, mixed> the language's merged scanner metadata
+     */
     public function metadata(): array
     {
         return $this->metadata;
     }
 
-    /** @return array<string, array{reads: array<string, ?string>, group: ?string, attributed: bool}> */
+    /**
+     * What each kept contribution read, keyed by the file that owns it.
+     *
+     * @return array<string, array{reads: array<string, ?string>, group: ?string, attributed: bool}>
+     */
     public function readsByOwner(): array
     {
         return $this->readsByOwner;
     }
 
-    /** @return array<string, array<string, ?string>> */
+    /**
+     * The shared read sets the owners name.
+     *
+     * @return array<string, array<string, ?string>>
+     */
     public function groups(): array
     {
         return $this->groups;
     }
 
-    /** @return array<string, string> */
+    /**
+     * The environment of every program the requests built.
+     *
+     * @return array<string, string>
+     */
     public function environments(): array
     {
         return $this->environments;
     }
 
-    /** @return array<string, string|null> */
+    /**
+     * Reads of anything discovery did not hash, for the pre-commit re-read.
+     *
+     * @return array<string, string|null>
+     */
     public function undiscovered(): array
     {
         return $this->undiscovered->all();
