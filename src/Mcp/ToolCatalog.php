@@ -6,8 +6,8 @@ namespace Knossos\Mcp;
 
 use Knossos\Enrichment\Profiles;
 use Knossos\Query\AbstractArchitectureQueryService;
-use Knossos\Query\ConfidenceRank;
 use Knossos\Query\QueryBounds;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 
 /**
  * The MCP tool catalogue: every tool this server advertises, and its input schema.

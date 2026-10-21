@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Closure;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use PDO;
 use PDOStatement;

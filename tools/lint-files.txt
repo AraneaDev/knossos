@@ -225,7 +225,6 @@ php	src/Query/ChurnService.php
 php	src/Query/ComponentDetailService.php
 php	src/Query/ComponentQueryService.php
 php	src/Query/CompositionRoots.php
-php	src/Query/ConfidenceRank.php
 php	src/Query/ConstructedClasses.php
 php	src/Query/DashboardService.php
 php	src/Query/DeadCodeAnalysis.php
@@ -391,6 +390,7 @@ php	src/Scan/TreeFingerprint.php
 php	src/Scan/UndiscoveredInputVerifier.php
 php	src/Scan/UndiscoveredInputs.php
 php	src/Scanner/Protocol/Confidence.php
+php	src/Scanner/Protocol/ConfidenceRank.php
 php	src/Scanner/Protocol/Diagnostic.php
 php	src/Scanner/Protocol/EdgeFact.php
 php	src/Scanner/Protocol/Evidence.php
@@ -674,7 +674,6 @@ php	tests/phpunit/Query/ChangeImpactRankingTest.php
 php	tests/phpunit/Query/ComponentBoundsTest.php
 php	tests/phpunit/Query/ComponentDetailServiceTest.php
 php	tests/phpunit/Query/ComponentUsageTest.php
-php	tests/phpunit/Query/ConfidenceRankTest.php
 php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CyclesTest.php
@@ -916,6 +915,7 @@ php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
 php	tests/phpunit/Scanner/PhpWorkerScopeAndRouteFactsTest.php
 php	tests/phpunit/Scanner/PropertyReceiverTest.php
+php	tests/phpunit/Scanner/Protocol/ConfidenceRankTest.php
 php	tests/phpunit/Scanner/Protocol/ConfidenceTest.php
 php	tests/phpunit/Scanner/Protocol/DiagnosticTest.php
 php	tests/phpunit/Scanner/Protocol/EdgeFactTest.php

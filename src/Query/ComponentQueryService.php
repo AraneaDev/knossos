@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\NodeQueries;
 use PDO;

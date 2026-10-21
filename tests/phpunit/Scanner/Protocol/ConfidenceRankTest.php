@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Query;
+namespace Knossos\Tests\Phpunit\Scanner\Protocol;
 
 use InvalidArgumentException;
 use Knossos\Mcp\ToolCatalog;
-use Knossos\Query\ConfidenceRank;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -17,7 +17,7 @@ use PHPUnit\Framework\Attributes\Group;
 /** One confidence vocabulary: the names, their ranks in PHP and in SQL, and the schema's list. */
 final class ConfidenceRankTest extends KnossosTestCase
 {
-    #[Group('query')]
+    #[Group('scanner-protocol')]
     public function testEachNameRanksAndAnUnknownOneIsRefused(): void
     {
         assertSame([1, 2, 3], array_map(ConfidenceRank::rank(...), ['possible', 'probable', 'certain']));
@@ -26,7 +26,7 @@ final class ConfidenceRankTest extends KnossosTestCase
     }
 
     /** The SQL ranks each name as NAMES does, and a name it does not know as the lowest. */
-    #[Group('query')]
+    #[Group('scanner-protocol')]
     public function testTheSqlRankAgreesWithTheNames(): void
     {
         $pdo = new PDO('sqlite::memory:');
@@ -39,7 +39,7 @@ final class ConfidenceRankTest extends KnossosTestCase
     }
 
     /** Every schema property over confidence names lists the vocabulary. */
-    #[Group('query')]
+    #[Group('scanner-protocol')]
     public function testEveryToolSchemaListsTheVocabulary(): void
     {
         $lists = [];

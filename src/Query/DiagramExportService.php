@@ -9,6 +9,7 @@ use Knossos\Query\Diagram\DiagramRenderer;
 use Knossos\Query\Diagram\MermaidRenderer;
 use Knossos\Query\Diagram\PlantUmlRenderer;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 
 /**
  * Renders a slice of the graph as Mermaid or PlantUML source.

@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 use PDO;

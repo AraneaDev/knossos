@@ -8,6 +8,7 @@ use Closure;
 use InvalidArgumentException;
 use Knossos\Boundary\BoundaryAliases;
 use Knossos\Boundary\BoundaryReferences;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\ProjectRepository;
 use PDO;
