@@ -7,7 +7,15 @@ from collections.abc import Callable
 from typing import Any
 
 from .accumulator import PythonFactAccumulator
-from .ast_helpers import decorator_short, dotted, keyword_string, positional_string, prefixed_path, ref
+from .ast_helpers import (
+    decorator_short,
+    dotted,
+    keyword_string,
+    module_statements,
+    positional_string,
+    prefixed_path,
+    ref,
+)
 
 
 class PythonFrameworkRoleEnricher:
@@ -365,6 +373,101 @@ class DjangoFactEnricher:
         self.project_module = project_module
         # The module-level variables bound to a DRF router.
         self.drf_routers: set[str] = set()
+        # The serializer class a Django REST framework view declares, by view.
+        self.serializer_classes: dict[str, str] = {}
+
+    @staticmethod
+    def imports_django(tree: ast.Module) -> bool:
+        """Whether the module imports Django or its REST framework at its top level."""
+        for statement in module_statements(tree):
+            if isinstance(statement, ast.Import):
+                names = [alias.name for alias in statement.names]
+            elif isinstance(statement, ast.ImportFrom) and statement.level == 0:
+                names = [statement.module or ""]
+            else:
+                continue
+            if any(name.split(".")[0] in {"django", "rest_framework"} for name in names):
+                return True
+        return False
+
+    def remember_serializer(self, canonical: str, node: ast.ClassDef) -> None:
+        """Record the project class a view's ``serializer_class = X`` names, wherever in the body it stands."""
+        for item in node.body:
+            if (
+                isinstance(item, ast.Assign)
+                and len(item.targets) == 1
+                and isinstance(item.targets[0], ast.Name)
+                and item.targets[0].id == "serializer_class"
+            ):
+                name = dotted(item.value)
+                resolved = self.resolve_name(name, "class") if name else None
+                if resolved and resolved.startswith("py:class:"):
+                    self.serializer_classes[canonical] = resolved.removeprefix("py:class:")
+                    return
+
+    @staticmethod
+    def validated_field(node: ast.AST) -> tuple[str, str] | None:
+        """A field read off a serializer's ``validated_data``: the serializer and its ``validate_<field>``.
+
+        Django REST framework stores the return of ``validate_<field>`` as the
+        field's validated value, so ``serializer.validated_data["method"]``
+        hands the view whatever ``validate_method`` chose, a function to call
+        among them. The view depends on that method as it would on a call.
+        """
+        receiver: ast.AST | None = None
+        field: ast.AST | None = None
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            receiver, field = node.func.value, node.args[0] if node.args else None
+        elif isinstance(node, ast.Subscript):
+            receiver, field = node.value, node.slice
+        if not (
+            isinstance(receiver, ast.Attribute)
+            and receiver.attr == "validated_data"
+            and isinstance(field, ast.Constant)
+            and isinstance(field.value, str)
+            and field.value.isidentifier()
+        ):
+            return None
+        serializer = dotted(receiver.value)
+        return (serializer, f"validate_{field.value}") if serializer else None
+
+    # A model manager's lookups that hand back one instance of the model, and
+    # the queryset steps that may come between: `Document.objects.filter(...).first()`.
+    MANAGER_LOOKUPS = frozenset({"get", "create", "first", "last", "latest", "earliest"})
+    QUERYSET_STEPS = frozenset(
+        {
+            "all",
+            "filter",
+            "exclude",
+            "order_by",
+            "select_related",
+            "prefetch_related",
+            "only",
+            "defer",
+            "using",
+            "annotate",
+            "distinct",
+            "select_for_update",
+            "reverse",
+        }
+    )
+
+    @classmethod
+    def manager_model(cls, call: ast.Call) -> str | None:
+        """The model as written in ``<Model>.objects.<lookup>(...)``, a lookup returning one instance of it."""
+        func = call.func
+        if not isinstance(func, ast.Attribute) or func.attr not in cls.MANAGER_LOOKUPS:
+            return None
+        current = func.value
+        while (
+            isinstance(current, ast.Call)
+            and isinstance(current.func, ast.Attribute)
+            and current.func.attr in cls.QUERYSET_STEPS
+        ):
+            current = current.func.value
+        if not isinstance(current, ast.Attribute) or current.attr != "objects":
+            return None
+        return dotted(current.value)
 
     def enrich_assignment(
         self, variable: str, value_node: ast.AST, assignment: ast.Assign, module_level: bool = True

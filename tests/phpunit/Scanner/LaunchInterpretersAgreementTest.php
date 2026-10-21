@@ -16,7 +16,7 @@ final class LaunchInterpretersAgreementTest extends KnossosTestCase
         $sources = [
             'workers/php/src/FactCollector.php' => '/INTERPRETERS\s*=\s*\[(.*?)\];/s',
             'workers/typescript/src/launch-facts.js' => '/INTERPRETERS\s*=\s*new Set\(\[(.*?)\]\)/s',
-            'workers/python/bin/knossos_python/collector.py' => '/^INTERPRETERS\s*=\s*\{(.*?)\}/ms',
+            'workers/python/bin/knossos_python/launches.py' => '/^INTERPRETERS\s*=\s*\{(.*?)\}/ms',
             'workers/rust/src/visit/launches.rs' => '/INTERPRETERS:\s*\[&str;\s*\d+\]\s*=\s*\[(.*?)\];/s',
         ];
         $lists = [];

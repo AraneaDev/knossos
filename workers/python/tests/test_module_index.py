@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import ast
+import sys
 from types import ModuleType
+
+import pytest
 
 
 def test_module_name_strips_source_root_segments(worker: ModuleType) -> None:
@@ -106,6 +110,27 @@ def test_module_declarations_are_parsed_and_memoized(worker: ModuleType, project
     assert "CONST" not in declarations  # module-level variables are not declarations
     # Memoized: the same dict object is returned on the second call.
     assert index.module_declarations("shop.service") is declarations
+
+
+def test_a_failed_declaration_is_not_memoised_as_empty(worker: ModuleType, project, monkeypatch) -> None:
+    # The first importer's declaration step raises. Memoising the empty
+    # placeholder left behind would answer the second importer with no
+    # declarations at all, silently.
+    root = project({"shop/__init__.py": "", "shop/service.py": "class Gateway:\n    pass\n"})
+    index = worker.ProjectModuleIndex(root, 2_000_000)
+    module_index = sys.modules["knossos_python.module_index"]
+    real = module_index.top_level_declarations
+    failures = [RecursionError("too deep")]
+
+    def failing_once(tree: ast.Module, name: str) -> dict[str, str]:
+        if failures:
+            raise failures.pop()
+        return real(tree, name)
+
+    monkeypatch.setattr(module_index, "top_level_declarations", failing_once)
+    with pytest.raises(RecursionError):
+        index.module_declarations("shop.service")
+    assert index.module_declarations("shop.service") == {"Gateway": "py:class:shop.service.Gateway"}
 
 
 def test_module_declarations_tolerate_broken_targets(worker: ModuleType, project) -> None:
