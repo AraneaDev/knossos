@@ -16,6 +16,68 @@ declare(strict_types=1);
  */
 require __DIR__ . '/lib/coverage-budgets.php';
 
+/**
+ * Every top-level directory under src/, and the PHP component whose floor its
+ * files count toward. A directory missing here stops the report: see
+ * componentOf().
+ */
+const SOURCE_COMPONENTS = [
+    'Boundary' => 'query-analysis',
+    'Bundle' => 'bundle-git-watch',
+    'Cancellation' => 'scanner-runtime',
+    'Classification' => 'query-analysis',
+    'Cli' => 'bundle-git-watch',
+    'Configuration' => 'discovery-config',
+    'Discovery' => 'discovery-config',
+    'Enrichment' => 'bundle-git-watch',
+    'Filesystem' => 'bundle-git-watch',
+    'Git' => 'bundle-git-watch',
+    'Maintenance' => 'maintenance-runtime',
+    'Mcp' => 'transport',
+    'Query' => 'query-analysis',
+    'Reconciliation' => 'reconciliation',
+    'Result' => 'query-analysis',
+    'Roots' => 'discovery-config',
+    'Runtime' => 'maintenance-runtime',
+    'Scan' => 'scanner-runtime',
+    'Scanner' => 'scanner-runtime',
+    'Store' => 'storage',
+    'Watch' => 'bundle-git-watch',
+];
+
+/**
+ * Files moved out of their directory to break namespace cycles, counted where
+ * they always were, so no component's floor shifts.
+ */
+const MOVED_FILES = [
+    'src/Scan/TreeFingerprint.php' => 'bundle-git-watch',
+    'src/Store/ContributionCacheEntry.php' => 'reconciliation',
+    'src/Store/ScanBusyException.php' => 'scanner-runtime',
+    'src/Scan/ScanLedger.php' => 'query-analysis',
+    'src/Scan/ScanLedgerSpan.php' => 'query-analysis',
+    'src/Scan/ScanTarget.php' => 'query-analysis',
+];
+
+/**
+ * The component a measured file, relative to the root, counts toward; null for
+ * a file under src/ whose top-level entry SOURCE_COMPONENTS does not name.
+ */
+function componentOf(string $relative): ?string
+{
+    if (isset(MOVED_FILES[$relative])) {
+        return MOVED_FILES[$relative];
+    }
+    if ($relative === 'bin/http-router.php') {
+        return 'transport';
+    }
+    if (str_starts_with($relative, 'workers/php/src/')) {
+        return 'php-scanner';
+    }
+    $top = explode('/', substr($relative, strlen('src/')), 2)[0];
+
+    return SOURCE_COMPONENTS[$top] ?? null;
+}
+
 $root = dirname(__DIR__);
 $budgetPath = null;
 require_once __DIR__ . '/lib/cli-arguments.php';
@@ -99,6 +161,8 @@ $covered = 0;
 $executable = 0;
 $files = [];
 $components = [];
+/** @var array<string, true> $unmapped top-level src/ entries no component claims */
+$unmapped = [];
 /** @var array<string, array<int, int>> $cloverFiles per-file line hits for the Clover report */
 $cloverFiles = [];
 foreach ($merged as $file => $lines) {
@@ -115,27 +179,22 @@ foreach ($merged as $file => $lines) {
     $files[str_replace($root . '/', '', $file)] = [$fileCovered, $fileExecutable];
     $cloverFiles[$file] = $lines;
     $relative = str_replace($root . '/', '', $file);
-    $component = match (true) {
-        // Moved out of these directories to break namespace cycles; counted
-        // where they always were, so no component's floor shifts.
-        $relative === 'src/Scan/TreeFingerprint.php' => 'bundle-git-watch',
-        $relative === 'src/Store/ContributionCacheEntry.php' => 'reconciliation',
-        $relative === 'src/Store/ScanBusyException.php' => 'scanner-runtime',
-        $relative === 'src/Scan/ScanLedger.php',
-        $relative === 'src/Scan/ScanLedgerSpan.php',
-        $relative === 'src/Scan/ScanTarget.php' => 'query-analysis',
-        str_starts_with($relative, 'src/Mcp/'), $relative === 'bin/http-router.php' => 'transport',
-        str_starts_with($relative, 'src/Store/') => 'storage',
-        str_starts_with($relative, 'src/Discovery/'), str_starts_with($relative, 'src/Configuration/'), str_starts_with($relative, 'src/Roots/') => 'discovery-config',
-        str_starts_with($relative, 'src/Reconciliation/') => 'reconciliation',
-        str_starts_with($relative, 'src/Query/'), str_starts_with($relative, 'src/Result/'), str_starts_with($relative, 'src/Boundary/'), str_starts_with($relative, 'src/Classification/') => 'query-analysis',
-        str_starts_with($relative, 'src/Scan/'), str_starts_with($relative, 'src/Scanner/'), str_starts_with($relative, 'src/Cancellation/') => 'scanner-runtime',
-        str_starts_with($relative, 'workers/php/src/') => 'php-scanner',
-        str_starts_with($relative, 'src/Maintenance/'), str_starts_with($relative, 'src/Runtime/') => 'maintenance-runtime',
-        default => 'bundle-git-watch',
-    };
+    $component = componentOf($relative);
+    if ($component === null) {
+        $unmapped[preg_replace('#^(src/[^/]+).*$#', '$1', $relative)] = true;
+        continue;
+    }
     $components[$component][0] = ($components[$component][0] ?? 0) + $fileCovered;
     $components[$component][1] = ($components[$component][1] ?? 0) + $fileExecutable;
+}
+// A new directory under src/ is counted nowhere until it is given a component:
+// a default would fold it silently into whichever floor that happens to be.
+if ($unmapped !== []) {
+    ksort($unmapped, SORT_STRING);
+    foreach (array_keys($unmapped) as $entry) {
+        fwrite(STDERR, sprintf("pcov-report: %s has no coverage component; add it to SOURCE_COMPONENTS in tools/pcov-report.php\n", $entry));
+    }
+    exit(1);
 }
 ksort($files, SORT_STRING);
 $percent = $executable === 0 ? 0.0 : 100 * $covered / $executable;
