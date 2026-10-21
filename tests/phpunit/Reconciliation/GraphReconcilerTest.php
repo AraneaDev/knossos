@@ -11,6 +11,7 @@ use Knossos\Discovery\DiscoveryDiagnostic;
 use Knossos\Discovery\DiscoveryResult;
 use Knossos\Reconciliation\EdgeTargetResolver;
 use Knossos\Reconciliation\FullScanRequest;
+use Knossos\Reconciliation\GraphAssembler;
 use Knossos\Reconciliation\GraphReconciler;
 use Knossos\Reconciliation\NodeReferenceIndex;
 use Knossos\Reconciliation\ReconciliationException;
@@ -1514,16 +1515,16 @@ final class GraphReconcilerTest extends TestCase
         // drifted from what externalNode() rejects, a reference the guard
         // waved through would reach this throw and abort a whole reconcile
         // again, exactly the failure mode Task 2 removed.
-        $isResolvable = new \ReflectionMethod(GraphReconciler::class, 'isResolvableReference');
-        $externalNode = new \ReflectionMethod(GraphReconciler::class, 'externalNode');
-        $reconciler = new GraphReconciler($this->repo);
+        $isResolvable = new \ReflectionMethod(GraphAssembler::class, 'isResolvableReference');
+        $externalNode = new \ReflectionMethod(GraphAssembler::class, 'externalNode');
+        $assembler = new GraphAssembler();
         $evidence = new Evidence('src/Foo.php', 1, 5);
 
         foreach (['no_colons', ':empty_lang:class', 'php:class:', 'php::Foo'] as $reference) {
             assertSame(false, $isResolvable->invoke(null, $reference));
 
             $error = captureThrows(
-                fn() => $externalNode->invoke($reconciler, 'project-1', $reference, $evidence, 'owner', []),
+                fn() => $externalNode->invoke($assembler, 'project-1', $reference, $evidence, 'owner', []),
                 ReconciliationException::class,
             );
 
@@ -1535,7 +1536,7 @@ final class GraphReconcilerTest extends TestCase
         // checks agree in both directions rather than only rejecting.
         $accepted = 'php:class:App\\Foo';
         assertSame(true, $isResolvable->invoke(null, $accepted));
-        [$id, $node] = $externalNode->invoke($reconciler, 'project-1', $accepted, $evidence, 'owner', []);
+        [$id, $node] = $externalNode->invoke($assembler, 'project-1', $accepted, $evidence, 'owner', []);
         assertContains('external_class', $node['kind']);
         assertSame($id, $node['id']);
     }
