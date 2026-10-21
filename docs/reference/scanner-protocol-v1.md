@@ -66,8 +66,10 @@ Version mismatch is fatal and occurs before project paths are sent.
 A packaged worker's manifest names what the core's descriptor of that language
 says: the id it is launched as, the same languages, every extension discovery
 routes to those languages, and `added_files_affect_all` exactly when the
-descriptor treats an added file as affecting every other. The test suite holds
-each packaged worker to it (`ScannerManifest::assertDescribes`).
+descriptor treats an added file as affecting every other. Every scan checks it
+when a language's worker initializes (`ScannerManifest::assertDescribes`), and
+`doctor` does too: a manifest that says otherwise fails that language with
+`WORKER_MANIFEST_MISMATCH` before any file is sent.
 
 A compiled worker may add `source_hash`: the lowercase hex SHA-256 of the
 source it was built from. The Rust worker embeds it at build time, and `doctor`

@@ -177,6 +177,7 @@ the scan proceeds.
 | `WORKER_IO_FAILED`                 | Reading from or polling the worker's pipes failed. Retryable in watch mode.                                                |
 | `WORKER_JSON_INVALID`              | The worker wrote a line that is not JSON.                                                                                  |
 | `WORKER_MANIFEST_INVALID`          | The worker's initialize response is not a valid manifest.                                                                  |
+| `WORKER_MANIFEST_MISMATCH`         | The worker's manifest describes another worker than the language it was launched for; rebuild it.                          |
 | `WORKER_OUTPUT_LIMIT`              | The worker's output for one request outgrew the output limit; the batch is split.                                          |
 | `WORKER_OUTPUT_SCHEMA_MISMATCH`    | The worker declares an output schema the core does not read.                                                               |
 | `WORKER_PIPE_BROKEN`               | Writing a request to the worker failed. Retryable in watch mode.                                                           |

@@ -6,6 +6,7 @@ namespace Knossos\Scanner\Protocol;
 
 use InvalidArgumentException;
 use JsonSerializable;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 
 /**
@@ -101,7 +102,7 @@ final readonly class ScannerManifest implements JsonSerializable
      *
      * @param list<string> $languages
      * @param list<string> $routedExtensions
-     * @throws WorkerException WORKER_MANIFEST_INVALID
+     * @throws WorkerException WORKER_MANIFEST_MISMATCH
      */
     public function assertDescribes(string $scannerId, array $languages, array $routedExtensions, bool $addedFilesAffectAll): void
     {
@@ -121,7 +122,7 @@ final readonly class ScannerManifest implements JsonSerializable
             default => null,
         };
         if ($problem !== null) {
-            throw new WorkerException('WORKER_MANIFEST_INVALID', sprintf('The worker launched as %s %s.', $scannerId, $problem));
+            throw new WorkerException(WorkerErrorCode::ManifestMismatch->value, sprintf('The worker launched as %s %s.', $scannerId, $problem));
         }
     }
 

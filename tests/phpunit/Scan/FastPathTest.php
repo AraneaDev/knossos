@@ -11,6 +11,7 @@ use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ScanBusyException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\FakeWorker;
 use PHPUnit\Framework\Attributes\Group;
 
 final class FastPathTest extends KnossosTestCase
@@ -289,10 +290,11 @@ final class FastPathTest extends KnossosTestCase
         $this->copyTree(self::repositoryRoot() . '/workers/php', $installation . '/workers/php');
         mkdir($installation . '/workers/typescript/bin', 0o777, true);
         file_put_contents($installation . '/workers/typescript/bin/worker.js', sprintf(
-            "const r = require('node:child_process').spawnSync(%s, [%s, 'per_file_frame_too_large_for_huge', %s, '2100000'], { stdio: 'inherit' });\nprocess.exit(r.status ?? 1);\n",
+            "const r = require('node:child_process').spawnSync(%s, [%s, 'per_file_frame_too_large_for_huge', %s, '2100000', %s], { stdio: 'inherit' });\nprocess.exit(r.status ?? 1);\n",
             json_encode(PHP_BINARY),
             json_encode(self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php'),
             json_encode($record),
+            json_encode(FakeWorker::manifestForPackaged('typescript')),
         ));
 
         return $installation;

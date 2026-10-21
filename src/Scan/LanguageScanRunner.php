@@ -6,6 +6,7 @@ namespace Knossos\Scan;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
+use Knossos\Discovery\SourceClassifier;
 use Knossos\Reconciliation\Milliseconds;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
@@ -345,6 +346,9 @@ final readonly class LanguageScanRunner
         $analysisHash = AnalysisHash::of($this->installationRoot, $descriptor->analysisInputs);
         $client = $this->pool->client($descriptor, $plan->preparation->executionPolicy, $analysisHash);
         $manifest = $client->initialize();
+        // A worker answering as another, or for other languages, would file
+        // its facts under the wrong scanner and leave routed files unread.
+        $manifest->assertDescribes($descriptor->scannerId(), $descriptor->languages, SourceClassifier::extensionsFor($descriptor->languages), $descriptor->addedFilesAffectAll);
         // Where a file left out of the graph is cached: see
         // ContributionCacheService::leftOutConfigurationHash().
         $leftOutHash = ContributionCacheService::leftOutConfigurationHash(

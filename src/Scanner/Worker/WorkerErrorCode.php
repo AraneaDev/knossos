@@ -38,6 +38,8 @@ enum WorkerErrorCode: string
     case JsonInvalid = 'WORKER_JSON_INVALID';
     /** The worker's initialize response is not a valid manifest. */
     case ManifestInvalid = 'WORKER_MANIFEST_INVALID';
+    /** The worker's manifest is valid but describes another worker than the language descriptor it was launched for. */
+    case ManifestMismatch = 'WORKER_MANIFEST_MISMATCH';
     /** The worker's output for one request outgrew the output limit. */
     case OutputLimit = 'WORKER_OUTPUT_LIMIT';
     /** The worker declares an output schema the core does not read. */

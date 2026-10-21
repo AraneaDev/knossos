@@ -20,6 +20,7 @@ use Knossos\Scan\ScanSnapshotValidator;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\FakeWorker;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -112,10 +113,10 @@ final class ParsedContentVerificationTest extends KnossosTestCase
 
     private function runScan(string $mode, DiscoveredFile $file): LanguageScanResult
     {
-        $client = new ProcessScannerClient([PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php', $mode]);
+        $descriptor = new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['php', '-r', 'echo 1']);
+        $client = new ProcessScannerClient([PHP_BINARY, FakeWorker::path(), $mode, FakeWorker::manifestFor($descriptor)]);
         $pool = $this->createStub(LanguageWorkerPool::class);
         $pool->method('client')->willReturn($client);
-        $descriptor = new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['php', '-r', 'echo 1']);
         $runner = new LanguageScanRunner([$descriptor], $pool, new ContributionCacheService());
 
         try {

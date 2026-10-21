@@ -283,7 +283,7 @@ final class ScannerManifestTest extends TestCase
             $manifest->assertDescribes($id, $languages, $extensions, $addedFiles);
             assertSame(null, $problem);
         } catch (\Knossos\Scanner\Worker\WorkerException $error) {
-            assertSame('WORKER_MANIFEST_INVALID', $error->diagnosticCode);
+            assertSame('WORKER_MANIFEST_MISMATCH', $error->diagnosticCode);
             assertSame(sprintf('The worker launched as %s %s.', $id, $problem), $error->getMessage());
         }
     }

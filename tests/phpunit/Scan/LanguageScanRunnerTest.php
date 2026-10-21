@@ -25,6 +25,7 @@ use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Scanner\Worker\WorkerLimits;
+use Knossos\Tests\Phpunit\Support\FakeWorker;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -34,6 +35,9 @@ final class LanguageScanRunnerTest extends TestCase
 {
     /** Where the recording worker appends one line per scan request it received. */
     private ?string $recordPath = null;
+
+    /** The descriptor runnerWithWorkerFactory()'s pool was last asked a worker for, which workerClient() then answers as. */
+    private ?LanguageDescriptor $launchedAs = null;
 
     protected function tearDown(): void
     {
@@ -311,6 +315,23 @@ final class LanguageScanRunnerTest extends TestCase
         assertContains('2048 MB', $message);
     }
 
+    /**
+     * A worker whose manifest describes another worker than the descriptor it
+     * was launched under fails its language before any file is sent: its facts
+     * would be filed under the wrong scanner.
+     */
+    public function testAWorkerAnsweringAsAnotherFailsItsLanguageWithTheMismatchCode(): void
+    {
+        $runner = $this->runnerWithClients(['php' => $this->recordingClient(), 'typescript' => $this->workerClient('foreign_manifest', as: 'typescript')]);
+
+        $result = $runner->run($this->planForFiles(['src/A.php' => 'php', 'web/a.ts' => 'typescript']), new CancellationToken());
+
+        assertSame(['WORKER_MANIFEST_MISMATCH'], array_column($result->workerDiagnostics, 'code'));
+        assertContains('The worker launched as knossos.typescript answers as knossos.foreign.', $result->workerDiagnostics[0]['message']);
+        assertSame(['knossos.php:file:src/A.php'], array_map(static fn($contribution): string => $contribution->ownerKey, $result->contributions));
+        assertSame([1], $this->recordedBatches(), 'Only the PHP file was sent.');
+    }
+
     /** PHP words heap exhaustion its own way; the hint must recognise it. */
     public function testAPhpWorkerOutOfMemoryNamesTheSetting(): void
     {
@@ -491,7 +512,7 @@ final class LanguageScanRunnerTest extends TestCase
     private function fakeWorkerClient(): ProcessScannerClient
     {
         return new ProcessScannerClient(
-            [PHP_BINARY, dirname(__DIR__, 2) . '/Fixtures/workers/fake-worker.php', 'compliant'],
+            [PHP_BINARY, FakeWorker::path(), 'compliant', FakeWorker::manifestFor($this->descriptorFor('php'))],
         );
     }
 
@@ -515,7 +536,7 @@ final class LanguageScanRunnerTest extends TestCase
     }
 
     /**
-     * A plan whose PHP file is already cached against the fake worker's manifest,
+     * A plan whose PHP file is already cached against the PHP worker's manifest,
      * so the surviving language contributes facts without a scan round trip.
      *
      * @param list<\stdClass> $files
@@ -523,7 +544,7 @@ final class LanguageScanRunnerTest extends TestCase
     private function planWithCachedPhpFile(array $files, ?string $cachedVersion = null): ScanPlan
     {
         $payload = json_encode(
-            ['owner_key' => 'knossos.fake:file:src/Foo.php', 'nodes' => [], 'edges' => [], 'diagnostics' => []],
+            ['owner_key' => 'knossos.php:file:src/Foo.php', 'nodes' => [], 'edges' => [], 'diagnostics' => []],
             JSON_THROW_ON_ERROR,
         );
 
@@ -535,7 +556,7 @@ final class LanguageScanRunnerTest extends TestCase
             preparation: $this->makePreparationWithFiles($files, $hashes),
             projectId: 'plan-degraded',
             effectiveMode: 'fast',
-            cacheByScannerPath: ["knossos.fake\0src/Foo.php" => [
+            cacheByScannerPath: ["knossos.php\0src/Foo.php" => [
                 'content_hash' => 'hash-src/Foo.php',
                 'scanner_version' => $cachedVersion ?? '0.1.0+' . substr(AnalysisHash::of('', []), 0, 16),
                 'configuration_hash' => 'cfg-php',
@@ -669,16 +690,21 @@ final class LanguageScanRunnerTest extends TestCase
      *        overflow and exit modes
      * @param bool $tightCap give the client an output cap the fixture's flood
      *        crosses in a few frames, instead of the production 20 MB
+     * @param ?string $as the language key whose worker it answers as: the one
+     *        runnerWithWorkerFactory() was asked for, else PHP
      */
-    private function workerClient(string $mode, int $threshold = 0, bool $tightCap = false): ProcessScannerClient
+    private function workerClient(string $mode, int $threshold = 0, bool $tightCap = false, ?string $as = null): ProcessScannerClient
     {
+        $launchedAs = $as === null ? ($this->launchedAs ?? $this->descriptorFor('php')) : $this->descriptorFor($as);
+
         return new ProcessScannerClient(
             [
                 PHP_BINARY,
-                dirname(__DIR__, 2) . '/Fixtures/workers/fake-worker.php',
+                FakeWorker::path(),
                 $mode,
                 (string) $this->recordPath,
                 (string) $threshold,
+                FakeWorker::manifestFor($launchedAs),
             ],
             // maxOutputBytes may not fall below maxLineBytes, so both come down.
             $tightCap ? new WorkerLimits(maxLineBytes: 100_000, maxOutputBytes: 200_000) : new WorkerLimits(),
@@ -693,8 +719,13 @@ final class LanguageScanRunnerTest extends TestCase
     private function runnerWithWorkerFactory(callable $factory, LanguageDescriptor $descriptor): LanguageScanRunner
     {
         $pool = $this->createStub(LanguageWorkerPool::class);
-        $pool->method('client')->willReturnCallback($factory);
-        $pool->method('restart')->willReturnCallback($factory);
+        $launch = function (LanguageDescriptor $launched) use ($factory): ProcessScannerClient {
+            $this->launchedAs = $launched;
+
+            return $factory();
+        };
+        $pool->method('client')->willReturnCallback($launch);
+        $pool->method('restart')->willReturnCallback($launch);
 
         return new LanguageScanRunner([$descriptor], $pool, new ContributionCacheService());
     }
@@ -830,7 +861,7 @@ final class LanguageScanRunnerTest extends TestCase
         $result = $this->runnerWithClients(['php' => $this->recordingClient()])
             ->run($this->planForFiles($this->nineHundredPhpFiles()), new CancellationToken());
 
-        $metadata = $result->scannerMetadata['knossos.fake'];
+        $metadata = $result->scannerMetadata['knossos.php'];
         // Every integer a worker reports counts what THAT request did, so all of
         // them are summed — not just files_scanned. The real TypeScript worker
         // returns programs and programs_reused exactly this way, and keeping the
@@ -961,7 +992,7 @@ final class LanguageScanRunnerTest extends TestCase
         assertSame(8, $result->parsed);
         // The overflowing request had already streamed frames; counting them
         // would double-count the files the retry re-sends.
-        assertSame(8, $result->scannerMetadata['knossos.fake']['files_scanned']);
+        assertSame(8, $result->scannerMetadata['knossos.php']['files_scanned']);
         // The narrowest budget any request ran at is reported, not the start.
         assertSame(400_000, $result->batchBudgets['knossos.php']['source_bytes']);
         assertSame(200_000, $result->batchBudgets['knossos.php']['source_bytes_used']);
@@ -1124,7 +1155,7 @@ final class LanguageScanRunnerTest extends TestCase
         assertSame(3, $result->parsed);
         $skipped = array_values(array_filter(
             $result->contributions,
-            static fn($contribution): bool => $contribution->ownerKey === 'knossos.fake:file:src/Huge.js',
+            static fn($contribution): bool => $contribution->ownerKey === 'knossos.typescript:file:src/Huge.js',
         ));
         assertSame(1, count($skipped));
         assertSame([], $skipped[0]->nodes);
@@ -1191,7 +1222,7 @@ final class LanguageScanRunnerTest extends TestCase
         assertSame([], $second->workerDiagnostics);
         $huge = array_values(array_filter(
             $second->contributions,
-            static fn($contribution): bool => $contribution->ownerKey === 'knossos.fake:file:src/Huge.js',
+            static fn($contribution): bool => $contribution->ownerKey === 'knossos.typescript:file:src/Huge.js',
         ));
         assertContains('Left out of the graph', $huge[0]->diagnostics[0]->message);
     }
@@ -1718,7 +1749,7 @@ final class LanguageScanRunnerTest extends TestCase
     {
         $this->allocateRecordPath();
         $keys = ['php', 'typescript', 'python', 'rust'];
-        $clients = array_combine($keys, array_map(fn(): ProcessScannerClient => $this->workerClient('per_file_request'), $keys));
+        $clients = array_combine($keys, array_map(fn(string $key): ProcessScannerClient => $this->workerClient('per_file_request', as: $key), $keys));
         $base = $this->makePreparationWithFiles(
             [
                 $this->fileFixture('src/A.php', 'php'),
@@ -1803,7 +1834,7 @@ final class LanguageScanRunnerTest extends TestCase
     {
         $this->allocateRecordPath();
         $runner = $this->runnerWithClients(
-            ['typescript' => $this->workerClient('per_file_request')],
+            ['typescript' => $this->workerClient('per_file_request', as: 'typescript')],
             [$this->descriptorFor('typescript', batchFiles: 1)],
         );
 
@@ -1941,10 +1972,10 @@ final class LanguageScanRunnerTest extends TestCase
     public function testAddedAndChangedFilesAreSummedAcrossLanguages(): void
     {
         $this->allocateRecordPath();
-        $stale = static fn(string $path): array => ["knossos.fake\0" . $path => [
+        $stale = static fn(string $scanner, string $path): array => [$scanner . "\0" . $path => [
             'content_hash' => 'stale', 'scanner_version' => '0.1.0', 'configuration_hash' => 'cfg', 'payload_json' => '{}',
         ]];
-        $runner = $this->runnerWithClients(['php' => $this->workerClient('per_file'), 'typescript' => $this->workerClient('per_file')]);
+        $runner = $this->runnerWithClients(['php' => $this->workerClient('per_file'), 'typescript' => $this->workerClient('per_file', as: 'typescript')]);
 
         $result = $runner->run(
             new ScanPlan(
@@ -1959,7 +1990,7 @@ final class LanguageScanRunnerTest extends TestCase
                 ),
                 projectId: 'plan-counts',
                 effectiveMode: 'fast',
-                cacheByScannerPath: [...$stale('src/B.php'), ...$stale('web/b.ts')],
+                cacheByScannerPath: [...$stale('knossos.php', 'src/B.php'), ...$stale('knossos.typescript', 'web/b.ts')],
                 deletedFiles: 0,
             ),
             new CancellationToken(),

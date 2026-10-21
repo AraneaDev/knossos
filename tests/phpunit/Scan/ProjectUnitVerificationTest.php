@@ -296,7 +296,7 @@ final class ProjectUnitVerificationTest extends KnossosTestCase
 
     private function runTypescript(DiscoveryResult $discovery): LanguageScanResult
     {
-        return $this->runLanguage($discovery, new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['node', self::repositoryRoot() . '/workers/typescript/bin/worker.js']));
+        return $this->runLanguage($discovery, new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript', 'javascript'], command: ['node', self::repositoryRoot() . '/workers/typescript/bin/worker.js'], addedFilesAffectAll: true));
     }
 
     private function runLanguage(DiscoveryResult $discovery, LanguageDescriptor $descriptor): LanguageScanResult

@@ -1018,6 +1018,7 @@ php	tests/phpunit/Support/CountingDriftOracle.php
 php	tests/phpunit/Support/CountingStreamWrapper.php
 php	tests/phpunit/Support/EndpointRouteFixtures.php
 php	tests/phpunit/Support/EnricherFlowScans.php
+php	tests/phpunit/Support/FakeWorker.php
 php	tests/phpunit/Support/Fixtures.php
 php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/Processes.php
