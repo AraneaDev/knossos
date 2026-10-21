@@ -20,7 +20,8 @@ use PDO;
  * an interface lands on.
  *
  * The subclass walk is bounded at {@see self::MAX_DEPTH} levels and stops on
- * a cycle.
+ * a cycle. Only a native `extends` edge makes a hop: an enricher's claim that
+ * a class extends another runs no constructor.
  */
 final class ConstructedClasses
 {
@@ -67,23 +68,11 @@ final class ConstructedClasses
      */
     private static function inheriting(PDO $pdo, string $projectId, string $class, string $names): array
     {
-        $found = [$class => true];
-        $frontier = [$class];
         // A subclass with a constructor of its own runs that one, and so do its subclasses.
-        $sql = 'SELECT e.source_id FROM edges e JOIN nodes c ON c.id = e.source_id '
-            . "WHERE e.project_id = ? AND e.kind = 'extends' AND c.kind = 'class' AND e.target_id IN (%s) "
-            . "AND NOT EXISTS (SELECT 1 FROM edges own JOIN nodes m ON m.id = own.target_id WHERE own.project_id = e.project_id AND own.source_id = e.source_id AND own.kind = 'contains' AND m.kind = 'method' AND m.display_name IN ({$names}))";
-        for ($level = 0; $level < self::MAX_DEPTH && $frontier !== []; ++$level) {
-            $next = [];
-            foreach (ChunkedInQuery::rows($pdo, $sql, $frontier, [$projectId], mode: PDO::FETCH_NUM) as [$child]) {
-                if (!isset($found[(string) $child])) {
-                    $found[(string) $child] = true;
-                    $next[] = (string) $child;
-                }
-            }
-            $frontier = $next;
-        }
+        $inherits = " AND EXISTS (SELECT 1 FROM nodes c WHERE c.id = edges.source_id AND c.kind = 'class') "
+            . "AND NOT EXISTS (SELECT 1 FROM edges own JOIN nodes m ON m.id = own.target_id WHERE own.project_id = edges.project_id AND own.source_id = edges.source_id AND own.kind = 'contains' AND m.kind = 'method' AND m.display_name IN ({$names}))";
+        $children = EdgeWalk::reach($pdo, $projectId, ['extends'], Direction::Incoming, [$class], self::MAX_DEPTH, $inherits);
 
-        return array_keys($found);
+        return array_keys([$class => true] + array_fill_keys(array_merge(...array_values($children) ?: [[]]), true));
     }
 }

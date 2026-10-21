@@ -241,6 +241,7 @@ php	src/Query/Drift/ScannedPaths.php
 php	src/Query/Drift/TrackedPathPredicate.php
 php	src/Query/Drift/WalkDriftOracle.php
 php	src/Query/EdgePage.php
+php	src/Query/EdgeWalk.php
 php	src/Query/EntryPointCriteria.php
 php	src/Query/ErasedTypeEdge.php
 php	src/Query/FileContextQueryService.php
@@ -678,6 +679,7 @@ php	tests/phpunit/Query/Drift/ScannedPathsTest.php
 php	tests/phpunit/Query/Drift/UnitInputDriftTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleAdditionsTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleTest.php
+php	tests/phpunit/Query/EdgeWalkTest.php
 php	tests/phpunit/Query/EloquentFactoryStatesTest.php
 php	tests/phpunit/Query/EloquentMagicReferencesTest.php
 php	tests/phpunit/Query/EnrichedFactsExclusionTest.php

@@ -63,4 +63,31 @@ final class SupertypeMethodsTest extends KnossosTestCase
         }
         assertSame([], SupertypeMethods::of($pdo, $ids['project'], []));
     }
+
+    /** A trait's method a using class redeclares is the class's supertype method, and the class's is its implementation. */
+    #[Group('query')]
+    public function testATraitsMethodIsFulfilledByTheUsingClasssMethodOfTheSameName(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $owner = 'php:file:src/Checkout.php';
+        $node = function (string $kind, string $name, string $display) use ($repository, $ids, $owner): string {
+            $id = StableId::symbol($ids['project'], 'php', $kind, $name);
+            $repository->saveNode($id, $ids['project'], 'php', $kind, $name, $display, null, $ids['file'], 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
+            return $id;
+        };
+        $edge = function (string $kind, string $from, string $to) use ($repository, $ids, $owner): void {
+            $repository->saveEdge(StableId::edge($ids['project'], $kind, $from, $to, 'x'), $ids['project'], $kind, $from, $to, $ids['file'], 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
+        };
+        $trait = $node('trait', 'App\\Steps', 'Steps');
+        $traitStep = $node('method', 'App\\Steps::step', 'step');
+        $edge('contains', $trait, $traitStep);
+        $class = $node('class', 'App\\Job', 'Job');
+        $classStep = $node('method', 'App\\Job::step', 'step');
+        $edge('contains', $class, $classStep);
+        $edge('uses_trait', $class, $trait);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        assertSame([$classStep => [$traitStep]], SupertypeMethods::of($pdo, $ids['project'], [$classStep]));
+        assertSame([$traitStep => [$classStep]], SupertypeMethods::implementationsOf($pdo, $ids['project'], [$traitStep]));
+    }
 }
