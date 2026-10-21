@@ -7,6 +7,9 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
+use Knossos\Query\ScannerFactory;
+use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootsFile;
 use Knossos\Runtime\DoctorService;
 
 /** Database upkeep and the destructive removals, each previewing unless `--execute` is given. */
@@ -85,8 +88,8 @@ final class MaintenanceCommand implements CliCommand
             ? $positionals
             : throw new InvalidArgumentException('Usage: knossos move-project <old root|project id> <new root> [--execute] [--db=PATH] [--json]');
         $target = realpath($to);
-        $scanner = (new \Knossos\Query\ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$target === false ? $to : $target]);
-        $roots = new \Knossos\Roots\RootsFile(\Knossos\Roots\AllowedRoots::defaultConfigPath($context->databasePath()));
+        $scanner = (new ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$target === false ? $to : $target]);
+        $roots = new RootsFile(AllowedRoots::defaultConfigPath($context->databasePath()));
         $result = $context->maintenance()->moveProject($from, $to, $context->options->flag($options, 'execute'), $scanner, $roots);
         $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
         return CliCommand::EXIT_OK;
