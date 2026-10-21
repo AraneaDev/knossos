@@ -101,9 +101,10 @@ re-exported from a module of the project does not.
 
 ### Edges
 
-Repeated edges are collapsed to the persistence identity. Mixed type/value
-imports retain `type_only_variants` so deduplication does not erase that
-distinction.
+The worker reports every site; the core collapses repeated edges (see
+[Repeated edges](../reference/scanner-protocol-v1.md#repeated-edges)). Mixed
+type/value imports or re-exports retain `type_only_variants` so the collapse does
+not erase that distinction.
 
 An import of something outside the project targets a `package` node named after
 the package: `lodash` for `lodash/fp`, `@scope/pkg` for `@scope/pkg/sub`. A Node

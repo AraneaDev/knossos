@@ -303,6 +303,7 @@ php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
 php	src/Query/TurnBriefService.php
 php	src/Reconciliation/CaseInsensitiveReferences.php
+php	src/Reconciliation/EdgeCollapse.php
 php	src/Reconciliation/EdgeTargetResolver.php
 php	src/Reconciliation/EndpointRouteBinder.php
 php	src/Reconciliation/EndpointRouteBinding.php
@@ -778,6 +779,7 @@ php	tests/phpunit/Query/WiringReachTest.php
 php	tests/phpunit/Reconciliation/ArtisanCommandTargetTest.php
 php	tests/phpunit/Reconciliation/CaseInsensitiveReferencesTest.php
 php	tests/phpunit/Reconciliation/CrossLanguageExternalNodeTest.php
+php	tests/phpunit/Reconciliation/EdgeCollapseTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteBinderTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteReconcileTest.php
 php	tests/phpunit/Reconciliation/FullScanRequestTest.php
@@ -1045,11 +1047,11 @@ php	tools/trivy-allowlist.php
 php	workers/php/bin/worker
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
+php	workers/php/src/FrameworkFactStore.php
 php	workers/php/src/LaravelContainerFactCollector.php
 php	workers/php/src/LaravelDispatchFactCollector.php
 php	workers/php/src/LaravelEloquentFactCollector.php
 php	workers/php/src/LaravelFactCollector.php
-php	workers/php/src/LaravelFactStore.php
 php	workers/php/src/LaravelProviderMapFactCollector.php
 php	workers/php/src/LaravelRouteFactCollector.php
 php	workers/php/src/LaravelRouteNameFactCollector.php

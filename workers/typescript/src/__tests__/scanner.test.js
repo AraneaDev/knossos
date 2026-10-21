@@ -751,14 +751,13 @@ describe("TypeScriptScanner.scan import type marking", () => {
     });
 });
 
-// Import edges are keyed by (kind, source, target): a static import and a
-// module-scope dynamic import of the same module collapse into ONE edge.
-// Neither the dynamic branch nor a bare `type_only: true` merge is allowed to
-// erase the fact that a value import is also present, in EITHER parse order,
-// or `dependency_cycles` would silently drop a real runtime dependency.
+// A static import and a module-scope dynamic import of the same module are
+// two sites, reported as two edges for the core to collapse. The dynamic one
+// must say it is a value import, in EITHER parse order, or the collapsed edge
+// would let `dependency_cycles` silently drop a real runtime dependency.
 // Both imports are the module's own: an arrow bound at module level is a
 // function node, and a dynamic import inside it would be that function's edge.
-describe("TypeScriptScanner.scan merges a type-only import with a dynamic import of the same module", () => {
+describe("TypeScriptScanner.scan reports a type-only import beside a dynamic import of the same module", () => {
     it.each([
         [
             "type-only import first",
@@ -780,7 +779,7 @@ describe("TypeScriptScanner.scan merges a type-only import with a dynamic import
                 "",
             ].join("\n"),
         ],
-    ])("keeps the merged edge value-reachable (%s)", (_label, path, source) => {
+    ])("keeps a value import among the sites (%s)", (_label, path, source) => {
         const root = fixture({
             "package.json": '{"name":"fixture"}',
             "tsconfig.json":
@@ -802,8 +801,10 @@ describe("TypeScriptScanner.scan merges a type-only import with a dynamic import
             .flatMap((c) => c.edges)
             .filter((e) => e.kind === "imports" && e.evidence.path === path);
 
-        expect(importEdges).toHaveLength(1);
-        expect(importEdges[0].attributes.type_only_variants).toContain(false);
+        expect(importEdges).toHaveLength(2);
+        expect(
+            importEdges.map((e) => e.attributes.type_only ?? false).sort(),
+        ).toEqual([false, true]);
     });
 });
 

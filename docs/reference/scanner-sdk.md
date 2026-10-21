@@ -74,9 +74,10 @@ to any file in `input_hashes`. `tools/scanner-conformance` checks that the
 fixture's contributions carry the field.
 
 Every contribution owns its facts through a stable `owner_key`. Re-emission
-replaces that owner's facts. IDs must be deterministic, evidence paths must be
-project-relative, and repeated edges should be collapsed to the persistence
-identity of kind/source/target within one owner.
+replaces that owner's facts. IDs must be deterministic and evidence paths must be
+project-relative. Report an edge once per site: the core collapses repeated
+edges by one rule, described under
+[Repeated edges](scanner-protocol-v1.md#repeated-edges).
 
 ## Security contract
 

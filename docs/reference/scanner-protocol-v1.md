@@ -124,6 +124,32 @@ Each contribution has one stable owner key and lists node facts, unresolved edge
 facts, and diagnostics. Re-emitting an owner replaces that owner's previous
 facts atomically during reconciliation.
 
+#### Repeated edges
+
+A worker reports an edge once per site it saw: `helper(); helper();` is two
+`calls` facts. The core collapses them after resolving both ends, so the graph
+holds one edge per kind, source node, target node and owner key, and for
+`mounts` one per `prefix` attribute as well (a router mounted under two
+prefixes answers both). Within a group:
+
+- The surest occurrence wins: the higher `confidence` (`certain` over
+  `probable` over `possible`), then an occurrence without `speculative: true`
+  over one with it, then the earliest evidence. Its `origin` and `confidence`
+  are the edge's.
+- The attributes are the union of every occurrence's, the winner's value
+  standing on a key two occurrences disagree on. `speculative` is the winner's
+  alone.
+- For `imports` and `re_exports`, when any occurrence carries `type_only`, the
+  edge gets `type_only_variants`: every `type_only` value seen, sorted, a
+  missing marker counting as `false`. One runtime import among them keeps the
+  dependency real.
+- The evidence is the earliest span, ordered by path, then start line, then end
+  line, and the edge's stable id hashes that evidence.
+
+The rule does not depend on the order facts arrive in, so a worker need not
+sort or merge its edges, and an incremental scan collapses exactly as a full
+scan does.
+
 A contribution may also carry `content_hash`: the lowercase SHA-256 hex of the
 raw bytes the worker read for that contribution's file, exactly as they came
 off disk, before any decoding, byte-order-mark stripping or newline

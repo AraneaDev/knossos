@@ -60,13 +60,10 @@ impl Walk<'_> {
     /// module (see [`parent_module`]), and a `self` leaf already names its
     /// prefix module (see [`crate::resolve::UseLeaf::names_module`]).
     ///
-    /// Several symbols imported from the same module produce one edge, not one
-    /// per symbol, matching the Python worker, which emits a single `imports`
-    /// edge per `from` statement. `Facts::finish` performs that collapse for the
-    /// whole contribution rather than per `use` line, so a module importing from
-    /// the same place on ten separate lines still stores one row: the scanner
-    /// SDK's persistence identity is kind/source/target within one owner, and
-    /// every one of those rows is identical.
+    /// Several symbols imported from the same module each produce an edge to
+    /// that module; the core collapses them to one per kind, source, target
+    /// and owner, so a module importing from the same place on ten separate
+    /// lines still stores one row.
     pub(super) fn collect_uses(&mut self, container: &str, items: &[Item]) {
         // `use policy::Policy;` beside `mod policy;` names that child module:
         // since the 2018 edition a path's first segment may be any name in
