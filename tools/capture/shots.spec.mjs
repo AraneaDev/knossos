@@ -9,6 +9,7 @@ import {
     parseArgs,
     promptText,
     shown,
+    STEP_HANDLERS,
 } from "./shoot.mjs";
 import {
     marked,
@@ -65,6 +66,11 @@ describe("SHOTS", () => {
             );
             expect(["dark", "light"]).toContain(shot.theme);
         }
+    });
+    it("has a handler in shoot.mjs for every step kind, and no other", () => {
+        expect(Object.keys(STEP_HANDLERS).sort()).toEqual(
+            [...STEP_KINDS].sort(),
+        );
     });
     it("uses only the step kinds shoot.mjs knows", () => {
         for (const [, shot] of entries) {

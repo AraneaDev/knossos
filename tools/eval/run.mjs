@@ -11,20 +11,8 @@
  *   node tools/eval/run.mjs status <run-id>
  *   node tools/eval/report.mjs <run-id>               write report.md
  */
-import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import {
-    access,
-    link,
-    mkdir,
-    readdir,
-    readFile,
-    rename,
-    rm,
-    stat,
-    writeFile,
-} from "node:fs/promises";
-import os from "node:os";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
@@ -32,10 +20,10 @@ import { parseArgs, promisify } from "node:util";
 import { stopWatchers } from "../capture/session.mjs";
 import { ANSWER_INSTRUCTION } from "./answer.mjs";
 import { ablationArm, armArgv, BASE_ARMS, parseArm } from "./arms.mjs";
+import { openRun, REPO_ROOT, settings } from "./config.mjs";
 import {
     CORPUS_HASH_VERSION,
     corpusHash,
-    corpusHashFor,
     plannedCorpus,
     TIERS,
     tierOf,
@@ -57,159 +45,22 @@ import {
     readLedger,
     sessionKey,
 } from "./ledger.mjs";
+import { acquireLock } from "./lock.mjs";
+import {
+    checkProvenance,
+    filesUnder,
+    pluginVersion,
+    provenance,
+} from "./provenance.mjs";
 import { buildRow, runSession, terminateGroups } from "./session.mjs";
 import { selectAblations } from "./stats.mjs";
 import { parseTranscript } from "./transcript.mjs";
 
-export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export function settings(env = process.env) {
-    return {
-        runsDir:
-            env.KNOSSOS_EVAL_RUNS ??
-            path.join(
-                os.homedir(),
-                ".claude",
-                "superpowers",
-                "Knossos-MCP",
-                "evals",
-            ),
-        // Outside the home directory: Claude Code loads memory from every ancestor of its cwd.
-        evalRoot: env.KNOSSOS_EVAL_ROOT ?? "/var/tmp/knossos-eval",
-        pluginDir:
-            env.KNOSSOS_EVAL_PLUGIN_DIR ?? path.join(REPO_ROOT, ".plugin"),
-        claudeBin: env.KNOSSOS_EVAL_CLAUDE ?? "claude",
-        // Clears, keeps and restores a project's annotations between sessions; tests use a fake.
-        notesBin:
-            env.KNOSSOS_EVAL_NOTES ??
-            path.join(REPO_ROOT, "tools", "eval", "annotations.php"),
-        // Where the real credentials are copied from; tests point it at an empty dir.
-        realHome: env.KNOSSOS_EVAL_REAL_HOME ?? os.homedir(),
-        // The Knossos checkout whose commit a run records; tests point it at a throwaway repository.
-        sourceRoot: env.KNOSSOS_EVAL_SOURCE_ROOT ?? REPO_ROOT,
-        env,
-    };
-}
-
-const readJson = async (file) => JSON.parse(await readFile(file, "utf8"));
 const writeJson = (file, value) =>
     writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
-
-// Run output and hand-edited answer keys: neither changes the code under test.
-const NOT_DIRTY = [".superpowers/", "tools/eval/corpus/"];
-
-/** The paths `git status --porcelain` lists that make a checkout dirty, rename targets included. */
-export function dirtyPaths(porcelain) {
-    return porcelain
-        .split("\n")
-        .filter((line) => line.trim() !== "")
-        .map((line) => line.slice(3).split(" -> ").at(-1).replace(/^"|"$/g, ""))
-        .filter((p) => !NOT_DIRTY.some((prefix) => p.startsWith(prefix)));
-}
-
-/** The `version` in the materialised plugin's manifest, or null. */
-export async function pluginVersion(pluginDir) {
-    try {
-        const { version } = await readJson(
-            path.join(pluginDir, ".claude-plugin", "plugin.json"),
-        );
-        return typeof version === "string" ? version : null;
-    } catch {
-        return null;
-    }
-}
-
-/** Every file under `dir`, as paths relative to it, sorted; none when it is missing. */
-async function filesUnder(dir) {
-    const entries = await readdir(dir, {
-        recursive: true,
-        withFileTypes: true,
-    }).catch(() => []);
-    return entries
-        .filter((entry) => entry.isFile())
-        .map((entry) =>
-            path.relative(
-                dir,
-                path.join(entry.parentPath ?? entry.path, entry.name),
-            ),
-        )
-        .sort();
-}
-
-/**
- * A hash of everything the materialised plugin holds, or null when there is
- * none. Its version alone cannot tell a reinstall at the same version, which
- * changes what the full arm runs.
- */
-export async function pluginHash(pluginDir) {
-    const files = await filesUnder(pluginDir);
-    if (files.length === 0) return null;
-    const hash = createHash("sha256");
-    for (const file of files) {
-        hash.update(`${file}\0`);
-        hash.update(await readFile(path.join(pluginDir, file)));
-        hash.update("\0");
-    }
-    return hash.digest("hex");
-}
-
-/** What a run measures: the Knossos commit, whether it had local changes, and the plugin version and contents. */
-export async function provenance(s) {
-    const git = async (...args) =>
-        (await exec("git", ["-C", s.sourceRoot, ...args])).stdout;
-    let knossosCommit = null;
-    let knossosDirty = null;
-    try {
-        knossosCommit = (await git("rev-parse", "HEAD")).trim();
-        knossosDirty =
-            dirtyPaths(await git("status", "--porcelain")).length > 0;
-    } catch {
-        // Not a git checkout: the commit is unknown, and recorded as such.
-    }
-    return {
-        knossosCommit,
-        knossosDirty,
-        pluginVersion: await pluginVersion(s.pluginDir),
-        pluginHash: await pluginHash(s.pluginDir),
-    };
-}
-
-/**
- * Throws when this checkout or its plugin differs from what the run started
- * with, since rows from two builds must not be pooled. A run started before
- * provenance was recorded only gets a warning.
- */
-export function checkProvenance(meta, current) {
-    if (!("knossosCommit" in meta)) {
-        console.warn(
-            `warning: run ${meta.runId} recorded no provenance, so a change of Knossos commit or plugin version cannot be detected`,
-        );
-        return;
-    }
-    const changed = [];
-    if (meta.knossosCommit !== current.knossosCommit)
-        changed.push(
-            `knossos commit ${meta.knossosCommit} -> ${current.knossosCommit}`,
-        );
-    if (meta.pluginVersion !== current.pluginVersion)
-        changed.push(
-            `plugin version ${meta.pluginVersion} -> ${current.pluginVersion}`,
-        );
-    // A run started before the hash was recorded has none to compare, and a
-    // missing plugin is the prepare check's to report.
-    else if (
-        "pluginHash" in meta &&
-        current.pluginHash !== null &&
-        meta.pluginHash !== current.pluginHash
-    )
-        changed.push("plugin contents changed at the same version");
-    if (changed.length > 0)
-        throw new Error(
-            `run ${meta.runId} started on a different build (${changed.join("; ")}); start a new run, or pass --force-provenance to pool the sessions anyway`,
-        );
-}
 
 /** A positive finite number from a flag, or a clear error naming the flag. */
 export function positive(
@@ -228,179 +79,6 @@ export function positive(
     )
         throw new Error(`--${name} must be ${kind}${limit}, got "${value}"`);
     return n;
-}
-
-const alive = (pid) => {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        return error.code === "EPERM";
-    }
-};
-
-/** A takeover mutex older than this belonged to a process that died holding it. */
-const TAKEOVER_STALE_MS = 5000;
-
-/**
- * Holds `${file}.takeover` (an atomic mkdir) while `fn` runs; null when another
- * process holds it. `fn` gets `stillOwner()`: a peer may break the mutex of a
- * process that was suspended for longer than `staleMs`, and that process must
- * notice before it removes anything. A mutex dated more than `staleMs` in the
- * future is stale too. A stale mutex is broken by renaming it to a name of its
- * own, so of several peers only one rename succeeds, and the mover checks that
- * what it moved really was stale and puts a fresh one back.
- */
-async function withTakeover(file, staleMs, hooks, fn) {
-    const mutex = `${file}.takeover`;
-    const token = randomUUID();
-    try {
-        await mkdir(mutex);
-    } catch (error) {
-        if (error.code !== "EEXIST") throw error;
-        const ageOf = () =>
-            stat(mutex)
-                .then((st) => Date.now() - st.mtimeMs)
-                .catch(() => 0);
-        // A little clock skew between the file system and Date.now() is normal; only a clearly future date is stale.
-        if (Math.abs(await ageOf()) <= staleMs) {
-            await sleep(10);
-            return null;
-        }
-        await hooks.beforeBreak?.();
-        const moved = `${mutex}.broken-${process.pid}-${randomUUID()}`;
-        try {
-            await rename(mutex, moved);
-        } catch (error) {
-            // Another peer broke it first, or its owner released it.
-            if (error.code === "ENOENT") return null;
-            throw error;
-        }
-        const movedAge = await stat(moved)
-            .then((st) => Date.now() - st.mtimeMs)
-            .catch(() => Infinity);
-        // What was moved was a fresh mutex after all: give it back to its owner, who checks it still owns it.
-        if (Math.abs(movedAge) <= staleMs)
-            await rename(moved, mutex).catch(() =>
-                rm(moved, { recursive: true, force: true }),
-            );
-        else await rm(moved, { recursive: true, force: true });
-        return null;
-    }
-    const mine = (await stat(mutex)).ino;
-    let wrote = false;
-    const stillOwner = async () =>
-        (await readFile(path.join(mutex, "owner"), "utf8").catch(() => "")) ===
-        token;
-    // Before the owner file exists the directory is only recognisable by its inode.
-    const sameDir = () =>
-        stat(mutex).then(
-            (st) => st.ino === mine,
-            () => false,
-        );
-    try {
-        await (hooks.write ?? writeFile)(path.join(mutex, "owner"), token);
-        wrote = true;
-        return await fn(stillOwner);
-    } finally {
-        if (wrote ? await stillOwner() : await sameDir())
-            await rm(mutex, { recursive: true, force: true });
-    }
-}
-
-/** Removes `<lock>.takeover.broken-*` directories a crashed breaker left behind; never the live mutex. */
-async function sweepBroken(file, staleMs) {
-    const dir = path.dirname(file);
-    const prefix = `${path.basename(file)}.takeover.broken-`;
-    const names = await readdir(dir).catch(() => []);
-    for (const name of names.filter((n) => n.startsWith(prefix))) {
-        const full = path.join(dir, name);
-        const age = await stat(full)
-            .then((st) => Date.now() - st.mtimeMs)
-            .catch(() => null);
-        if (age !== null && Math.abs(age) > staleMs)
-            await rm(full, { recursive: true, force: true });
-    }
-}
-
-/**
- * Takes `file` with the pid of this process; throws while another live
- * process holds it, takes it over when the holder is gone. The lock appears
- * atomically with its pid in it (a temp file linked into place), the takeover
- * runs under a mutex and re-reads the holder inside it, so two processes that
- * both saw a stale lock cannot each remove the other's fresh one. Returns a
- * release that removes the lock only while it still holds this pid.
- * `hooks.beforeRemove`, `hooks.beforeBreak`, `hooks.write` and `hooks.staleMs` exist for the tests.
- */
-export async function acquireLock(file, hooks = {}) {
-    await mkdir(path.dirname(file), { recursive: true });
-    await sweepBroken(file, hooks.staleMs ?? TAKEOVER_STALE_MS);
-    const holder = async () =>
-        Number((await readFile(file, "utf8").catch(() => "")).trim());
-    const release = async () => {
-        if ((await holder()) === process.pid) await rm(file, { force: true });
-    };
-    const create = async () => {
-        const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
-        await writeFile(temp, String(process.pid));
-        try {
-            await link(temp, file);
-            return true;
-        } catch (error) {
-            if (error.code !== "EEXIST") throw error;
-            return false;
-        } finally {
-            await rm(temp, { force: true });
-        }
-    };
-    for (;;) {
-        if (await create()) return release;
-        const pid = await holder();
-        if (pid > 0 && alive(pid))
-            throw new Error(`another continue is running (pid ${pid})`);
-        const won = await withTakeover(
-            file,
-            hooks.staleMs ?? TAKEOVER_STALE_MS,
-            hooks,
-            async (stillOwner) => {
-                const current = await holder();
-                if (current > 0 && alive(current))
-                    throw new Error(
-                        `another continue is running (pid ${current})`,
-                    );
-                await hooks.beforeRemove?.();
-                if (!(await stillOwner())) return false;
-                await rm(file, { force: true });
-                return create();
-            },
-        );
-        if (won) return release;
-    }
-}
-
-export async function openRun(runId, s) {
-    const dir = path.join(s.runsDir, runId);
-    const meta = await readJson(path.join(dir, "meta.json"));
-    const corpus = await loadCorpus(meta.corpusDir);
-    const plan = await readJson(path.join(dir, "plan.json"));
-    const planned = plannedCorpus(
-        corpus,
-        plan.map((e) => e.task),
-    );
-    if (corpusHashFor(planned, meta) !== meta.corpusHash)
-        throw new Error(
-            `the corpus changed since run ${runId} started; start a new run`,
-        );
-    return {
-        dir,
-        meta,
-        corpus,
-        // The tasks this run planned: what ablate, calibrate and the report
-        // read, never the whole corpus, which may have grown since.
-        tasks: planned.tasks,
-        plan,
-        ledger: path.join(dir, "ledger.jsonl"),
-    };
 }
 
 async function start(args, s) {

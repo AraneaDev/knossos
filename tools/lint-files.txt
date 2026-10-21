@@ -82,6 +82,7 @@ php	src/Cli/CliOptionParser.php
 php	src/Cli/Command/BriefCommand.php
 php	src/Cli/Command/BundleCommand.php
 php	src/Cli/Command/CliCommandSet.php
+php	src/Cli/Command/EmitTransaction.php
 php	src/Cli/Command/EnricherCommand.php
 php	src/Cli/Command/MaintenanceCommand.php
 php	src/Cli/Command/MetaCommand.php
@@ -1006,6 +1007,7 @@ php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
 php	workers/php/src/LaravelContainerFactCollector.php
 php	workers/php/src/LaravelDispatchFactCollector.php
+php	workers/php/src/LaravelEloquentFactCollector.php
 php	workers/php/src/LaravelFactCollector.php
 php	workers/php/src/LaravelFactStore.php
 php	workers/php/src/LaravelProviderMapFactCollector.php
@@ -1193,6 +1195,7 @@ js	tools/capture/shoot.mjs
 js	tools/capture/shoot.spec.mjs
 js	tools/capture/shots.mjs
 js	tools/capture/shots.spec.mjs
+js	tools/capture/worktree.mjs
 js	tools/chaos-loop.mjs
 js	tools/core-loads.mjs
 js	tools/core-loads.spec.mjs
@@ -1204,6 +1207,7 @@ js	tools/eval/arms.mjs
 js	tools/eval/arms.spec.mjs
 js	tools/eval/calibrate.mjs
 js	tools/eval/calibrate.spec.mjs
+js	tools/eval/config.mjs
 js	tools/eval/corpus.mjs
 js	tools/eval/corpus.real.spec.mjs
 js	tools/eval/corpus.spec.mjs
@@ -1217,6 +1221,8 @@ js	tools/eval/keygen.mjs
 js	tools/eval/keygen.spec.mjs
 js	tools/eval/ledger.mjs
 js	tools/eval/ledger.spec.mjs
+js	tools/eval/lock.mjs
+js	tools/eval/provenance.mjs
 js	tools/eval/report.mjs
 js	tools/eval/report.spec.mjs
 js	tools/eval/rng.mjs
