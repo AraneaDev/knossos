@@ -4,24 +4,21 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp;
 
-use InvalidArgumentException;
-use Knossos\Discovery\DiscoveryException;
-use Knossos\Scan\ScanSnapshotChangedException;
-use Knossos\Scanner\Worker\WorkerException;
-use Knossos\Store\ScanBusyException;
+use Knossos\Runtime\ErrorCode;
 use Knossos\Store\SqliteBusy;
 use Throwable;
 
 /**
- * What a client is told about a failure: a stable code, plus the exception's
- * own message only where that message is written for the caller. Anything
- * else is logged and replaced, so a driver error or an internal path never
- * reaches a client, whichever route the failure took out.
+ * What a client is told about a failure: the code {@see ErrorCode} decides,
+ * plus the exception's own message only where that message is written for
+ * the caller. Anything else is logged and replaced, so a driver error or an
+ * internal path never reaches a client, whichever route the failure took out.
  */
 final class ToolErrorMapper
 {
+    /** What an MCP client is given for a failure the shared table does not map. */
     public const GENERIC_CODE = 'KNOSSOS_TOOL_ERROR';
-    public const GENERIC_MESSAGE = 'An unexpected error occurred while running the tool.';
+    public const GENERIC_MESSAGE = ErrorCode::GENERIC_MESSAGE;
 
     /** Said for a write that met another process's write lock, a scan's most often. */
     public const BUSY_MESSAGE = SqliteBusy::MESSAGE;
@@ -31,32 +28,18 @@ final class ToolErrorMapper
     /** The stable error code a client is given for this failure. */
     public static function code(Throwable $error): string
     {
-        return match (true) {
-            $error instanceof ScanBusyException => 'KNOSSOS_SCAN_BUSY',
-            SqliteBusy::anywhere($error) => SqliteBusy::CODE,
-            // Mapped so the message survives: the file this exception names
-            // is the whole of what the caller needs to act on.
-            $error instanceof ScanSnapshotChangedException => 'KNOSSOS_SCAN_SNAPSHOT_CHANGED',
-            $error instanceof WorkerException => $error->diagnosticCode,
-            $error instanceof DiscoveryException => 'KNOSSOS_UNSAFE_PATH',
-            $error instanceof InvalidArgumentException => 'KNOSSOS_INVALID_ARGUMENT',
-            default => self::GENERIC_CODE,
-        };
+        $code = ErrorCode::for($error);
+
+        return $code === ErrorCode::UNEXPECTED ? self::GENERIC_CODE : $code;
     }
 
-    /** The message safe to send. An unexpected failure is logged and replaced. */
+    /** The message safe to send. A failure whose detail is withheld is logged first. */
     public static function publicMessage(Throwable $error): string
     {
-        $code = self::code($error);
-        if ($code === SqliteBusy::CODE) {
-            // The driver's text names files; the caller only needs to know to retry.
-            return self::BUSY_MESSAGE;
+        if (ErrorCode::withholdsDetail($error)) {
+            error_log('knossos tool error: ' . $error->getMessage());
         }
-        if ($code !== self::GENERIC_CODE) {
-            return $error->getMessage();
-        }
-        error_log('knossos tool error: ' . $error->getMessage());
 
-        return self::GENERIC_MESSAGE;
+        return ErrorCode::publicMessage($error);
     }
 }

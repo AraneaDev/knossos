@@ -55,7 +55,21 @@ final class ToolErrorMapperTest extends KnossosTestCase
         $missing = new \PDOException('SQLSTATE[HY000]: General error: 1 no such table: busy_jobs');
         (new \ReflectionProperty(\PDOException::class, 'code'))->setValue($missing, 'HY000');
 
-        assertSame('KNOSSOS_TOOL_ERROR', ToolErrorMapper::code($missing));
+        assertSame('KNOSSOS_STORAGE_ERROR', ToolErrorMapper::code($missing));
+        $logged = $this->errorLogOf(static function () use ($missing): void {
+            assertSame(\Knossos\Runtime\ErrorCode::STORAGE_MESSAGE, ToolErrorMapper::publicMessage($missing));
+        });
+        assertSame(true, str_contains($logged, 'busy_jobs'));
+    }
+
+    /** A cancelled scan keeps its code and its message, which says nothing internal. */
+    #[Group('mcp')]
+    public function testACancelledScanIsReportedAsCancelled(): void
+    {
+        $cancelled = new \Knossos\Cancellation\ScanCancelledException('Scan cancelled.');
+
+        assertSame('KNOSSOS_SCAN_CANCELLED', ToolErrorMapper::code($cancelled));
+        assertSame('Scan cancelled.', ToolErrorMapper::publicMessage($cancelled));
     }
 
     /** A busy database wrapped by a layer above is still a busy database. */

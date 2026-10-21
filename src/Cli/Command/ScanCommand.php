@@ -7,8 +7,7 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
-use Knossos\Discovery\EnrichersFile;
-use Knossos\Query\LedgeredScanner;
+use Knossos\Runtime\ScannerFactory;
 use Knossos\Scan\ScanOptions;
 
 /**
@@ -36,8 +35,7 @@ final class ScanCommand implements CliCommand
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
         $root = $positionals[0] ?? throw new InvalidArgumentException('Usage: knossos scan <path> [--name=NAME] [--db=PATH] [--json]');
-        $enrichers = EnrichersFile::forDatabase($context->databasePath());
-        $result = LedgeredScanner::local($context->database(), $context->installationRoot(), [$root], enrichers: $enrichers)->scan(
+        $result = (new ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$root])->scan(
             $root,
             new ScanOptions(
                 $context->options->single($options, 'name'),

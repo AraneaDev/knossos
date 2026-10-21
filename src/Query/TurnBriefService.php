@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Closure;
-use Knossos\Discovery\EnrichersFile;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Result\PaneStatus;
-use Knossos\Scan\{ProjectScanService, ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
+use Knossos\Runtime\ScannerFactory;
+use Knossos\Scan\{ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
 use Knossos\Scan\ScanOptions;
 use PDO;
 use Throwable;
@@ -116,7 +116,7 @@ final readonly class TurnBriefService
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
-                $scan = $lease === null ? null : (new ProjectScanService($this->pdo, $this->installationRoot, $allowed, enrichers: EnrichersFile::forDatabase($this->databasePath)))->scan($root, new ScanOptions(mode: 'incremental', lease: $lease));
+                $scan = $lease === null ? null : (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->underOwnLease($allowed)->scan($root, new ScanOptions(mode: 'incremental', lease: $lease));
                 // Read the moment the scan returns: the ledger work and the test
                 // search that follow are not the scan, and the search alone can
                 // take seconds.

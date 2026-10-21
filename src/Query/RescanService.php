@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Runtime\ScannerFactory;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanTarget;
 use PDO;
@@ -57,7 +57,7 @@ final readonly class RescanService
         $started = hrtime(true);
         try {
             // Recorded in the ledger, so a turn brief whose edits this scan took in can still report them.
-            $scan = LedgeredScanner::local($this->pdo, $this->installationRoot, $allowed, enrichers: EnrichersFile::forDatabase($this->databasePath))->scan($root, new ScanOptions(mode: 'incremental'));
+            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: 'incremental'));
         } catch (Throwable $failure) {
             return ['status' => 'scan-failed', 'reason' => $failure->getMessage(), 'project_root' => $root] + $envelope;
         }

@@ -683,7 +683,7 @@ final class CliTest extends KnossosTestCase
             // gets a code an automated caller can branch on rather than the
             // runtime default it would otherwise fall through to.
             [new ScanSnapshotChangedException('msg'), 'KNOSSOS_SCAN_SNAPSHOT_CHANGED'],
-            [new DiscoveryException('msg'), 'KNOSSOS_DISCOVERY_ERROR'],
+            [new DiscoveryException('msg'), 'KNOSSOS_UNSAFE_PATH'],
         ] as [$error, $expectedCode]) {
             $stream = fopen('php://memory', 'w+');
             $exit = (new CliErrorRenderer($stream))->render($error);
