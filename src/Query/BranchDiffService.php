@@ -7,7 +7,7 @@ namespace Knossos\Query;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Result\PaneStatus;
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -75,7 +75,7 @@ final readonly class BranchDiffService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'branch' => null, 'default_branch' => null, 'merge_base' => null, 'ahead' => null, 'base' => null, 'comparison' => null, 'files' => null];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }

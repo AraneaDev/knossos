@@ -6,8 +6,8 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Query\Drift\DriftCounts;
-use Knossos\Scan\ProjectPathResolver;
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\ProjectRepository;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
@@ -91,7 +91,7 @@ final readonly class DashboardService
     public function dashboard(string $path, int $fanInThreshold = 20, int $boundaryAxes = self::BOUNDARY_AXES): array
     {
         $absolute = realpath($path) ?: $path;
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         // A project row without an active scan has no graph to draw.
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return self::unscanned($absolute);

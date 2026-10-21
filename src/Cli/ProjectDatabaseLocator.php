@@ -20,7 +20,7 @@ use Throwable;
  */
 final readonly class ProjectDatabaseLocator
 {
-    /** Ancestors walked looking for an existing database, matching ProjectPathResolver's own bound. */
+    /** Ancestors walked looking for an existing database, matching ProjectRepository::resolvePath()'s own bound. */
     private const MAX_ANCESTORS = 64;
 
     /**
@@ -82,7 +82,7 @@ final readonly class ProjectDatabaseLocator
     /**
      * The `.knossos/knossos.sqlite` at the target, or the nearest one above it.
      *
-     * The walk mirrors {@see \Knossos\Scan\ProjectPathResolver}, which already
+     * The walk mirrors {@see \Knossos\Store\ProjectRepository::resolvePath()}, which already
      * walks parents to resolve a subdirectory to its project: a session started
      * in `src/` of a scanned repository must reach the repository's own graph,
      * and a database path that stopped at the target would find nothing there

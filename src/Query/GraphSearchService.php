@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -81,7 +81,7 @@ final readonly class GraphSearchService
         $absolute = realpath($path) ?: $path;
         $typed = mb_substr(trim($query), 0, self::QUERY_MAX);
         $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'query' => $typed, 'results' => [], 'notes' => [], 'truncated' => false];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }

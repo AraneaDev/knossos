@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
  * One component as the architecture pane shows it, addressed like the
  * dashboard: by a path inside the project, plus the component's name.
  *
- * Read-only, and resolved through {@see ProjectPathResolver} exactly as
+ * Read-only, and resolved through {@see ProjectRepository::resolvePath()} exactly as
  * {@see DashboardService} resolves its project, so the pane's detail and its
  * overview always come from the same graph. The lookup is the one
  * `inspect-component` makes; this service only reshapes its envelope into
@@ -58,7 +58,7 @@ final readonly class ComponentDetailService
             'status' => 'unscanned', 'path' => $absolute, 'name' => $name, 'project_id' => null,
             'snapshot_id' => null, 'component' => null, 'candidates' => [],
         ];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         // A project row without an active scan has no graph to look in.
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return $envelope;

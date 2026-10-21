@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use PDO;
 
 /**
- * Reads and removes rows of the `projects` table by id or by root.
+ * Reads and removes rows of the `projects` table by id, by root, or by a path inside a root.
  *
  * Each lookup selects only the columns its caller names, so a row handed on
  * as part of an answer carries exactly the fields it did when the caller
@@ -16,6 +16,9 @@ use PDO;
  */
 final readonly class ProjectRepository
 {
+    /** Guards against a pathological path burning the hook's time budget on ancestors. */
+    private const MAX_ANCESTORS = 64;
+
     /** @param PDO $pdo an existing, migrated graph database */
     public function __construct(private PDO $pdo) {}
 
@@ -39,6 +42,43 @@ final readonly class ProjectRepository
     public function byRoot(string $root, array $columns = ['*']): ?array
     {
         return $this->one('root_realpath', $root, $columns);
+    }
+
+    /**
+     * The project whose root contains this path, or null when no scanned project contains it.
+     *
+     * Path-addressed rather than id-addressed because the caller that matters
+     * is a session-start hook, which knows a working directory and nothing
+     * else. The parent walk exists because a session can start in any
+     * subdirectory of a repository, and an exact-match-only lookup would
+     * report those as unscanned.
+     *
+     * @return array<string, mixed>|null the row's id, name, root_realpath and active_scan_id
+     */
+    public function resolvePath(string $path): ?array
+    {
+        // Normalise when the path exists, fall back to it as given when it does not.
+        // Bailing out on a false realpath would report an existing-but-unreadable path
+        // as unscanned, and would fail against stored roots that are not present on
+        // this filesystem.
+        // Falling back to the path AS GIVEN keeps an existing-but-unreadable
+        // path resolvable, and matches stored roots absent from this
+        // filesystem. A relative fallback has to be made absolute all the
+        // same: the ancestor walk below would otherwise climb to "." and stop,
+        // never meeting a project root, which is always absolute.
+        $current = realpath($path) ?: self::absolute($path);
+        for ($depth = 0; $depth < self::MAX_ANCESTORS; $depth++) {
+            $row = $this->byRoot($current, ['id', 'name', 'root_realpath', 'active_scan_id']);
+            if ($row !== null) {
+                return $row;
+            }
+            $parent = dirname($current);
+            if ($parent === $current) {
+                return null;
+            }
+            $current = $parent;
+        }
+        return null;
     }
 
     /** Whether a project row with this id exists. */
@@ -79,6 +119,23 @@ final readonly class ProjectRepository
     {
         $this->pdo->prepare('UPDATE projects SET active_scan_id = NULL WHERE id = :project')->execute(['project' => $id]);
         $this->pdo->prepare('DELETE FROM projects WHERE id = :project')->execute(['project' => $id]);
+    }
+
+    /**
+     * A path as given when it is already absolute, resolved against the working
+     * directory when it is not.
+     *
+     * Lexical, not filesystem-backed: this runs precisely when the path does
+     * not exist, so there is nothing to canonicalise.
+     */
+    private static function absolute(string $path): string
+    {
+        if ($path === '' || $path[0] === '/' || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1) {
+            return $path;
+        }
+        $cwd = getcwd();
+
+        return $cwd === false ? $path : rtrim($cwd, '/') . '/' . $path;
     }
 
     /**

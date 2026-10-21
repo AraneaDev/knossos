@@ -8,6 +8,7 @@ use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\RootGuard;
 use Knossos\Discovery\RootNotFoundException;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -46,7 +47,7 @@ final readonly class ScanTarget
         if ($refusal !== null) {
             return [$allowed, null, $refusal];
         }
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null) {
             return [$allowed, null, ['status' => 'unscanned']];
         }
