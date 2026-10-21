@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import sys
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -131,6 +132,28 @@ def test_a_failed_declaration_is_not_memoised_as_empty(worker: ModuleType, proje
     with pytest.raises(RecursionError):
         index.module_declarations("shop.service")
     assert index.module_declarations("shop.service") == {"Gateway": "py:class:shop.service.Gateway"}
+
+
+def test_a_declaration_step_that_fails_leaves_no_partial_memo(worker: ModuleType, project, monkeypatch) -> None:
+    # The declarations are memoised before the re-exports are followed. A
+    # failure there left the entry holding only the top-level names, and the
+    # placeholder cleanup in module_declarations no longer recognised it.
+    root = project(
+        {"shop/__init__.py": "from .service import Gateway\n", "shop/service.py": "class Gateway:\n    pass\n"}
+    )
+    index = worker.ProjectModuleIndex(root, 2_000_000)
+    real = worker.ProjectModuleIndex._add_reexports
+    failures = [RecursionError("too deep")]
+
+    def failing_once(self: Any, *args: Any) -> None:
+        if failures:
+            raise failures.pop()
+        real(self, *args)
+
+    monkeypatch.setattr(worker.ProjectModuleIndex, "_add_reexports", failing_once)
+    with pytest.raises(RecursionError):
+        index.module_declarations("shop")
+    assert index.module_declarations("shop") == {"Gateway": "py:class:shop.service.Gateway"}
 
 
 def test_module_declarations_tolerate_broken_targets(worker: ModuleType, project) -> None:

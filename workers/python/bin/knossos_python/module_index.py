@@ -588,10 +588,16 @@ class ProjectModuleIndex(ReadRecorder):
             )
         }
         self._cache[key or name] = declarations
-        self._add_reexports(tree, location, is_package, declarations)
-        imported = self._add_instances(tree, location, is_package, declarations, name)
-        self._add_returns(tree, name, declarations, imported)
-        self._add_class_attributes(tree, name, declarations, imported, location, is_package)
+        try:
+            self._add_reexports(tree, location, is_package, declarations)
+            imported = self._add_instances(tree, location, is_package, declarations, name)
+            self._add_returns(tree, name, declarations, imported)
+            self._add_class_attributes(tree, name, declarations, imported, location, is_package)
+        except BaseException:
+            # Left in place, the partial entry would answer every later
+            # importer in the request with whatever was added before the failure.
+            self._cache.pop(key or name, None)
+            raise
         return declarations
 
     def is_protocol(self, owner: str) -> bool:
