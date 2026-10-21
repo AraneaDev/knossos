@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Watch;
 
 use Knossos\Cancellation\CancellationToken;
-use Knossos\Discovery\AllowedRoots;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;

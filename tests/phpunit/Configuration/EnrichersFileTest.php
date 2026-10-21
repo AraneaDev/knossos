@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Discovery;
+namespace Knossos\Tests\Phpunit\Configuration;
 
-use Knossos\Discovery\EnricherDefinition;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnricherDefinition;
+use Knossos\Configuration\EnrichersFile;
 
 use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertEquals;

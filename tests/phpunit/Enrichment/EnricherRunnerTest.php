@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Enrichment;
 
-use Knossos\Discovery\EnricherDefinition;
+use Knossos\Configuration\EnricherDefinition;
 use Knossos\Enrichment\EnricherRunner;
 use Knossos\Enrichment\NativeNodeIndex;
 use Knossos\Scanner\Protocol\Confidence;

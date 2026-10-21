@@ -12,8 +12,8 @@ use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\EnricherCommand;
 use Knossos\Cli\Command\RootsCommand;
-use Knossos\Discovery\EnricherDefinition;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnricherDefinition;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 

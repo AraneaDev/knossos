@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;

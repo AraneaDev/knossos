@@ -15,7 +15,7 @@ namespace Knossos\Tests\Phpunit\Support;
  * checkout therefore used to turn three passing tests red, which makes the
  * suite a report on the machine rather than on the code.
  *
- * `KNOSSOS_ROOTS_FILE` is what closes it: {@see \Knossos\Discovery\AllowedRoots::defaultConfigPath()}
+ * `KNOSSOS_ROOTS_FILE` is what closes it: {@see \Knossos\Roots\AllowedRoots::defaultConfigPath()}
  * honours it ahead of the file beside the database, so pointing it at a path
  * that does not exist removes the file source outright, whichever database the
  * command under test decides to open. Nothing is created, so there is nothing

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Git\ProcessGitHistoryProvider;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Query\ArchitectureQueryService;
-use Knossos\Query\StalenessProbe;
 use Knossos\Query\ScannerFactory;
+use Knossos\Query\StalenessProbe;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\ServerEnvironment;
 use PDO;
 

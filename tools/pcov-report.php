@@ -126,7 +126,7 @@ foreach ($merged as $file => $lines) {
         $relative === 'src/Scan/ScanTarget.php' => 'query-analysis',
         str_starts_with($relative, 'src/Mcp/'), $relative === 'bin/http-router.php' => 'transport',
         str_starts_with($relative, 'src/Store/') => 'storage',
-        str_starts_with($relative, 'src/Discovery/'), str_starts_with($relative, 'src/Configuration/') => 'discovery-config',
+        str_starts_with($relative, 'src/Discovery/'), str_starts_with($relative, 'src/Configuration/'), str_starts_with($relative, 'src/Roots/') => 'discovery-config',
         str_starts_with($relative, 'src/Reconciliation/') => 'reconciliation',
         str_starts_with($relative, 'src/Query/'), str_starts_with($relative, 'src/Result/'), str_starts_with($relative, 'src/Boundary/'), str_starts_with($relative, 'src/Classification/') => 'query-analysis',
         str_starts_with($relative, 'src/Scan/'), str_starts_with($relative, 'src/Scanner/'), str_starts_with($relative, 'src/Cancellation/') => 'scanner-runtime',

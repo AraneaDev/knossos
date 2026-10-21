@@ -7,8 +7,8 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
-use Knossos\Discovery\EnricherDefinition;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnricherDefinition;
+use Knossos\Configuration\EnrichersFile;
 
 /**
  * Lists, adds and removes the installation's external enrichers, without hand-editing enrichers.json.

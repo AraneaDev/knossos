@@ -15,7 +15,7 @@
         "addedAt": 1785403974039
       }
     ],
-    "src/Discovery/AllowedRoots.php": [
+    "src/Roots/AllowedRoots.php": [
       {
         "line": 141,
         "mutator": "ReturnRemoval",

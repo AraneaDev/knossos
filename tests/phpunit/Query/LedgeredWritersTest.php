@@ -6,9 +6,9 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Mcp\McpServerAssembly;
 use Knossos\Query\LedgeredScanner;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;

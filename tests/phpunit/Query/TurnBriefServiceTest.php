@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Query\LedgeredScanner;
 use Knossos\Query\TurnBriefService;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;

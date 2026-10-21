@@ -6,9 +6,9 @@ namespace Knossos\Enrichment;
 
 use Closure;
 use Knossos\Cancellation\CancellationToken;
+use Knossos\Configuration\EnricherDefinition;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Configuration\ProjectConfiguration;
-use Knossos\Discovery\EnricherDefinition;
-use Knossos\Discovery\EnrichersFile;
 use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Scanner\Protocol\ScanContribution;
 use PDO;

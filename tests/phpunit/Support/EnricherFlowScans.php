@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Support;
 
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanOptions;

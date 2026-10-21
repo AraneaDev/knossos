@@ -6,9 +6,9 @@ namespace Knossos\Scan;
 
 use Closure;
 use Knossos\Configuration\ProjectConfigurationLoader;
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\ProjectDiscoverer;
+use Knossos\Roots\AllowedRoots;
 
 /**
  * A project tree as the scanner would see it: every discovered file and

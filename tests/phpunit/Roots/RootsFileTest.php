@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Discovery;
+namespace Knossos\Tests\Phpunit\Roots;
 
-use Knossos\Discovery\RootsFile;
+use Knossos\Roots\RootsFile;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\RootGuard;
 use Knossos\Discovery\RootNotFoundException;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Store\ProjectRepository;
 use PDO;
 

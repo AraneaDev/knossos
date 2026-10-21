@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Enrichment;
 
-use Knossos\Discovery\EnricherDefinition;
+use Knossos\Configuration\EnricherDefinition;
 use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\ContributionDecoder;

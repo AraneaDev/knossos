@@ -60,6 +60,10 @@
       "path_prefix": "src/Store"
     },
     {
+      "name": "ns:Roots",
+      "path_prefix": "src/Roots"
+    },
+    {
       "name": "ns:Discovery",
       "path_prefix": "src/Discovery"
     },
@@ -242,6 +246,25 @@
     {
       "id": "foundation-store-stays-below-analysis",
       "from_boundary": "ns:Store",
+      "deny_targets": [
+        "ns:Discovery",
+        "ns:Boundary",
+        "ns:Configuration",
+        "ns:Git",
+        "ns:Reconciliation",
+        "ns:Enrichment",
+        "ns:Scan",
+        "ns:Query",
+        "ns:Maintenance",
+        "ns:Runtime",
+        "ns:Watch",
+        "ns:Mcp",
+        "ns:Cli"
+      ]
+    },
+    {
+      "id": "foundation-roots-stays-below-analysis",
+      "from_boundary": "ns:Roots",
       "deny_targets": [
         "ns:Discovery",
         "ns:Boundary",

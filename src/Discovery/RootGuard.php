@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery;
 
+use Knossos\Roots\AllowedRoots;
+
 /**
  * The filesystem boundary: resolves a requested path or refuses it.
  *

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Maintenance;
 
 use InvalidArgumentException;
-use Knossos\Discovery\EnrichersFile;
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Maintenance\ProjectMoveService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Store\SqliteGraphRepository;
@@ -253,7 +253,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
         $rootsDirectory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
         mkdir($rootsDirectory, 0o700);
         try {
-            $roots = new \Knossos\Discovery\RootsFile($rootsDirectory . '/roots.json');
+            $roots = new \Knossos\Roots\RootsFile($rootsDirectory . '/roots.json');
             $roots->write([self::OLD_ROOT]);
 
             $result = $this->service($pdo)->move(self::OLD_ROOT, $newRoot, true, $this->scanner($pdo, $newRoot), $roots);

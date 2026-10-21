@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Scan;
 
-use Knossos\Discovery\AllowedRoots;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\TreeFingerprint;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Enrichment;
 
+use Knossos\Configuration\EnrichersFile;
 use Knossos\Configuration\ProjectConfiguration;
-use Knossos\Discovery\EnrichersFile;
 use Knossos\Enrichment\EnrichmentPhase;
 use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Tests\Phpunit\KnossosTestCase;

@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Discovery;
+namespace Knossos\Tests\Phpunit\Roots;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\RootGuard;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 

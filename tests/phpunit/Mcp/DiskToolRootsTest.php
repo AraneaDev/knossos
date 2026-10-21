@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Mcp;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\McpServerAssembly;
@@ -16,6 +15,7 @@ use Knossos\Query\Drift\DriftCounts;
 use Knossos\Query\Drift\DriftOracle;
 use Knossos\Query\StalenessProbe;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;

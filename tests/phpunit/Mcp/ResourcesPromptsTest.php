@@ -269,7 +269,7 @@ final class ResourcesPromptsTest extends KnossosTestCase
     public function testPromptsGetRefusesListShapedArgumentsLikeToolsCall(): void
     {
         $pdo = (new \Knossos\Runtime\RuntimeFactory(self::repositoryRoot()))->database(':memory:');
-        $server = (new \Knossos\Mcp\McpServerAssembly($pdo, self::repositoryRoot(), ':memory:', \Knossos\Discovery\AllowedRoots::of([])))->dispatcher();
+        $server = (new \Knossos\Mcp\McpServerAssembly($pdo, self::repositoryRoot(), ':memory:', \Knossos\Roots\AllowedRoots::of([])))->dispatcher();
         $server->handle(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => McpDispatcher::PROTOCOL_VERSION]]);
         $server->handle(['jsonrpc' => '2.0', 'method' => 'notifications/initialized']);
 

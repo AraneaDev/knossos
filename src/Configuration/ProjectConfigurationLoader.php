@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Knossos\Configuration;
 
-use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Discovery\JsonConfig;
 use Knossos\Discovery\RootGuard;
 use Knossos\Filesystem\RelativePathRule;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 
 /**
@@ -54,7 +53,7 @@ final class ProjectConfigurationLoader
     /**
      * Resolve the root through the allow-list, then read and validate its configuration.
      *
-     * @param \Knossos\Discovery\AllowedRoots|list<string> $allowedRoots
+     * @param \Knossos\Roots\AllowedRoots|list<string> $allowedRoots
      */
     public static function load(string $requestedRoot, AllowedRoots|array $allowedRoots): ProjectConfiguration
     {
