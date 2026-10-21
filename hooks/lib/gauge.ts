@@ -10,7 +10,8 @@
  */
 import { ACCENT, FAINT } from './palette'
 import { cells, MEDIUM_MAX, MEDIUM_MIN, tierOf } from './rows'
-import type { Segment, Tier } from './rows'
+import type { Segment } from './types'
+import type { Tier } from './rows'
 
 /** The cells the track takes between the two layouts' names. */
 const TRACK = 10

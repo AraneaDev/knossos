@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Row } from '../hooks/lib/layout'
+import type { Row } from '../hooks/lib/types'
 import { button } from '../hooks/lib/rows'
 import { themeColour } from '../hooks/lib/themes'
 import { pageRow } from './page-rows'

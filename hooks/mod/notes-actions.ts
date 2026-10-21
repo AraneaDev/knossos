@@ -10,7 +10,7 @@
 import type { KnossosView, NoteState, NotesAsk } from '../../types'
 import { BUSY_CODE, BUSY_SAID, parseNoteWrite } from '../lib/envelopes'
 import { confirmable, labelOf, markedNote, notesInput } from '../lib/notes-view'
-import type { NoteItem } from '../lib/notes-view'
+import type { NoteItem } from '../lib/notes-tree'
 import { request, showComponent } from './loaders'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'

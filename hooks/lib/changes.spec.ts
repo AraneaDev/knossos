@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, SessionChanges, SessionLedger, TurnBrief } from '../../types'
-import { accumulate, APPROXIMATE_START, cdFor, changesArrangement, changesInput, changesList, FILE_CAP, fromLedger, ledgerChanges, lookAtOf, NO_CHANGES, ownTimeline, scanKey, stamp, testCommand, testsRan, timelineRow } from './changes'
+import { accumulate, APPROXIMATE_START, FILE_CAP, fromLedger, ledgerChanges, NO_CHANGES, ownTimeline, scanKey, stamp } from './session-changes'
+import { cdFor, testCommand, testsRan } from './test-commands'
+import { changesArrangement, changesInput, changesList, lookAtOf, timelineRow } from './changes'
 import { changesRows } from './__tests__/tabs'
-import { editTarget, paneInput } from './layout'
+import { editTarget } from './pane-list'
+import { paneInput } from './pane-input'
 import { paneRows } from './__tests__/pane'
 import { findRow, plainText } from './__tests__/plain-text'
 import { rowWidth } from './rows'
-import type { Row } from './rows'
+import type { Row } from './types'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 const ROOT = '/work/app'
@@ -297,7 +300,7 @@ describe('look at now', () => {
   it('sums the session up on the Overview, under the tiles: the way to Changes first, marked, and t beside it', () => {
     const d = { ...dash(), project_root: ROOT } as Dashboard
     const v: KnossosView = { inspect: null, isBandHidden: false, tab: 'overview', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }
-    const pane = paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, session())
+    const pane = paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null, session: session() })
     // The way to Changes has no file of its own: `e` opens nothing there.
     expect(editTarget(pane)).toBeNull()
     for (const columns of WIDTHS) {
@@ -645,7 +648,7 @@ describe('changed files no test reaches', () => {
     const view: KnossosView = { inspect: null, isBandHidden: false, tab: 'overview', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }
     const session = { ...untested(), tests: { 'tests/RouterTest.php': 1 } }
     for (const columns of WIDTHS) {
-      const text = textOf(paneRows(paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view, 0, true, null, null, session), columns, 60))
+      const text = textOf(paneRows(paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view, now: 0, terminal: true, detail: null, allow: null, session }), columns, 60))
       expect(text.replace(/\s+/g, ' '), `${columns}`).toContain('▲ 2 files no test reaches')
     }
   })

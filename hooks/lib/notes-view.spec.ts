@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, NoteRow, Notes, NotesState } from '../../types'
 import { parseNotes } from './envelopes'
-import { footerRows, listFor, paneInput, paneLayout, TABS } from './layout'
+import { footerRows, TABS } from './chrome'
+import { listFor } from './pane-list'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { nextFilter, NOTES_FILTERS } from './notes-view'
 import { ACCENT } from './palette'
 import { plainText } from './__tests__/plain-text'
@@ -27,7 +30,7 @@ const answer = (over: Partial<Notes> = {}): Notes => ({
   ...over,
 })
 const state = (a: Notes | null, phase: NotesState['phase'] = 'done'): NotesState => ({ snapshot: 's1', filter: 'all', text: '', version: 0, phase, answer: a })
-const pane = (s: NotesState | null, v = view()) => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, undefined, null, undefined, { notes: s })
+const pane = (s: NotesState | null, v = view()) => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { notes: s } })
 const text = (s: NotesState | null, columns = 100, height = 60, v = view()) => paneLayout(pane(s, v), columns, height).body.map(plainText).join('\n')
 
 describe('the Notes tab', () => {

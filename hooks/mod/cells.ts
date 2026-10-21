@@ -7,7 +7,8 @@
  */
 import type { PluginState } from 'claude-code'
 
-import { NO_CHANGES, withScrollsKept } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
+import { withScrollsKept } from '../lib/layout'
 import { LIVE_OFF } from '../lib/live'
 import { NO_MOTION } from '../lib/motion'
 

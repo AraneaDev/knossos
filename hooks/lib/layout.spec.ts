@@ -25,6 +25,7 @@ import {
 } from './layout'
 import { paneRows } from './__tests__/pane'
 import type { PaneInput, Row } from './layout'
+import type { PaneInputArgs } from './pane-input'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { compact, fitStart, shortName, wrapGroups } from './rows'
 import { gitLabel, paneLayout, shrinkRows, statsOf, titleRow } from './layout'
@@ -117,7 +118,7 @@ const IDLE = { phase: 'idle', reason: null } as const
 const FETCHED = { fetchedAt: 0, failed: false }
 
 const input = (over: Partial<PaneInput> = {}, d = dash(), b: TurnBrief | null = brief()): PaneInput => ({
-  ...paneInput(d, b, FETCHED, IDLE, view(), 0, true),
+  ...paneInput({ dashboard: d, brief: b, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true }),
   ...over,
 })
 
@@ -222,7 +223,7 @@ describe('paneRows', () => {
 
   it('fits even a long project name, a long failure and a narrow pane', () => {
     const rescan = { phase: 'failed', reason: 'the project root is not an allowed root for scanning' } as const
-    const long = paneInput(dash({ project_root: `/work/${'very-long-project-name-'.repeat(4)}` }), brief(), FETCHED, rescan, view(), 0, true)
+    const long = paneInput({ dashboard: dash({ project_root: `/work/${'very-long-project-name-'.repeat(4)}` }), brief: brief(), refresh: FETCHED, rescan, view: view(), now: 0, terminal: true })
     for (const columns of [12, 20, 40, 60]) {
       for (const r of paneRows(long, columns)) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
@@ -257,7 +258,7 @@ describe('paneRows', () => {
   it('offers a rescan on a fresh snapshot too, but not while one runs', () => {
     const fresh = dash({ freshness: { state: 'fresh', age_seconds: 3, drift_files: 0 } })
     expect(plainText(row(paneRows(input({}, fresh), 60), 'title')!)).toMatch(/rescan$/)
-    const scanning = paneInput(dash(), null, FETCHED, { phase: 'scanning', reason: null }, view(), 0, true)
+    const scanning = paneInput({ dashboard: dash(), brief: null, refresh: FETCHED, rescan: { phase: 'scanning', reason: null }, view: view(), now: 0, terminal: true })
     const title = plainText(row(paneRows(scanning, 60), 'title')!)
     // The pill's colour and words say how the graph stands; ● only ever means probably dead.
     expect(title).toContain(' scanning…')
@@ -467,9 +468,9 @@ describe('paneStatus and the rescan action', () => {
   it('offers a rescan whatever the snapshot says, unless a scan is running', () => {
     const fresh = dash({ freshness: { state: 'fresh', age_seconds: 1, drift_files: 0 } })
     for (const d of [dash(), dash({ freshness: { state: 'fresh', age_seconds: 1, drift_files: 2 } }), fresh]) {
-      expect(paneInput(d, null, FETCHED, IDLE, view(), 0, true, null, null).canRescan).toBe(true)
+      expect(paneInput({ dashboard: d, brief: null, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true, detail: null, allow: null }).canRescan).toBe(true)
     }
-    expect(paneInput(fresh, null, FETCHED, { phase: 'scanning', reason: null }, view(), 0, true, null, null).canRescan).toBe(false)
+    expect(paneInput({ dashboard: fresh, brief: null, refresh: FETCHED, rescan: { phase: 'scanning', reason: null }, view: view(), now: 0, terminal: true, detail: null, allow: null }).canRescan).toBe(false)
   })
 })
 
@@ -581,7 +582,7 @@ const full = (over: Partial<Dashboard> = {}): Dashboard =>
     ...over,
   })
 
-const fullInput = (over: Partial<PaneInput> = {}, d = full()): PaneInput => ({ ...paneInput(d, brief(), FETCHED, IDLE, view(), 0, true), ...over })
+const fullInput = (over: Partial<PaneInput> = {}, d = full()): PaneInput => ({ ...paneInput({ dashboard: d, brief: brief(), refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true }), ...over })
 
 const detailAnswer = (over: Partial<NonNullable<ComponentDetail['component']>> = {}): ComponentDetail => ({
   status: 'ok',
@@ -624,7 +625,7 @@ const detailAnswer = (over: Partial<NonNullable<ComponentDetail['component']>> =
 const shown = { name: 'Knossos\\Query\\DashboardService', label: 'DashboardService' }
 const done = (answer: ComponentDetail | null): DetailState => ({ snapshot_id: 's1', name: shown.name, detail: answer, phase: 'done' })
 const detailPane = (answer: ComponentDetail | null = detailAnswer(), state: DetailState | null = done(answer)) =>
-  paneInput(full(), brief(), FETCHED, IDLE, view({ inspect: shown }), 0, true, detailInput(shown, state))
+  paneInput({ dashboard: full(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ inspect: shown }), now: 0, terminal: true, detail: detailInput(shown, state) })
 
 const widthsFit = (rows: Row[], columns: number) => {
   for (const r of rows) expect(rowWidth(r), `${columns} ${r.key}: ${plainText(r)}`).toBeLessThanOrEqual(columns)
@@ -948,7 +949,7 @@ describe('the detail view', () => {
     const items = Array.from({ length: 30 }, (_, i) => ({ name: `user${i}`, canonical_name: `App\\User${i}`, kind: 'class', boundary: 'core', edges: 1 }))
     const answer = detailAnswer({ used_by: { count: 30, truncated: false, names: [], items } })
     const box = (selected: number): string | undefined => {
-      const input = { ...paneInput(full(), brief(), FETCHED, IDLE, view({ inspect: shown, selected }), 0, true, detailInput(shown, done(answer))), selected }
+      const input = { ...paneInput({ dashboard: full(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ inspect: shown, selected }), now: 0, terminal: true, detail: detailInput(shown, done(answer)) }), selected }
       const segments = paneRows(input, 140, 30).flatMap(r => r.segments)
       return segments.find(seg => seg.text.includes('more') && seg.press !== undefined)?.press?.id
     }
@@ -1135,7 +1136,7 @@ describe('the hubs narrowed to an in-degree range', () => {
       in_degree: { buckets: [{ from: 0, to: 0, components: 9 }, { from: 101, to: null, components: 7 }], truncated: false },
       fan_in: [{ path: 'src/A.php', dependent_files: 30, boundaries: [], boundary: 'core' }],
     })
-    const narrowed = paneInput(d, brief(), FETCHED, IDLE, view({ tab: 'hubs', degree: { from: 101, to: null } }), 0, true)
+    const narrowed = paneInput({ dashboard: d, brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'hubs', degree: { from: 101, to: null } }), now: 0, terminal: true })
     expect(narrowed.degree).toEqual({ from: 101, to: null, components: 7 })
     expect(listFor(narrowed).map(o => o.name)).toEqual(['StableId', 'ArchitectureQueryService', 'StableId::symbol', 'ProjectScanService::scan'])
     for (const columns of WIDTHS) {
@@ -1145,7 +1146,7 @@ describe('the hubs narrowed to an in-degree range', () => {
       expect(rows.flatMap(r => r.segments).some(s => s.press?.id === 'clear' && s.press.hotkey === 'x')).toBe(true)
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
-    const none = paneInput(d, brief(), FETCHED, IDLE, view({ tab: 'hubs', degree: { from: 0, to: 0 } }), 0, true)
+    const none = paneInput({ dashboard: d, brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'hubs', degree: { from: 0, to: 0 } }), now: 0, terminal: true })
     expect(textOf(paneRows(none, 100))).toContain('none of the listed hubs is in this range')
   })
 })
@@ -1210,7 +1211,7 @@ describe('colour', () => {
 describe('motion in the header and the Overview', () => {
   const in_degree = { buckets: [{ from: 0, to: 0, components: 400 }, { from: 1, to: 5, components: 900 }, { from: 6, to: null, components: 120 }], truncated: false }
   const fresh = full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 }, in_degree })
-  const at = (live: Parameters<typeof paneInput>[11], motion: Motion, now = 1_100) => paneInput(fresh, brief(), FETCHED, IDLE, view({ tab: 'overview' }), now, true, null, null, undefined, null, live, { motion })
+  const at = (live: PaneInputArgs['live'], motion: Motion, now = 1_100) => paneInput({ dashboard: fresh, brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'overview' }), now, terminal: true, detail: null, allow: null, sessionRoot: null, live, extras: { motion } })
   const pillText = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!.text
 
   it('breathes the live dot for a moment after a scan lands, and holds it still after', () => {
@@ -1221,7 +1222,7 @@ describe('motion in the header and the Overview', () => {
 
   it('turns a spinner in the pill while a scan runs, and none on a stale or failed pill', () => {
     expect(pillText(at({ phase: 'scanning' }, { since: null, frame: 3 }))).toMatch(new RegExp(`^ ${spinGlyph(3)} scanning…`))
-    expect(pillText(paneInput(full(), brief(), FETCHED, IDLE, view(), 0, true))).toBe(' stale 11h ')
+    expect(pillText(paneInput({ dashboard: full(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true }))).toBe(' stale 11h ')
   })
 
   it('grows the Overview bars in after a scan lands, and draws them whole once it has', () => {
@@ -1414,15 +1415,15 @@ describe('the live watcher in the header', () => {
     expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'scanning' })).toEqual({ tone: 'warn', text: 'scanning…' })
     expect(paneStatus(dash(), FETCHED, IDLE, 0, { phase: 'scanning' }).text).toBe('scanning… · stale 11h')
     const drifted = dash({ freshness: { state: 'stale', age_seconds: 5, drift_files: 3 } })
-    expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'scanning' }).canRescan).toBe(false)
-    expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }).canRescan).toBe(true)
+    expect(paneInput({ dashboard: drifted, brief: null, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, live: { phase: 'scanning' } }).canRescan).toBe(false)
+    expect(paneInput({ dashboard: drifted, brief: null, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, live: { phase: 'live' } }).canRescan).toBe(true)
   })
   it('says scanning, and who, while another process holds the scan lock, and offers no rescan then', () => {
     expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'live', external: { pid: 1234 } })).toEqual({ tone: 'warn', text: 'scanning…', note: 'another process is scanning (pid 1234)' })
     expect(paneStatus(dash(), FETCHED, IDLE, 0, { phase: 'following', external: { pid: null } })).toEqual({ tone: 'warn', text: 'scanning… · stale 11h', note: 'another process is scanning' })
     expect(paneStatus(fresh, FETCHED, IDLE, 6_000, { phase: 'live', external: { pid: null, host: 'f3a9c2e1b7d0' } })).toEqual({ tone: 'warn', text: 'scanning…', note: 'another host is scanning (f3a9c2e1b7d0, a container or another machine)' })
     const drifted = dash({ freshness: { state: 'stale', age_seconds: 5, drift_files: 3 } })
-    expect(paneInput(drifted, null, FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live', external: { pid: 1234 } }).canRescan).toBe(false)
+    expect(paneInput({ dashboard: drifted, brief: null, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, live: { phase: 'live', external: { pid: 1234 } } }).canRescan).toBe(false)
   })
   it('keeps the old states when the graph is not fresh, when starting, or off', () => {
     expect(paneStatus(dash(), FETCHED, IDLE, 0, { phase: 'live' }).text).toBe('stale 11h')
@@ -1494,10 +1495,10 @@ describe('the pane outside Claude Code', () => {
     expect(flat(claude)).toContain("q ask Claude about the marked row: your press sends the prompt t on Overview and Changes: copy the command for the tests that reach this session's changes d ")
   })
   it('is told through paneInput, which carries the host into the rows it lays out', () => {
-    const web = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true, null, null, undefined, null, undefined, { host: 'web' })
+    const web = paneInput({ dashboard: dash(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'hubs' }), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { host: 'web' } })
     expect(web.host).toBe('web')
     expect(pressIds(paneRows(web, 120))).not.toContain('ask')
-    const claude = paneInput(dash(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true)
+    const claude = paneInput({ dashboard: dash(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'hubs' }), now: 0, terminal: true })
     expect(claude.host).toBeUndefined()
     expect(pressIds(paneRows(claude, 120))).toContain('ask')
   })
@@ -1575,7 +1576,7 @@ describe('the pane at every width and height, with a large project', () => {
     trend: [1, 2, 2, 3, 2, 4, 3].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 100 + i * 3 })),
     boundary_matrix: matrix,
   })
-  const at = (over: Partial<KnossosView> = {}) => paneInput(big, brief(), FETCHED, IDLE, view(over), 0, true)
+  const at = (over: Partial<KnossosView> = {}) => paneInput({ dashboard: big, brief: brief(), refresh: FETCHED, rescan: IDLE, view: view(over), now: 0, terminal: true })
   const shown = (rows: Row[], prefix: string) => rows.filter(r => r.key.split('|').some(k => new RegExp(`^${prefix}-\\d+$`).test(k))).length
   /** Where each column of the wide grid ends: the last row with anything in its left or right half. */
   // The last row each side of the grid holds of its own cards (their stretch included), not padding for a side that ran out.
@@ -1706,9 +1707,9 @@ describe('the header: the project, where its checkout stands, its languages and 
   it('draws the status as a pill in its tone, the words on the fill, and why beside it', () => {
     const pill = (input: PaneInput) => row(paneRows(input, 140), 'title')!.segments.find(s => s.bg !== undefined && s.bold === true)!
     expect(pill(pane())).toMatchObject({ text: ' stale 11h ', bg: 'warning', color: 'inverseText', bold: true })
-    const live = paneInput(full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 } }), brief(), FETCHED, IDLE, view(), 0, true, null, null, undefined, null, { phase: 'live' }, { git })
+    const live = paneInput({ dashboard: full({ freshness: { state: 'fresh', age_seconds: 7, drift_files: 0 } }), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, live: { phase: 'live' }, extras: { git } })
     expect(pill(live)).toMatchObject({ text: ' ◍ live · 7s ', bg: 'success' })
-    const failed = paneInput(full(), brief(), FETCHED, { phase: 'failed', reason: 'not an allowed root' }, view(), 0, true, null, null, undefined, null, undefined, { git })
+    const failed = paneInput({ dashboard: full(), brief: brief(), refresh: FETCHED, rescan: { phase: 'failed', reason: 'not an allowed root' }, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { git } })
     expect(pill(failed)).toMatchObject({ text: ' scan failed ', bg: 'error' })
     expect(plainText(row(paneRows(failed, 140), 'title')!)).toMatch(/not an allowed root {3}scan failed {3}r: rescan$/)
   })
@@ -1768,14 +1769,14 @@ describe('the footer: moves on the left, actions on the right, and a word after 
 
   it('says what an action did while its time lasts, and nothing once it is up', () => {
     const said = { text: '✓ copied StableId', tone: 'ok' as const, until: 2_000 }
-    const at = (now: number) => paneInput(full(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), now, true, null, null, undefined, null, undefined, { feedback: said })
+    const at = (now: number) => paneInput({ dashboard: full(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'hubs' }), now, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { feedback: said } })
     expect(at(1_999).feedback).toEqual(said)
     expect(at(2_000).feedback).toBeNull()
     const rows = paneRows(at(0), 200)
     expect(rawText(keyRows(rows)[0]!)).toMatch(/k: ↑ {3}✓ copied StableId +o: open/)
     expect(keyRows(rows)[0]!.segments.find(s => s.text === '✓ copied StableId')?.color).toBe('success')
     // A failure in the error colour; past the width the word takes a row of its own above the keys.
-    const failed = paneInput(full(), brief(), FETCHED, IDLE, view({ tab: 'hubs' }), 0, true, null, null, undefined, null, undefined, { feedback: { text: '✗ no editor', tone: 'alert', until: 1 } })
+    const failed = paneInput({ dashboard: full(), brief: brief(), refresh: FETCHED, rescan: IDLE, view: view({ tab: 'hubs' }), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { feedback: { text: '✗ no editor', tone: 'alert', until: 1 } } })
     const narrow = paneRows(failed, 60)
     expect(row(narrow, 'keys-said')!.segments[1]).toMatchObject({ text: '✗ no editor', color: 'error' })
     expect(textOf(paneRows(at(5_000), 200))).not.toContain('copied')

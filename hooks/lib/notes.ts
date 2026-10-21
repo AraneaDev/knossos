@@ -1,5 +1,5 @@
 import type { PolicyRule } from '../../types'
-import { namedByCommand, runnerOf, testCommand, testsRan } from './changes'
+import { namedByCommand, runnerOf, testCommand, testsRan } from './test-commands'
 import type { Dashboard, FanIn, TurnBrief, Violation } from './envelopes'
 
 /**

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Row } from '../lib/layout'
+import type { Row } from '../lib/types'
 import { busy, NO_MOTION, spinGlyph } from '../lib/motion'
 import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import { currentInput } from './input'

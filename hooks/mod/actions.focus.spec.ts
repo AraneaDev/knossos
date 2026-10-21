@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KnossosView } from '../../types'
-import type { Row } from '../lib/layout'
+import type { Row } from '../lib/types'
 import { focusLanded, focusMoved, wheelScrolled } from './actions'
 import { request } from './loaders'
 import type { Port } from './port'

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TABS } from "../../hooks/lib/layout.ts";
+import { TABS } from "../../hooks/lib/chrome.ts";
 import {
     checkStill,
     keepPartial,
@@ -25,7 +25,7 @@ import {
 const entries = Object.entries(SHOTS);
 
 describe("SHOTS", () => {
-    it("takes a still of every tab past the first two, pressing the key layout.ts gives it", () => {
+    it("takes a still of every tab past the first two, pressing the key chrome.ts gives it", () => {
         const pressed = new Set(
             entries.flatMap(([, shot]) =>
                 shot.steps.filter((s) => s.do === "press").map((s) => s.key),

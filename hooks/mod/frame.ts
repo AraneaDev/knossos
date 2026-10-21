@@ -4,8 +4,10 @@
  * of the rows laid out. Plain TypeScript, so a host without the engine's
  * bundler draws from the same decisions as the hooks module.
  */
-import { allowInput, emptyRows, noGraphOf, tierOf } from '../lib/layout'
-import type { PaneInput, Row, Segment } from '../lib/layout'
+import { allowInput, emptyRows, noGraphOf } from '../lib/empty-state'
+import { tierOf } from '../lib/rows'
+import type { PaneInput } from '../lib/pane-types'
+import type { Row, Segment } from '../lib/types'
 import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
 import { cells } from '../lib/rows'
 import { currentInput } from './input'

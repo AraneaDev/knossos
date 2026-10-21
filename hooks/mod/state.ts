@@ -12,7 +12,7 @@ import { betweenTypes, cycleSearchStopped } from '../lib/envelopes'
 import type { Activity } from '../lib/activity'
 import { watchPollMsOf } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
-import type { Row } from '../lib/rows'
+import type { Row } from '../lib/types'
 import type { Dig } from './dig'
 
 /** The pane's id, as the engine opens and draws it. */

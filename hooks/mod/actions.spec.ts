@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffFold, KnossosView } from '../../types'
-import { TABS } from '../lib/layout'
+import { TABS } from '../lib/chrome'
 import { PRESSES, pressOf } from './actions'
 import type { Port } from './port'
 import { fieldKey, PANE } from './state'

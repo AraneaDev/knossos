@@ -5,9 +5,10 @@ import type { DiffView, Hunk } from './diff'
 import { parseSessionDiff, parseSessionRev } from './envelopes'
 import { diffRows, fileDetailRows } from './__tests__/tabs'
 import { plainText } from './__tests__/plain-text'
-import { paneInput, paneLayout } from './layout'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { rowWidth } from './rows'
-import type { Row } from './rows'
+import type { Row } from './types'
 import type { DetailInput } from './views'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200]
@@ -306,7 +307,7 @@ describe('the full detail of a long change', () => {
   for (const columns of [60, 100, 140, 200]) {
     it(`counts every line of its diff elements, so the pane scrolls to the last and the bar stays pinned (${columns} columns)`, () => {
       const shown: DetailInput = { label: SHOWN.label, loading: false, messages: ['Not in the graph.'], component: null, file: null, diff: viewOf(answer({ diff: long(HUNK_LINES * 3) })) }
-      const input = paneInput(dashboard, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view, 0, true, shown)
+      const input = paneInput({ dashboard, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view, now: 0, terminal: true, detail: shown })
       for (const rows of [30, 50, 80]) {
         const laid = paneLayout(input, columns, rows)
         const total = height(laid.body) + laid.footer.length

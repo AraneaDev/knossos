@@ -10,7 +10,7 @@ import type { DriftInput } from '../files'
 import { NO_HUES } from '../palette'
 import type { Hues } from '../palette'
 import { tierOf } from '../rows'
-import type { Row } from '../rows'
+import type { Row } from '../types'
 import { detailArrangement, issuesArrangement } from '../views'
 import type { DetailInput, IssuesInput } from '../views'
 

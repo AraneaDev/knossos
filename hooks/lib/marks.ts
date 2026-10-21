@@ -7,7 +7,7 @@
  * scroll hints are drawing, not marks, and stay where they are drawn.
  */
 import { ACCENT, STATUS_COLOURS } from './palette'
-import type { Segment } from './rows'
+import type { Segment } from './types'
 
 /**
  * Digits in groups of three. rows.ts has the same helper, but rows.ts reads

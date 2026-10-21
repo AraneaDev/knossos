@@ -161,7 +161,7 @@ const raster = await import(join(REPO, 'hooks/lib/raster.ts'))
 const rows = await import(join(REPO, 'hooks/lib/rows.ts'))
 const band = await import(join(REPO, 'hooks/lib/band.ts'))
 const palette = await import(join(REPO, 'hooks/lib/palette.ts'))
-const changesLib = await import(join(REPO, 'hooks/lib/changes.ts'))
+const sessionChanges = await import(join(REPO, 'hooks/lib/session-changes.ts'))
 const diffLib = await import(join(REPO, 'hooks/lib/diff.ts'))
 /** Claude Code's dark and light themes, the table every host of the pane resolves its theme keys with. */
 const { THEMES } = await import(join(REPO, 'hooks/lib/themes.ts'))
@@ -232,7 +232,7 @@ function sampleBrief(d) {
 
 /** What the first boundary depends on second most: where one press of `l` moves its cell. */
 function secondTarget(d) {
-  const input = layout.paneInput(d, null, FETCHED, IDLE, { ...BASE_VIEW, tab: 'boundaries' }, 0, true)
+  const input = layout.paneInput({ dashboard: d, brief: null, refresh: FETCHED, rescan: IDLE, view: { ...BASE_VIEW, tab: 'boundaries' }, now: 0, terminal: true })
   return layout.nextTarget(input.boundaries, 0, null) ?? undefined
 }
 
@@ -328,7 +328,7 @@ function ledgerSession(first) {
   const edited = new Set((diff.stdout ?? '').split('\n').filter(line => line !== ''))
   // The scans that took in those files are the session's, as the mod attributes a scan that took in its own edits.
   const scans = new Set(Object.entries(ledger.files).flatMap(([path, f]) => (edited.has(path) ? (f.scans ?? []) : [])))
-  return changesLib.fromLedger(ledger, layout.accumulate(layout.NO_CHANGES, first), edited, scans)
+  return sessionChanges.fromLedger(ledger, layout.accumulate(layout.NO_CHANGES, first), edited, scans)
 }
 
 const NOW = Date.now()
@@ -416,7 +416,7 @@ function couplingsFor(input) {
 
 /** The pane for a state: the view over BASE_VIEW, and what else the state holds. */
 function pane(view, { turn = null, shown = null, changes = session, refresh = FETCHED, rescan = IDLE, allow = null, live = LIVE, feedback = null, hover = false, peek = null, flash = null, search = null, note = null } = {}) {
-  const make = extras => layout.paneInput(dashboard, turn, refresh, rescan, { ...BASE_VIEW, ...view }, NOW, true, shown, allow, changes, null, live, extras, peek)
+  const make = extras => layout.paneInput({ dashboard, brief: turn, refresh, rescan, view: { ...BASE_VIEW, ...view }, now: NOW, terminal: true, detail: shown, allow, session: changes, sessionRoot: null, live, extras, peek })
   const base = { git: GIT, feedback, branch: BRANCH, flash, search, churn: CHURN, rings: RINGS, route: ROUTE, note }
   const input = make({ ...base, couplings: couplingsFor(make(base)) })
   // Sized by the pane's height too: its lists grow with the rows it has. `hover` draws the marked row's card as a resting pointer shows it.

@@ -1046,6 +1046,7 @@ js	hooks/lib/cards.spec.ts
 js	hooks/lib/cards.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
+js	hooks/lib/chrome.ts
 js	hooks/lib/churn.spec.ts
 js	hooks/lib/churn.ts
 js	hooks/lib/cycles.spec.ts
@@ -1054,6 +1055,8 @@ js	hooks/lib/diagram.spec.ts
 js	hooks/lib/diagram.ts
 js	hooks/lib/diff.spec.ts
 js	hooks/lib/diff.ts
+js	hooks/lib/editor.ts
+js	hooks/lib/empty-state.ts
 js	hooks/lib/envelopes.path.spec.ts
 js	hooks/lib/envelopes.spec.ts
 js	hooks/lib/envelopes.ts
@@ -1089,6 +1092,10 @@ js	hooks/lib/overview.spec.ts
 js	hooks/lib/overview.ts
 js	hooks/lib/palette.spec.ts
 js	hooks/lib/palette.ts
+js	hooks/lib/pane-input.ts
+js	hooks/lib/pane-list.ts
+js	hooks/lib/pane-status.ts
+js	hooks/lib/pane-types.ts
 js	hooks/lib/paths.spec.ts
 js	hooks/lib/paths.ts
 js	hooks/lib/peek.spec.ts
@@ -1106,12 +1113,15 @@ js	hooks/lib/rows.spec.ts
 js	hooks/lib/rows.ts
 js	hooks/lib/scheduler.spec.ts
 js	hooks/lib/scheduler.ts
+js	hooks/lib/session-changes.ts
 js	hooks/lib/sparkline.spec.ts
 js	hooks/lib/sparkline.ts
+js	hooks/lib/test-commands.ts
 js	hooks/lib/themes.spec.ts
 js	hooks/lib/themes.ts
 js	hooks/lib/tiles.spec.ts
 js	hooks/lib/tiles.ts
+js	hooks/lib/types.ts
 js	hooks/lib/views.ts
 js	hooks/mod/actions.allow.spec.ts
 js	hooks/mod/actions.editor.spec.ts

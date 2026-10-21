@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { firstOpen, labelOf, notesTree, noteName } from './notes-tree'
-import type { NoteItem } from './notes-view'
+import type { NoteItem } from './notes-tree'
 
 const note = (component: string, over: Partial<NoteItem> = {}): NoteItem => ({
   component,

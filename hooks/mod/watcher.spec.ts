@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Dashboard, SessionLedger } from '../../types'
 import { FOLLOWED_SCAN_MS } from '../lib/activity'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { LIVE_OFF } from '../lib/live'
 import { shownChanges } from './port'
 import type { Port } from './port'

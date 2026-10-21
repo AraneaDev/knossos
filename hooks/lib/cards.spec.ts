@@ -5,7 +5,8 @@ import type { Block, Section } from './cards'
 import { rawText } from './__tests__/plain-text'
 import { BAR_SHARE, barRange, button, percentile, rowWidth, tableSpec, tierOf } from './rows'
 import { HEADING, TITLE } from './palette'
-import type { Row, Tier } from './rows'
+import type { Row } from './types'
+import type { Tier } from './rows'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 const HEIGHTS = [16, 24, 40, 60, 120] as const

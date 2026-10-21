@@ -19,33 +19,11 @@ import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, SELECTED_BG, STA
 import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
-import {
-  absolute,
-  blank,
-  button,
-  cells,
-  chip,
-  dimRow,
-  displayName,
-  fit,
-  fitStart,
-  pathSegments,
-  grouped,
-  opensFile,
-  MARK,
-  numberWidth,
-  placeOf,
-  shortName,
-  segmentsWidth,
-  spaces,
-  SWATCH,
-  tableHead,
-  tableRow,
-  tableSpec,
-  tinted,
-  wrapWords,
-} from './rows'
-import type { Loc, Row, Segment, Tier } from './rows'
+import { absolute, placeOf } from './paths'
+import { blank, button, cells, chip, dimRow, displayName, fit, fitStart, pathSegments, grouped, MARK, numberWidth, shortName, segmentsWidth, spaces, SWATCH, tableHead, tableRow, tableSpec, tinted, wrapWords } from './rows'
+import { opensFile } from './editor'
+import type { Loc, Row, Segment } from './types'
+import type { Tier } from './rows'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 import { busy } from './motion'
 

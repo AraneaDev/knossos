@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { BoundaryMatrix, Dashboard, KnossosView, TurnBrief } from '../../types'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { paneRows } from '../lib/__tests__/pane'
 import { BUSY, BUSY_SPIN_MS, NO_MOTION, spinGlyph } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'

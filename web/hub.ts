@@ -6,7 +6,7 @@
  * module state (its width, the rows the wheel reads) holds one layout.
  */
 import { paneLayout } from '../hooks/lib/layout'
-import type { Row } from '../hooks/lib/layout'
+import type { Row } from '../hooks/lib/types'
 import { CARD_BG } from '../hooks/lib/palette'
 import { HEAT_KEYS, rasterTheme } from '../hooks/lib/raster'
 import { themeColour } from '../hooks/lib/themes'

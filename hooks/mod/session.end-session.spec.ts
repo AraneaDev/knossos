@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard } from '../../types'
 import { BASELINES_KEY } from '../lib/baseline'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
 import { endSession } from './session'

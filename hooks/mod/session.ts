@@ -5,7 +5,9 @@
 import type { ConfigRow, UiPane } from 'claude-code'
 
 import { bandModel } from '../lib/band'
-import { NO_CHANGES, noGraphOf, paneStatus } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
+import { noGraphOf } from '../lib/empty-state'
+import { paneStatus } from '../lib/pane-status'
 import { SingleFlight } from '../lib/scheduler'
 import { declaredOf, huesOf } from '../lib/palette'
 import { currentSession, peekKey, readGitHead, refreshDashboard, request, settleBaseline, showComponent } from './loaders'

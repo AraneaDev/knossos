@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RenderSurface } from 'claude-code'
-import { FEEDBACK_MS } from '../lib/layout'
+import { FEEDBACK_MS } from '../lib/chrome'
 import { copyCommand, handlersOf, PRESSES, pressOf } from './actions'
 import type { Port } from './port'
 import { currentInput } from './input'

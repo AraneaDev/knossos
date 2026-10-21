@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KnossosView } from '../../types'
-import type { Openable } from '../lib/layout'
+import type { Openable } from '../lib/views'
 import { PRESSES, pressOf } from './actions'
 import { request, requestDetail, showComponent } from './loaders'
 import type { Port } from './port'

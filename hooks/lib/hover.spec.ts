@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard } from '../../types'
 import { CARD_MAX, CARD_TOP, componentFigures, fileFigures, previewCard } from './hover'
-import { paneInput } from './layout'
+import { paneInput } from './pane-input'
 import { paneRows } from './__tests__/pane'
 import { rawText } from './__tests__/plain-text'
 import { rowWidth } from './rows'
-import type { Preview } from './rows'
+import type { Preview } from './types'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 const HEIGHTS = [24, 40, 60] as const
@@ -73,12 +73,12 @@ describe('hover cards', () => {
     for (const columns of WIDTHS) {
       for (const height of HEIGHTS) {
         for (const tab of ['overview', 'hubs'] as const) {
-          const input = paneInput(dash, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, { inspect: null, isBandHidden: false, tab, selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }, 0, true)
+          const input = paneInput({ dashboard: dash, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: { inspect: null, isBandHidden: false, tab, selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }, now: 0, terminal: true })
           const hung = cards(paneRows(input, columns, height))
           expect(hung.map(c => c.key).sort(), `${columns}x${height} ${tab}`).toEqual(tab === 'hubs' ? ['card-files-0', 'card-hub-0'] : [])
           for (const c of hung) expect(c.width, `${columns}x${height}`).toBeLessThanOrEqual(columns)
         }
-        const cycles = paneInput(dash, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, { inspect: null, isBandHidden: false, tab: 'cycles', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }, 0, true)
+        const cycles = paneInput({ dashboard: dash, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: { inspect: null, isBandHidden: false, tab: 'cycles', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in' }, now: 0, terminal: true })
         expect(cards(paneRows(cycles, columns, height))).toEqual([])
       }
     }

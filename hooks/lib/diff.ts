@@ -13,7 +13,7 @@
  */
 import type { DiffFold, DiffState, Inspected, SessionDiff, SessionRev } from '../../types'
 import { button, dimRow, fit, pathText, plural, wrapWords } from './rows'
-import type { Row, Segment } from './rows'
+import type { Row, Segment } from './types'
 import type { Block, Section } from './cards'
 import { CHANGE } from './marks'
 import { baselineWords } from './baseline'

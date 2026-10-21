@@ -15,22 +15,10 @@ import type { Arrangement, Block, Section } from './cards'
 import { fileDetailLines } from './envelopes'
 import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
-import {
-  baseName,
-  blank,
-  cells,
-  chip,
-  dimRow,
-  displayName,
-  pathSegments,
-  pathText,
-  numberWidth,
-  plural,
-  tableRow,
-  tableSpec,
-  wrapWords,
-} from './rows'
-import type { Loc, Row, Segment, TableSpec, Tier } from './rows'
+import { baseName } from './paths'
+import { blank, cells, chip, dimRow, displayName, pathSegments, pathText, numberWidth, plural, tableRow, tableSpec, wrapWords } from './rows'
+import type { Loc, Row, Segment } from './types'
+import type { TableSpec, Tier } from './rows'
 import { hoodBlock, locIn } from './views'
 import type { DetailInput, FileView, HoodSide, Openable } from './views'
 import { busy } from './motion'

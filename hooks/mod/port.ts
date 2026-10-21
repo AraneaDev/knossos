@@ -7,11 +7,11 @@
 import type { EngineInterface, PluginState } from 'claude-code'
 
 import type { Feedback, SessionChanges } from '../../types'
-import { ledgerChanges, ownTimeline } from '../lib/changes'
+import { ledgerChanges, ownTimeline } from '../lib/session-changes'
 import { wrapperRefusal } from '../lib/envelopes'
 import { FLASH_MS } from '../lib/flash'
 import type { Flash } from '../lib/flash'
-import { FEEDBACK_MS } from '../lib/layout'
+import { FEEDBACK_MS } from '../lib/chrome'
 import { isWatching, LIVE_OFF } from '../lib/live'
 import { relativise } from '../lib/paths'
 import { mod, stopWatcher } from './state'

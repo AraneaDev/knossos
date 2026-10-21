@@ -7,7 +7,7 @@ import { HEAT_KEYS } from './raster'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
 import { boundaryRows } from './__tests__/tabs'
 import { rowWidth } from './rows'
-import type { Row } from './rows'
+import type { Row } from './types'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { cells, editorCommand, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
+import { cells, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
+import { editorCommand } from './editor'
 
 const PATH = 'src/Query/Drift/GitDriftOracle.php'
 

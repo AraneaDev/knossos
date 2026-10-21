@@ -20,7 +20,8 @@
  */
 import { FAINT, HEADING, TITLE } from './palette'
 import { cells, clip, dimRow, fit, rowsHeight, rowWidth, segmentsWidth, spaces, tierOf, tinted } from './rows'
-import type { ListSpan, Row, Segment, Tier } from './rows'
+import type { ListSpan, Row, Segment } from './types'
+import type { Tier } from './rows'
 import { CARD_ICON } from './marks'
 
 /**

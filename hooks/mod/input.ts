@@ -7,8 +7,12 @@
 import type { RenderSurface } from 'claude-code'
 
 import { diffView } from '../lib/diff'
-import { detailInput, fileDetailInput, listFor, paneInput } from '../lib/layout'
-import type { Openable, PaneInput } from '../lib/layout'
+import { detailInput } from '../lib/views'
+import { fileDetailInput } from '../lib/files'
+import { listFor } from '../lib/pane-list'
+import { paneInput } from '../lib/pane-input'
+import type { Openable } from '../lib/views'
+import type { PaneInput } from '../lib/pane-types'
 import { huesOf } from '../lib/palette'
 import { shownChanges } from './port'
 import type { Port } from './port'
@@ -58,7 +62,7 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
   const peeked = mod.paneWide ? await io.state.peek.read() : null
   const side = peeked === null ? null : peeked.shown.file === true ? fileDetailInput(peeked.shown, peeked.detail, d.project_root, huesOf(d)) : detailInput(peeked.shown, peeked.detail, d.project_root)
   if (side !== null && peeked !== null) side.diff = diffView(peeked.shown, await io.state.fileDiff.read(), await io.state.sessionRev.read(), null, host)
-  return paneInput(d, await io.state.brief.read(), await io.state.refresh.read(), await io.state.rescan.read(), v, await io.clock.now(), terminal, shown, await io.state.allow.read(), await shownChanges(io, d.project_root), await io.state.sessionRoot.read(), await io.state.live.read(), extras, side)
+  return paneInput({ dashboard: d, brief: await io.state.brief.read(), refresh: await io.state.refresh.read(), rescan: await io.state.rescan.read(), view: v, now: await io.clock.now(), terminal, detail: shown, allow: await io.state.allow.read(), session: await shownChanges(io, d.project_root), sessionRoot: await io.state.sessionRoot.read(), live: await io.state.live.read(), extras, peek: side })
 }
 
 /** The rows the selection walks on what the pane shows, from state. */

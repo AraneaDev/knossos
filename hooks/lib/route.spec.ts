@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, GraphSearch, KnossosView, PathBetween, RouteState } from '../../types'
 import { finderInput } from './finder'
-import { listFor, paneInput, paneLayout, subjectOf } from './layout'
+import { listFor, subjectOf } from './pane-list'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { routeDiagram, routeInput } from './route'
 import { joinErrors } from './__tests__/joins'
 import { plainText, rawText } from './__tests__/plain-text'
@@ -27,7 +29,7 @@ const answer = (over: Partial<PathBetween> = {}): PathBetween => ({
   ...over,
 })
 const state = (a: PathBetween | null): RouteState => ({ from: FROM.name, to: TO.name, snapshot: 's1', phase: 'done', answer: a })
-const pane = (s: RouteState | null, v = view()) => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, undefined, null, undefined, { route: s })
+const pane = (s: RouteState | null, v = view()) => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { route: s } })
 const text = (s: RouteState | null, columns = 100, v = view()) => paneLayout(pane(s, v), columns, 80).body.map(plainText).join('\n')
 
 describe('the path explorer', () => {
@@ -84,7 +86,7 @@ describe('the path explorer', () => {
   })
 
   it('offers the route key on a component detail only, and back out of the route', () => {
-    const detailOnly = paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view({ route: null }), 0, true, { label: 'StableId', loading: false, messages: null, component: { name: 'StableId', canonical: TO.name, kind: 'class', boundary: null, place: null, loc: null, usedBy: { title: 'Used by', count: '0', items: [] }, uses: { title: 'Uses', count: '0', items: [] }, annotations: [] } })
+    const detailOnly = paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view({ route: null }), now: 0, terminal: true, detail: { label: 'StableId', loading: false, messages: null, component: { name: 'StableId', canonical: TO.name, kind: 'class', boundary: null, place: null, loc: null, usedBy: { title: 'Used by', count: '0', items: [] }, uses: { title: 'Uses', count: '0', items: [] }, annotations: [] } } })
     const keys = (input: typeof detailOnly) => paneLayout(input, 120, 40).footer.flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [s.press.id])))
     expect(keys(detailOnly)).toContain('route')
     expect(keys(pane(state(answer())))).not.toContain('route')
@@ -105,7 +107,7 @@ describe('the finder picking where a route ends', () => {
   it('offers components only, and says what it is picking', () => {
     const picking = finderInput({ query: 'st', for: 'st', phase: 'idle', answer: found }, ROOT, 'BriefCommand::answer')
     expect(picking.results.map(r => r.canonical)).toEqual(['App\\Store\\StableId'])
-    const input = paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view({ route: null, finding: true, picking: FROM }), 0, true, null, null, undefined, null, undefined, { search: { query: '', for: null, phase: 'idle', answer: null } })
+    const input = paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view({ route: null, finding: true, picking: FROM }), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { search: { query: '', for: null, phase: 'idle', answer: null } } })
     const t = paneLayout(input, 100, 40).body.map(plainText).join('\n')
     expect(t).toContain('Route from BriefCommand::answer to…')
     expect(t).toContain('A route from BriefCommand::answer: type the letters of the component it should reach.')

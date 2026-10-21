@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AllowState, KnossosView } from '../../types'
-import { SORTS } from '../lib/layout'
+import { SORTS } from '../lib/pane-list'
 import { handlersOf, PRESSES, pressOf } from './actions'
 import { request } from './loaders'
 import type { Port } from './port'

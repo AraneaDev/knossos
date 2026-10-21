@@ -16,6 +16,24 @@ export default [
         files: ["hooks/**/*.{ts,tsx}", "web/**/*.ts", "types/**/*.ts"],
     })),
     {
+        // hooks/lib is pure and the mod builds on it: an import the other way would make a cycle.
+        files: ["hooks/lib/**/*.ts"],
+        ignores: ["hooks/lib/**/*.spec.ts"],
+        rules: {
+            "no-restricted-imports": [
+                "error",
+                {
+                    patterns: [
+                        {
+                            group: ["../mod", "../mod/*", "../../mod", "../../mod/*"],
+                            message: "hooks/lib must not import hooks/mod.",
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         files: ["tools/*.mjs"],
         languageOptions: {
             ecmaVersion: 2024,
