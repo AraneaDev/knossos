@@ -7,7 +7,6 @@ namespace Knossos\Query;
 use Closure;
 use Knossos\Query\Drift\DriftCounts;
 use Knossos\Store\EnrichedFacts;
-use Knossos\Store\ProjectRepository;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
@@ -90,14 +89,26 @@ final readonly class DashboardService
      */
     public function dashboard(string $path, int $fanInThreshold = 20, int $boundaryAxes = self::BOUNDARY_AXES): array
     {
-        $absolute = realpath($path) ?: $path;
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        // A project row without an active scan has no graph to draw.
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return self::unscanned($absolute);
-        }
-        $id = (string) $project['id'];
-        $root = (string) $project['root_realpath'];
+        return PaneProject::answer(
+            $this->pdo,
+            $path,
+            self::unscanned(),
+            fn(array $project, array $envelope): array => $this->dashboardOf($project, (string) $envelope['path'], $fanInThreshold, $boundaryAxes),
+        );
+    }
+
+    /**
+     * The dashboard for the scanned `$project` at `$absolute`.
+     *
+     * @param array{id: string, root: string, snapshot_id: string} $project
+     * @param int $boundaryAxes the most boundaries the matrix holds, at most {@see BoundaryMatrix::AXES}
+     *
+     * @return array<string, mixed>
+     */
+    private function dashboardOf(array $project, string $absolute, int $fanInThreshold, int $boundaryAxes): array
+    {
+        $id = $project['id'];
+        $root = $project['root'];
         $queries = QueryServices::wire($this->pdo, $this->clock);
         $staleness = (new StalenessProbe($this->pdo))->snapshot($id);
         $probe = $staleness->staleness ?? [];
@@ -130,7 +141,7 @@ final readonly class DashboardService
             'path' => $absolute,
             'project_root' => $root,
             'project_id' => $id,
-            'snapshot_id' => $project['active_scan_id'],
+            'snapshot_id' => $project['snapshot_id'],
             'freshness' => [
                 'state' => (string) ($probe['state'] ?? 'missing'),
                 'age_seconds' => isset($probe['age_seconds']) ? (int) $probe['age_seconds'] : null,
@@ -459,14 +470,15 @@ final readonly class DashboardService
     }
 
     /**
-     * The picture for a path no scanned project contains.
+     * The picture for a path no scanned project contains, after its `status`
+     * and `path`.
      *
      * @return array<string, mixed>
      */
-    private static function unscanned(string $path): array
+    private static function unscanned(): array
     {
         return [
-            'status' => 'unscanned', 'path' => $path, 'project_root' => null, 'project_id' => null,
+            'project_root' => null, 'project_id' => null,
             'snapshot_id' => null, 'freshness' => ['state' => 'unscanned', 'age_seconds' => null, 'drift_files' => 0, 'drifted' => [], 'drifted_truncated' => false],
             'hubs' => [], 'hubs_truncated' => false, 'hubs_truncation_reasons' => [], 'hotspots' => [], 'dead_code_candidates' => 0, 'dead_code_truncated' => false,
             'cycles' => ['count' => 0, 'truncated' => false, 'truncation_reasons' => [], 'within_type' => 0, 'within_type_truncated' => false, 'largest' => []],

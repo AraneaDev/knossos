@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Store\ProjectRepository;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
  * One file as the architecture pane shows it: who depends on it, and what
  * it declares. Addressed by the file's own path; the project is the one that
- * contains it, resolved through {@see ProjectRepository::resolvePath()} as the dashboard
+ * contains it, resolved through {@see PaneProject::answer()} as the dashboard
  * resolves its own, so the pane's file view and its overview always come from
  * the same graph.
  *
@@ -51,17 +50,22 @@ final readonly class FileDetailService
      */
     public function detail(string $path): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['status' => 'unscanned', 'path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'file' => null];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        // A project row without an active scan has no graph to look in.
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return $envelope;
-        }
-        $id = (string) $project['id'];
-        $envelope['project_id'] = $id;
-        $envelope['snapshot_id'] = $project['active_scan_id'];
-        $root = rtrim((string) $project['root_realpath'], '/');
+        return PaneProject::answer($this->pdo, $path, ['project_id' => null, 'snapshot_id' => null, 'file' => null], $this->detailIn(...));
+    }
+
+    /**
+     * The detail of the file at `$envelope['path']` in the scanned `$project`.
+     *
+     * @param array{id: string, root: string, snapshot_id: string} $project
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function detailIn(array $project, array $envelope): array
+    {
+        $id = $project['id'];
+        $absolute = (string) $envelope['path'];
+        $root = rtrim($project['root'], '/');
         $relative = str_starts_with($absolute, $root . '/') ? substr($absolute, strlen($root) + 1) : $absolute;
         $statement = $this->pdo->prepare('SELECT id, language, line_count FROM files WHERE project_id = :project AND relative_path = :path');
         $statement->execute(['project' => $id, 'path' => $relative]);
@@ -77,7 +81,7 @@ final readonly class FileDetailService
         $boundaries = $labels->forFiles($id, [...array_column($dependents, 'path'), ...array_column($uses, 'path')]);
         $components = $this->components((string) $file['id']);
         $componentLabels = $labels->forNodes(array_column($components, 'id'));
-        $envelope['status'] = 'ok';
+        $envelope = ['status' => 'ok'] + $envelope;
         $envelope['file'] = [
             'path' => $relative,
             'language' => (string) $file['language'],

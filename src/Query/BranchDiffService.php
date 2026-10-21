@@ -7,7 +7,6 @@ namespace Knossos\Query;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Result\PaneStatus;
-use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -73,15 +72,20 @@ final readonly class BranchDiffService
      */
     public function diff(string $path): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'branch' => null, 'default_branch' => null, 'merge_base' => null, 'ahead' => null, 'base' => null, 'comparison' => null, 'files' => null];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $root = (string) $project['root_realpath'];
-        $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
+        $envelope = ['project_id' => null, 'snapshot_id' => null, 'branch' => null, 'default_branch' => null, 'merge_base' => null, 'ahead' => null, 'base' => null, 'comparison' => null, 'files' => null];
+
+        return PaneProject::answer($this->pdo, $path, $envelope, fn(array $project, array $envelope): array => $this->diffIn($project['id'], $project['root'], $envelope));
+    }
+
+    /**
+     * The branch's changes in the scanned project `$id` at `$root`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function diffIn(string $id, string $root, array $envelope): array
+    {
         $head = $this->git($root, ['rev-parse', '--verify', '-q', 'HEAD']);
         if ($head === null) {
             return ['status' => 'no-git'] + $envelope;
@@ -102,7 +106,7 @@ final readonly class BranchDiffService
             return ['status' => 'on-default'] + $envelope;
         }
         $envelope['files'] = $this->touched($root, $id, $mergeBase);
-        $base = $this->baseSnapshot($root, $id, $mergeBase, (string) $project['active_scan_id']);
+        $base = $this->baseSnapshot($root, $id, $mergeBase, (string) $envelope['snapshot_id']);
         $envelope['base'] = $base;
         if ($base === null) {
             return ['status' => 'no-snapshot'] + $envelope;
