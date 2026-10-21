@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 
-use super::paths::{pointee_of, POINTER_MARK};
 use super::state::Calls;
+use super::types::{pointee_of, POINTER_MARK};
 use crate::facts::reference;
 use crate::resolve::{ident_name, is_prelude_name};
 
