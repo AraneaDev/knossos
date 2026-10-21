@@ -10,9 +10,10 @@ use Knossos\Discovery\EnrichersFile;
 use Knossos\Enrichment\EnrichmentPhase;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
-use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, Milliseconds, NamedFiles, ReconciliationResult};
+use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, Milliseconds, NamedFiles, ReconciliationResult, ScannerSetHash};
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Worker\WorkerException;
+use Knossos\Store\ProjectRepository;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteGraphRepository;
 use PDO;
@@ -292,10 +293,7 @@ final class ProjectScanService implements ProjectScanner
     /** Whether a project row exists yet, read before the scan registers one. */
     private function projectExists(string $projectId): bool
     {
-        $statement = $this->pdo->prepare('SELECT 1 FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-
-        return $statement->fetchColumn() !== false;
+        return (new ProjectRepository($this->pdo))->exists($projectId);
     }
 
     /**
@@ -539,7 +537,7 @@ final class ProjectScanService implements ProjectScanner
         if ($stored !== $projectConfig) {
             return null;
         }
-        if ($row['scanner_set_hash'] !== GraphReconciler::scannerSetHash($language->manifests, $this->enrichment->active())) {
+        if ($row['scanner_set_hash'] !== ScannerSetHash::of($language->manifests, $this->enrichment->active())) {
             return null;
         }
         self::undiscoveredVerifier($preparation, $language, $plan)();

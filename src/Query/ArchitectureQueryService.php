@@ -9,6 +9,7 @@ use Knossos\Git\GitHistoryProvider;
 use Knossos\Git\GitWorkingTreeProvider;
 use Knossos\Query\Drift\DriftOracle;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -61,10 +62,7 @@ final readonly class ArchitectureQueryService
     /** Root path recorded at scan time; used by the MCP layer to self-heal stale graphs. */
     public function projectRoot(string $projectId): ?string
     {
-        $statement = $this->services->pdo->prepare('SELECT root_realpath FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-        $root = $statement->fetchColumn();
-        return is_string($root) && $root !== '' ? $root : null;
+        return (new ProjectRepository($this->services->pdo))->rootOf($projectId);
     }
 
     /** {@see ProjectCatalogQueryService::listProjects()} */

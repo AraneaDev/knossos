@@ -80,6 +80,10 @@
       "path_prefix": "src/Reconciliation"
     },
     {
+      "name": "ns:Enrichment",
+      "path_prefix": "src/Enrichment"
+    },
+    {
       "name": "ns:Scan",
       "path_prefix": "src/Scan"
     },
@@ -130,6 +134,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -148,6 +153,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -166,6 +172,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -184,6 +191,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -202,6 +210,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -220,6 +229,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -238,6 +248,7 @@
         "ns:Configuration",
         "ns:Git",
         "ns:Reconciliation",
+        "ns:Enrichment",
         "ns:Scan",
         "ns:Query",
         "ns:Maintenance",
@@ -298,6 +309,18 @@
     {
       "id": "analysis-reconciliation-stays-below-services",
       "from_boundary": "ns:Reconciliation",
+      "deny_targets": [
+        "ns:Query",
+        "ns:Maintenance",
+        "ns:Runtime",
+        "ns:Watch",
+        "ns:Mcp",
+        "ns:Cli"
+      ]
+    },
+    {
+      "id": "analysis-enrichment-stays-below-services",
+      "from_boundary": "ns:Enrichment",
       "deny_targets": [
         "ns:Query",
         "ns:Maintenance",

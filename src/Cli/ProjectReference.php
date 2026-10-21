@@ -6,6 +6,7 @@ namespace Knossos\Cli;
 
 use InvalidArgumentException;
 use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -53,9 +54,7 @@ final readonly class ProjectReference
      */
     public function byId(string $id): ?array
     {
-        $statement = $this->pdo->prepare('SELECT id, root_realpath FROM projects WHERE id = :id');
-        $statement->execute(['id' => $id]);
-        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        $row = (new ProjectRepository($this->pdo))->find($id, ['id', 'root_realpath']);
 
         return is_array($row) ? ['id' => (string) $row['id'], 'root' => (string) $row['root_realpath']] : null;
     }

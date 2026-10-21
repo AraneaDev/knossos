@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Cli;
 
+use Knossos\Runtime\DataDirectory;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Store\SqliteConnection;
 use Throwable;
@@ -51,9 +52,7 @@ final readonly class ProjectDatabaseLocator
      */
     public function locate(string $target, array $options, CliCommandContext $context): string
     {
-        $dataDirectory = getenv('KNOSSOS_DATA_DIR');
-        if ($context->options->single($options, 'db') !== null
-            || (is_string($dataDirectory) && $dataDirectory !== '')) {
+        if ($context->options->single($options, 'db') !== null || DataDirectory::resolve() !== null) {
             return $context->databasePath();
         }
         // A bare word that is not on disk is an id; anything with a slash is a path, there or not.

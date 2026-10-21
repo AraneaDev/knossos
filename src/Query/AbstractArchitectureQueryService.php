@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Knossos\Boundary\BoundaryAliases;
 use Knossos\Boundary\BoundaryReferences;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use PDOStatement;
 
@@ -104,10 +105,8 @@ abstract readonly class AbstractArchitectureQueryService
         if ($projectId === '') {
             throw new InvalidArgumentException('Project ID must not be empty.');
         }
-        $statement = $this->pdo->prepare('SELECT id, name, root_realpath, active_scan_id FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-        $project = $statement->fetch();
-        if ($project === false) {
+        $project = (new ProjectRepository($this->pdo))->find($projectId, ['id', 'name', 'root_realpath', 'active_scan_id']);
+        if ($project === null) {
             throw new InvalidArgumentException(sprintf('Project not found: %s', $projectId));
         }
         if (!is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {

@@ -11,6 +11,7 @@ use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\DirtyPathSet;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Reconciliation\Milliseconds;
+use Knossos\Store\ProjectRepository;
 use Knossos\Store\StableId;
 use PDO;
 
@@ -183,10 +184,8 @@ final readonly class ScanPlanner
     public function finalize(ScanPreparation $preparation): ScanPlan
     {
         $projectId = StableId::project('root:' . $preparation->discovery->rootRealpath);
-        $statement = $this->pdo->prepare('SELECT id, active_scan_id FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-        $existing = $statement->fetch();
-        $effectiveMode = $preparation->requestedMode === 'full' || $existing === false || $existing['active_scan_id'] === null ? 'full' : 'incremental';
+        $existing = (new ProjectRepository($this->pdo))->find($projectId, ['id', 'active_scan_id']);
+        $effectiveMode = $preparation->requestedMode === 'full' || $existing === null || $existing['active_scan_id'] === null ? 'full' : 'incremental';
         // One read of the cache metadata serves the partition, the deleted
         // count and, for an incremental scan, the invalidation below. A full
         // scan rebuilds every entry, so it leaves the read sets unloaded.
@@ -209,7 +208,7 @@ final readonly class ScanPlanner
             $cache,
             count(array_diff_key($old, $current)),
             $invalidated,
-            $existing !== false && $existing['active_scan_id'] !== null,
+            $existing !== null && $existing['active_scan_id'] !== null,
             $cachedReads,
         );
     }

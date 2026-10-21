@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -178,11 +179,7 @@ final readonly class AnnotationNotes
     /** The project's root on disk, or null when it is unknown. */
     private function root(string $projectId): ?string
     {
-        $statement = $this->pdo->prepare('SELECT root_realpath FROM projects WHERE id = ?');
-        $statement->execute([$projectId]);
-        $root = $statement->fetchColumn();
-
-        return is_string($root) && $root !== '' ? $root : null;
+        return (new ProjectRepository($this->pdo))->rootOf($projectId);
     }
 
     /**

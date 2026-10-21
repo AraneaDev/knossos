@@ -49,11 +49,7 @@ final class SqliteScanLifecycle
      */
     public function findProject(string $id): ?array
     {
-        $statement = $this->statements->pdo()->prepare('SELECT * FROM projects WHERE id = :id');
-        $statement->execute(['id' => $id]);
-        $project = $statement->fetch();
-
-        return $project === false ? null : $project;
+        return (new ProjectRepository($this->statements->pdo()))->find($id);
     }
 
     /**
@@ -192,9 +188,7 @@ final class SqliteScanLifecycle
             // A terminal record for a project that was never persisted has nothing
             // to reference and nothing to clean up, so skip it rather than trip the
             // scans.project_id foreign key.
-            $exists = $this->statements->pdo()->prepare('SELECT 1 FROM projects WHERE id = :project');
-            $exists->execute(['project' => $projectId]);
-            if ($exists->fetchColumn() === false) {
+            if (!(new ProjectRepository($this->statements->pdo()))->exists($projectId)) {
                 return;
             }
             $now = SqliteValues::now();

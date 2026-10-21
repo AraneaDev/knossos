@@ -88,53 +88,18 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         // Supertype methods and constructed classes already read through: apart from $seen, so one found later as a dependant in its own right still counts.
         $passed = [];
         for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $tests !== []); ++$level) {
-            // A call through an interface or a parent goes to the supertype's method: what calls that
-            // may run the frontier's own, so its dependants are read too, the supertype method passed through.
+            // A call through an interface or a parent goes to the supertype's method, and nothing points at a
+            // property: what calls the supertype method or uses the property's class may reach the frontier's own,
+            // so their dependants are read too, the stand-in passed through ({@see StandInExpansion}).
             // A node read through stands in for the frontier node it was read for, wired as that one is.
-            $through = [];
-            $standIn = static function (string $id, string $for) use (&$wired): void {
-                $wired[$id] = ($wired[$id] ?? true) && $wired[$for];
-            };
-            foreach (SupertypeMethods::of($this->pdo, $projectId, $frontier) as $method => $supertypes) {
-                foreach ($supertypes as $supertype) {
-                    if (!isset($seen[$supertype]) && !isset($passed[$supertype])) {
-                        $passed[$supertype] = true;
-                        $through[] = $supertype;
-                    }
-                    if (!isset($seen[$supertype])) {
-                        $standIn($supertype, (string) $method);
-                    }
-                }
-            }
-            // Nothing points at a property: its class's methods read it, so what uses the class may use it.
-            foreach (PropertyOwners::of($this->pdo, $projectId, $frontier) as $property => $class) {
-                if (!isset($seen[$class]) && !isset($passed[$class])) {
-                    $passed[$class] = true;
-                    $through[] = $class;
-                }
-                if (!isset($seen[$class])) {
-                    $standIn($class, (string) $property);
-                }
-            }
+            $standIns = StandInExpansion::of($this->pdo, $projectId, $frontier, $edgeKinds);
+            $through = self::passThrough($standIns['through'], $seen, $passed, $wired);
             $targets = [...$frontier, ...$through];
             sort($targets, SORT_STRING);
             // A constructor runs whenever its class is constructed, which the graph records against the class:
             // what constructs the class reaches the constructor, and nothing else that names the class does.
-            $constructed = [];
-            if (in_array(ConstructedClasses::EDGE_KIND, $edgeKinds, true)) {
-                foreach (ConstructedClasses::of($this->pdo, $projectId, $frontier) as $constructor => $classes) {
-                    foreach ($classes as $class) {
-                        if (!isset($seen[$class]) && !isset($passed[$class])) {
-                            $passed[$class] = true;
-                            $constructed[] = $class;
-                        }
-                        if (!isset($seen[$class])) {
-                            $standIn($class, (string) $constructor);
-                        }
-                    }
-                }
-                sort($constructed, SORT_STRING);
-            }
+            $constructed = self::passThrough($standIns['constructed'], $seen, $passed, $wired);
+            sort($constructed, SORT_STRING);
             $roots = array_diff_key(CompositionRoots::of($this->pdo, $projectId, [...$targets, ...$constructed]), $starts);
             $next = [];
             $found = [];
@@ -191,6 +156,33 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         }
 
         return ['tests' => $tests, 'wired' => $wiredTests, 'visited' => count($seen), 'edges_examined' => $examined, 'truncation_reasons' => $reason === null ? [] : [$reason]];
+    }
+
+    /**
+     * The stand-ins not yet visited nor read through, each marked passed and
+     * wired as the node it stands in for.
+     *
+     * @param list<array{0: string, 1: string}> $standIns [stand-in id, id it stands in for]
+     * @param array<string, true> $seen
+     * @param array<string, true> $passed
+     * @param array<string, bool> $wired
+     * @return list<string>
+     */
+    private static function passThrough(array $standIns, array $seen, array &$passed, array &$wired): array
+    {
+        $read = [];
+        foreach ($standIns as [$id, $for]) {
+            if (isset($seen[$id])) {
+                continue;
+            }
+            if (!isset($passed[$id])) {
+                $passed[$id] = true;
+                $read[] = $id;
+            }
+            $wired[$id] = ($wired[$id] ?? true) && $wired[$for];
+        }
+
+        return $read;
     }
 
     /**

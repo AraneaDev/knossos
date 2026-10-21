@@ -49,8 +49,8 @@ final class RuntimeFactory
      */
     public function defaultDatabasePath(): string
     {
-        $directory = getenv('KNOSSOS_DATA_DIR');
-        if (!is_string($directory) || $directory === '') {
+        $directory = DataDirectory::resolve();
+        if ($directory === null) {
             $home = self::homeDatabasePath();
             if ($home !== null) {
                 return $home;
