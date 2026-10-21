@@ -108,4 +108,26 @@ final class CandidateGraphFactsTest extends KnossosTestCase
 
         self::assertSame(min($one, $two), (new CandidateGraphFacts($pdo, $project, ['calls'], 1))->idOf('Shared'));
     }
+
+    /**
+     * The suppressions come from the stored configuration by the store's
+     * lenient rule: a config that does not decode to an object, or a list that
+     * is no list, suppresses nothing, and only string entries count.
+     */
+    public function testSuppressionsReadTheStoredConfigurationLeniently(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $project = $ids['project'];
+        $suppressions = function (string $config) use ($pdo, $project): array {
+            $pdo->prepare('UPDATE projects SET config_json = :config WHERE id = :id')->execute(['config' => $config, 'id' => $project]);
+
+            return (new CandidateGraphFacts($pdo, $project, ['calls'], 1))->deadCodeSuppressions();
+        };
+
+        self::assertSame(['App\\Kept', 'App\\Legacy\\'], $suppressions('{"dead_code_suppressions":["App\\\\Kept",3,"App\\\\Legacy\\\\"]}'));
+        self::assertSame([], $suppressions('{'));
+        self::assertSame([], $suppressions('"App"'));
+        self::assertSame([], $suppressions('{"dead_code_suppressions":{"a":"App"}}'));
+        self::assertSame([], $suppressions(''));
+    }
 }
