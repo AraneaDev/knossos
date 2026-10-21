@@ -9,7 +9,9 @@
 
 import ts from "typescript";
 import { isNamePosition } from "./declaration-kinds.js";
+import { componentSources } from "./source-caches.js";
 import {
+    isK6Script,
     memberName,
     objectField,
     VUE_HOOKS,
@@ -26,6 +28,21 @@ import {
 export class ComponentFrameworkEnricher {
     constructor(context) {
         this.context = context;
+    }
+
+    /**
+     * Applies the passes the file's component dialect, or k6, calls for,
+     * once the whole file is walked.
+     */
+    finish() {
+        const sourceFile = this.context.sourceFile;
+        const component = componentSources.get(sourceFile);
+        if (component !== undefined)
+            this.unresolvedTemplateNames(component.templateRanges);
+        if (component?.dialect === "astro") this.astroProps();
+        if (component?.dialect === "vue")
+            this.vueOptions(component.templateRanges);
+        if (isK6Script(sourceFile)) this.k6Script();
     }
 
     /**

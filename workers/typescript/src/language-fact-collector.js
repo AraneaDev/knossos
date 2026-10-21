@@ -46,10 +46,8 @@ import {
     normalize,
     relativeInside,
 } from "./project-paths.js";
-import { componentSources } from "./source-caches.js";
 import {
     isClassicScript,
-    isK6Script,
     REQUIRE_SUFFIXES,
     runsOnLoad,
     storeMemberNames,
@@ -78,14 +76,11 @@ export class TypeScriptLanguageFactCollector {
         this.relative = relativeInside(root, sourceFile.fileName);
         this.container = [];
         this.moduleId = reference("module", this.relative);
-        const ownEnd = componentSources.get(sourceFile)?.sourceLength;
-        this.accumulator = new FactAccumulator(
+        this.accumulator = FactAccumulator.forSource(
             sourceFile,
             this.relative,
             evidence,
-            ownEnd === undefined
-                ? {}
-                : { end: ownEnd, moduleId: this.moduleId },
+            this.moduleId,
         );
         this.application = new TypeScriptApplicationEnricher(this);
         this.nest = new NestJsFactEnricher(this);
@@ -130,13 +125,7 @@ export class TypeScriptLanguageFactCollector {
      * it reaches, so the core reports that method as only possibly dead.
      */
     finish() {
-        const component = componentSources.get(this.sourceFile);
-        if (component !== undefined)
-            this.frameworks.unresolvedTemplateNames(component.templateRanges);
-        if (component?.dialect === "astro") this.frameworks.astroProps();
-        if (component?.dialect === "vue")
-            this.frameworks.vueOptions(component.templateRanges);
-        if (isK6Script(this.sourceFile)) this.frameworks.k6Script();
+        this.frameworks.finish();
         if (this.untypedCalls.size === 0) return;
         this.accumulator.nodesById.get(
             this.moduleId,
