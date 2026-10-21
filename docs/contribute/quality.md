@@ -462,7 +462,7 @@ sources. The Rust worker is the one first-party runtime outside it: `tools/quali
 
 The budgets in `maintainability-budgets.json` are:
 
-- no more than 6 normalized cross-file duplicate blocks;
+- no more than 4 normalized cross-file duplicate blocks;
 - PHP function cyclomatic complexity no higher than 60 and function length no
   higher than 205 lines;
 - direct per-file dependency fanout no higher than 15;

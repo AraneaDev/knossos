@@ -1,5 +1,5 @@
 {
-  "cross_file_duplicate_blocks": 6,
+  "cross_file_duplicate_blocks": 4,
   "max_php_function_complexity": 60,
   "max_php_function_lines": 205,
   "max_dependency_fanout": 15,
