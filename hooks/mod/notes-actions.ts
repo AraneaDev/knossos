@@ -11,10 +11,11 @@ import type { KnossosView, NoteState, NotesAsk } from '../../types'
 import { BUSY_CODE, BUSY_SAID, parseNoteWrite } from '../lib/envelopes'
 import { confirmable, labelOf, markedNote, notesInput } from '../lib/notes-view'
 import type { NoteItem } from '../lib/notes-tree'
+import { focusField, narrowing } from './field-actions'
 import { request, showComponent } from './loaders'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
-import { fieldKey, mod, revealThenFocus } from './state'
+import { mod } from './state'
 
 /** The wrapper bounds the notes commands at 15 s. */
 const WRITE_TIMEOUT_MS = 20_000
@@ -29,11 +30,6 @@ async function marked(io: Port): Promise<NoteItem | null> {
 /** The question the tab asks, put up or dropped. */
 const ask = (io: Port, question: NotesAsk | null): Promise<unknown> => io.state.view.update((v): KnossosView => ({ ...v, notesAsk: question }))
 
-/** Moves the focus into the field `id` once it is drawn, scrolled into view first. */
-function focus(io: Port, id: string): void {
-  io.clock.after(0, () => void revealThenFocus(io, fieldKey(id)).catch(() => undefined))
-}
-
 /** `X`: asks to remove the marked note, the person's or the model's. */
 export async function askRemove(io: Port): Promise<void> {
   const n = await marked(io)
@@ -46,7 +42,7 @@ export async function askFlag(io: Port): Promise<void> {
   if (n === null || n.author !== 'model' || n.missing) return
   if (n.checked) return void (await ask(io, { action: 'uncheck', component: n.component, author: n.author, kind: n.kind }))
   await ask(io, { action: 'check', component: n.component, author: n.author, kind: n.kind, value: '' })
-  focus(io, 'notes-reason')
+  focusField(io, 'notes-reason')
 }
 
 /** The reason as typed into the flag's field. */
@@ -92,7 +88,7 @@ export async function editMarked(io: Port): Promise<void> {
   // The editor first: the detail draws it once its component is the note's.
   // The field and the wrapper take one line: a note of paragraphs is edited as one.
   await io.state.note.update((): NoteState => ({ component: n.component, phase: 'editing', value: n.value.replace(/\s+/g, ' ').trim(), previous: null, reason: null }))
-  focus(io, 'note')
+  focusField(io, 'note')
   await showComponent(io, { name: n.component, label: n.label })
 }
 
@@ -149,20 +145,11 @@ async function write(io: Port, q: NotesAsk): Promise<void> {
   await say(io, doneSaid(q), 'ok')
 }
 
+/** The field that narrows the Notes tab by text: the list is read again for each change. */
+const NOTES_FILTER = narrowing('notes', 'notes-filter', 'notesText', io => request(io, 'notes'))
 /** Opens the field that narrows the Notes tab by text, and moves the focus into it once it is drawn. */
-export async function openNotesFilter(io: Port): Promise<void> {
-  await io.state.view.update((v): KnossosView => ({ ...v, tab: 'notes', filtering: true }))
-  focus(io, 'notes-filter')
-}
-
+export const openNotesFilter = NOTES_FILTER.open
 /** The Notes tab's text as typed: the list is read again for it, the marker back at the top. */
-export async function typeNotesFilter(io: Port, text: string): Promise<void> {
-  await io.state.view.update(v => ({ ...v, notesText: text, selected: 0 }))
-  await request(io, 'notes')
-}
-
+export const typeNotesFilter = NOTES_FILTER.type
 /** Enter in the Notes tab's field: keep the text (an empty one clears it) and close the field. */
-export async function submitNotesFilter(io: Port, text: string): Promise<void> {
-  await io.state.view.update(v => ({ ...v, notesText: text.trim(), filtering: false, selected: 0 }))
-  await request(io, 'notes')
-}
+export const submitNotesFilter = NOTES_FILTER.submit

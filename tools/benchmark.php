@@ -234,11 +234,7 @@ try {
         'results' => $results,
         'violations' => $violations,
     ];
-    $reportDirectory = dirname($reportPath);
-    if (!is_dir($reportDirectory) && !mkdir($reportDirectory, 0755, true) && !is_dir($reportDirectory)) {
-        throw new RuntimeException('Unable to create benchmark report directory.');
-    }
-    file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+    writeJsonReport($reportPath, $report, 'benchmark report', 0o755);
     if ($violations !== []) {
         fwrite(STDERR, implode("\n", $violations) . "\n");
         exit(1);

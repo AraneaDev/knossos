@@ -22,25 +22,11 @@ require_once __DIR__ . '/lib/php-function-metrics.php';
 const MAINTAINABILITY_METRICS = ['cross_file_duplicate_blocks', 'max_php_function_complexity', 'max_php_function_lines', 'max_dependency_fanout'];
 
 $root = dirname(__DIR__);
-$budgetPath = null;
-$reportPath = null;
 require_once __DIR__ . '/lib/cli-arguments.php';
-// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
-$argv = cliArguments();
-foreach (array_slice($argv, 1) as $argument) {
-    if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
-        $root = rtrim(substr($argument, strlen('--root=')), '/');
-    } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
-        $budgetPath = substr($argument, strlen('--budgets='));
-    } elseif (str_starts_with($argument, '--report=') && $argument !== '--report=') {
-        $reportPath = substr($argument, strlen('--report='));
-    } else {
-        fwrite(STDERR, "usage: php tools/maintainability-report.php [--root=DIR] [--budgets=FILE] [--report=FILE]\n");
-        exit(2);
-    }
-}
-$budgetPath ??= $root . '/maintainability-budgets.json';
-$reportPath ??= $root . '/coverage/quality/maintainability.json';
+$options = cliOptions('usage: php tools/maintainability-report.php [--root=DIR] [--budgets=FILE] [--report=FILE]', ['root', 'budgets', 'report']);
+$root = isset($options['root']) ? rtrim($options['root'], '/') : $root;
+$budgetPath = $options['budgets'] ?? $root . '/maintainability-budgets.json';
+$reportPath = $options['report'] ?? $root . '/coverage/quality/maintainability.json';
 [$budgets, $budgetErrors] = readBudgetFile($budgetPath);
 foreach ($budgets === null ? [] : MAINTAINABILITY_METRICS as $metric) {
     $error = budgetNumberError($metric, $budgets[$metric] ?? null, 0.0);
@@ -119,10 +105,7 @@ $report = [
     'cross_file_duplicate_blocks' => array_slice($duplicates, 0, 50, true),
     'prerequisite_static_gates' => ['PHPStan unused/unreachable analysis', 'ESLint no-unused-vars', 'Ruff F and warn-unreachable through mypy'],
 ];
-if (!is_dir(dirname($reportPath)) && !mkdir(dirname($reportPath), 0775, true) && !is_dir(dirname($reportPath))) {
-    throw new RuntimeException('Unable to create quality report directory.');
-}
-file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+writeJsonReport($reportPath, $report, 'quality report');
 $failures = [];
 foreach (MAINTAINABILITY_METRICS as $metric) {
     if ($report['summary'][$metric] > $budgets[$metric]) {

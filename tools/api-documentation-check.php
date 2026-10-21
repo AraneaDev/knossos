@@ -13,16 +13,8 @@ declare(strict_types=1);
  */
 $root = dirname(__DIR__);
 require_once __DIR__ . '/lib/cli-arguments.php';
-// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
-$argv = cliArguments();
-foreach (array_slice($argv, 1) as $argument) {
-    if (str_starts_with($argument, '--root=') && strlen($argument) > 7) {
-        $root = rtrim(substr($argument, 7), '/');
-    } else {
-        fwrite(STDERR, "usage: php tools/api-documentation-check.php [--root=DIR]\n");
-        exit(64);
-    }
-}
+$options = cliOptions('usage: php tools/api-documentation-check.php [--root=DIR]', ['root'], [], 64);
+$root = isset($options['root']) ? rtrim($options['root'], '/') : $root;
 // Shared with tools/docstring-report.php on purpose: both gates answer "is this
 // documented", and they used to disagree.
 require __DIR__ . '/lib/docblocks.php';
@@ -143,11 +135,7 @@ foreach (['Manifest', 'Evidence', 'Node', 'Edge', 'Diagnostic', 'Contribution'] 
 }
 
 $report = ['schema_version' => 1, 'documented_contracts' => count($checked) - count($failures), 'checked_contracts' => count($checked), 'failures' => $failures, 'contracts' => $checked];
-$reportDirectory = $root . '/coverage/quality';
-if (!is_dir($reportDirectory) && !mkdir($reportDirectory, 0775, true) && !is_dir($reportDirectory)) {
-    throw new RuntimeException('Unable to create API documentation report directory.');
-}
-file_put_contents($reportDirectory . '/api-documentation.json', json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+writeJsonReport($root . '/coverage/quality/api-documentation.json', $report, 'API documentation report');
 if ($failures !== []) {
     fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);
     exit(1);

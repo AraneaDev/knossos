@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { freshDig, LOOKUPS_BEFORE_REMINDER, observe, type Dig } from './dig'
+import { freshDig, LOOKUPS_BEFORE_REMINDER, observe, QUESTIONS, type Dig } from './dig'
 
 /** Feeds calls in order, returning the last state and every reminder raised. */
 function run(calls: [string, unknown?][]): { dig: Dig; reminders: string[] } {
@@ -64,5 +66,41 @@ describe('the dig reminder', () => {
 
   it('does not let an annotation before the digging silence it', () => {
     expect(run([['mcp__knossos__annotate_component'], ['mcp__knossos__list_usages'], ['Read'], ['Read']]).reminders).toHaveLength(1)
+  })
+})
+
+/**
+ * Every tool the server offers is either a question a dig starts from (QUESTIONS) or named here with why it is
+ * not one, so a tool added to the catalog is classified on purpose rather than left out by default.
+ */
+const NOT_QUESTIONS: Record<string, string> = {
+  server_info: 'reports the server itself',
+  diagnose_runtime: 'reports the runtime and its workers',
+  list_projects: 'lists projects, nothing about their code',
+  scan_project: 'scans; the files read after it are the ones about to be edited',
+  remove_project: 'housekeeping',
+  move_project: 'housekeeping',
+  cleanup_stale_scans: 'housekeeping',
+  maintain_database: 'housekeeping',
+  list_snapshots: 'lists scans, not the code',
+  snapshot_diff: 'compares two scans; reading the changed files after it reviews them, it does not dig past an answer',
+  architecture_trends: "a project's figures over time, not an answer about its code",
+  quality_gate: 'a pass or fail verdict on budgets',
+  list_diagnostics: "the scan's own warnings",
+  architecture_summary: 'counts the graph by kind; the lookups after it explore the project rather than check an answer',
+  export_agent_brief: 'writes a brief for an instructions file, an export rather than an answer',
+  export_diagram: 'draws the graph, an export rather than an answer',
+  annotate_component: 'records what a dig found: it ends a dig rather than starting one',
+}
+
+describe('the server catalog', () => {
+  it('has every tool classified: a question, or not one for a stated reason', () => {
+    const catalog = readFileSync(fileURLToPath(new URL('../../docs/reference/mcp-tools.md', import.meta.url)), 'utf8')
+    const tools = [...catalog.matchAll(/^## `([a-z_]+)`$/gm)].map(m => m[1]!)
+    expect(tools.length).toBeGreaterThan(30)
+    expect(tools.filter(tool => !QUESTIONS.has(tool) && !(tool in NOT_QUESTIONS))).toEqual([])
+    expect([...QUESTIONS].filter(tool => tool in NOT_QUESTIONS)).toEqual([])
+    // Neither list names a tool the catalog no longer has.
+    expect([...QUESTIONS, ...Object.keys(NOT_QUESTIONS)].filter(tool => !tools.includes(tool))).toEqual([])
   })
 })

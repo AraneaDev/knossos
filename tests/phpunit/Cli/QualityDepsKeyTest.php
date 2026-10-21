@@ -28,8 +28,11 @@ final class QualityDepsKeyTest extends KnossosTestCase
     /** The stages the published dependency images are built from. */
     private const DEPENDENCY_STAGES = ['node_runtime', 'composer_runtime', 'rust_builder', 'runtime_deps', 'quality_tools'];
 
-    /** The stages that add this commit's source on top of a dependency image. */
-    private const SOURCE_STAGES = ['runtime', 'quality'];
+    /** The stages that add this commit's source on top of a dependency image, and the one they take it from. */
+    private const SOURCE_STAGES = ['sources', 'runtime', 'quality'];
+
+    /** The images that carry this commit's source, each copying it from the `sources` stage. */
+    private const IMAGES_WITH_SOURCE = ['runtime', 'quality'];
 
     /** What a source stage must never run: installs, downloads, builds and recursive ownership rewrites. */
     private const FORBIDDEN_IN_SOURCE_STAGES = ['apt-get', 'npm ci', 'npm install', 'composer install', 'pip install', 'curl', 'cargo build', 'chown -R'];
@@ -56,7 +59,7 @@ final class QualityDepsKeyTest extends KnossosTestCase
         assertSame([], $unkeyed, 'copied into a dependency stage but not hashed by tools/quality-deps-key');
     }
 
-    /** The source stages only copy and arrange; every install lives in a dependency stage. */
+    /** What the runtime image copies from the build context, itself or through the sources stage, is hashed by its key. */
     #[Group('documentation')]
     public function testEveryRuntimeStageInputIsHashedIntoTheRuntimeImageKey(): void
     {
@@ -66,14 +69,49 @@ final class QualityDepsKeyTest extends KnossosTestCase
             ...$lines($this->runCommand(['sh', self::repositoryRoot() . '/tools/runtime-image-key', '--inputs'], self::repositoryRoot())),
         ];
         $unkeyed = [];
-        foreach (self::stages()['runtime'] ?? [] as $instruction) {
-            foreach (self::contextSources($instruction) as $source) {
-                if (!self::covered($source, $inputs)) {
-                    $unkeyed[] = 'runtime: ' . $source;
+        foreach (['sources', 'runtime'] as $name) {
+            foreach (self::stages()[$name] ?? [] as $instruction) {
+                foreach (self::contextSources($instruction) as $source) {
+                    if (!self::covered($source, $inputs)) {
+                        $unkeyed[] = $name . ': ' . $source;
+                    }
                 }
             }
         }
         assertSame([], $unkeyed, 'copied into the runtime image but not hashed by tools/runtime-image-key');
+    }
+
+    /**
+     * The other direction: the runtime key hashes exactly the sources stage's
+     * paths, no more, and both images take the whole stage. A path only the key
+     * named would move it for a file no image holds; a stage that copied its
+     * own list again could leave a tree out of one image (as `web` once was
+     * left out of the runtime image, so `knossos web` could not start there).
+     */
+    #[Group('documentation')]
+    public function testTheRuntimeImageKeyNamesExactlyTheSourcesStageAndBothImagesCopyIt(): void
+    {
+        $stages = self::stages();
+        assertArrayHasKey('sources', $stages, 'Dockerfile stage missing');
+        $copied = [];
+        foreach ($stages['sources'] as $instruction) {
+            $copied = [...$copied, ...self::contextSources($instruction)];
+        }
+        $keyed = array_values(array_filter(explode("\n", $this->runCommand(['sh', self::repositoryRoot() . '/tools/runtime-image-key', '--inputs'], self::repositoryRoot())), static fn(string $line): bool => $line !== ''));
+        sort($copied);
+        sort($keyed);
+        assertSame($keyed, $copied, 'tools/runtime-image-key and the sources stage name different paths');
+        assertSame(true, in_array('web', $copied, true), 'knossos web runs web/main.ts from the installation');
+
+        foreach (self::IMAGES_WITH_SOURCE as $name) {
+            $fromSources = array_filter($stages[$name] ?? [], static fn(string $instruction): bool => preg_match('#^COPY\s.*--from=sources\s.*/opt/knossos/ \./$#', $instruction) === 1);
+            assertSame(1, count($fromSources), $name . ' does not copy the whole sources stage');
+            foreach ($stages[$name] ?? [] as $instruction) {
+                foreach (self::contextSources($instruction) as $source) {
+                    assertSame(false, self::covered($source, $copied), $name . ' copies ' . $source . ' itself as well');
+                }
+            }
+        }
     }
 
     /**
@@ -109,6 +147,7 @@ final class QualityDepsKeyTest extends KnossosTestCase
         });
     }
 
+    /** The source stages only copy and arrange; every install lives in a dependency stage. */
     #[Group('documentation')]
     public function testSourceStagesInstallNothing(): void
     {

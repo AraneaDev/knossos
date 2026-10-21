@@ -92,8 +92,15 @@ final class PluginCommand implements CliCommand
     /** The files a materialised plugin has besides the copies and its scripts: the two it writes itself. */
     private const WRITTEN_FILES = ['.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'];
 
-    /** The one script that is sourced rather than executed, so it is not made executable. */
+    /** The host scripts' library, sourced rather than executed, with the install-time values baked in. */
     private const LIBRARY_SCRIPT = 'hooks/scripts/lib.sh';
+
+    /**
+     * The scripts both modes source verbatim: the PATH guard and the argument
+     * checks the local and the container wrapper share. Sourced, like the
+     * library, so none of them is made executable.
+     */
+    private const SHARED_SCRIPTS = ['hooks/scripts/guard.sh', 'hooks/scripts/run-args.sh'];
 
     /**
      * The marketplace descriptor, byte for byte as an install needs it.
@@ -180,7 +187,7 @@ final class PluginCommand implements CliCommand
         // because it is derived from the installation rather than committed to
         // it; this is the one place that knows the root is an installation
         // which already runs the server.
-        $scripts = [];
+        $scripts = $this->sharedScripts($root);
         foreach (['session-brief.sh', 'knossos-run.sh'] as $script) {
             $scripts['hooks/scripts/' . $script] = $this->read($root . '/hooks/scripts/' . $script);
         }
@@ -251,9 +258,10 @@ final class PluginCommand implements CliCommand
             throw new InvalidArgumentException(sprintf('data must be an absolute host path, got "%s".', $data));
         }
         $image = $context->options->single($options, 'image') ?? self::DEFAULT_IMAGE;
-        $scripts = [];
-        // The container templates are standalone, so they ship under the host
-        // names without the shared library the host scripts source.
+        // The container templates ship under the host names, with the guard and
+        // the argument checks they source but without the host library: they
+        // run docker, so there is no binary to find and no data location to bake.
+        $scripts = $this->sharedScripts($root);
         foreach (['session-brief' => 'session-brief', 'knossos-run' => 'knossos-run'] as $name => $installed) {
             $scripts['hooks/scripts/' . $installed . '.sh'] = strtr(
                 $this->read($root . '/hooks/scripts/' . $name . '-container.sh'),
@@ -295,6 +303,20 @@ final class PluginCommand implements CliCommand
             $context->options->flag($options, 'json'),
             $message,
         );
+    }
+
+    /**
+     * The scripts both modes ship verbatim, keyed by their installed path.
+     *
+     * @return array<string, string> installed relative path => content
+     */
+    private function sharedScripts(string $root): array
+    {
+        $scripts = [];
+        foreach (self::SHARED_SCRIPTS as $relative) {
+            $scripts[$relative] = $this->read($root . '/' . $relative);
+        }
+        return $scripts;
     }
 
     /**
@@ -360,7 +382,8 @@ final class PluginCommand implements CliCommand
             foreach ($scripts as $relative => $content) {
                 $scriptPath = $out . '/' . $relative;
                 $transaction->write($scriptPath, $content);
-                if (!@chmod($scriptPath, $relative === self::LIBRARY_SCRIPT ? 0o644 : 0o755)) {
+                $sourced = $relative === self::LIBRARY_SCRIPT || in_array($relative, self::SHARED_SCRIPTS, true);
+                if (!@chmod($scriptPath, $sourced ? 0o644 : 0o755)) {
                     throw new InvalidArgumentException(sprintf('Unable to set the mode of %s.', $scriptPath));
                 }
             }

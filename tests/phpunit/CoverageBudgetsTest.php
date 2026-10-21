@@ -239,6 +239,23 @@ final class CoverageBudgetsTest extends KnossosTestCase
         assertSame(1, preg_match('/^PHP component storage .* PASS$/m', $output), $output);
     }
 
+    /**
+     * A directory under src/ that no component claims stops the report, even
+     * one no test loaded: it once fell into bundle-git-watch without a word.
+     */
+    public function testPcovReportRefusesASourceDirectoryWithoutAComponent(): void
+    {
+        $root = $this->fixtureTree();
+        mkdir($root . '/src/Newcomer', 0o700, true);
+        file_put_contents($root . '/src/Newcomer/Thing.php', "<?php\n\$a = 1;\n");
+
+        [$exit, $output, $errors] = $this->pcovReport($root, $this->writeBudgets(self::VALID));
+
+        assertSame(1, $exit, $output . $errors);
+        assertContains('pcov-report: src/Newcomer has no coverage component; add it to SOURCE_COMPONENTS in tools/pcov-report.php', $errors);
+        assertSame(false, is_file($root . '/coverage/php/summary.json'));
+    }
+
     /** With every component floor at 0, the aggregate floor alone refuses the run. */
     public function testPcovReportFailsAnAggregateBelowItsFloor(): void
     {

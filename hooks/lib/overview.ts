@@ -32,9 +32,9 @@ import type { Block, Section } from './cards'
 import { noteOf } from './cards'
 import { timelineRow, untestedText } from './changes'
 import type { ChangesInput, LookAt } from './changes'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, heat, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, heat, SECONDARY, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { button, clip, tinted, wrapGroups } from './rows'
+import { button, clip, wrapGroups, walkedRow } from './rows'
 import { BAR_FULL, bar, TRACK } from './table'
 import { chip, chipWidth, SWATCH } from './chips'
 import { cells, fit, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
@@ -234,17 +234,9 @@ export function notesLineBlock(data: OverviewData, selected: number, walk: numbe
     make: (columns): Section => {
       const tone = counts.missing > 0 ? mark(NOTE.missing, ' ') : counts.stale > 0 ? mark(NOTE.stale, ' ') : counts.flagged > 0 ? mark(NOTE.flagged, ' ') : { text: '' }
       const line: Segment[] = [{ text: '  ' }, ...(tone.text === '' ? [] : [tone]), button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
-      return { key: 'notes', title: 'Notes', body: [walked('notes-line', selected === walk, line, columns)] }
+      return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns)] }
     },
   }
-}
-
-/** The marker and tint of a walkable row: `›` and the tint when marked. */
-function walked(key: string, marked: boolean, segments: Segment[], columns: number): Row {
-  const kept = clip([{ text: marked ? '›' : ' ', color: ACCENT, bold: true }, ...segments], columns)
-  if (!marked) return { key, segments: kept }
-  const used = kept.reduce((n, s) => n + cells(s.text), 0)
-  return { key, segments: tinted([...kept, ...(used < columns ? [{ text: spaces(columns - used) }] : [])], SELECTED_BG), tint: SELECTED_BG }
 }
 
 /**
@@ -397,7 +389,7 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
           { text: ` ${padStart(counts[i]!, countWidth)}`, color: HEADING },
           ...(i === top ? [{ text: flag, dim: true }] : []),
         ]
-        return walked(`degree-${i}`, offset + i === selected, segments, columns)
+        return walkedRow(`degree-${i}`, offset + i === selected, segments, columns)
       })
       const note = `${grouped(total)}${data.bucketsPartial ? '+' : ''} components`
       // What the buckets count, so their sum is not read as the whole project.
@@ -514,7 +506,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
           { text: ` ${padStart(counts[i]!, countWidth)}`, color: HEADING },
           ...(f.forbidden ? [{ text: ' × forbidden', color: STATUS_COLOURS.alert }] : forbidden > 0 ? [{ text: spaces(forbidden) }] : []),
         ]
-        return walked(`flow-${i}`, offset + i === selected, segments, columns)
+        return walkedRow(`flow-${i}`, offset + i === selected, segments, columns)
       })
       const note = `${flows.length} of ${grouped(data.flowEdges)}${data.flowsPartial ? '+' : ''} deps`
       return section(body, note)
@@ -554,7 +546,7 @@ export function sessionBlock(changes: ChangesInput, look: LookAt | null, selecte
       const open: Segment[] = [{ text: '  ' }, button('row:0', 'Changes'), { text: '  every file, its dependents and its tests', dim: true }]
       const copy: Segment[] = look?.command ? [button('tests', 'copy test command', 't')] : []
       const room = columns - 1 - open.reduce((n, s) => n + cells(s.text), 0) - copy.reduce((n, s) => n + cells(s.text), 0)
-      body.push(walked('session-open', selected === 0, room >= 2 ? [...open, { text: spaces(room) }, ...copy] : open, columns))
+      body.push(walkedRow('session-open', selected === 0, room >= 2 ? [...open, { text: spaces(room) }, ...copy] : open, columns))
       if (room < 2 && copy.length > 0) body.push({ key: 'session-tests', segments: [{ text: '   ' }, ...copy] })
       return section(body)
     },

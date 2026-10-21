@@ -161,8 +161,8 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
   const n = outward.length
   const offsets = rings.map((_, i) => offset + rings.slice(0, i).reduce((sum, r) => sum + r.members.length, 0))
   const rows: Row[] = []
-  // A line inside `depth` frames: their left sides, the content, padding, their right sides.
-  const inside = (key: string, depth: number, content: Segment[]): Row => {
+  // The left and the right sides of the `depth` outermost frames, outermost at the edges.
+  const sides = (depth: number): { left: Segment[]; right: Segment[] } => {
     const left: Segment[] = []
     const right: Segment[] = []
     for (let d = 0; d < depth; d++) {
@@ -170,6 +170,11 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
       left.push({ text: '│ ', color: colour })
       right.unshift({ text: ' │', color: colour })
     }
+    return { left, right }
+  }
+  // A line inside `depth` frames: their left sides, the content, padding, their right sides.
+  const inside = (key: string, depth: number, content: Segment[]): Row => {
+    const { left, right } = sides(depth)
     const room = columns - 4 * depth
     const used = segmentsWidth(content)
     return { key, segments: [...left, ...content, { text: spaces(room - used) }, ...right] }
@@ -182,12 +187,7 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
     const state = standing(ring)
     const fill = Math.max(1, width - 8 - segmentsWidth(title) - segmentsWidth(state))
     const top: Segment[] = [{ text: '╭─ ', color: colour }, ...title, { text: ` ${'─'.repeat(fill)} `, color: colour }, ...state, { text: ' ─╮', color: colour }]
-    const left: Segment[] = []
-    const right: Segment[] = []
-    for (let o = 0; o < d; o++) {
-      left.push({ text: '│ ', color: frameColour(n - 1 - o) })
-      right.unshift({ text: ' │', color: frameColour(n - 1 - o) })
-    }
+    const { left, right } = sides(d)
     rows.push({ key: `ring-${index}-top`, segments: segmentsWidth(top) <= width ? [...left, ...top, ...right] : [...left, { text: `╭${'─'.repeat(Math.max(0, width - 2))}╮`, color: colour }, ...right] })
     const room = width - 4
     memberLines(ring, offsets[index]!, room, selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push(inside(`ring-${index}-names-${i}`, d + 1, line)))
@@ -204,12 +204,7 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
     rows.push(inside('ring-centre', n, [{ text: spaces(pad) }, ...label]))
   }
   for (let d = n - 1; d >= 0; d--) {
-    const left: Segment[] = []
-    const right: Segment[] = []
-    for (let o = 0; o < d; o++) {
-      left.push({ text: '│ ', color: frameColour(n - 1 - o) })
-      right.unshift({ text: ' │', color: frameColour(n - 1 - o) })
-    }
+    const { left, right } = sides(d)
     rows.push({ key: `ring-${n - 1 - d}-end`, segments: [...left, { text: `╰${'─'.repeat(Math.max(0, columns - 4 * d - 2))}╯`, color: frameColour(n - 1 - d) }, ...right] })
   }
   return rows

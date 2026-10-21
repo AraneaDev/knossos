@@ -13,13 +13,13 @@
     "enabled": {
       "type": "boolean",
       "title": "Enabled",
-      "description": "Show the Knossos band and notes.",
+      "description": "Show the Knossos band, the messages and the pane.",
       "default": true
     },
     "fanInThreshold": {
       "type": "number",
       "title": "Fan-in threshold",
-      "description": "Dependent files at which a Read or an edit gets a note.",
+      "description": "Dependent files at which a Read or an edit gets a message, 1 to 100000.",
       "default": 20
     },
     "agentNotes": {

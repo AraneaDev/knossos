@@ -126,7 +126,7 @@ expect_output 'relative project directory reaches the binary as an absolute path
 install_copy() {
     dir=$1; data=$2
     mkdir -p "$dir"
-    cp "$RUN" "$dir/knossos-run.sh"
+    cp "$RUN" "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$dir/"
     if [ -n "$data" ]; then
         sed "s|__KNOSSOS_DATA_DIR__|$data|" "$SCRIPTS/lib.sh" > "$dir/lib.sh"
     else
@@ -147,8 +147,15 @@ expect_output 'environment data location wins over the installed one' '/env|/x y
 
 # A wrapper installed without its library must still be silent.
 mkdir -p "$STUBS/nolib"
-cp "$RUN" "$STUBS/nolib/knossos-run.sh"
+cp "$RUN" "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$STUBS/nolib/"
 expect_silent_success 'missing lib.sh' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$STUBS/nolib/knossos-run.sh" dashboard /tmp
+# So must one without the guard or the argument checks it sources: nothing runs unchecked.
+for sourced in guard.sh run-args.sh; do
+    mkdir -p "$STUBS/no-$sourced"
+    cp "$RUN" "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$SCRIPTS/lib.sh" "$STUBS/no-$sourced/"
+    rm "$STUBS/no-$sourced/$sourced"
+    expect_silent_success "missing $sourced" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$STUBS/no-$sourced/knossos-run.sh" dashboard /tmp
+done
 
 # component-detail: one component name after the project directory, passed
 # through intact; anything that could read as an option is refused.
@@ -396,6 +403,7 @@ fi
 # The container variant, emitted with its placeholders filled, against a docker stand-in.
 mkdir -p "$STUBS/container" "$STUBS/dockerbin"
 sed -e "s|__KNOSSOS_IMAGE__|img:1|" -e "s|__KNOSSOS_DATA__|/srv/data|" "$SCRIPTS/knossos-run-container.sh" > "$STUBS/container/knossos-run.sh"
+cp "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$STUBS/container/"
 # Drops `run --rm` and the `-v` mounts, writes each `-e` to `env` beside it, says `user=<uid:gid>` when the run names a user, then prints the image and its argv.
 # `--init` and `--name` are recorded in `flags` beside it, and `rm -f <name>` in `removed`.
 cat > "$STUBS/dockerbin/docker" <<'STUB'

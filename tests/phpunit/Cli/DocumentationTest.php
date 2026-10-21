@@ -257,6 +257,31 @@ final class DocumentationTest extends KnossosTestCase
         assertContains('missing anchor page.md#not-a-heading', $errors);
     }
 
+    /**
+     * A contributor page that restates a budget is held to the budget file:
+     * the page saying 13 duplicate blocks while the file holds 14 is how the
+     * two drifted apart unnoticed. The coverage page's component table is
+     * compared both ways.
+     */
+    #[Group('documentation')]
+    public function testDocumentationCheckRejectsABudgetThePageRestatesWrongly(): void
+    {
+        [$exit, , $errors] = $this->checkDocumentationTree([
+            'README.md' => "# Home\n",
+            'docs/contribute/quality.md' => "# Quality\n\n- no more than 13 normalized cross-file duplicate blocks;\n",
+            'maintainability-budgets.json' => '{"cross_file_duplicate_blocks": 14}',
+            'docs/contribute/coverage.md' => "# Coverage\n\n| component | floor |\n| --- | ---: |\n| `storage` | 98.0% |\n| `gone` | 90% |\n",
+            'coverage-budgets.json' => '{"php": {"components": {"storage": 97.5, "transport": 96.8}}}',
+        ]);
+
+        assertSame(1, $exit);
+        assertContains('docs/contribute/quality.md: states 13 for cross_file_duplicate_blocks, maintainability-budgets.json holds 14', $errors);
+        assertContains('docs/contribute/quality.md: no longer states max_dependency_fanout', $errors);
+        assertContains('docs/contribute/coverage.md: states 98% for the component storage, coverage-budgets.json holds 97.5', $errors);
+        assertContains('docs/contribute/coverage.md: has no row for the component floor transport in coverage-budgets.json', $errors);
+        assertContains('docs/contribute/coverage.md: states a floor for the component gone, which coverage-budgets.json does not have', $errors);
+    }
+
     #[Group('documentation')]
     public function testLinkCheckRejectsAMissingImageTarget(): void
     {

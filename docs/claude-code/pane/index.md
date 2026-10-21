@@ -138,28 +138,28 @@ a moment after an action the footer says what it did (`✓ copied StableId`,
 a line, in place of whatever is open; `h` or `x` closes the list, and so does
 any other press, a tab or `f`, which then does what it does:
 
-| key         | what it does                                                                                                   |
-| ----------- | -------------------------------------------------------------------------------------------------------------- |
-| `1`–`9`     | switch tabs (or click one)                                                                                     |
-| `j` `k`     | move the `›` marker (or Tab, the arrows, or a click)                                                           |
-| `o`         | open the marked row: a component or a file shows what depends on it, an Overview bar the tab it counts         |
-| `e`         | open the marked row's file in your editor                                                                      |
-| `b`         | back from a detail or a route                                                                                  |
-| `c`         | copy the marked row's full name or path                                                                        |
-| `q`         | ask Claude about the marked row; your press sends the prompt                                                   |
-| `t`         | on Overview and Changes: copy the command for the tests that reach this session's changes                      |
-| `d`         | list the files drifted since the snapshot, or hide them                                                        |
-| `u`         | on Overview and Changes: list only the changed files no test reaches, or every file again                      |
-| `l`         | on Boundaries: move the marked cell to the next boundary the marked one depends on                             |
-| `f`         | open the [finder](details.md#the-finder)                                                                       |
-| `p`         | in a component's detail: draw a [route](details.md#a-route-between-two-components) to another component        |
-| `m`         | in a component's detail: add a [note](notes.md#a-note-on-a-component)                                          |
-| `n` `s` `x` | on Hubs: narrow the list, sort by in, out or cross degree, clear the narrowing                                 |
-| `n` `s` `x` | on [Notes](notes.md#notes): narrow by text, show yours, the model's, the stale, missing or flagged, clear both |
-| `m` `w` `g` | on Notes: edit your note or adopt the model's, remove a note, flag the model's note for it to check            |
-| `v`         | on Notes: say a stale note of the model's is still true                                                        |
-| `r`         | rescan the project now, fresh or not                                                                           |
-| `a`         | allow a refused root (asks first)                                                                              |
+| key         | what it does                                                                                                                                          |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `1`–`9`     | switch tabs (or click one)                                                                                                                            |
+| `j` `k`     | move the marker (or Tab, the arrows, or a click)                                                                                                      |
+| `o`         | open the marked row: a component or a file shows what depends on it, an Overview bar the tab it counts                                                |
+| `e`         | open the marked row's file in your editor                                                                                                             |
+| `b`         | back from a detail or a route                                                                                                                         |
+| `c`         | copy the marked row's full name or path                                                                                                               |
+| `q`         | ask Claude about the marked row: your press sends the prompt                                                                                          |
+| `t`         | on Overview and Changes: copy the command for the tests that reach this session's changes                                                             |
+| `d`         | list the files drifted since the snapshot, or hide them                                                                                               |
+| `u`         | on Overview and Changes: list only the changed files no test reaches, or every file again                                                             |
+| `l`         | on Boundaries: move the marked cell to the next boundary the marked one depends on, and spell it out                                                  |
+| `f`         | [find](details.md#the-finder) any component or file by the letters of its name; Enter opens the first match, x closes the finder                      |
+| `p`         | in a component's detail: pick another component in the finder and draw the [route](details.md#a-route-between-two-components) between them            |
+| `m`         | in a component's detail: add a [note](notes.md#a-note-on-a-component) to it; knossos checks it first, and y records it                                |
+| `n` `s` `x` | on Hubs: narrow the list (type, then Enter), sort by in, out or cross, clear the narrowing or the in-degree range                                     |
+| `n` `s` `x` | on [Notes](notes.md#notes): narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both |
+| `m` `w` `g` | on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)     |
+| `v`         | on Notes: say a stale note of the model's is still true, so it rests on its files as they are now                                                     |
+| `r`         | rescan the project now, fresh or not                                                                                                                  |
+| `a`         | allow a refused root (asks first)                                                                                                                     |
 
 Escape cannot be caught by a pane (it hands the keyboard back to the prompt),
 so `b` is the way back.

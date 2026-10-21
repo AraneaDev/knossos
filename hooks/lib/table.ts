@@ -16,12 +16,12 @@
  * shorten to their minimum, then names are cut with an ellipsis, then the
  * boundary column goes, then the bars go. The numbers always stay.
  */
-import { ACCENT, FAINT, FLASH_BG, HEADING, NO_HUES, SELECTED_BG } from './palette'
+import { ACCENT, FAINT, FLASH_BG, HEADING, NO_HUES } from './palette'
 import type { Hues } from './palette'
 import { RANKING, kindMark, mark } from './marks'
 import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
-import { button, segmentsWidth, tinted } from './rows'
+import { button, segmentsWidth, tintedRow } from './rows'
 import { cells, compact, fit, fitStart, grouped, padEnd, padStart, pathParts, spaces } from './text'
 import type { Loc, Preview, Row, Segment } from './types'
 
@@ -222,8 +222,8 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   // Files are left-aligned and cut from the front: a column of them reads down the file names.
   if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, opensFile(fitStart(line.place ?? '', spec.place ?? 0), line.placeLoc ?? null, { dim: true }))
   const kept = segments.filter(s => s.text !== '')
-  if (line.selected) return { key, segments: tinted(kept, SELECTED_BG), tint: SELECTED_BG }
-  return line.lit === true ? { key, segments: tinted(kept, FLASH_BG), tint: FLASH_BG } : { key, segments: kept }
+  if (line.selected) return tintedRow(key, kept, true)
+  return tintedRow(key, kept, line.lit === true, { bg: FLASH_BG })
 }
 
 /** A number column's width: its title, or its widest figure as the table prints it (`compact` on a narrow pane). */

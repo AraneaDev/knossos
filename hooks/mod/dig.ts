@@ -26,10 +26,11 @@ const KNOSSOS = /^mcp__(?:plugin_knossos_)?knossos__(.+)$/
  * Scanning, listing projects, server info and housekeeping answer none: a turn that scans and then reads the files
  * it is about to edit has dug for nothing.
  */
-const QUESTIONS = new Set([
+export const QUESTIONS: ReadonlySet<string> = new Set([
   'list_usages', 'impact_analysis', 'explain_flow', 'find_component', 'inspect_component', 'search_architecture',
   'file_context', 'architecture_context', 'change_impact', 'changed_files_impact', 'test_impact', 'suggest_location',
-  'list_boundaries', 'dependency_cycles', 'list_annotations',
+  'list_boundaries', 'dependency_cycles', 'list_annotations', 'file_metrics', 'review_diff', 'architecture_health',
+  'check_architecture',
 ])
 
 /** A command that searches the code, in any segment of a chained or piped command line. */
