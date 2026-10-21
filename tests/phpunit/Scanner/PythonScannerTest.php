@@ -2795,20 +2795,19 @@ PYTHON);
     public function testAMethodCalledThroughItsClassNameReachesTheDeclaringClass(): void
     {
         // `Repo.build()` calls a static method through the imported class, and
-        // `Repo.inherited()` a class method `Repo` inherits: the worker names it
-        // on `Repo`, and the persisted call reaches the base that declares it.
+        // `Repo.inherited()` a class method `Repo` inherits from a base it names
+        // through the base's module: the worker names it on `Repo`, and the
+        // persisted call reaches the base that declares it.
         $root = sys_get_temp_dir() . '/knossos-py-class-call-' . bin2hex(random_bytes(6));
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
+            'app/base.py' => "class Base:\n    @classmethod\n    def inherited(cls):\n        return cls\n",
             'app/repo.py' => implode("\n", [
-                'class Base:',
-                '    @classmethod',
-                '    def inherited(cls):',
-                '        return cls',
+                'import app.base as b',
                 '',
                 '',
-                'class Repo(Base):',
+                'class Repo(b.Base):',
                 '    @staticmethod',
                 '    def build():',
                 '        return 1',
@@ -2851,27 +2850,34 @@ PYTHON);
             @rmdir($root);
         }
 
-        self::assertSame(['app.repo.Base::inherited', 'app.repo.Repo::build'], $targets);
+        self::assertSame(['app.base.Base::inherited', 'app.repo.Repo::build'], $targets);
     }
 
     #[Group('python-scanner')]
     public function testABaseAnnotationInAnotherModuleAndAStringAnnotationTypeTheReceiver(): void
     {
         // `index: Index` on a base declared in another module types a
-        // subclass's `self.index`, and `"Index"` in quotes names the class as
-        // `Index` does.
+        // subclass's `self.index`, through a base named by its module
+        // (`b.Base`, `mid.Mid`) too, and `"Index"` in quotes names the class
+        // as `Index` does.
         $root = sys_get_temp_dir() . '/knossos-py-base-annotation-' . bin2hex(random_bytes(6));
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
             'app/index.py' => "class Index:\n    def lookup(self):\n        return 1\n\n    def quoted(self):\n        return 2\n",
             'app/base.py' => "from app.index import Index\n\n\nclass Base:\n    index: Index\n",
+            'app/mid.py' => "import app.base as b\n\n\nclass Mid(b.Base):\n    pass\n",
             'app/child.py' => implode("\n", [
+                'from app import mid',
                 'from app.base import Base',
                 'from app.index import Index',
                 '',
                 'class Child(Base):',
                 '    def find(self):',
+                '        return self.index.lookup()',
+                '',
+                'class Deep(mid.Mid):',
+                '    def find_deep(self):',
                 '        return self.index.lookup()',
                 '',
                 'def quoted(given: "Index"):',
@@ -2911,6 +2917,7 @@ PYTHON);
         }
 
         self::assertContains('py:method:app.child.Child::find -> py:method:app.index.Index::lookup', $calls);
+        self::assertContains('py:method:app.child.Deep::find_deep -> py:method:app.index.Index::lookup', $calls);
         self::assertContains('py:function:app.child.quoted -> py:method:app.index.Index::quoted', $calls);
         self::assertNull($untyped);
     }

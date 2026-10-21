@@ -573,7 +573,7 @@ class ProjectModuleIndex(ReadRecorder):
         self._add_reexports(tree, location, is_package, declarations)
         imported = self._add_instances(tree, location, is_package, declarations, name)
         self._add_returns(tree, name, declarations, imported)
-        self._add_class_attributes(tree, name, declarations, imported)
+        self._add_class_attributes(tree, name, declarations, imported, location, is_package)
         return declarations
 
     def is_protocol(self, owner: str) -> bool:
@@ -641,24 +641,44 @@ class ProjectModuleIndex(ReadRecorder):
                             self._returns[ref("method", f"{name}.{child.name}::{member.name}")] = held
 
     def _add_class_attributes(
-        self, tree: ast.Module, name: str, declarations: dict[str, str], imported: dict[str, str]
+        self,
+        tree: ast.Module,
+        name: str,
+        declarations: dict[str, str],
+        imported: dict[str, str],
+        location: str,
+        is_package: bool,
     ) -> None:
         """Record what each top-level class annotates its attributes as, and the classes it derives from.
 
         ``index: Index`` in a class body types ``self.index`` in the class and
         in every class deriving from it, in this module or another. Only an
         annotation or a base naming a class this module declares or imports
-        counts, as for :meth:`_add_returns`.
+        counts, as for :meth:`_add_returns`, or one named through a module it
+        imports (``models.Base``, ``m.Base``).
         """
+        classes = [child for child in module_statements(tree) if isinstance(child, ast.ClassDef)]
+        # Only the names a dotted base or annotation starts with are looked up
+        # as modules, so a module naming none reads nothing more.
+        heads = {
+            named.split(".")[0]
+            for child in classes
+            for node in [
+                *child.bases,
+                *(optional_inner(item.annotation) for item in child.body if isinstance(item, ast.AnnAssign)),
+            ]
+            if (named := dotted(node) if node is not None else None) is not None and "." in named
+        }
+        modules = self._module_aliases(tree, location, is_package, heads) if heads else {}
 
         def named_class(node: ast.AST | None) -> str | None:
             named = dotted(node) if node is not None else None
             target = None if named is None else declarations.get(named) or imported.get(named)
+            if target is None and named is not None and "." in named:
+                target = self._module_qualified(named, modules)
             return target.removeprefix("py:class:") if target is not None and target.startswith("py:class:") else None
 
-        for child in module_statements(tree):
-            if not isinstance(child, ast.ClassDef):
-                continue
+        for child in classes:
             canonical = f"{name}.{child.name}"
             attributes: dict[str, str] = {}
             for item in child.body:
@@ -668,6 +688,43 @@ class ProjectModuleIndex(ReadRecorder):
                         attributes[item.target.id] = held
             self._class_attributes[canonical] = attributes
             self._class_bases[canonical] = [base for base in map(named_class, child.bases) if base is not None]
+
+    def _module_aliases(self, tree: ast.Module, location: str, is_package: bool, heads: set[str]) -> dict[str, str]:
+        """The modules ``tree``'s top-level imports bind to the names in ``heads``.
+
+        ``import pkg.models as m`` binds ``m`` to ``pkg.models``, ``import
+        pkg.models`` binds ``pkg``, and ``from pkg import models`` binds
+        ``models`` when ``pkg`` declares no ``models`` of its own and the
+        submodule exists.
+        """
+        modules: dict[str, str] = {}
+        for child in module_statements(tree):
+            if isinstance(child, ast.Import):
+                for alias in child.names:
+                    top = alias.name.split(".")[0]
+                    if (alias.asname or top) in heads:
+                        modules[alias.asname or top] = alias.name if alias.asname else top
+            elif isinstance(child, ast.ImportFrom):
+                source = absolute_import(location, child.level, child.module, is_package)
+                if not source:
+                    continue
+                for alias in child.names:
+                    if (alias.asname or alias.name) not in heads:
+                        continue
+                    if alias.name == "*" or alias.name in self.module_declarations(source):
+                        continue
+                    if self.module_file(f"{source}.{alias.name}") is not None:
+                        modules[alias.asname or alias.name] = f"{source}.{alias.name}"
+        return modules
+
+    def _module_qualified(self, named: str, modules: dict[str, str]) -> str | None:
+        """What ``<alias>.<path>.<Name>`` names: ``Name`` as the module the alias and path reach declares it."""
+        first, _, rest = named.partition(".")
+        module = modules.get(first)
+        if module is None:
+            return None
+        owner, _, member = f"{module}.{rest}".rpartition(".")
+        return self.module_declarations(owner).get(member)
 
     def class_attributes(self, held: str) -> tuple[dict[str, str], list[str]]:
         """The attributes the project class ``held`` annotates in its body, and the project classes it derives from.

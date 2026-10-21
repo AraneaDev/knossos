@@ -601,6 +601,39 @@ def test_a_base_annotation_in_another_module_types_a_subclass(worker: ModuleType
     assert {"app/base.py", "app/root.py", "app/index.py"} <= set(contribution["reads"])
 
 
+def test_a_base_named_through_its_module_is_followed_across_files(worker: ModuleType, project, scan_collect) -> None:
+    # `class Mid(models.Root)` and `class Base(m.Mid)` name their bases through
+    # an imported module, as `from ... import` would by name. The annotation
+    # two modules up still types the subclass, an annotation named through a
+    # module (`index: idx.Index`) too, and the reads are named by the file
+    # whose call they type.
+    root = project(
+        {
+            "app/__init__.py": "",
+            "app/index.py": "class Index:\n    def lookup(self) -> None:\n        pass\n",
+            "app/models.py": "from app import index as idx\n\n\nclass Root:\n    index: idx.Index\n",
+            "app/mid.py": "import app.models\n\n\nclass Mid(app.models.Root):\n    pass\n",
+            "app/base.py": "import app.mid as m\n\n\nclass Base(m.Mid):\n    pass\n",
+            "app/child.py": (
+                "from app import base\n"
+                "\n"
+                "\n"
+                "class Child(base.Base):\n"
+                "    def run(self) -> None:\n"
+                "        self.index.lookup()\n"
+            ),
+        }
+    )
+
+    [contribution] = scan_collect(root, ["app/child.py"])
+
+    edges = _edges(contribution)
+    assert ("extends", "py:class:app.child.Child", "py:class:app.base.Base") in edges
+    assert ("calls", "py:method:app.child.Child::run", "py:method:app.index.Index::lookup") in edges
+    assert _module_untyped(contribution) == []
+    assert {"app/base.py", "app/mid.py", "app/models.py", "app/index.py"} <= set(contribution["reads"])
+
+
 def test_unreadable_file_costs_only_itself(monkeypatch, worker: ModuleType, project, scan_collect) -> None:
     """A file that vanishes between validation and the read.
 
