@@ -36,7 +36,7 @@ RUN cargo build --release --locked
 # quality stages below. A file copied into one of these stages that the key
 # does not hash would reuse a stale image; QualityDepsKeyTest holds the two to
 # each other.
-FROM php:8.5-cli-trixie@sha256:8e5d746f87655d89573e76d2b9125ed1b1578e47d3c466a2b2fdfc35593d9b41 AS runtime_deps
+FROM php:8.5-cli-trixie@sha256:c8266eb43a912656e23766f8b39d85433cb4d4cd163fb9716b9649cb4411f527 AS runtime_deps
 
 # The compiler toolchain the base image carries for `docker-php-ext-install` is
 # build-only, and it drags in `libc6-dev` -> `linux-libc-dev`. Kernel headers are
