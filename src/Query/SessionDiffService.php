@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Filesystem\RelativePathRule;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
@@ -116,10 +117,10 @@ final readonly class SessionDiffService
     /** Whether `$file` is a plain relative path inside the directory: no absolute path, option or step out. */
     private static function isPlainPath(string $file): bool
     {
-        if ($file === '' || $file[0] === '/' || $file[0] === '-' || str_contains($file, "\0")) {
+        if ($file === '' || $file[0] === '-') {
             return false;
         }
-        return !in_array('..', explode('/', $file), true);
+        return RelativePathRule::isContained($file);
     }
 
     /**

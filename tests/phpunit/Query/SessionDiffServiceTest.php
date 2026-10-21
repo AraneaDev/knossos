@@ -205,7 +205,7 @@ final class SessionDiffServiceTest extends KnossosTestCase
         assertSame('no-git', $service->diff($this->directory(), $rev, 'src/Kept.php')['status']);
         assertSame('unknown-rev', $service->diff($root, str_repeat('0', 40), 'src/Kept.php')['status']);
         assertSame('unknown-rev', $service->diff($root, 'HEAD', 'src/Kept.php')['status']);
-        foreach (['../outside.php', '/etc/passwd', '--output=x', '', 'src/../../x'] as $file) {
+        foreach (['../outside.php', '/etc/passwd', '--output=x', '', 'src/../../x', 'src\\..\\..\\x', 'C:x', "src/x\0"] as $file) {
             assertSame('error', $service->diff($root, $rev, $file)['status'], $file);
         }
     }
