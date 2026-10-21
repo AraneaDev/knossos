@@ -37,7 +37,19 @@ scanner manifest:
     "protocol_version": "1.0",
     "output_schema_version": "1.0",
     "languages": ["typescript", "javascript"],
-    "file_extensions": ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
+    "file_extensions": [
+        "ts",
+        "tsx",
+        "mts",
+        "cts",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "vue",
+        "svelte",
+        "astro"
+    ],
     "capabilities": [
         "project_program",
         "partial_ast",
@@ -50,6 +62,12 @@ scanner manifest:
 ```
 
 Version mismatch is fatal and occurs before project paths are sent.
+
+A packaged worker's manifest names what the core's descriptor of that language
+says: the id it is launched as, the same languages, every extension discovery
+routes to those languages, and `added_files_affect_all` exactly when the
+descriptor treats an added file as affecting every other. The test suite holds
+each packaged worker to it (`ScannerManifest::assertDescribes`).
 
 A compiled worker may add `source_hash`: the lowercase hex SHA-256 of the
 source it was built from. The Rust worker embeds it at build time, and `doctor`

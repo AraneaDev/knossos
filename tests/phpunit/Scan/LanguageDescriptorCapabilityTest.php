@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Scan;
 
+use Knossos\Discovery\SourceClassifier;
 use Knossos\Scan\LanguageDescriptor;
 use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Worker\ProcessScannerClient;
@@ -14,7 +15,8 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * The core plans from its descriptors which packaged workers rebuild every file
  * on an added one, before any worker has started; each packaged worker's
- * handshake must say the same. Layout markers are the descriptors' alone.
+ * handshake must say the same, and name the id, languages and extensions the
+ * core launches and routes it for. Layout markers are the descriptors' alone.
  */
 #[Group('scan')]
 final class LanguageDescriptorCapabilityTest extends KnossosTestCase
@@ -28,10 +30,14 @@ final class LanguageDescriptorCapabilityTest extends KnossosTestCase
             }
             $client = new ProcessScannerClient($descriptor->command, new WorkerLimits(requestTimeoutMs: 20_000));
             try {
-                $capabilities = $client->initialize()->capabilities;
+                $manifest = $client->initialize();
             } finally {
                 $client->shutdown();
             }
+            // Its id, its languages, every extension discovery routes to
+            // them, and the added-files capability, as the descriptor has them.
+            $manifest->assertDescribes($descriptor->scannerId(), $descriptor->languages, SourceClassifier::extensionsFor($descriptor->languages), $descriptor->addedFilesAffectAll);
+            $capabilities = $manifest->capabilities;
             assertSame(
                 $descriptor->addedFilesAffectAll,
                 in_array(Protocol::CAPABILITY_ADDED_FILES_AFFECT_ALL, $capabilities, true),

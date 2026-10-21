@@ -20,6 +20,16 @@ final class SourceClassifier
     /** Bytes read when probing an extensionless file's shebang; one short line is enough. */
     private const SHEBANG_PROBE_BYTES = 256;
 
+    /** The language each source extension routes a file to; a worker for that language must declare the extension. */
+    public const LANGUAGE_BY_EXTENSION = [
+        'php' => 'php',
+        'ts' => 'typescript', 'tsx' => 'typescript', 'mts' => 'typescript', 'cts' => 'typescript',
+        'vue' => 'typescript', 'svelte' => 'typescript', 'astro' => 'typescript',
+        'js' => 'javascript', 'jsx' => 'javascript', 'mjs' => 'javascript', 'cjs' => 'javascript',
+        'py' => 'python', 'pyi' => 'python',
+        'rs' => 'rust',
+    ];
+
     /**
      * The unit kinds that make their directory a manifest root: each declares a
      * package or a build, which is what puts build output (`dist`, `coverage`)
@@ -27,6 +37,17 @@ final class SourceClassifier
      * files to run, not a build root, so they are not on the list.
      */
     public const MANIFEST_UNIT_KINDS = ['cargo', 'composer', 'node', 'python', 'requirements', 'typescript'];
+
+    /**
+     * The extensions routed to any of these languages.
+     *
+     * @param list<string> $languages
+     * @return list<string>
+     */
+    public static function extensionsFor(array $languages): array
+    {
+        return array_keys(array_filter(self::LANGUAGE_BY_EXTENSION, static fn(string $language): bool => in_array($language, $languages, true)));
+    }
 
     /** Whether a path names a package or build manifest, which makes its directory a manifest root. */
     public static function isManifest(string $relativePath): bool
@@ -147,14 +168,7 @@ final class SourceClassifier
     public static function languageFor(string $relativePath, ?string $absolutePath = null): ?string
     {
         $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
-        $byExtension = match ($extension) {
-            'php' => 'php',
-            'ts', 'tsx', 'mts', 'cts', 'vue', 'svelte', 'astro' => 'typescript',
-            'js', 'jsx', 'mjs', 'cjs' => 'javascript',
-            'py', 'pyi' => 'python',
-            'rs' => 'rust',
-            default => null,
-        };
+        $byExtension = self::LANGUAGE_BY_EXTENSION[$extension] ?? null;
         if ($byExtension !== null || $extension !== '' || $absolutePath === null) {
             return $byExtension;
         }

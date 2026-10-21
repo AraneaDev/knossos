@@ -259,4 +259,32 @@ final class ScannerManifestTest extends TestCase
 
         ScannerManifest::fromArray(self::minimalData() + ['source_hash' => $hash]);
     }
+
+    // ----- describing the launched worker -----
+
+    /** @return array<string, array{0: string, 1: list<string>, 2: list<string>, 3: bool, 4: ?string}> */
+    public static function descriptions(): array
+    {
+        return [
+            'matching, languages in any order' => ['knossos.ts', ['javascript', 'typescript'], ['ts', 'vue'], true, null],
+            'another id' => ['knossos.other', ['typescript', 'javascript'], ['ts'], true, 'answers as knossos.ts'],
+            'other languages' => ['knossos.ts', ['typescript'], ['ts'], true, 'declares languages javascript, typescript, not typescript'],
+            'a routed extension left out' => ['knossos.ts', ['typescript', 'javascript'], ['ts', 'astro'], true, 'does not declare the extensions astro'],
+            'capability the descriptor lacks' => ['knossos.ts', ['typescript', 'javascript'], ['ts'], false, 'declares the added_files_affect_all capability'],
+        ];
+    }
+
+    /** @param list<string> $languages @param list<string> $extensions */
+    #[DataProvider('descriptions')]
+    public function testAssertDescribesRefusesAManifestOfAnotherWorker(string $id, array $languages, array $extensions, bool $addedFiles, ?string $problem): void
+    {
+        $manifest = new ScannerManifest('knossos.ts', '1', '1.0', '1.0', ['typescript', 'javascript'], ['ts', 'vue'], ['added_files_affect_all']);
+        try {
+            $manifest->assertDescribes($id, $languages, $extensions, $addedFiles);
+            assertSame(null, $problem);
+        } catch (\Knossos\Scanner\Worker\WorkerException $error) {
+            assertSame('WORKER_MANIFEST_INVALID', $error->diagnosticCode);
+            assertSame(sprintf('The worker launched as %s %s.', $id, $problem), $error->getMessage());
+        }
+    }
 }
