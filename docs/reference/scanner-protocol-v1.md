@@ -331,7 +331,13 @@ program held: one line per file of the program that declares globally (a
 script, a module that augments the global scope or another module, a UMD
 global, a type library a config names), the path, a NUL and the hash
 `input_hashes` carries for it (empty for `null`), sorted and joined with
-newlines. Both are kept with the cached contribution. The result also carries
+newlines. The packaged TypeScript worker also adds one line per pair of files
+the program describes where a call in the first hands a function of the
+second an object literal to destructure into a parameter with no declared
+type: a NUL, the caller's path, a NUL and the callee's path. The
+callee's reads name each file that already does, so only a file that starts
+to changes the digest ([TypeScript](../languages/typescript.md#dispatch-the-checker-cannot-resolve)).
+Both are kept with the cached contribution. The result also carries
 `environments`, an object mapping the key of every program the request built
 to its digest, since a program built for a file another program emitted
 labels no contribution of its own: the packaged TypeScript worker builds every

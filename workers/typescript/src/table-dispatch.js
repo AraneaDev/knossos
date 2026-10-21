@@ -6,6 +6,7 @@ import {
     unalias,
 } from "./declaration-kinds.js";
 import {
+    holderOf,
     isFunctionAssignment,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
@@ -22,6 +23,10 @@ import {
 export class TableDispatch {
     constructor(context) {
         this.context = context;
+        // Each method call on a destructured binding, to each node reference
+        // of the function it is in and the members the call sites' values
+        // give the binding there.
+        this.inferred = new Map();
     }
 
     /**
@@ -55,29 +60,10 @@ export class TableDispatch {
      */
     members(node) {
         const checker = this.context.checker;
-        const symbol = unalias(
-            checker,
-            checker.getSymbolAtLocation(node.expression),
-        );
-        const binding = symbol?.declarations?.find(
-            (item) => ts.isVariableDeclaration(item) && item.initializer,
-        );
-        const table =
-            binding === undefined
-                ? undefined
-                : unwrapExpression(binding.initializer);
-        if (table === undefined || !ts.isObjectLiteralExpression(table))
-            return null;
-        const key = unwrapExpression(node.argumentExpression);
-        const named =
-            ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)
-                ? key.text
-                : undefined;
+        const table = tableEntries(checker, node);
+        if (table === null) return null;
         const entries = [];
-        for (const property of table.properties) {
-            const fn = tableFunction(property);
-            if (fn === undefined) continue;
-            if (named !== undefined && property.name.text !== named) continue;
+        for (const { property, fn } of table.entries) {
             const target = this.context.symbolReference(
                 checker.getSymbolAtLocation(property.name),
                 "method",
@@ -85,7 +71,7 @@ export class TableDispatch {
             );
             if (target !== null) entries.push({ target, fn });
         }
-        return { computed: named === undefined, entries };
+        return { computed: table.computed, entries };
     }
 
     /**
@@ -96,24 +82,66 @@ export class TableDispatch {
      * call of the member the argument's value has.
      */
     objectArguments(node, signature, source) {
-        for (const { target, fn } of this.callees(node, signature, source)) {
-            if (
-                fn.getSourceFile() !== this.context.sourceFile ||
-                fn.body === undefined
-            )
-                continue;
-            fn.parameters.forEach((parameter, index) => {
-                const argument = unwrapExpression(node.arguments[index]);
-                if (
-                    !ts.isObjectBindingPattern(parameter.name) ||
-                    argument === undefined ||
-                    !ts.isObjectLiteralExpression(argument)
-                )
-                    return;
-                for (const element of parameter.name.elements)
-                    this.boundCalls(fn.body, element, argument, target);
-            });
+        for (const { target, fn } of this.callees(node, signature, source))
+            this.boundArguments(node, fn, target);
+    }
+
+    /**
+     * The calls of other files of the program that hand a function of this
+     * file an object literal to destructure, read as `objectArguments` reads
+     * a call of this file. This file's facts then follow those files, so
+     * each one is among its reads: an edit or a deletion there rebuilds it.
+     */
+    crossFileArguments() {
+        const project = this.context.project;
+        for (const call of project.callSitesInto?.() ?? []) {
+            project.readCaller?.(call.getSourceFile());
+            const signature = this.context.checker.getResolvedSignature(call);
+            for (const { target, fn } of this.callees(call, signature, null))
+                this.boundArguments(call, fn, target);
         }
+    }
+
+    /**
+     * Emit the inferred calls, once every call site of the file and of the
+     * other files has been read: each distinct project member a call site's
+     * value gives the binding, however many call sites there are.
+     */
+    finish() {
+        this.crossFileArguments();
+        for (const [call, bySource] of this.inferred)
+            for (const [source, targets] of bySource)
+                for (const target of targets)
+                    this.context.addEdge(
+                        "calls",
+                        source,
+                        target,
+                        call,
+                        { inferred_from: "call_argument" },
+                        "ast",
+                        "probable",
+                    );
+        this.inferred.clear();
+    }
+
+    /** Read the object literals `node` hands `fn` of this file into its bindings. */
+    boundArguments(node, fn, target) {
+        if (
+            fn.getSourceFile() !== this.context.sourceFile ||
+            fn.body === undefined
+        )
+            return;
+        fn.parameters.forEach((parameter, index) => {
+            const argument = positionalArgument(node, index);
+            if (
+                !ts.isObjectBindingPattern(parameter.name) ||
+                argument === undefined ||
+                !ts.isObjectLiteralExpression(argument)
+            )
+                return;
+            for (const element of parameter.name.elements)
+                this.boundCalls(fn.body, element, argument, target);
+        });
     }
 
     /** The functions a call runs, each with its node reference. */
@@ -154,7 +182,7 @@ export class TableDispatch {
     }
 
     /**
-     * The probable `calls` edge of `binding.method()` on a value of `type`,
+     * Note the probable call of `binding.method()` on a value of `type`,
      * when that member is declared in this project.
      */
     boundCall(call, type, source) {
@@ -171,19 +199,16 @@ export class TableDispatch {
         // Only a member of this project: what a library value's method runs
         // is no question of this graph.
         if (
-            target !== null &&
-            target !== source &&
-            !target.startsWith("ts:external_")
+            target === null ||
+            target === source ||
+            target.startsWith("ts:external_")
         )
-            this.context.addEdge(
-                "calls",
-                source,
-                target,
-                call,
-                { inferred_from: "call_argument" },
-                "ast",
-                "probable",
-            );
+            return;
+        const bySource = this.inferred.get(call) ?? new Map();
+        const targets = bySource.get(source) ?? new Set();
+        targets.add(target);
+        bySource.set(source, targets);
+        this.inferred.set(call, bySource);
     }
 
     /**
@@ -209,6 +234,76 @@ export class TableDispatch {
             ? undefined
             : checker.getTypeOfSymbolAtLocation(value, property);
     }
+}
+
+/**
+ * The argument a call hands the parameter at `index`, past any parentheses
+ * and casts; undefined when it hands none, or when a spread comes at or
+ * before it, since what the spread holds decides which parameter each later
+ * argument lands in.
+ */
+export function positionalArgument(call, index) {
+    const spread = call.arguments.findIndex((argument) =>
+        ts.isSpreadElement(argument),
+    );
+    if (spread !== -1 && spread <= index) return undefined;
+    return unwrapExpression(call.arguments[index]);
+}
+
+/**
+ * Whether a parameter destructures its argument with no type declared for
+ * it: no annotation, no JSDoc `@param`, and no annotation or JSDoc `@type` on
+ * the binding its function is the value of (`const f: Handler = ({ a }) =>`).
+ * Only such a binding is typed by what a call hands it.
+ */
+export function untypedBinding(parameter) {
+    if (
+        !ts.isObjectBindingPattern(parameter.name) ||
+        parameter.type !== undefined ||
+        ts.getJSDocType(parameter) !== undefined
+    )
+        return false;
+    const holder = holderOf(parameter.parent);
+    return !(
+        holder !== undefined &&
+        ts.isVariableDeclaration(holder) &&
+        (holder.type !== undefined || ts.getJSDocType(holder) !== undefined)
+    );
+}
+
+/**
+ * The entries of the object literal a `const` binding (here or imported)
+ * holds that `table[key]` can pick, each property with its function; null
+ * when the receiver is no such literal. A literal key picks only the entry
+ * it names.
+ */
+export function tableEntries(checker, node) {
+    const symbol = unalias(
+        checker,
+        checker.getSymbolAtLocation(node.expression),
+    );
+    const binding = symbol?.declarations?.find(
+        (item) => ts.isVariableDeclaration(item) && item.initializer,
+    );
+    const table =
+        binding === undefined
+            ? undefined
+            : unwrapExpression(binding.initializer);
+    if (table === undefined || !ts.isObjectLiteralExpression(table))
+        return null;
+    const key = unwrapExpression(node.argumentExpression);
+    const named =
+        ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)
+            ? key.text
+            : undefined;
+    const entries = [];
+    for (const property of table.properties) {
+        const fn = tableFunction(property);
+        if (fn === undefined) continue;
+        if (named !== undefined && property.name.text !== named) continue;
+        entries.push({ property, fn });
+    }
+    return { computed: named === undefined, entries };
 }
 
 /**

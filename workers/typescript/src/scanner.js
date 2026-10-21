@@ -8,6 +8,11 @@
  */
 import path from "node:path";
 import ts from "typescript";
+import {
+    callArgumentPairs,
+    callSitesInto,
+    destructuresUntyped,
+} from "./call-argument-sites.js";
 import { isStackOverflow } from "./errors.js";
 import { BUILT_IN_EXCLUSIONS, Exclusions } from "./exclusions.js";
 import {
@@ -107,6 +112,23 @@ function needsProgram(request, requested, configPath, parsed) {
 function programOwnership(owners) {
     return (relative, programKey) =>
         owners.has(relative) && owners.get(relative) === programKey;
+}
+
+/**
+ * Whether the program being built describes a file: one no other config
+ * lists and, in a fallback program, one of its own group. Only such a file's
+ * calls type a parameter of another, and only such a file's parameters are
+ * typed: a file another config lists is described by that config's program.
+ *
+ * @returns {(relative: string) => boolean}
+ */
+function programMembers(request, fallback) {
+    const owners = fallback ? new Map() : request.owners;
+    return (relative) =>
+        !(owners.has(relative) && owners.get(relative) !== request.owner) &&
+        (!fallback ||
+            request.fallbackGroupOf.get(relative) ===
+                request.fallbackDirectory);
 }
 
 /**
@@ -597,6 +619,15 @@ export class TypeScriptScanner {
             request.attribution.program(program, request.program, (relative) =>
                 request.ownedByProgram(relative, request.program),
             );
+            request.attribution.callArguments(
+                request.program,
+                callArgumentPairs(
+                    program,
+                    root,
+                    exclusions,
+                    programMembers(request, key.endsWith(FALLBACK_KEY)),
+                ),
+            );
         } catch (error) {
             const overflowed = isStackOverflow(error);
             const covered = [
@@ -713,6 +744,7 @@ export class TypeScriptScanner {
         const owners = fallback ? new Map() : request.owners;
         const tracker = declarationTracker(program.getTypeChecker());
         const skipped = emissionSkipped(request, owners, fallback);
+        const belongs = programMembers(request, fallback);
         const { byFile: diagnosticsByFile, programLevel: compilerLevel } =
             programDiagnostics(program, root, maxFileBytes, fallback);
         // A bundler config the program's options were read from counts as
@@ -752,7 +784,7 @@ export class TypeScriptScanner {
                 request,
                 program,
                 sourceFile,
-                { tracker, probes },
+                { tracker, probes, belongs },
                 {
                     own: diagnosticsByFile.get(relative) ?? [],
                     programWide: programWide(relative),
@@ -797,9 +829,10 @@ export class TypeScriptScanner {
  * to a diagnostic, not discard the facts of every other file in the request.
  *
  * @param {ScanRequest} request
- * @param {{tracker: {checker: ts.TypeChecker}, probes: string[]}} reads the
- *   checker that notes declaration files, and where the paths the file's facts
- *   asked about beyond its imports are listed
+ * @param {{tracker: {checker: ts.TypeChecker}, probes: string[], belongs: (relative: string) => boolean}} reads the
+ *   checker that notes declaration files, where the paths the file's facts
+ *   asked about beyond its imports are listed, and which files the program
+ *   describes (see programMembers)
  * @param {{own: object[], programWide: object[]}} diagnostics the compiler's
  *   diagnostics on this file, and the program-wide ones it carries
  */
@@ -807,7 +840,7 @@ function collectFile(
     { root, exclusions },
     program,
     sourceFile,
-    { tracker, probes },
+    { tracker, probes, belongs },
     diagnostics,
 ) {
     const relative = relativeInside(root, sourceFile.fileName);
@@ -830,6 +863,19 @@ function collectFile(
                     specifier,
                     sourceFile,
                 )?.resolvedModule !== undefined,
+            // The calls of other files that hand this file's functions an
+            // object literal, and the read each such file becomes.
+            callSitesInto: () =>
+                destructuresUntyped(sourceFile)
+                    ? callSitesInto(
+                          program,
+                          root,
+                          exclusions,
+                          sourceFile.fileName,
+                          belongs,
+                      )
+                    : [],
+            readCaller: (callerFile) => tracker.files.add(callerFile),
         });
         collector.collect();
         return {

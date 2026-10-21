@@ -16,7 +16,7 @@ afterEach(() => {
     }
 });
 
-function edges(files) {
+function scan(files) {
     const root = fs.realpathSync(
         fs.mkdtempSync(join(tmpdir(), "knossos-ts-tables-")),
     );
@@ -29,7 +29,11 @@ function edges(files) {
     new TypeScriptScanner().scan({ root, files: Object.keys(files) }, (c) =>
         contributions.push(c),
     );
-    return contributions
+    return contributions;
+}
+
+function edges(files) {
+    return scan(files)
         .flatMap((c) => c.edges)
         .filter((e) => e.kind !== "contains" && e.target.includes("::"))
         .map((e) => `${e.kind} ${e.confidence} ${e.source} -> ${e.target}`)
@@ -79,6 +83,20 @@ describe("a method call on a destructured parameter", () => {
         ]);
     });
 
+    it("gives up on an argument a spread comes before", () => {
+        expect(
+            edges({
+                "src/a.js":
+                    "function make() { return { go() {} }; }\nfunction run({ it: x }) { x.go(); }\nexport function main(xs) { run(...xs, { it: make() }); }\n",
+                "src/b.js":
+                    "import { make } from './c.js';\nexport function walk({ it }) { it.go(); }\n",
+                "src/c.js": "export function make() { return { go() {} }; }\n",
+                "src/d.js":
+                    "import { walk } from './b.js';\nimport { make } from './c.js';\nexport function main(xs) { walk(...xs, { it: make() }); }\n",
+            }),
+        ).toEqual([]);
+    });
+
     it("leaves a binding the call does not give alone", () => {
         expect(
             edges({
@@ -86,5 +104,84 @@ describe("a method call on a destructured parameter", () => {
                     "function make() { return { go() {} }; }\nfunction run({ it, ...rest }) { it.go(); rest.go(); }\nexport function main(v) { run(v); run({ other: make() }); }\n",
             }),
         ).toEqual([]);
+    });
+});
+
+// `count` factories, each returning an object with its own `go`, and a file
+// that hands `run` one of each.
+function callers(count) {
+    const factories = Array.from(
+        { length: count },
+        (_, i) => `export function make${i}() { return { go() {} }; }\n`,
+    ).join("");
+    const calls = Array.from(
+        { length: count },
+        (_, i) => `    run({ it: make${i}() });\n`,
+    ).join("");
+    return {
+        "src/make.js": factories,
+        "src/run.js": "export function run({ it }) { it.go(); }\n",
+        "src/main.js": `import { run } from './run.js';\nimport { ${Array.from({ length: count }, (_, i) => `make${i}`).join(", ")} } from './make.js';\nexport function main() {\n${calls}}\n`,
+    };
+}
+
+describe("a method call on a destructured parameter, from another file", () => {
+    it("reaches the member of the object a call in another file hands it", () => {
+        expect(edges(callers(1))).toEqual([
+            "calls probable ts:function:src/run.js#run -> ts:method:src/make.js#make0.{object}@1:34::go",
+        ]);
+    });
+
+    it("reads the file whose call says what the binding holds", () => {
+        const run = scan(callers(1)).find(
+            (c) => c.owner_key === "knossos.typescript:file:src/run.js",
+        );
+        expect(Object.keys(run.reads)).toEqual(
+            expect.arrayContaining(["src/main.js", "src/make.js"]),
+        );
+    });
+
+    it.each([8, 9, 40])(
+        "reaches every distinct member %i call sites give one call",
+        (count) => {
+            const found = edges(callers(count));
+            expect(found).toHaveLength(count);
+            expect(
+                found.every((edge) =>
+                    edge.startsWith(
+                        "calls probable ts:function:src/run.js#run -> ts:method:src/make.js#make",
+                    ),
+                ),
+            ).toBe(true);
+        },
+    );
+
+    it("follows an import renamed, a default import and a re-export", () => {
+        const make = "export function make() { return { go() {} }; }\n";
+        expect(
+            edges({
+                "src/make.js": make,
+                "src/run.js":
+                    "export function run({ it }) { it.go(); }\nexport default function walk({ it }) { it.go(); }\n",
+                "src/index.js": "export { run as start } from './run.js';\n",
+                "src/main.js":
+                    "import { run as go } from './run.js';\nimport stroll from './run.js';\nimport { start } from './index.js';\nimport { make } from './make.js';\nexport function main() { go({ it: make() }); stroll({ it: make() }); }\nexport function other() { start({ it: make() }); }\n",
+            }),
+        ).toEqual([
+            "calls probable ts:function:src/run.js#run -> ts:method:src/make.js#make.{object}@1:33::go",
+            "calls probable ts:function:src/run.js#walk -> ts:method:src/make.js#make.{object}@1:33::go",
+        ]);
+    });
+
+    it("leaves a typed callee to the checker", () => {
+        const run = scan({
+            "src/make.js": "export function make() { return { go() {} }; }\n",
+            "src/run.js":
+                "/** @param {{ it: { go(): void } }} context */\nexport function run({ it }) { it.go(); }\n",
+            "src/main.js":
+                "import { run } from './run.js';\nimport { make } from './make.js';\nrun({ it: make() });\n",
+        }).find((c) => c.owner_key === "knossos.typescript:file:src/run.js");
+        expect(run.edges.filter((e) => e.attributes.inferred_from)).toEqual([]);
+        expect(Object.keys(run.reads)).not.toContain("src/main.js");
     });
 });
