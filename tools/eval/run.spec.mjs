@@ -20,16 +20,9 @@ import { corpusHash, legacyCorpusHash, loadCorpus } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
 import { readLedger, sessionKey } from "./ledger.mjs";
 import { stopWatchers } from "../capture/session.mjs";
-import {
-    acquireLock,
-    checkProvenance,
-    checkScan,
-    dirtyPaths,
-    drain,
-    main,
-    notes,
-    signalHandler,
-} from "./run.mjs";
+import { acquireLock } from "./lock.mjs";
+import { checkProvenance, dirtyPaths } from "./provenance.mjs";
+import { checkScan, drain, main, notes, signalHandler } from "./run.mjs";
 
 afterAll(removeTemp);
 

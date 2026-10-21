@@ -6,7 +6,7 @@
  * module state (its width, the rows the wheel reads) holds one layout.
  */
 import { paneLayout } from '../hooks/lib/layout'
-import type { Row } from '../hooks/lib/layout'
+import type { Row } from '../hooks/lib/types'
 import { CARD_BG } from '../hooks/lib/palette'
 import { HEAT_KEYS, rasterTheme } from '../hooks/lib/raster'
 import { themeColour } from '../hooks/lib/themes'
@@ -14,7 +14,6 @@ import type { WebTheme } from '../hooks/lib/themes'
 import { noteSpinners, paneSource, spunRow } from '../hooks/mod/frame'
 import type { Port } from '../hooks/mod/port'
 import type { PortHub } from './port'
-import { mod } from '../hooks/mod/state'
 import { pageRow } from './page-rows'
 import type { Colour, PageRow } from './page-rows'
 
@@ -157,9 +156,9 @@ export class Hub implements PortHub {
     const { columns, rows } = page.size
     const source = await paneSource(io, columns, false)
     const laid = source.kind === 'pane' ? paneLayout(source.input, columns, rows, 0) : { body: source.kind === 'empty' ? source.rows : [], footer: [], pinned: false }
-    await noteSpinners(io, [...laid.body, ...laid.footer])
+    const spinFrame = await noteSpinners(io, [...laid.body, ...laid.footer])
     const colour = colourIn(page.theme)
-    const ready = (row: Row) => pageRow(spunRow(row, mod.spinFrame), colour, columns)
+    const ready = (row: Row) => pageRow(spunRow(row, spinFrame), colour, columns)
     const colours = Object.fromEntries(Object.entries(PAGE_KEYS).map(([name, key]) => [name, colour(key)!])) as Frame['colours']
     return { rows: laid.body, frame: { type: 'frame', body: laid.body.map(ready), footer: laid.footer.map(ready), pinned: laid.pinned, theme: page.theme, colours } }
   }

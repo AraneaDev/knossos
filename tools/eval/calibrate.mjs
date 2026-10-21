@@ -9,7 +9,7 @@
 import { fileURLToPath } from "node:url";
 import { tierOf } from "./corpus.mjs";
 import { firstPasses, readLedger } from "./ledger.mjs";
-import { openRun, settings } from "./run.mjs";
+import { openRun, settings } from "./config.mjs";
 import { taskMedians } from "./stats.mjs";
 
 /** The highest average F1 a hard candidate may have and still be kept. */

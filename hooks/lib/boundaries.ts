@@ -22,9 +22,11 @@ import type { Dashboard } from '../../types'
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, huesOf, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { HEAT_KEYS } from './raster'
-import { blank, button, cells, dimRow, displayName, fit, grouped, numberWidth, padEnd, placeOf, spaces, SWATCH, tableHead, tableRow, tableSpec, wrapGroups } from './rows'
-import type { Row, Segment, TableSpec, Tier } from './rows'
-import { moreRows, noteOf, windowOf, shownOf } from './cards'
+import { blank, button, cells, dimRow, displayName, fit, grouped, numberWidth, padEnd, spaces, SWATCH, tableHead, tableRow, tableSpec, wrapGroups } from './rows'
+import { placeOf } from './paths'
+import type { Row, Segment } from './types'
+import type { TableSpec, Tier } from './rows'
+import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { pairColumns, pairDiagram } from './diagram'
 import type { Openable } from './views'
@@ -238,17 +240,12 @@ const perValues = (b: BoundaryLine) => [b.members, b.in, b.out]
 function perBoundaryRows(input: BoundariesInput, selected: number, columns: number, limit: number, tier: Tier, hues: Hues, lit: ReadonlySet<string> = new Set(), scrolled?: number): { rows: Row[]; window: { start: number; shown: number; length: number } } {
   const { spec, names } = perBoundarySpec(input, columns, tier)
   const max = Math.max(0, ...input.boundaries.map(b => b.members))
-  const window = windowOf(input.boundaries.length, limit, selected, scrolled)
-  const rows = [
+  return windowedTable('bounds-window', input.boundaries, { columns, limit, local: selected, scrolled, walk: 0 }, (shown, start) => [
     tableHead('bounds-cols', spec, { name: 'boundary', boundary: '', numbers: PER_TITLES }),
-    ...input.boundaries
-      .slice(window.start, window.end)
-      .map((b, n) =>
-        tableRow(`bounds-${window.start + n}`, { name: names[window.start + n]!, boundary: b.name, values: perValues(b), max, selected: window.start + n === selected, press: `row:${window.start + n}`, lit: lit.has(`boundary:${b.name}`) }, spec, hues),
-      ),
-    ...moreRows('bounds-window', window, input.boundaries.length, columns, 0),
-  ]
-  return { rows, window: shownOf(window, input.boundaries.length) }
+    ...shown.map((b, n) =>
+      tableRow(`bounds-${start + n}`, { name: names[start + n]!, boundary: b.name, values: perValues(b), max, selected: start + n === selected, press: `row:${start + n}`, lit: lit.has(`boundary:${b.name}`) }, spec, hues),
+    ),
+  ])
 }
 
 /**

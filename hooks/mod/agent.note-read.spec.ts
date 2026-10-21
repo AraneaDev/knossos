@@ -56,60 +56,60 @@ describe('noteRead: when there is nothing to say', () => {
     it('says nothing when notes are off, even for a hub', async () => {
         reset({ ...options, agentNotes: false })
         expect(await noteRead(fakePort(), `${ROOT}/src/core/hub.ts`, 'main')).toBeNull()
-        expect(mod.noted.size).toBe(0)
-        expect(mod.turnNotes.size).toBe(0)
+        expect(mod.agent.noted.size).toBe(0)
+        expect(mod.agent.turnNotes.size).toBe(0)
     })
 
     it('says nothing without a dashboard', async () => {
         expect(await noteRead(fakePort(null), `${ROOT}/src/core/hub.ts`, 'main')).toBeNull()
-        expect(mod.noted.size).toBe(0)
+        expect(mod.agent.noted.size).toBe(0)
     })
 
     it('says nothing when the dashboard is not ok', async () => {
         expect(await noteRead(fakePort(dashboard({ status: 'error' })), `${ROOT}/src/core/hub.ts`, 'main')).toBeNull()
-        expect(mod.noted.size).toBe(0)
+        expect(mod.agent.noted.size).toBe(0)
     })
 
     it('says nothing when the dashboard has no project root', async () => {
         expect(await noteRead(fakePort(dashboard({ project_root: null })), `${ROOT}/src/core/hub.ts`, 'main')).toBeNull()
-        expect(mod.noted.size).toBe(0)
+        expect(mod.agent.noted.size).toBe(0)
     })
 
     it('says nothing for a file outside the project root', async () => {
         expect(await noteRead(fakePort(), '/elsewhere/src/core/hub.ts', 'main')).toBeNull()
-        expect(mod.noted.size).toBe(0)
-        expect(mod.turnNotes.size).toBe(0)
+        expect(mod.agent.noted.size).toBe(0)
+        expect(mod.agent.turnNotes.size).toBe(0)
     })
 
     it('says nothing for a quiet file and does not mark it noted or spend a slot', async () => {
         expect(await noteRead(fakePort(), `${ROOT}/src/leaf.ts`, 'main')).toBeNull()
-        expect(mod.noted.size).toBe(0)
-        expect(mod.ruled.size).toBe(0)
-        expect(mod.turnNotes.get('main')).toBeUndefined()
+        expect(mod.agent.noted.size).toBe(0)
+        expect(mod.agent.ruled.size).toBe(0)
+        expect(mod.agent.turnNotes.get('main')).toBeUndefined()
     })
 })
 
 describe('noteRead: a file worth a note', () => {
     it('returns the note for a hub and records the file and the boundary it ruled for this loop', async () => {
         expect(await noteRead(fakePort(), `${ROOT}/src/core/hub.ts`, 'main')).toBe(HUB_NOTE)
-        expect([...mod.noted]).toEqual(['main\u0000src/core/hub.ts'])
-        expect([...mod.ruled]).toEqual(['main\u0000core'])
-        expect(mod.turnNotes.get('main')).toBe(1)
+        expect([...mod.agent.noted]).toEqual(['main\u0000src/core/hub.ts'])
+        expect([...mod.agent.ruled]).toEqual(['main\u0000core'])
+        expect(mod.agent.turnNotes.get('main')).toBe(1)
     })
 
     it('says nothing when the same file is read again in the same loop', async () => {
         const io = fakePort()
         expect(await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')).toBe(HUB_NOTE)
         expect(await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')).toBeNull()
-        expect(mod.turnNotes.get('main')).toBe(1)
+        expect(mod.agent.turnNotes.get('main')).toBe(1)
     })
 
     it('says it again for the same file read in another loop', async () => {
         const io = fakePort()
         expect(await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')).toBe(HUB_NOTE)
         expect(await noteRead(io, `${ROOT}/src/core/hub.ts`, 'agent-1')).toBe(HUB_NOTE)
-        expect(mod.noted).toEqual(new Set(['main\u0000src/core/hub.ts', 'agent-1\u0000src/core/hub.ts']))
-        expect(mod.ruled).toEqual(new Set(['main\u0000core', 'agent-1\u0000core']))
+        expect(mod.agent.noted).toEqual(new Set(['main\u0000src/core/hub.ts', 'agent-1\u0000src/core/hub.ts']))
+        expect(mod.agent.ruled).toEqual(new Set(['main\u0000core', 'agent-1\u0000core']))
     })
 })
 
@@ -118,14 +118,14 @@ describe('noteRead: rules already stated', () => {
         const io = fakePort()
         await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')
         expect(await noteRead(io, `${ROOT}/src/core/other.ts`, 'main')).toBeNull()
-        expect(mod.noted.has('main\u0000src/core/other.ts')).toBe(false)
+        expect(mod.agent.noted.has('main\u0000src/core/other.ts')).toBe(false)
     })
 
     it('does not treat boundaries ruled in another loop as stated for this one', async () => {
         const io = fakePort()
         await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')
         expect(await noteRead(io, `${ROOT}/src/core/other.ts`, 'agent-1')).toBe(OTHER_NOTE)
-        expect(mod.ruled.has('agent-1\u0000core')).toBe(true)
+        expect(mod.agent.ruled.has('agent-1\u0000core')).toBe(true)
     })
 
     it('drops the policy from a hub note once this loop stated it', async () => {
@@ -142,11 +142,11 @@ describe('noteRead: the turn note slots', () => {
         expect(await noteRead(io, `${ROOT}/src/b.ts`, 'main')).toBe('knossos: src/b.ts has 6 dependent files.')
         expect(await noteRead(io, `${ROOT}/src/c.ts`, 'main')).toBe('knossos: src/c.ts has 6 dependent files.')
         expect(await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')).toBeNull()
-        expect(mod.noted.has('main\u0000src/core/hub.ts')).toBe(false)
-        expect(mod.ruled.has('main\u0000core')).toBe(false)
+        expect(mod.agent.noted.has('main\u0000src/core/hub.ts')).toBe(false)
+        expect(mod.agent.ruled.has('main\u0000core')).toBe(false)
 
         // A new turn frees the slots; the file held back is said then, rules included.
-        mod.turnNotes = new Map()
+        mod.agent.turnNotes = new Map()
         expect(await noteRead(io, `${ROOT}/src/core/hub.ts`, 'main')).toBe(HUB_NOTE)
     })
 

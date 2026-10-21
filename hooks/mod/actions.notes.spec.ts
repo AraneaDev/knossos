@@ -105,7 +105,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    mod.disabled = false
+    mod.session.disabled = false
 })
 
 describe('X on the Notes tab', () => {
@@ -119,7 +119,7 @@ describe('X on the Notes tab', () => {
         await port.runTimers()
         expect(port.runs).toEqual([['sh', RUN, 'annotate', ROOT, '--component=App\\Target', '--remove', '--author=model', '--execute']])
         expect(port.view().notesAsk).toBeNull()
-        expect(mod.notesVersion).toBe(1)
+        expect(mod.notes.version).toBe(1)
         expect(vi.mocked(request)).toHaveBeenCalledWith(port.io, 'notes')
         expect(port.said()).toBe('✓ removed the note on Target')
     })
@@ -144,7 +144,7 @@ describe('X on the Notes tab', () => {
         await port.runTimers()
         expect(port.view().notesAsk).toEqual({ action: 'remove', component: 'App\\Target', author: 'model', kind: 'note' })
         expect(port.said()).toBe('a scan is committing; try again in a moment')
-        expect(mod.notesVersion).toBe(0)
+        expect(mod.notes.version).toBe(0)
     })
 })
 

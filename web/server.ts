@@ -28,10 +28,12 @@ import { dirname, extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { WebTheme } from '../hooks/lib/themes'
-import { focusLanded, focusMoved, handlersOf, wheelScrolled } from '../hooks/mod/actions'
+import { handlersOf } from '../hooks/mod/actions'
+import { focusLanded, focusMoved, wheelScrolled } from '../hooks/mod/navigate-actions'
+import { stopClocks } from '../hooks/mod/motion'
 import { endWatcher } from '../hooks/mod/port'
 import { startUp } from '../hooks/mod/session'
-import { mod, reset } from '../hooks/mod/state'
+import { reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
@@ -151,8 +153,7 @@ export async function startServer(o: {
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
-  reset({ watch: true, ...(o.editor == null ? {} : { editor: o.editor }) })
-  mod.host = 'web'
+  reset({ watch: true, ...(o.editor == null ? {} : { editor: o.editor }) }, 'web')
   const token = o.token ?? randomBytes(24).toString('hex')
   const hub = new Hub()
   let following = false
@@ -303,10 +304,7 @@ export async function startServer(o: {
     ready,
     close: async () => {
       clearInterval(headPoll)
-      mod.ticker?.cancel()
-      mod.ticker = null
-      mod.motionTimer?.cancel()
-      mod.motionTimer = null
+      stopClocks()
       await endWatcher(io).catch(() => undefined)
       for (const res of streams) res.end()
       await new Promise<void>(resolve => server.close(() => resolve()))

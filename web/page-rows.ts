@@ -9,7 +9,7 @@
  * numbered.
  */
 import { parseHunks } from '../hooks/lib/diff'
-import type { Row, Segment } from '../hooks/lib/layout'
+import type { Row, Segment } from '../hooks/lib/types'
 import { cells, pressLabel, textStyle } from '../hooks/lib/rows'
 import { fieldRooms } from '../hooks/mod/frame'
 

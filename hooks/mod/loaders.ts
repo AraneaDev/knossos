@@ -12,7 +12,8 @@ import { BOUNDARY_AXES } from '../lib/boundaries'
 import type { Baseline } from '../lib/baseline'
 import { parseBlastRadius, parseBranchDiff, parseChurn, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseNotes, parsePathBetween, parseSessionDiff, parseSessionHead, parseSessionRev } from '../lib/envelopes'
 import { flashKeys } from '../lib/flash'
-import { couplingPair, PEEK_TABS } from '../lib/layout'
+import { couplingPair } from '../lib/pane-list'
+import { PEEK_TABS } from '../lib/layout'
 import { SingleFlight } from '../lib/scheduler'
 import { disable, light, wrapper } from './port'
 import type { Cell, Port } from './port'
@@ -46,20 +47,20 @@ const NOTES_TIMEOUT_MS = 20_000
  * refresh failed so the pane says how old they are.
  */
 /** What the dashboard asks the wrapper for: the fan-in threshold from the options and the heat map's axes. */
-export const dashboardArgs = (): string[] => [`--fan-in-threshold=${mod.threshold}`, `--boundaries=${BOUNDARY_AXES}`]
+export const dashboardArgs = (): string[] => [`--fan-in-threshold=${mod.session.threshold}`, `--boundaries=${BOUNDARY_AXES}`]
 
 export async function refreshDashboard(io: Port): Promise<boolean> {
-  if (mod.disabled) return false
+  if (mod.session.disabled) return false
   // A request during a load coalesces into one rerun after it, so the last load to land is the newest.
-  await (mod.dashboardFlight ??= new SingleFlight(() => loadDashboard(io))).request()
-  return mod.dashboardStored
+  await (mod.loads.dashboardFlight ??= new SingleFlight(() => loadDashboard(io))).request()
+  return mod.loads.dashboardStored
 }
 
-/** One dashboard load; records in `mod.dashboardStored` whether it stored what it read. */
+/** One dashboard load; records in `mod.loads.dashboardStored` whether it stored what it read. */
 async function loadDashboard(io: Port): Promise<void> {
-  mod.dashboardStored = false
-  if (mod.disabled) return
-  mod.dashboardTriedAt = await io.clock.now()
+  mod.loads.dashboardStored = false
+  if (mod.session.disabled) return
+  mod.loads.dashboardTriedAt = await io.clock.now()
   // The pane with no figures says a read is on its way, not that the last one failed, while this one runs.
   await io.state.refresh.update(r => ({ ...r, loading: true }))
   try {
@@ -79,10 +80,10 @@ async function readDashboard(io: Port): Promise<void> {
     return
   }
   if (parsed === null || parsed.status === 'error') {
-    mod.dashboardMisses++
+    mod.loads.dashboardMisses++
     // The wait before the next try runs from this answer, not from when the read began.
-    mod.dashboardTriedAt = await io.clock.now()
-  } else mod.dashboardMisses = 0
+    mod.loads.dashboardTriedAt = await io.clock.now()
+  } else mod.loads.dashboardMisses = 0
   if (parsed === null || (parsed.status === 'error' && (await io.state.dashboard.read())?.status === 'ok')) {
     await io.state.refresh.update(r => ({ ...r, failed: true }))
     return
@@ -94,15 +95,15 @@ async function readDashboard(io: Port): Promise<void> {
   await io.state.dashboard.update(() => parsed)
   if (parsed.status === 'ok' && before?.status === 'ok' && before.snapshot_id !== parsed.snapshot_id) await startMotion(io, now)
   // A cycle or a policy violation the scan brought: said once, as a toast, unless the person turned that off.
-  if (mod.alertsOn) {
-    for (const alert of freshAlerts(before, parsed as Dashboard, mod.toasted)) {
-      alertKeys(alert).forEach(key => mod.toasted.add(key))
+  if (mod.alerts.on) {
+    for (const alert of freshAlerts(before, parsed as Dashboard, mod.alerts.toasted)) {
+      alertKeys(alert).forEach(key => mod.alerts.toasted.add(key))
       io.ui.toast(alert.text)
     }
   }
   await io.state.refresh.update((): RefreshState => ({ fetchedAt: now, failed: false }))
-  mod.dashboardStored = true
-  if (parsed.status === 'ok') mod.snapshot = parsed.snapshot_id ?? mod.snapshot
+  mod.loads.dashboardStored = true
+  if (parsed.status === 'ok') mod.session.snapshot = parsed.snapshot_id ?? mod.session.snapshot
   // The session's changes are read since the first snapshot it saw, kept for when it is continued in another process.
   if (parsed.status === 'ok' && parsed.snapshot_id !== null && (await io.state.sessionStart.read()) === null) {
     await io.state.sessionStart.update(() => parsed.snapshot_id)
@@ -245,17 +246,17 @@ export const LOADERS = {
   peek: {
     cell: io => io.state.peek,
     want: async io => {
-      if (!mod.paneWide) return null
+      if (!mod.pane.wide) return null
       const v = await io.state.view.read()
       if (v.inspect !== null || v.finding === true || v.drift === true || !PEEK_TABS.includes(v.tab)) return null
       const list = await currentList(io)
       const item = list[Math.min(Math.max(0, v.selected), Math.max(0, list.length - 1))]
       if (item === undefined || item.inert === true || item.jump !== undefined) {
-        mod.peekNone = peekKey(v, (await io.state.dashboard.read())?.snapshot_id ?? null)
+        mod.loads.peekNone = peekKey(v, (await io.state.dashboard.read())?.snapshot_id ?? null)
         if ((await io.state.peek.read()) !== null) await io.state.peek.update(() => null)
         return null
       }
-      mod.peekNone = null
+      mod.loads.peekNone = null
       const shown: Inspected = { name: item.canonical, label: item.name, ...(item.file === true ? { file: true } : {}), ...(item.changed === true ? { changed: true } : {}) }
       return { shown, snapshot: (await io.state.dashboard.read())?.snapshot_id ?? null }
     },
@@ -315,7 +316,7 @@ export const LOADERS = {
       if (v.tab !== 'notes' || v.inspect !== null || (v.route ?? null) !== null) return null
       const d = await io.state.dashboard.read()
       if (d?.status !== 'ok') return null
-      return { snapshot: d.snapshot_id ?? null, filter: v.notesFilter ?? 'all', text: v.notesText ?? '', version: mod.notesVersion, root: d.project_root ?? undefined }
+      return { snapshot: d.snapshot_id ?? null, filter: v.notesFilter ?? 'all', text: v.notesText ?? '', version: mod.notes.version, root: d.project_root ?? undefined }
     },
     holds: (c, w) => c !== null && c.snapshot === w.snapshot && c.filter === w.filter && c.text === w.text && c.version === w.version,
     loading: (c, w): NotesState => ({ snapshot: w.snapshot, filter: w.filter, text: w.text, version: w.version, phase: 'loading', answer: c?.answer ?? null }),
@@ -368,7 +369,7 @@ type AnyLoader = Loader<unknown, unknown, { status: string }>
  * on a timer once this has resolved, never inside a render.
  */
 export async function request(io: Port, key: LoaderKey, shown?: Inspected): Promise<void> {
-  if (mod.disabled) return
+  if (mod.session.disabled) return
   const loader = LOADERS[key] as unknown as AnyLoader
   const want = await loader.want(io, shown)
   if (want === null) return
@@ -376,14 +377,14 @@ export async function request(io: Port, key: LoaderKey, shown?: Inspected): Prom
   // Checked and set with no await between, so two presses in the same tick cannot both start one.
   const flight = loader.flight?.key(want)
   if (flight !== undefined) {
-    if (mod.fetching.has(flight)) {
+    if (mod.loads.fetching.has(flight)) {
       if (!loader.flight!.same(await cell.read(), want)) await cell.update(c => loader.loading(c, want))
       return
     }
-    mod.fetching.add(flight)
+    mod.loads.fetching.add(flight)
   }
   if (loader.holds(await cell.read(), want)) {
-    if (flight !== undefined) mod.fetching.delete(flight)
+    if (flight !== undefined) mod.loads.fetching.delete(flight)
     return
   }
   await cell.update(c => loader.loading(c, want))
@@ -392,11 +393,11 @@ export async function request(io: Port, key: LoaderKey, shown?: Inspected): Prom
     io.clock.after(0, run)
     return
   }
-  mod.loadTimers.get(key)?.cancel()
-  mod.loadTimers.set(
+  mod.loads.timers.get(key)?.cancel()
+  mod.loads.timers.set(
     key,
     io.clock.after(loader.debounceMs, () => {
-      mod.loadTimers.delete(key)
+      mod.loads.timers.delete(key)
       run()
     }),
   )
@@ -404,7 +405,7 @@ export async function request(io: Port, key: LoaderKey, shown?: Inspected): Prom
 
 /** One read: its answer is stored only while the cell still wants it ({@link Loader}`.landed`); `no-binary` turns the mod off. */
 async function load(io: Port, loader: AnyLoader, want: unknown, flight: string | undefined): Promise<void> {
-  if (mod.disabled) return
+  if (mod.session.disabled) return
   try {
     await loader.prepare?.(io, want)
     const ask = await loader.ask(io, want)
@@ -413,7 +414,7 @@ async function load(io: Port, loader: AnyLoader, want: unknown, flight: string |
     await loader.cell(io).update(c => loader.landed(c, want, parsed))
   } finally {
     // A lost write leaves the loading line; the next request asks again.
-    if (flight !== undefined) mod.fetching.delete(flight)
+    if (flight !== undefined) mod.loads.fetching.delete(flight)
   }
 }
 
@@ -424,7 +425,7 @@ function requestDiff(io: Port, shown: Inspected): Promise<void> {
 
 /** Starts the reads the detail on `shown` draws from: a changed file's diff, a component's rings, and the detail itself. */
 export async function requestDetail(io: Port, shown: Inspected): Promise<void> {
-  if (mod.disabled) return
+  if (mod.session.disabled) return
   await requestDiff(io, shown)
   await request(io, 'rings', shown)
   await request(io, 'detail', shown)
@@ -433,7 +434,7 @@ export async function requestDetail(io: Port, shown: Inspected): Promise<void> {
 /** The session's id, or null when the engine does not say, or still names the session that ended. */
 export async function currentSession(io: Port): Promise<string | null> {
   const id = await io.session.id().catch(() => null)
-  return typeof id === 'string' && id !== '' && id !== mod.endedSession ? id : null
+  return typeof id === 'string' && id !== '' && id !== mod.session.ended ? id : null
 }
 
 /** The baselines kept in the plugin's store, by session id; none when it cannot be read. */
@@ -455,12 +456,12 @@ export async function settleBaseline(io: Port): Promise<void> {
     if (kept.rev !== null) await io.state.sessionRev.update(() => kept.rev)
     if (kept.snapshot !== null) await io.state.sessionStart.update(() => kept.snapshot)
     await io.state.sessionBegan.update(() => kept.startedAt)
-    mod.baselineOf = id
+    mod.session.baselineOf = id
     return rereadDiff(io)
   }
   // Asked once per session: a head read later would name a commit made during it.
-  if (!mod.headAsked) {
-    mod.headAsked = true
+  if (!mod.session.headAsked) {
+    mod.session.headAsked = true
     await recordHead(io)
   }
   await saveBaseline(io)
@@ -482,13 +483,13 @@ async function rereadDiff(io: Port): Promise<void> {
 /** Stores the session's baseline as it stands, under its id; a store that refuses is no failure. */
 async function saveBaseline(io: Port): Promise<void> {
   const id = await currentSession(io)
-  if (id === null || mod.disabled) return
+  if (id === null || mod.session.disabled) return
   const all = await storedBaselines(io)
   const baseline: Baseline = { rev: await io.state.sessionRev.read(), snapshot: await io.state.sessionStart.read(), startedAt: await io.clock.now() }
   await io.store.set(BASELINES_KEY, remember(all, id, baseline)).catch(() => undefined)
   // A session saved before keeps the moment it began.
   await io.state.sessionBegan.update(() => all[id]?.startedAt ?? baseline.startedAt)
-  mod.baselineOf = id
+  mod.session.baselineOf = id
 }
 
 /**
@@ -497,7 +498,7 @@ async function saveBaseline(io: Port): Promise<void> {
  * commit made during the session, and the diff would leave its changes out.
  */
 async function recordHead(io: Port): Promise<void> {
-  if (mod.disabled || (await io.state.sessionRev.read()) !== null) return
+  if (mod.session.disabled || (await io.state.sessionRev.read()) !== null) return
   const stdout = await wrapper(io, 'session-head', [], HEAD_TIMEOUT_MS)
   if (parseSessionDiff(stdout)?.status === 'no-binary') return disable(io)
   const rev = parseSessionRev(stdout)
@@ -516,7 +517,7 @@ export async function readGitHead(io: Port): Promise<void> {
 
 /** {@link readGitHead}, handing back the commit the answer names: null for silence, an error, or a mod turned off; `no-git` for a project git does not hold. */
 export async function readHeadRev(io: Port): Promise<SessionRev | null> {
-  if (mod.disabled) return null
+  if (mod.session.disabled) return null
   const stdout = await wrapper(io, 'session-head', [], HEAD_TIMEOUT_MS)
   if (parseSessionDiff(stdout)?.status === 'no-binary') {
     await disable(io)
@@ -528,7 +529,7 @@ export async function readHeadRev(io: Port): Promise<SessionRev | null> {
 
 /** Keeps what a `session-head` answer says of the checkout; silence keeps what was read before. */
 async function noteGitHead(io: Port, stdout: string): Promise<void> {
-  mod.gitAsked = true
+  mod.session.gitAsked = true
   const head = parseSessionHead(stdout)
   if (head !== undefined) await io.state.gitHead.update(() => head)
   // The Churn tab's history ends at the checkout's commit: a new one reads it again.

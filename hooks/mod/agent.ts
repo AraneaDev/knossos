@@ -3,6 +3,7 @@
  * turn and after a commit, and how a note is delivered.
  */
 import { commitNote, cyclesSinceStart, REFLOG_READ, stillReported } from '../lib/agent'
+import { unreadablePolicies } from '../lib/policies'
 import { betweenTypes } from '../lib/envelopes'
 import type { TurnBrief } from '../lib/envelopes'
 import { editNote, fanInIndex, freshViolations, readNote, testsNote, violationKey, violationNote } from '../lib/notes'
@@ -54,11 +55,12 @@ export async function reflogAt(io: Port, repo: string): Promise<string> {
  * check still reports, the files no test reaches, and the cycles new since
  * the session began. A cycle is named new only when the graph listed every
  * cycle it held as the session began; otherwise only the count that grew
- * is said.
+ * is said. With policies enforced, policies knossos could not read are said
+ * too.
  */
 export async function commitNoteFor(io: Port, loop: string): Promise<string | null> {
   const d = await io.state.dashboard.read()
-  if (!mod.notesOn || d?.status !== 'ok') return null
+  if (!mod.agent.notesOn || d?.status !== 'ok') return null
   const session = await shownChanges(io, d.project_root)
   const untested = Object.entries(session.files)
     .filter(([path, f]) => f.status !== 'deleted' && f.tests === 0 && ownChange(session, path))
@@ -67,11 +69,11 @@ export async function commitNoteFor(io: Port, loop: string): Promise<string | nu
   const start = await io.state.startCycles.read()
   const { count, fresh } = cyclesSinceStart(start, { count: d.cycles.count, largest: betweenTypes(d.cycles.largest) })
   const chains = fresh.map(c => `${c.members.slice(0, 4).join(' → ')}${c.members.length > 4 ? ' → …' : ''}`)
-  const note = commitNote(mod.enforce ? stillReported(session.violations, session.violation_snapshots, d) : [], untested, { count, chains })
+  const note = commitNote(mod.session.enforce ? stillReported(session.violations, session.violation_snapshots, d) : [], untested, { count, chains }, mod.session.enforce ? unreadablePolicies(d.policy) : null)
   if (note === null) return null
   const key = `${loop}\u0000${note}`
-  if (mod.commitNoted.has(key) || !takeNoteSlot(loop)) return null
-  mod.commitNoted.add(key)
+  if (mod.agent.commitNoted.has(key) || !takeNoteSlot(loop)) return null
+  mod.agent.commitNoted.add(key)
   return note
 }
 
@@ -82,20 +84,20 @@ export async function commitNoteFor(io: Port, loop: string): Promise<string | nu
  * Null when there is nothing new, or notes are off.
  */
 export function turnEndNote(parsed: TurnBrief, cd: string | null): string | null {
-  if (!mod.notesOn) return null
+  if (!mod.agent.notesOn) return null
   const parts: string[] = []
-  if (mod.enforce) {
-    const fresh = freshViolations(parsed, mod.violationsSeen)
+  if (mod.session.enforce) {
+    const fresh = freshViolations(parsed, mod.agent.violationsSeen)
     const quietCut = fresh.policy.total === 0 && fresh.policy.truncated
-    const violations = quietCut && mod.truncationSaid ? null : violationNote(fresh)
+    const violations = quietCut && mod.agent.truncationSaid ? null : violationNote(fresh)
     if (violations !== null) parts.push(violations)
-    if (quietCut) mod.truncationSaid = true
-    for (const v of parsed.policy.violations) mod.violationsSeen.add(violationKey(v))
+    if (quietCut) mod.agent.truncationSaid = true
+    for (const v of parsed.policy.violations) mod.agent.violationsSeen.add(violationKey(v))
   }
-  const tests = testsNote(parsed.tests, mod.turnRan, mod.testsNamed, cd)
+  const tests = testsNote(parsed.tests, mod.turn.ran, mod.agent.testsNamed, cd)
   if (tests !== null) {
     parts.push(tests.text)
-    for (const t of tests.tests) mod.testsNamed.add(t)
+    for (const t of tests.tests) mod.agent.testsNamed.add(t)
   }
   return parts.length === 0 ? null : parts.join('\n\n')
 }
@@ -130,20 +132,20 @@ export async function noteEdit(io: Port, reported: string, base: string | null):
     // No dashboard yet: the project root is unknown, so keep the absolute
     // path (the brief accepts those) when it lies under the session's root.
     if (relativise(await placed(io, await io.session.root()), path) === null) return null
-    mod.dirty = true
-    mod.edited.add(path)
-    mod.turnBase ??= base
+    mod.turn.dirty = true
+    mod.turn.edited.add(path)
+    mod.turn.base ??= base
     await keepEdit(io, path)
     return null
   }
   const relative = relativise(root, path)
   if (relative === null) return null
-  mod.dirty = true
-  mod.edited.add(relative)
-  mod.turnBase ??= base
+  mod.turn.dirty = true
+  mod.turn.edited.add(relative)
+  mod.turn.base ??= base
   await keepEdit(io, relative)
   const entry = fanInIndex(current).get(relative)
-  return entry === undefined || entry.dependent_files < mod.threshold ? null : { text: editNote(entry), path: relative }
+  return entry === undefined || entry.dependent_files < mod.session.threshold ? null : { text: editNote(entry), path: relative }
 }
 
 /**
@@ -155,8 +157,8 @@ export async function noteSafely<T>(io: Port, ran: T, add: () => Promise<T>): Pr
   try {
     return await add()
   } catch (err) {
-    if (!mod.noteFailureLogged) {
-      mod.noteFailureLogged = true
+    if (!mod.agent.noteFailureLogged) {
+      mod.agent.noteFailureLogged = true
       io.ui.log(`knossos: a note after a tool call failed and was left out (${err instanceof Error ? err.message : String(err)})`, { to: 'debug' })
     }
     return ran
@@ -171,15 +173,15 @@ export async function noteSafely<T>(io: Port, ran: T, add: () => Promise<T>): Pr
  */
 export async function noteRead(io: Port, reported: string, loop: string): Promise<string | null> {
   const d = await io.state.dashboard.read()
-  if (!mod.notesOn || d?.status !== 'ok' || d.project_root === null) return null
+  if (!mod.agent.notesOn || d?.status !== 'ok' || d.project_root === null) return null
   const relative = relativise(d.project_root, await placed(io, reported))
-  if (relative === null || mod.noted.has(`${loop}\u0000${relative}`)) return null
+  if (relative === null || mod.agent.noted.has(`${loop}\u0000${relative}`)) return null
   const prefix = `${loop}\u0000`
-  const ruled = new Set([...mod.ruled].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length)))
+  const ruled = new Set([...mod.agent.ruled].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length)))
   const declared = declaredOf(d)
-  const note = readNote(relative, fanInIndex(d).get(relative), mod.threshold, d.policy, ruled, declared)
+  const note = readNote(relative, fanInIndex(d).get(relative), mod.session.threshold, d.policy, ruled, declared)
   if (note === null || !takeNoteSlot(loop)) return null
-  mod.noted.add(`${prefix}${relative}`)
-  for (const b of note.ruled) mod.ruled.add(`${prefix}${b}`)
+  mod.agent.noted.add(`${prefix}${relative}`)
+  for (const b of note.ruled) mod.agent.ruled.add(`${prefix}${b}`)
   return note.text
 }

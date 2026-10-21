@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Row } from '../lib/layout'
+import type { Row } from '../lib/types'
 import { busy, NO_MOTION, spinGlyph } from '../lib/motion'
 import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import { currentInput } from './input'
@@ -46,7 +46,7 @@ beforeEach(() => {
 
 describe('paneSource', () => {
   it('is off while the mod is disabled', async () => {
-    mod.disabled = true
+    mod.session.disabled = true
     expect(await paneSource(fakePort().io, 80, true)).toEqual({ kind: 'off' })
   })
 
@@ -54,20 +54,20 @@ describe('paneSource', () => {
     const source = await paneSource(fakePort().io, 80, true)
     expect(source.kind).toBe('empty')
     expect(JSON.stringify(source)).toContain('Reading the graph')
-    expect(mod.emptyShown).toBe(true)
+    expect(mod.pane.emptyShown).toBe(true)
   })
 
   it('offers an unscanned project the direct scan on the web host, and asking Claude otherwise', async () => {
     const cells = { dashboard: { status: 'unscanned' } }
     expect(JSON.stringify(await paneSource(fakePort(cells).io, 80, true))).toContain('scan-ask')
-    mod.host = 'web'
+    mod.session.host = 'web'
     const web = JSON.stringify(await paneSource(fakePort(cells).io, 80, true))
     expect(web).toContain('"id":"scan"')
     expect(web).not.toContain('scan-ask')
   })
 
   it('shows the scan running on the web once the scan it offered is under way, and no button', async () => {
-    mod.host = 'web'
+    mod.session.host = 'web'
     const source = await paneSource(fakePort({ dashboard: { status: 'unscanned' }, rescan: { phase: 'scanning', reason: null } }).io, 80, true)
     expect(source.kind).toBe('empty')
     const text = JSON.stringify(source)
@@ -87,30 +87,30 @@ describe('paneSource', () => {
     vi.mocked(currentInput).mockResolvedValue({ status: { text: 'shown' } } as never)
     const dashboard = { status: 'ok' }
     expect(await paneSource(fakePort({ dashboard }).io, 140, true)).toMatchObject({ kind: 'pane', key: 'pane' })
-    expect(mod.paneText).toBe('shown')
-    expect(mod.paneWide).toBe(true)
+    expect(mod.pane.text).toBe('shown')
+    expect(mod.pane.wide).toBe(true)
     const inspect = { name: 'A', canonical: 'App\\A' }
     expect(await paneSource(fakePort({ dashboard, view: { inspect } }).io, 40, true)).toMatchObject({ kind: 'pane', key: 'detail' })
-    expect(mod.paneWide).toBe(false)
+    expect(mod.pane.wide).toBe(false)
   })
 })
 
 describe('noteSpinners', () => {
   it('marks the pane busy at the motion\'s frame and starts one timer for a row under way', async () => {
     const { io, timers } = fakePort()
-    mod.paneText = 'shown'
+    mod.pane.text = 'shown'
     await noteSpinners(io, [row(busy('x'))])
     await noteSpinners(io, [row(busy('x'))])
-    expect(mod.spinFrame).toBe(3)
-    expect(mod.paneBusy).toBe(true)
+    expect(mod.motion.spinFrame).toBe(3)
+    expect(mod.pane.busy).toBe(true)
     expect(timers).toHaveLength(1)
   })
 
   it('clears it when no row is under way', async () => {
     const { io, timers } = fakePort()
-    mod.paneBusy = true
+    mod.pane.busy = true
     await noteSpinners(io, [row('done')])
-    expect(mod.paneBusy).toBe(false)
+    expect(mod.pane.busy).toBe(false)
     expect(timers).toHaveLength(0)
   })
 })

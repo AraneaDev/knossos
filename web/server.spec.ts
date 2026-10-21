@@ -12,8 +12,8 @@ import { mod } from '../hooks/mod/state'
 import { startServer } from './server'
 
 // A wheel whose handler throws: what the server answers for an internal failure.
-vi.mock('../hooks/mod/actions', async original => ({
-  ...(await original<typeof import('../hooks/mod/actions')>()),
+vi.mock('../hooks/mod/navigate-actions', async original => ({
+  ...(await original<typeof import('../hooks/mod/navigate-actions')>()),
   wheelScrolled: vi.fn(async () => {
     throw new Error('boom')
   }),
@@ -238,8 +238,8 @@ describe('startServer', () => {
 
   it('opens files with the editor command it is given', async () => {
     running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, editor: 'zed {file}:{line}' })
-    expect(mod.editor).toBe('zed {file}:{line}')
-    expect(mod.host).toBe('web')
+    expect(mod.navigation.editor).toBe('zed {file}:{line}')
+    expect(mod.session.host).toBe('web')
   })
 
   it('hands every kind of input to the pane, and refuses a kind it does not know or a body too large', async () => {

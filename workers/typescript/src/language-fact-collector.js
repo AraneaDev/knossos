@@ -69,7 +69,8 @@ import {
 export class TypeScriptLanguageFactCollector {
     constructor(root, sourceFile, checker, project = {}) {
         this.root = root;
-        // The program's compiler options.
+        // The program's compiler options, how to look up its files, and the
+        // request's exclusions.
         this.project = project;
         this.sourceFile = sourceFile;
         this.checker = checker;
@@ -443,7 +444,12 @@ export class TypeScriptLanguageFactCollector {
     }
 
     newExpression(node) {
-        const url = importMetaUrlModule(node, this.sourceFile, this.root);
+        const url = importMetaUrlModule(
+            node,
+            this.sourceFile,
+            this.root,
+            this.project.exclusions,
+        );
         if (url !== null)
             this.addEdge(
                 "imports",
@@ -519,28 +525,33 @@ export class TypeScriptLanguageFactCollector {
             : null;
     }
 
+    /**
+     * The `imports` edge of an `import('x')` or `require('x')` whose one
+     * argument is a string literal, carrying `attributes`.
+     */
+    literalModuleImport(node, attributes) {
+        const specifier = node.arguments[0];
+        const target = this.moduleTarget(specifier.text, specifier);
+        if (target !== null)
+            this.addEdge(
+                "imports",
+                this.currentSource() ?? this.moduleId,
+                target,
+                node,
+                attributes,
+            );
+    }
+
     callExpression(node) {
         this.nest.callExpression(node);
         this.launches.call(node);
-        if (
-            node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        const literal =
             node.arguments.length === 1 &&
-            ts.isStringLiteral(node.arguments[0])
-        ) {
-            const target = this.moduleTarget(
-                node.arguments[0].text,
-                node.arguments[0],
-            );
-            if (target !== null)
-                this.addEdge(
-                    "imports",
-                    this.currentSource() ?? this.moduleId,
-                    target,
-                    node,
-                    { dynamic: true, type_only: false },
-                );
+            ts.isStringLiteral(node.arguments[0]);
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword && literal) {
+            this.literalModuleImport(node, { dynamic: true, type_only: false });
             // Only when the import resolved to a module INSIDE the project.
-            // `target` above is non-null for an external package too —
+            // The edge above is added for an external package too —
             // moduleTarget() falls back to minting a `package` node for
             // anything that isn't internal — so gating on it here would still
             // let dynamicDefaultImport resolve a real default export an npm
@@ -555,21 +566,12 @@ export class TypeScriptLanguageFactCollector {
         if (
             ts.isIdentifier(node.expression) &&
             node.expression.text === "require" &&
-            node.arguments.length === 1 &&
-            ts.isStringLiteral(node.arguments[0])
+            literal
         ) {
-            const target = this.moduleTarget(
-                node.arguments[0].text,
-                node.arguments[0],
-            );
-            if (target !== null)
-                this.addEdge(
-                    "imports",
-                    this.currentSource() ?? this.moduleId,
-                    target,
-                    node,
-                    { commonjs: true, type_only: false },
-                );
+            this.literalModuleImport(node, {
+                commonjs: true,
+                type_only: false,
+            });
             return;
         }
 
@@ -671,7 +673,11 @@ export class TypeScriptLanguageFactCollector {
             // existence is asked, as the compiler host asks it, so nothing is
             // read; the answer is attributed to this file like any probe.
             if (
-                allowedCompilerPath(this.root, fileName) &&
+                allowedCompilerPath(
+                    this.root,
+                    fileName,
+                    this.project.exclusions,
+                ) &&
                 this.project.fileExists(fileName)
             )
                 return { fileName };

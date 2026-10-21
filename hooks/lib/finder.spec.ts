@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, GraphSearch, KnossosView, SearchState } from '../../types'
 import { finderInput, finderList } from './finder'
-import { listFor, paneInput, paneLayout } from './layout'
+import { listFor } from './pane-list'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { plainText } from './__tests__/plain-text'
 import { rowWidth } from './rows'
 
@@ -19,7 +21,7 @@ const answer = (n: number): GraphSearch => ({
   ),
 })
 const state = (over: Partial<SearchState>): SearchState => ({ query: 'dash', for: 'dash', phase: 'idle', answer: answer(4), ...over })
-const pane = (s: SearchState, v = view()) => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, undefined, null, undefined, { search: s })
+const pane = (s: SearchState, v = view()) => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { search: s } })
 
 describe('the finder', () => {
   it('reads matches as components (shown as Class::member) and files, each opening its detail', () => {

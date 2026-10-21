@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { cells, editorCommand, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
+import { cells, inList, notListedRow, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
+import { editorCommand } from './editor'
 
 const PATH = 'src/Query/Drift/GitDriftOracle.php'
 
@@ -85,5 +86,20 @@ describe('the editor command', () => {
 
   it('falls back to the default for a value that is not a usable string', () => {
     for (const odd of [42, null, ['code'], '"unclosed {file}', '{file}']) expect(editorCommand(odd, at)[0], JSON.stringify(odd)).toBe('code')
+  })
+})
+
+describe('a list that holds fewer than its count', () => {
+  it('says how many it does not list, and nothing when it lists them all', () => {
+    expect(notListedRow('x-more', 12, 5, 40)).toEqual([{ key: 'x-more', segments: [{ text: '   +7 not listed', dim: true }] }])
+    expect(notListedRow('x-more', 5, 5, 40)).toEqual([])
+    expect(notListedRow('x-more', 3, 5, 40)).toEqual([])
+  })
+  it('places the marker in a list only when it is on it', () => {
+    expect(inList(0, 3)).toBe(0)
+    expect(inList(2, 3)).toBe(2)
+    expect(inList(3, 3)).toBe(-1)
+    expect(inList(-1, 3)).toBe(-1)
+    expect(inList(0, 0)).toBe(-1)
   })
 })

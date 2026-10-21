@@ -22,7 +22,7 @@ vi.mock("../hooks/lib/layout", async (original) => {
 
 beforeEach(() => {
     reset({ watch: false });
-    mod.host = "web";
+    mod.session.host = "web";
     laid.next = null;
 });
 

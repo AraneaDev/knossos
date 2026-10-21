@@ -10,7 +10,7 @@
 import type { KnossosView, NoteState, NotesAsk } from '../../types'
 import { BUSY_CODE, BUSY_SAID, parseNoteWrite } from '../lib/envelopes'
 import { confirmable, labelOf, markedNote, notesInput } from '../lib/notes-view'
-import type { NoteItem } from '../lib/notes-view'
+import type { NoteItem } from '../lib/notes-tree'
 import { request, showComponent } from './loaders'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
@@ -144,7 +144,25 @@ async function write(io: Port, q: NotesAsk): Promise<void> {
   if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return say(io, BUSY_SAID, 'alert')
   await ask(io, null)
   if (parsed?.status !== 'ok' || parsed.executed !== true) return say(io, parsed?.status === 'refused' ? `✗ ${parsed.reason ?? 'knossos refused it'}` : '✗ knossos said nothing', 'alert')
-  mod.notesVersion += 1
+  mod.notes.version += 1
   await request(io, 'notes')
   await say(io, doneSaid(q), 'ok')
+}
+
+/** Opens the field that narrows the Notes tab by text, and moves the focus into it once it is drawn. */
+export async function openNotesFilter(io: Port): Promise<void> {
+  await io.state.view.update((v): KnossosView => ({ ...v, tab: 'notes', filtering: true }))
+  focus(io, 'notes-filter')
+}
+
+/** The Notes tab's text as typed: the list is read again for it, the marker back at the top. */
+export async function typeNotesFilter(io: Port, text: string): Promise<void> {
+  await io.state.view.update(v => ({ ...v, notesText: text, selected: 0 }))
+  await request(io, 'notes')
+}
+
+/** Enter in the Notes tab's field: keep the text (an empty one clears it) and close the field. */
+export async function submitNotesFilter(io: Port, text: string): Promise<void> {
+  await io.state.view.update(v => ({ ...v, notesText: text.trim(), filtering: false, selected: 0 }))
+  await request(io, 'notes')
 }

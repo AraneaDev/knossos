@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AllowState, KnossosView } from '../../types'
-import { SORTS } from '../lib/layout'
+import { SORTS } from '../lib/pane-list'
 import { handlersOf, PRESSES, pressOf } from './actions'
 import { request } from './loaders'
 import type { Port } from './port'
@@ -74,11 +74,11 @@ describe('a press on a tab', () => {
 
     it('reads the notes again on entering the Notes tab, notes the model wrote meanwhile included', async () => {
         const port = viewPort({ tab: 'hubs' })
-        const before = mod.notesVersion
+        const before = mod.notes.version
         await port.press('tab:notes')
-        expect(mod.notesVersion).toBe(before + 1)
+        expect(mod.notes.version).toBe(before + 1)
         await port.press('tab:hubs')
-        expect(mod.notesVersion).toBe(before + 1)
+        expect(mod.notes.version).toBe(before + 1)
     })
 
     it('switches the same way from the hidden hotkey twin', async () => {

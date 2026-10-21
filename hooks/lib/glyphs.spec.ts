@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Dashboard } from '../../types'
-import { paneInput, TABS } from './layout'
+import { paneInput } from './pane-input'
+import { TABS } from './chrome'
 import { paneRows } from './__tests__/pane'
 import { rawText } from './__tests__/plain-text'
 
@@ -52,7 +53,7 @@ describe('text glyphs only', () => {
   it('draws no emoji on any tab at any width', () => {
     for (const tab of TABS) {
       for (const columns of [40, 100, 200]) {
-        const input = paneInput(dash, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, { inspect: null, isBandHidden: false, tab: tab.id, selected: 0, showKeys: true, filter: '', filtering: false, sort: 'in' }, 0, true)
+        const input = paneInput({ dashboard: dash, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: { inspect: null, isBandHidden: false, tab: tab.id, selected: 0, showKeys: true, filter: '', filtering: false, sort: 'in' }, now: 0, terminal: true })
         expect(offenders(paneRows(input, columns).map(rawText).join('\n')), `${tab.id} ${columns}`).toEqual([])
       }
     }

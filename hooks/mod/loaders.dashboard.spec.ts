@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView } from '../../types'
 import { BASELINES_KEY } from '../lib/baseline'
 import { FLASH_MS } from '../lib/flash'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { LIVE_OFF } from '../lib/live'
 import { refreshDashboard } from './loaders'
 import type { Port } from './port'
@@ -141,7 +141,7 @@ beforeEach(() => reset(options))
 describe('refreshing the dashboard', () => {
     it('does nothing while the mod is off', async () => {
         const { io, runs } = fakePort({}, { dashboard: json(dashboard('s1')) })
-        mod.disabled = true
+        mod.session.disabled = true
         await expect(refreshDashboard(io)).resolves.toBe(false)
         expect(runs).toEqual([])
     })
@@ -149,7 +149,7 @@ describe('refreshing the dashboard', () => {
     it('says nothing was stored once the mod is off, even after a load that stored one', async () => {
         const { io, runs } = fakePort({}, { dashboard: json(dashboard('s1')) })
         await expect(refreshDashboard(io)).resolves.toBe(true)
-        mod.disabled = true
+        mod.session.disabled = true
         await expect(refreshDashboard(io)).resolves.toBe(false)
         expect(runs).toHaveLength(1)
     })
@@ -160,8 +160,8 @@ describe('refreshing the dashboard', () => {
         await expect(refreshDashboard(io)).resolves.toBe(true)
         expect(values.get('dashboard')).toEqual(dashboard('s1'))
         expect(values.get('refresh')).toEqual({ fetchedAt: 4_200, failed: false })
-        expect(mod.snapshot).toBe('s1')
-        expect(mod.dashboardTriedAt).toBe(4_200)
+        expect(mod.session.snapshot).toBe('s1')
+        expect(mod.loads.dashboardTriedAt).toBe(4_200)
         expect(runs.filter(r => r[2] === 'dashboard')).toHaveLength(1)
     })
 
@@ -190,14 +190,14 @@ describe('refreshing the dashboard', () => {
             return run(argv, opts)
         }) as typeof run
         await refreshDashboard(io)
-        expect(mod.dashboardMisses).toBe(1)
-        expect(mod.dashboardTriedAt).toBe(4_000)
+        expect(mod.loads.dashboardMisses).toBe(1)
+        expect(mod.loads.dashboardTriedAt).toBe(4_000)
         answers.dashboard = json({ status: 'error', message: 'boom' })
         await refreshDashboard(io)
-        expect(mod.dashboardMisses).toBe(2)
+        expect(mod.loads.dashboardMisses).toBe(2)
         answers.dashboard = json(dashboard('s1'))
         await refreshDashboard(io)
-        expect(mod.dashboardMisses).toBe(0)
+        expect(mod.loads.dashboardMisses).toBe(0)
     })
 
     it('asks the wrapper with the fan-in threshold the options set', async () => {
@@ -223,12 +223,12 @@ describe('refreshing the dashboard', () => {
         expect(over.values.get('refresh')).toEqual({ fetchedAt: 7, failed: true })
 
         reset(options)
-        mod.snapshot = 'kept'
+        mod.session.snapshot = 'kept'
         const fresh = fakePort({}, { dashboard: json({ status: 'error', message: 'boom' }) })
         await expect(refreshDashboard(fresh.io)).resolves.toBe(true)
         expect(fresh.values.get('dashboard')).toEqual({ status: 'error', message: 'boom' })
         expect(fresh.values.get('refresh')).toEqual({ fetchedAt: 1_000, failed: false })
-        expect(mod.snapshot).toBe('kept')
+        expect(mod.session.snapshot).toBe('kept')
         expect(fresh.values.get('sessionStart')).toBeNull()
         expect(fresh.values.get('startCycles')).toBeNull()
     })
@@ -236,7 +236,7 @@ describe('refreshing the dashboard', () => {
     it('turns the mod off when the wrapper finds no binary, and a later refresh runs nothing', async () => {
         const { io, runs, values } = fakePort({}, { dashboard: json({ status: 'no-binary' }) })
         await expect(refreshDashboard(io)).resolves.toBe(false)
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         expect(values.get('dashboard')).toBeNull()
         expect(runs).toHaveLength(1)
         await expect(refreshDashboard(io)).resolves.toBe(false)
@@ -248,7 +248,7 @@ describe('refreshing the dashboard', () => {
         await refreshDashboard(io)
         expect(toasts).toHaveLength(1)
         expect(toasts[0]).toContain('a new dependency cycle of 2')
-        expect(mod.toasted.has(`cycle:App\\A\u0000App\\B`)).toBe(true)
+        expect(mod.alerts.toasted.has(`cycle:App\\A\u0000App\\B`)).toBe(true)
         // The cycle goes away and comes back in a later scan: it was said already.
         answers.dashboard = json(dashboard('s3'))
         await refreshDashboard(io)
@@ -262,7 +262,7 @@ describe('refreshing the dashboard', () => {
         const { io, toasts, values } = fakePort({ dashboard: dashboard('s1') }, { dashboard: json(dashboard('s2', { cycles: [cycle] })) })
         await expect(refreshDashboard(io)).resolves.toBe(true)
         expect(toasts).toEqual([])
-        expect(mod.toasted.size).toBe(0)
+        expect(mod.alerts.toasted.size).toBe(0)
         expect(values.get('dashboard')).toEqual(dashboard('s2', { cycles: [cycle] }))
     })
 
@@ -301,10 +301,10 @@ describe('refreshing the dashboard', () => {
     })
 
     it('an ok dashboard without a snapshot keeps the snapshot known and starts no session', async () => {
-        mod.snapshot = 'prior'
+        mod.session.snapshot = 'prior'
         const { io, values, stored } = fakePort({}, { dashboard: json(dashboard(null)) })
         await expect(refreshDashboard(io)).resolves.toBe(true)
-        expect(mod.snapshot).toBe('prior')
+        expect(mod.session.snapshot).toBe('prior')
         expect(values.get('sessionStart')).toBeNull()
         expect(stored.has(BASELINES_KEY)).toBe(false)
     })
@@ -339,7 +339,7 @@ describe('refreshing the dashboard', () => {
     })
 
     it('starts the motion when a new snapshot lands on an open pane, and not when the same one is read again', async () => {
-        mod.paneText = 'live'
+        mod.pane.text = 'live'
         const moved = fakePort({ dashboard: dashboard('s1') }, { dashboard: json(dashboard('s2')) })
         moved.clock.now = 9_000
         await refreshDashboard(moved.io)

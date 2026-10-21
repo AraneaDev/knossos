@@ -15,66 +15,15 @@ use PHPUnit\Framework\Attributes\Group;
 
 final class PluginCommandTest extends KnossosTestCase
 {
-    /** Everything a host install writes, relative to the plugin directory, sorted. */
-    private const INSTALLED = [
+    /**
+     * Everything a host install writes besides the mod's sources, relative to
+     * the plugin directory. {@see installed()} adds the sources, found by
+     * walking the tree.
+     */
+    private const INSTALLED_BESIDES_SOURCES = [
         '.claude-plugin/marketplace.json',
         '.claude-plugin/plugin.json',
         'hooks/hooks.json',
-        'hooks/lib/activity.ts',
-        'hooks/lib/agent.ts',
-        'hooks/lib/alerts.ts',
-        'hooks/lib/band.ts',
-        'hooks/lib/baseline.ts',
-        'hooks/lib/boundaries.ts',
-        'hooks/lib/branch.ts',
-        'hooks/lib/cards.ts',
-        'hooks/lib/changes.ts',
-        'hooks/lib/churn.ts',
-        'hooks/lib/cycles.ts',
-        'hooks/lib/diagram.ts',
-        'hooks/lib/diff.ts',
-        'hooks/lib/envelopes.ts',
-        'hooks/lib/files.ts',
-        'hooks/lib/finder.ts',
-        'hooks/lib/flash.ts',
-        'hooks/lib/gauge.ts',
-        'hooks/lib/hover.ts',
-        'hooks/lib/layout.ts',
-        'hooks/lib/live.ts',
-        'hooks/lib/marks.ts',
-        'hooks/lib/motion.ts',
-        'hooks/lib/notes-tree.ts',
-        'hooks/lib/notes-view.ts',
-        'hooks/lib/notes.ts',
-        'hooks/lib/overview.ts',
-        'hooks/lib/palette.ts',
-        'hooks/lib/paths.ts',
-        'hooks/lib/place.ts',
-        'hooks/lib/printable.ts',
-        'hooks/lib/raster.ts',
-        'hooks/lib/rings.ts',
-        'hooks/lib/route.ts',
-        'hooks/lib/rows.ts',
-        'hooks/lib/scheduler.ts',
-        'hooks/lib/sparkline.ts',
-        'hooks/lib/themes.ts',
-        'hooks/lib/tiles.ts',
-        'hooks/lib/views.ts',
-        'hooks/mod/actions.ts',
-        'hooks/mod/agent.ts',
-        'hooks/mod/cells.ts',
-        'hooks/mod/dig.ts',
-        'hooks/mod/frame.ts',
-        'hooks/mod/input.ts',
-        'hooks/mod/loaders.ts',
-        'hooks/mod/motion.ts',
-        'hooks/mod/notes-actions.ts',
-        'hooks/mod/port.ts',
-        'hooks/mod/render.tsx',
-        'hooks/mod/session.ts',
-        'hooks/mod/state.ts',
-        'hooks/mod/watcher.ts',
-        'hooks/register.tsx',
         'hooks/scripts/knossos-run.sh',
         'hooks/scripts/lib.sh',
         'hooks/scripts/session-brief.sh',
@@ -82,64 +31,21 @@ final class PluginCommandTest extends KnossosTestCase
         'types/index.d.ts',
     ];
 
-    /** The mod's own sources, as an installation root holds them: what the stand-in roots copy. */
-    private const MOD_SOURCES = [
-        '/hooks/register.tsx',
-        '/hooks/lib/activity.ts',
-        '/hooks/lib/agent.ts',
-        '/hooks/lib/alerts.ts',
-        '/hooks/lib/band.ts',
-        '/hooks/lib/baseline.ts',
-        '/hooks/lib/boundaries.ts',
-        '/hooks/lib/branch.ts',
-        '/hooks/lib/cards.ts',
-        '/hooks/lib/changes.ts',
-        '/hooks/lib/churn.ts',
-        '/hooks/lib/cycles.ts',
-        '/hooks/lib/diagram.ts',
-        '/hooks/lib/diff.ts',
-        '/hooks/lib/envelopes.ts',
-        '/hooks/lib/files.ts',
-        '/hooks/lib/finder.ts',
-        '/hooks/lib/flash.ts',
-        '/hooks/lib/gauge.ts',
-        '/hooks/lib/hover.ts',
-        '/hooks/lib/layout.ts',
-        '/hooks/lib/live.ts',
-        '/hooks/lib/marks.ts',
-        '/hooks/lib/motion.ts',
-        '/hooks/lib/notes-tree.ts',
-        '/hooks/lib/notes-view.ts',
-        '/hooks/lib/notes.ts',
-        '/hooks/lib/overview.ts',
-        '/hooks/lib/palette.ts',
-        '/hooks/lib/paths.ts',
-        '/hooks/lib/place.ts',
-        '/hooks/lib/printable.ts',
-        '/hooks/lib/raster.ts',
-        '/hooks/lib/rings.ts',
-        '/hooks/lib/route.ts',
-        '/hooks/lib/rows.ts',
-        '/hooks/lib/scheduler.ts',
-        '/hooks/lib/sparkline.ts',
-        '/hooks/lib/themes.ts',
-        '/hooks/lib/tiles.ts',
-        '/hooks/lib/views.ts',
-        '/hooks/mod/actions.ts',
-        '/hooks/mod/agent.ts',
-        '/hooks/mod/cells.ts',
-        '/hooks/mod/dig.ts',
-        '/hooks/mod/frame.ts',
-        '/hooks/mod/input.ts',
-        '/hooks/mod/loaders.ts',
-        '/hooks/mod/motion.ts',
-        '/hooks/mod/notes-actions.ts',
-        '/hooks/mod/port.ts',
-        '/hooks/mod/render.tsx',
-        '/hooks/mod/session.ts',
-        '/hooks/mod/state.ts',
-        '/hooks/mod/watcher.ts',
-    ];
+    /**
+     * Everything a host install writes, relative to the plugin directory, sorted.
+     *
+     * @return list<string>
+     */
+    private static function installed(): array
+    {
+        $files = [
+            ...self::INSTALLED_BESIDES_SOURCES,
+            ...array_map(static fn(string $file): string => ltrim($file, '/'), self::modSourcesOnDisk()),
+        ];
+        sort($files);
+
+        return $files;
+    }
 
     private function context(): CliCommandContext
     {
@@ -368,7 +274,7 @@ final class PluginCommandTest extends KnossosTestCase
             '/hooks/hooks.json',
             '/hooks/scripts/session-brief-container.sh',
             '/hooks/scripts/knossos-run-container.sh',
-            ...self::MOD_SOURCES,
+            ...self::modSourcesOnDisk(),
             '/types/index.d.ts',
             '/skills/graph/SKILL.md',
         ] as $relative) {
@@ -531,6 +437,8 @@ final class PluginCommandTest extends KnossosTestCase
             array_map(static fn(string $path): string => substr($path, strlen($root)), $found),
             static fn(string $path): bool => self::isModSource($path)
                 && !str_ends_with($path, '.spec.ts')
+                && !str_ends_with($path, '.test.ts')
+                && !str_ends_with($path, '.d.ts')
                 && !str_contains($path, '/__tests__/'),
         ));
         sort($sources);
@@ -548,10 +456,12 @@ final class PluginCommandTest extends KnossosTestCase
     }
 
     /**
-     * The installer names its modules one by one, so a module added to the
-     * tree but left out of that list would ship a mod that fails to load,
-     * with every hand-written list here still agreeing with the installer.
-     * The tree is the one source that cannot drift.
+     * The installer walks `hooks/` for the mod's modules, and this test walks
+     * it independently: a module the installer's walk missed would ship a mod
+     * that fails to load, and anything else it took from the real tree (a
+     * declaration file, a tsconfig, a test fixture) would ship what is not the
+     * mod's. The emit from the real checkout must hold exactly the expected
+     * files.
      */
     #[Group('cli')]
     public function testTheInstallerShipsEveryModSourceInTheTree(): void
@@ -575,17 +485,10 @@ final class PluginCommandTest extends KnossosTestCase
             $onDisk = self::modSourcesOnDisk();
 
             assertSame(true, in_array('/hooks/mod/render.tsx', $onDisk, true));
+            assertSame(true, in_array('/hooks/register.tsx', $onDisk, true));
             assertSame($onDisk, $shippedSources);
-
-            // The hand-written lists the other tests lean on hold the same set.
-            $listed = self::MOD_SOURCES;
-            sort($listed);
-            assertSame($onDisk, $listed);
-            $installed = array_values(array_filter(
-                array_map(static fn(string $file): string => '/' . $file, self::INSTALLED),
-                self::isModSource(...),
-            ));
-            assertSame($onDisk, $installed);
+            // The container emit ships no shared library; everything else is what a host install writes.
+            assertSame(array_values(array_diff(self::installed(), ['hooks/scripts/lib.sh'])), $decoded['files']);
         } finally {
             exec('rm -rf ' . escapeshellarg($out));
         }
@@ -599,12 +502,22 @@ final class PluginCommandTest extends KnossosTestCase
             file_put_contents($root . '/hooks/lib/band.spec.ts', '// spec');
             file_put_contents($root . '/hooks/lib/band.test.ts', '// test');
             file_put_contents($root . '/hooks/tsconfig.json', '{}');
+            file_put_contents($root . '/hooks/tsconfig.spec.json', '{}');
+            file_put_contents($root . '/hooks/engine.d.ts', '// declarations');
+            mkdir($root . '/hooks/lib/__tests__');
+            file_put_contents($root . '/hooks/lib/__tests__/pane.ts', '// fixture');
+            file_put_contents($root . '/hooks/lib/notes.md', '# notes');
+            // A module added to the tree ships without being listed anywhere.
+            file_put_contents($root . '/hooks/mod/added.ts', 'export const added = 1');
 
             $this->runWithStubbedClaude($root, ['execute' => ['true']]);
 
-            foreach ($this->treeOf($root . '/.plugin') as $file) {
+            $tree = $this->treeOf($root . '/.plugin');
+            foreach ($tree as $file) {
                 assertSame(false, str_contains($file, '.spec.') || str_contains($file, '.test.') || str_contains($file, 'tsconfig'));
+                assertSame(false, str_contains($file, '__tests__') || str_ends_with($file, 'engine.d.ts') || (str_ends_with($file, '.md') && str_starts_with($file, '/hooks/')));
             }
+            assertSame(true, in_array('/hooks/mod/added.ts', $tree, true));
         } finally {
             exec('rm -rf ' . escapeshellarg($root));
         }
@@ -932,7 +845,7 @@ final class PluginCommandTest extends KnossosTestCase
             '/hooks/scripts/knossos-run.sh',
             '/hooks/scripts/knossos-run-container.sh',
             '/hooks/scripts/lib.sh',
-            ...self::MOD_SOURCES,
+            ...self::modSourcesOnDisk(),
             '/types/index.d.ts',
             '/skills/graph/SKILL.md',
         ] as $relative) {
@@ -1064,7 +977,7 @@ final class PluginCommandTest extends KnossosTestCase
         $this->runWithStubbedClaude($root, ['execute' => ['true']]);
 
         assertSame(
-            array_map(static fn(string $file): string => '/' . $file, self::INSTALLED),
+            array_map(static fn(string $file): string => '/' . $file, self::installed()),
             $this->treeOf($root . '/.plugin'),
         );
         // The descriptor belongs to the materialised directory now. Writing one
@@ -1167,7 +1080,7 @@ final class PluginCommandTest extends KnossosTestCase
         $decoded = json_decode(trim($run['output']), true, 8, JSON_THROW_ON_ERROR);
         assertSame(true, $decoded['executed']);
         assertSame($root . '/.plugin', $decoded['plugin_directory']);
-        assertSame(self::INSTALLED, $decoded['files']);
+        assertSame(self::installed(), $decoded['files']);
 
         exec('rm -rf ' . escapeshellarg($root));
     }
@@ -1401,7 +1314,7 @@ final class PluginCommandTest extends KnossosTestCase
         $this->runWithStubbedClaude($root, ['execute' => ['true']]);
 
         assertSame(
-            array_map(static fn(string $file): string => '/' . $file, self::INSTALLED),
+            array_map(static fn(string $file): string => '/' . $file, self::installed()),
             $this->treeOf($root . '/.plugin'),
         );
 

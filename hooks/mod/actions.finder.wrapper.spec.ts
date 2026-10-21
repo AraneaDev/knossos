@@ -140,6 +140,6 @@ describe('the finder through the real wrapper', () => {
     expect(found).toMatchObject({ for: 'g'.repeat(201), phase: 'idle', answer: null })
     expect(stubRuns()).toEqual([])
     expect(logs).toEqual([{ text: 'knossos: the wrapper refused graph-search (graph-search does not take these arguments); read as no data', to: 'debug' }])
-    expect(mod.disabled).toBe(false)
+    expect(mod.session.disabled).toBe(false)
   })
 })

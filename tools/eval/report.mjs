@@ -10,7 +10,7 @@ import { firstPasses, readLedger, SCORABLE } from "./ledger.mjs";
 import { parseArm } from "./arms.mjs";
 import { corpusHashFor, plannedCorpus, tierOf } from "./corpus.mjs";
 import { evalPaths } from "./env.mjs";
-import { openRun, settings } from "./run.mjs";
+import { openRun, settings } from "./config.mjs";
 import {
     bootstrapCi,
     comparisonSeed,

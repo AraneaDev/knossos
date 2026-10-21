@@ -35,14 +35,14 @@ describe('registering /knossos', () => {
     it('registers the command by its name once, and says so', async () => {
         const { io, registered, logged } = port()
         expect(await registerCommand(io)).toBe(true)
-        expect(mod.commandRegistered).toBe(true)
+        expect(mod.registration.registered).toBe(true)
         expect(registered).toHaveLength(1)
         expect(registered[0]).toMatchObject({ name: 'knossos', description: expect.stringContaining('/knossos inspect') })
         expect(logged).toEqual([])
     })
 
     it('does not ask the engine again once registered', async () => {
-        mod.commandRegistered = true
+        mod.registration.registered = true
         const { io, registered } = port()
         expect(await registerCommand(io)).toBe(true)
         expect(registered).toEqual([])
@@ -58,7 +58,7 @@ describe('registering /knossos', () => {
     it('answers false on a refusal and leaves one debug line naming the error', async () => {
         const { io, logged } = port([new Error('no session')])
         expect(await registerCommand(io)).toBe(false)
-        expect(mod.commandRegistered).toBe(false)
+        expect(mod.registration.registered).toBe(false)
         expect(logged).toHaveLength(1)
         expect(logged[0]![0]).toContain('no session')
         expect(logged[0]![1]).toEqual({ to: 'debug' })
@@ -78,14 +78,14 @@ describe('registering /knossos', () => {
         expect(registered).toHaveLength(2)
         expect(logged).toHaveLength(1)
         expect(logged[0]![0]).toContain('no session')
-        expect(mod.registerFailureLogged).toBe(true)
+        expect(mod.registration.failureLogged).toBe(true)
     })
 
     it('registers on a later call after a refusal', async () => {
         const { io, registered } = port([new Error('no session')])
         expect(await registerCommand(io)).toBe(false)
         expect(await registerCommand(io)).toBe(true)
-        expect(mod.commandRegistered).toBe(true)
+        expect(mod.registration.registered).toBe(true)
         expect(registered).toHaveLength(2)
     })
 

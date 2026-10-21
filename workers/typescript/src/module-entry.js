@@ -26,7 +26,7 @@ const MODULE_URL_EXTENSION = /\.(?:[cm]?[jt]sx?)$/;
 // Decided from the literal alone, so the answer cannot depend on which files
 // share a request; a path that leaves the project, lands below node_modules or
 // in build output, or names an asset, is no module of this project.
-export function importMetaUrlModule(node, sourceFile, root) {
+export function importMetaUrlModule(node, sourceFile, root, exclusions) {
     const args = node.arguments ?? [];
     if (
         !ts.isIdentifier(node.expression) ||
@@ -49,7 +49,7 @@ export function importMetaUrlModule(node, sourceFile, root) {
     if (
         relative === null ||
         belowNodeModules(relative) ||
-        excludedByProjectLayout(relative)
+        excludedByProjectLayout(relative, exclusions)
     )
         return null;
     return relative;
@@ -68,7 +68,7 @@ export function isDirnameExpression(expression) {
 // The project-relative source module a path names, resolved against
 // `directory`, or null for one outside the project, below node_modules, in
 // excluded build output, or not a source file at all.
-export function sourcePathTarget(root, directory, specifier) {
+export function sourcePathTarget(root, directory, specifier, exclusions) {
     if (!MODULE_URL_EXTENSION.test(specifier)) return null;
     const relative = relativeInside(
         root,
@@ -78,7 +78,7 @@ export function sourcePathTarget(root, directory, specifier) {
         relative === null ||
         relative === "" ||
         belowNodeModules(relative) ||
-        excludedByProjectLayout(relative)
+        excludedByProjectLayout(relative, exclusions)
     )
         return null;
     return relative;

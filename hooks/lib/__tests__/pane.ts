@@ -1,5 +1,7 @@
-import { DEFAULT_ROWS, paneLayout } from '../layout'
-import type { PaneInput, Row } from '../layout'
+import { DEFAULT_ROWS } from '../cards'
+import { paneLayout } from '../layout'
+import type { PaneInput } from '../pane-types'
+import type { Row } from '../types'
 
 /**
  * Every row of the pane for `input`, none wider than `columns`: the header,

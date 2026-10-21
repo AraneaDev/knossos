@@ -109,7 +109,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    mod.disabled = false
+    mod.session.disabled = false
 })
 
 describe('opening a note', () => {
@@ -286,7 +286,7 @@ describe("the note's preview", () => {
 
     it('turns the mod off when the wrapper finds no binary', async () => {
         const port = await previewed(answer({ status: 'no-binary' }))
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         // What becomes of the note then is not part of the contract: only the mod turning off is.
         expect(port.note()?.phase).not.toBe('confirming')
     })
@@ -366,7 +366,7 @@ describe("the note's yes", () => {
         port.answers.push(answer({ status: 'no-binary' }))
         await port.press('note-yes')
         await port.runTimers()
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         // Nothing was recorded, so there is no success to report nor a detail to read again.
         expect(port.note()).not.toBeNull()
         expect(port.values.get('feedback')).toBeNull()

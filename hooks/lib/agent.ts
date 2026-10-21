@@ -5,6 +5,7 @@
  * Pure: the figures in, one compact text out, every list cut to a few and
  * the whole bounded, since the model reads all of it.
  */
+import { unreadableText } from './policies'
 
 /** How many of each list a note names before it counts the rest. */
 const NAMED = 5
@@ -153,13 +154,16 @@ export function cyclesSinceStart<C extends ListedCycle>(start: { count: number; 
  * the policy check still reports, the files it changed that no test reaches,
  * and cycles that are new since the session began. A commit need not hold
  * all of them, so the note speaks of the session's changes, not of the
- * commit. Null when there is nothing to say.
+ * commit. Policies knossos could not read (`unreadable`, the reason) are
+ * said too: nothing was checked against them. Null when there is nothing to
+ * say.
  */
-export function commitNote(violations: string[], untested: string[], cycles: { count: number; chains: string[] }): string | null {
+export function commitNote(violations: string[], untested: string[], cycles: { count: number; chains: string[] }, unreadable: string | null = null): string | null {
   const parts: string[] = []
   if (violations.length > 0) parts.push(`${violations.length} boundary-policy ${violations.length === 1 ? 'violation' : 'violations'} this session introduced (${named(violations)})`)
   if (untested.length > 0) parts.push(`${untested.length} changed ${untested.length === 1 ? 'file' : 'files'} no test reaches (${named(untested)})`)
   if (cycles.count > 0) parts.push(`${cycles.count} dependency ${cycles.count === 1 ? 'cycle' : 'cycles'} new since the session began${cycles.chains.length > 0 ? ` (${named(cycles.chains, cycles.count)})` : ''}`)
-  if (parts.length === 0) return null
-  return bounded(`knossos: this session's changes carry ${parts.join('; ')}. Check them before you push.`)
+  const why = unreadable === null ? null : `(${unreadableText(unreadable)})`
+  if (parts.length === 0) return why === null ? null : bounded(`knossos: this session's changes were not checked against the boundary policies ${why}.`)
+  return bounded(`knossos: this session's changes carry ${parts.join('; ')}. Check them before you push.${why === null ? '' : ` They were not checked against the boundary policies ${why}.`}`)
 }

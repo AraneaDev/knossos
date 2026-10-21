@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, DetailState, FileDetail, KnossosView, SessionChanges, TurnBrief } from '../../types'
-import { accumulate, editTarget, fileDetailInput, listFor, NO_CHANGES, paneInput, rowWidth, subjectOf } from './layout'
+import { accumulate, NO_CHANGES } from './session-changes'
+import { editTarget, listFor, subjectOf } from './pane-list'
+import { fileDetailInput } from './files'
+import { paneInput } from './pane-input'
+import { rowWidth } from './rows'
 import { paneRows } from './__tests__/pane'
 import { findRow, plainText, rawText } from './__tests__/plain-text'
-import type { PaneInput, Row } from './layout'
+import type { PaneInput } from './pane-types'
+import type { Row } from './types'
 import { huesOf } from './palette'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
@@ -103,7 +108,7 @@ const pane = (over: { view?: Partial<KnossosView>; d?: Dashboard; turn?: TurnBri
   const d = over.d ?? dash()
   const v = view(over.view)
   const shown = v.inspect === null ? null : fileDetailInput(v.inspect, over.state ?? null, d.project_root, huesOf(d))
-  return paneInput(d, over.turn === undefined ? brief() : over.turn, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, shown, null, over.session ?? NO_CHANGES)
+  return paneInput({ dashboard: d, brief: over.turn === undefined ? brief() : over.turn, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: shown, allow: null, session: over.session ?? NO_CHANGES })
 }
 
 const textOf = (rows: Row[]) => rows.map(plainText).join('\n')

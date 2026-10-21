@@ -20,7 +20,8 @@
  */
 import { FAINT, HEADING, TITLE } from './palette'
 import { cells, clip, dimRow, fit, rowsHeight, rowWidth, segmentsWidth, spaces, tierOf, tinted } from './rows'
-import type { ListSpan, Row, Segment, Tier } from './rows'
+import type { ListSpan, Row, Segment } from './types'
+import type { Tier } from './rows'
 import { CARD_ICON } from './marks'
 
 /**
@@ -242,6 +243,25 @@ export function wheelMove(rows: readonly Row[], offset: number, pointer: { row: 
 
 /** A window as its card reports it to the wheel (`Section.window`): its first item, how many it shows, of how many. */
 export const shownOf = (window: { start: number; end: number }, length: number): { start: number; shown: number; length: number } => ({ start: window.start, shown: window.end - window.start, length })
+
+/**
+ * A list cut to a window `limit` long ({@link windowOf}: around the marker,
+ * `local` its index in the list or -1, or where the wheel left it): `draw`
+ * makes the rows of the items shown, the first of them `start` in the list,
+ * and the line under them counts what is above and below ({@link moreRows},
+ * `key` its key, `walk` the list's place in the marker's walk). With the
+ * window as the card reports it.
+ */
+export function windowedTable<T>(
+  key: string,
+  items: readonly T[],
+  at: { columns: number; limit: number; local?: number; scrolled?: number; walk?: number | ((index: number) => number) },
+  draw: (shown: T[], start: number) => Row[],
+): { rows: Row[]; window: { start: number; shown: number; length: number } } {
+  const window = windowOf(items.length, at.limit, at.local, at.scrolled)
+  const rows = [...draw(items.slice(window.start, window.end), window.start), ...moreRows(key, window, items.length, at.columns, at.walk)]
+  return { rows, window: shownOf(window, items.length) }
+}
 
 /**
  * The line under a list cut to a window: how many are above and how many

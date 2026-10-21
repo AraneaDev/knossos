@@ -30,7 +30,7 @@
  * before the next step: a quick sync, not a beat the viewer sees. A `press`
  * whose `until` does not come is sent again.
  *
- * Tab digits and keys come from hooks/lib/layout.ts (TABS, footerRows) and
+ * Tab digits and keys come from hooks/lib/chrome.ts (TABS, footerRows) and
  * the bindings Claude Code gives a plugin pane (ctrl+x tab, ctrl+x left).
  */
 

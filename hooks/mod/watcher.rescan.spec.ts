@@ -111,7 +111,7 @@ describe('requestRescan', () => {
     })
 
     it('turns the spinner while a rescan runs on an open pane', async () => {
-        mod.paneText = 'stale'
+        mod.pane.text = 'stale'
         let land!: (stdout: string) => void
         const port = rescanPort(new Promise<string>(resolve => (land = resolve)))
         requestRescan(port.io)
@@ -147,31 +147,31 @@ describe('requestRescan', () => {
     })
 
     it("keeps an ok scan as the session's own when its tools ran inside the scan's window", async () => {
-        mod.activity = { running: new Map(), spans: [{ start: STARTED + 500, end: STARTED + 900 }] }
+        mod.activity.calls = { running: new Map(), spans: [{ start: STARTED + 500, end: STARTED + 900 }] }
         const port = rescanPort()
         requestRescan(port.io)
         await port.advance(0)
         expect(port.values.get('sessionScans')).toEqual(['s2'])
-        expect(mod.lastScan).toEqual({ start: STARTED, end: ENDED })
+        expect(mod.scans.last).toEqual({ start: STARTED, end: ENDED })
     })
 
     it('keeps an ok scan out of the session when nothing of it ran, and still remembers it as the last scan', async () => {
-        mod.activity = noActivity()
+        mod.activity.calls = noActivity()
         const port = rescanPort()
         requestRescan(port.io)
         await port.advance(0)
         expect(port.values.get('sessionScans')).toEqual([])
-        expect(mod.lastScan).toEqual({ start: STARTED, end: ENDED })
+        expect(mod.scans.last).toEqual({ start: STARTED, end: ENDED })
         expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
     })
 
     it.each([null, 7])('attributes nothing for an ok with snapshot_id %s, but still reloads and goes idle', async snapshot => {
-        mod.activity = { running: new Map([['c1', STARTED]]), spans: [] }
+        mod.activity.calls = { running: new Map([['c1', STARTED]]), spans: [] }
         const port = rescanPort(answer({ status: 'ok', snapshot_id: snapshot }))
         requestRescan(port.io)
         await port.advance(0)
         expect(port.values.get('sessionScans')).toEqual([])
-        expect(mod.lastScan).toBeNull()
+        expect(mod.scans.last).toBeNull()
         expect(port.runs).toEqual(['scan', 'dashboard'])
         expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
     })
@@ -191,7 +191,7 @@ describe('requestRescan', () => {
         await port.advance(0)
         expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason, refusedRoot })
         expect(port.runs).toEqual(['scan'])
-        expect(mod.lastScan).toBeNull()
+        expect(mod.scans.last).toBeNull()
     })
 
     it('goes idle and turns the mod off on no-binary, without a dashboard run', async () => {
@@ -199,12 +199,12 @@ describe('requestRescan', () => {
         requestRescan(port.io)
         await port.advance(0)
         expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         expect(port.runs).toEqual(['scan'])
     })
 
     it('does nothing while the mod is off', async () => {
-        mod.disabled = true
+        mod.session.disabled = true
         const port = rescanPort()
         port.values.set('rescan', { phase: 'failed', reason: 'earlier', refusedRoot: null })
         requestRescan(port.io)

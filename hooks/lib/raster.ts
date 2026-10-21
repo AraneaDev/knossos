@@ -18,7 +18,7 @@
  * segment's own `bg` (the marked row's tint) is laid where its theme gives
  * a value for it; elsewhere the cell keeps the terminal's background.
  */
-import type { Row } from './rows'
+import type { Row } from './types'
 import { THEMES } from './themes'
 
 /** The engine's "terminal default" colour: bit 24 alone. */

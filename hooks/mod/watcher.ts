@@ -11,7 +11,8 @@ import { parseRescan, parseSessionLedger, parseTurnBrief, rescanReason } from '.
 import type { TurnBrief } from '../lib/envelopes'
 import { ledgerFlashKeys } from '../lib/flash'
 import { changesInput } from '../lib/changes'
-import { accumulate, cdFor } from '../lib/layout'
+import { accumulate } from '../lib/session-changes'
+import { cdFor } from '../lib/test-commands'
 import { isWatching, LIVE_OFF, liveAfter, liveChanged, snapshotOf, watchLines } from '../lib/live'
 import { SingleFlight } from '../lib/scheduler'
 import { deliverNote, turnEndNote } from './agent'
@@ -62,8 +63,8 @@ const LEDGER_TIMEOUT_MS = 20_000
  * after a turn's brief and from {@link followHead}, never inside a render.
  */
 function requestLedger(io: Port): void {
-  if (mod.disabled || (mod.watcher === null && mod.host !== 'web')) return
-  void (mod.ledgerFlight ??= new SingleFlight(() => loadLedger(io))).request().catch(() => undefined)
+  if (mod.session.disabled || (mod.watcher.stream === null && mod.session.host !== 'web')) return
+  void (mod.loads.ledgerFlight ??= new SingleFlight(() => loadLedger(io))).request().catch(() => undefined)
 }
 
 /**
@@ -74,9 +75,9 @@ function requestLedger(io: Port): void {
  * says why it lists nothing.
  */
 async function loadLedger(io: Port): Promise<void> {
-  const web = mod.host === 'web'
+  const web = mod.session.host === 'web'
   const since = web ? null : await io.state.sessionStart.read()
-  if ((!web && since === null) || mod.disabled) return
+  if ((!web && since === null) || mod.session.disabled) return
   const parsed = parseSessionLedger(await wrapper(io, 'session-changes', ledgerArgs(web ? null : since), LEDGER_TIMEOUT_MS))
   if (parsed?.status === 'no-binary') return disable(io)
   if (web && (parsed?.status === 'no-git' || (parsed?.status === 'error' && (await io.state.sessionLedger.read())?.status !== 'ok'))) {
@@ -108,7 +109,7 @@ export async function followHead(io: Port): Promise<boolean> {
     await io.state.sessionRev.update(() => head)
     await io.state.fileDiff.update(() => null)
   }
-  if (moved || mod.watcher === null || !isWatching(await io.state.live.read())) requestLedger(io)
+  if (moved || mod.watcher.stream === null || !isWatching(await io.state.live.read())) requestLedger(io)
   return moved
 }
 
@@ -154,32 +155,32 @@ async function settleBrief(io: Port, parsed: TurnBrief | null, now: number): Pro
 /** One run of the scan job: the turn brief for every path edited since the last run. */
 async function scan(io: Port): Promise<void> {
   // Drained at the start of each run, so a coalesced rerun scans every path reported since.
-  const files = [...mod.edited]
-  mod.edited = new Set()
+  const files = [...mod.turn.edited]
+  mod.turn.edited = new Set()
   // The turn's start goes with its files: a later turn's first edit takes the snapshot of its own.
-  const base = mod.turnBase
-  mod.turnBase = null
+  const base = mod.turn.base
+  mod.turn.base = null
   let parsed: TurnBrief | null = null
   try {
     await io.state.job.update((j): JobState => ({ ...j, phase: 'scanning' }))
     // With a watcher keeping the graph current, the turn's edits are (or are about to be) scanned already:
     // the brief waits for that and reads them from the ledger instead of scanning again.
     // Only a watcher that is running now: the header's state alone may outlive it.
-    const watching = mod.watcher !== null && isWatching(await io.state.live.read())
+    const watching = mod.watcher.stream !== null && isWatching(await io.state.live.read())
     if (watching) await settleWatcher(io)
     // What the turn's shell commands wrote, as the watcher took it in, counts as the edits do.
     for (const file of await shellFiles(io)) if (!files.includes(file)) files.push(file)
-    const args = briefArgs(files, base, watching, mod.enforce)
+    const args = briefArgs(files, base, watching, mod.session.enforce)
     parsed = parseTurnBrief(await exclusively(() => wrapper(io, 'turn-brief', args, BRIEF_TIMEOUT_MS)))
   } finally {
     // A brief that never ran its scan (silence, an error, a refused root) saw none of these edits:
     // the next one must report them, since only reported files count toward the policy verdict.
     if (parsed === null || parsed.status !== 'ok') {
-      for (const file of files) mod.edited.add(file)
-      mod.turnBase ??= base
+      for (const file of files) mod.turn.edited.add(file)
+      mod.turn.base ??= base
     }
   }
-  if (parsed?.status === 'ok') mod.snapshot = parsed.snapshot_id ?? mod.snapshot
+  if (parsed?.status === 'ok') mod.session.snapshot = parsed.snapshot_id ?? mod.session.snapshot
   // A brief that scanned took in the turn's own edits: its scan is the session's.
   if (parsed?.status === 'ok' && parsed.scanned === true && parsed.snapshot_id !== null) await keepScan(io, parsed.snapshot_id)
   if (!(await settleBrief(io, parsed, await io.clock.now())) || parsed === null) return
@@ -208,12 +209,12 @@ export async function scanSafely(io: Port): Promise<void> {
  * as the session's when it did. Remembered as the last scan either way.
  */
 async function attributeScan(io: Port, snapshot: string, started: number, ended: number): Promise<void> {
-  const { from, to } = scanWindow(started, ended, lookbackMs(mod.watchPollMs, WATCH_DEBOUNCE_MS), mod.lastScan)
-  mod.lastScan = { start: started, end: ended }
-  if (activeBetween(mod.activity, from, to)) await keepScan(io, snapshot)
-  // A shell command's changes: the files this scan changed are the turn's, as an edit's are (see mod.shellActivity).
-  if (activeBetween(mod.shellActivity, from, to) && !fenced(from, to)) {
-    mod.shellScans.add(snapshot)
+  const { from, to } = scanWindow(started, ended, lookbackMs(mod.watch.pollMs, WATCH_DEBOUNCE_MS), mod.scans.last)
+  mod.scans.last = { start: started, end: ended }
+  if (activeBetween(mod.activity.calls, from, to)) await keepScan(io, snapshot)
+  // A shell command's changes: the files this scan changed are the turn's, as an edit's are (see mod.activity.shell).
+  if (activeBetween(mod.activity.shell, from, to) && !fenced(from, to)) {
+    mod.activity.shellScans.add(snapshot)
     shellChanged()
   }
 }
@@ -224,7 +225,7 @@ async function attributeScan(io: Port, snapshot: string, started: number, ended:
  * none of it is a shell command's, whatever else ran in the window.
  */
 function fenced(from: number, to: number): boolean {
-  return mod.shellFences.some(f => f.start <= to && f.end >= from)
+  return mod.activity.shellFences.some(f => f.start <= to && f.end >= from)
 }
 
 /**
@@ -235,8 +236,8 @@ function fenced(from: number, to: number): boolean {
  * ended is the next turn's.
  */
 function shellChanged(): void {
-  mod.dirty = true
-  mod.turnBase ??= mod.snapshot
+  mod.turn.dirty = true
+  mod.turn.base ??= mod.session.snapshot
 }
 
 /**
@@ -245,9 +246,9 @@ function shellChanged(): void {
  * when the ledger cannot say. The scans are drained: each is reported once.
  */
 async function shellFiles(io: Port): Promise<string[]> {
-  if (mod.shellScans.size === 0) return []
-  const scans = mod.shellScans
-  mod.shellScans = new Set()
+  if (mod.activity.shellScans.size === 0) return []
+  const scans = mod.activity.shellScans
+  mod.activity.shellScans = new Set()
   await loadLedger(io)
   const ledger = await io.state.sessionLedger.read()
   if (ledger?.status !== 'ok') return []
@@ -261,11 +262,11 @@ async function shellFiles(io: Port): Promise<string[]> {
  * queued or running adds nothing: the scan it asks for is already coming.
  */
 export function requestRescan(io: Port): void {
-  const flight = (mod.rescanFlight ??= new SingleFlight(() => rescanSafely(io)))
-  if (mod.rescanQueued || flight.isRunning) return
-  mod.rescanQueued = true
+  const flight = (mod.scans.rescanFlight ??= new SingleFlight(() => rescanSafely(io)))
+  if (mod.scans.rescanQueued || flight.isRunning) return
+  mod.scans.rescanQueued = true
   io.clock.after(0, () => {
-    mod.rescanQueued = false
+    mod.scans.rescanQueued = false
     void flight.request()
   })
 }
@@ -285,7 +286,7 @@ async function rescanSafely(io: Port): Promise<void> {
  * `scanning…` meanwhile and the reason when it does not land.
  */
 async function runRescan(io: Port): Promise<void> {
-  if (mod.disabled) return
+  if (mod.session.disabled) return
   await io.state.rescan.update((): RescanState => ({ phase: 'scanning', reason: null }))
   await startMotion(io, null)
   const started = await io.clock.now()
@@ -313,15 +314,15 @@ async function runRescan(io: Port): Promise<void> {
  * tick, so a watcher that ended is started again from here.
  */
 export async function ensureWatcher(io: Port): Promise<void> {
-  if (!mod.watchOn || mod.disabled || mod.watcher !== null || mod.watchStarting || mod.watchRefused) return
-  if ((await io.clock.now()) < mod.watchRetryAt) return
+  if (!mod.watch.on || mod.session.disabled || mod.watcher.stream !== null || mod.watch.starting || mod.watch.refused) return
+  if ((await io.clock.now()) < mod.watch.retryAt) return
   const d = await io.state.dashboard.read()
   if (d?.status !== 'ok' || d.project_root === null) return
-  mod.watchStarting = true
-  const gen = ++mod.watchGen
+  mod.watch.starting = true
+  const gen = ++mod.generations.watch
   // The loop runs for the session's life: never inside a hook's dispatch.
   io.clock.after(0, () => {
-    mod.watchStarting = false
+    mod.watch.starting = false
     void runWatcher(io, gen, d.project_root!).catch(() => undefined)
   })
 }
@@ -334,21 +335,21 @@ export async function ensureWatcher(io: Port): Promise<void> {
  * said a word is not offered here and is not asked again.
  */
 async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
-  if (gen !== mod.watchGen) return
+  if (gen !== mod.generations.watch) return
   let stream: AsyncGenerator<{ stream: string; text: string }, unknown>
   try {
-    stream = io.process.spawn({ argv: ['sh', `${io.plugin.root}/hooks/scripts/knossos-run.sh`, 'watch', root, ...watchArgs(mod.watchPollMs)] })
+    stream = io.process.spawn({ argv: ['sh', `${io.plugin.root}/hooks/scripts/knossos-run.sh`, 'watch', root, ...watchArgs(mod.watch.pollMs)] })
   } catch {
-    mod.watchRefused = true
+    mod.watch.refused = true
     return
   }
-  mod.watcher = stream
+  mod.watcher.stream = stream
   await io.state.live.update((): LiveState => ({ phase: 'starting' }))
   let rest = ''
   let heard = false
   try {
     for await (const piece of stream) {
-      if (gen !== mod.watchGen) break
+      if (gen !== mod.generations.watch) break
       if (piece.stream !== 'stdout') continue
       const got = watchLines(rest, piece.text)
       rest = got.rest
@@ -362,23 +363,23 @@ async function runWatcher(io: Port, gen: number, root: string): Promise<void> {
   } catch {
     // A child that could not start, or a stream torn down under the loop: what follows decides.
   } finally {
-    if (mod.watcher === stream) {
-      mod.watcher = null
-      mod.watcherPid = null
+    if (mod.watcher.stream === stream) {
+      mod.watcher.stream = null
+      mod.watcher.pid = null
     }
   }
-  if (gen !== mod.watchGen) {
+  if (gen !== mod.generations.watch) {
     // Stopped from outside: the header says nothing is live unless a newer watcher took over.
-    if (mod.watcher === null && !mod.watchStarting) await io.state.live.update(() => LIVE_OFF)
+    if (mod.watcher.stream === null && !mod.watch.starting) await io.state.live.update(() => LIVE_OFF)
     return
   }
-  mod.watchPending = false
+  mod.watcher.pending = false
   await io.state.live.update(() => LIVE_OFF)
-  if (!heard) mod.watchRefused = true
-  if (mod.watchRefused || mod.disabled) return
+  if (!heard) mod.watch.refused = true
+  if (mod.watch.refused || mod.session.disabled) return
   // Started again by the age tick once the pause is over; past the last try, not at all.
-  mod.watchFailures++
-  mod.watchRetryAt = mod.watchFailures > WATCH_RESTARTS ? Number.POSITIVE_INFINITY : (await io.clock.now()) + WATCH_RESTART_MS * mod.watchFailures
+  mod.watch.failures++
+  mod.watch.retryAt = mod.watch.failures > WATCH_RESTARTS ? Number.POSITIVE_INFINITY : (await io.clock.now()) + WATCH_RESTART_MS * mod.watch.failures
 }
 
 /** What one watcher event changes: the phase, whether changes wait, and the dashboard when the snapshot moved. */
@@ -386,31 +387,31 @@ async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
   if (event.status === 'no-binary') return disable(io)
   // The wrapper refused the watcher's own call: it never runs, so it is not asked again, and the log says why.
   if (event.status === 'refused' && event.by === 'wrapper') {
-    mod.watchRefused = true
+    mod.watch.refused = true
     await io.ui.log(`knossos: the wrapper refused watch (${event.reason ?? 'no reason given'}); no live watcher this session`, { to: 'debug' })
     return
   }
-  if (event.event === 'refused') mod.watchRefused = true
-  if (event.event === 'ready' || event.event === 'following') mod.watchFailures = 0
-  if (event.event === 'changes') mod.watchPending = true
+  if (event.event === 'refused') mod.watch.refused = true
+  if (event.event === 'ready' || event.event === 'following') mod.watch.failures = 0
+  if (event.event === 'changes') mod.watcher.pending = true
   // Noticed while a shell command ran, or a moment after: the command's.
   if (event.event === 'changes') {
     const now = await io.clock.now()
-    const from = now - lookbackMs(mod.watchPollMs, WATCH_DEBOUNCE_MS)
-    if (activeBetween(mod.shellActivity, from, now) && !fenced(from, now)) shellChanged()
+    const from = now - lookbackMs(mod.watch.pollMs, WATCH_DEBOUNCE_MS)
+    if (activeBetween(mod.activity.shell, from, now) && !fenced(from, now)) shellChanged()
   }
-  if (event.event === 'scan_completed' || event.event === 'absorbed' || event.event === 'stopped') mod.watchPending = false
-  if (typeof event.pid === 'number' && Number.isInteger(event.pid) && event.pid > 1) mod.watcherPid = event.pid
+  if (event.event === 'scan_completed' || event.event === 'absorbed' || event.event === 'stopped') mod.watcher.pending = false
+  if (typeof event.pid === 'number' && Number.isInteger(event.pid) && event.pid > 1) mod.watcher.pid = event.pid
   const before = await io.state.live.read()
   const after = liveAfter(event, before)
   if (liveChanged(before, after)) await io.state.live.update(() => after)
   // A scan under way turns the spinner in the pill until it is done.
   if (after.phase === 'scanning' && before.phase !== 'scanning') await startMotion(io, null)
   const snapshot = snapshotOf(event)
-  const moved = snapshot !== null && snapshot !== mod.snapshot
+  const moved = snapshot !== null && snapshot !== mod.session.snapshot
   await attributeEvent(io, event, snapshot, moved)
   if (moved) {
-    mod.snapshot = snapshot
+    mod.session.snapshot = snapshot
     // Coalesced with any load in flight: the last to land is the newest.
     void refreshDashboard(io).catch(() => undefined)
   }
@@ -428,13 +429,13 @@ async function onWatchEvent(io: Port, event: WatchEvent): Promise<void> {
 async function attributeEvent(io: Port, event: WatchEvent, snapshot: string | null, moved: boolean): Promise<void> {
   const now = await io.clock.now()
   if (event.event === 'scan_started' || event.event === 'leader_scanning') {
-    mod.scanStartedAt = now
+    mod.scans.startedAt = now
     return
   }
   const landed = event.event === 'scan_completed' || (moved && (event.event === 'snapshot' || event.event === 'absorbed'))
   if (!landed || snapshot === null) return
-  const started = mod.scanStartedAt ?? (event.event === 'scan_completed' ? now : now - mod.watchPollMs - FOLLOWED_SCAN_MS)
-  mod.scanStartedAt = null
+  const started = mod.scans.startedAt ?? (event.event === 'scan_completed' ? now : now - mod.watch.pollMs - FOLLOWED_SCAN_MS)
+  mod.scans.startedAt = null
   await attributeScan(io, snapshot, started, now)
 }
 
@@ -445,12 +446,12 @@ async function attributeEvent(io: Port, event: WatchEvent, snapshot: string | nu
  * its files already in the graph and scans nothing itself.
  */
 async function settleWatcher(io: Port): Promise<void> {
-  const quiet = mod.watchPollMs + WATCH_DEBOUNCE_MS + 250
+  const quiet = mod.watch.pollMs + WATCH_DEBOUNCE_MS + 250
   const until = (await io.clock.now()) + WATCH_SETTLE_MAX_MS
   for (;;) {
     const now = await io.clock.now()
-    const busy = (await io.state.live.read()).phase === 'scanning' || mod.watchPending
-    if (now >= until || (!busy && now - mod.lastEditAt >= quiet)) return
+    const busy = (await io.state.live.read()).phase === 'scanning' || mod.watcher.pending
+    if (now >= until || (!busy && now - mod.turn.lastEditAt >= quiet)) return
     await sleep(io, 100)
   }
 }

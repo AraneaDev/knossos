@@ -46,7 +46,7 @@ describe('retryRegister', () => {
         const { io, timers, registered } = retryPort()
         retryRegister(io, 0)
         expect(timers.map(t => t.ms)).toEqual([500])
-        expect(mod.registerTimer).toBe(timers[0]!.handle)
+        expect(mod.registration.timer).toBe(timers[0]!.handle)
         // Nothing is registered until the timer fires.
         expect(registered).toEqual([])
     })
@@ -55,12 +55,12 @@ describe('retryRegister', () => {
         const { io, timers, registered } = retryPort()
         retryRegister(io, 0)
         timers[0]!.run()
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
         await settle()
         expect(registered).toHaveLength(1)
-        expect(mod.commandRegistered).toBe(true)
+        expect(mod.registration.registered).toBe(true)
         expect(timers).toHaveLength(1)
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('on a refusal schedules attempt 1 at 1000ms', async () => {
@@ -69,9 +69,9 @@ describe('retryRegister', () => {
         timers[0]!.run()
         await settle()
         expect(registered).toHaveLength(1)
-        expect(mod.commandRegistered).toBe(false)
+        expect(mod.registration.registered).toBe(false)
         expect(timers.map(t => t.ms)).toEqual([500, 1_000])
-        expect(mod.registerTimer).toBe(timers[1]!.handle)
+        expect(mod.registration.timer).toBe(timers[1]!.handle)
     })
 
     it('follows the full delay sequence while every attempt is refused, then stops', async () => {
@@ -83,8 +83,8 @@ describe('retryRegister', () => {
         }
         expect(timers.map(t => t.ms)).toEqual([500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000])
         expect(registered).toHaveLength(7)
-        expect(mod.commandRegistered).toBe(false)
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.registered).toBe(false)
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('stops the chain at the first success partway through', async () => {
@@ -96,7 +96,7 @@ describe('retryRegister', () => {
         }
         expect(timers.map(t => t.ms)).toEqual([500, 1_000, 2_000])
         expect(registered).toHaveLength(3)
-        expect(mod.commandRegistered).toBe(true)
+        expect(mod.registration.registered).toBe(true)
     })
 
     it('starts at the delay of a later attempt', () => {
@@ -109,36 +109,36 @@ describe('retryRegister', () => {
         const { io, timers } = retryPort()
         retryRegister(io, attempt)
         expect(timers).toEqual([])
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('schedules nothing once registered', () => {
-        mod.commandRegistered = true
+        mod.registration.registered = true
         const { io, timers } = retryPort()
         retryRegister(io, 0)
         expect(timers).toEqual([])
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('schedules nothing while the mod is disabled', () => {
-        mod.disabled = true
+        mod.session.disabled = true
         const { io, timers } = retryPort()
         retryRegister(io, 0)
         expect(timers).toEqual([])
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('schedules nothing for a generation other than the current one', () => {
         const { io, timers } = retryPort()
-        retryRegister(io, 0, mod.registerGen - 1)
-        retryRegister(io, 0, mod.registerGen + 1)
+        retryRegister(io, 0, mod.generations.register - 1)
+        retryRegister(io, 0, mod.generations.register + 1)
         expect(timers).toEqual([])
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('schedules for the current generation passed explicitly', () => {
         const { io, timers } = retryPort()
-        retryRegister(io, 0, mod.registerGen)
+        retryRegister(io, 0, mod.generations.register)
         expect(timers.map(t => t.ms)).toEqual([500])
     })
 
@@ -149,9 +149,9 @@ describe('retryRegister', () => {
         timers[0]!.run()
         await settle()
         expect(registered).toEqual([])
-        expect(mod.commandRegistered).toBe(false)
+        expect(mod.registration.registered).toBe(false)
         expect(timers).toHaveLength(1)
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 
     it('stops a refused chain whose generation changed before its next timer fired', async () => {
@@ -172,8 +172,8 @@ describe('retryRegister', () => {
         ;(io.clock as { after: unknown }).after = () => {
             throw new Error('clock gone')
         }
-        mod.registerTimer = { cancel: () => undefined } as typeof mod.registerTimer
+        mod.registration.timer = { cancel: () => undefined } as typeof mod.registration.timer
         expect(() => retryRegister(io, 0)).not.toThrow()
-        expect(mod.registerTimer).toBeNull()
+        expect(mod.registration.timer).toBeNull()
     })
 })

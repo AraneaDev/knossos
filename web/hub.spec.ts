@@ -29,7 +29,7 @@ async function loaded() {
 
 beforeEach(() => {
   reset({ watch: false })
-  mod.host = 'web'
+  mod.session.host = 'web'
 })
 
 describe('Hub', () => {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { BlastRadius, ComponentDetail, Dashboard, KnossosView, NoteState, RingsState } from '../../types'
-import { detailInput, listFor, paneInput, paneLayout } from './layout'
+import { detailInput } from './views'
+import { listFor } from './pane-list'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { ringRows, ringsInput, ringsList, RINGS_MIN } from './rings'
 import { plainText, rawText } from './__tests__/plain-text'
 import { rowWidth } from './rows'
@@ -41,7 +44,7 @@ const detailAnswer: ComponentDetail = {
   candidates: [],
 }
 const shown = detailInput({ name: 'App\\Store\\StableId', label: 'StableId' }, { snapshot_id: 's1', name: 'App\\Store\\StableId', detail: detailAnswer, phase: 'done' }, ROOT)
-const pane = (rings: RingsState | null, v = view(), note: NoteState | null = null) => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, shown, null, undefined, null, undefined, { rings, note })
+const pane = (rings: RingsState | null, v = view(), note: NoteState | null = null) => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: shown, allow: null, sessionRoot: null, extras: { rings, note } })
 const text = (rings: RingsState | null, columns = 100, v = view()) => paneLayout(pane(rings, v), columns, 80).body.map(plainText).join('\n')
 
 describe('the blast radius in a component detail', () => {
@@ -176,7 +179,7 @@ describe('notes on a component detail', () => {
   })
 
   it('answers by press alone while the allow-root question holds y and n', () => {
-    const allowing = paneInput(d, { status: 'not-allowed', path: ROOT, refused_root: ROOT, roots_file: null } as never, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 0, true, shown, { phase: 'confirming', root: ROOT, reason: null }, undefined, null, undefined, { note: note({ phase: 'confirming' }) })
+    const allowing = paneInput({ dashboard: d, brief: { status: 'not-allowed', path: ROOT, refused_root: ROOT, roots_file: null } as never, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view(), now: 0, terminal: true, detail: shown, allow: { phase: 'confirming', root: ROOT, reason: null }, sessionRoot: null, extras: { note: note({ phase: 'confirming' }) } })
     const laid = paneLayout(allowing, 100, 80)
     const keys = [...laid.body, ...laid.footer].flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
     expect(keys).toEqual(expect.arrayContaining(['allow-yes=y', 'note-yes', 'note-no']))

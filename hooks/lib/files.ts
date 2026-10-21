@@ -10,27 +10,15 @@
 import type { Dashboard, DetailState, Drifted, FileDetail, Inspected } from '../../types'
 import { rankIn, reachRows, statusMark } from './changes'
 import { diffBlock } from './diff'
-import { moreRows, noteOf, windowOf, shownOf } from './cards'
+import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { fileDetailLines } from './envelopes'
 import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
-import {
-  baseName,
-  blank,
-  cells,
-  chip,
-  dimRow,
-  displayName,
-  pathSegments,
-  pathText,
-  numberWidth,
-  plural,
-  tableRow,
-  tableSpec,
-  wrapWords,
-} from './rows'
-import type { Loc, Row, Segment, TableSpec, Tier } from './rows'
+import { baseName } from './paths'
+import { blank, cells, chip, dimRow, displayName, pathSegments, pathText, numberWidth, plural, tableRow, tableSpec, wrapWords, inList, notListedRow } from './rows'
+import type { Loc, Row, Segment } from './types'
+import type { TableSpec, Tier } from './rows'
 import { hoodBlock, locIn } from './views'
 import type { DetailInput, FileView, HoodSide, Openable } from './views'
 import { busy } from './motion'
@@ -94,9 +82,6 @@ function countedSpec(columns: number, names: string[], boundaries: string[], val
   return values.length > 1 && values.every(v => v === values[0]) ? { ...spec, bar: 0 } : spec
 }
 
-/** The `+N not listed` under a list that holds fewer than its count. */
-const moreRow = (key: string, count: number, shown: number, columns: number): Row[] => (count > shown ? [dimRow(key, `   +${count - shown} not listed`, columns)] : [])
-
 /** The fewest dependents and components the file detail lists, however short the pane. */
 const LIST_MIN = 5
 
@@ -143,15 +128,13 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
   const table = (key: string, items: { path: string; edges: number; boundary: string | null }[], offset: number, columns: number, limit: number): Row[] => {
     const spec = countedSpec(columns, items.map(d => d.path), items.map(d => boundaryLabel(d.boundary, hues)), items.map(d => d.edges), tier)
     const max = Math.max(0, ...items.map(d => d.edges))
-    const local = selected - offset
-    const window = windowOf(items.length, limit, local >= 0 && local < items.length ? local : -1)
-    return [
-      ...items.slice(window.start, window.end).map((d, n) => {
-        const i = offset + window.start + n
-        return tableRow(`${key}-${window.start + n}`, { name: d.path, boundary: d.boundary, values: [d.edges], max, selected: i === selected, path: true, press: `row:${i}` }, spec, hues)
+    const { rows } = windowedTable(`${key}-window`, items, { columns, limit, local: inList(selected - offset, items.length), walk: offset }, (shown, start) =>
+      shown.map((d, n) => {
+        const i = offset + start + n
+        return tableRow(`${key}-${start + n}`, { name: d.path, boundary: d.boundary, values: [d.edges], max, selected: i === selected, path: true, press: `row:${i}` }, spec, hues)
       }),
-      ...moreRows(`${key}-window`, window, items.length, columns, offset),
-    ]
+    )
+    return rows
   }
   const side = (title: string, count: number, items: { path: string; edges: number; boundary: string | null }[], offset: number): HoodSide => ({
     title,
@@ -160,8 +143,8 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
   })
   const hood = hoodBlock({ name: baseName(f.path), boundary: f.boundary }, side('Depended on by', deps.count, deps.items, 0), side('Depends on', uses.count, uses.items, deps.items.length), selected, hues, (columns, limit) => [
     ...(deps.items.length === 0 ? [dimRow('deps-none', '   none: no other file depends on it', columns)] : table('dep', deps.items, 0, columns, limit)),
-    ...moreRow('deps-more', deps.count, deps.items.length, columns),
-    ...(f.uses === null ? [] : [blank('uses-gap'), dimRow('uses-title', `   Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...moreRow('uses-more', uses.count, uses.items.length, columns)]),
+    ...notListedRow('deps-more', deps.count, deps.items.length, columns),
+    ...(f.uses === null ? [] : [blank('uses-gap'), dimRow('uses-title', `   Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...notListedRow('uses-more', uses.count, uses.items.length, columns)]),
   ])
   // The boundaries a change here reaches, above the drawing.
   const reached: Block = {
@@ -184,13 +167,14 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
       const rows: Row[] = []
       if (comps.items.length === 0) rows.push(dimRow('comps-none', '   none', columns))
       const max = Math.max(0, ...comps.items.map(c => c.usedBy))
-      const window = windowOf(comps.items.length, limit, selected >= offset ? selected - offset : -1, scrolled)
-      comps.items.slice(window.start, window.end).forEach((c, n) => {
-        const i = offset + window.start + n
-        rows.push(tableRow(`comp-${window.start + n}`, { name: c.name, boundary: null, values: [c.usedBy], max, selected: i === selected, press: `row:${i}` }, spec, hues))
-      })
-      rows.push(...moreRows('comps-window', window, comps.items.length, columns, offset), ...moreRow('comps-more', comps.count, comps.items.length, columns))
-      return { key: 'comps', title: 'Declares', subtitle: plural(comps.count, 'component', 'components'), note: noteOf(comps.items.length > 0 ? 'used by' : ''), body: rows, window: shownOf(window, comps.items.length) }
+      const listed = windowedTable('comps-window', comps.items, { columns, limit, local: selected >= offset ? selected - offset : -1, scrolled, walk: offset }, (shown, start) =>
+        shown.map((c, n) => {
+          const i = offset + start + n
+          return tableRow(`comp-${start + n}`, { name: c.name, boundary: null, values: [c.usedBy], max, selected: i === selected, press: `row:${i}` }, spec, hues)
+        }),
+      )
+      rows.push(...listed.rows, ...notListedRow('comps-more', comps.count, comps.items.length, columns))
+      return { key: 'comps', title: 'Declares', subtitle: plural(comps.count, 'component', 'components'), note: noteOf(comps.items.length > 0 ? 'used by' : ''), body: rows, window: listed.window }
     },
   }
   return { top: [head], left: [reached, compBlock], bottom: diff, order: [head, reached, ...diff, compBlock] }
@@ -219,12 +203,10 @@ export const driftList = (drift: DriftInput): Openable[] => drift.items.map(i =>
 export function driftSection(drift: DriftInput, columns: number, limit: number, hues: Hues = NO_HUES, selected = -1, scrolled?: number): Section {
   const spec = { ...tableSpec(columns, drift.items.map(i => i.path), drift.items.map(i => boundaryLabel(i.boundary)), [], PATH_MAX), bar: 0 }
   const note = drift.truncated && drift.count <= drift.items.length ? `${drift.count}+` : String(drift.count)
-  const window = windowOf(drift.items.length, limit, selected, scrolled)
-  const rows: Row[] = drift.items
-    .slice(window.start, window.end)
-    .map((i, n) =>
-      tableRow(`drift-${window.start + n}`, { name: i.path, boundary: i.boundary, values: [], max: 0, selected: window.start + n === selected, mark: statusMark(i.change), path: true, press: `row:${window.start + n}` }, spec, hues),
-    )
-  rows.push(...moreRows('drift-window', window, drift.items.length, columns, 0), ...moreRow('drift-more', drift.count, drift.items.length, columns))
-  return { key: 'drift', title: 'Drifted since the snapshot', note: noteOf(note), body: rows, window: shownOf(window, drift.items.length) }
+  const { rows, window } = windowedTable('drift-window', drift.items, { columns, limit, local: selected, scrolled, walk: 0 }, (shown, start) =>
+    shown.map((i, n) =>
+      tableRow(`drift-${start + n}`, { name: i.path, boundary: i.boundary, values: [], max: 0, selected: start + n === selected, mark: statusMark(i.change), path: true, press: `row:${start + n}` }, spec, hues),
+    ),
+  )
+  return { key: 'drift', title: 'Drifted since the snapshot', note: noteOf(note), body: [...rows, ...notListedRow('drift-more', drift.count, drift.items.length, columns)], window }
 }

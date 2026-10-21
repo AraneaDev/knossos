@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, SessionLedger } from '../../types'
 import { FLASH_BG, FLASH_MS, flashKeys, ledgerFlashKeys, litAt } from './flash'
-import { paneInput } from './layout'
+import { paneInput } from './pane-input'
 import { paneRows } from './__tests__/pane'
 import { findRow } from './__tests__/plain-text'
 import { rowWidth } from './rows'
@@ -51,7 +51,7 @@ describe('rows the latest scan changed', () => {
     const flash = { keys: flashKeys(before, after), until: 5_000 }
     for (const columns of [40, 60, 80, 100, 130, 140, 200]) {
       for (const height of [24, 40, 60]) {
-        const rows = paneRows(paneInput(after, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 1_000, true, null, null, undefined, null, undefined, { flash }), columns, height)
+        const rows = paneRows(paneInput({ dashboard: after, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view(), now: 1_000, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { flash } }), columns, height)
         for (const r of rows) expect(rowWidth(r), `${columns}x${height} ${r.key}`).toBeLessThanOrEqual(columns)
         // Router is marked: it keeps the marked ground; Kernel and Cache moved.
         // Side by side on a wide grid a row is two cards' rows: the lit one's own cells carry the ground.
@@ -61,10 +61,10 @@ describe('rows the latest scan changed', () => {
         expect(ground('hub-2'), `${columns}`).toBe(true)
       }
     }
-    const later = paneRows(paneInput(after, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 6_000, true, null, null, undefined, null, undefined, { flash }), 100)
+    const later = paneRows(paneInput({ dashboard: after, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view(), now: 6_000, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { flash } }), 100)
     expect(findRow(later, 'hub-1')?.segments.some(s => s.bg === FLASH_BG)).toBe(false)
     // The cycles tile is lit on the Overview.
-    const tiles = paneRows(paneInput(after, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view({ tab: 'overview' }), 1_000, true, null, null, undefined, null, undefined, { flash }), 140)
+    const tiles = paneRows(paneInput({ dashboard: after, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view({ tab: 'overview' }), now: 1_000, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { flash } }), 140)
     expect(tiles.flatMap(r => r.segments).find(s => s.text === '2' && s.bold === true)?.bg).toBe(FLASH_BG)
   })
 

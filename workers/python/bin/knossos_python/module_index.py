@@ -20,15 +20,13 @@ from .ast_helpers import (
 )
 from .exclusions import RESOLUTION_ALLOWED_EXCLUDED, Exclusions
 from .fixtures import path_loading_fixtures
+from .reads import ReadRecorder
 from .safe_io import (
     S_IFMT,
     S_IFREG,
-    PathWalk,
     UnreadableInput,
-    _inside,
     names_python_in_shebang,
     read_bounded,
-    walk_keys,
     walk_path,
 )
 
@@ -73,7 +71,7 @@ def _project_directory(value: Any) -> tuple[str, ...] | None:
     return parts
 
 
-class ProjectModuleIndex:
+class ProjectModuleIndex(ReadRecorder):
     """Filesystem-backed, batch-independent module resolution.
 
     Import and reference targets must be identical no matter how a scan request
@@ -82,17 +80,7 @@ class ProjectModuleIndex:
     plus non-package top-level directories such as ``src/``) are detected once,
     and each referenced module's top-level declarations are parsed lazily and
     memoized. Only files that live under the validated root and stay within the
-    byte cap are read.
-
-    ``read_hashes`` records every file a request read, keyed by its
-    project-relative path, for the result's ``input_hashes``: the SHA-256 of
-    the bytes read, or ``None`` when the read was attempted and failed. One
-    path can be read more than once in a request: by an importer's resolution
-    and by its own scan, or under two module ids. Two reads that disagree, in
-    hash or in whether they succeeded, record ``None``, because at least one
-    of them differs from what discovery hashed or failed, and either may have
-    fed facts. Keeping either value alone would leave the other read
-    unverified.
+    byte cap are read, and every read is recorded (:class:`ReadRecorder`).
     """
 
     def __init__(
@@ -102,19 +90,13 @@ class ProjectModuleIndex:
         exclusions: Exclusions | None = None,
         source_files: frozenset[str] | None = None,
     ) -> None:
-        self.root = root
-        self.max_bytes = max_bytes
+        super().__init__(root, max_bytes)
         self.exclusions = exclusions or Exclusions()
-        self.read_hashes: dict[str, str | None] = {}
         # Every discovered Python file, when the request lists them: a module
         # among them has a contribution of its own that names what it read.
         self.source_files = source_files
-        # Reads the request shares: the probes that decide the source roots.
-        self.shared_reads: set[str] = set()
         # Reads made for a discovered module, which its own contribution names.
         self.unattributed_reads: set[str] = set()
-        # The keys each open file or module computation has read, innermost last.
-        self._scopes: list[set[str]] = []
         # What a module's declarations cost an importer that uses them.
         self._exposed: dict[str, set[str]] = {}
         # Whether a probe that finds a module file hashes it (:meth:`_record_probe`).
@@ -159,82 +141,6 @@ class ProjectModuleIndex:
         """
         listed = "\n".join("/".join(prefix) for prefix in self.prefixes)
         return hashlib.sha256(listed.encode("utf-8")).hexdigest()
-
-    def record_read(self, relative: str, content_hash: str | None, attributed: bool = True) -> None:
-        """Record one read for ``input_hashes``; a disagreeing repeat read records ``None``.
-
-        An attributed read is also named by whatever is being resolved: a
-        requested file's read of its own bytes is not, since its
-        contribution's ``content_hash`` covers it.
-        """
-        if relative in self.read_hashes and self.read_hashes[relative] != content_hash:
-            content_hash = None
-        self.read_hashes[relative] = content_hash
-        if attributed:
-            self._note({relative})
-
-    def _note(self, keys: set[str]) -> None:
-        """Name ``keys`` as read by the innermost open scope, or by the whole request outside any."""
-        (self._scopes[-1] if self._scopes else self.shared_reads).update(keys)
-
-    def open_scope(self) -> None:
-        """Start collecting the keys one file or module computation reads."""
-        self._scopes.append(set())
-
-    def close_scope(self) -> set[str]:
-        """Stop collecting for the innermost scope and return what it read."""
-        return self._scopes.pop()
-
-    def _in_root_file(self, walked: PathWalk) -> Path | None:
-        """The file a walked path opens, when that file lies inside the root.
-
-        Discovery never follows a symlink, so a module reached through a linked
-        file or directory is read where its bytes actually live, and keyed
-        there by :func:`walk_key`; that is the path whose recorded hash
-        describes them. ``None`` for a walk that did not end at a file inside
-        the root: nothing outside the root is read.
-        """
-        if walked.kind != "file" or walked.location is None or not _inside(self.root, walked.location):
-            return None
-        return Path(walked.location)
-
-    def _record_walk(self, walked: PathWalk, content_hash: str | None) -> None:
-        """Record a read, hashed or failed, under every key its walk gives."""
-        final, linked = walk_keys(self.root, walked)
-        for relative in ([final] if final is not None else []) + linked:
-            self.record_read(relative, content_hash)
-
-    def _record_probe(self, walked: PathWalk, present: bool, hashed: bool = True) -> None:
-        """Record an existence probe whose answer feeds facts.
-
-        A probe answering absent, or not a file, records ``None`` under every key
-        its walk gives: resolution goes on as if the file were not there, so a
-        discovered file missing for that moment must fail verification. A probe
-        answering present records ``None`` under the linked keys, so a
-        discovered path that had become a link is still caught, and the hash
-        of the in-root file it found under the location it reached: the file
-        being there is a fact, and only a read's key lets its deletion reach
-        the reader. ``hashed`` false leaves that location out, for a probe
-        that only its absence makes matter. Discovery never reports an absent
-        path or a link, so a stable tree is unaffected.
-        """
-        final, linked = walk_keys(self.root, walked)
-        if not present and final is not None:
-            self.record_read(final, None)
-        for relative in linked:
-            self.record_read(relative, None)
-        location = self._in_root_file(walked) if present and hashed else None
-        if location is None or final is None:
-            return
-        if final in self.read_hashes:
-            self._note({final})
-            return
-        try:
-            source = read_bounded(location, self.max_bytes)
-            content_hash = hashlib.sha256(source).hexdigest() if len(source) <= self.max_bytes else None
-        except OSError:
-            content_hash = None
-        self.record_read(final, content_hash)
 
     def _source_root_prefixes(self) -> list[tuple[str, ...]]:
         """The source roots: the bare root first, then ``src/`` and the pyproject's package directories, sorted.
@@ -559,7 +465,8 @@ class ProjectModuleIndex:
                 raise
             located = self.close_scope()
             self._exposed[module] = located
-            cached = {}
+            placeholder: dict[str, str] = {}
+            cached = placeholder
             self._cache[module] = cached
             if path is not None and tree is not None:
                 self.open_scope()
@@ -568,6 +475,10 @@ class ProjectModuleIndex:
                 except BaseException:
                     located |= self.close_scope()
                     self._note(located)
+                    # Left in place, the empty placeholder would answer every
+                    # later importer in the request with no declarations at all.
+                    if self._cache.get(module) is placeholder:
+                        del self._cache[module]
                     raise
                 declared = self.close_scope()
                 derived = owner is not None

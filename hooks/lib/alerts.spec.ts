@@ -68,6 +68,17 @@ describe('alerts for what a scan brought', () => {
     expect(freshAlerts(dash({ policy: { status: 'skipped', total: 0, truncated: false, truncation_reasons: [], items: [] } }), dash({ snapshot_id: 's2', policy: { status: 'evaluated', total: 2, truncated: false, truncation_reasons: [], items: [violation(0), violation(1)] } }))).toEqual([])
   })
 
+  it('says once, with the reason, that the policies became unreadable', () => {
+    const unread = (message: unknown) => ({ status: 'config_invalid', message, total: 0, truncated: false, truncation_reasons: [], items: [] }) as unknown as Dashboard['policy']
+    const after = dash({ snapshot_id: 's2', policy: unread('knossos.json: unexpected token') })
+    expect(freshAlerts(dash(), after)).toEqual([{ key: 'policies-unreadable:knossos.json: unexpected token', text: 'knossos: policies unreadable: knossos.json: unexpected token' }])
+    expect(freshAlerts(dash(), after, new Set(['policies-unreadable:knossos.json: unexpected token']))).toEqual([])
+    // Unreadable before as well: nothing new to say.
+    expect(freshAlerts(dash({ policy: unread('earlier') }), after)).toEqual([])
+    // No reason given: the default one is said.
+    expect(freshAlerts(dash(), dash({ snapshot_id: 's2', policy: unread(null) }))[0]?.text).toBe('knossos: policies unreadable: knossos.json could not be read')
+  })
+
   it('says no count grew against an earlier search that stopped before it counted them', () => {
     const before = dash({ cycles: { count: 0, truncated: true, truncation_reasons: ['time_limit'], largest: [] } })
     const after = dash({ snapshot_id: 's2', cycles: { count: 2, truncated: false, truncation_reasons: [], largest: [cycle('App\\A', 'App\\B'), cycle('App\\C', 'App\\D')] } })

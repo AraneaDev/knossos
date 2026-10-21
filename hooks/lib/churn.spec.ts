@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { Churn, ChurnState, Dashboard, KnossosView } from '../../types'
 import { churnInput, churnList, scatterRows } from './churn'
 import { parseChurn } from './envelopes'
-import { listFor, paneInput, paneLayout } from './layout'
+import { listFor } from './pane-list'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { plainText, rawText } from './__tests__/plain-text'
 import { rowWidth } from './rows'
 
@@ -12,7 +14,7 @@ const view = (over: Partial<KnossosView> = {}): KnossosView => ({ inspect: null,
 const file = (i: number) => ({ path: `src/a/rather/deep/directory/Service${i}.php`, commits: Math.max(1, 30 - i), dependents: Math.max(0, 300 - i * 9), score: Math.max(0, 30 - i) * Math.max(0, 300 - i * 9), boundary: i % 2 === 0 ? 'core' : 'tests' })
 const answer = (n: number, over: Partial<Churn> = {}): Churn => ({ status: 'ok', days: 30, head: 'abc', commits: 120, truncated: false, files: Array.from({ length: n }, (_, i) => file(i)), ...over })
 const state = (a: Churn | null, phase: ChurnState['phase'] = 'done'): ChurnState => ({ head: 'abc', phase, answer: a })
-const pane = (s: ChurnState | null, v = view()) => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, undefined, null, undefined, { churn: s })
+const pane = (s: ChurnState | null, v = view()) => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { churn: s } })
 const text = (s: ChurnState | null, columns = 100, height = 60, v = view()) => paneLayout(pane(s, v), columns, height).body.map(plainText).join('\n')
 
 describe('the Churn tab', () => {
@@ -73,7 +75,7 @@ describe('the Churn tab', () => {
   })
 
   it('shows the marked file beside the list on a wide pane', () => {
-    const peeked = paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 0, true, null, null, undefined, null, undefined, { churn: state(answer(5)) }, { label: 'x', loading: true, messages: null, component: null })
+    const peeked = paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { churn: state(answer(5)) }, peek: { label: 'x', loading: true, messages: null, component: null } })
     expect(paneLayout(peeked, 140, 40).body.some(r => r.key.includes('peek-'))).toBe(true)
   })
 })

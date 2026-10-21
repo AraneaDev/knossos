@@ -1,5 +1,5 @@
 import { GLYPHS } from '../cards'
-import type { Row } from '../rows'
+import type { Row } from '../types'
 
 /** A card title's kind glyph and the space after it: what a spec reading the title's words leaves out. */
 const GLYPH = new RegExp(`^[${[...new Set(Object.values(GLYPHS))].join('')}] `, 'u')

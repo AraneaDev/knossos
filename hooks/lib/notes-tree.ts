@@ -9,7 +9,30 @@
  * (`notes:b+:` open, `notes:b-:` closed), since its default moves with the
  * newest note. While searching, every group is open so every match shows. A file note is named by its path, a symbol by its short name.
  */
-import type { NoteItem } from './notes-view'
+import type { NoteRow } from '../../types'
+
+/** One note as the tab draws it. */
+export type NoteItem = {
+  component: string
+  /** The component's own name, the last part of its full one. */
+  label: string
+  author: 'user' | 'model'
+  kind: string
+  /** Its text whole, and the first line of it, which the row shows. */
+  value: string
+  line: string
+  date: string
+  /** When it was written, whole: what orders the tree's notes and picks the boundary opened first. */
+  updated: string
+  missing: boolean
+  stale: boolean
+  staleReason: string | null
+  checked: boolean
+  checkReason: string | null
+  /** The file its component is in (a file note's own path), and that component's boundary; null when knossos does not say. */
+  path: string | null
+  boundary: string | null
+}
 
 /** Whether a component's name is a project path (a file component): it has a `/` and no symbol after a `#`. */
 const isPath = (component: string): boolean => component.includes('/') && !component.includes('#') && !component.includes('\\') && !component.includes('::')
@@ -21,6 +44,25 @@ const isPath = (component: string): boolean => component.includes('/') && !compo
  */
 export const labelOf = (component: string): string =>
   isPath(component) ? (component.split('/').filter(p => p !== '').at(-1) ?? component) : (component.split(/\\|::|\/|#|(?<=\w)\.(?=\w)/).filter(p => p !== '').at(-1) ?? component)
+
+/** A note of the answer as the tab draws it. */
+export const itemOf = (row: NoteRow): NoteItem => ({
+  component: row.component,
+  label: labelOf(row.component),
+  author: row.author,
+  kind: row.kind,
+  value: row.value,
+  line: row.value.split('\n')[0]?.trim() ?? '',
+  date: row.updated_at.slice(0, 10),
+  updated: row.updated_at,
+  missing: row.component_status === 'missing',
+  stale: row.stale,
+  staleReason: row.stale_reason,
+  checked: row.checked,
+  checkReason: row.check_reason,
+  path: row.path ?? null,
+  boundary: row.boundary ?? null,
+})
 
 /** One walked line of the tree. `fold` is the key `o` flips in the view's folds, and `contrary` the opposite one it replaces. */
 export type TreeLine =
