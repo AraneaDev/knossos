@@ -191,9 +191,12 @@ php	src/Mcp/Protocol/ProtocolNegotiator.php
 php	src/Mcp/Protocol/ProtocolProfile.php
 php	src/Mcp/Protocol/UnsupportedProtocolVersionException.php
 php	src/Mcp/ResourceService.php
+php	src/Mcp/ResponseOptions.php
 php	src/Mcp/ResultEnricher.php
+php	src/Mcp/StaleScanRefresher.php
 php	src/Mcp/StdioServer.php
 php	src/Mcp/ToolArgumentPreflight.php
+php	src/Mcp/ToolArgumentSpec.php
 php	src/Mcp/ToolArguments.php
 php	src/Mcp/ToolCatalog.php
 php	src/Mcp/ToolErrorMapper.php
@@ -276,6 +279,7 @@ php	src/Query/RenameMatching.php
 php	src/Query/ReportableComponent.php
 php	src/Query/RescanService.php
 php	src/Query/ReviewDiffService.php
+php	src/Query/ReviewSection.php
 php	src/Query/SemanticRanker.php
 php	src/Query/SessionBrief.php
 php	src/Query/SessionBriefRenderer.php
@@ -291,6 +295,7 @@ php	src/Query/SnapshotTooLargeException.php
 php	src/Query/SourceExcerptReader.php
 php	src/Query/StalenessProbe.php
 php	src/Query/StalenessSnapshot.php
+php	src/Query/StandInExpansion.php
 php	src/Query/SupertypeMethods.php
 php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
@@ -303,6 +308,7 @@ php	src/Reconciliation/FullScanRequest.php
 php	src/Reconciliation/GraphReconciler.php
 php	src/Reconciliation/Milliseconds.php
 php	src/Reconciliation/NamedFiles.php
+php	src/Reconciliation/NodeIdentity.php
 php	src/Reconciliation/NodeReferenceIndex.php
 php	src/Reconciliation/PhaseTimer.php
 php	src/Reconciliation/PreparedGraph.php
@@ -310,9 +316,11 @@ php	src/Reconciliation/ReconciliationDiagnostics.php
 php	src/Reconciliation/ReconciliationException.php
 php	src/Reconciliation/ReconciliationResult.php
 php	src/Reconciliation/RouteTemplates.php
+php	src/Reconciliation/ScannerSetHash.php
 php	src/Reconciliation/UrlTemplate.php
 php	src/Result/PaneStatus.php
 php	src/Result/ResultEnvelope.php
+php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
 php	src/Runtime/MemoryLimit.php
 php	src/Runtime/RuntimeFactory.php
@@ -348,6 +356,7 @@ php	src/Scan/ScanBatchQueue.php
 php	src/Scan/ScanInputHashes.php
 php	src/Scan/ScanLedger.php
 php	src/Scan/ScanLedgerSpan.php
+php	src/Scan/ScanOptions.php
 php	src/Scan/ScanPlan.php
 php	src/Scan/ScanPlanner.php
 php	src/Scan/ScanPreparation.php
@@ -356,6 +365,7 @@ php	src/Scan/ScanResultFactory.php
 php	src/Scan/ScanSnapshotChangedException.php
 php	src/Scan/ScanSnapshotValidator.php
 php	src/Scan/ScanTarget.php
+php	src/Scan/StageClock.php
 php	src/Scan/TreeFingerprint.php
 php	src/Scan/UndiscoveredInputVerifier.php
 php	src/Scan/UndiscoveredInputs.php
@@ -391,6 +401,7 @@ php	src/Store/CountedSnapshotFigures.php
 php	src/Store/EnrichedFacts.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
+php	src/Store/ProjectRepository.php
 php	src/Store/ScanBusyException.php
 php	src/Store/SharedNodeKinds.php
 php	src/Store/SnapshotBounds.php
@@ -596,6 +607,7 @@ php	tests/phpunit/Mcp/ResultEnricherBudgetTest.php
 php	tests/phpunit/Mcp/ServerEnvironmentToolsTest.php
 php	tests/phpunit/Mcp/StdioFrames.php
 php	tests/phpunit/Mcp/ToolArgumentProbes.php
+php	tests/phpunit/Mcp/ToolArgumentSpecTest.php
 php	tests/phpunit/Mcp/ToolBoundsAgreementTest.php
 php	tests/phpunit/Mcp/ToolCatalogEdgeKindsTest.php
 php	tests/phpunit/Mcp/ToolCatalogPolicyTest.php
@@ -772,6 +784,7 @@ php	tests/phpunit/Reconciliation/WatchTest.php
 php	tests/phpunit/ReleaseChecksTest.php
 php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
+php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php
 php	tests/phpunit/Runtime/DoctorServiceTest.php

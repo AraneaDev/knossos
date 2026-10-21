@@ -22,8 +22,7 @@ final readonly class ReviewSection
         public array $evidence = [],
         public array $warnings = [],
         public bool $truncated = false,
-    ) {
-    }
+    ) {}
 
     /** A section left out, with the reason. */
     public static function notEvaluated(string $reason): self

@@ -25,7 +25,12 @@ export default [
                 {
                     patterns: [
                         {
-                            group: ["../mod", "../mod/*", "../../mod", "../../mod/*"],
+                            group: [
+                                "../mod",
+                                "../mod/*",
+                                "../../mod",
+                                "../../mod/*",
+                            ],
                             message: "hooks/lib must not import hooks/mod.",
                         },
                     ],
