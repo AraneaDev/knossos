@@ -1205,6 +1205,7 @@ js	hooks/mod/render.band.spec.ts
 js	hooks/mod/render.pane.spec.ts
 js	hooks/mod/render.segments.spec.ts
 js	hooks/mod/render.tsx
+js	hooks/mod/session-baseline.ts
 js	hooks/mod/session.command.spec.ts
 js	hooks/mod/session.end-session.spec.ts
 js	hooks/mod/session.end-turn.spec.ts
@@ -1358,6 +1359,7 @@ js	workers/typescript/src/errors.js
 js	workers/typescript/src/exclusions.js
 js	workers/typescript/src/fact-accumulator.js
 js	workers/typescript/src/fallback-groups.js
+js	workers/typescript/src/file-facts.js
 js	workers/typescript/src/input-hashes-parts.js
 js	workers/typescript/src/input-reads.js
 js	workers/typescript/src/language-fact-collector.js
@@ -1365,6 +1367,7 @@ js	workers/typescript/src/launch-facts.js
 js	workers/typescript/src/module-entry.js
 js	workers/typescript/src/nestjs-fact-enricher.js
 js	workers/typescript/src/node-builtins.js
+js	workers/typescript/src/program-cache.js
 js	workers/typescript/src/program-diagnostics.js
 js	workers/typescript/src/program-host.js
 js	workers/typescript/src/project-paths.js
