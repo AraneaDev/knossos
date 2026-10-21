@@ -210,7 +210,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $queue = [];
         $head = 0;
         foreach ($sourceSet as $start) {
-            $queue[] = [[$start], [], [$start['id'] => true], $profile === null ? null : [$profile], []];
+            $queue[] = FlowState::start($start, $profile);
         }
         // Every queued state carries a copy of its path, so the visit bound
         // alone let one wide node queue far more than it could ever visit.
@@ -228,14 +228,14 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 $truncation->add('time_limit');
                 break;
             }
-            [$nodes, $hops, $seen, $candidates, $unprofiled] = $queue[$head];
+            $state = $queue[$head];
             unset($queue[$head]);
             ++$head;
             ++$visited;
-            if (count($hops) >= $maxDepth) {
+            if (count($state->hops) >= $maxDepth) {
                 continue;
             }
-            $last = $nodes[array_key_last($nodes)];
+            $last = $state->nodes[array_key_last($state->nodes)];
             $edges = [
                 ...EdgePage::fetch($this->pdo, $projectId, Direction::Outgoing, $last['id'], $edgeKinds, $minimumRank, $edgePageTruncation),
                 ...$this->implementationSteps($projectId, $last['id'], $edgeKinds, $minimumRank),
@@ -251,29 +251,20 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 // source is pre-seeded, so a self-flow (from == to) depends on
                 // matching the target before the visited-guard skips it.
                 $isTarget = isset($targetSet[$edge['target_id']]);
-                if (isset($seen[$edge['target_id']]) && !$isTarget) {
+                if (isset($state->seen[$edge['target_id']]) && !$isTarget) {
                     continue;
                 }
                 if (!array_key_exists($edge['id'], $edgeProfiles)) {
                     $edgeProfiles[$edge['id']] = $edge['origin'] === 'enricher' ? self::edgeProfiles((string) $edge['attributes_json']) : null;
                 }
-                [$newCandidates, $unprofiledHop] = self::narrowProfiles($candidates, $edgeProfiles[$edge['id']]);
-                if ($newCandidates === []) {
+                $next = self::expand($state, $edge, $edgeProfiles[$edge['id']]);
+                if ($next === null) {
                     // The edge's profiles contradict the path's: no deployment takes both.
                     ++$pruned;
                     continue;
                 }
-                $newUnprofiled = $unprofiledHop ? [...$unprofiled, count($hops)] : $unprofiled;
-                // The edge query joins the target row, so a dangling target is
-                // already excluded and no lookup per edge is needed.
-                $next = [
-                    'id' => $edge['target_id'], 'kind' => $edge['target_kind'], 'canonical_name' => $edge['target_canonical_name'],
-                    'display_name' => $edge['target_display_name'], 'confidence' => $edge['target_confidence'],
-                ];
-                $newNodes = [...$nodes, $next];
-                $newHops = [...$hops, $edge];
                 if ($isTarget) {
-                    $candidate = $this->path($newNodes, $newHops, $newCandidates, $newUnprofiled);
+                    $candidate = $this->path($next->nodes, $next->hops, $next->candidates, $next->unprofiled);
                     $existing = $paths[$candidate['signature']] ?? null;
                     // Keep the best-scoring witness, not merely the first one
                     // found: two call sites for the same route can carry
@@ -295,9 +286,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                     $truncation->add('queue_limit');
                     continue;
                 }
-                $newSeen = $seen;
-                $newSeen[$next['id']] = true;
-                $queue[] = [$newNodes, $newHops, $newSeen, $newCandidates, $newUnprofiled];
+                $queue[] = $next;
                 ++$queued;
             }
         }
@@ -306,6 +295,37 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $truncation->add(...$edgePageTruncation->reasons());
 
         return ['paths' => $paths, 'visited' => $visited, 'queued' => $queued, 'pruned' => $pruned];
+    }
+
+    /**
+     * The state after `$state` takes `$edge`, or null when the edge's profiles contradict the path's.
+     *
+     * The edge query joins the target row, so a dangling target is already
+     * excluded and no lookup per edge is needed.
+     *
+     * @param array<string, mixed> $edge
+     * @param ?list<string> $profiles the edge's, sorted; null when it has none
+     */
+    private static function expand(FlowState $state, array $edge, ?array $profiles): ?FlowState
+    {
+        [$candidates, $unprofiledHop] = self::narrowProfiles($state->candidates, $profiles);
+        if ($candidates === []) {
+            return null;
+        }
+        $next = [
+            'id' => $edge['target_id'], 'kind' => $edge['target_kind'], 'canonical_name' => $edge['target_canonical_name'],
+            'display_name' => $edge['target_display_name'], 'confidence' => $edge['target_confidence'],
+        ];
+        $seen = $state->seen;
+        $seen[(string) $next['id']] = true;
+
+        return new FlowState(
+            [...$state->nodes, $next],
+            [...$state->hops, $edge],
+            $seen,
+            $candidates,
+            $unprofiledHop ? [...$state->unprofiled, count($state->hops)] : $state->unprofiled,
+        );
     }
 
     /**
