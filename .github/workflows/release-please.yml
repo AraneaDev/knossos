@@ -51,7 +51,7 @@ jobs:
       # the whole history.
       - name: Run release-please (releases)
         id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           skip-github-pull-request: true
           # A Release PR opened with the built-in GITHUB_TOKEN arrives with no checks
@@ -78,7 +78,7 @@ jobs:
       # persisting them buys nothing.
       - name: Checkout
         if: ${{ steps.release.outputs.release_created }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.release.outputs.sha }}
           fetch-depth: 0
@@ -193,7 +193,7 @@ jobs:
       # pass leaves it alone and the next run releases it.
       - name: Run release-please (pull requests)
         if: ${{ !cancelled() }}
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           skip-github-release: true
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
