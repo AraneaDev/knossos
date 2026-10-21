@@ -36,14 +36,7 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
         if ($maxFiles < 1 || $maxFiles > 1000) {
             throw new RuntimeException('max_files must be between 1 and 1000.');
         }
-        if ($timeoutMs < 1 || $timeoutMs > 5000) {
-            throw new RuntimeException('timeout_ms must be between 1 and 5000.');
-        }
-        $root = realpath($projectRoot);
-        if ($root === false || !is_dir($root)) {
-            throw new RuntimeException('Git project root is not a readable directory.');
-        }
-        $git = ['git', '--no-optional-locks', '--no-pager', '-C', $root];
+        $git = GitCommand::checked($projectRoot, $timeoutMs);
         $diff = [...$git, 'diff', '--name-status', '-z', '--no-ext-diff', '--find-renames', '--relative'];
         $paths = [];
         $renames = [];

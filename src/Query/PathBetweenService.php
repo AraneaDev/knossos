@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -45,14 +44,20 @@ final readonly class PathBetweenService
      */
     public function routes(string $path, string $from, string $to): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'from' => null, 'to' => null, 'reversed' => false, 'routes' => [], 'truncated' => false, 'truncation_reasons' => []];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
+        $envelope = ['project_id' => null, 'snapshot_id' => null, 'from' => null, 'to' => null, 'reversed' => false, 'routes' => [], 'truncated' => false, 'truncation_reasons' => []];
+
+        return PaneProject::answer($this->pdo, $path, $envelope, fn(array $project, array $envelope): array => $this->routesIn($project['id'], $envelope, $from, $to));
+    }
+
+    /**
+     * The routes from `$from` to `$to` in the scanned project `$id`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function routesIn(string $id, array $envelope, string $from, string $to): array
+    {
         $flows = ($this->services ?? QueryServices::wire($this->pdo))->flowQueries;
         $flow = (new AnnotationNotes($this->pdo))->attach($flows->explainFlow($id, $from, $to, self::DEPTH, self::ROUTES, timeoutMs: self::TIMEOUT_MS, bothDirections: true));
         foreach (['from' => $from, 'to' => $to] as $end => $asked) {

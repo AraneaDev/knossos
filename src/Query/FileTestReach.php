@@ -140,6 +140,8 @@ final readonly class FileTestReach
             array_push($tests, ...$listed);
         }
 
-        return ['tests' => array_slice($tests, 0, $limit), 'truncated' => $truncated || count($tests) > $limit];
+        [$tests, $cut] = Page::cut($tests, $limit);
+
+        return ['tests' => $tests, 'truncated' => $truncated || $cut];
     }
 }

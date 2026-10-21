@@ -36,9 +36,9 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
             throw new InvalidArgumentException('offset must be between 0 and 100000.');
         }
         $rows = (new ProjectRepository($this->pdo))->catalogPage($limit, $offset);
-        $truncated = count($rows) > $limit;
+        [$rows, $truncated] = Page::cut($rows, $limit);
         $projects = [];
-        foreach (array_slice($rows, 0, $limit) as $row) {
+        foreach ($rows as $row) {
             $rootAvailable = is_dir($row['root_realpath']);
             $freshness = match (true) {
                 !is_string($row['active_scan_id']) || $row['active_scan_id'] === '' => 'unscanned',
@@ -113,7 +113,9 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
     {
         $rows = (new ProjectRepository($this->pdo))->inCreationOrder($limit, (string) $afterCreatedAt, (string) $afterId);
 
-        return ['projects' => array_slice($rows, 0, $limit), 'more' => count($rows) > $limit];
+        [$projects, $more] = Page::cut($rows, $limit);
+
+        return ['projects' => $projects, 'more' => $more];
     }
 
     /** Retained scan history, for choosing a baseline to diff or gate against. */
@@ -139,8 +141,7 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
         $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
         $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
         $statement->execute();
-        $rows = $statement->fetchAll();
-        $truncated = count($rows) > $limit;
+        [$rows, $truncated] = Page::cut($statement->fetchAll(), $limit);
         $snapshots = array_map(static fn(array $row): array => [
             'scan_id' => $row['id'], 'active' => $row['id'] === $project['active_scan_id'],
             'retained' => $row['captured_at'] !== null, 'complete_archive' => $row['complete'] === null ? null : (bool) $row['complete'],
@@ -148,7 +149,7 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
             'config_hash' => $row['config_hash'], 'started_at' => $row['started_at'], 'finished_at' => $row['finished_at'],
             'captured_at' => $row['captured_at'], 'fact_count' => $row['fact_count'] === null ? null : (int) $row['fact_count'],
             'byte_size' => $row['byte_size'] === null ? null : (int) $row['byte_size'],
-        ], array_slice($rows, 0, $limit));
+        ], $rows);
 
         return new ResultEnvelope($projectId, $project['active_scan_id'] ?? '', sprintf('Listed %d active or retained snapshot%s.', count($snapshots), count($snapshots) === 1 ? '' : 's'), [
             'snapshots' => $snapshots, 'pagination' => ['limit' => $limit, 'offset' => $offset, 'next_offset' => $truncated ? $offset + $limit : null],

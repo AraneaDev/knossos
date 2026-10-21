@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -44,15 +43,12 @@ final readonly class BoundaryCouplingsService
      */
     public function couplings(string $path, string $from, string $to): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'from' => $from, 'to' => $to, 'edges' => 0, 'couplings' => [], 'truncated' => false, 'truncation_reasons' => []];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $found = $this->matrix->couplings($id, BoundaryLabels::load($this->pdo, $id), $from, $to, self::LIMIT);
+        $envelope = ['project_id' => null, 'snapshot_id' => null, 'from' => $from, 'to' => $to, 'edges' => 0, 'couplings' => [], 'truncated' => false, 'truncation_reasons' => []];
 
-        return ['status' => 'ok', 'project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $found + $envelope;
+        return PaneProject::answer($this->pdo, $path, $envelope, function (array $project, array $envelope) use ($from, $to): array {
+            $found = $this->matrix->couplings($project['id'], BoundaryLabels::load($this->pdo, $project['id']), $from, $to, self::LIMIT);
+
+            return ['status' => 'ok'] + array_replace($envelope, $found);
+        });
     }
 }

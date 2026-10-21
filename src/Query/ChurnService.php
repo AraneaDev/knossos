@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitCommand;
 use Knossos\Git\{GitLogRecords, GitProcessRunner, GitProcessRunnerInterface};
-use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -67,15 +67,20 @@ final readonly class ChurnService
      */
     public function churn(string $path): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'days' => self::DAYS, 'head' => null, 'commits' => 0, 'truncated' => false, 'files' => []];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $root = (string) $project['root_realpath'];
-        $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
+        $envelope = ['project_id' => null, 'snapshot_id' => null, 'days' => self::DAYS, 'head' => null, 'commits' => 0, 'truncated' => false, 'files' => []];
+
+        return PaneProject::answer($this->pdo, $path, $envelope, fn(array $project, array $envelope): array => $this->churnIn($project['id'], $project['root'], $envelope));
+    }
+
+    /**
+     * The churn hotspots of the scanned project `$id` at `$root`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function churnIn(string $id, string $root, array $envelope): array
+    {
         $log = $this->log($root);
         if ($log === null) {
             return ['status' => 'no-git'] + $envelope;
@@ -122,7 +127,7 @@ final readonly class ChurnService
      */
     private function log(string $root): array|false|null
     {
-        $git = ['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '-C', $root];
+        $git = GitCommand::in($root);
         $runner = $this->runner ?? new GitProcessRunner();
         try {
             $head = trim($runner->run([...$git, 'rev-parse', '--verify', '-q', 'HEAD'], self::GIT_TIMEOUT_MS, 'churn'));

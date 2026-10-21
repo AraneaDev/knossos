@@ -108,11 +108,11 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
             $poolEdges,
             static fn(array $edge): bool => isset($nodes[$edge['source_id']], $nodes[$edge['target_id']]),
         ));
-        if (count($edges) > $maxEdges) {
+        [$edges, $cut] = Page::cut($edges, $maxEdges);
+        if ($cut) {
             $truncated = true;
             $reasons[] = 'edge_limit';
         }
-        $edges = array_slice($edges, 0, $maxEdges);
         $evidence = [];
         foreach (array_slice($rows, 0, 100) as $row) {
             if ($row['relative_path'] !== null) {
@@ -150,9 +150,7 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
         if ($maxEdges < 1 || $maxEdges > 1000) {
             throw new InvalidArgumentException('max_edges must be between 1 and 1000.');
         }
-        if (!isset(self::CONFIDENCE_RANK[$minConfidence])) {
-            throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
-        }
+        ConfidenceRank::rank($minConfidence);
     }
 
     /** The renderer for a format {@see validateArguments} has accepted. */

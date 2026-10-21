@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitCommand;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Git\GitWorkingTreeProvider;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanLedgerSpan;
-use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -89,14 +89,18 @@ final readonly class SessionChangesService
      */
     public function changes(string $path, string $since): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = self::envelope($absolute, $since);
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $projectId = (string) $project['id'];
-        $root = (string) $project['root_realpath'];
+        return PaneProject::answer($this->pdo, $path, self::envelope($since), fn(array $project, array $envelope): array => $this->changesIn($project['id'], $project['root'], $since, $envelope));
+    }
+
+    /**
+     * The changes since snapshot `$since` in the scanned project `$projectId` at `$root`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function changesIn(string $projectId, string $root, string $since, array $envelope): array
+    {
         $ledger = new ScanLedger($this->pdo);
         $base = ['status' => 'ok', 'project_root' => $root, 'project_id' => $projectId, 'snapshot_id' => $ledger->activeSnapshot($projectId)] + $envelope;
         $absorbed = $ledger->since($projectId, $since);
@@ -124,14 +128,18 @@ final readonly class SessionChangesService
      */
     public function workingChanges(string $path): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = self::envelope($absolute, 'HEAD');
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $projectId = (string) $project['id'];
-        $root = (string) $project['root_realpath'];
+        return PaneProject::answer($this->pdo, $path, self::envelope('HEAD'), fn(array $project, array $envelope): array => $this->workingChangesIn($project['id'], $project['root'], $envelope));
+    }
+
+    /**
+     * The files git reports changed in the scanned project `$projectId` at `$root`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function workingChangesIn(string $projectId, string $root, array $envelope): array
+    {
         $base = ['project_root' => $root, 'project_id' => $projectId, 'snapshot_id' => (new ScanLedger($this->pdo))->activeSnapshot($projectId)] + $envelope;
         if (!$this->succeeds($root, ['rev-parse', '--is-inside-work-tree'])) {
             return ['status' => 'no-git'] + $base;
@@ -150,13 +158,13 @@ final readonly class SessionChangesService
     }
 
     /**
-     * The envelope every answer carries, with nothing found yet.
+     * The envelope every answer carries after its `path`, with nothing found yet.
      *
      * @return array<string, mixed>
      */
-    private static function envelope(string $absolute, string $since): array
+    private static function envelope(string $since): array
     {
-        return ['path' => $absolute, 'project_root' => null, 'project_id' => null, 'snapshot_id' => null, 'since' => $since, 'complete' => false,
+        return ['project_root' => null, 'project_id' => null, 'snapshot_id' => null, 'since' => $since, 'complete' => false,
             'files' => (object) [], 'files_truncated' => false, 'tests' => [], 'tests_truncated' => false, 'scans' => [], 'scans_truncated' => false, 'reached' => null, 'start_approximate' => false];
     }
 
@@ -168,7 +176,7 @@ final readonly class SessionChangesService
     private function succeeds(string $dir, array $args): bool
     {
         try {
-            $this->runner->run(['git', '--no-optional-locks', '--no-pager', '-C', $dir, ...$args], 2000, 'session changes');
+            $this->runner->run([...GitCommand::in($dir), ...$args], 2000, 'session changes');
             return true;
         } catch (Throwable) {
             return false;

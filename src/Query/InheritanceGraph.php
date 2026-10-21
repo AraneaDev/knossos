@@ -219,39 +219,16 @@ final class InheritanceGraph
      */
     private static function ancestorEdges(PDO $pdo, string $projectId, array $frontier): array
     {
-        $parents = [];
-        $edgesResolved = [];
-        for ($depth = 0; $depth < self::MAX_ANCESTOR_DEPTH && $frontier !== []; $depth++) {
-            $pending = array_values(array_filter($frontier, static fn(string $id): bool => !isset($edgesResolved[$id])));
-            if ($pending === []) {
-                break;
-            }
-            $discovered = [];
-            // `returns` joins the walk because a factory returning an object
-            // literal is how a language without classes writes an
-            // implementation: the literal's members are contained by the
-            // FUNCTION, and a call site typed as the interface resolves to
-            // the interface's member, so the literal's member has no inbound
-            // edge and reads as dead. The function's declared return type is
-            // the contract it satisfies, which is exactly what `extends` and
-            // `implements` say for a class. Only a function carries a
-            // `returns` edge, so the class case is untouched.
-            foreach (ChunkedInQuery::rows(
-                $pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('implements', 'extends', 'returns')" . EnrichedFacts::nativeCondition('edges') . ' AND source_id IN (%s)',
-                $pending,
-                [$projectId],
-            ) as $row) {
-                $parents[$row['source_id']][] = $row['target_id'];
-                $discovered[] = $row['target_id'];
-            }
-            foreach ($pending as $id) {
-                $edgesResolved[$id] = true;
-            }
-            $frontier = array_values(array_unique($discovered));
-        }
-
-        return $parents;
+        // `returns` joins the walk because a factory returning an object
+        // literal is how a language without classes writes an
+        // implementation: the literal's members are contained by the
+        // FUNCTION, and a call site typed as the interface resolves to
+        // the interface's member, so the literal's member has no inbound
+        // edge and reads as dead. The function's declared return type is
+        // the contract it satisfies, which is exactly what `extends` and
+        // `implements` say for a class. Only a function carries a
+        // `returns` edge, so the class case is untouched.
+        return EdgeWalk::reach($pdo, $projectId, ['implements', 'extends', 'returns'], Direction::Outgoing, $frontier, self::MAX_ANCESTOR_DEPTH);
     }
 
     /**
@@ -263,35 +240,12 @@ final class InheritanceGraph
      */
     private static function inheritingSubtypes(PDO $pdo, string $projectId, array $typeIds): array
     {
-        $direct = [];
-        $frontier = $typeIds;
-        for ($depth = 0; $depth < self::MAX_SUBTYPE_DEPTH && $frontier !== []; ++$depth) {
-            $found = [];
-            foreach (ChunkedInQuery::rows(
-                $pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('extends', 'uses_trait')" . EnrichedFacts::nativeCondition('edges') . ' AND target_id IN (%s)',
-                $frontier,
-                [$projectId],
-            ) as $row) {
-                $direct[(string) $row['target_id']][(string) $row['source_id']] = true;
-                $found[] = (string) $row['source_id'];
-            }
-            $frontier = array_values(array_diff(array_unique($found), array_keys($direct)));
-        }
+        $direct = array_map(static fn(array $subtypes): array => array_values(array_unique($subtypes)), EdgeWalk::reach($pdo, $projectId, ['extends', 'uses_trait'], Direction::Incoming, $typeIds, self::MAX_SUBTYPE_DEPTH));
         $result = [];
         foreach ($typeIds as $typeId) {
-            $seen = [];
-            $stack = array_keys($direct[$typeId] ?? []);
-            while ($stack !== []) {
-                $id = array_pop($stack);
-                if (isset($seen[$id]) || $id === $typeId) {
-                    continue;
-                }
-                $seen[$id] = true;
-                array_push($stack, ...array_keys($direct[$id] ?? []));
-            }
-            if ($seen !== []) {
-                $result[$typeId] = array_keys($seen);
+            $subtypes = EdgeWalk::closure($typeId, $direct);
+            if ($subtypes !== []) {
+                $result[$typeId] = $subtypes;
             }
         }
 
@@ -352,41 +306,22 @@ final class InheritanceGraph
         $subtypeIds = array_values(array_unique(array_merge(...array_values($subtypesOf))));
         // A subtype carries what it inherits as well as what it declares: an
         // implementer may take the method from the class it extends.
-        $basesOf = [];
-        $frontier = $subtypeIds;
-        for ($depth = 0; $depth < self::MAX_SUBTYPE_DEPTH && $frontier !== []; ++$depth) {
-            $found = [];
-            foreach (ChunkedInQuery::rows(
-                $pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN ('extends', 'uses_trait')" . EnrichedFacts::nativeCondition('edges') . ' AND source_id IN (%s)',
-                $frontier,
-                [$projectId],
-            ) as $row) {
-                $basesOf[(string) $row['source_id']][] = (string) $row['target_id'];
-                $found[] = (string) $row['target_id'];
-            }
-            $frontier = array_values(array_diff(array_unique($found), array_keys($basesOf), $subtypeIds));
-        }
+        $basesOf = EdgeWalk::reach($pdo, $projectId, ['extends', 'uses_trait'], Direction::Outgoing, $subtypeIds, self::MAX_SUBTYPE_DEPTH);
         $declaringIds = array_values(array_unique([...$subtypeIds, ...array_merge(...array_values($basesOf) ?: [[]])]));
         $memberNames = self::memberNamesOf($pdo, $projectId, $declaringIds);
 
         $result = [];
         foreach ($subtypesOf as $typeId => $subtypes) {
             foreach ($subtypes as $subtypeId) {
+                if ($subtypeId === $typeId) {
+                    continue;
+                }
                 // The walk stops at the contract type: its own members, and
                 // what it inherits, are not what the subtype implements it with.
-                $seen = [$typeId => true];
-                $stack = [$subtypeId];
-                while ($stack !== []) {
-                    $id = array_pop($stack);
-                    if (isset($seen[$id])) {
-                        continue;
-                    }
-                    $seen[$id] = true;
+                foreach ([$subtypeId, ...EdgeWalk::closure($subtypeId, $basesOf, [$typeId])] as $id) {
                     foreach ($memberNames[$id] ?? [] as $name => $_) {
                         $result[$typeId][$name] = true;
                     }
-                    array_push($stack, ...($basesOf[$id] ?? []));
                 }
             }
         }

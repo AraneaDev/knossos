@@ -162,6 +162,7 @@ php	src/Filesystem/RegularFileOpener.php
 php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php
 php	src/Git/DirtyPathSet.php
+php	src/Git/GitCommand.php
 php	src/Git/GitHeadResolver.php
 php	src/Git/GitHistoryProvider.php
 php	src/Git/GitLogRecords.php
@@ -243,6 +244,7 @@ php	src/Query/Drift/ScannedPaths.php
 php	src/Query/Drift/TrackedPathPredicate.php
 php	src/Query/Drift/WalkDriftOracle.php
 php	src/Query/EdgePage.php
+php	src/Query/EdgeWalk.php
 php	src/Query/EntryPointCriteria.php
 php	src/Query/ErasedTypeEdge.php
 php	src/Query/FileContextQueryService.php
@@ -265,6 +267,9 @@ php	src/Query/LocationSuggestionService.php
 php	src/Query/NotesService.php
 php	src/Query/OneTypeCycles.php
 php	src/Query/PaneCommands.php
+php	src/Query/Page.php
+php	src/Query/PaneProject.php
+php	src/Query/PaneQueries.php
 php	src/Query/PathBetweenService.php
 php	src/Query/PolicyScope.php
 php	src/Query/ProjectCatalogQueryService.php
@@ -579,6 +584,7 @@ php	tests/phpunit/Framework/SymfonyTest.php
 php	tests/phpunit/Framework/TypescriptAppTest.php
 php	tests/phpunit/Framework/TypescriptEndpointsTest.php
 php	tests/phpunit/Git/DirtyPathCaptureTest.php
+php	tests/phpunit/Git/GitCommandTest.php
 php	tests/phpunit/Git/GitHeadResolverTest.php
 php	tests/phpunit/Git/GitLogRecordsTest.php
 php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
@@ -659,6 +665,7 @@ php	tests/phpunit/Query/ChangeImpactRankingTest.php
 php	tests/phpunit/Query/ComponentBoundsTest.php
 php	tests/phpunit/Query/ComponentDetailServiceTest.php
 php	tests/phpunit/Query/ComponentUsageTest.php
+php	tests/phpunit/Query/ConfidenceRankTest.php
 php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CyclesTest.php
@@ -681,6 +688,7 @@ php	tests/phpunit/Query/Drift/ScannedPathsTest.php
 php	tests/phpunit/Query/Drift/UnitInputDriftTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleAdditionsTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleTest.php
+php	tests/phpunit/Query/EdgeWalkTest.php
 php	tests/phpunit/Query/EloquentFactoryStatesTest.php
 php	tests/phpunit/Query/EloquentMagicReferencesTest.php
 php	tests/phpunit/Query/EnrichedFactsExclusionTest.php
@@ -723,6 +731,10 @@ php	tests/phpunit/Query/ObjectLiteralImplementationTest.php
 php	tests/phpunit/Query/OneTypeCycleTest.php
 php	tests/phpunit/Query/PaneCommandsTest.php
 php	tests/phpunit/Query/PaneCoreAgreementTest.php
+php	tests/phpunit/Query/PageTest.php
+php	tests/phpunit/Query/PaneCoreAgreementTest.php
+php	tests/phpunit/Query/PaneProjectTest.php
+php	tests/phpunit/Query/PaneQueriesTest.php
 php	tests/phpunit/Query/PolicyBoundaryReferencesTest.php
 php	tests/phpunit/Query/PolicyTest.php
 php	tests/phpunit/Query/PolicyValidationBoundsTest.php
