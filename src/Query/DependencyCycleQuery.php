@@ -222,7 +222,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
             "SELECT e.id, e.kind, e.source_id, e.target_id, CASE WHEN e.kind IN ('imports', 're_exports') THEN e.attributes_json END AS attributes_json " .
             'FROM edges e WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.source_id, e.target_id, e.kind, e.id LIMIT ?',
         );
         $statement->execute([$projectId, ...$edgeKinds, $minimumRank, $maxEdges + 1]);

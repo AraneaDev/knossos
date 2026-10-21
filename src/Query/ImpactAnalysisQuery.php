@@ -149,7 +149,8 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         $head = 0;
         $dependants = [];
         $recordIndex = [];
-        $edgesTruncated = false;
+        // Kept apart so a per-node cut is reported after whatever stopped the walk.
+        $edgePageTruncation = new Truncation();
         $visited = 0;
         // Every edge read, by "source>target", into the node it counts for.
         $links = [];
@@ -168,7 +169,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
             if ($distance >= $maxDepth) {
                 continue;
             }
-            foreach ($this->dependantEdges($projectId, $current, $edgeKinds, $minimumRank, $frameworkHooks, $edgesTruncated) as $edge) {
+            foreach ($this->dependantEdges($projectId, $current, $edgeKinds, $minimumRank, $frameworkHooks, $edgePageTruncation) as $edge) {
                 if ($edge['source_id'] !== $target['id']) {
                     $links[$edge['source_id'] . '>' . $current['id']] = [(string) $edge['source_id'], (string) $current['id']];
                 }
@@ -193,11 +194,9 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
                 $queue[] = [$node, $distance + 1];
             }
         }
-        if ($edgesTruncated) {
-            // A hub with more than 500 inbound edges of the selected kinds had
-            // some silently dropped; surface it instead of claiming completeness.
-            $truncation->add('per_node_edge_limit');
-        }
+        // A hub with more than 500 inbound edges of the selected kinds had
+        // some silently dropped; surface it instead of claiming completeness.
+        $truncation->add(...$edgePageTruncation->reasons());
 
         return ['dependants' => $dependants, 'visited' => $visited, 'links' => array_values($links)];
     }
@@ -244,17 +243,17 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      * @param list<string> $edgeKinds
      * @return list<array<string, mixed>>
      */
-    private function dependantEdges(string $projectId, array $current, array $edgeKinds, int $minimumRank, bool $frameworkHooks, bool &$edgesTruncated): array
+    private function dependantEdges(string $projectId, array $current, array $edgeKinds, int $minimumRank, bool $frameworkHooks, Truncation $edgePageTruncation): array
     {
         // A call through an interface or a parent goes to the supertype's method, so what calls that may
         // run this one: its edges count as this node's, the supertype method itself never listed for it.
         // Nothing points at a property: its class's methods read it, so what uses the class may use it.
         // Which implementation runs, or which use touches the property, is a guess, so such an edge is
         // probable at best.
-        $edges = $this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgesTruncated);
+        $edges = $this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgePageTruncation);
         $standIns = StandInExpansion::of($this->pdo, $projectId, [(string) $current['id']], $edgeKinds);
         foreach ($standIns['through'] as [$standIn]) {
-            foreach ($this->impactEdges($projectId, $standIn, $edgeKinds, $minimumRank, $edgesTruncated) as $edge) {
+            foreach ($this->impactEdges($projectId, $standIn, $edgeKinds, $minimumRank, $edgePageTruncation) as $edge) {
                 $edges[] = StandInExpansion::downgradeCertain($edge);
             }
         }
@@ -262,13 +261,13 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         // constructs it is this constructor's dependant, at the construction's own confidence. Only that edge:
         // a type in a signature constructs nothing. The class itself is never listed for it.
         foreach ($standIns['constructed'] as [$class]) {
-            array_push($edges, ...$this->impactEdges($projectId, $class, [ConstructedClasses::EDGE_KIND], $minimumRank, $edgesTruncated));
+            array_push($edges, ...$this->impactEdges($projectId, $class, [ConstructedClasses::EDGE_KIND], $minimumRank, $edgePageTruncation));
         }
         // The framework calls a hook (`booted`, `newFactory`) whenever its class is used, so nothing names it:
         // what uses the class or one of its members depends on the hook. Which use runs it is a guess.
         if ($frameworkHooks && $current['kind'] === 'method' && FrameworkHookMethods::isHookName((string) $current['display_name'])) {
             foreach (FrameworkHookMethods::among($this->pdo, $projectId, [(string) $current['id']]) as $class) {
-                foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated, withMembers: true) as $edge) {
+                foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgePageTruncation, withMembers: true) as $edge) {
                     if ($edge['source_id'] !== $current['id']) {
                         $edges[] = StandInExpansion::downgradeCertain($edge);
                     }
@@ -441,33 +440,15 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
     }
 
     /**
-     * Edge kinds that count as a dependency for impact, a wider set than flow.
+     * The edges into `$targetId` of the dependency kinds impact reads, a wider set than flow.
      *
      * @param list<string> $edgeKinds
      * @param bool $withMembers also the edges into what `$targetId` contains
      * @return list<array<string, mixed>>
      */
-    private function impactEdges(string $projectId, string $targetId, array $edgeKinds, int $minimumConfidence, bool &$truncated = false, bool $withMembers = false): array
+    private function impactEdges(string $projectId, string $targetId, array $edgeKinds, int $minimumConfidence, Truncation $truncation, bool $withMembers = false): array
     {
-        $placeholders = implode(',', array_fill(0, count($edgeKinds), '?'));
-        $into = $withMembers
-            ? "(e.target_id = ? OR e.target_id IN (SELECT target_id FROM edges WHERE project_id = e.project_id AND kind = 'contains' AND source_id = ?)) "
-            : 'e.target_id = ? ';
-        $statement = $this->pdo->prepare(
-            'SELECT e.*, f.relative_path, source.display_name AS source_name, target.display_name AS target_name ' .
-            'FROM edges e JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
-            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND ' . $into .
-            sprintf('AND e.kind IN (%s) ', $placeholders) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
-            'ORDER BY CASE e.confidence WHEN \'certain\' THEN 3 WHEN \'probable\' THEN 2 ELSE 1 END DESC, e.kind, e.id LIMIT 501',
-        );
-        $statement->execute([$projectId, $targetId, ...($withMembers ? [$targetId] : []), ...$edgeKinds, $minimumConfidence]);
-        $rows = $statement->fetchAll();
-        if (count($rows) > 500) {
-            $truncated = true;
-            $rows = array_slice($rows, 0, 500);
-        }
-        return $rows;
+        return EdgePage::fetch($this->pdo, $projectId, Direction::Incoming, $targetId, $edgeKinds, $minimumConfidence, $truncation, $withMembers);
     }
 
     /**

@@ -314,6 +314,6 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
     {
         return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id AND ' . EnrichedFacts::excludeSql('e') . ' '
             . sprintf('AND e.kind IN (%s) ', implode(',', array_fill(0, count($edgeKinds), '?')))
-            . "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
+            . 'AND ' . ConfidenceRank::atLeast('e.confidence');
     }
 }

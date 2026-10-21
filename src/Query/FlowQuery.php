@@ -91,15 +91,14 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     private function flowBetween(array $project, array $source, array $target, int $maxDepth, int $maxPaths, array $edgeKinds, int $minimumRank, int $timeoutMs, ?string $profile, ?int $forwardPruned = null): ResultEnvelope
     {
         $projectId = (string) $project['id'];
-        $endpointTruncated = false;
-        $sourceSet = $this->flowEndpointSet($projectId, $source, $endpointTruncated);
-        $targetSet = $this->flowEndpointSet($projectId, $target, $endpointTruncated);
+        // Endpoint expansion is reported after whatever cut the search itself.
+        $endpointTruncation = new Truncation();
+        $sourceSet = $this->flowEndpointSet($projectId, $source, $endpointTruncation);
+        $targetSet = $this->flowEndpointSet($projectId, $target, $endpointTruncation);
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
         $truncation = new Truncation();
         $search = $this->searchFlows($projectId, $sourceSet, $targetSet, $maxDepth, $maxPaths, $edgeKinds, $minimumRank, $deadline, $truncation, $profile);
-        if ($endpointTruncated) {
-            $truncation->add('endpoint_expansion_limit');
-        }
+        $truncation->add(...$endpointTruncation->reasons());
         $paths = self::rankedPaths($search['paths'], $maxPaths, $truncation);
 
         return self::flowEnvelope(
@@ -221,7 +220,8 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $pruned = 0;
         // Each edge's profiles, read once per search: a wide node is expanded once per path that reaches it.
         $edgeProfiles = [];
-        $flowEdgesTruncated = false;
+        // Kept apart so a per-node cut is reported after whatever stopped the walk.
+        $edgePageTruncation = new Truncation();
         $candidateCap = $maxPaths * 20;
         while (isset($queue[$head]) && count($paths) < $candidateCap) {
             if ($this->now() > $deadline) {
@@ -237,7 +237,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
             }
             $last = $nodes[array_key_last($nodes)];
             $edges = [
-                ...$this->flowEdges($projectId, $last['id'], $edgeKinds, $minimumRank, $flowEdgesTruncated),
+                ...EdgePage::fetch($this->pdo, $projectId, Direction::Outgoing, $last['id'], $edgeKinds, $minimumRank, $edgePageTruncation),
                 ...$this->implementationSteps($projectId, $last['id'], $edgeKinds, $minimumRank),
             ];
             foreach ($edges as $index => $edge) {
@@ -301,11 +301,9 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
                 ++$queued;
             }
         }
-        if ($flowEdgesTruncated) {
-            // A node with more than 500 outbound edges of the selected kinds had
-            // some silently dropped; record it rather than claim completeness.
-            $truncation->add('per_node_edge_limit');
-        }
+        // A node with more than 500 outbound edges of the selected kinds had
+        // some silently dropped; record it rather than claim completeness.
+        $truncation->add(...$edgePageTruncation->reasons());
 
         return ['paths' => $paths, 'visited' => $visited, 'queued' => $queued, 'pruned' => $pruned];
     }
@@ -483,7 +481,7 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
      * @param array<string, mixed> $node
      * @return array<string, array<string, mixed>> id => node row
      */
-    private function flowEndpointSet(string $projectId, array $node, bool &$truncated): array
+    private function flowEndpointSet(string $projectId, array $node, Truncation $truncation): array
     {
         $set = [$node['id'] => $node];
         if (!in_array($node['kind'], ['class', 'interface'], true)) {
@@ -497,40 +495,13 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
         $statement->execute(['project' => $projectId, 'source' => $node['id']]);
         $rows = $statement->fetchAll();
         if (count($rows) > 200) {
-            $truncated = true;
+            $truncation->add('endpoint_expansion_limit');
             $rows = array_slice($rows, 0, 200);
         }
         foreach ($rows as $row) {
             $set[$row['id']] = $row;
         }
         return $set;
-    }
-
-    /**
-     * Edge kinds that count as control or data flow for reachability.
-     *
-     * @param list<string> $edgeKinds @return list<array<string, mixed>>
-     */
-    private function flowEdges(string $projectId, string $sourceId, array $edgeKinds, int $minimumConfidence, bool &$truncated = false): array
-    {
-        $placeholders = implode(',', array_fill(0, count($edgeKinds), '?'));
-        $statement = $this->pdo->prepare(
-            'SELECT e.*, f.relative_path, source.display_name AS source_name, target.display_name AS target_name, ' .
-            'target.kind AS target_kind, target.canonical_name AS target_canonical_name, ' .
-            'target.display_name AS target_display_name, target.confidence AS target_confidence ' .
-            'FROM edges e JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
-            'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND e.source_id = ? ' .
-            sprintf('AND e.kind IN (%s) ', $placeholders) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
-            'ORDER BY CASE e.confidence WHEN \'certain\' THEN 3 WHEN \'probable\' THEN 2 ELSE 1 END DESC, e.kind, e.id LIMIT 501',
-        );
-        $statement->execute([$projectId, $sourceId, ...$edgeKinds, $minimumConfidence]);
-        $rows = $statement->fetchAll();
-        if (count($rows) > 500) {
-            $truncated = true;
-            $rows = array_slice($rows, 0, 500);
-        }
-        return $rows;
     }
 
     /**
