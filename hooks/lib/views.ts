@@ -487,9 +487,7 @@ function deadBlock(dead: IssuesInput['deadCode'], entries: Entry[], selected: nu
       const sure =
         dead.total === '0' ? '' : ((key: string) => (key === '' ? '' : ` · ${key}`))(legend([[CERTAINTY.probable, dead.probable ?? 0], [REACH.testsOnly, dead.testOnly ?? 0]]))
       const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
-      // A marker past the list (on the hotspots) counts as past its end: the window rests on its last rows.
-      const local = selected >= part.offset ? selected - part.offset : -1
-      const { body, window } = listedEntries('dead', entries, hues, { columns, limit, local, walk: part.offset, scrolled })
+      const { body, window } = listedEntries('dead', entries, hues, { columns, limit, local: localTo(part, selected), walk: part.offset, scrolled })
       // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
       const kinds = kindLegend(dead.items.map(c => c.kind))
       const keyed = kinds === '' ? deadNote : `${deadNote} · ${kinds}`

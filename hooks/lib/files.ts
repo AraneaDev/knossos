@@ -167,7 +167,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
       const rows: Row[] = []
       if (comps.items.length === 0) rows.push(dimRow('comps-none', '   none', columns))
       const max = Math.max(0, ...comps.items.map(c => c.usedBy))
-      const listed = windowedTable('comps-window', comps.items, { columns, limit, local: selected >= offset ? selected - offset : -1, scrolled, walk: offset }, (shown, start) =>
+      const listed = windowedTable('comps-window', comps.items, { columns, limit, local: inList(selected - offset, comps.items.length), scrolled, walk: offset }, (shown, start) =>
         shown.map((c, n) => {
           const i = offset + start + n
           return tableRow(`comp-${start + n}`, { name: c.name, boundary: null, values: [c.usedBy], max, selected: i === selected, press: `row:${i}` }, spec, hues)

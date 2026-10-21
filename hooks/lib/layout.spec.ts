@@ -829,6 +829,17 @@ describe('the issues tab', () => {
     expect(press('dead-0')).toBe(`row:${violations + 2}`)
   })
 
+  it('keeps the dead-code list at its top while the marker is on a later list', () => {
+    const dead = Array.from({ length: 12 }, (_, i) => ({ name: `old${i}`, canonical_name: `App\\old${i}`, kind: 'method', boundary: 'core', reachability: 'unreferenced', confidence: 'possible', path: 'a.php', line: i + 1 }))
+    const data = full({ dead_code: dead })
+    const walk = issuesWalk(issuesInput(data))
+    for (const selected of [walk.hotspots.offset, walk.budget.offset]) {
+      const rows = paneRows(fullInput({ tab: 'issues', selected }, data), 90, 30)
+      expect(row(rows, 'dead-0'), `marker at ${selected}`).toBeDefined()
+      expect(row(rows, 'dead-11'), `marker at ${selected}`).toBeUndefined()
+    }
+  })
+
   it('reads a policy total cut short as a floor', () => {
     const cut = full({ policy: { status: 'evaluated', total: 100, truncated: true, truncation_reasons: ['time_limit'], items: [] } })
     expect(textOf(paneRows(fullInput({ tab: 'issues' }, cut), 60))).toContain('✗ 100+')
