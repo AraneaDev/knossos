@@ -20,11 +20,14 @@ final class RelativePathRuleTest extends TestCase
         yield 'root' => ['', true];
         yield 'dot segments and trailing slash' => ['./src//lib/', true];
         yield 'dots inside a name' => ['src/..hidden/a..b', true];
+        yield 'bare name with two dots' => ['a..b', true];
         yield 'backslash separators inside' => ['src\\lib', true];
         yield 'leading slash' => ['/etc/passwd', false];
         yield 'leading backslash' => ['\\etc\\passwd', false];
+        yield 'backslash-led ignore pattern' => ['\\build', false];
         yield 'drive letter' => ['C:/Windows', false];
         yield 'drive-relative' => ['c:Windows', false];
+        yield 'drive-relative glob' => ['x:*.log', false];
         yield 'parent segment' => ['src/../../etc', false];
         yield 'bare parent' => ['..', false];
         yield 'parent behind a backslash' => ['src\\..\\..\\etc', false];
