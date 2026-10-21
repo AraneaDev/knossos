@@ -9,9 +9,10 @@
  * (`118 · medium`), and with less still it draws nothing.
  */
 import { ACCENT, FAINT } from './palette'
-import { cells, MEDIUM_MAX, MEDIUM_MIN, tierOf } from './rows'
+import { MEDIUM_MAX, MEDIUM_MIN, tierOf } from './table'
+import { cells } from './text'
 import type { Segment } from './types'
-import type { Tier } from './rows'
+import type { Tier } from './table'
 
 /** The cells the track takes between the two layouts' names. */
 const TRACK = 10

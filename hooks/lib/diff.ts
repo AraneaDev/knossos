@@ -12,7 +12,8 @@
  * cut to the columns it has.
  */
 import type { DiffFold, DiffState, Inspected, SessionDiff, SessionRev } from '../../types'
-import { button, dimRow, fit, pathText, plural, wrapWords } from './rows'
+import { button, dimRow } from './rows'
+import { fit, pathText, plural, wrapWords } from './text'
 import type { Row, Segment } from './types'
 import type { Block, Section } from './cards'
 import { CHANGE } from './marks'

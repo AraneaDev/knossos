@@ -5,11 +5,11 @@
  * bundler draws from the same decisions as the hooks module.
  */
 import { allowInput, emptyRows, noGraphOf } from '../lib/empty-state'
-import { tierOf } from '../lib/rows'
+import { tierOf } from '../lib/table'
 import type { PaneInput } from '../lib/pane-types'
 import type { Row, Segment } from '../lib/types'
 import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
-import { cells } from '../lib/rows'
+import { cells } from '../lib/text'
 import { currentInput } from './input'
 import { startMotion } from './motion'
 import type { Port } from './port'

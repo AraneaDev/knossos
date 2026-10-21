@@ -5,7 +5,8 @@ import { paneInput } from './pane-input'
 import { paneLayout } from './layout'
 import { TABS } from './chrome'
 import { BOUNDARY_COLOURS } from './palette'
-import { cells, pressLabel, rowWidth } from './rows'
+import { pressLabel, rowWidth } from './rows'
+import { cells } from './text'
 import type { Row } from './types'
 
 /**

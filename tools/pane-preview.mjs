@@ -159,6 +159,7 @@ const layout = await import(join(REPO, 'hooks/lib/layout.ts'))
 const envelopes = await import(join(REPO, 'hooks/lib/envelopes.ts'))
 const raster = await import(join(REPO, 'hooks/lib/raster.ts'))
 const rows = await import(join(REPO, 'hooks/lib/rows.ts'))
+const textLib = await import(join(REPO, 'hooks/lib/text.ts'))
 const band = await import(join(REPO, 'hooks/lib/band.ts'))
 const palette = await import(join(REPO, 'hooks/lib/palette.ts'))
 const sessionChanges = await import(join(REPO, 'hooks/lib/session-changes.ts'))
@@ -372,7 +373,7 @@ const RINGS =
 const ROUTE_ENDS = (() => {
   const far = RINGS?.answer?.rings?.find(r => r.hop >= 3)?.items?.[0] ?? RINGS?.answer?.rings?.find(r => r.hop === 2)?.items?.[0]
   if (far === undefined || detail?.component == null) return null
-  return { from: { name: far.canonical_name, label: rows.displayName(far) }, to: { name: detail.component.canonical, label: detail.component.name }, index: 0, back: null }
+  return { from: { name: far.canonical_name, label: textLib.displayName(far) }, to: { name: detail.component.canonical, label: detail.component.name }, index: 0, back: null }
 })()
 const ROUTE = ROUTE_ENDS === null ? null : { from: ROUTE_ENDS.from.name, to: ROUTE_ENDS.to.name, snapshot: dashboard.snapshot_id ?? null, phase: 'done', answer: envelopes.parsePathBetween(wrapper('path-between', `--from=${ROUTE_ENDS.from.name}`, `--to=${ROUTE_ENDS.to.name}`)) }
 
@@ -474,7 +475,7 @@ function bandRows(cases) {
       // As the band hook: the text gives way to the buttons, each `[ label ]` and a space.
       const labels = [...(model.showDetails ? ['details'] : []), ...(model.copy === undefined ? [] : ['copy']), 'hide']
       const room = Math.max(1, columns - labels.reduce((n, l) => n + l.length + 5, 0) - 1)
-      const segments = [{ text: `${rows.fit(model.text, room)} `, color: tones[model.tone] }]
+      const segments = [{ text: `${textLib.fit(model.text, room)} `, color: tones[model.tone] }]
       if (model.showDetails) segments.push(rows.button('details', 'details'), { text: ' ' })
       if (model.copy !== undefined) segments.push(rows.button('copy', 'copy'), { text: ' ' })
       segments.push(rows.button('hide', 'hide'))
@@ -613,7 +614,7 @@ function rowCells(row, theme, term) {
       // label it is handed in a Box as wide as the segment, cutting at its edge, so the same label is cut here.
       const hot = s.press.hotkey === undefined ? 0 : [...`${s.press.hotkey}`].length
       const label = `${s.press.hotkey === undefined ? '' : `${s.press.hotkey}: `}${rows.pressLabel(s)}`
-      ;[...rows.padEnd(rows.fit(label, [...s.text].length), [...s.text].length)].forEach((ch, i) => {
+      ;[...textLib.padEnd(textLib.fit(label, [...s.text].length), [...s.text].length)].forEach((ch, i) => {
         let fg = i < hot ? theme.suggestion : term.fg
         if (s.dim) fg = mix(fg, term.bg, 0.5)
         out.push({ ch, fg, bg, bold: false })

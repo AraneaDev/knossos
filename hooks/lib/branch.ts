@@ -20,8 +20,13 @@ import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { bar, button, cells, chip, clip, displayName, fit, grouped, inList, opensFile, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
-import type { Loc, Row, Segment } from './rows'
+import { button, clip, inList, notListedRow, segmentsWidth, tinted, wrapGroups } from './rows'
+import { bar } from './table'
+import { chip, SWATCH } from './chips'
+import { cells, displayName, fit, grouped, padStart, plural, shortName, spaces, wrapWords } from './text'
+import { opensFile } from './editor'
+import { placeOf } from './paths'
+import type { Loc, Row, Segment } from './types'
 import { locIn } from './views'
 import type { Openable } from './views'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
@@ -245,7 +250,7 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
   const { rows } = windowedTable('branch-findings-window', input.findings, { columns, limit, local: inList(selected, input.findings.length), walk: 0 }, (shown, start) =>
     shown.map((f, n) => findingRow(f, start + n, selected, columns, hues)),
   )
-  const rest = input.unlisted.map((u): Row => ({ key: `branch-unlisted-${u.kind}`, segments: [{ text: fit(`    +${grouped(u.count)} more ${WORST[u.kind].many} not listed`, columns), dim: true }] }))
+  const rest = input.unlisted.flatMap(u => notListedRow(`branch-unlisted-${u.kind}`, u.count, 0, columns, { kind: WORST[u.kind].many, indent: 4 }))
   const stopped: Row[] = input.partial ? [{ key: 'branch-partial', segments: [{ text: fit('    the policy check stopped at its edge or time limit: more violations may be new', columns), dim: true }] }] : []
   return [head, ...rows, ...rest, ...stopped]
 }

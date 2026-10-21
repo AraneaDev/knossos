@@ -19,9 +19,11 @@
  * list cut short shows the rows around the marker and an `n more ↓` line.
  */
 import { FAINT, HEADING, TITLE } from './palette'
-import { cells, clip, dimRow, fit, rowsHeight, rowWidth, segmentsWidth, spaces, tierOf, tinted } from './rows'
+import { clip, dimRow, rowsHeight, rowWidth, segmentsWidth, tinted } from './rows'
+import { tierOf } from './table'
+import { cells, fit, spaces } from './text'
 import type { ListSpan, Row, Segment } from './types'
-import type { Tier } from './rows'
+import type { Tier } from './table'
 import { CARD_ICON } from './marks'
 
 /**

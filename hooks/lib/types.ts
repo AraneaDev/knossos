@@ -1,7 +1,8 @@
 /**
  * The shapes every view of the pane draws with: styled segments, the rows
  * they make up, and what a segment can carry (a press, a field, a place, a
- * hover card). Types only; `rows.ts` holds the primitives that build them.
+ * hover card). Types only; `rows.ts`, `text.ts`, `table.ts` and `chips.ts` hold
+ * the primitives that build them.
  */
 /** A pressable segment: drawn as a plain Button, `hotkey: label` when it has a hotkey. */
 export type Press = { id: string; label: string; hotkey?: string }

@@ -10,7 +10,8 @@
  */
 import { parseHunks } from '../hooks/lib/diff'
 import type { Row, Segment } from '../hooks/lib/types'
-import { cells, pressLabel, textStyle } from '../hooks/lib/rows'
+import { pressLabel, textStyle } from '../hooks/lib/rows'
+import { cells } from '../hooks/lib/text'
 import { fieldRooms } from '../hooks/mod/frame'
 
 /** A look with its colours resolved: what an element's inline style takes. */

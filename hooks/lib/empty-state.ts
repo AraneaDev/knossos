@@ -5,7 +5,8 @@
  */
 import type { AllowState, Dashboard, RefreshState, RescanState, TurnBrief } from '../../types'
 import { HEADING, STATUS_COLOURS } from './palette'
-import { blank, button, dimRow, fit, wrapGroups, wrapWords } from './rows'
+import { blank, button, dimRow, wrapGroups } from './rows'
+import { fit, wrapWords } from './text'
 import type { Row, Segment } from './types'
 import { busy } from './motion'
 import { SEVERITY } from './marks'

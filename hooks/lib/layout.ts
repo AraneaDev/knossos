@@ -9,8 +9,8 @@
  * input from `pane-input.ts`, the lists and the selection from
  * `pane-list.ts`, the status and the tiles from `pane-status.ts`, the header
  * and the footer from `chrome.ts`, the screens without a graph from
- * `empty-state.ts`. The shared primitives (segments, cutting, bars, the
- * self-fitting table) are in `rows.ts`; the Issues and Cycles tabs and the
+ * `empty-state.ts`. The shared primitives are in `rows.ts` (segments),
+ * `text.ts` (cutting) and `table.ts` (bars, the self-fitting table); the Issues and Cycles tabs and the
  * component detail in `views.ts`.
  */
 import type { HubSort, KnossosView, PaneTab } from '../../types'
@@ -20,9 +20,11 @@ import { driftSection, fileDetailArrangement } from './files'
 import { boundaryLabel, FAINT } from './palette'
 import type { Hues } from './palette'
 import { baseName, placeOf } from './paths'
-import { blank, cells, clip, dimRow, grouped, numberWidth, rowsHeight, rowWidth, tableHead, tableRow, tableSpec, tierOf, inList } from './rows'
+import { blank, clip, dimRow, rowsHeight, rowWidth, inList } from './rows'
+import { numberWidth, tableHead, tableRow, tableSpec, tierOf } from './table'
+import { cells, grouped } from './text'
 import type { Loc, Row, Segment } from './types'
-import type { TableSpec, Tier } from './rows'
+import type { TableSpec, Tier } from './table'
 import { CARD_MAX, componentFigures, fileFigures, previewCard } from './hover'
 import { tilesBlock } from './tiles'
 import { compositionBlock, concentrationBlock, flowsBlock, healthBlock, notesLineBlock, sessionBlock } from './overview'
@@ -48,7 +50,9 @@ export { askPrompt, couplingPair, hubList, listFor, mergeRanked, subjectOf } fro
 export { paneInput } from './pane-input'
 export { paneStatus, statsOf, summaryParts } from './pane-status'
 export { gitLabel, tabRows, titleRow } from './chrome'
-export { bar, displayName, fit, rowWidth, tableSpec, wrapWords } from './rows'
+export { rowWidth } from './rows'
+export { bar, tableSpec } from './table'
+export { displayName, fit, wrapWords } from './text'
 export { DEFAULT_ROWS } from './cards'
 export { detailInput } from './views'
 export { fileDetailInput } from './files'

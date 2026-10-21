@@ -7,14 +7,8 @@
  * scroll hints are drawing, not marks, and stay where they are drawn.
  */
 import { ACCENT, STATUS_COLOURS } from './palette'
+import { grouped } from './text'
 import type { Segment } from './types'
-
-/**
- * Digits in groups of three. rows.ts has the same helper, but rows.ts reads
- * this module for its swatch and kind column, so importing it back would make
- * a cycle that can leave a family undefined while the modules load.
- */
-const grouped = (n: number): string => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 export type MarkTone = 'ok' | 'warn' | 'alert' | 'accent' | 'dim' | 'text'
 export type Mark = { glyph: string; meaning: string; tone: MarkTone; legend: string; plural?: string }

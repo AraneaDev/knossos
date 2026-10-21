@@ -5,7 +5,8 @@ import { paneLayout } from './layout'
 import { statsOf } from './pane-status'
 import { rawText } from './__tests__/plain-text'
 import type { Row } from './types'
-import { rowsHeight, tierOf } from './rows'
+import { rowsHeight } from './rows'
+import { tierOf } from './table'
 
 const ROOT = '/work/app'
 const hub = (i: number) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', boundary: 'core', in_degree: 90 - i, out_degree: i, cross_boundary_degree: 0, dependent_files: 40 - i, path: `src/Hub${i}.php`, line: 3 })

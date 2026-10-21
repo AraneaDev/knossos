@@ -1067,6 +1067,7 @@ js	hooks/lib/cards.spec.ts
 js	hooks/lib/cards.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
+js	hooks/lib/chips.ts
 js	hooks/lib/chrome.ts
 js	hooks/lib/churn.spec.ts
 js	hooks/lib/churn.ts
@@ -1138,7 +1139,9 @@ js	hooks/lib/scheduler.ts
 js	hooks/lib/session-changes.ts
 js	hooks/lib/sparkline.spec.ts
 js	hooks/lib/sparkline.ts
+js	hooks/lib/table.ts
 js	hooks/lib/test-commands.ts
+js	hooks/lib/text.ts
 js	hooks/lib/themes.spec.ts
 js	hooks/lib/themes.ts
 js	hooks/lib/tiles.spec.ts

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { cells, inList, notListedRow, pathParts, rowHeight, rowsHeight, tableRow, tableSpec } from './rows'
+import { inList, notListedRow, rowHeight, rowsHeight } from './rows'
+import { tableRow, tableSpec } from './table'
+import { cells, pathParts } from './text'
 import { editorCommand } from './editor'
 
 const PATH = 'src/Query/Drift/GitDriftOracle.php'
@@ -94,6 +96,9 @@ describe('a list that holds fewer than its count', () => {
     expect(notListedRow('x-more', 12, 5, 40)).toEqual([{ key: 'x-more', segments: [{ text: '   +7 not listed', dim: true }] }])
     expect(notListedRow('x-more', 5, 5, 40)).toEqual([])
     expect(notListedRow('x-more', 3, 5, 40)).toEqual([])
+  })
+  it('names what it left out, its count in groups of three, when given a kind', () => {
+    expect(notListedRow('x-more', 1204, 0, 60, { kind: 'hubs', indent: 4 })).toEqual([{ key: 'x-more', segments: [{ text: '    +1,204 more hubs not listed', dim: true }] }])
   })
   it('places the marker in a list only when it is on it', () => {
     expect(inList(0, 3)).toBe(0)

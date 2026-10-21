@@ -14,7 +14,7 @@
  */
 import type { Dashboard } from '../../types'
 import { betweenTypes, cycleSearchStopped } from './envelopes'
-import { shortName } from './rows'
+import { shortName } from './text'
 import { unreadablePolicies, unreadableText } from './policies'
 
 /** One thing to say: its key (said once) and its words. */

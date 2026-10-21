@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { widthGauge } from './gauge'
-import { cells, MEDIUM_MAX, MEDIUM_MIN } from './rows'
+import { MEDIUM_MAX, MEDIUM_MIN } from './table'
+import { cells } from './text'
 
 const plain = (columns: number, room: number) => widthGauge(columns, room).map(s => s.text).join('')
 

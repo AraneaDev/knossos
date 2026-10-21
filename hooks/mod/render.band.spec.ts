@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Dashboard, JobState, KnossosView, TurnBrief } from '../../types'
-import { cells } from '../lib/rows'
+import { cells } from '../lib/text'
 import type { Port } from './port'
 import { drawBand } from './render'
 import type { BandHandlers } from './render'
