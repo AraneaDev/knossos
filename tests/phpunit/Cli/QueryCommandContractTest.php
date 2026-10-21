@@ -9,7 +9,10 @@ use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\QueryCommand;
+use Knossos\Mcp\ToolArgumentSpec;
 use Knossos\Mcp\ToolCatalog;
+use Knossos\Query\ArchitectureQueryService;
+use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -22,9 +25,10 @@ use Throwable;
  * Two gaps let most of QueryCommand's mutants survive. The positional guards
  * were tested only by exception class, and each command has several guards
  * throwing the same class, so deleting the first one left the second to throw
- * an equally acceptable exception. And the CLI carries its own copy of every
+ * an equally acceptable exception. And the CLI carried its own copy of every
  * integer bound, a third copy after the MCP schema and ToolService, which
- * nothing compared with the other two.
+ * nothing compared with the other two. Both front ends now read the schema
+ * through ToolArgumentSpec; these tests hold the CLI's option map to it.
  */
 final class QueryCommandContractTest extends KnossosTestCase
 {
@@ -97,7 +101,7 @@ final class QueryCommandContractTest extends KnossosTestCase
                     ARRAY_FILTER_USE_KEY,
                 );
                 foreach ($allowed as $option) {
-                    $spec = $properties[self::schemaKey($option)] ?? null;
+                    $spec = $properties[QueryCommand::optionArguments($command)[$option] ?? ''] ?? null;
                     if (!is_array($spec) || ($spec['type'] ?? null) !== 'integer' || !isset($spec['minimum'], $spec['maximum'])) {
                         continue;
                     }
@@ -154,7 +158,7 @@ final class QueryCommandContractTest extends KnossosTestCase
             foreach (self::COMMANDS as $command) {
                 $properties = $schemas[str_replace('-', '_', $command)] ?? [];
                 foreach ((new QueryCommand())->allowedOptions($command) as $option) {
-                    $spec = $properties[self::schemaKey($option)] ?? null;
+                    $spec = $properties[QueryCommand::optionArguments($command)[$option] ?? ''] ?? null;
                     if (!is_array($spec) || ($spec['type'] ?? null) !== 'integer' || !array_key_exists('default', $spec)) {
                         continue;
                     }
@@ -237,10 +241,117 @@ final class QueryCommandContractTest extends KnossosTestCase
         }
     }
 
-    /** The schema property a CLI option mirrors: kebab case to snake case, plus the one option named differently. */
-    private static function schemaKey(string $option): string
+    /**
+     * The tool arguments a command takes as positionals rather than options,
+     * by command; with the options map, every argument its tool declares.
+     */
+    private const POSITIONAL_ARGUMENTS = [
+        'list-projects' => [],
+        'list-snapshots' => ['project_id'],
+        'snapshot-diff' => ['project_id', 'from_snapshot', 'to_snapshot'],
+        'quality-gate' => ['project_id', 'baseline_snapshot'],
+        'architecture-trends' => ['project_id'],
+        'find-component' => ['project_id', 'name'],
+        'inspect-component' => ['project_id', 'component'],
+        'list-usages' => ['project_id', 'symbol'],
+        'architecture-summary' => ['project_id'],
+        'file-metrics' => ['project_id'],
+        'explain-flow' => ['project_id', 'from', 'to'],
+        'impact-analysis' => ['project_id', 'symbol'],
+        'dependency-cycles' => ['project_id'],
+        'architecture-health' => ['project_id'],
+        'check-architecture' => ['project_id'],
+        'suggest-location' => ['project_id', 'feature_description'],
+        'change-impact' => ['project_id', 'symbol'],
+        'changed-files-impact' => ['project_id', 'files'],
+        'test-impact' => ['project_id', 'files'],
+        'review-diff' => ['project_id', 'files'],
+        'architecture-context' => ['project_id', 'files'],
+        'export-diagram' => ['project_id'],
+        'export-agent-brief' => ['project_id'],
+        'list-boundaries' => ['project_id'],
+        'search-architecture' => ['project_id', 'query'],
+        'annotate-component' => ['project_id', 'component', 'kind', 'value'],
+        'list-annotations' => ['project_id'],
+    ];
+
+    /**
+     * The CLI takes every argument its MCP tool declares, and names only real ones.
+     *
+     * Each query command's options are mapped to the tool argument they set,
+     * and the defaults and bounds come from that argument's schema. What this
+     * pins is the other half: an argument added to a tool and not to the CLI
+     * (impact_analysis gained seed_members and rings that way, explain_flow
+     * both_directions, search_architecture files) fails here, and so does an
+     * option mapped to an argument the tool no longer has. The response
+     * options every read tool shares (verbosity, max_chars, refresh_if_stale)
+     * belong to the MCP envelope, not the query, unless the tool takes one
+     * as its own argument.
+     */
+    #[Group('cli')]
+    public function testEveryToolArgumentHasACliOptionOrPositional(): void
     {
-        return $option === 'candidate-timeout' ? 'candidate_timeout_ms' : str_replace('-', '_', $option);
+        $missing = [];
+        $unknown = [];
+        foreach (self::COMMANDS as $command) {
+            $declared = ToolArgumentSpec::for(str_replace('-', '_', $command))->properties();
+            $mapped = array_values(array_filter(QueryCommand::optionArguments($command), static fn(?string $argument): bool => $argument !== null));
+            $taken = [...$mapped, ...self::POSITIONAL_ARGUMENTS[$command]];
+            foreach (array_diff($taken, $declared) as $argument) {
+                $unknown[] = $command . ':' . $argument;
+            }
+            foreach (array_diff($declared, $taken, ['verbosity', 'max_chars', 'refresh_if_stale']) as $argument) {
+                $missing[] = $command . ':' . $argument;
+            }
+        }
+
+        assertSame([], $missing, 'Tool arguments the CLI does not take.');
+        assertSame([], $unknown, 'CLI options and positionals naming no tool argument.');
+        assertSame(self::COMMANDS, array_keys(self::POSITIONAL_ARGUMENTS));
+    }
+
+    /**
+     * The flags the CLI gained to match its tools reach the query: the answer
+     * is the facade's for the same argument, and differs from the default one
+     * where the fixture shows the difference.
+     *
+     * @return iterable<string, array{string, list<string>, array<string, list<string>>, \Closure(ArchitectureQueryService, list<string>): ResultEnvelope, bool}>
+     */
+    public static function mirroredFlags(): iterable
+    {
+        yield 'impact-analysis --rings' => ['impact-analysis', ['App\\Checkout'], ['rings' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->impactAnalysis($p[0], $p[1], rings: true), true];
+        yield 'impact-analysis --seed-members=false' => ['impact-analysis', ['App\\Checkout'], ['seed-members' => ['false']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->impactAnalysis($p[0], $p[1], seedMembers: false), false];
+        yield 'explain-flow --both-directions' => ['explain-flow', ['App\\Checkout', 'App\\InvoiceService'], ['both-directions' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->explainFlow($p[0], $p[1], $p[2], bothDirections: true), true];
+        yield 'search-architecture --files' => ['search-architecture', ['Checkout'], ['files' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->searchArchitecture($p[0], $p[1], includeFiles: true), true];
+    }
+
+    /**
+     * @param list<string> $arguments
+     * @param array<string, list<string>> $options
+     * @param \Closure(ArchitectureQueryService, list<string>): ResultEnvelope $expected
+     */
+    #[Group('cli')]
+    #[\PHPUnit\Framework\Attributes\DataProvider('mirroredFlags')]
+    public function testEachMirroredFlagReachesTheQuery(string $command, array $arguments, array $options, \Closure $expected, bool $changesTheAnswer): void
+    {
+        assertSame([], array_values(array_diff(array_keys($options), (new QueryCommand())->allowedOptions($command))));
+        $database = sys_get_temp_dir() . '/knossos-stale-flags-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $pdo = (new RuntimeFactory(self::repositoryRoot()))->database($database);
+        [, $repository, $ids] = $this->storeFixture(null, $pdo);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        try {
+            $positionals = [$ids['project'], ...$arguments];
+            $answer = self::outcomeOf($command, $positionals, $options, $database);
+            $data = json_decode(json_encode($expected(ArchitectureQueryService::forDatabase($pdo), $positionals)->jsonSerialize(), JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR)['data'];
+            $encoded = json_encode($data, JSON_THROW_ON_ERROR);
+
+            assertSame(preg_replace('/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/', '<time>', $encoded), $answer);
+            assertSame($changesTheAnswer, $answer !== self::outcomeOf($command, $positionals, [], $database));
+        } finally {
+            foreach ([$database, $database . '-wal', $database . '-shm'] as $file) {
+                @unlink($file);
+            }
+        }
     }
 
     /** The documented annotation mutation flags must reach QueryCommand's executor. */

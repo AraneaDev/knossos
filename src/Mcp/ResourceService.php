@@ -38,7 +38,7 @@ final readonly class ResourceService
     public function list(?string $cursor = null): array
     {
         [$afterCreatedAt, $afterId] = $cursor === null ? [null, null] : self::position($cursor);
-        $listing = $this->queries->projectsInCreationOrder(self::PAGE_SIZE, $afterCreatedAt, $afterId);
+        $listing = $this->queries->services()->catalogQueries->projectsInCreationOrder(self::PAGE_SIZE, $afterCreatedAt, $afterId);
         $page = ['resources' => $this->resources($listing['projects'])];
         $last = $listing['projects'] === [] ? null : $listing['projects'][array_key_last($listing['projects'])];
         if ($listing['more'] && $last !== null) {
@@ -122,9 +122,10 @@ final readonly class ResourceService
         [, $projectId, $section] = $matches;
         try {
             [$mimeType, $text] = match ($section) {
-                'summary' => ['application/json', $this->json($this->queries->architectureSummary($projectId)->jsonSerialize())],
-                'boundaries' => ['application/json', $this->json($this->queries->listBoundaries($projectId)->jsonSerialize())],
-                'brief' => ['text/markdown', (string) $this->queries->exportAgentBrief($projectId)->data['markdown']],
+                'summary' => ['application/json', $this->json($this->queries->services()->summaryQueries->architectureSummary($projectId)->jsonSerialize())],
+                'boundaries' => ['application/json', $this->json($this->queries->services()->summaryQueries->listBoundaries($projectId)->jsonSerialize())],
+                // The brief at the size export_agent_brief answers with by default.
+                'brief' => ['text/markdown', (string) $this->queries->services()->briefQueries->exportAgentBrief($projectId, ToolArgumentSpec::for('export_agent_brief')->bounds('max_chars')['default'])->data['markdown']],
             };
         } catch (InvalidArgumentException) {
             return null;

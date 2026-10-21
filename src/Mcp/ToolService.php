@@ -9,8 +9,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Discovery\RootGuard;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\Protocol\ProtocolNegotiator;
-use Knossos\Query\{ArchitecturePolicyQueryService, ArchitectureQueryService, StalenessSnapshot};
-use Knossos\Query\QueryBounds;
+use Knossos\Query\ArchitectureQueryService;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanner;
@@ -28,19 +27,15 @@ use Knossos\Scan\ScanOptions;
 final readonly class ToolService
 {
     /**
-     * Response budget applied when a caller names none. Sized to stay well
-     * inside a host's per-result cap while leaving room for a substantial
-     * answer; callers who want more pass max_chars explicitly, up to 100000.
-     */
-    private const DEFAULT_MAX_CHARS = 30_000;
-
-    /**
      * Tools whose answer reads the project's files or runs git in its root.
      * The database is shared with the CLI and can hold projects from anywhere
      * on the machine, so these are confined to the server's allowed roots the
      * same way a scan is. Graph-only tools answer for every project.
      */
     private const DISK_TOOLS = ['file_context', 'change_impact', 'changed_files_impact', 'test_impact', 'review_diff'];
+
+    /** What repairs a stale graph before a read tool answers. */
+    private StaleScanRefresher $refresher;
 
     public function __construct(
         // The interface rather than ProjectScanService: scan() is the only
@@ -55,7 +50,9 @@ final readonly class ToolService
         // Optional so the many fixtures that build a ToolService directly need
         // no runtime wiring; the server binaries always supply one.
         private ?ServerEnvironment $environment = null,
-    ) {}
+    ) {
+        $this->refresher = new StaleScanRefresher($scanner, $queries, $environment);
+    }
 
     /**
      * The advertised tool list, filtered to what this wiring can actually answer.
@@ -84,37 +81,7 @@ final readonly class ToolService
         // actually declares them; passing one to a tool that does not (e.g.
         // refresh_if_stale to maintain_database) is left in $arguments so the
         // key validation below rejects it as unknown.
-        $verbosity = 'compact';
-        if (in_array('verbosity', $declared, true) && array_key_exists('verbosity', $arguments)) {
-            // Through the same normalisation every other literal string
-            // argument gets: whitespace is invisible in a JSON payload, and
-            // this value is then matched literally against the allowed set.
-            $verbosity = ToolArguments::normalized($arguments['verbosity']);
-            unset($arguments['verbosity']);
-            if ($verbosity !== 'compact' && $verbosity !== 'full') {
-                throw new ToolInputException('verbosity must be "compact" or "full".');
-            }
-        }
-        $maxChars = null;
-        if (
-            in_array('max_chars', $declared, true)
-            && !in_array($name, ['architecture_context', 'export_agent_brief'], true)
-        ) {
-            // Budgeted even when the caller says nothing. An unbounded result is
-            // bounded by the graph rather than by anything the host can take:
-            // changed_files_impact over a ten-file diff serialized to ~70,000
-            // characters and was rejected outright by the client, so the caller
-            // got nothing at all instead of a trimmed answer that says what it
-            // dropped. Raise it explicitly to trade context window for detail.
-            $maxChars = self::DEFAULT_MAX_CHARS;
-            if (array_key_exists('max_chars', $arguments)) {
-                $maxChars = $arguments['max_chars'];
-                unset($arguments['max_chars']);
-                if (!is_int($maxChars) || $maxChars < 4000 || $maxChars > 100_000) {
-                    throw new ToolInputException('max_chars must be an integer between 4000 and 100000.');
-                }
-            }
-        }
+        [$response, $arguments] = ResponseOptions::take($name, $declared, $arguments);
         // On by default: an agent that has to ask for a fresh graph pays two
         // round trips to discover it needed one. RefreshPolicy is what makes
         // that safe, by skipping any refresh that would cost more than the
@@ -154,7 +121,7 @@ final readonly class ToolService
         // triggering a full rescan of the very project it is about to delete
         // is the case this guards against.
         if ($refreshRequested && in_array('refresh_if_stale', $declared, true)) {
-            [$refreshWarnings, $probed] = $this->refreshIfStale($arguments, $cancellation);
+            [$refreshWarnings, $probed] = $this->refresher->refreshIfStale($arguments, $cancellation);
         }
         $envelope = $run();
         if ($refreshWarnings !== []) {
@@ -163,7 +130,7 @@ final readonly class ToolService
         // The verdict this call already reached is handed to the enricher
         // rather than derived a second time. It is withheld whenever a rescan
         // ran, because a repaired graph is no longer the graph that was probed.
-        return $this->enricher->enrich($envelope, $name, $verbosity, $maxChars, $probed);
+        return $this->enricher->enrich($envelope, $name, $response->verbosity, $response->maxChars, $probed);
     }
 
     /**
@@ -215,113 +182,6 @@ final readonly class ToolService
     }
 
     /**
-     * Repair a stale graph before answering, when that fits the budget.
-     *
-     * Returns warnings and never throws for a scan fault: a query answerable
-     * from the previous graph must still be answered. Cancellation is the one
-     * exception, because the caller asked for it.
-     *
-     * Nothing is reported when the refresh succeeds. The staleness attached to
-     * the same result already says 'fresh', so a second announcement would put
-     * a line on every response for the case that needs no attention.
-     *
-     * Returns the verdict it probed alongside its warnings, so the enricher can
-     * attach that verdict instead of running the oracle again — and returns
-     * null for it whenever a scan was attempted, because the graph it probed is
-     * not the graph the answer came from.
-     *
-     * @param array<string, mixed> $arguments
-     * @return array{0: list<string>, 1: ?StalenessSnapshot}
-     */
-    private function refreshIfStale(array $arguments, ?CancellationToken $cancellation): array
-    {
-        // Normalised for the same reason string() normalises: a padded id looks
-        // up no project, and silently skipping the refresh would leave the
-        // caller with a stale answer their refresh_if_stale asked to avoid.
-        $projectId = ToolArguments::normalized($arguments['project_id'] ?? null);
-        if ($projectId === '') {
-            return [[], null];
-        }
-        // Outside the allowed roots the probe would read files and run git, so
-        // there is nothing to refresh from here. No warning: the enricher's
-        // confined probe attaches 'unverified' with guidance saying why.
-        if ($this->environment !== null) {
-            $root = $this->queries->projectRoot($projectId);
-            if ($root !== null && !$this->environment->admitsRoot($root)) {
-                return [[], null];
-            }
-        }
-        // The snapshot comes from the probe rather than being assembled here,
-        // so the verdict and the scan it describes cannot be read at two
-        // different moments.
-        $snapshot = $this->queries->stalenessSnapshot($projectId);
-        $staleness = $snapshot->staleness;
-        if (($staleness['state'] ?? null) !== 'stale') {
-            return [[], $snapshot];
-        }
-        // A 'stale' verdict can come from a newer failed scan attempt rather
-        // than from measured drift, leaving no change set to cost the rescan
-        // against. Guessing a size there is how an unbounded scan gets back in.
-        //
-        // Passed on split three ways rather than summed: the policy caps its
-        // estimate at the previous full scan's duration, and that cap only
-        // holds for a change set of deletions alone. A total alone would hide
-        // the difference.
-        $drift = isset($staleness['changed_files_since'])
-            ? new \Knossos\Query\Drift\DriftCounts(
-                (int) $staleness['changed_files_since'],
-                (int) $staleness['added_files_since'],
-                (int) $staleness['deleted_files_since'],
-                ($staleness['added_files_truncated'] ?? false) === true,
-            )
-            : new \Knossos\Query\Drift\DriftCounts(0, 0, 0);
-        if ($drift->total() < 1) {
-            return [['refresh_if_stale: the graph is stale but the change set is unknown; call scan_project to refresh.'], $snapshot];
-        }
-        $root = $this->queries->projectRoot($projectId);
-        $decision = $this->queries->refreshDecision($projectId, $drift, $this->refreshBudgetMs($root));
-        if (!$decision->refresh) {
-            return [['refresh_if_stale: ' . (string) $decision->reason], $snapshot];
-        }
-        if ($root === null) {
-            return [['refresh_if_stale: the project root is unknown; serving the last complete graph.'], $snapshot];
-        }
-        try {
-            $this->scanner->scan($root, new ScanOptions(cancellation: $cancellation));
-            return [[], null];
-        } catch (\Knossos\Cancellation\ScanCancelledException $cancelled) {
-            // A client-requested cancellation is not a rescan failure to paper
-            // over; propagate it so the transport can surface/suppress it.
-            throw $cancelled;
-        } catch (\Throwable $error) {
-            // No snapshot: a failed attempt leaves a scan row behind, and that
-            // row is itself part of the staleness verdict.
-            return [[sprintf('refresh_if_stale: rescan failed (%s); serving the last complete graph.', ToolErrorMapper::publicMessage($error))], null];
-        }
-    }
-
-    /**
-     * The project's `limits.refresh_budget_ms`, read from its knossos.json now
-     * rather than from the last scan: the key changes no scan output, so an
-     * edit to it does not make the graph stale and would otherwise wait for
-     * an unrelated rescan to take effect. A configuration that cannot be read
-     * gets the default; the rescan, if it runs, reports that fault itself.
-     */
-    private function refreshBudgetMs(?string $root): int
-    {
-        if ($root === null) {
-            return \Knossos\Query\RefreshPolicy::DEFAULT_BUDGET_MS;
-        }
-        try {
-            $allowed = $this->environment !== null ? $this->environment->roots : [$root];
-
-            return \Knossos\Configuration\ProjectConfigurationLoader::load($root, $allowed)->refreshBudgetMs ?? \Knossos\Query\RefreshPolicy::DEFAULT_BUDGET_MS;
-        } catch (\Throwable) {
-            return \Knossos\Query\RefreshPolicy::DEFAULT_BUDGET_MS;
-        }
-    }
-
-    /**
      * Route a call to its handler, which validates every argument now and
      * returns the work as a closure. Parsing eagerly is the point: call() runs
      * this before refresh_if_stale, so a call that is going to be refused
@@ -332,44 +192,45 @@ final readonly class ToolService
      */
     private function prepare(string $name, array $arguments, ?CancellationToken $cancellation): \Closure
     {
+        $spec = ToolArgumentSpec::for($name);
         $run = match ($name) {
             // Nothing to parse: the whole handler is the work.
             'server_info' => fn(): ResultEnvelope => $this->serverInfo($arguments),
             'diagnose_runtime' => fn(): ResultEnvelope => $this->diagnoseRuntime($arguments),
-            'list_projects' => $this->projects($arguments),
+            'list_projects' => $this->projects($arguments, $spec),
             'scan_project' => $this->scan($arguments, $cancellation),
-            'list_snapshots' => $this->snapshots($arguments),
-            'snapshot_diff' => $this->snapshotDiff($arguments),
-            'quality_gate' => $this->qualityGate($arguments),
-            'architecture_trends' => $this->architectureTrends($arguments),
-            'find_component' => $this->find($arguments),
-            'inspect_component' => $this->inspect($arguments),
-            'list_usages' => $this->listUsages($arguments),
-            'architecture_summary' => $this->summary($arguments),
-            'export_agent_brief' => $this->exportAgentBrief($arguments),
-            'file_metrics' => $this->fileMetrics($arguments),
+            'list_snapshots' => $this->snapshots($arguments, $spec),
+            'snapshot_diff' => $this->snapshotDiff($arguments, $spec),
+            'quality_gate' => $this->qualityGate($arguments, $spec),
+            'architecture_trends' => $this->architectureTrends($arguments, $spec),
+            'find_component' => $this->find($arguments, $spec),
+            'inspect_component' => $this->inspect($arguments, $spec),
+            'list_usages' => $this->listUsages($arguments, $spec),
+            'architecture_summary' => $this->summary($arguments, $spec),
+            'export_agent_brief' => $this->exportAgentBrief($arguments, $spec),
+            'file_metrics' => $this->fileMetrics($arguments, $spec),
             'file_context' => $this->fileContext($arguments),
-            'list_diagnostics' => $this->listDiagnostics($arguments),
-            'explain_flow' => $this->flow($arguments),
-            'impact_analysis' => $this->impact($arguments),
-            'dependency_cycles' => $this->cycles($arguments),
-            'architecture_health' => $this->health($arguments),
-            'check_architecture' => $this->check($arguments),
-            'suggest_location' => $this->suggest($arguments),
-            'change_impact' => $this->changeImpact($arguments),
-            'changed_files_impact' => $this->changedFilesImpact($arguments),
-            'test_impact' => $this->testImpact($arguments),
-            'review_diff' => $this->reviewDiff($arguments),
-            'architecture_context' => $this->architectureContext($arguments),
-            'export_diagram' => $this->diagram($arguments),
-            'list_boundaries' => $this->boundaries($arguments),
-            'search_architecture' => $this->search($arguments),
-            'list_annotations' => $this->listAnnotations($arguments),
-            'annotate_component' => $this->annotateComponent($arguments),
-            'remove_project' => $this->removeProject($arguments),
-            'move_project' => $this->moveProject($arguments),
-            'cleanup_stale_scans' => $this->cleanupStaleScans($arguments),
-            'maintain_database' => $this->maintainDatabase($arguments),
+            'list_diagnostics' => $this->listDiagnostics($arguments, $spec),
+            'explain_flow' => $this->flow($arguments, $spec),
+            'impact_analysis' => $this->impact($arguments, $spec),
+            'dependency_cycles' => $this->cycles($arguments, $spec),
+            'architecture_health' => $this->health($arguments, $spec),
+            'check_architecture' => $this->check($arguments, $spec),
+            'suggest_location' => $this->suggest($arguments, $spec),
+            'change_impact' => $this->changeImpact($arguments, $spec),
+            'changed_files_impact' => $this->changedFilesImpact($arguments, $spec),
+            'test_impact' => $this->testImpact($arguments, $spec),
+            'review_diff' => $this->reviewDiff($arguments, $spec),
+            'architecture_context' => $this->architectureContext($arguments, $spec),
+            'export_diagram' => $this->diagram($arguments, $spec),
+            'list_boundaries' => $this->boundaries($arguments, $spec),
+            'search_architecture' => $this->search($arguments, $spec),
+            'list_annotations' => $this->listAnnotations($arguments, $spec),
+            'annotate_component' => $this->annotateComponent($arguments, $spec),
+            'remove_project' => $this->removeProject($arguments, $spec),
+            'move_project' => $this->moveProject($arguments, $spec),
+            'cleanup_stale_scans' => $this->cleanupStaleScans($arguments, $spec),
+            'maintain_database' => $this->maintainDatabase($arguments, $spec),
             default => throw new InvalidArgumentException(sprintf('Unknown tool: %s', $name)),
         };
         // Enums, policies and budgets: the rules the services apply, run now so
@@ -447,40 +308,42 @@ final readonly class ToolService
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::removeAnnotation()}
-     * when `remove` is set, else to {@see ArchitectureQueryService::upsertAnnotation()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\AnnotationService::removeAnnotation()}
+     * when `remove` is set, else to {@see \Knossos\Query\AnnotationService::upsertAnnotation()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function annotateComponent(array $arguments): \Closure
+    private function annotateComponent(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $projectId = ToolArguments::string($arguments, 'project_id');
         $component = ToolArguments::string($arguments, 'component');
         $kind = ToolArguments::string($arguments, 'kind');
         // Stored as given: a note's whitespace is content.
         $value = ToolArguments::text($arguments, 'value', 2000, allowEmpty: true, default: '', trim: false);
-        $remove = ToolArguments::boolean($arguments, 'remove', false);
-        $execute = ToolArguments::boolean($arguments, 'execute', false);
+        $remove = $spec->boolean($arguments, 'remove');
+        $execute = $spec->boolean($arguments, 'execute');
         $evidence = ToolArguments::strings($arguments, 'evidence_paths', 5);
-        $replace = ToolArguments::boolean($arguments, 'replace', false);
+        $replace = $spec->boolean($arguments, 'replace');
 
         return $remove
-            ? fn(): ResultEnvelope => $this->queries->removeAnnotation($projectId, $component, $kind, $value, $execute)
-            : fn(): ResultEnvelope => $this->queries->upsertAnnotation($projectId, $component, $kind, $value, $execute, 'model', $evidence, $replace);
+            ? fn(): ResultEnvelope => $this->queries->services()->annotationQueries->removeAnnotation($projectId, $component, $kind, $value, $execute)
+            : fn(): ResultEnvelope => $this->queries->services()->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, 'model', $evidence, $replace);
     }
 
     /**
      * Validates the tool arguments and forwards to {@see DatabaseMaintenanceService::removeProject()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function removeProject(array $arguments): \Closure
+    private function removeProject(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            ToolArguments::boolean($arguments, 'execute', false),
+            $spec->boolean($arguments, 'execute'),
         ];
 
         return fn(): ResultEnvelope => $this->maintenance->removeProject(...$args);
@@ -496,13 +359,14 @@ final readonly class ToolService
      * caller cannot see.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function moveProject(array $arguments): \Closure
+    private function moveProject(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $from = ToolArguments::string($arguments, 'from');
         $to = ToolArguments::string($arguments, 'to');
-        $execute = ToolArguments::boolean($arguments, 'execute', false);
+        $execute = $spec->boolean($arguments, 'execute');
         if (!str_starts_with($to, '/')) {
             throw new \InvalidArgumentException(sprintf('MOVE_TARGET_NOT_ABSOLUTE: %s must be an absolute path.', $to));
         }
@@ -521,14 +385,15 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see DatabaseMaintenanceService::cleanupStaleScans()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function cleanupStaleScans(array $arguments): \Closure
+    private function cleanupStaleScans(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            ToolArguments::integer($arguments, 'older_than_hours', 24, 1, 8760),
-            ToolArguments::boolean($arguments, 'execute', false),
+            $spec->integer($arguments, 'older_than_hours'),
+            $spec->boolean($arguments, 'execute'),
         ];
 
         return fn(): ResultEnvelope => $this->maintenance->cleanupStaleScans(...$args);
@@ -538,13 +403,14 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see DatabaseMaintenanceService::maintain()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function maintainDatabase(array $arguments): \Closure
+    private function maintainDatabase(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'action'),
-            ToolArguments::boolean($arguments, 'execute', false),
+            $spec->boolean($arguments, 'execute'),
             array_key_exists('backup_name', $arguments) ? ToolArguments::text($arguments, 'backup_name', 127) : null,
         ];
 
@@ -552,64 +418,68 @@ final readonly class ToolService
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::listProjects()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ProjectCatalogQueryService::listProjects()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function projects(array $arguments): \Closure
+    private function projects(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
-            ToolArguments::integer($arguments, 'limit', 50, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
-            ToolArguments::boolean($arguments, 'include_roots', false),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
+            $spec->boolean($arguments, 'include_roots'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->listProjects(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->catalogQueries->listProjects(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::listSnapshots()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ProjectCatalogQueryService::listSnapshots()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function snapshots(array $arguments): \Closure
+    private function snapshots(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            ToolArguments::integer($arguments, 'limit', 20, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->listSnapshots(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->catalogQueries->listSnapshots(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::snapshotDiff()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\SnapshotDiffQuery::snapshotDiff()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function snapshotDiff(array $arguments): \Closure
+    private function snapshotDiff(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'from_snapshot'),
-            array_key_exists('to_snapshot', $arguments) ? ToolArguments::string($arguments, 'to_snapshot') : 'active',
-            ToolArguments::integer($arguments, 'max_changes', 25, 1, 1000),
+            $spec->string($arguments, 'to_snapshot'),
+            $spec->integer($arguments, 'max_changes'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->snapshotDiff(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->diffQueries->snapshotDiff(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::qualityGate()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\QualityGateQueryService::qualityGate()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function qualityGate(array $arguments): \Closure
+    private function qualityGate(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $budgets = $arguments['budgets'];
         $policies = $arguments['policies'] ?? [];
@@ -623,28 +493,29 @@ final readonly class ToolService
             ToolArguments::string($arguments, 'baseline_snapshot'),
             $budgets,
             $policies,
-            ToolArguments::boolean($arguments, 'sarif', false),
-            ToolArguments::boolean($arguments, 'propose_baseline', false),
+            $spec->boolean($arguments, 'sarif'),
+            $spec->boolean($arguments, 'propose_baseline'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->qualityGate(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->gateQueries->qualityGate(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::architectureTrends()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\QualityGateQueryService::architectureTrends()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function architectureTrends(array $arguments): \Closure
+    private function architectureTrends(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            ToolArguments::integer($arguments, 'limit', 10, 2, 20),
+            $spec->integer($arguments, 'limit'),
             array_key_exists('release_from', $arguments) ? ToolArguments::string($arguments, 'release_from') : null,
         ];
 
-        return fn(): ResultEnvelope => $this->queries->architectureTrends(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->gateQueries->architectureTrends(...$args);
     }
 
     /**
@@ -680,14 +551,15 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see ArchitectureQueryService::findComponent()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function find(array $arguments): \Closure
+    private function find(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'name'),
-            ToolArguments::integer($arguments, 'limit', 20, 1, 100),
+            $spec->integer($arguments, 'limit'),
         ];
 
         return fn(): ResultEnvelope => $this->queries->findComponent(...$args);
@@ -697,16 +569,17 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see ArchitectureQueryService::inspectComponent()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function inspect(array $arguments): \Closure
+    private function inspect(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'component'),
-            ToolArguments::integer($arguments, 'max_relationships', 25, 1, 100),
-            ToolArguments::integer($arguments, 'max_children', 25, 1, 100),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
+            $spec->integer($arguments, 'max_relationships'),
+            $spec->integer($arguments, 'max_children'),
+            $spec->string($arguments, 'min_confidence'),
         ];
 
         return fn(): ResultEnvelope => $this->queries->inspectComponent(...$args);
@@ -716,92 +589,97 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see ArchitectureQueryService::listUsages()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function listUsages(array $arguments): \Closure
+    private function listUsages(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'symbol'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'limit', 100, 1, 500),
-            ToolArguments::boolean($arguments, 'exclude_tests', false),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'limit'),
+            $spec->boolean($arguments, 'exclude_tests'),
         ];
 
         return fn(): ResultEnvelope => $this->queries->listUsages(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::architectureSummary()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\GraphSummaryQuery::architectureSummary()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function summary(array $arguments): \Closure
+    private function summary(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            ToolArguments::integer($arguments, 'limit', 50, 1, 100),
+            $spec->integer($arguments, 'limit'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->architectureSummary(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->summaryQueries->architectureSummary(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::exportAgentBrief()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\AgentBriefService::exportAgentBrief()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function exportAgentBrief(array $arguments): \Closure
+    private function exportAgentBrief(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            ToolArguments::integer($arguments, 'max_chars', 4000, 1000, 20_000),
+            $spec->integer($arguments, 'max_chars'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->exportAgentBrief(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->briefQueries->exportAgentBrief(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::fileMetrics()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\FileMetricsQueryService::fileMetrics()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function fileMetrics(array $arguments): \Closure
+    private function fileMetrics(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             array_key_exists('path_contains', $arguments) ? ToolArguments::text($arguments, 'path_contains', 1000) : null,
             array_key_exists('language', $arguments) ? ToolArguments::text($arguments, 'language', 100) : null,
-            array_key_exists('sort_by', $arguments) ? ToolArguments::string($arguments, 'sort_by') : 'line_count',
-            array_key_exists('order', $arguments) ? ToolArguments::string($arguments, 'order') : 'desc',
-            ToolArguments::integer($arguments, 'limit', 50, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            $spec->string($arguments, 'sort_by'),
+            $spec->string($arguments, 'order'),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->fileMetrics(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->fileMetricsQueries->fileMetrics(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::listDiagnostics()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\DiagnosticsQueryService::listDiagnostics()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function listDiagnostics(array $arguments): \Closure
+    private function listDiagnostics(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             array_key_exists('severity', $arguments) ? ToolArguments::string($arguments, 'severity') : null,
             array_key_exists('path_prefix', $arguments) ? ToolArguments::string($arguments, 'path_prefix') : null,
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->listDiagnostics(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->diagnosticsQueries->listDiagnostics(...$args);
     }
 
     /**
@@ -821,20 +699,21 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see ArchitectureQueryService::explainFlow()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function flow(array $arguments): \Closure
+    private function flow(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'from'),
             ToolArguments::string($arguments, 'to'),
-            ToolArguments::integer($arguments, 'max_depth', 6, 1, \Knossos\Query\FlowQuery::MAX_DEPTH),
-            ToolArguments::integer($arguments, 'max_paths', 5, 1, 20),
+            $spec->integer($arguments, 'max_depth'),
+            $spec->integer($arguments, 'max_paths'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', \Knossos\Query\FlowQuery::DEFAULT_TIMEOUT_MS, 1, 5000),
-            ToolArguments::boolean($arguments, 'both_directions', false),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'timeout_ms'),
+            $spec->boolean($arguments, 'both_directions'),
             array_key_exists('profile', $arguments) ? ToolArguments::string($arguments, 'profile') : null,
         ];
 
@@ -845,81 +724,85 @@ final readonly class ToolService
      * Validates the tool arguments and forwards to {@see ArchitectureQueryService::impactAnalysis()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function impact(array $arguments): \Closure
+    private function impact(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'symbol'),
-            ToolArguments::integer($arguments, 'max_depth', 6, 1, 8),
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
+            $spec->integer($arguments, 'max_depth'),
+            $spec->integer($arguments, 'limit'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
-            ToolArguments::boolean($arguments, 'seed_members', true),
-            ToolArguments::boolean($arguments, 'rings', false),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'timeout_ms'),
+            $spec->boolean($arguments, 'seed_members'),
+            $spec->boolean($arguments, 'rings'),
         ];
 
         return fn(): ResultEnvelope => $this->queries->impactAnalysis(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::dependencyCycles()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\DependencyCycleQuery::dependencyCycles()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function cycles(array $arguments): \Closure
+    private function cycles(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'limit', 20, 1, 100),
-            ToolArguments::integer($arguments, 'max_nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES),
-            ToolArguments::integer($arguments, 'max_edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES),
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
-            ToolArguments::boolean($arguments, 'include_self_loops', false),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'max_nodes'),
+            $spec->integer($arguments, 'max_edges'),
+            $spec->integer($arguments, 'timeout_ms'),
+            $spec->boolean($arguments, 'include_self_loops'),
         ];
-        $withinType = ToolArguments::boolean($arguments, 'within_type', false);
+        $withinType = $spec->boolean($arguments, 'within_type');
 
-        return fn(): ResultEnvelope => $this->queries->dependencyCycles(...$args, withinType: $withinType);
+        return fn(): ResultEnvelope => $this->queries->services()->cycleQueries->dependencyCycles(...$args, withinType: $withinType);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::architectureHealth()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ArchitectureHealthQuery::architectureHealth()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function health(array $arguments): \Closure
+    private function health(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'limit', 20, 1, 100),
-            ToolArguments::integer($arguments, 'max_nodes', QueryBounds::MAX_NODES, 1, QueryBounds::MAX_NODES),
-            ToolArguments::integer($arguments, 'max_edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES),
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
-            ToolArguments::boolean($arguments, 'include_external', false),
-            ToolArguments::boolean($arguments, 'include_tests', false),
-            array_key_exists('candidate_confidence', $arguments) ? ToolArguments::string($arguments, 'candidate_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'candidate_offset', 0, 0, 100_000),
-            ToolArguments::integer($arguments, 'candidate_timeout_ms', 5000, 1, 60_000),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'max_nodes'),
+            $spec->integer($arguments, 'max_edges'),
+            $spec->integer($arguments, 'timeout_ms'),
+            $spec->boolean($arguments, 'include_external'),
+            $spec->boolean($arguments, 'include_tests'),
+            $spec->string($arguments, 'candidate_confidence'),
+            $spec->integer($arguments, 'candidate_offset'),
+            $spec->integer($arguments, 'candidate_timeout_ms'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->architectureHealth(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->healthQueries->architectureHealth(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::checkArchitecture()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ArchitecturePolicyQueryService::checkArchitecture()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function check(array $arguments): \Closure
+    private function check(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         // Absent, the project's declared policies are checked.
         $policies = $arguments['policies'] ?? null;
@@ -929,112 +812,117 @@ final readonly class ToolService
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             $policies,
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
-            ToolArguments::integer($arguments, 'max_edges', ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, 1, QueryBounds::MAX_EDGES),
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'max_edges'),
+            $spec->integer($arguments, 'timeout_ms'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->checkArchitecture(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->policyQueries->checkArchitecture(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::suggestLocation()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\LocationSuggestionService::suggestLocation()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function suggest(array $arguments): \Closure
+    private function suggest(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::text($arguments, 'feature_description', 2000),
-            ToolArguments::integer($arguments, 'limit', 5, 1, 20),
-            ToolArguments::integer($arguments, 'max_members', 20_000, 1, 50_000),
-            ToolArguments::integer($arguments, 'max_edges', QueryBounds::MAX_EDGES, 1, QueryBounds::MAX_EDGES),
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
-            array_key_exists('ranking_mode', $arguments) ? ToolArguments::string($arguments, 'ranking_mode') : 'deterministic',
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'max_members'),
+            $spec->integer($arguments, 'max_edges'),
+            $spec->integer($arguments, 'timeout_ms'),
+            $spec->string($arguments, 'ranking_mode'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->suggestLocation(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->locationQueries->suggestLocation(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::changeImpact()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ChangeImpactQueryService::changeImpact()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function changeImpact(array $arguments): \Closure
+    private function changeImpact(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::string($arguments, 'symbol'),
-            ToolArguments::integer($arguments, 'since_days', 90, 1, 3650),
-            ToolArguments::integer($arguments, 'max_commits', 500, 1, 5000),
-            ToolArguments::integer($arguments, 'max_depth', 4, 1, 8),
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
+            $spec->integer($arguments, 'since_days'),
+            $spec->integer($arguments, 'max_commits'),
+            $spec->integer($arguments, 'max_depth'),
+            $spec->integer($arguments, 'limit'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'timeout_ms'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->changeImpact(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->changeQueries->changeImpact(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::changedFilesImpact()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ChangeImpactQueryService::changedFilesImpact()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function changedFilesImpact(array $arguments): \Closure
+    private function changedFilesImpact(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::strings($arguments, 'files', 50),
-            ToolArguments::boolean($arguments, 'working_tree', false),
+            $spec->boolean($arguments, 'working_tree'),
             array_key_exists('base_ref', $arguments) ? ToolArguments::text($arguments, 'base_ref', 200) : null,
-            ToolArguments::integer($arguments, 'max_depth', 4, 1, 8),
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
+            $spec->integer($arguments, 'max_depth'),
+            $spec->integer($arguments, 'limit'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'timeout_ms'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->changedFilesImpact(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->changeQueries->changedFilesImpact(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::testImpact()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ChangeImpactQueryService::testImpact()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function testImpact(array $arguments): \Closure
+    private function testImpact(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::strings($arguments, 'files', 50),
-            ToolArguments::boolean($arguments, 'working_tree', false),
+            $spec->boolean($arguments, 'working_tree'),
             array_key_exists('base_ref', $arguments) ? ToolArguments::text($arguments, 'base_ref', 200) : null,
-            ToolArguments::integer($arguments, 'max_depth', 4, 1, 8),
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
+            $spec->integer($arguments, 'max_depth'),
+            $spec->integer($arguments, 'limit'),
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'timeout_ms'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->testImpact(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->changeQueries->testImpact(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::reviewDiff()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ReviewDiffService::reviewDiff()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function reviewDiff(array $arguments): \Closure
+    private function reviewDiff(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $policies = $arguments['policies'] ?? null;
         if ($policies !== null && (!is_array($policies) || !array_is_list($policies))) {
@@ -1051,82 +939,86 @@ final readonly class ToolService
             $policies,
             $budgets,
             array_key_exists('baseline_snapshot', $arguments) ? ToolArguments::string($arguments, 'baseline_snapshot') : null,
-            ToolArguments::integer($arguments, 'max_depth', 4, 1, 8),
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            ToolArguments::integer($arguments, 'timeout_ms', 1000, 1, 5000),
+            $spec->integer($arguments, 'max_depth'),
+            $spec->integer($arguments, 'limit'),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->integer($arguments, 'timeout_ms'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->reviewDiff(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->reviewQueries->reviewDiff(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::architectureContext()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\ArchitectureContextService::architectureContext()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function architectureContext(array $arguments): \Closure
+    private function architectureContext(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             ToolArguments::text($arguments, 'task_description', 2000, allowEmpty: true, default: ''),
             ToolArguments::strings($arguments, 'files', 50),
-            ToolArguments::integer($arguments, 'max_chars', 30_000, 4000, 100_000),
-            ToolArguments::integer($arguments, 'timeout_ms', 1500, 1, 5000),
-            ToolArguments::boolean($arguments, 'include_source', false),
+            $spec->integer($arguments, 'max_chars'),
+            $spec->integer($arguments, 'timeout_ms'),
+            $spec->boolean($arguments, 'include_source'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->architectureContext(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->contextQueries->architectureContext(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::exportDiagram()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\DiagramExportService::exportDiagram()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function diagram(array $arguments): \Closure
+    private function diagram(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
-            array_key_exists('format', $arguments) ? ToolArguments::string($arguments, 'format') : 'mermaid',
+            $spec->string($arguments, 'format'),
             array_key_exists('boundary', $arguments) ? ToolArguments::string($arguments, 'boundary') : null,
             ToolArguments::strings($arguments, 'edge_kinds'),
-            array_key_exists('min_confidence', $arguments) ? ToolArguments::string($arguments, 'min_confidence') : 'possible',
-            array_key_exists('direction', $arguments) ? ToolArguments::string($arguments, 'direction') : 'LR',
-            ToolArguments::integer($arguments, 'max_nodes', 200, 1, 400),
-            ToolArguments::integer($arguments, 'max_edges', 500, 1, 1000),
+            $spec->string($arguments, 'min_confidence'),
+            $spec->string($arguments, 'direction'),
+            $spec->integer($arguments, 'max_nodes'),
+            $spec->integer($arguments, 'max_edges'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->exportDiagram(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->diagramQueries->exportDiagram(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::listBoundaries()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\GraphSummaryQuery::listBoundaries()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function boundaries(array $arguments): \Closure
+    private function boundaries(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             array_key_exists('source', $arguments) ? ToolArguments::string($arguments, 'source') : null,
-            ToolArguments::integer($arguments, 'limit', 50, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->listBoundaries(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->summaryQueries->listBoundaries(...$args);
     }
 
     /**
      * Validates the tool arguments and forwards to {@see ArchitectureQueryService::searchArchitecture()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function search(array $arguments): \Closure
+    private function search(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
@@ -1135,30 +1027,31 @@ final readonly class ToolService
             ToolArguments::strings($arguments, 'roles'),
             ToolArguments::strings($arguments, 'boundary_ids'),
             ToolArguments::strings($arguments, 'confidences'),
-            ToolArguments::integer($arguments, 'limit', 20, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
-            ToolArguments::boolean($arguments, 'files', false),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
+            $spec->boolean($arguments, 'files'),
         ];
 
         return fn(): ResultEnvelope => $this->queries->searchArchitecture(...$args);
     }
 
     /**
-     * Validates the tool arguments and forwards to {@see ArchitectureQueryService::listAnnotations()}.
+     * Validates the tool arguments and forwards to {@see \Knossos\Query\AnnotationService::listAnnotations()}.
      *
      * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
      * @return \Closure(): ResultEnvelope
      */
-    private function listAnnotations(array $arguments): \Closure
+    private function listAnnotations(array $arguments, ToolArgumentSpec $spec): \Closure
     {
         $args = [
             ToolArguments::string($arguments, 'project_id'),
             array_key_exists('component', $arguments) ? ToolArguments::string($arguments, 'component') : null,
             array_key_exists('kind', $arguments) ? ToolArguments::string($arguments, 'kind') : null,
-            ToolArguments::integer($arguments, 'limit', 100, 1, 100),
-            ToolArguments::integer($arguments, 'offset', 0, 0, 100_000),
+            $spec->integer($arguments, 'limit'),
+            $spec->integer($arguments, 'offset'),
         ];
 
-        return fn(): ResultEnvelope => $this->queries->listAnnotations(...$args);
+        return fn(): ResultEnvelope => $this->queries->services()->annotationQueries->listAnnotations(...$args);
     }
 }

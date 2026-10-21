@@ -13,7 +13,7 @@ use PDO;
  *
  * A test search over a set of files says which tests reach the set, not
  * which file each reaches; so each file is searched on its own
- * ({@see ArchitectureQueryService::testImpact()}), the most depended on
+ * ({@see ChangeImpactQueryService::testImpact()}), the most depended on
  * first, within a cap on files and a deadline across them all. A file is
  * answered with a count only when that is known: a file the graph places no
  * component in (a document, a configuration file) has no tests to count, and
@@ -53,8 +53,9 @@ final readonly class FileTestReach
     /**
      * @param PDO $pdo an existing, migrated graph database
      * @param Closure|null $clock milliseconds since some start, so the deadline is testable
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
      */
-    public function __construct(private PDO $pdo, private ?Closure $clock = null) {}
+    public function __construct(private PDO $pdo, private ?Closure $clock = null, private ?QueryServices $services = null) {}
 
     /**
      * The tests reaching each of `$files` (project-relative), at most
@@ -65,7 +66,7 @@ final readonly class FileTestReach
      */
     public function reach(string $projectId, array $files): array
     {
-        $queries = ArchitectureQueryService::forDatabase($this->pdo);
+        $changes = ($this->services ?? QueryServices::wire($this->pdo))->changeQueries;
         $now = $this->clock ?? static fn(): float => microtime(true) * 1000;
         $until = $now() + self::DEADLINE_MS;
         $counts = [];
@@ -74,7 +75,7 @@ final readonly class FileTestReach
             if ($left <= 0) {
                 break;
             }
-            $found = $queries->testImpact($projectId, [$file], maxDepth: self::DEPTH, limit: self::COUNTED, timeoutMs: max(1, min(self::PER_FILE_MS, $left)));
+            $found = $changes->testImpact($projectId, [$file], maxDepth: self::DEPTH, limit: self::COUNTED, timeoutMs: max(1, min(self::PER_FILE_MS, $left)));
             // A test that only builds the application still runs the file's code.
             $tests = count($found->data['test_files'] ?? []) + count($found->data['test_files_via_wiring'] ?? []);
             $unplaced = in_array($file, $found->data['unresolved_files'] ?? [], true);
@@ -105,7 +106,7 @@ final readonly class FileTestReach
      * @param Closure|null $clock milliseconds since some start, so the deadline is testable
      * @return array{tests: list<array{path: string, distance: int}>, truncated: bool}
      */
-    public static function testsOf(ArchitectureQueryService $queries, string $projectId, array $files, int $limit, ?Closure $clock = null): array
+    public static function testsOf(ChangeImpactQueryService $changes, string $projectId, array $files, int $limit, ?Closure $clock = null): array
     {
         $now = $clock ?? static fn(): float => microtime(true) * 1000;
         $until = $now() + self::TESTS_DEADLINE_MS;
@@ -120,7 +121,7 @@ final readonly class FileTestReach
             }
             // test_impact accepts a limit of 1 to 100; this list is cut to
             // $limit below either way, so a smaller or larger one is clamped.
-            $found = $queries->testImpact($projectId, $chunk, maxDepth: self::DEPTH, limit: max(1, min(100, $limit)), timeoutMs: max(1, min(self::CHUNK_MS, $left)));
+            $found = $changes->testImpact($projectId, $chunk, maxDepth: self::DEPTH, limit: max(1, min(100, $limit)), timeoutMs: max(1, min(self::CHUNK_MS, $left)));
             $truncated = $truncated || $found->truncated;
             foreach (['direct' => 'test_files', 'wired' => 'test_files_via_wiring'] as $group => $key) {
                 foreach ($found->data[$key] ?? [] as $test) {

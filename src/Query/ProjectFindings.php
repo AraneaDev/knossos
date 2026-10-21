@@ -51,8 +51,9 @@ final readonly class ProjectFindings
     /**
      * @param PDO $pdo an existing, migrated graph database
      * @param Closure|null $clock nanosecond clock handed to the policy check, so its time limit is testable
+     * @param QueryServices|null $services the query services to read through, wired with that clock; null wires them against `$pdo` per call
      */
-    public function __construct(private PDO $pdo, private ?Closure $clock = null) {}
+    public function __construct(private PDO $pdo, private ?Closure $clock = null, private ?QueryServices $services = null) {}
 
     /**
      * What the project holds: components (external symbols and enriched records left out) by kind,
@@ -268,7 +269,7 @@ final readonly class ProjectFindings
         try {
             // The whole project's edges: on a graph of several thousand components
             // a one-second budget ran out on a cold read and flagged a clean project.
-            $check = ArchitectureQueryService::forDatabase($this->pdo, $this->clock)->checkArchitecture($projectId, $policies, limit: self::VIOLATIONS, timeoutMs: 5000);
+            $check = ($this->services ?? QueryServices::wire($this->pdo, $this->clock))->policyQueries->checkArchitecture($projectId, $policies, limit: self::VIOLATIONS, timeoutMs: 5000);
         } catch (InvalidArgumentException) {
             return $none;
         }

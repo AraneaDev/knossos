@@ -15,7 +15,7 @@ use Throwable;
  * its latest commits.
  *
  * Built from {@see FileDetailService} (dependents and boundary) and
- * {@see ArchitectureQueryService::testImpact()} (tests), each list cut to a
+ * {@see ChangeImpactQueryService::testImpact()} (tests), each list cut to a
  * few; the commits come from git alone, bounded in count and time, and are
  * simply absent where git is not there or does not answer. Read-only, never
  * scans. The rules a boundary is bound by are added by
@@ -40,8 +40,9 @@ final readonly class FileContextService
     /**
      * @param PDO $pdo an existing, migrated graph database
      * @param GitProcessRunnerInterface|null $git how git is run; the hardened runner unless a test stands in
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
      */
-    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $git = null)
+    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $git = null, private ?QueryServices $services = null)
     {
         $this->git = $git ?? new GitProcessRunner();
     }
@@ -62,7 +63,7 @@ final readonly class FileContextService
         $projectId = (string) $detail['project_id'];
         $relative = (string) $file['path'];
         $root = substr((string) $detail['path'], 0, -strlen($relative) - 1);
-        $tests = ArchitectureQueryService::forDatabase($this->pdo)->testImpact($projectId, [$relative], limit: self::NAMED, timeoutMs: self::TESTS_TIMEOUT_MS);
+        $tests = ($this->services ?? QueryServices::wire($this->pdo))->changeQueries->testImpact($projectId, [$relative], limit: self::NAMED, timeoutMs: self::TESTS_TIMEOUT_MS);
         // Tests that reach the file by a call first, then those that only build the application.
         $listed = array_slice(array_map(
             static fn(array $t): array => ['path' => (string) $t['path'], 'distance' => (int) $t['distance']],

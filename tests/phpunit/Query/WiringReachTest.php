@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\FileContextService;
 use Knossos\Query\FileTestReach;
+use Knossos\Query\QueryServices;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -116,7 +117,7 @@ final class WiringReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->wired();
         try {
-            $listed = FileTestReach::testsOf(ArchitectureQueryService::forDatabase($pdo), $projectId, ['src/Core/Target.php'], 5);
+            $listed = FileTestReach::testsOf(QueryServices::wire($pdo)->changeQueries, $projectId, ['src/Core/Target.php'], 5);
             assertSame(['tests/TargetTest.php', 'tests/AppTest.php'], array_column($listed['tests'], 'path'));
             assertSame(['src/Core/Target.php' => 2], (new FileTestReach($pdo))->reach($projectId, ['src/Core/Target.php']));
             $context = (new FileContextService($pdo))->context($root . '/src/Core/Target.php');

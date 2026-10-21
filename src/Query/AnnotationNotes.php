@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Result\ResultEnvelope;
 use PDO;
 
 /**
@@ -25,7 +26,40 @@ final readonly class AnnotationNotes
     /** The most characters of a note's text a result carries; the full text stays in list_annotations. */
     public const MAX_TEXT = 1000;
 
+    /** How many component names a result's notes are looked up for; a long listing's first ones are enough. */
+    public const NOTE_LOOKUP_NAMES = 300;
+
     public function __construct(private PDO $pdo) {}
+
+    /**
+     * The result with the notes of the components it names, as `data.notes`:
+     * every `canonical_name` its data holds (a target, usage sources,
+     * dependants, flow hops, candidates, a file's components), looked up in
+     * {@see self::forComponents()}. A result naming no annotated component is
+     * returned unchanged, so it pays nothing.
+     *
+     * @param list<string> $alsoNamed components the result bears on without naming them in its data
+     */
+    public function attach(ResultEnvelope $result, array $alsoNamed = []): ResultEnvelope
+    {
+        $names = array_fill_keys($alsoNamed, true);
+        $collect = static function (mixed $value) use (&$collect, &$names): void {
+            if (!is_array($value) || count($names) >= self::NOTE_LOOKUP_NAMES) {
+                return;
+            }
+            foreach ($value as $key => $item) {
+                if ($key === 'canonical_name' && is_string($item)) {
+                    $names[$item] = true;
+                } elseif (is_array($item)) {
+                    $collect($item);
+                }
+            }
+        };
+        $collect($result->data);
+        $notes = $this->forComponents($result->projectId, array_keys($names));
+
+        return $notes === [] ? $result : $result->withData([...$result->data, 'notes' => $notes]);
+    }
 
     /**
      * The notes on the named components, the person's first, capped and cut.

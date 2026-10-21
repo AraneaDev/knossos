@@ -74,7 +74,7 @@ final class ToolCatalogPolicyTest extends KnossosTestCase
      * A tool may declare refresh_if_stale only if it takes the project_id the
      * refresh needs.
      *
-     * ToolService::refreshIfStale() reads project_id from the arguments and
+     * StaleScanRefresher::refreshIfStale() reads project_id from the arguments and
      * returns before scanning anything when there is none, so on a tool that
      * declares no project_id the option is inert: it advertises a rescan that
      * cannot happen, and validateKeys() rejects the project_id a caller might

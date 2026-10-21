@@ -64,7 +64,11 @@ final readonly class GraphSearchService
     /** Kinds there are too many of to look for by name: a class's fields and a function's locals. */
     private const UNSEARCHED = ['property', 'variable', 'object', 'parameter'];
 
-    public function __construct(private PDO $pdo) {}
+    /**
+     * @param PDO $pdo an existing, migrated graph database
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
+     */
+    public function __construct(private PDO $pdo, private ?QueryServices $services = null) {}
 
     /**
      * The components and files matching `$query` in the project that owns
@@ -90,7 +94,7 @@ final readonly class GraphSearchService
         // The core takes at most eight words.
         $words = implode(' ', array_slice(preg_split('/\s+/u', $typed, -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, 8));
         // Read past the finder's own limit: the components it cannot open (externals first among them) can fill a page.
-        $core = ArchitectureQueryService::forDatabase($this->pdo)->searchArchitecture($id, $words, limit: self::CORE_READ, includeFiles: true);
+        $core = (new AnnotationNotes($this->pdo))->attach(($this->services ?? QueryServices::wire($this->pdo))->componentQueries->searchArchitecture($id, $words, limit: self::CORE_READ, includeFiles: true));
         $places = [];
         foreach ($core->evidence as $evidence) {
             $places[(string) $evidence['component_id']] = ['path' => (string) $evidence['path'], 'line' => $evidence['start_line'] === null ? null : (int) $evidence['start_line']];

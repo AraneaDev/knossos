@@ -40,8 +40,11 @@ final readonly class ComponentDetailService
     /** Candidate names listed for an ambiguous name. */
     private const CANDIDATES = 10;
 
-    /** @param PDO $pdo an existing, migrated graph database */
-    public function __construct(private PDO $pdo) {}
+    /**
+     * @param PDO $pdo an existing, migrated graph database
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
+     */
+    public function __construct(private PDO $pdo, private ?QueryServices $services = null) {}
 
     /**
      * The detail of `$name` in the project that owns `$path`.
@@ -61,7 +64,7 @@ final readonly class ComponentDetailService
             return $envelope;
         }
         $id = (string) $project['id'];
-        $result = ArchitectureQueryService::forDatabase($this->pdo)->inspectComponent($id, $name, self::RELATIONSHIPS, 1);
+        $result = (new AnnotationNotes($this->pdo))->attach(($this->services ?? QueryServices::wire($this->pdo))->componentQueries->inspectComponent($id, $name, self::RELATIONSHIPS, 1));
         $envelope['project_id'] = $id;
         $envelope['snapshot_id'] = $project['active_scan_id'];
         $data = $result->data;

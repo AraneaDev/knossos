@@ -8,7 +8,7 @@ use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\ProjectDatabaseLocator;
 use Knossos\Cli\ProjectReference;
-use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\QueryServices;
 use Knossos\Query\SessionBriefRenderer;
 use Knossos\Query\SessionBriefService;
 use Knossos\Store\SqliteConnection;
@@ -81,7 +81,7 @@ final class SessionCommand implements CliCommand
             // Neither may happen on a path that runs before a session starts,
             // so an absent database is answered from nothing at all.
             $brief = is_file($databasePath)
-                ? ArchitectureQueryService::forDatabase(SqliteConnection::open($databasePath))->sessionBrief($path, $databasePath)
+                ? QueryServices::wire(SqliteConnection::open($databasePath))->sessionBrief($databasePath)->brief($path)
                 : (new SessionBriefRenderer())->render(SessionBriefService::unscanned($path, $databasePath));
             $context->output(['brief' => $brief], $context->options->flag($options, 'json'), $brief);
         } catch (Throwable $error) {

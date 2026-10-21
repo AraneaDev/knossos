@@ -94,7 +94,9 @@ final readonly class TurnBriefService
         $root = (string) $project['root_realpath'];
         $projectId = (string) $project['id'];
         $reported = self::relative($root, $extraFiles);
-        $violations = new FileViolationQuery($this->pdo, $this->policyTimeoutMs, $this->policyMaxEdges);
+        // Wired once for the whole brief: the policy check, the test search and the per-file reach all read through it.
+        $queries = QueryServices::wire($this->pdo, gitWorkingTree: new ProcessGitWorkingTreeProvider());
+        $violations = new FileViolationQuery($this->pdo, $this->policyTimeoutMs, $this->policyMaxEdges, $queries);
         ['policies' => $policies, 'error' => $unreadable] = $enforcePolicies ? FileViolationQuery::policies($root, $policies) : ['policies' => [], 'error' => null];
         $ledger = new ScanLedger($this->pdo);
         $reuse = $reuseScan && self::onDisk($root, $reported, $ledger->hashes($projectId));
@@ -135,8 +137,7 @@ final readonly class TurnBriefService
         // Policy looks only at what the turn itself edited: a checkout, a formatter or a shell command
         // can change many files at once, and their old violations are not the model's to fix.
         $edited = array_values(array_intersect($live, $reported));
-        $queries = ArchitectureQueryService::forDatabase($this->pdo, gitWorkingTree: new ProcessGitWorkingTreeProvider());
-        $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries, $projectId, $live, self::MAX_TESTS);
+        $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $live, self::MAX_TESTS);
         return [
             'status' => 'ok',
             'project_root' => $root,
@@ -148,7 +149,7 @@ final readonly class TurnBriefService
             'changed_files' => $changed,
             'added_files' => $added,
             'deleted_files' => $deleted,
-            'impact' => self::withTests((new FileFanInQuery($this->pdo))->forPaths($projectId, $live, self::TOP_DEPENDENTS), (new FileTestReach($this->pdo))->reach($projectId, $live)),
+            'impact' => self::withTests((new FileFanInQuery($this->pdo))->forPaths($projectId, $live, self::TOP_DEPENDENTS), (new FileTestReach($this->pdo, services: $queries))->reach($projectId, $live)),
             'tests' => JsTestRunner::annotate($root, $tests['tests']),
             'tests_truncated' => $tests['truncated'],
             'policy' => $unreadable !== null

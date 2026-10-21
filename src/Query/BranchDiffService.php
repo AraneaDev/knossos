@@ -53,8 +53,9 @@ final readonly class BranchDiffService
     /**
      * @param PDO $pdo an existing, migrated graph database
      * @param GitProcessRunnerInterface|null $git how git is run; the hardened runner unless a test stands in
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
      */
-    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $git = null)
+    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $git = null, private ?QueryServices $services = null)
     {
         $this->git = $git ?? new GitProcessRunner();
     }
@@ -107,7 +108,7 @@ final readonly class BranchDiffService
             return ['status' => 'no-snapshot'] + $envelope;
         }
         ['policies' => $policies, 'error' => $unreadable] = FileViolationQuery::policies($root, null);
-        $comparison = ArchitectureQueryService::forDatabase($this->pdo)->branchComparison($id, $base['snapshot_id'], $policies, self::LIMIT);
+        $comparison = ($this->services ?? QueryServices::wire($this->pdo))->gateQueries->branchComparison($id, $base['snapshot_id'], $policies, self::LIMIT);
         if ($unreadable !== null) {
             // Policies that could not be read were not checked: said so, never "no violations".
             $comparison['violations'] = ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'count' => 0, 'items' => [], 'truncated' => false];

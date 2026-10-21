@@ -14,11 +14,17 @@ use PDO;
 /**
  * Facade over the specialised query services.
  *
- * Exists so callers — the MCP tools, the CLI commands — depend on one seam
- * rather than on a dozen services, and so the split between those services can
- * change without touching them. Almost every method here is a one-line
- * delegation; the behaviour, limits, and result shape are documented on the
- * delegate named in each `@see`.
+ * What it owns itself is cross-cutting: the notes a component answer carries
+ * ({@see AnnotationNotes::attach()}, on find, inspect, usages, flow, impact,
+ * search and file context) and the project root the MCP layer confines and
+ * refreshes by. A caller that wants a query the facade would only forward
+ * reads it from {@see self::services()} instead, as the tools, the CLI and
+ * the pane services do.
+ *
+ * The one-line forwards that remain have no production caller: the test
+ * suite reads every query through this one seam, so they stay for it. The
+ * behaviour, limits, and result shape are documented on the delegate named
+ * in each `@see`.
  */
 final readonly class ArchitectureQueryService
 {
@@ -43,14 +49,13 @@ final readonly class ArchitectureQueryService
     }
 
     /**
-     * The verdict together with the scan it was measured against, for a caller
-     * that will hand it on to be attached to an answer.
-     *
-     * {@see StalenessProbe::snapshot()}
+     * The services this facade delegates to, for a caller that wants one
+     * directly: a query whose answer the facade only forwards gains nothing
+     * by going through it, and the services are wired once already.
      */
-    public function stalenessSnapshot(string $projectId): \Knossos\Query\StalenessSnapshot
+    public function services(): QueryServices
     {
-        return $this->services->stalenessProbe->snapshot($projectId);
+        return $this->services;
     }
 
     /** Root path recorded at scan time; used by the MCP layer to self-heal stale graphs. */
@@ -60,30 +65,6 @@ final readonly class ArchitectureQueryService
         $statement->execute(['id' => $projectId]);
         $root = $statement->fetchColumn();
         return is_string($root) && $root !== '' ? $root : null;
-    }
-
-    /**
-     * Whether a stale graph may be repaired inside the caller's query.
-     *
-     * Beside projectRoot() on purpose: both exist so the MCP layer can
-     * self-heal a stale graph, and both are reads the facade already owns the
-     * connection for.
-     *
-     * {@see RefreshPolicy::decide()}
-     */
-    public function refreshDecision(string $projectId, \Knossos\Query\Drift\DriftCounts $drift, int $budgetMs = RefreshPolicy::DEFAULT_BUDGET_MS): RefreshDecision
-    {
-        return $this->services->refreshPolicy->decide($projectId, $drift, $budgetMs);
-    }
-
-    /**
-     * {@see ProjectCatalogQueryService::projectsInCreationOrder()}
-     *
-     * @return array{projects: list<array{id: string, name: string, created_at: string}>, more: bool}
-     */
-    public function projectsInCreationOrder(int $limit, ?string $afterCreatedAt = null, ?string $afterId = null): array
-    {
-        return $this->services->catalogQueries->projectsInCreationOrder($limit, $afterCreatedAt, $afterId);
     }
 
     /** {@see ProjectCatalogQueryService::listProjects()} */
@@ -457,12 +438,6 @@ final readonly class ArchitectureQueryService
         return $this->services->annotationQueries->upsertAnnotation($projectId, $component, $kind, $value, $execute, $author, $evidencePaths, $replace);
     }
 
-    /** {@see AnnotationService::confirmAnnotation()} */
-    public function confirmAnnotation(string $projectId, string $component, string $kind = 'note', bool $execute = false): ResultEnvelope
-    {
-        return $this->services->annotationQueries->confirmAnnotation($projectId, $component, $kind, $execute);
-    }
-
     /** {@see AnnotationService::removeAnnotation()} */
     public function removeAnnotation(string $projectId, string $component, string $kind, string $value = '', bool $execute = false, string $author = 'model'): ResultEnvelope
     {
@@ -477,7 +452,7 @@ final readonly class ArchitectureQueryService
         // notes are those of the components the file declares, looked up by
         // the path the result normalised, however the caller wrote it.
         $declared = $this->services->pdo->prepare(
-            'SELECT n.canonical_name FROM nodes n JOIN files f ON f.id = n.file_id WHERE f.project_id = ? AND f.relative_path = ? LIMIT ' . self::NOTE_LOOKUP_NAMES,
+            'SELECT n.canonical_name FROM nodes n JOIN files f ON f.id = n.file_id WHERE f.project_id = ? AND f.relative_path = ? LIMIT ' . AnnotationNotes::NOTE_LOOKUP_NAMES,
         );
         $declared->execute([$projectId, (string) ($result->data['path'] ?? $path)]);
 
@@ -497,46 +472,13 @@ final readonly class ArchitectureQueryService
     }
 
     /**
-     * {@see SessionBriefService::brief()}
-     *
-     * $databasePath is optional so every existing caller keeps working; pass
-     * it to let the brief warn when $path falls outside every allowed root.
-     */
-    public function sessionBrief(string $path, ?string $databasePath = null): string
-    {
-        return $this->services->sessionBrief($databasePath)->brief($path);
-    }
-
-    /** How many component names a result's notes are looked up for; a long listing's first ones are enough. */
-    private const NOTE_LOOKUP_NAMES = 300;
-
-    /**
-     * The result with the notes of the components it names, as `data.notes`:
-     * every `canonical_name` its data holds (a target, usage sources,
-     * dependants, flow hops, candidates, a file's components), looked up in
-     * {@see AnnotationNotes}. A result naming no annotated component is
-     * returned unchanged, so it pays nothing.
+     * The result with the notes of the components it names; see
+     * {@see AnnotationNotes::attach()}.
      *
      * @param list<string> $alsoNamed components the result bears on without naming them in its data
      */
     private function withNotes(ResultEnvelope $result, array $alsoNamed = []): ResultEnvelope
     {
-        $names = array_fill_keys($alsoNamed, true);
-        $collect = static function (mixed $value) use (&$collect, &$names): void {
-            if (!is_array($value) || count($names) >= self::NOTE_LOOKUP_NAMES) {
-                return;
-            }
-            foreach ($value as $key => $item) {
-                if ($key === 'canonical_name' && is_string($item)) {
-                    $names[$item] = true;
-                } elseif (is_array($item)) {
-                    $collect($item);
-                }
-            }
-        };
-        $collect($result->data);
-        $notes = (new AnnotationNotes($this->services->pdo))->forComponents($result->projectId, array_keys($names));
-
-        return $notes === [] ? $result : $result->withData([...$result->data, 'notes' => $notes]);
+        return (new AnnotationNotes($this->services->pdo))->attach($result, $alsoNamed);
     }
 }

@@ -789,7 +789,7 @@ final readonly class ToolCatalog
      *
      * @param bool $withRefresh whether this tool can actually repair a stale
      *        graph before answering. Only a tool that takes a project_id can:
-     *        ToolService::refreshIfStale() reads that argument and returns
+     *        StaleScanRefresher::refreshIfStale() reads that argument and returns
      *        before scanning anything without one, so declaring the option on
      *        a tool that has no project to refresh advertises behaviour the
      *        tool cannot perform, and drags a false readOnlyHint along with it.

@@ -35,11 +35,13 @@ final readonly class FileViolationQuery
     /**
      * @param int $timeoutMs the check's time budget, at most the checker's 5000 ms ceiling
      * @param int $maxEdges the check's edge budget
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
      */
     public function __construct(
         private PDO $pdo,
         private int $timeoutMs = 5000,
         private int $maxEdges = ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES,
+        private ?QueryServices $services = null,
     ) {}
 
     /**
@@ -84,7 +86,7 @@ final readonly class FileViolationQuery
             return ['violations' => [], 'truncated' => false];
         }
         try {
-            $check = ArchitectureQueryService::forDatabase($this->pdo)->checkArchitecture(
+            $check = ($this->services ?? QueryServices::wire($this->pdo))->policyQueries->checkArchitecture(
                 $projectId,
                 $policies,
                 maxEdges: $this->maxEdges,
