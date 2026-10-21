@@ -130,6 +130,31 @@ final class PythonReadAttributionTest extends KnossosTestCase
         $this->assertMatchesAFullScan($pdo);
     }
 
+    /**
+     * `y.py` probed `pkg/models.py` for its `index: models.Index` while it
+     * declared `Mixin`, and `a.py` types `self.index` through that attribute.
+     * The probe is `y.py`'s own read, not `a.py`'s: creating the module
+     * rescans `y.py`, and a rescanned file is a change to `a.py`, which read it.
+     */
+    public function testCreatingAModuleABaseClassAnnotationProbedRescansTheSubclass(): void
+    {
+        $this->write('a.py', "import y\n\n\nclass Svc(y.Mixin):\n    def go(self):\n        return self.index.search()\n");
+        $this->write('y.py', "from pkg import models\n\n\nclass Mixin:\n    index: models.Index\n");
+        $this->write('pkg/__init__.py', '');
+        $pdo = $this->scannedAndStamped();
+
+        $this->write('pkg/models.py', "class Index:\n    def search(self):\n        return 1\n");
+        $this->scan($pdo);
+        assertSame(['a.py', 'pkg/models.py', 'y.py'], $this->rescannedFiles($pdo));
+        $this->assertMatchesAFullScan($pdo);
+        $this->stampCacheRows($pdo);
+
+        $this->write('pkg/models.py', "class Index:\n    def find(self):\n        return 1\n");
+        $this->scan($pdo);
+        assertSame(['a.py', 'pkg/models.py', 'y.py'], $this->rescannedFiles($pdo));
+        $this->assertMatchesAFullScan($pdo);
+    }
+
     /** `from pkg.sub import user` found the submodule without reading it; deleting it changes the importer. */
     public function testDeletingAModuleRescansItsReaders(): void
     {

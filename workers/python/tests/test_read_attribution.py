@@ -242,3 +242,28 @@ def test_a_failure_while_following_a_reexport_names_what_was_read(
     assert "pkg/star.py" in contributions["app.py"]["reads"]
     assert "reads_partial" not in contributions["other.py"]
     _assert_protocol(result, contributions, files)
+
+
+def test_a_discovered_base_module_names_its_annotation_probes_for_its_subclasses(
+    worker: ModuleType, project: Any
+) -> None:
+    """A probe a discovered module makes for its own class attributes is its own read.
+
+    ``Svc`` derives from ``y.Mixin``, whose ``index: models.Index`` probes
+    ``pkg/models.py``. That probe is ``y.py``'s, so the importer names only
+    ``y.py``: a module appearing there rescans ``y.py``, and a rescanned file
+    counts as a change to its readers.
+    """
+    tree = {
+        "a.py": "import y\n\n\nclass Svc(y.Mixin):\n    def go(self):\n        return self.index.search()\n",
+        "y.py": "from pkg import models\n\n\nclass Mixin:\n    index: models.Index\n",
+        "pkg/__init__.py": "",
+    }
+    root = project(tree)
+    files = sorted(tree)
+    result, contributions = _scan(worker, root, files, files)
+
+    assert contributions["y.py"]["reads"]["pkg/models.py"] is None
+    assert "y.py" in contributions["a.py"]["reads"]
+    assert "pkg/models.py" not in contributions["a.py"]["reads"]
+    _assert_protocol(result, contributions, files)
