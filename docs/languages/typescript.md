@@ -157,9 +157,15 @@ Two call shapes reach project code that the compiler resolves to nothing.
     A call in another file is followed when its callee's name can reach such a
     function: a name it is declared under, or one an import, export or
     `require` renames it to (`import { hold as h }`, a default import,
-    `export { hold as keep } from`). Only files the same program describes take
-    part: a file another `tsconfig.json` lists is described by that config's
-    program, so its calls give a function of this program nothing.
+    `export { hold as keep } from`, `module.exports = hold` or
+    `exports.hold = hold` bound by `const h = require('./steps')` or
+    `const { hold } = require('./steps')`). Only files the same program
+    describes take part: a file another `tsconfig.json` lists is described by
+    that config's program, so its calls give a function of this program
+    nothing. A CommonJS function expression, `module.exports = function ({ tape }) {}`
+    or `exports.hold = function ({ tape }) {}`, has no node of its own, so its
+    inferred calls come from the node its body's other calls come from: its
+    module, or the declaration it sits in.
 
     The edges belong to the function's own file, so that file's facts follow the
     files whose calls typed the binding: its contribution lists each of them

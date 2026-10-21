@@ -185,3 +185,58 @@ describe("a method call on a destructured parameter, from another file", () => {
         expect(Object.keys(run.reads)).not.toContain("src/main.js");
     });
 });
+
+describe("a method call on a destructured parameter, from a CommonJS file", () => {
+    it.each([
+        [
+            "module.exports = run",
+            "function run({ it }) { it.go(); }\nmodule.exports = run;\n",
+            "const go = require('./run.js');",
+            "ts:function:src/run.js#run",
+        ],
+        [
+            "module.exports = function",
+            "module.exports = function ({ it }) { it.go(); };\n",
+            "const go = require('./run.js');",
+            "ts:module:src/run.js",
+        ],
+        [
+            "exports.go = function",
+            "exports.go = function ({ it }) { it.go(); };\n",
+            "const { go } = require('./run.js');",
+            "ts:module:src/run.js",
+        ],
+        [
+            "module.exports.go = run",
+            "function run({ it }) { it.go(); }\nmodule.exports.go = run;\n",
+            "const { go } = require('./run.js');",
+            "ts:function:src/run.js#run",
+        ],
+    ])("follows a CommonJS export, %s", (_, run, binding, source) => {
+        expect(
+            edges({
+                "src/make.js":
+                    "function make() { return { go() {} }; }\nmodule.exports = { make };\n",
+                "src/run.js": run,
+                "src/main.js": `${binding}\nconst { make } = require('./make.js');\ngo({ it: make() });\n`,
+            }),
+        ).toEqual([
+            `calls probable ${source} -> ts:method:src/make.js#make.{object}@1:26::go`,
+        ]);
+    });
+
+    it("pairs a CommonJS caller with its callee in the program's environment", () => {
+        const environment = (call) =>
+            scan({
+                "src/make.js":
+                    "function make() { return { go() {} }; }\nmodule.exports = { make };\n",
+                "src/run.js":
+                    "module.exports = function ({ it }) { it.go(); };\n",
+                "src/main.js": `const go = require('./run.js');\nconst { make } = require('./make.js');\n${call}\n`,
+            }).find((c) => c.owner_key === "knossos.typescript:file:src/run.js")
+                .environment;
+        expect(environment("go({ it: make() });")).not.toBe(
+            environment("go(make);"),
+        );
+    });
+});

@@ -97,7 +97,14 @@ export class TableDispatch {
         for (const call of project.callSitesInto?.() ?? []) {
             project.readCaller?.(call.getSourceFile());
             const signature = this.context.checker.getResolvedSignature(call);
-            for (const { target, fn } of this.callees(call, signature, null))
+            // Read once this file's walk is done, so a function with no node
+            // of its own is known to stand for its body's container.
+            for (const { target, fn } of this.callees(
+                call,
+                signature,
+                null,
+                (fn) => this.context.bodySource(fn),
+            ))
                 this.boundArguments(call, fn, target);
         }
     }
@@ -144,14 +151,17 @@ export class TableDispatch {
         });
     }
 
-    /** The functions a call runs, each with its node reference. */
-    callees(node, signature, source) {
+    /**
+     * The functions a call runs, each with its node reference; `unnamed`
+     * gives the reference of a function with no node of its own.
+     */
+    callees(node, signature, source, unnamed = () => null) {
         const callee = unwrapExpression(node.expression);
         if (ts.isElementAccessExpression(callee))
             return this.members(callee)?.entries ?? [];
         const fn = signature?.declaration;
         if (fn === undefined || !ts.isFunctionLike(fn)) return [];
-        const target = this.context.callTarget(node, signature);
+        const target = this.context.callTarget(node, signature) ?? unnamed(fn);
         return target === null || target === source ? [] : [{ target, fn }];
     }
 

@@ -1057,6 +1057,20 @@ export class TypeScriptLanguageFactCollector {
         return this.container.at(-1)?.id ?? this.moduleId;
     }
 
+    /**
+     * The node the calls in `node` are attributed to once the file's walk is
+     * done: its nearest enclosing container's, else the module's. A function
+     * with no node of its own, `module.exports = function ({ tape }) {}`,
+     * stands for that.
+     */
+    bodySource(node) {
+        for (let at = node.parent; at !== undefined; at = at.parent) {
+            const id = this.declaredIds.get(at);
+            if (id !== undefined && containerDeclaration(at)) return id;
+        }
+        return this.moduleId;
+    }
+
     /** Add a node; false when it is a declaration past the file's own text. */
     addNode(
         id,
