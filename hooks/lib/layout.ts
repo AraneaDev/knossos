@@ -77,10 +77,10 @@ export function sharedBoundary(rows: { boundary: string | null }[]): string | nu
   return rows.length > 1 && first !== null && rows.every(r => r.boundary === first) ? first : null
 }
 
-/** A component's numbers as a table shows them: in, out, cross and (wide, when known) the files depending on it, or in alone. */
-const degreesOf = (item: Item, withDegrees: boolean, withFiles = false): number[] => (withDegrees ? [item.in, item.out, item.cross, ...(withFiles ? [item.files ?? 0] : [])] : [item.in])
+/** A component's numbers as a table shows them: in, out, cross and (wide, when known) the files depending on it. */
+const degreesOf = (item: Item, withFiles: boolean): number[] => [item.in, item.out, item.cross, ...(withFiles ? [item.files ?? 0] : [])]
 
-const degreeTitles = (withDegrees: boolean, withFiles = false): string[] => (withDegrees ? ['in', 'out', 'cross', ...(withFiles ? ['files'] : [])] : ['in'])
+const degreeTitles = (withFiles: boolean): string[] => ['in', 'out', 'cross', ...(withFiles ? ['files'] : [])]
 
 /** Whether a table of `items` at `tier` adds the dependent files: wide, and only when the dashboard counts them. */
 const filesColumn = (items: Item[], tier: Tier): boolean => tier === 'wide' && items.some(i => i.files !== null)
@@ -93,9 +93,9 @@ const placeIn = (item: Item): string => (item.loc === null ? '' : placeOf(item.l
  * every row shares one, from the medium tier on with the file each is
  * declared in, and wide with each one's kind and dependent files too.
  */
-function componentSpec(items: Item[], columns: number, withDegrees: boolean, hues: Hues, tier: Tier): TableSpec {
-  const withFiles = withDegrees && filesColumn(items, tier)
-  const widths = degreeTitles(withDegrees, withFiles).map((t, i) => numberWidth(t, items.map(item => degreesOf(item, withDegrees, withFiles)[i] ?? 0), tier))
+function componentSpec(items: Item[], columns: number, hues: Hues, tier: Tier): TableSpec {
+  const withFiles = filesColumn(items, tier)
+  const widths = degreeTitles(withFiles).map((t, i) => numberWidth(t, items.map(item => degreesOf(item, withFiles)[i] ?? 0), tier))
   const labels = sharedBoundary(items) === null ? items.map(i => boundaryLabel(i.boundary, hues)) : []
   const places = tier === 'narrow' ? [] : items.map(placeIn)
   const kinds = items.map(i => i.kind)
@@ -113,13 +113,13 @@ function sharedNote(items: Item[], note: string, hues: Hues): string {
  * the selection marker on `selected` (an index into the walkable list, the
  * first item being `offset`); the bar draws `sort`.
  */
-function componentRows(prefix: string, items: Item[], selected: number, spec: TableSpec, withDegrees: boolean, hues: Hues, sort: HubSort, offset: number, window: { start: number; end: number }, room = CARD_MAX, lit: ReadonlySet<string> = new Set()): Row[] {
+function componentRows(prefix: string, items: Item[], selected: number, spec: TableSpec, hues: Hues, sort: HubSort, offset: number, window: { start: number; end: number }, room = CARD_MAX, lit: ReadonlySet<string> = new Set()): Row[] {
   // The spec has a number column per title: a fourth is the dependent files.
-  const withFiles = withDegrees && spec.numbers.length > 3
-  const titles = degreeTitles(withDegrees, withFiles)
+  const withFiles = spec.numbers.length > 3
+  const titles = degreeTitles(withFiles)
   const max = Math.max(0, ...items.map(i => i[sort]))
   return [
-    ...(withDegrees ? [tableHead(`${prefix}-head`, spec, { name: 'name', boundary: 'boundary', numbers: titles })] : []),
+    tableHead(`${prefix}-head`, spec, { name: 'name', boundary: 'boundary', numbers: titles }),
     ...items.slice(window.start, window.end).map((item, n) => {
       const i = window.start + n
       return tableRow(
@@ -127,7 +127,7 @@ function componentRows(prefix: string, items: Item[], selected: number, spec: Ta
         {
           name: item.name,
           boundary: item.boundary,
-          values: degreesOf(item, withDegrees, withFiles),
+          values: degreesOf(item, withFiles),
           barValue: item[sort],
           kind: item.kind,
           max,
@@ -138,7 +138,7 @@ function componentRows(prefix: string, items: Item[], selected: number, spec: Ta
           placeLoc: item.loc,
           preview: previewCard(`card-${prefix}-${i}`, { name: item.name, boundary: item.boundary, figures: componentFigures(item.files, item.in, item.out), top: item.top }, room, hues),
           lit: lit.has(`hub:${item.canonical}`),
-          ...(withDegrees ? { sorted: SORTS.indexOf(sort) } : {}),
+          sorted: SORTS.indexOf(sort),
         },
         spec,
         hues,
@@ -173,10 +173,10 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
       const told = cells(`Hubs and hotspots sorted by ${input.sort}`) + cells(keyed) + NOTE_ROOM <= columns ? keyed : note
       const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(told), body })
       if (list.length === 0) return section([...rows, dimRow('hubs-none', input.filter === '' ? (range === null ? '   none' : '   none of the listed hubs is in this range') : `   no hub matches "${input.filter}"`, columns)])
-      const spec = componentSpec(list, columns, true, input.hues, tier)
+      const spec = componentSpec(list, columns, input.hues, tier)
       const local = selected < list.length ? selected : -1
       const window = windowOf(list.length, limit, local, scrolled)
-      return { ...section([...rows, ...componentRows('hub', list, selected, spec, true, input.hues, input.sort, 0, window, columns, input.lit), ...moreRows('hub-window', window, list.length, columns, 0)]), window: shownOf(window, list.length) }
+      return { ...section([...rows, ...componentRows('hub', list, selected, spec, input.hues, input.sort, 0, window, columns, input.lit), ...moreRows('hub-window', window, list.length, columns, 0)]), window: shownOf(window, list.length) }
     },
   }
 }
