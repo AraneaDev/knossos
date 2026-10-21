@@ -50,9 +50,7 @@ export class FactAccumulator {
     }
 
     get edges() {
-        return this.edgeList.filter(
-            (edge) => !this.appended.has(edge.target),
-        );
+        return this.edgeList.filter((edge) => !this.appended.has(edge.target));
     }
 
     /** Where a syntax node stands, never past the file's own last line. */

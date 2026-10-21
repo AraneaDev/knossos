@@ -7,7 +7,8 @@ declare(strict_types=1);
 // whether it declares `added_files_affect_all`. Without one it answers as
 // `knossos.fake`, which only a client started outside a scan accepts.
 $described = [];
-$argv = $_SERVER['argv'] ?? [];
+// Tests that wrap this worker set $argv themselves before requiring it.
+$argv ??= $_SERVER['argv'] ?? [];
 foreach ($argv as $index => $argument) {
     if (str_starts_with($argument, '--manifest=')) {
         $decoded = json_decode(substr($argument, strlen('--manifest=')), true);
