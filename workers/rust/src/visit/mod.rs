@@ -398,7 +398,7 @@ impl Walk<'_> {
             // parameter, or a reference or tuple, names no type to attach to.
             // The block still implements the trait, so it becomes the
             // container, as an impl for a foreign type does below.
-            (None, Some((_, trait_path, _))) => {
+            (None, Some((trait_path, _))) => {
                 let type_name = type_label(&node.self_ty);
                 self.declare_trait_impl(container, container_kind, trait_path, &type_name, span)
             }
@@ -423,7 +423,7 @@ impl Walk<'_> {
             _ => false,
         };
         Some(match &node.trait_ {
-            Some((_, trait_path, _))
+            Some((trait_path, _))
                 if unplaced || (target != root && !target.starts_with(&format!("{root}::"))) =>
             {
                 let type_name = target.rsplit("::").next().unwrap_or(&target).to_owned();
@@ -484,7 +484,7 @@ impl Walk<'_> {
         node: &syn::ItemImpl,
         span: proc_macro2::Span,
     ) {
-        if let Some((_, trait_path, _)) = &node.trait_ {
+        if let Some((trait_path, _)) = &node.trait_ {
             if let Some(interface) = self.path_target(container, trait_path) {
                 self.facts.edge(
                     "implements",
@@ -507,7 +507,7 @@ impl Walk<'_> {
         // on the trait rather than on the method name, so an ordinary
         // inherent method that happens to be called `drop` keeps its
         // reference check.
-        let drop_impl = node.trait_.as_ref().is_some_and(|(_, path, _)| {
+        let drop_impl = node.trait_.as_ref().is_some_and(|(path, _)| {
             path.segments
                 .last()
                 .is_some_and(|segment| segment.ident == "Drop")

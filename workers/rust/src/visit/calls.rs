@@ -377,6 +377,8 @@ impl Calls<'_, '_> {
             syn::Pat::Slice(inner) => inner.elems.iter().for_each(|e| self.bind_pattern(e)),
             syn::Pat::Reference(inner) => self.bind_pattern(&inner.pat),
             syn::Pat::Paren(inner) => self.bind_pattern(&inner.pat),
+            // A match arm's guard wraps the arm's pattern; the guard binds nothing.
+            syn::Pat::Guard(inner) => self.bind_pattern(&inner.pat),
             syn::Pat::Or(inner) => {
                 let before = self.receivers.clone();
                 let mut agreed: Option<BTreeMap<String, String>> = None;
@@ -515,6 +517,22 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
             self.type_reference(&node.path, node.span());
         }
         syn::visit::visit_type_path(self, node);
+    }
+
+    fn visit_receiver(&mut self, node: &syn::Receiver) {
+        // The shorthand receivers `self`, `mut self`, `&self` and `&mut self`
+        // carry no written type, but each names `Self` the way `self: Self`
+        // does: that reference is recorded at the `self` token, as for a
+        // typed receiver, whose type the default walk visits.
+        if !matches!(node.kind, syn::ReceiverKind::Typed(..)) {
+            let implied = syn::TypePath {
+                attrs: Vec::new(),
+                qself: None,
+                path: syn::Path::from(syn::Ident::new("Self", node.self_token.span)),
+            };
+            self.visit_type_path(&implied);
+        }
+        syn::visit::visit_receiver(self, node);
     }
 
     fn visit_trait_bound(&mut self, node: &syn::TraitBound) {

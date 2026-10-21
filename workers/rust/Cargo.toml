@@ -19,7 +19,7 @@ serde_json = "1"
 # `content_hash` against. Pinned to `0.10`: `0.11` requires a newer toolchain
 # than this crate's `rust-version`.
 sha2 = "0.10"
-syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
 
 [build-dependencies]
 # `build.rs` embeds the hash of this crate's source with the same SHA-256 the

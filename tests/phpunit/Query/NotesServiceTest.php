@@ -425,7 +425,11 @@ final class NotesServiceTest extends KnossosTestCase
         throw new \RuntimeException("no model note on {$component}");
     }
 
-    /** @return list<string> the values stored on a component by an author */
+    /**
+     * @return list<string> the values stored on a component by an author
+     *
+     * @phpstan-impure
+     */
     private static function stored(PDO $pdo, string $projectId, string $component, string $author, string $kind = 'note'): array
     {
         $statement = $pdo->prepare('SELECT value FROM annotations WHERE project_id = ? AND canonical_name = ? AND kind = ? AND author = ?');

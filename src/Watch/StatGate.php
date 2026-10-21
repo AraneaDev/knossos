@@ -90,7 +90,11 @@ final class StatGate
         $this->rememberedAt = hrtime(true);
     }
 
-    /** Whether a fingerprint is worth taking: something it saw moved, or the periodic full check is due. */
+    /**
+     * Whether a fingerprint is worth taking: something it saw moved, or the periodic full check is due.
+     *
+     * @phpstan-impure
+     */
     public function mayHaveChanged(): bool
     {
         if ($this->signatures === [] || $this->racy || hrtime(true) - $this->rememberedAt >= $this->fullEveryMs * 1_000_000) {
