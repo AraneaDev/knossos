@@ -325,6 +325,7 @@ php	src/Runtime/DoctorService.php
 php	src/Runtime/MemoryLimit.php
 php	src/Runtime/RuntimeFactory.php
 php	src/Runtime/RuntimeVersionRequirement.php
+php	src/Runtime/ScannerFactory.php
 php	src/Runtime/ServerEnvironment.php
 php	src/Runtime/Version.php
 php	src/Runtime/WorkerSourceHash.php
@@ -791,6 +792,7 @@ php	tests/phpunit/Runtime/DoctorServiceTest.php
 php	tests/phpunit/Runtime/MemoryLimitTest.php
 php	tests/phpunit/Runtime/RuntimeFactoryTest.php
 php	tests/phpunit/Runtime/RuntimeVersionRequirementTest.php
+php	tests/phpunit/Runtime/ScannerFactoryTest.php
 php	tests/phpunit/Runtime/WorkerSourceHashTest.php
 php	tests/phpunit/Scan/AnalysisHashTest.php
 php	tests/phpunit/Scan/AnchoredBuildOutputScanTest.php

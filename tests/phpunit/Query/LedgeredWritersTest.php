@@ -25,8 +25,9 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Every writer a session can meet records its scans in the scan ledger: the
- * MCP `scan_project` the model calls and `knossos scan` from a shell (which
- * the live watcher's scans run as), each under the scan's own write lease.
+ * MCP `scan_project` the model calls, `knossos scan` from a shell (which
+ * the live watcher's scans run as) and a plain `knossos watch`, each under
+ * the scan's own write lease.
  */
 final class LedgeredWritersTest extends KnossosTestCase
 {
@@ -93,6 +94,47 @@ final class LedgeredWritersTest extends KnossosTestCase
             assertSame($from, $entries[0]['from_snapshot']);
             assertSame((new ScanLedger($pdo))->activeSnapshot($projectId), $entries[0]['to_snapshot']);
         } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A plain `knossos watch` scans through the ledger too, not around it. */
+    #[Group('query')]
+    public function testAPlainWatchScanIsRecorded(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
+        $database = $root . '/.data/knossos.sqlite';
+        $watch = null;
+        try {
+            mkdir($root . '/.data');
+            $scan = proc_open([PHP_BINARY, self::repositoryRoot() . '/bin/knossos', 'scan', $root, '--db=' . $database, '--json'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            assertNotFalse($scan);
+            stream_get_contents($pipes[1]);
+            stream_get_contents($pipes[2]);
+            assertSame(0, proc_close($scan));
+            $pdo = SqliteConnection::open($database);
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $from = (new ScanLedger($pdo))->activeSnapshot($projectId);
+            self::touch($root);
+
+            // The watch's first scan takes in the edit; then it is interrupted.
+            $watch = proc_open([PHP_BINARY, self::repositoryRoot() . '/bin/knossos', 'watch', $root, '--db=' . $database, '--json'], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $watchPipes);
+            assertNotFalse($watch);
+            $deadline = microtime(true) + 60;
+            while (self::entries($pdo) === [] && microtime(true) < $deadline && proc_get_status($watch)['running']) {
+                usleep(100_000);
+            }
+
+            $entries = self::entries($pdo);
+            assertSame(1, count($entries));
+            assertSame($from, $entries[0]['from_snapshot']);
+            assertSame(['src/Core/Greeter.php'], array_keys(json_decode($entries[0]['changes_json'], true)['before']));
+        } finally {
+            if (is_resource($watch)) {
+                proc_terminate($watch, 2);
+                proc_close($watch);
+            }
             $this->removeTempTree($root);
         }
     }

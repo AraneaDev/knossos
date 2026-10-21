@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace Knossos\Mcp;
 
 use Knossos\Discovery\AllowedRoots;
-use Knossos\Discovery\EnrichersFile;
 use Knossos\Git\ProcessGitHistoryProvider;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Query\ArchitectureQueryService;
-use Knossos\Query\LedgeredScanner;
 use Knossos\Query\StalenessProbe;
+use Knossos\Runtime\ScannerFactory;
 use Knossos\Runtime\ServerEnvironment;
 use PDO;
 
@@ -48,7 +47,7 @@ final readonly class McpServerAssembly
         $environment = new ServerEnvironment($allowedRoots, $databasePath, $installationRoot, $pdo);
         $this->tools = new ToolService(
             // Recorded in the scan ledger, so a turn whose edits the model scanned still reports them.
-            LedgeredScanner::local($pdo, $installationRoot, $allowedRoots, enrichers: EnrichersFile::forDatabase($databasePath)),
+            (new ScannerFactory($pdo, $installationRoot, $databasePath))->ledgered($allowedRoots),
             $this->queries,
             $maintenance ?? new DatabaseMaintenanceService($pdo, $databasePath),
             // Confined: the probe reads files and runs git, so it stays inside the allowed roots.
