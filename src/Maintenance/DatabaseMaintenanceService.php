@@ -269,7 +269,7 @@ final readonly class DatabaseMaintenanceService
      */
     private function acquireAllProjectLeases(): array
     {
-        $ids = $this->pdo->query('SELECT id FROM projects ORDER BY id LIMIT 1001')->fetchAll(PDO::FETCH_COLUMN);
+        $ids = (new ProjectRepository($this->pdo))->ids(1001);
         if (count($ids) > 1000) {
             throw new RuntimeException('Database maintenance is limited to 1000 projects per invocation.');
         }

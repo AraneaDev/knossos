@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -34,25 +35,7 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
         if ($offset < 0 || $offset > 100_000) {
             throw new InvalidArgumentException('offset must be between 0 and 100000.');
         }
-        $statement = $this->pdo->prepare(
-            'SELECT p.id, p.name, p.root_realpath, p.active_scan_id, p.created_at, p.updated_at, ' .
-            'active.mode AS active_mode, active.status AS active_status, active.started_at AS active_started_at, ' .
-            'active.finished_at AS active_finished_at, latest.id AS latest_scan_id, latest.mode AS latest_mode, ' .
-            'latest.status AS latest_status, latest.started_at AS latest_started_at, latest.finished_at AS latest_finished_at, ' .
-            '(SELECT COUNT(*) FROM files f WHERE f.project_id = p.id) AS file_count, ' .
-            '(SELECT COUNT(*) FROM nodes n WHERE n.project_id = p.id) AS node_count, ' .
-            '(SELECT COUNT(*) FROM edges e WHERE e.project_id = p.id) AS edge_count, ' .
-            '(SELECT COUNT(*) FROM diagnostics d WHERE d.project_id = p.id) AS diagnostic_count ' .
-            'FROM projects p LEFT JOIN scans active ON active.id = p.active_scan_id ' .
-            'LEFT JOIN scans latest ON latest.id = (SELECT s.id FROM scans s WHERE s.project_id = p.id ' .
-            // Within one second, the order the scans were made in: their ids are hashes.
-            'ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1) ' .
-            'ORDER BY p.updated_at DESC, p.id ASC LIMIT :limit OFFSET :offset',
-        );
-        $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
-        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $statement->execute();
-        $rows = $statement->fetchAll();
+        $rows = (new ProjectRepository($this->pdo))->catalogPage($limit, $offset);
         $truncated = count($rows) > $limit;
         $projects = [];
         foreach (array_slice($rows, 0, $limit) as $row) {
@@ -128,18 +111,7 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
      */
     public function projectsInCreationOrder(int $limit, ?string $afterCreatedAt, ?string $afterId): array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT id, name, created_at FROM projects ' .
-            'WHERE created_at > :after_created OR (created_at = :same_created AND id > :after_id) ' .
-            'ORDER BY created_at ASC, id ASC LIMIT :limit',
-        );
-        $statement->bindValue(':after_created', (string) $afterCreatedAt);
-        $statement->bindValue(':same_created', (string) $afterCreatedAt);
-        $statement->bindValue(':after_id', (string) $afterId);
-        $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
-        $statement->execute();
-        /** @var list<array{id: string, name: string, created_at: string}> $rows */
-        $rows = $statement->fetchAll();
+        $rows = (new ProjectRepository($this->pdo))->inCreationOrder($limit, (string) $afterCreatedAt, (string) $afterId);
 
         return ['projects' => array_slice($rows, 0, $limit), 'more' => count($rows) > $limit];
     }

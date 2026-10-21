@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Store\EdgeQueries;
 use PDO;
 
 /**
@@ -50,7 +51,7 @@ final class EdgePage
             'SELECT ' . $columns . ' ' .
             'FROM edges e JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
             'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND ' . $anchor .
-            sprintf('AND e.kind IN (%s) ', implode(',', array_fill(0, count($kinds), '?'))) .
+            'AND ' . EdgeQueries::kindIn('e.kind', $kinds) . ' ' .
             'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY ' . ConfidenceRank::of('e.confidence') . ' DESC, e.kind, e.id LIMIT 501',
         );

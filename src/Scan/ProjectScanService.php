@@ -517,12 +517,8 @@ final class ProjectScanService implements ProjectScanner
         if ($preparation->explicitBoundaries !== []) {
             return null;
         }
-        $statement = $this->pdo->prepare(
-            'SELECT p.name, p.config_json, p.active_scan_id, s.scanner_set_hash FROM projects p JOIN scans s ON s.id = p.active_scan_id WHERE p.id = :id',
-        );
-        $statement->execute(['id' => $plan->projectId]);
-        $row = $statement->fetch();
-        if ($row === false) {
+        $row = (new ProjectRepository($this->pdo))->withActiveScan($plan->projectId);
+        if ($row === null) {
             return null;
         }
         if ($name !== null && $name !== (string) $row['name']) {

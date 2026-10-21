@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 use Throwable;
@@ -173,10 +174,9 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
      */
     private function cohesion(string $projectId, array $boundaryIds, array $boundariesByNode, int $maxEdges, int $deadline, Truncation $truncation): array
     {
-        $edgeStatement = $this->pdo->prepare(sprintf(
-            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN (%s) ORDER BY source_id, target_id, id LIMIT ?',
-            implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?')),
-        ));
+        $edgeStatement = $this->pdo->prepare(
+            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND ' . EdgeQueries::kindIn('kind', self::IMPACT_EDGE_KINDS) . ' ORDER BY source_id, target_id, id LIMIT ?',
+        );
         $position = 0;
         foreach ([$projectId, ...self::IMPACT_EDGE_KINDS] as $value) {
             $edgeStatement->bindValue(++$position, $value);

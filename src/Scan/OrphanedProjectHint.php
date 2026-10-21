@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -32,13 +33,8 @@ final readonly class OrphanedProjectHint
      */
     public function warning(string $projectId, string $rootRealpath): ?string
     {
-        $statement = $this->pdo->prepare(
-            "SELECT p.id, p.name, p.root_realpath FROM projects p WHERE p.id <> :project AND p.root_realpath NOT LIKE 'bundle://%' " .
-            'AND EXISTS (SELECT 1 FROM annotations a WHERE a.project_id = p.id) ORDER BY p.updated_at DESC, p.id',
-        );
-        $statement->execute(['project' => $projectId]);
         $candidates = [];
-        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        foreach ((new ProjectRepository($this->pdo))->annotatedExcept($projectId) as $row) {
             $root = (string) $row['root_realpath'];
             // The parent must still be there: a gone root under a gone parent is
             // as likely an unmounted drive or another machine's path as a move.

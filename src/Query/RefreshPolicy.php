@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Query\Drift\DriftCounts;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -194,13 +195,8 @@ final readonly class RefreshPolicy
      */
     private function scanCost(string $projectId): ?array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT s.duration_ms, (SELECT COUNT(*) FROM files f WHERE f.last_scan_id = s.id) AS file_count ' .
-            'FROM projects p JOIN scans s ON s.id = p.active_scan_id WHERE p.id = :id',
-        );
-        $statement->execute(['id' => $projectId]);
-        $row = $statement->fetch();
-        if ($row === false || !is_numeric($row['duration_ms'])) {
+        $row = (new ProjectRepository($this->pdo))->activeScanCost($projectId);
+        if ($row === null || !is_numeric($row['duration_ms'])) {
             return null;
         }
 

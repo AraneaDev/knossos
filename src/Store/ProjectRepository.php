@@ -10,6 +10,9 @@ use PDO;
 /**
  * Reads and removes rows of the `projects` table by id, by root, or by a path inside a root.
  *
+ * Every query on `projects` goes through here, including the few that join a
+ * project to its scans, so the table has one reader to change.
+ *
  * Each lookup selects only the columns its caller names, so a row handed on
  * as part of an answer carries exactly the fields it did when the caller
  * wrote the query itself.
@@ -108,6 +111,127 @@ final readonly class ProjectRepository
         $raw = $this->column($id, 'config_json');
 
         return is_string($raw) ? $raw : null;
+    }
+
+    /**
+     * Up to `$limit` project ids, in id order.
+     *
+     * @return list<string>
+     */
+    public function ids(int $limit): array
+    {
+        $statement = $this->pdo->prepare('SELECT id FROM projects ORDER BY id LIMIT :limit');
+        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_map(strval(...), $statement->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * The project's name and stored configuration with its active scan's scanner-set hash, or null when it has no active scan.
+     *
+     * @return array{name: mixed, config_json: mixed, active_scan_id: mixed, scanner_set_hash: mixed}|null
+     */
+    public function withActiveScan(string $id): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT p.name, p.config_json, p.active_scan_id, s.scanner_set_hash FROM projects p JOIN scans s ON s.id = p.active_scan_id WHERE p.id = :id',
+        );
+        $statement->execute(['id' => $id]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+        /** @var array{name: mixed, config_json: mixed, active_scan_id: mixed, scanner_set_hash: mixed}|null */
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * How long the project's active scan took and how many files it wrote, or null when it has no active scan.
+     *
+     * @return array{duration_ms: mixed, file_count: mixed}|null
+     */
+    public function activeScanCost(string $id): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT s.duration_ms, (SELECT COUNT(*) FROM files f WHERE f.last_scan_id = s.id) AS file_count ' .
+            'FROM projects p JOIN scans s ON s.id = p.active_scan_id WHERE p.id = :id',
+        );
+        $statement->execute(['id' => $id]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+        /** @var array{duration_ms: mixed, file_count: mixed}|null */
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * Every other project that holds notes, most recently updated first; bundles excluded.
+     *
+     * @return list<array{id: mixed, name: mixed, root_realpath: mixed}>
+     */
+    public function annotatedExcept(string $id): array
+    {
+        $statement = $this->pdo->prepare(
+            "SELECT p.id, p.name, p.root_realpath FROM projects p WHERE p.id <> :project AND p.root_realpath NOT LIKE 'bundle://%' " .
+            'AND EXISTS (SELECT 1 FROM annotations a WHERE a.project_id = p.id) ORDER BY p.updated_at DESC, p.id',
+        );
+        $statement->execute(['project' => $id]);
+
+        /** @var list<array{id: mixed, name: mixed, root_realpath: mixed}> */
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * One page of the catalog, most recently updated first: each project with
+     * its active and latest scan and its row counts. Up to one row past
+     * `$limit`, so the caller can tell whether another page follows.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function catalogPage(int $limit, int $offset): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT p.id, p.name, p.root_realpath, p.active_scan_id, p.created_at, p.updated_at, ' .
+            'active.mode AS active_mode, active.status AS active_status, active.started_at AS active_started_at, ' .
+            'active.finished_at AS active_finished_at, latest.id AS latest_scan_id, latest.mode AS latest_mode, ' .
+            'latest.status AS latest_status, latest.started_at AS latest_started_at, latest.finished_at AS latest_finished_at, ' .
+            '(SELECT COUNT(*) FROM files f WHERE f.project_id = p.id) AS file_count, ' .
+            '(SELECT COUNT(*) FROM nodes n WHERE n.project_id = p.id) AS node_count, ' .
+            '(SELECT COUNT(*) FROM edges e WHERE e.project_id = p.id) AS edge_count, ' .
+            '(SELECT COUNT(*) FROM diagnostics d WHERE d.project_id = p.id) AS diagnostic_count ' .
+            'FROM projects p LEFT JOIN scans active ON active.id = p.active_scan_id ' .
+            'LEFT JOIN scans latest ON latest.id = (SELECT s.id FROM scans s WHERE s.project_id = p.id ' .
+            // Within one second, the order the scans were made in: their ids are hashes.
+            'ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1) ' .
+            'ORDER BY p.updated_at DESC, p.id ASC LIMIT :limit OFFSET :offset',
+        );
+        $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
+        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $statement->execute();
+
+        /** @var list<array<string, mixed>> */
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Projects in (created_at, id) order after the given keyset position: up
+     * to one past `$limit`, so the caller can tell whether more follow.
+     *
+     * @return list<array{id: string, name: string, created_at: string}>
+     */
+    public function inCreationOrder(int $limit, string $afterCreatedAt, string $afterId): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT id, name, created_at FROM projects ' .
+            'WHERE created_at > :after_created OR (created_at = :same_created AND id > :after_id) ' .
+            'ORDER BY created_at ASC, id ASC LIMIT :limit',
+        );
+        $statement->bindValue(':after_created', $afterCreatedAt);
+        $statement->bindValue(':same_created', $afterCreatedAt);
+        $statement->bindValue(':after_id', $afterId);
+        $statement->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
+        $statement->execute();
+
+        /** @var list<array{id: string, name: string, created_at: string}> */
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**

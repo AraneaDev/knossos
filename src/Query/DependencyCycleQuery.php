@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\NodeQueries;
 
 /**
  * Dependency cycles: the strongly connected components of the selected dependency graph.
@@ -407,14 +408,14 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         foreach ($inside as $index => $members) {
             $typeIds[$between + $index] = $declaringType[$members[0]] ?? null;
         }
-        $names = $this->rowsByIds('SELECT id, canonical_name FROM nodes WHERE id IN (%s)', array_values(array_unique(array_filter($typeIds, 'is_string'))));
+        $names = NodeQueries::canonicalNames($this->pdo, array_values(array_unique(array_filter($typeIds, 'is_string'))));
 
         return array_map(static function (array $cycle, int $index) use ($between, $typeIds, $names): array {
             $typeId = $typeIds[$index] ?? null;
 
             return $cycle + [
                 'within_type' => $index >= $between,
-                'type' => $typeId === null ? null : (string) ($names[$typeId]['canonical_name'] ?? $typeId),
+                'type' => $typeId === null ? null : ($names[$typeId] ?? $typeId),
             ];
         }, $cycles, array_keys($cycles));
     }
