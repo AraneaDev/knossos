@@ -216,6 +216,78 @@ def test_attribute_receivers_resolve_instead_of_inventing_members(
     )
 
 
+def test_a_call_through_an_attribute_chain_resolves_when_every_link_is_typed(
+    worker: ModuleType, project, scan_collect
+) -> None:
+    # `self.index.layout.canonical()` calls a method of whatever `layout` holds
+    # on whatever `self.index` holds. Each link is typed by what the owning
+    # class declares: its `__init__` assigning a constructor call, or a class
+    # body annotation. One untyped link leaves the call untyped.
+    root = project(
+        {
+            "pkg/__init__.py": "",
+            "pkg/layout.py": (
+                "class Layout:\n"
+                "    def canonical(self) -> str:\n"
+                "        return ''\n"
+                "\n"
+                "    def environment(self) -> str:\n"
+                "        return ''\n"
+                "\n"
+                "    def annotated(self) -> str:\n"
+                "        return ''\n"
+            ),
+            "pkg/index.py": (
+                "from pkg.layout import Layout\n"
+                "\n"
+                "\n"
+                "class Index:\n"
+                "    def __init__(self) -> None:\n"
+                "        self.layout = Layout()\n"
+                "        self.loose = make()\n"
+                "\n"
+                "\n"
+                "class Typed:\n"
+                "    layout: Layout\n"
+                "\n"
+                "\n"
+                "def make() -> object:\n"
+                "    return object()\n"
+            ),
+            "pkg/use.py": (
+                "from pkg.index import Index, Typed\n"
+                "\n"
+                "\n"
+                "class Collector:\n"
+                "    def __init__(self, index: Index, typed: Typed) -> None:\n"
+                "        self.index = index\n"
+                "        self.typed = typed\n"
+                "\n"
+                "    def run(self) -> None:\n"
+                "        self.index.layout.canonical()\n"
+                "        self.typed.layout.annotated()\n"
+                "        self.index.loose.untyped_call()\n"
+                "\n"
+                "\n"
+                "def scan() -> None:\n"
+                "    index = Index()\n"
+                "    index.layout.environment()\n"
+            ),
+        }
+    )
+
+    contributions = scan_collect(root, ["pkg/layout.py", "pkg/index.py", "pkg/use.py"])
+    use = next(c for c in contributions if c["owner_key"].endswith(":pkg/use.py"))
+
+    calls = sorted(t for kind, _, t in _edges(use) if kind == "calls" and t.startswith("py:method:pkg.layout."))
+    assert calls == [
+        "py:method:pkg.layout.Layout::annotated",
+        "py:method:pkg.layout.Layout::canonical",
+        "py:method:pkg.layout.Layout::environment",
+    ]
+    assert "untyped_call" in _module_untyped(use)
+
+
 def test_a_receiver_reassigned_to_something_untracked_stops_resolving(
     worker: ModuleType, tmp_path: Path, scan_collect
 ) -> None:

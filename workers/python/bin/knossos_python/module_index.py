@@ -6,7 +6,9 @@ from pathlib import Path, PurePosixPath
 
 from .ast_helpers import (
     absolute_import,
+    annotated_name,
     assigned_declaration,
+    constructor_assignments,
     declared_protocols,
     dotted,
     module_statements,
@@ -351,7 +353,7 @@ class ProjectModuleIndex(ReadRecorder):
         location: str,
         is_package: bool,
     ) -> None:
-        """Keep what each top-level class annotates its attributes as, and the classes it derives from, as written.
+        """Keep what each top-level class declares its attributes as, and the classes it derives from, as written.
 
         They are resolved when the module's own scan adopts it, or when a
         class of the module is first asked about (:meth:`_class_attribute_reads`), not here: a dotted name reads the
@@ -363,9 +365,12 @@ class ProjectModuleIndex(ReadRecorder):
             (
                 f"{name}.{child.name}",
                 [
-                    (item.target.id, dotted(inner) if (inner := optional_inner(item.annotation)) is not None else None)
-                    for item in child.body
-                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+                    *(
+                        (item.target.id, annotated_name(item.annotation))
+                        for item in child.body
+                        if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+                    ),
+                    *constructor_assignments(child),
                 ],
                 [dotted(base) for base in child.bases],
             )
@@ -412,10 +417,14 @@ class ProjectModuleIndex(ReadRecorder):
                 )
 
             for canonical, attributes, bases in classes:
-                held_by = {attribute: named_class(named) for attribute, named in attributes}
-                self._class_attributes[canonical] = {
-                    attribute: held for attribute, held in held_by.items() if held is not None
-                }
+                # The body's annotations come first and win; what `__init__`
+                # assigns only answers for an attribute they leave untyped.
+                held_by: dict[str, str] = {}
+                for attribute, named in attributes:
+                    held = named_class(named)
+                    if held is not None:
+                        held_by.setdefault(attribute, held)
+                self._class_attributes[canonical] = held_by
                 self._class_bases[canonical] = [base for base in map(named_class, bases) if base is not None]
         except BaseException:
             self._note(self.close_scope())
@@ -465,7 +474,11 @@ class ProjectModuleIndex(ReadRecorder):
         return self.module_declarations(owner).get(member)
 
     def class_attributes(self, held: str) -> tuple[dict[str, str], list[str]]:
-        """The attributes the project class ``held`` annotates in its body, and the project classes it derives from.
+        """The attributes the project class ``held`` declares, and the project classes it derives from.
+
+        An attribute is declared by an annotation in the class body, or else
+        by its ``__init__`` assigning it from a constructor call or with an
+        annotation (``self.layout = ModuleLayout(self)``).
 
         Reads the class's module first, through :meth:`module_declarations`,
         so what that cost is named as read by whoever asked.

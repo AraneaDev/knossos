@@ -239,15 +239,23 @@ class ReceiverTypeInference:
     def receiver_member(self, receiver: str, member: str) -> str | None:
         """The method a call names when its receiver's class is known."""
 
+        parts = receiver.split(".")
+        chained = len(parts) > (2 if parts[0] == "self" else 1)
+        held = self.attribute_chain_class(parts) if chained else self.receiver_class(receiver)
+        if held is None and not receiver.startswith("self."):
+            held = self.named_class(receiver)
+        return ref("method", f"{held}::{member}") if held else None
+
+    def receiver_class(self, receiver: str) -> str | None:
+        """The class ``self.<name>`` or a plain name holds, from the walk's tracking, if any."""
+
         held = None
         if receiver.startswith("self.") and receiver.count(".") == 1:
             class_container = next((item for item in reversed(self.containers) if item[2] == "class"), None)
             if class_container is not None:
-                attribute = receiver.split(".", 1)[1]
                 # An assignment that tracked a type wins over the class body's
                 # annotation; one that tracked none leaves the annotation to say.
-                held = self.attribute_types.get(class_container[1], {}).get(attribute)
-                held = held or self.declared_attribute(class_container[1], attribute)
+                held = self.attribute_class(class_container[1], receiver.split(".", 1)[1])
         elif "." not in receiver:
             held = self.local_variable_types[-1].get(receiver) if self.local_variable_types else None
             if held is None and self.parameter_types:
@@ -257,9 +265,28 @@ class ReceiverTypeInference:
                 instance = self.aliases.get(receiver) or self.index.module_declarations(self.name).get(receiver)
                 if instance is not None and instance.startswith("py:instance:"):
                     held = instance.removeprefix("py:instance:")
-        if held is None and not receiver.startswith("self."):
-            held = self.named_class(receiver)
-        return ref("method", f"{held}::{member}") if held else None
+        return held
+
+    def attribute_chain_class(self, parts: list[str]) -> str | None:
+        """The class ``self.a.b`` or ``a.b`` holds: the head's class, then each attribute's in turn.
+
+        Every link has to be known, from the walk's tracking for a class of
+        this module or from what a class declares (its body's annotations, or
+        what its ``__init__`` assigns from a constructor call); one link
+        unknown leaves the whole chain untyped.
+        """
+        head = 2 if parts[0] == "self" else 1
+        held = self.receiver_class(".".join(parts[:head]))
+        for attribute in parts[head:]:
+            if held is None:
+                return None
+            held = self.attribute_class(held, attribute)
+        return held
+
+    def attribute_class(self, owner: str, attribute: str) -> str | None:
+        """The class ``attribute`` of an ``owner`` instance holds: as tracked in this module, else as declared."""
+
+        return self.attribute_types.get(owner, {}).get(attribute) or self.declared_attribute(owner, attribute)
 
     def named_class(self, receiver: str) -> str | None:
         """The project class a receiver names itself: ``Repo`` in ``Repo.create()``.

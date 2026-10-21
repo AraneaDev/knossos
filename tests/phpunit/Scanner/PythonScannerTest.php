@@ -631,6 +631,74 @@ final class PythonScannerTest extends KnossosTestCase
         assertSame(['count'], $untyped);
     }
 
+    /**
+     * A call through two attributes, `self.index.layout.canonical()` or
+     * `index.layout.environment()`, names the method of the class the last
+     * link holds, when every link is typed by what its class declares: an
+     * `__init__` assigning a constructor call, or a class body annotation.
+     * Untyped, the methods reached only that way read as unreferenced. The
+     * edge is as confident as a call through one attribute.
+     */
+    #[Group('python-scanner')]
+    public function testPythonWorkerResolvesACallThroughAChainOfTypedAttributes(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-py-chain-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/layout.py' => "class Layout:\n    def canonical(self):\n        return ''\n\n    def environment(self):\n        return ''\n",
+            'app/index.py' => "from app.layout import Layout\n\n\nclass Index:\n    def __init__(self):\n        self.layout = Layout()\n\n    def own(self):\n        return self.layout.canonical()\n",
+            'app/collector.py' => implode("\n", [
+                'from app.index import Index',
+                '',
+                '',
+                'class Collector:',
+                '    def __init__(self, index: Index):',
+                '        self.index = index',
+                '',
+                '    def run(self):',
+                '        return self.index.layout.canonical()',
+                '',
+                '',
+                'def scan():',
+                '    index = Index()',
+                '    return index.layout.environment()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/collector.py', 'app/index.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls' && str_starts_with($edge->targetReference, 'py:method:app.layout.')) {
+                    $calls[$edge->sourceReference . ' -> ' . $edge->targetReference] = $edge->confidence->value;
+                }
+            }
+        }
+        ksort($calls);
+
+        assertSame([
+            'py:function:app.collector.scan -> py:method:app.layout.Layout::environment' => $calls['py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical'] ?? 'missing',
+            'py:method:app.collector.Collector::run -> py:method:app.layout.Layout::canonical' => $calls['py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical'] ?? 'missing',
+            'py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical' => $calls['py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical'] ?? 'missing',
+        ], $calls);
+    }
+
     #[Group('python-scanner')]
     public function testPythonWorkerIsDeterministicBoundedAndPathSafe(): void
     {
