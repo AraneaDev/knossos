@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Scan\ProjectPathResolver;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\NodeQueries;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -68,7 +69,7 @@ final readonly class BlastRadiusService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'component' => null, 'rings' => [], 'truncated' => false, 'truncation_reasons' => [], 'tests_partial' => false];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }
@@ -341,12 +342,6 @@ final readonly class BlastRadiusService
      */
     private function places(array $ids): array
     {
-        $places = [];
-        $sql = 'SELECT n.id, n.display_name, n.canonical_name, n.kind, f.relative_path, n.start_line FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.id IN (%s)';
-        foreach (ChunkedInQuery::rows($this->pdo, $sql, $ids, mode: PDO::FETCH_NUM) as [$node, $display, $canonical, $kind, $file, $line]) {
-            $places[(string) $node] = ['display_name' => (string) $display, 'canonical_name' => (string) $canonical, 'kind' => (string) $kind, 'path' => $file === null ? null : (string) $file, 'line' => $line === null ? null : (int) $line];
-        }
-
-        return $places;
+        return array_map(static fn(array $place): array => ['display_name' => (string) $place['display_name']] + $place, NodeQueries::places($this->pdo, $ids));
     }
 }

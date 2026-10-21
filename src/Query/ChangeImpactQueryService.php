@@ -11,6 +11,7 @@ use Knossos\Git\GitWorkingTreeProvider;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Protocol\RelativePath;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\NodeQueries;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 use Throwable;
@@ -418,10 +419,6 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
      */
     private function nodePaths(array $nodeIds): array
     {
-        $paths = [];
-        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT n.id, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.id IN (%s) ORDER BY n.id', $nodeIds) as $row) {
-            $paths[$row['id']] = $row['relative_path'];
-        }
-        return $paths;
+        return NodeQueries::paths($this->pdo, $nodeIds);
     }
 }

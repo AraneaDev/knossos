@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
@@ -313,7 +314,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
     private function inbound(array $edgeKinds): string
     {
         return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id AND ' . EnrichedFacts::excludeSql('e') . ' '
-            . sprintf('AND e.kind IN (%s) ', implode(',', array_fill(0, count($edgeKinds), '?')))
-            . "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
+            . 'AND ' . EdgeQueries::kindIn('e.kind', $edgeKinds) . ' '
+            . 'AND ' . ConfidenceRank::atLeast('e.confidence');
     }
 }

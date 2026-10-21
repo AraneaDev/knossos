@@ -175,7 +175,7 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
     private function candidatePool(string $projectId, array $edgeKinds, int $minRank, ?string $boundaryId, int $maxNodes): array
     {
         $kindPlaceholders = implode(',', array_fill(0, count($edgeKinds), '?'));
-        $confidenceCase = "CASE confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
+        $confidenceCase = ConfidenceRank::atLeast('confidence');
         $degreeSql = sprintf(
             'SELECT node_id, COUNT(*) AS degree FROM (' .
             'SELECT source_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s ' .
@@ -240,7 +240,7 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
         $statement = $this->pdo->prepare(
             'SELECT DISTINCT kind, source_id, target_id FROM edges WHERE project_id = ? ' .
             sprintf('AND source_id IN (%s) AND target_id IN (%s) AND kind IN (%s) ', $poolPlaceholders, $poolPlaceholders, $kindPlaceholders) .
-            "AND CASE confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('confidence') . ' ' .
             'ORDER BY source_id, target_id, kind',
         );
         $statement->execute([$projectId, ...$poolIds, ...$poolIds, ...$edgeKinds, $minRank]);

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Tests\Phpunit\Scan;
+namespace Knossos\Tests\Phpunit\Store;
 
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
-final class ProjectPathResolverTest extends KnossosTestCase
+final class ProjectRepositoryTest extends KnossosTestCase
 {
     #[Group('query')]
     public function testResolvesExactRootAndSubdirectoryAndRejectsUnrelatedPath(): void
@@ -16,17 +16,17 @@ final class ProjectPathResolverTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
-        $resolver = new ProjectPathResolver($pdo);
+        $resolver = new ProjectRepository($pdo);
 
-        $exact = $resolver->resolve($root);
+        $exact = $resolver->resolvePath($root);
         assertSame($ids['project'], $exact['id'] ?? null);
 
         // A subdirectory of a scanned repository still finds its project: this is
         // the case the hook actually hits, because a session can start anywhere.
-        $nested = $resolver->resolve($root . '/src/Deeply/Nested');
+        $nested = $resolver->resolvePath($root . '/src/Deeply/Nested');
         assertSame($ids['project'], $nested['id'] ?? null);
 
-        assertSame(null, $resolver->resolve('/definitely/not/a/scanned/project'));
+        assertSame(null, $resolver->resolvePath('/definitely/not/a/scanned/project'));
     }
 
     /**
@@ -43,9 +43,9 @@ final class ProjectPathResolverTest extends KnossosTestCase
         $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
         // The fixture's root is not a real directory, so stand in it lexically
         // by pointing the resolver at a path below it that does not exist.
-        $resolver = new ProjectPathResolver($pdo);
+        $resolver = new ProjectRepository($pdo);
 
-        $missing = $resolver->resolve($root . '/src/NotThere.php');
+        $missing = $resolver->resolvePath($root . '/src/NotThere.php');
 
         assertSame($ids['project'], $missing['id'] ?? null);
 
@@ -56,7 +56,7 @@ final class ProjectPathResolverTest extends KnossosTestCase
             }
             // Relative and nonexistent, and nothing under the temp directory is
             // scanned, so this must be null rather than an accidental match.
-            assertSame(null, $resolver->resolve('nowhere/at/all'));
+            assertSame(null, $resolver->resolvePath('nowhere/at/all'));
         } finally {
             if (is_string($previous)) {
                 @chdir($previous);

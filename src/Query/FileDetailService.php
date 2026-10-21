@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 
 /**
  * One file as the architecture pane shows it: who depends on it, and what
  * it declares. Addressed by the file's own path; the project is the one that
- * contains it, resolved through {@see ProjectPathResolver} as the dashboard
+ * contains it, resolved through {@see ProjectRepository::resolvePath()} as the dashboard
  * resolves its own, so the pane's file view and its overview always come from
  * the same graph.
  *
@@ -53,7 +53,7 @@ final readonly class FileDetailService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = ['status' => 'unscanned', 'path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'file' => null];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         // A project row without an active scan has no graph to look in.
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return $envelope;

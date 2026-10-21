@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Git\{GitLogRecords, GitProcessRunner, GitProcessRunnerInterface};
-use Knossos\Scan\ProjectPathResolver;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -69,7 +69,7 @@ final readonly class ChurnService
     {
         $absolute = realpath($path) ?: $path;
         $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'days' => self::DAYS, 'head' => null, 'commits' => 0, 'truncated' => false, 'files' => []];
-        $project = (new ProjectPathResolver($this->pdo))->resolve($absolute);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
         if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
             return ['status' => 'unscanned'] + $envelope;
         }

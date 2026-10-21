@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 use PDO;
 use PDOStatement;
@@ -211,7 +212,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         $edgeStatement = $this->pdo->prepare(
             'SELECT e.source_id, e.target_id FROM edges e WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders) .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.source_id, e.target_id, e.kind, e.id LIMIT ?',
         );
         $edgeStatement->execute([$projectId, ...$edgeKinds, $minimumRank, $maxEdges + 1]);
@@ -401,10 +402,10 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
     private function healthSlice(string $projectId, array $edgeKinds, int $minimumRank, array $bounds, int $deadline): array
     {
         $slice = ['ids' => [], 'index' => [], 'in' => [], 'out' => [], 'external' => [], 'test' => [], 'boundary_set' => [], 'boundary_sets' => [], 'truncation_reasons' => []];
-        $filter = sprintf('project_id = ? AND %s AND kind IN (%s)', EnrichedFacts::excludeSql('edges'), implode(',', array_fill(0, count($edgeKinds), '?')));
+        $filter = sprintf('project_id = ? AND %s AND %s', EnrichedFacts::excludeSql('edges'), EdgeQueries::kindIn('kind', $edgeKinds));
         $filterValues = [$projectId, ...$edgeKinds];
         if ($minimumRank > 1) {
-            $filter .= " AND CASE confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
+            $filter .= ' AND ' . ConfidenceRank::atLeast('confidence');
             $filterValues[] = $minimumRank;
         }
         $statement = $this->pdo->prepare(

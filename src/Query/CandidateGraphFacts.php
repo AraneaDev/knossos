@@ -289,7 +289,7 @@ final class CandidateGraphFacts
     private function edgeFilter(): string
     {
         return 'AND ' . EnrichedFacts::excludeSql('edges') . ' ' . sprintf('AND kind IN (%s) ', self::placeholders($this->edgeKinds))
-            . "AND CASE confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER)";
+            . 'AND ' . ConfidenceRank::atLeast('confidence');
     }
 
     /**

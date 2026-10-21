@@ -7,13 +7,13 @@ namespace Knossos\Query;
 use Knossos\Discovery\AllowedRoots;
 use Knossos\Discovery\EnrichersFile;
 use Knossos\Result\ResultEnvelope;
-use Knossos\Scan\ProjectPathResolver;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\TreeFingerprint;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -78,7 +78,7 @@ final readonly class LedgeredScanner implements ProjectScanner
     public function scan(string $root, ScanOptions $options = new ScanOptions()): ResultEnvelope
     {
         $real = realpath($root) ?: $root;
-        $project = (new ProjectPathResolver($this->pdo))->resolve($real);
+        $project = (new ProjectRepository($this->pdo))->resolvePath($real);
         if ($project === null || (string) $project['root_realpath'] !== $real) {
             // A first scan has no project yet, but its id is the root's: wait for
             // another writer's lease on it as a rescan does, and hand the lease on.

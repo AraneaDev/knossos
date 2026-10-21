@@ -222,6 +222,7 @@ php	src/Query/ChurnService.php
 php	src/Query/ComponentDetailService.php
 php	src/Query/ComponentQueryService.php
 php	src/Query/CompositionRoots.php
+php	src/Query/ConfidenceRank.php
 php	src/Query/ConstructedClasses.php
 php	src/Query/DashboardService.php
 php	src/Query/DeadCodeAnalysis.php
@@ -233,6 +234,7 @@ php	src/Query/Diagram/DiagramRenderer.php
 php	src/Query/Diagram/MermaidRenderer.php
 php	src/Query/Diagram/PlantUmlRenderer.php
 php	src/Query/DiagramExportService.php
+php	src/Query/Direction.php
 php	src/Query/Drift/DriftCounts.php
 php	src/Query/Drift/DriftOracle.php
 php	src/Query/Drift/FirstAnsweringDriftOracle.php
@@ -242,6 +244,7 @@ php	src/Query/Drift/RecordedWorkerInputs.php
 php	src/Query/Drift/ScannedPaths.php
 php	src/Query/Drift/TrackedPathPredicate.php
 php	src/Query/Drift/WalkDriftOracle.php
+php	src/Query/EdgePage.php
 php	src/Query/EntryPointCriteria.php
 php	src/Query/ErasedTypeEdge.php
 php	src/Query/FileContextQueryService.php
@@ -252,6 +255,7 @@ php	src/Query/FileMetricsQueryService.php
 php	src/Query/FileTestReach.php
 php	src/Query/FileViolationQuery.php
 php	src/Query/FlowQuery.php
+php	src/Query/FlowState.php
 php	src/Query/FrameworkHookMethods.php
 php	src/Query/GraphSearchService.php
 php	src/Query/GraphSummaryQuery.php
@@ -347,7 +351,6 @@ php	src/Scan/OrphanedProjectHint.php
 php	src/Scan/OversizedBatch.php
 php	src/Scan/PartitionContext.php
 php	src/Scan/ProgramEnvironments.php
-php	src/Scan/ProjectPathResolver.php
 php	src/Scan/ProjectScanService.php
 php	src/Scan/ProjectScanner.php
 php	src/Scan/ProjectWriterLease.php
@@ -403,9 +406,11 @@ php	src/Scanner/Worker/WorkerSignal.php
 php	src/Store/ChunkedInQuery.php
 php	src/Store/ContributionCacheEntry.php
 php	src/Store/CountedSnapshotFigures.php
+php	src/Store/EdgeQueries.php
 php	src/Store/EnrichedFacts.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
+php	src/Store/NodeQueries.php
 php	src/Store/ProjectRepository.php
 php	src/Store/ScanBusyException.php
 php	src/Store/SharedNodeKinds.php
@@ -836,7 +841,6 @@ php	tests/phpunit/Scan/OversizedBatchTest.php
 php	tests/phpunit/Scan/ParsedContentVerificationTest.php
 php	tests/phpunit/Scan/PhpWorkerMemoryLimitTest.php
 php	tests/phpunit/Scan/ProgramEnvironmentsTest.php
-php	tests/phpunit/Scan/ProjectPathResolverTest.php
 php	tests/phpunit/Scan/ProjectScanServiceContractTest.php
 php	tests/phpunit/Scan/ProjectUnitVerificationTest.php
 php	tests/phpunit/Scan/ProjectWriterLeaseTest.php
@@ -951,6 +955,7 @@ php	tests/phpunit/Store/ContributionCacheEntryTest.php
 php	tests/phpunit/Store/ContributionCacheWriteTest.php
 php	tests/phpunit/Store/MigrationRunnerRaceTest.php
 php	tests/phpunit/Store/MigrationRunnerTest.php
+php	tests/phpunit/Store/ProjectRepositoryTest.php
 php	tests/phpunit/Store/ScanBusyExceptionTest.php
 php	tests/phpunit/Store/ScanDurationTest.php
 php	tests/phpunit/Store/ScanGitHeadTest.php

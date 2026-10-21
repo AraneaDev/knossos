@@ -222,7 +222,7 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
     {
         $statement = $this->pdo->prepare(sprintf(
             'SELECT e.target_id, e.source_id FROM edges e WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
-            "AND CASE e.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.target_id, e.source_id, e.id',
             implode(',', array_fill(0, count($targetIds), '?')),
             implode(',', array_fill(0, count($edgeKinds), '?')),

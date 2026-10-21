@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Closure;
-use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\NodeQueries;
 use PDO;
 
 /**
@@ -227,12 +227,7 @@ final readonly class BoundaryMatrix
      */
     private function canonicalNames(array $ids): array
     {
-        $names = [];
-        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT id, canonical_name FROM nodes WHERE id IN (%s)', $ids, mode: PDO::FETCH_NUM, size: self::IDS_PER_QUERY) as $row) {
-            $names[(string) $row[0]] = (string) $row[1];
-        }
-
-        return $names;
+        return NodeQueries::canonicalNames($this->pdo, $ids, self::IDS_PER_QUERY);
     }
 
     /**
@@ -313,17 +308,11 @@ final readonly class BoundaryMatrix
         if ($ids === []) {
             return [];
         }
-        $nodes = [];
         // A chunk at a time: SQLite binds at most 32,766 values in one statement (as it is usually built).
-        $sql = 'SELECT n.id, n.display_name, n.canonical_name, n.kind, f.relative_path, n.start_line FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.id IN (%s)';
-        foreach (ChunkedInQuery::rows($this->pdo, $sql, array_values($ids), size: self::IDS_PER_QUERY) as $row) {
-            $canonical = (string) $row['canonical_name'];
-            $nodes[(string) $row['id']] = [
-                'name' => (string) ($row['display_name'] ?? $canonical), 'canonical_name' => $canonical, 'kind' => (string) $row['kind'],
-                'path' => $row['relative_path'] === null ? null : (string) $row['relative_path'], 'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
-            ];
-        }
-        return $nodes;
+        return array_map(static fn(array $place): array => [
+            'name' => $place['display_name'] ?? $place['canonical_name'], 'canonical_name' => $place['canonical_name'], 'kind' => $place['kind'],
+            'path' => $place['path'], 'line' => $place['line'],
+        ], NodeQueries::places($this->pdo, array_values($ids), self::IDS_PER_QUERY));
     }
 
     /**

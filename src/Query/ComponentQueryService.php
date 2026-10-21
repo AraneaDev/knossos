@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\NodeQueries;
 use PDO;
 
 /**
@@ -396,12 +397,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
     private function supertypeNames(string $projectId, string $methodId): array
     {
         $ids = SupertypeMethods::of($this->pdo, $projectId, [$methodId])[$methodId] ?? [];
-        $names = [];
-        foreach (ChunkedInQuery::rows($this->pdo, 'SELECT id, canonical_name FROM nodes WHERE id IN (%s)', array_values($ids), mode: PDO::FETCH_NUM) as [$id, $name]) {
-            $names[(string) $id] = (string) $name;
-        }
-
-        return $names;
+        return NodeQueries::canonicalNames($this->pdo, array_values($ids));
     }
 
     /**

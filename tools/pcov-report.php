@@ -121,7 +121,6 @@ foreach ($merged as $file => $lines) {
         $relative === 'src/Scan/TreeFingerprint.php' => 'bundle-git-watch',
         $relative === 'src/Store/ContributionCacheEntry.php' => 'reconciliation',
         $relative === 'src/Store/ScanBusyException.php' => 'scanner-runtime',
-        $relative === 'src/Scan/ProjectPathResolver.php',
         $relative === 'src/Scan/ScanLedger.php',
         $relative === 'src/Scan/ScanLedgerSpan.php',
         $relative === 'src/Scan/ScanTarget.php' => 'query-analysis',

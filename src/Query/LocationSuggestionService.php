@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\SharedNodeKinds;
 use PDO;
 use Throwable;
@@ -39,16 +40,15 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
         $project = $this->project($projectId);
         $tokens = $this->assertArguments($featureDescription, $limit, $maxMembers, $maxEdges, $timeoutMs, $rankingMode);
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
-        $truncated = false;
-        $truncationReasons = [];
+        $truncation = new Truncation();
 
-        $boundaryRows = $this->boundaryRows($projectId, $truncated, $truncationReasons);
+        $boundaryRows = $this->boundaryRows($projectId, $truncation);
         if ($boundaryRows === []) {
             return $this->noBoundariesResult($projectId, $project, $featureDescription, $tokens, $rankingMode, $limit, $maxMembers, $maxEdges, $timeoutMs);
         }
-        [$memberRows, $membersByBoundary, $boundariesByNode, $roles] = $this->members($projectId, $maxMembers, $deadline, $truncated, $truncationReasons);
-        [$edgesExamined, $cohesion] = $this->cohesion($projectId, array_column($boundaryRows, 'id'), $boundariesByNode, $maxEdges, $deadline, $truncated, $truncationReasons);
-        $candidates = $this->rank($boundaryRows, $membersByBoundary, $roles, $tokens, $cohesion, $deadline, $truncated, $truncationReasons);
+        [$memberRows, $membersByBoundary, $boundariesByNode, $roles] = $this->members($projectId, $maxMembers, $deadline, $truncation);
+        [$edgesExamined, $cohesion] = $this->cohesion($projectId, array_column($boundaryRows, 'id'), $boundariesByNode, $maxEdges, $deadline, $truncation);
+        $candidates = $this->rank($boundaryRows, $membersByBoundary, $roles, $tokens, $cohesion, $deadline, $truncation);
         $ranking = $this->applySemanticRanking($candidates, $featureDescription, $rankingMode, $deadline);
 
         return $this->result(
@@ -62,8 +62,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
             ['limit' => $limit, 'max_members' => $maxMembers, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs],
             count($memberRows),
             $edgesExamined,
-            $truncated,
-            $truncationReasons,
+            $truncation,
         );
     }
 
@@ -107,22 +106,20 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
     /**
      * The project's boundaries, which are what a suggestion ranks between.
      *
-     * @param list<string> $truncationReasons
-     *
      * @return list<array<string, mixed>>
      */
-    private function boundaryRows(string $projectId, bool &$truncated, array &$truncationReasons): array
+    private function boundaryRows(string $projectId, Truncation $truncation): array
     {
         $boundaryStatement = $this->pdo->prepare(
             'SELECT id, name, source, matcher_json FROM boundaries WHERE project_id = :project ORDER BY source, name, id LIMIT 1001',
         );
         $boundaryStatement->execute(['project' => $projectId]);
         $boundaryRows = $boundaryStatement->fetchAll();
-        $truncated = count($boundaryRows) > 1000;
-        $truncationReasons = $truncated ? ['boundary_limit'] : [];
-        $boundaryRows = array_slice($boundaryRows, 0, 1000);
+        if (count($boundaryRows) > 1000) {
+            $truncation->add('boundary_limit');
+        }
 
-        return $boundaryRows;
+        return array_slice($boundaryRows, 0, 1000);
     }
 
     /**
@@ -132,11 +129,9 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
      * fetchAll() of up to 50,000 rows finished before the deadline was first
      * consulted.
      *
-     * @param list<string> $truncationReasons
-     *
      * @return array{0: list<array<string, mixed>>, 1: array<string, list<array<string, mixed>>>, 2: array<string, list<string>>, 3: array<string, list<array<string, mixed>>>}
      */
-    private function members(string $projectId, int $maxMembers, int $deadline, bool &$truncated, array &$truncationReasons): array
+    private function members(string $projectId, int $maxMembers, int $deadline, Truncation $truncation): array
     {
         $memberStatement = $this->pdo->prepare(
             'SELECT bm.boundary_id, n.id, n.kind, n.canonical_name, n.display_name, n.start_line, n.end_line, f.relative_path ' .
@@ -152,10 +147,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
 
             return true;
         }, 'member_limit');
-        if ($reasons !== []) {
-            $truncated = true;
-            $truncationReasons = [...$truncationReasons, ...$reasons];
-        }
+        $truncation->add(...$reasons);
         $membersByBoundary = [];
         $boundariesByNode = [];
         foreach ($memberRows as $member) {
@@ -177,16 +169,14 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
      *
      * @param list<string> $boundaryIds
      * @param array<string, list<string>> $boundariesByNode
-     * @param list<string> $truncationReasons
      *
      * @return array{0: int, 1: array<string, array{internal: int, incident: int}>} edges examined, and the counters per boundary
      */
-    private function cohesion(string $projectId, array $boundaryIds, array $boundariesByNode, int $maxEdges, int $deadline, bool &$truncated, array &$truncationReasons): array
+    private function cohesion(string $projectId, array $boundaryIds, array $boundariesByNode, int $maxEdges, int $deadline, Truncation $truncation): array
     {
-        $edgeStatement = $this->pdo->prepare(sprintf(
-            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind IN (%s) ORDER BY source_id, target_id, id LIMIT ?',
-            implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?')),
-        ));
+        $edgeStatement = $this->pdo->prepare(
+            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND ' . EdgeQueries::kindIn('kind', self::IMPACT_EDGE_KINDS) . ' ORDER BY source_id, target_id, id LIMIT ?',
+        );
         $position = 0;
         foreach ([$projectId, ...self::IMPACT_EDGE_KINDS] as $value) {
             $edgeStatement->bindValue(++$position, $value);
@@ -216,106 +206,118 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
 
             return true;
         }, 'edge_limit');
-        if ($reasons !== []) {
-            $truncated = true;
-            $truncationReasons = [...$truncationReasons, ...$reasons];
-        }
+        $truncation->add(...$reasons);
 
         return [$examined, $cohesion];
     }
 
     /**
-     * Score every boundary against the description's tokens.
+     * Score every boundary against the description's tokens, until the deadline.
      *
      * @param list<array<string, mixed>> $boundaryRows
      * @param array<string, list<array<string, mixed>>> $membersByBoundary
      * @param array<string, list<array<string, mixed>>> $roles
      * @param list<string> $tokens
      * @param array<string, array{internal: int, incident: int}> $cohesion
-     * @param list<string> $truncationReasons
      *
      * @return list<array<string, mixed>>
      */
-    private function rank(array $boundaryRows, array $membersByBoundary, array $roles, array $tokens, array $cohesion, int $deadline, bool &$truncated, array &$truncationReasons): array
+    private function rank(array $boundaryRows, array $membersByBoundary, array $roles, array $tokens, array $cohesion, int $deadline, Truncation $truncation): array
     {
         $candidates = [];
         foreach ($boundaryRows as $boundary) {
             if ($this->now() > $deadline) {
-                $truncated = true;
-                $truncationReasons[] = 'time_limit';
+                $truncation->add('time_limit');
                 break;
             }
-            $members = $membersByBoundary[$boundary['id']] ?? [];
-            $matchedTokens = [];
-            $related = [];
-            $nameScore = $memberScore = $roleScore = 0;
-            $boundaryWords = self::identifierWords($boundary['name']);
-            foreach ($tokens as $token) {
-                if (self::matchesWord($boundaryWords, $token)) {
-                    $nameScore += 12;
-                    $matchedTokens[$token] = true;
-                }
-            }
-            foreach ($members as $member) {
-                $memberWords = self::identifierWords($member['canonical_name'] . ' ' . $member['display_name']);
-                $memberMatches = [];
-                foreach ($tokens as $token) {
-                    if (self::matchesWord($memberWords, $token)) {
-                        $memberMatches[] = $token;
-                        $matchedTokens[$token] = true;
-                    }
-                }
-                $roleMatches = [];
-                foreach ($roles[$member['id']] ?? [] as $role) {
-                    $roleWords = self::identifierWords($role['role']);
-                    foreach ($tokens as $token) {
-                        if (self::matchesWord($roleWords, $token)) {
-                            $roleMatches[] = $token;
-                            $matchedTokens[$token] = true;
-                        }
-                    }
-                }
-                if ($memberMatches !== [] || $roleMatches !== []) {
-                    $memberScore += 4 * count(array_unique($memberMatches));
-                    $roleScore += 2 * count(array_unique($roleMatches));
-                    $related[] = [
-                        'id' => $member['id'], 'kind' => $member['kind'], 'canonical_name' => $member['canonical_name'],
-                        'matched_tokens' => array_values(array_unique([...$memberMatches, ...$roleMatches])),
-                    ];
-                }
-            }
-            $incident = $cohesion[$boundary['id']]['incident'];
-            $ratio = $incident === 0 ? 0.0 : $cohesion[$boundary['id']]['internal'] / $incident;
-            $cohesionScore = round($ratio * 10, 3);
-            // Density, not total: a summed member score grows with boundary
-            // size, so the widest boundary won every ranking however diluted
-            // its match was. What a location suggestion is asking is which
-            // boundary is *most about* the description, not which contains the
-            // most matching members.
-            $memberCount = max(1, count($members));
-            $memberRelevance = round(($memberScore / $memberCount) * 10, 3);
-            $roleRelevance = round(($roleScore / $memberCount) * 10, 3);
-            $score = round($nameScore + $memberRelevance + $roleRelevance + $cohesionScore, 3);
-            $candidates[] = [
-                'boundary' => ['id' => $boundary['id'], 'name' => $boundary['name'], 'source' => $boundary['source'], 'matcher' => self::matcherAndAliases($boundary['matcher_json'])[0]],
-                'score' => $score,
-                'confidence' => count($matchedTokens) >= 2 ? 'probable' : 'possible',
-                'factors' => [
-                    'boundary_name_relevance' => $nameScore, 'member_relevance' => $memberRelevance,
-                    'role_relevance' => $roleRelevance, 'internal_dependency_cohesion' => $cohesionScore,
-                    'matching_members' => count($related), 'boundary_members' => count($members),
-                    'internal_edges' => $cohesion[$boundary['id']]['internal'], 'incident_edges' => $incident,
-                ],
-                'matched_tokens' => array_map(strval(...), array_keys($matchedTokens)),
-                'related_members' => array_slice($related, 0, 5),
-                '_semantic_text' => substr($boundary['name'] . ' ' . implode(' ', array_map(
-                    static fn(array $member): string => $member['canonical_name'] . ' ' . $member['display_name'],
-                    array_slice($members, 0, 100),
-                )), 0, 4000),
-            ];
+            $candidates[] = self::scoreBoundary($boundary, $membersByBoundary[$boundary['id']] ?? [], $roles, $tokens, $cohesion[$boundary['id']]);
         }
 
         return $candidates;
+    }
+
+    /**
+     * One boundary's candidate: its score, the factors behind it, and the members that matched.
+     *
+     * @param array<string, mixed> $boundary
+     * @param list<array<string, mixed>> $members
+     * @param array<string, list<array<string, mixed>>> $roles
+     * @param list<string> $tokens
+     * @param array{internal: int, incident: int} $cohesion
+     *
+     * @return array<string, mixed>
+     */
+    private static function scoreBoundary(array $boundary, array $members, array $roles, array $tokens, array $cohesion): array
+    {
+        $matchedTokens = [];
+        $related = [];
+        $memberScore = $roleScore = 0;
+        $nameMatches = self::matchingTokens(self::identifierWords($boundary['name']), $tokens);
+        $nameScore = 12 * count($nameMatches);
+        foreach ($nameMatches as $token) {
+            $matchedTokens[$token] = true;
+        }
+        foreach ($members as $member) {
+            $memberMatches = self::matchingTokens(self::identifierWords($member['canonical_name'] . ' ' . $member['display_name']), $tokens);
+            $roleMatches = [];
+            foreach ($roles[$member['id']] ?? [] as $role) {
+                array_push($roleMatches, ...self::matchingTokens(self::identifierWords($role['role']), $tokens));
+            }
+            foreach ([...$memberMatches, ...$roleMatches] as $token) {
+                $matchedTokens[$token] = true;
+            }
+            if ($memberMatches !== [] || $roleMatches !== []) {
+                $memberScore += 4 * count(array_unique($memberMatches));
+                $roleScore += 2 * count(array_unique($roleMatches));
+                $related[] = [
+                    'id' => $member['id'], 'kind' => $member['kind'], 'canonical_name' => $member['canonical_name'],
+                    'matched_tokens' => array_values(array_unique([...$memberMatches, ...$roleMatches])),
+                ];
+            }
+        }
+        $incident = $cohesion['incident'];
+        $ratio = $incident === 0 ? 0.0 : $cohesion['internal'] / $incident;
+        $cohesionScore = round($ratio * 10, 3);
+        // Density, not total: a summed member score grows with boundary
+        // size, so the widest boundary won every ranking however diluted
+        // its match was. What a location suggestion is asking is which
+        // boundary is *most about* the description, not which contains the
+        // most matching members.
+        $memberCount = max(1, count($members));
+        $memberRelevance = round(($memberScore / $memberCount) * 10, 3);
+        $roleRelevance = round(($roleScore / $memberCount) * 10, 3);
+        $score = round($nameScore + $memberRelevance + $roleRelevance + $cohesionScore, 3);
+
+        return [
+            'boundary' => ['id' => $boundary['id'], 'name' => $boundary['name'], 'source' => $boundary['source'], 'matcher' => self::matcherAndAliases($boundary['matcher_json'])[0]],
+            'score' => $score,
+            'confidence' => count($matchedTokens) >= 2 ? 'probable' : 'possible',
+            'factors' => [
+                'boundary_name_relevance' => $nameScore, 'member_relevance' => $memberRelevance,
+                'role_relevance' => $roleRelevance, 'internal_dependency_cohesion' => $cohesionScore,
+                'matching_members' => count($related), 'boundary_members' => count($members),
+                'internal_edges' => $cohesion['internal'], 'incident_edges' => $incident,
+            ],
+            'matched_tokens' => array_map(strval(...), array_keys($matchedTokens)),
+            'related_members' => array_slice($related, 0, 5),
+            '_semantic_text' => substr($boundary['name'] . ' ' . implode(' ', array_map(
+                static fn(array $member): string => $member['canonical_name'] . ' ' . $member['display_name'],
+                array_slice($members, 0, 100),
+            )), 0, 4000),
+        ];
+    }
+
+    /**
+     * The tokens that name one of these words, in token order.
+     *
+     * @param list<string> $words
+     * @param list<string> $tokens
+     *
+     * @return list<string>
+     */
+    private static function matchingTokens(array $words, array $tokens): array
+    {
+        return array_values(array_filter($tokens, static fn(string $token): bool => self::matchesWord($words, $token)));
     }
 
     /**
@@ -390,9 +392,8 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
      * @param list<array<string, mixed>> $candidates
      * @param array<string, list<array<string, mixed>>> $membersByBoundary
      * @param array{limit: int, max_members: int, max_edges: int, timeout_ms: int} $bounds
-     * @param list<string> $truncationReasons
      */
-    private function result(string $projectId, array $project, string $featureDescription, array $tokens, array $ranking, array $candidates, array $membersByBoundary, array $bounds, int $membersExamined, int $edgesExamined, bool $truncated, array $truncationReasons): ResultEnvelope
+    private function result(string $projectId, array $project, string $featureDescription, array $tokens, array $ranking, array $candidates, array $membersByBoundary, array $bounds, int $membersExamined, int $edgesExamined, Truncation $truncation): ResultEnvelope
     {
         $limit = $bounds['limit'];
         foreach ($candidates as &$candidate) {
@@ -404,8 +405,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
             ?: ($a['boundary']['name'] <=> $b['boundary']['name'])
             ?: ($a['boundary']['id'] <=> $b['boundary']['id']));
         if (count($candidates) > $limit) {
-            $truncated = true;
-            $truncationReasons[] = 'result_limit';
+            $truncation->add('result_limit');
         }
         $candidates = array_slice($candidates, 0, $limit);
         $evidence = [];
@@ -426,7 +426,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
                 }
             }
         }
-        $truncationReasons = array_values(array_unique($truncationReasons));
+        $truncationReasons = $truncation->reasons();
         $warnings = ['Suggestions rank existing indexed boundaries; they do not prove a uniquely correct design location.'];
         if ($ranking['fallback_reason'] !== null) {
             $warnings[] = 'Semantic ranking was not applied; deterministic fallback: ' . $ranking['fallback_reason'];
@@ -448,7 +448,7 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
             ],
             $evidence,
             $warnings,
-            $truncated,
+            $truncation->any(),
         );
     }
 
