@@ -57,7 +57,7 @@ final class LaravelRouteFactCollector
      */
     private array $chainedCalls = [];
 
-    public function __construct(private readonly LaravelFactStore $facts) {}
+    public function __construct(private readonly FrameworkFactStore $facts) {}
     /** Track route group nesting and record any route registered at this node. */
 
     public function enterNode(Node $node): void
@@ -98,13 +98,13 @@ final class LaravelRouteFactCollector
         }
         $uriIndex = $method === 'match' ? 1 : 0;
         $actionIndex = $method === 'match' ? 2 : 1;
-        $uri = LaravelFactStore::string($args[$uriIndex]->value ?? null);
+        $uri = FrameworkFactStore::string($args[$uriIndex]->value ?? null);
         if ($uri === null) {
             $this->facts->addDiagnostic('LARAVEL_DYNAMIC_ROUTE_URI', 'Dynamic route URI was skipped.', $evidence);
             return;
         }
         $methods = $method === 'match'
-            ? LaravelFactStore::strings($args[0]->value ?? null)
+            ? FrameworkFactStore::strings($args[0]->value ?? null)
             : [strtoupper($method)];
         if ($method === 'any' || $method === 'redirect' || $method === 'permanentredirect') {
             $methods = ['ANY'];
@@ -131,9 +131,9 @@ final class LaravelRouteFactCollector
      */
     private function resourceRoutes(bool $api, array $args, array $modifiers, Node $evidence): void
     {
-        $name = LaravelFactStore::string($args[0]->value ?? null);
-        $controller = LaravelFactStore::string($args[1]->value ?? null);
-        $class = LaravelFactStore::classArgument($args[1]->value ?? null)
+        $name = FrameworkFactStore::string($args[0]->value ?? null);
+        $controller = FrameworkFactStore::string($args[1]->value ?? null);
+        $class = FrameworkFactStore::classArgument($args[1]->value ?? null)
             ?? ($controller === null ? null : ltrim($this->inGroupNamespace($controller), '\\'));
         if ($modifiers['dynamic']) {
             $this->facts->addDiagnostic('LARAVEL_DYNAMIC_ROUTE', 'Dynamic resource route actions were kept unnarrowed.', $evidence);
@@ -244,9 +244,9 @@ final class LaravelRouteFactCollector
         while ($cursor instanceof Expr\MethodCall) {
             $name = $cursor->name instanceof Identifier ? strtolower($cursor->name->toString()) : '';
             if ($name === 'middleware') {
-                $modifiers['middleware'] = [...LaravelFactStore::strings($cursor->args[0]->value ?? null), ...$modifiers['middleware']];
+                $modifiers['middleware'] = [...FrameworkFactStore::strings($cursor->args[0]->value ?? null), ...$modifiers['middleware']];
             } elseif ($name === 'name') {
-                $modifiers['name'] = LaravelFactStore::string($cursor->args[0]->value ?? null) ?? $modifiers['name'];
+                $modifiers['name'] = FrameworkFactStore::string($cursor->args[0]->value ?? null) ?? $modifiers['name'];
             } elseif ($name === 'only' || $name === 'except') {
                 // `->only(['index', 'show'])` or `->only('index', 'show')`. An
                 // argument that is not a literal narrows nothing that can be
@@ -259,7 +259,7 @@ final class LaravelRouteFactCollector
                         $literal = false;
                         continue;
                     }
-                    $actions = [...$actions, ...LaravelFactStore::strings($argument->value)];
+                    $actions = [...$actions, ...FrameworkFactStore::strings($argument->value)];
                 }
                 $modifiers[$name] = $literal ? $actions : ($name === 'only' ? null : []);
                 $modifiers['dynamic'] = $modifiers['dynamic'] || !$literal;
@@ -302,7 +302,7 @@ final class LaravelRouteFactCollector
         $attributes = $node->args[0]->value ?? null;
         if ($attributes instanceof Expr\Array_ && count($node->args) > 1) {
             foreach ($attributes->items as $item) {
-                $key = LaravelFactStore::string($item?->key);
+                $key = FrameworkFactStore::string($item?->key);
                 if ($item !== null && $key !== null && isset(self::GROUP_KEYS[$key])) {
                     $result = self::withModifier($result, self::GROUP_KEYS[$key], $item->value);
                 }
@@ -328,13 +328,13 @@ final class LaravelRouteFactCollector
     private static function withModifier(array $result, string $modifier, ?Node $value): array
     {
         if ($modifier === 'middleware') {
-            $result['middleware'] = [...LaravelFactStore::strings($value), ...$result['middleware']];
+            $result['middleware'] = [...FrameworkFactStore::strings($value), ...$result['middleware']];
         } elseif ($modifier === 'prefix' || $modifier === 'name') {
-            $result[$modifier] = LaravelFactStore::string($value) ?? $result[$modifier];
+            $result[$modifier] = FrameworkFactStore::string($value) ?? $result[$modifier];
         } elseif ($modifier === 'namespace') {
-            $result['namespace'] = LaravelFactStore::string($value) ?? $result['namespace'];
+            $result['namespace'] = FrameworkFactStore::string($value) ?? $result['namespace'];
         } elseif ($modifier === 'controller') {
-            $result['controller'] = LaravelFactStore::classArgument($value) ?? $result['controller'];
+            $result['controller'] = FrameworkFactStore::classArgument($value) ?? $result['controller'];
         }
         return $result;
     }
@@ -390,18 +390,18 @@ final class LaravelRouteFactCollector
     private function action(?Node $node): array
     {
         if ($node instanceof Expr\Array_ && count($node->items) >= 2) {
-            $class = LaravelFactStore::classArgument($node->items[0]?->value);
-            $method = LaravelFactStore::string($node->items[1]?->value);
+            $class = FrameworkFactStore::classArgument($node->items[0]?->value);
+            $method = FrameworkFactStore::string($node->items[1]?->value);
             if ($class !== null && $method !== null) {
                 return ['reference' => 'php:method:' . $class . '::' . $method, 'label' => $class . '::' . $method];
             }
         }
-        $class = LaravelFactStore::classArgument($node);
+        $class = FrameworkFactStore::classArgument($node);
         if ($class !== null) {
             // A controller class alone is invokable: Laravel calls its `__invoke`.
             return ['reference' => 'php:method:' . ltrim($class, '\\') . '::__invoke', 'label' => $class];
         }
-        $string = LaravelFactStore::string($node);
+        $string = FrameworkFactStore::string($node);
         if ($string === null || $string === '') {
             return [];
         }
@@ -424,7 +424,7 @@ final class LaravelRouteFactCollector
 
     private function isRouteFacade(Name $name): bool
     {
-        return strtolower(basename(str_replace('\\', '/', LaravelFactStore::name($name)))) === 'route';
+        return strtolower(basename(str_replace('\\', '/', FrameworkFactStore::name($name)))) === 'route';
     }
     /** Join a group prefix to a route path without doubling or dropping separators. */
 

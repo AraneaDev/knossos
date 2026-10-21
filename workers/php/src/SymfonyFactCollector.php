@@ -23,12 +23,6 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
 {
     use ResolvesDeclarationName;
 
-    /** @var array<string, array<string, mixed>> */
-    private array $nodes = [];
-    /** @var array<string, array<string, mixed>> */
-    private array $edges = [];
-    /** @var list<array<string, mixed>> */
-    private array $diagnostics = [];
     /** @var list<array{name: string, route_prefix: string, route_methods: list<string>, route_name: string, message_handler: bool}> */
     private array $classes = [];
     /** @var list<array{id: string, generators: array<string, true>}> the methods being walked, with the variables typed as a URL generator */
@@ -38,10 +32,14 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
 
     private const GENERATOR_TYPES = ['urlgeneratorinterface', 'routerinterface'];
 
-    /**
-     * @param string $relativePath the file being analysed, carried onto every fact as evidence
-     */
-    public function __construct(private readonly string $relativePath) {}
+    /** The file being analysed, carried onto every fact as evidence. */
+    private readonly string $relativePath;
+
+    /** @param FrameworkFactStore $facts where this file's Symfony facts are collected */
+    public function __construct(private readonly FrameworkFactStore $facts)
+    {
+        $this->relativePath = $facts->relativePath;
+    }
 
     /** Dispatch a node to the class or method handler. */
     #[\Override]
@@ -77,7 +75,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
      */
     public function nodes(): array
     {
-        return array_values($this->nodes);
+        return $this->facts->nodes();
     }
 
     /**
@@ -87,7 +85,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
      */
     public function edges(): array
     {
-        return array_values($this->edges);
+        return $this->facts->edges();
     }
 
     /**
@@ -97,7 +95,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
      */
     public function diagnostics(): array
     {
-        return $this->diagnostics;
+        return $this->facts->diagnostics();
     }
 
     /**
@@ -128,7 +126,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         $route = $this->attribute($node->attrGroups, 'Route');
         $prefix = $route === null ? '' : ($this->stringArgument($route, 'path', 0) ?? '');
         if ($route !== null && $prefix === '' && $this->argument($route, 'path', 0) !== null) {
-            $this->diagnostic('SYMFONY_DYNAMIC_ROUTE_PATH', 'Dynamic class route prefix was skipped.', $route);
+            $this->facts->addDiagnostic('SYMFONY_DYNAMIC_ROUTE_PATH', 'Dynamic class route prefix was skipped.', $route);
         }
         $this->classes[] = [
             'name' => $name,
@@ -138,7 +136,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
             'message_handler' => $this->attribute($node->attrGroups, 'AsMessageHandler') !== null,
         ];
         $this->generatorProperties[] = $this->generatorProperties($node);
-        $classId = $this->classReference($name);
+        $classId = FrameworkFactStore::classReference($name);
         if ($route !== null && $this->isInvokableRoute($node)) {
             $this->invokableRoutes($node, $name);
         }
@@ -147,18 +145,18 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         if ($command !== null) {
             $commandName = $this->stringArgument($command, 'name', 0);
             if ($commandName === null) {
-                $this->diagnostic('SYMFONY_DYNAMIC_COMMAND_NAME', 'Command name could not be resolved statically.', $command);
+                $this->facts->addDiagnostic('SYMFONY_DYNAMIC_COMMAND_NAME', 'Command name could not be resolved statically.', $command);
             } else {
                 $id = 'php:command:' . $commandName;
-                $this->nodes[$id] = $this->node($id, 'command', $commandName, $commandName, $command, ['framework' => 'symfony']);
-                $this->edge('handles', $id, $classId, $command);
+                $this->facts->addNode($id, 'command', $commandName, $commandName, $command, ['framework' => 'symfony']);
+                $this->facts->addEdge('handles', $id, $classId, $command);
             }
         } elseif (($default = self::defaultCommandName($node)) !== null) {
             // The name a command declared before #[AsCommand]: `protected static $defaultName = 'app:sync';`.
             [$commandName, $property] = $default;
             $id = 'php:command:' . $commandName;
-            $this->nodes[$id] = $this->node($id, 'command', $commandName, $commandName, $property, ['framework' => 'symfony']);
-            $this->edge('handles', $id, $classId, $property);
+            $this->facts->addNode($id, 'command', $commandName, $commandName, $property, ['framework' => 'symfony']);
+            $this->facts->addEdge('handles', $id, $classId, $property);
         }
 
         $alias = $this->attribute($node->attrGroups, 'AsAlias');
@@ -166,17 +164,17 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
             $serviceId = $this->stringArgument($alias, 'id', 0);
             if ($serviceId !== null) {
                 $id = 'php:service:' . $serviceId;
-                $this->nodes[$id] = $this->node($id, 'service', $serviceId, $serviceId, $alias, ['framework' => 'symfony']);
-                $this->edge('binds', $id, $classId, $alias, ['alias' => $serviceId]);
+                $this->facts->addNode($id, 'service', $serviceId, $serviceId, $alias, ['framework' => 'symfony']);
+                $this->facts->addEdge('binds', $id, $classId, $alias, ['alias' => $serviceId]);
             }
         }
 
         foreach ($this->attributes($node->attrGroups, 'AsEventListener') as $listener) {
-            $event = $this->classArgument($this->argument($listener, 'event', 0));
+            $event = FrameworkFactStore::classArgument($this->argument($listener, 'event', 0));
             if ($event !== null) {
-                $this->edge('listens_to', $classId, $this->classReference($event), $listener);
+                $this->facts->addEdge('listens_to', $classId, FrameworkFactStore::classReference($event), $listener);
             } else {
-                $this->diagnostic('SYMFONY_DYNAMIC_EVENT', 'Event listener target could not be resolved statically.', $listener);
+                $this->facts->addDiagnostic('SYMFONY_DYNAMIC_EVENT', 'Event listener target could not be resolved statically.', $listener);
             }
         }
     }
@@ -199,7 +197,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         foreach ($this->attributes($node->attrGroups, 'Route') as $route) {
             $path = $this->stringArgument($route, 'path', 0);
             if ($path === null) {
-                $this->diagnostic('SYMFONY_DYNAMIC_ROUTE_PATH', 'Dynamic route path was skipped.', $route);
+                $this->facts->addDiagnostic('SYMFONY_DYNAMIC_ROUTE_PATH', 'Dynamic route path was skipped.', $route);
                 continue;
             }
             // The class-level route's methods and name prefix apply to each
@@ -218,14 +216,14 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         if ($methodMessageHandler || ($class['message_handler'] && strtolower($node->name->toString()) === '__invoke')) {
             $type = $this->parameterClass($node->params[0] ?? null);
             if ($type !== null) {
-                $this->edge('handles_message', $this->classReference($class['name']), $this->classReference($type), $node);
+                $this->facts->addEdge('handles_message', FrameworkFactStore::classReference($class['name']), FrameworkFactStore::classReference($type), $node);
             }
         }
 
         foreach ($this->attributes($node->attrGroups, 'AsEventListener') as $listener) {
-            $event = $this->classArgument($this->argument($listener, 'event', 0));
+            $event = FrameworkFactStore::classArgument($this->argument($listener, 'event', 0));
             if ($event !== null) {
-                $this->edge('listens_to', $methodId, $this->classReference($event), $listener);
+                $this->facts->addEdge('listens_to', $methodId, FrameworkFactStore::classReference($event), $listener);
             }
         }
 
@@ -235,8 +233,8 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
                 $service = $autowire === null ? null : $this->stringArgument($autowire, 'service');
                 if ($autowire !== null && $service !== null) {
                     $id = 'php:service:' . $service;
-                    $this->nodes[$id] ??= $this->node($id, 'service', $service, $service, $autowire, ['framework' => 'symfony']);
-                    $this->edge('injects', $this->classReference($class['name']), $id, $autowire, ['explicit' => true]);
+                    $this->facts->addNode($id, 'service', $service, $service, $autowire, ['framework' => 'symfony']);
+                    $this->facts->addEdge('injects', FrameworkFactStore::classReference($class['name']), $id, $autowire, ['explicit' => true]);
                 }
             }
         }
@@ -249,7 +247,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
                 foreach ($statement->expr->items as $item) {
                     $event = $this->eventReference($item?->key);
                     if ($event !== null) {
-                        $this->edge('listens_to', $this->classReference($class['name']), $event, $item ?? $statement);
+                        $this->facts->addEdge('listens_to', FrameworkFactStore::classReference($class['name']), $event, $item ?? $statement);
                     }
                 }
             }
@@ -289,11 +287,11 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         }
         $name = $first->value;
         $id = 'php:endpoint:route symfony:' . $name;
-        $this->nodes[$id] = $this->node($id, 'endpoint', 'route symfony:' . $name, "route('{$name}')", $call, [
+        $this->facts->addNode($id, 'endpoint', 'route symfony:' . $name, "route('{$name}')", $call, [
             'framework' => 'symfony',
             'route_name' => $name,
         ]);
-        $this->edge('calls_endpoint', $method['id'], $id, $call);
+        $this->facts->addEdge('calls_endpoint', $method['id'], $id, $call);
     }
 
     /**
@@ -376,13 +374,13 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         sort($methods, SORT_STRING);
         $canonical = implode('|', $methods) . ' ' . $uri . ' => ' . $handler;
         $id = 'php:route:' . $canonical;
-        $this->nodes[$id] = $this->node($id, 'route', $canonical, implode('|', $methods) . ' ' . $uri, $route, [
+        $this->facts->addNode($id, 'route', $canonical, implode('|', $methods) . ' ' . $uri, $route, [
             'framework' => 'symfony',
             'methods' => $methods,
             'uri' => $uri,
             'name' => $name,
         ]);
-        $this->edge('routes_to', $id, 'php:method:' . $handler, $route);
+        $this->facts->addEdge('routes_to', $id, 'php:method:' . $handler, $route);
     }
 
     /**
@@ -458,58 +456,23 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     /** The class a parameter is typed with, which is what autowiring resolves. */
     private function parameterClass(?Node\Param $parameter): ?string
     {
-        return $parameter?->type instanceof Name ? $this->name($parameter->type) : null;
-    }
-    /** The class named by a `::class` argument, or null when computed at runtime. */
-
-    private function classArgument(?Node $node): ?string
-    {
-        return $node instanceof Expr\ClassConstFetch && $node->class instanceof Name
-            && $node->name instanceof Identifier && strtolower($node->name->toString()) === 'class'
-            ? $this->name($node->class) : null;
+        return $parameter?->type instanceof Name ? FrameworkFactStore::name($parameter->type) : null;
     }
     /** The canonical reference for a subscribed event, which may be a class or a string name. */
 
     private function eventReference(?Node $node): ?string
     {
-        $class = $this->classArgument($node);
+        $class = FrameworkFactStore::classArgument($node);
         if ($class !== null) {
-            return $this->classReference($class);
+            return FrameworkFactStore::classReference($class);
         }
         if ($node instanceof Expr\ClassConstFetch && $node->class instanceof Name && $node->name instanceof Identifier) {
-            return 'php:event:' . $this->name($node->class) . '::' . $node->name->toString();
+            return 'php:event:' . FrameworkFactStore::name($node->class) . '::' . $node->name->toString();
         }
         if ($node instanceof Scalar\String_) {
             return 'php:event:' . $node->value;
         }
         return null;
-    }
-
-    /**
-     * Record a node fact.
-     *
-     * @param array<string, mixed> $attributes
-     */
-    private function node(string $id, string $kind, string $canonical, string $display, Node $at, array $attributes): array
-    {
-        return ['local_id' => $id, 'kind' => $kind, 'canonical_name' => $canonical, 'display_name' => $display, 'origin' => 'framework_convention', 'confidence' => 'certain', 'evidence' => $this->evidence($at), 'attributes' => (object) $attributes];
-    }
-
-    /**
-     * Record an edge fact.
-     *
-     * @param array<string, mixed> $attributes
-     */
-    private function edge(string $kind, string $source, string $target, Node $at, array $attributes = []): void
-    {
-        $key = implode("\0", [$kind, $source, $target, (string) $at->getStartLine(), json_encode($attributes)]);
-        $this->edges[$key] = ['kind' => $kind, 'source' => $source, 'target' => $target, 'origin' => 'framework_convention', 'confidence' => 'certain', 'evidence' => $this->evidence($at), 'attributes' => (object) $attributes];
-    }
-    /** Record something the Symfony analysis could not resolve. */
-
-    private function diagnostic(string $code, string $message, Node $at): void
-    {
-        $this->diagnostics[] = ['severity' => 'warning', 'code' => $code, 'message' => $message, 'evidence' => $this->evidence($at)];
     }
 
     /**
@@ -521,34 +484,10 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
     {
         return $this->classes === [] ? null : $this->classes[array_key_last($this->classes)];
     }
-    /** A class name in the canonical form the graph uses. */
-
-    private function classReference(string $name): string
-    {
-        return 'php:class:' . ltrim($name, '\\');
-    }
     /** The trailing segment of a name, for matching attributes written unqualified. */
 
     private function shortName(Name $name): string
     {
-        return basename(str_replace('\\', '/', $this->name($name)));
-    }
-    /** A resolved name node as a fully-qualified string. */
-
-    private function name(Name $name): string
-    {
-        $resolved = $name->getAttribute('resolvedName');
-        return ($resolved instanceof Name ? $resolved : $name)->toString();
-    }
-
-    /**
-     * The file and line a fact points back to.
-     *
-     * @return array{path: string, start_line: int, end_line: int}
-     */
-    private function evidence(Node $node): array
-    {
-        $start = max(1, $node->getStartLine());
-        return ['path' => $this->relativePath, 'start_line' => $start, 'end_line' => max($start, $node->getEndLine())];
+        return basename(str_replace('\\', '/', FrameworkFactStore::name($name)));
     }
 }
