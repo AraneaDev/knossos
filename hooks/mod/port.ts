@@ -4,7 +4,7 @@
  * followed, the footer's word, the session's own edits and scans, and
  * turning the mod off.
  */
-import type { EngineInterface, PluginState } from 'claude-code'
+import type { Port } from './port-type'
 
 import type { Feedback, SessionChanges } from '../../types'
 import { ledgerChanges, ownTimeline } from '../lib/session-changes'
@@ -17,42 +17,7 @@ import { relativise } from '../lib/paths'
 import { stopClocks } from './motion'
 import { mod, stopWatcher } from './state'
 
-/**
- * One value of the session state as the mod's modules reach it: read, or
- * changed by a function of what it holds. The engine's `read` and `update`
- * take only an atom declared in the hooks module itself, so `register.tsx`
- * declares every atom and hands each one over as a cell.
- */
-export type Cell<T> = { read(): Promise<T>; update(change: (value: T) => T): Promise<T> }
-
-/** Every value the mod keeps in the session state, by its key in the contract (`types/index.d.ts`). */
-type Cells = { [K in keyof PluginState['knossos']]-?: Cell<PluginState['knossos'][K]> }
-
-type Engine = EngineInterface
-
-/**
- * The engine as the mod's modules reach it: the calls the mod makes, each
- * passed straight through to `$`, and the session state as {@link Cells}.
- *
- * The engine follows `$` only into functions declared in the hooks module
- * itself, never across an import, and refuses `$.<noun>` used as a value:
- * `register.tsx` builds one of these from the hook's own `$` on every
- * dispatch (`portOf`), spelling each call out, and the modules take it
- * instead of `$`.
- */
-export type Port = {
-  clock: Pick<Engine['clock'], 'now' | 'after' | 'every'>
-  ui: Pick<Engine['ui'], 'log' | 'toast' | 'copy' | 'focus' | 'scroll' | 'panes' | 'invalidate' | 'open' | 'close'>
-  session: Pick<Engine['session'], 'root' | 'id' | 'append'>
-  process: Pick<Engine['process'], 'run' | 'spawn'>
-  fs: Pick<Engine['fs'], 'stat'>
-  store: Pick<Engine['store'], 'get' | 'set'>
-  config: Pick<Engine['config'], 'list'>
-  command: Pick<Engine['command'], 'register'>
-  prompt: Pick<Engine['prompt'], 'submit'>
-  plugin: { root: string }
-  state: Cells
-}
+export type { Cell, Port } from './port-type'
 
 /** How long the signal to a stopped watcher may take. */
 const KILL_TIMEOUT_MS = 5_000

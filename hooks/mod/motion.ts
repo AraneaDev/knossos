@@ -7,7 +7,7 @@
  * sake.
  */
 import { BUSY_SPIN_MS, MOTION_FRAME_MS, moving, NO_MOTION } from '../lib/motion'
-import type { Port } from './port'
+import type { Port } from './port-type'
 import { mod } from './state'
 
 /** Stops the clocks that redraw: the band's age tick and the motion's frames. */
