@@ -67,17 +67,4 @@ enum UnitKind: string
     {
         return $this->isManifestRoot() && $this !== self::Requirements;
     }
-
-    /**
-     * The kind strings that make their directory a manifest root.
-     *
-     * @return list<string>
-     */
-    public static function manifestRootKinds(): array
-    {
-        return array_values(array_map(
-            static fn(self $kind): string => $kind->value,
-            array_filter(self::cases(), static fn(self $kind): bool => $kind->isManifestRoot()),
-        ));
-    }
 }

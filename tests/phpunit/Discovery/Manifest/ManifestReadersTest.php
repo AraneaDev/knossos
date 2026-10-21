@@ -97,7 +97,7 @@ final class ManifestReadersTest extends TestCase
      */
     public function testManifestRootsAndBoundaryKinds(): void
     {
-        $roots = UnitKind::manifestRootKinds();
+        $roots = array_values(array_map(static fn(UnitKind $kind): string => $kind->value, array_filter(UnitKind::cases(), static fn(UnitKind $kind): bool => $kind->isManifestRoot())));
         sort($roots);
         self::assertSame(['cargo', 'composer', 'node', 'python', 'requirements', 'typescript'], $roots);
         $boundaries = array_values(array_map(

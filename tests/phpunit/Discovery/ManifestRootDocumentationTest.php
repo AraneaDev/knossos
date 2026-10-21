@@ -33,7 +33,7 @@ final class ManifestRootDocumentationTest extends KnossosTestCase
         }
         $kinds = array_values(array_unique($kinds));
         sort($kinds);
-        $expected = UnitKind::manifestRootKinds();
+        $expected = array_values(array_map(static fn(UnitKind $kind): string => $kind->value, array_filter(UnitKind::cases(), static fn(UnitKind $kind): bool => $kind->isManifestRoot())));
         sort($expected);
         assertSame($expected, $kinds);
     }
