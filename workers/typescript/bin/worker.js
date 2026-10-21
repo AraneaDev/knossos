@@ -100,6 +100,9 @@ async function handle(request) {
                     "jsx",
                     "mjs",
                     "cjs",
+                    "vue",
+                    "svelte",
+                    "astro",
                 ],
                 capabilities: [
                     "project_program",

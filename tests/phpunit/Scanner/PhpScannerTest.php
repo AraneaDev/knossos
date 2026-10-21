@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionMethod;
 
@@ -24,7 +25,7 @@ final class PhpScannerTest extends KnossosTestCase
         $client = $this->phpWorkerClient();
         assertSame('knossos.php', $client->initialize()->id);
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/Architecture.php'],
         ]));
@@ -93,7 +94,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/StaticAccess.php'],
         ]));
@@ -139,7 +140,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/ImmediateCall.php'],
         ]));
@@ -192,7 +193,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/AnnotatedEntity.php', 'src/AdminEmail.php', 'src/Picky.php'],
         ]), false);
@@ -225,7 +226,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerResolvesAnAnnotationThroughItsOwnNamespacesImports(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/TwoNamespaces.php'],
         ]), false);
@@ -253,7 +254,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerTypesAReceiverAMethodReturningSelfProduces(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/Singleton.php'],
         ]), false);
@@ -279,7 +280,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerMarksAVirtualPropertyAsRuntimeInvoked(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/Serialized.php'],
         ]), false);
@@ -308,7 +309,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerMarksMethodsThatOverrideASupertypesMember(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/Overriding.php'],
         ]), false);
@@ -345,7 +346,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerNamesTheNamespaceARuntimeClassNameIsBuiltIn(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/CardFactory.php'],
         ]), false);
@@ -381,7 +382,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/ImmediateCall.php'],
         ]));
@@ -410,7 +411,7 @@ final class PhpScannerTest extends KnossosTestCase
         assertSame(false, file_exists($marker));
 
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/Invalid.php', 'src/NoExecute.php'],
         ]));
@@ -431,7 +432,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
         $client = $this->phpWorkerClient();
-        $request = ['root' => $root, 'files' => ['src/Architecture.php']];
+        $request = ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/Architecture.php']];
         $first = iterator_to_array($client->scan($request));
         $second = iterator_to_array($client->scan($request));
         assertSame(
@@ -440,7 +441,7 @@ final class PhpScannerTest extends KnossosTestCase
         );
 
         $error = captureThrows(
-            fn() => iterator_to_array($client->scan(['root' => $root, 'files' => ['../composer.json']])),
+            fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['../composer.json']])),
             WorkerException::class,
         );
         assertSame('WORKER_RPC_ERROR', $error->diagnosticCode);
@@ -451,7 +452,7 @@ final class PhpScannerTest extends KnossosTestCase
         $contributions = iterator_to_array($limited->scan([
             'root' => $root,
             'files' => ['src/Architecture.php'],
-            'limits' => ['max_file_bytes' => 1],
+            'limits' => ['max_files' => 100_000, 'max_file_bytes' => 1],
         ]));
         assertSame(1, count($contributions));
         assertSame([], $contributions[0]->nodes);
@@ -468,16 +469,16 @@ final class PhpScannerTest extends KnossosTestCase
         $invalidRequests = [
             [],
             ['method' => 'unknown', 'params' => []],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => 'invalid']],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => [], 'frameworks' => 'invalid']],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => 'invalid']],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => [], 'frameworks' => 'invalid']],
             ['method' => 'scan', 'params' => ['root' => $root, 'files' => [], 'limits' => ['max_files' => 0]]],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => [1]]],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => [1]]],
             ['method' => 'scan', 'params' => []],
-            ['method' => 'scan', 'params' => ['root' => $root . '/missing', 'files' => []]],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => ['src//Architecture.php']]],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => ['../composer.json']]],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => ['/etc/passwd']]],
-            ['method' => 'scan', 'params' => ['root' => $root, 'files' => ['']]],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root . '/missing', 'files' => []]],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src//Architecture.php']]],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['../composer.json']]],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['/etc/passwd']]],
+            ['method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['']]],
         ];
         foreach ($invalidRequests as $request) {
             assertThrows(fn() => $handle->invoke($server, $request), \KnossosPhpScanner\WorkerInputException::class);
@@ -493,7 +494,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['routes/web.php'],
             'frameworks' => ['laravel'],
@@ -541,7 +542,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerExpandsLaravelResourceRoutesToTheirActions(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/laravel-resource',
             'files' => ['routes/api.php'],
             'frameworks' => ['laravel'],
@@ -579,7 +580,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerKeepsResourceActionsItsModifiersCannotNarrowStatically(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/laravel-resource',
             'files' => ['routes/dynamic.php'],
             'frameworks' => ['laravel'],
@@ -602,7 +603,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testPhpWorkerRegistersLaravelViewAndRedirectShortcutsWithTheirRealVerbs(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/laravel-resource',
             'files' => ['routes/shortcuts.php'],
             'frameworks' => ['laravel'],
@@ -628,7 +629,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => [
                 'app/Providers/AppServiceProvider.php',
@@ -675,7 +676,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['app/Http/Controllers/CheckoutController.php'],
             'frameworks' => ['laravel'],
@@ -704,7 +705,7 @@ final class PhpScannerTest extends KnossosTestCase
         // negative branch of the str_ends_with guard.
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['app/Jobs/BusDispatcher.php'],
             'frameworks' => ['laravel'],
@@ -729,7 +730,7 @@ final class PhpScannerTest extends KnossosTestCase
         // negative branch of the str_ends_with guard.
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel-event';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['EventDispatcher.php'],
             'frameworks' => ['laravel'],
@@ -754,7 +755,7 @@ final class PhpScannerTest extends KnossosTestCase
         // SymfonyFactCollector::enterMethod().
         $root = self::repositoryRoot() . '/tests/Fixtures/symfony-mh';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/MethodHandler.php'],
             'frameworks' => ['symfony'],
@@ -782,7 +783,7 @@ final class PhpScannerTest extends KnossosTestCase
         // (isRouteFacade() returning false).
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['routes/edge-cases.php'],
             'frameworks' => ['laravel'],
@@ -836,7 +837,7 @@ final class PhpScannerTest extends KnossosTestCase
         // as a function name was not covered.
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel-dispatch-func';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['FreeDispatch.php'],
             'frameworks' => ['laravel'],
@@ -878,7 +879,7 @@ final class PhpScannerTest extends KnossosTestCase
         // branch in eventReference().
         $root = self::repositoryRoot() . '/tests/Fixtures/symfony-string-events';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/EventListeners.php'],
             'frameworks' => ['symfony'],
@@ -919,7 +920,7 @@ final class PhpScannerTest extends KnossosTestCase
         file_put_contents($root . '/Deep.php', $bytes);
         try {
             $client = $this->phpWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['Deep.php']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['Deep.php']]));
             $contribution = $contributions[0];
             assertSame([], $contribution->nodes);
             assertSame([], $contribution->edges);
@@ -948,7 +949,7 @@ final class PhpScannerTest extends KnossosTestCase
         file_put_contents($root . '/Latin.php', "<?php\nnamespace Fx;\nclass Caf\xE9 {}\n");
         try {
             $client = $this->phpWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['Latin.php']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['Latin.php']]));
             assertSame(1, count($contributions));
             $classNodes = array_values(array_filter(
                 $contributions[0]->nodes,
@@ -996,7 +997,7 @@ final class PhpScannerTest extends KnossosTestCase
         PHP);
         try {
             $client = $this->phpWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['Flow.php']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['Flow.php']]));
             $contribution = $contributions[0];
 
             $callsToAm = array_values(array_filter(
@@ -1062,7 +1063,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/symfony';
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['src/Architecture.php'],
             'frameworks' => ['symfony'],
@@ -1110,7 +1111,7 @@ final class PhpScannerTest extends KnossosTestCase
         $client = $this->phpWorkerClient();
         $client->initialize();
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/ReturnTypedLocal.php'],
         ]));
@@ -1183,7 +1184,7 @@ final class PhpScannerTest extends KnossosTestCase
         $client = $this->phpWorkerClient();
         $client->initialize();
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/TopLevelScript.php'],
         ]));
@@ -1230,7 +1231,7 @@ final class PhpScannerTest extends KnossosTestCase
         $client = $this->phpWorkerClient();
         $client->initialize();
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/NamespacedCall.php'],
         ]));
@@ -1271,7 +1272,7 @@ final class PhpScannerTest extends KnossosTestCase
             $client = $this->phpWorkerClient();
             assertSame(true, in_array('content_hash', $client->initialize()->capabilities, true));
             $byOwner = [];
-            foreach ($client->scan(['root' => $root, 'files' => array_keys($files)]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]) as $contribution) {
                 $byOwner[$contribution->ownerKey] = $contribution->contentHash;
             }
             $client->shutdown();
@@ -1305,7 +1306,7 @@ final class PhpScannerTest extends KnossosTestCase
         try {
             $client = $this->phpWorkerClient();
             assertSame(true, in_array('input_hashes', $client->initialize()->capabilities, true));
-            iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();
 
@@ -1334,7 +1335,7 @@ final class PhpScannerTest extends KnossosTestCase
             $client = $this->phpWorkerClient();
             assertSame(true, in_array('read_attribution', $client->initialize()->capabilities, true));
             $reads = [];
-            foreach ($client->scan(['root' => $root, 'files' => ['src/A.php', 'src/Broken.php']]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/A.php', 'src/Broken.php']]) as $contribution) {
                 $reads[$contribution->ownerKey] = $contribution->reads;
             }
             $client->shutdown();
@@ -1369,7 +1370,7 @@ final class PhpScannerTest extends KnossosTestCase
             $contributions = iterator_to_array($client->scan([
                 'root' => $root,
                 'files' => ['src/Big.php', 'src/Gone.php', 'src/Dir.php', 'src/Out.php', 'src/notes.txt'],
-                'limits' => ['max_file_bytes' => 10],
+                'limits' => ['max_files' => 100_000, 'max_file_bytes' => 10],
             ]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();
@@ -1430,7 +1431,7 @@ final class PhpScannerTest extends KnossosTestCase
             file_put_contents($root . '/bin/tool', $python);
             $client = $this->phpWorkerClient();
             $manifest = $client->initialize();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['bin/tool']]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['bin/tool']]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();
             file_put_contents($root . '/bin/tool', $php);
@@ -1463,7 +1464,7 @@ final class PhpScannerTest extends KnossosTestCase
         try {
             $client = $this->phpWorkerClient();
             $manifest = $client->initialize();
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['bin/tool']]), false);
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['bin/tool']]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();
 
@@ -1559,7 +1560,7 @@ final class PhpScannerTest extends KnossosTestCase
         }
         $client = $this->phpWorkerClient();
         try {
-            iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($expected)]), false);
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($expected)]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? [];
 
             assertSame(true, strlen((string) json_encode($inputHashes)) > 256_000);
@@ -1596,7 +1597,7 @@ final class PhpScannerTest extends KnossosTestCase
         symlink('Target.php', $root . '/src/Linked.php');
         try {
             $client = $this->phpWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/Linked.php']]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/Linked.php']]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();
 
@@ -1616,7 +1617,7 @@ final class PhpScannerTest extends KnossosTestCase
         $client = $this->phpWorkerClient();
         $client->initialize();
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/Architecture.php'],
         ]));

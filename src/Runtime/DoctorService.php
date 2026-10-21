@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Runtime;
 
+use Knossos\Discovery\SourceClassifier;
 use Knossos\Filesystem\RegularFileOpener;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Scan\LanguageDescriptor;
@@ -137,9 +138,10 @@ final readonly class DoctorService
      * when deciding overall health, and the CLI renderer prints whatever
      * status it is given, so neither needed a change for the new status value.
      *
-     * The command and expected id both come from the descriptor, so this
-     * cannot drift from what a scan actually launches. The id convention is
-     * `knossos.<key>`, which every packaged worker follows.
+     * The command and the manifest it must answer with both come from the
+     * descriptor ({@see \Knossos\Scanner\Protocol\ScannerManifest::assertDescribes()}),
+     * so this cannot drift from what a scan actually launches. The id
+     * convention is `knossos.<key>`, which every packaged worker follows.
      *
      * @param list<array{name: string, status: string, detail: string}> $checks
      */
@@ -150,16 +152,14 @@ final readonly class DoctorService
             $checks[] = ['name' => $name, 'status' => 'skipped', 'detail' => 'not installed: ' . $descriptor->command[0]];
             return;
         }
-        $command = $descriptor->command;
-        $expectedId = $descriptor->scannerId();
         $built = null;
-        $this->check($checks, $name, static function () use ($command, $expectedId, &$built): string {
-            $client = new ProcessScannerClient($command);
+        $this->check($checks, $name, static function () use ($descriptor, &$built): string {
+            $client = new ProcessScannerClient($descriptor->command);
             try {
                 $manifest = $client->initialize();
-                if ($manifest->id !== $expectedId) {
-                    throw new \RuntimeException(sprintf('Unexpected worker ID: %s', $manifest->id));
-                }
+                // The id, languages, routed extensions and added-files
+                // capability the descriptor launches this worker for.
+                $manifest->assertDescribes($descriptor->scannerId(), $descriptor->languages, SourceClassifier::extensionsFor($descriptor->languages), $descriptor->addedFilesAffectAll);
                 $built = $manifest->sourceHash;
                 return $manifest->id . '@' . $manifest->version . ' protocol ' . $manifest->protocolVersion;
             } finally {

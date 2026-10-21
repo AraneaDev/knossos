@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A class method fulfilling a member of a type its class extends or
 // implements is marked `overrides`. A dependency's base class or a built-in
@@ -28,7 +29,12 @@ function scanned(files, requested) {
     }
     const contributions = [];
     new TypeScriptScanner().scan(
-        { root, files: requested, config_files: ["tsconfig.json"] },
+        {
+            limits: SCAN_LIMITS,
+            root,
+            files: requested,
+            config_files: ["tsconfig.json"],
+        },
         (c) => contributions.push(c),
     );
     return Object.fromEntries(

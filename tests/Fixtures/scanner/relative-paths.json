@@ -1,0 +1,36 @@
+{
+  "description": "Project-relative paths a scan request may name, as the core's RelativePath::assertValid judges them. Every worker accepts what the core accepts and refuses the rest as a malformed request.",
+  "accept": [
+    "a.php",
+    "src/a.php",
+    "dir.with.dots/a.php",
+    "a b/c.php",
+    "café/c.php",
+    ".hidden/a.php",
+    "..a/b.php",
+    "a../b.php",
+    "...",
+    "a:b.php",
+    "C:x.php"
+  ],
+  "reject": [
+    "",
+    "/abs.php",
+    "C:/x.php",
+    "c:/x.php",
+    "a\\b.php",
+    "a//b.php",
+    "a/./b.php",
+    "./a.php",
+    "a/",
+    "../a.php",
+    "a/../b.php",
+    "a/..",
+    ".",
+    "..",
+    "a\u0000b.php",
+    "a\u0001b.php",
+    "a\u001fb.php",
+    "ab.php"
+  ]
+}

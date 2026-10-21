@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { withoutAbsentAliasConfigs } from "./support/absent-alias-configs.mjs";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // TypeScript's exports are non-configurable getters, so vi.spyOn cannot replace
 // createProgram; the module is wrapped instead, with a hook each test sets.
@@ -54,7 +55,7 @@ describe("input_hashes for a program this request did not read", () => {
         hook.createProgram = program;
         return () => {
             const result = instance.scan(
-                { root, files: ["src/a.ts"] },
+                { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
                 () => {},
             );
             instance.programCache.programs.clear();
@@ -122,7 +123,7 @@ describe("input_hashes for a requested file the compiler leaves out of every pro
         };
         const contributions = [];
         const result = new TypeScriptScanner().scan(
-            { root, files: ["src/a.ts", "src/b.ts"] },
+            { limits: SCAN_LIMITS, root, files: ["src/a.ts", "src/b.ts"] },
             (contribution) => contributions.push(contribution),
         );
         return { result, contributions };

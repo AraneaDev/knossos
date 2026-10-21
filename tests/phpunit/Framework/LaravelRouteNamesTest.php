@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 
 use function PHPUnit\Framework\assertSame;
 
@@ -234,7 +235,7 @@ final class LaravelRouteNamesTest extends KnossosTestCase
         }
         try {
             $client = $this->phpWorkerClient($assertions);
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => array_keys($files),
                 'frameworks' => ['laravel'],

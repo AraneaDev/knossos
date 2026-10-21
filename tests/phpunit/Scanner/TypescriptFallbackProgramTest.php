@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -22,7 +23,7 @@ final class TypescriptFallbackProgramTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/fallback-options',
                 'files' => ['shared/greet.ts', 'web/src/util.ts', 'web/tests/util.test.ts'],
                 'config_files' => ['web/tsconfig.json', 'web/tsconfig.shared.json'],
@@ -72,7 +73,7 @@ final class TypescriptFallbackProgramTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/fallback-diagnostics',
                 'files' => ['src/app.ts', 'visual/broken.ts', 'visual/fixtures.ts', 'visual/vite.visual.config.ts'],
                 'config_files' => ['tsconfig.json'],
@@ -100,7 +101,7 @@ final class TypescriptFallbackProgramTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/fallback-ambient',
                 'files' => ['hooks/register.tsx'],
                 'config_files' => ['hooks/tsconfig.json'],
@@ -137,7 +138,7 @@ final class TypescriptFallbackProgramTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/fallback-options',
                 'files' => ['shared/greet.ts', 'web/src/util.ts', 'web/tests/util.test.ts'],
                 'config_files' => $configs,

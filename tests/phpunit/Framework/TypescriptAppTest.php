@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -31,7 +32,7 @@ final class TypescriptAppTest extends KnossosTestCase
             'src/vue.ts',
         ];
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => $files,
             'config_files' => ['tsconfig.json'],
@@ -97,7 +98,7 @@ final class TypescriptAppTest extends KnossosTestCase
         }
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['app/dashboard/page.tsx', 'src/components/page.tsx', 'src/components/layout.tsx'],
                 'config_files' => ['tsconfig.json'],

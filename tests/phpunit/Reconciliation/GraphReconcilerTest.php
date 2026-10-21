@@ -2508,8 +2508,11 @@ final class GraphReconcilerTest extends TestCase
             $targets[] = $names[$args[4]] ?? '?';
         }
         sort($targets, SORT_STRING);
-        sort($expected, SORT_STRING);
         self::assertGreaterThan(2000, count($expected));
+        // Prefixes that expand to one class are one edge to it: the core
+        // collapses repeated edges per kind, source and target.
+        $expected = array_values(array_unique($expected));
+        sort($expected, SORT_STRING);
         assertSame($expected, $targets);
     }
 

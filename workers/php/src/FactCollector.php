@@ -1009,12 +1009,7 @@ final class FactCollector extends NodeVisitorAbstract
      */
     private function evidence(Node $node): array
     {
-        $start = max(1, $node->getStartLine());
-        return [
-            'path' => $this->relativePath,
-            'start_line' => $start,
-            'end_line' => max($start, $node->getEndLine()),
-        ];
+        return FrameworkFactStore::evidenceIn($this->relativePath, $node);
     }
 
     /**

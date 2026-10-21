@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -299,7 +300,7 @@ final class PhpWorkerScopeAndRouteFactsTest extends KnossosTestCase
     {
         $client = $this->phpWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan(['root' => $this->root, 'files' => $files, 'frameworks' => $frameworks]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $files, 'frameworks' => $frameworks]));
         } finally {
             $client->shutdown();
         }

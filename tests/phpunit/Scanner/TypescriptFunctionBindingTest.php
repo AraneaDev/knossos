@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -172,7 +173,7 @@ final class TypescriptFunctionBindingTest extends KnossosTestCase
         $root = self::repositoryRoot() . '/tests/Fixtures/function-bindings';
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['app/api/items/route.ts', 'src/Card.tsx', 'src/bindings.ts', 'src/handler.ts', 'src/level.ts', 'src/load-named.ts', 'src/load.ts', 'src/panel.ts', 'src/user.ts'],
                 'config_files' => ['tsconfig.json'],

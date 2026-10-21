@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A package whose declaration file is over the per-file byte cap is refused to
 // bound memory, which is deliberate. The compiler then reports the import as
@@ -41,7 +42,11 @@ describe("an import resolving to a declaration over the byte cap", () => {
         });
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/a.ts"], limits: { max_file_bytes: 1000 } },
+            {
+                root,
+                files: ["src/a.ts"],
+                limits: { ...SCAN_LIMITS, max_file_bytes: 1000 },
+            },
             (c) => contributions.push(c),
         );
         const diagnostics = contributions.flatMap((c) => c.diagnostics);
@@ -76,7 +81,11 @@ describe("an import resolving to a declaration over the byte cap", () => {
         });
         const contributions = [];
         const result = new TypeScriptScanner().scan(
-            { root, files: ["src/actor.ts"], limits: { max_file_bytes: 1000 } },
+            {
+                root,
+                files: ["src/actor.ts"],
+                limits: { ...SCAN_LIMITS, max_file_bytes: 1000 },
+            },
             (c) => contributions.push(c),
         );
         const codes = contributions

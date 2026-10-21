@@ -382,9 +382,9 @@ impl Facts {
 
     /// The finished contribution, with edges in a stable order.
     ///
-    /// Sorting matches `workers/python/bin/knossos_python/collector.py`, so
-    /// re-scanning an unchanged file produces byte-identical output and
-    /// reconciliation sees no churn.
+    /// Sorting by kind, source, target and evidence line makes re-scanning an
+    /// unchanged file produce byte-identical output, so reconciliation sees
+    /// no churn.
     ///
     /// Edges whose `source` this contribution never declared as a node are
     /// dropped first. A missing target is left alone: the reconciler tolerates
@@ -399,16 +399,10 @@ impl Facts {
     /// is only guessable when it lands on a real declaration in this same
     /// file.
     ///
-    /// Edges are then collapsed to the persistence identity the scanner SDK
-    /// states (`docs/reference/scanner-sdk.md`): one row per
-    /// kind/source/target within one owner, the same collapse `add_edge` in
-    /// `workers/python/bin/knossos_python/collector.py` performs by keying its
-    /// edge map. A module importing many symbols from one module, a function
-    /// calling the same target from three branches, and a `use` group repeated
-    /// across nested `mod` blocks all render the identical row otherwise. The
-    /// collapse runs after the sort, so the surviving row is always the one
-    /// with the earliest evidence line rather than whichever the walk happened
-    /// to reach first.
+    /// Every site stays its own edge: the core collapses repeated edges to
+    /// one per kind, source, target and owner (and `prefix` for `mounts`),
+    /// as `docs/reference/scanner-protocol-v1.md` states under "Repeated
+    /// edges".
     #[must_use]
     pub fn finish(mut self) -> Contribution {
         let declared = self.declared;
@@ -449,9 +443,6 @@ impl Facts {
                 node.attributes.insert(key.clone(), value.clone());
             }
         }
-        // One router mounted twice under two prefixes answers both, so a
-        // mount is one per prefix; every other edge is one per kind, source
-        // and target.
         let prefix = |edge: &Edge| edge.attributes.get("prefix").map(Value::to_string);
         self.edges.sort_by(|a, b| {
             (
@@ -468,12 +459,6 @@ impl Facts {
                     prefix(b),
                     b.evidence.start_line,
                 ))
-        });
-        self.edges.dedup_by(|a, b| {
-            a.kind == b.kind
-                && a.source == b.source
-                && a.target == b.target
-                && prefix(a) == prefix(b)
         });
 
         Contribution {

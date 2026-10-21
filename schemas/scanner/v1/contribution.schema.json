@@ -75,8 +75,34 @@
             "evidence": true,
             "attributes": true
           }
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "route" } }
+          },
+          "then": {
+            "properties": {
+              "attributes": { "$ref": "#/$defs/routeAttributes" }
+            }
+          }
         }
       ]
+    },
+    "routeAttributes": {
+      "description": "What every route node carries, whichever worker emits it: its framework, the upper-case methods it answers (ANY for every method) and its path as declared.",
+      "type": "object",
+      "required": ["framework", "methods", "path"],
+      "properties": {
+        "framework": { "type": "string", "minLength": 1 },
+        "methods": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z]+$" }
+        },
+        "path": { "type": "string" }
+      }
     },
     "edge": {
       "allOf": [

@@ -9,6 +9,7 @@ import { URL } from "node:url";
 import { TypeScriptScanner } from "../scanner.js";
 import { withoutAbsentAliasConfigs } from "./support/absent-alias-configs.mjs";
 import { absentRequireCandidates } from "./support/require-candidates.mjs";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -34,7 +35,7 @@ const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 function scan(root, files, { limits, observeHostPath } = {}) {
     const contributions = [];
     const result = new TypeScriptScanner({ observeHostPath }).scan(
-        { root, files, limits },
+        { root, files, limits: { ...SCAN_LIMITS, ...limits } },
         (contribution) => contributions.push(contribution),
     );
     return {
@@ -71,7 +72,7 @@ describe("input_hashes: a requested file whose read fails", () => {
                 "src/out.ts",
                 "bin/plain",
             ],
-            { limits: { max_file_bytes: 60 } },
+            { limits: { ...SCAN_LIMITS, max_file_bytes: 60 } },
         );
 
         // src/notes.txt was refused by its name and read nothing; bin/plain was
@@ -127,7 +128,7 @@ describe("input_hashes: a requested file whose read fails", () => {
             const { TypeScriptScanner } = await import(${JSON.stringify(scanner)});
             const contributions = [];
             const result = new TypeScriptScanner().scan(
-                { root: ${JSON.stringify(root)}, files: ["bin/tool"] },
+                { limits: ${JSON.stringify(SCAN_LIMITS)}, root: ${JSON.stringify(root)}, files: ["bin/tool"] },
                 (contribution) => contributions.push(contribution),
             );
             process.stdout.write(JSON.stringify({
@@ -398,7 +399,11 @@ describe("the byte cap and the default library", () => {
         const contributions = [];
 
         new TypeScriptScanner().scan(
-            { root, files: ["src/a.ts"], limits: { max_file_bytes: 500 } },
+            {
+                root,
+                files: ["src/a.ts"],
+                limits: { ...SCAN_LIMITS, max_file_bytes: 500 },
+            },
             (contribution) => contributions.push(contribution),
         );
 

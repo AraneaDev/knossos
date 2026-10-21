@@ -31,7 +31,7 @@ final class LaravelTraversalContext
     public function enterNode(Node $node): void
     {
         if ($node instanceof Stmt\ClassLike) {
-            $this->classes[] = LaravelFactStore::classReference($this->declarationName($node, $this->relativePath));
+            $this->classes[] = FrameworkFactStore::classReference($this->declarationName($node, $this->relativePath));
         } elseif ($node instanceof Stmt\Function_) {
             $this->callables[] = 'php:function:' . ltrim($this->declarationName($node, $this->relativePath), '\\');
         } elseif ($node instanceof Stmt\ClassMethod) {

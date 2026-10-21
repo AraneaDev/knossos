@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A browser module cache-busts what it loads lazily with the page's query
 // (`` import(`./draw.mjs${query}`) ``). The compiler binds no module to a
@@ -30,8 +31,9 @@ function dynamicImports(files, scanned) {
         fs.writeFileSync(join(root, path), contents);
     }
     const contributions = [];
-    new TypeScriptScanner().scan({ root, files: scanned }, (c) =>
-        contributions.push(c),
+    new TypeScriptScanner().scan(
+        { limits: SCAN_LIMITS, root, files: scanned },
+        (c) => contributions.push(c),
     );
     return contributions
         .flatMap((c) => c.edges)

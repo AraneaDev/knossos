@@ -312,6 +312,7 @@ php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
 php	src/Query/TurnBriefService.php
 php	src/Reconciliation/CaseInsensitiveReferences.php
+php	src/Reconciliation/EdgeCollapse.php
 php	src/Reconciliation/EdgeTargetResolver.php
 php	src/Reconciliation/EndpointRouteBinder.php
 php	src/Reconciliation/EndpointRouteBinding.php
@@ -800,6 +801,7 @@ php	tests/phpunit/Query/WiringReachTest.php
 php	tests/phpunit/Reconciliation/ArtisanCommandTargetTest.php
 php	tests/phpunit/Reconciliation/CaseInsensitiveReferencesTest.php
 php	tests/phpunit/Reconciliation/CrossLanguageExternalNodeTest.php
+php	tests/phpunit/Reconciliation/EdgeCollapseTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteBinderTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteReconcileTest.php
 php	tests/phpunit/Reconciliation/FullScanRequestTest.php
@@ -848,7 +850,6 @@ php	tests/phpunit/Scan/FailedScanTest.php
 php	tests/phpunit/Scan/FastPathTest.php
 php	tests/phpunit/Scan/IncrementalReadsScanTest.php
 php	tests/phpunit/Scan/InputHashVerificationTest.php
-php	tests/phpunit/Scan/InputHashesPartSizeAgreementTest.php
 php	tests/phpunit/Scan/InputHashesPartsScanTest.php
 php	tests/phpunit/Scan/JsconfigScanTest.php
 php	tests/phpunit/Scan/LanguageDescriptorAnalysisInputsTest.php
@@ -888,6 +889,7 @@ php	tests/phpunit/Scan/ScanPlanTest.php
 php	tests/phpunit/Scan/ScanPlannerConfigurationKindsTest.php
 php	tests/phpunit/Scan/ScanPlannerDefaultsTest.php
 php	tests/phpunit/Scan/ScanPlannerTest.php
+php	tests/phpunit/Scan/ScanRequestSchemaTest.php
 php	tests/phpunit/Scan/ScanResultFactoryTest.php
 php	tests/phpunit/Scan/ScanSnapshotValidationTest.php
 php	tests/phpunit/Scan/ShebangScanTest.php
@@ -906,8 +908,8 @@ php	tests/phpunit/Scanner/ComponentWorkerTest.php
 php	tests/phpunit/Scanner/ContributionDecoderGuardsTest.php
 php	tests/phpunit/Scanner/ContributionParamsTest.php
 php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
-php	tests/phpunit/Scanner/LaunchInterpretersAgreementTest.php
 php	tests/phpunit/Scanner/LimitsTest.php
+php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
@@ -930,6 +932,7 @@ php	tests/phpunit/Scanner/PythonReadAttributionTest.php
 php	tests/phpunit/Scanner/PythonScannerTest.php
 php	tests/phpunit/Scanner/PythonWorkerReadsTest.php
 php	tests/phpunit/Scanner/ReturnedReceiverTest.php
+php	tests/phpunit/Scanner/RouteAttributesAgreementTest.php
 php	tests/phpunit/Scanner/RustModuleIdentityTest.php
 php	tests/phpunit/Scanner/RustReadAttributionTest.php
 php	tests/phpunit/Scanner/RustWorkerTest.php
@@ -975,6 +978,7 @@ php	tests/phpunit/Scanner/Worker/WorkerExecutionPolicyTest.php
 php	tests/phpunit/Scanner/Worker/WorkerLimitsTest.php
 php	tests/phpunit/Scanner/Worker/WorkerProcessSupervisorTest.php
 php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
+php	tests/phpunit/Scanner/WorkerConstantAgreementTest.php
 php	tests/phpunit/Scanner/WorkerFallbackExclusionsTest.php
 php	tests/phpunit/Scanner/WorkerTest.php
 php	tests/phpunit/Store/BatchWriteTest.php
@@ -1019,6 +1023,8 @@ php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/Processes.php
 php	tests/phpunit/Support/QueryCountingStatement.php
 php	tests/phpunit/Support/RowCountingStatement.php
+php	tests/phpunit/Support/ScanLimits.php
+php	tests/phpunit/Support/SchemaSubset.php
 php	tests/phpunit/Support/SupportTraitsTest.php
 php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempTrees.php
@@ -1070,11 +1076,11 @@ php	tools/trivy-allowlist.php
 php	workers/php/bin/worker
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
+php	workers/php/src/FrameworkFactStore.php
 php	workers/php/src/LaravelContainerFactCollector.php
 php	workers/php/src/LaravelDispatchFactCollector.php
 php	workers/php/src/LaravelEloquentFactCollector.php
 php	workers/php/src/LaravelFactCollector.php
-php	workers/php/src/LaravelFactStore.php
 php	workers/php/src/LaravelProviderMapFactCollector.php
 php	workers/php/src/LaravelRouteFactCollector.php
 php	workers/php/src/LaravelRouteNameFactCollector.php
@@ -1371,6 +1377,7 @@ js	workers/typescript/src/__tests__/supertype-members.test.js
 js	workers/typescript/src/__tests__/support/absent-alias-configs.mjs
 js	workers/typescript/src/__tests__/support/record-typescript-load.mjs
 js	workers/typescript/src/__tests__/support/require-candidates.mjs
+js	workers/typescript/src/__tests__/support/scan-limits.mjs
 js	workers/typescript/src/__tests__/table-dispatch.test.js
 js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js

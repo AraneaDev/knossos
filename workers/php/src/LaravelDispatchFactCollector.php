@@ -19,7 +19,7 @@ use PhpParser\Node\Name;
 final readonly class LaravelDispatchFactCollector
 {
     public function __construct(
-        private LaravelFactStore $facts,
+        private FrameworkFactStore $facts,
         private LaravelTraversalContext $context,
     ) {}
 
@@ -42,14 +42,14 @@ final readonly class LaravelDispatchFactCollector
         }
         $method = strtolower($node->name->toString());
         if ($method === 'dispatch') {
-            $event = LaravelFactStore::name($node->class);
+            $event = FrameworkFactStore::name($node->class);
             if (!str_ends_with($event, '\\Bus') && !str_ends_with($event, '\\Event')) {
-                $this->facts->addEdge('dispatches', $source, LaravelFactStore::classReference($event), $node);
+                $this->facts->addEdge('dispatches', $source, FrameworkFactStore::classReference($event), $node);
             }
         } elseif ($method === 'observe') {
-            $observer = LaravelFactStore::classArgument($node->args[0]->value ?? null);
+            $observer = FrameworkFactStore::classArgument($node->args[0]->value ?? null);
             if ($observer !== null) {
-                $this->facts->addEdge('observes', $source, LaravelFactStore::classReference($observer), $node, ['model' => LaravelFactStore::name($node->class)]);
+                $this->facts->addEdge('observes', $source, FrameworkFactStore::classReference($observer), $node, ['model' => FrameworkFactStore::name($node->class)]);
             }
         }
     }
@@ -64,7 +64,7 @@ final readonly class LaravelDispatchFactCollector
         }
         $argument = $node->args[0]->value ?? null;
         if ($argument instanceof Expr\New_ && $argument->class instanceof Name) {
-            $this->facts->addEdge('dispatches', $source, LaravelFactStore::classReference(LaravelFactStore::name($argument->class)), $node);
+            $this->facts->addEdge('dispatches', $source, FrameworkFactStore::classReference(FrameworkFactStore::name($argument->class)), $node);
         }
     }
 }

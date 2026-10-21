@@ -17,6 +17,7 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -61,7 +62,7 @@ final class ConcurrencyTest extends KnossosTestCase
             $client->initialize();
             $polls = 0;
             $error = captureThrows(
-                fn() => iterator_to_array($client->scan([], function () use (&$polls): bool {
+                fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, ], function () use (&$polls): bool {
                     return ++$polls >= 2;
                 })),
                 WorkerException::class,

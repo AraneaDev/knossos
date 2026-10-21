@@ -5,7 +5,6 @@ can both take it without importing each other.
 """
 
 import ast
-import json
 from typing import Any
 
 from .ast_helpers import evidence
@@ -17,7 +16,8 @@ class PythonFactAccumulator:
     def __init__(self, relative: str) -> None:
         self.relative = relative
         self.nodes: dict[str, dict[str, Any]] = {}
-        self.edges: dict[str, dict[str, Any]] = {}
+        # One entry per site: the core collapses repeated edges.
+        self.edges: list[dict[str, Any]] = []
         self.diagnostics: list[dict[str, Any]] = []
 
     def add_node(
@@ -54,42 +54,17 @@ class PythonFactAccumulator:
         origin: str = "ast",
         confidence: str = "certain",
     ) -> None:
-        added: dict[str, Any] = attributes or {}
-        item: dict[str, Any] = {
-            "kind": kind,
-            "source": source,
-            "target": target,
-            "origin": origin,
-            "confidence": confidence,
-            "evidence": evidence(self.relative, node),
-            "attributes": added,
-        }
-        # One router or urlconf mounted twice under two prefixes answers both, so a mount is one per prefix.
-        key = json.dumps([kind, source, target, *([added.get("prefix")] if kind == "mounts" else [])], sort_keys=True)
-        existing = self.edges.get(key)
-        if existing is None:
-            self.edges[key] = item
-            return
-        # A certain statement makes the pair's edge certain, whichever came
-        # first: a `delay()` after a signature of the same task is no guess.
-        if confidence == "certain" and existing["confidence"] != "certain":
-            existing["confidence"] = "certain"
-            existing["evidence"] = item["evidence"]
-            existing["attributes"] = added
-            return
-        # Two statements between the same pair are one edge, and the first
-        # one's attributes stand. When either is type-only, which kinds were
-        # seen is kept, so one runtime import keeps the dependency real
-        # whichever came first. A missing marker is a runtime import.
-        kept: dict[str, Any] = existing["attributes"]
-        if kind == "imports" and ("type_only" in kept or "type_only" in added):
-            kept["type_only_variants"] = sorted(
-                {
-                    kept.get("type_only", False),
-                    *kept.get("type_only_variants", []),
-                    added.get("type_only", False),
-                }
-            )
+        self.edges.append(
+            {
+                "kind": kind,
+                "source": source,
+                "target": target,
+                "origin": origin,
+                "confidence": confidence,
+                "evidence": evidence(self.relative, node),
+                "attributes": attributes or {},
+            }
+        )
 
     def add_diagnostic(self, code: str, message: str, node: ast.AST) -> None:
         self.diagnostics.append(
@@ -101,7 +76,7 @@ class PythonFactAccumulator:
             "owner_key": f"knossos.python:file:{self.relative}",
             "nodes": sorted(self.nodes.values(), key=lambda item: item["local_id"]),
             "edges": sorted(
-                self.edges.values(),
+                self.edges,
                 key=lambda item: (item["kind"], item["source"], item["target"], item["evidence"]["start_line"]),
             ),
             "diagnostics": self.diagnostics,

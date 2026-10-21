@@ -6,6 +6,7 @@ namespace Knossos\Scanner\Protocol;
 
 use InvalidArgumentException;
 use JsonSerializable;
+use Knossos\Scanner\Worker\WorkerException;
 
 /**
  * What a worker says about itself when it starts: id, version, protocol.
@@ -90,6 +91,38 @@ final readonly class ScannerManifest implements JsonSerializable
             $capabilities,
             $sourceHash,
         );
+    }
+
+    /**
+     * Refuse a manifest that does not describe the worker the core launched:
+     * another id, other languages, a source extension the core routes to these
+     * languages left undeclared, or an `added_files_affect_all` capability the
+     * core's own record of the language disagrees with.
+     *
+     * @param list<string> $languages
+     * @param list<string> $routedExtensions
+     * @throws WorkerException WORKER_MANIFEST_INVALID
+     */
+    public function assertDescribes(string $scannerId, array $languages, array $routedExtensions, bool $addedFilesAffectAll): void
+    {
+        $sortedOwn = $this->languages;
+        $sortedExpected = $languages;
+        sort($sortedOwn);
+        sort($sortedExpected);
+        $problem = match (true) {
+            $this->id !== $scannerId => sprintf('answers as %s', $this->id),
+            $sortedOwn !== $sortedExpected => sprintf('declares languages %s, not %s', implode(', ', $sortedOwn), implode(', ', $sortedExpected)),
+            ($missing = array_values(array_diff($routedExtensions, $this->fileExtensions))) !== [] => sprintf('does not declare the extensions %s', implode(', ', $missing)),
+            in_array(Protocol::CAPABILITY_ADDED_FILES_AFFECT_ALL, $this->capabilities, true) !== $addedFilesAffectAll => sprintf(
+                '%s the %s capability',
+                $addedFilesAffectAll ? 'lacks' : 'declares',
+                Protocol::CAPABILITY_ADDED_FILES_AFFECT_ALL,
+            ),
+            default => null,
+        };
+        if ($problem !== null) {
+            throw new WorkerException('WORKER_MANIFEST_INVALID', sprintf('The worker launched as %s %s.', $scannerId, $problem));
+        }
     }
 
     /**

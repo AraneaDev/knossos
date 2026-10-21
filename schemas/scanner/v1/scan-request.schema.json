@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knossos.local/schemas/scanner/v1/scan-request.schema.json",
+  "title": "Knossos scan request params v1",
+  "description": "The params of a scan request. The core always sends the root, the files and both limits; a worker refuses a request whose limits are missing or not integers of at least 1. Language-specific fields ride alongside.",
+  "type": "object",
+  "required": ["root", "files", "limits"],
+  "properties": {
+    "root": { "type": "string", "minLength": 1 },
+    "files": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_files", "max_file_bytes"],
+      "properties": {
+        "max_files": { "type": "integer", "minimum": 1 },
+        "max_file_bytes": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

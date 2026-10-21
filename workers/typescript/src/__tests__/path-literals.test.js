@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A build script names its entry (`build({ entryPoints: ['src/boot.ts'] })`),
 // a config aliases a module by path (`resolve(__dirname, 'visual/stubs.tsx')`),
@@ -61,6 +62,7 @@ describe("a source path written as a literal", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: [
                     "packages/agent/build.ts",
@@ -100,6 +102,7 @@ describe("a path joined from a root variable", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: [
                     "tools/shots.ts",
@@ -141,6 +144,7 @@ describe("a path joined from string literals only", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: [
                     "tools/build.ts",

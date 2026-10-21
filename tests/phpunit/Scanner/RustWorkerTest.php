@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use Knossos\Tests\Phpunit\Support\WorkerClients;
 
 /**
@@ -49,7 +50,7 @@ final class RustWorkerTest extends KnossosTestCase
         file_put_contents($root . '/src/lib.rs', "pub struct Engine;\n\nimpl Engine {\n    pub fn start(&self) {}\n}\n");
         $client = $this->rustWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/lib.rs']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/lib.rs']]));
         } finally {
             $client->shutdown();
             unlink($root . '/src/lib.rs');
@@ -82,7 +83,7 @@ final class RustWorkerTest extends KnossosTestCase
             $client = $this->rustWorkerClient();
             self::assertTrue(in_array('content_hash', $client->initialize()->capabilities, true));
             $byOwner = [];
-            foreach ($client->scan(['root' => $root, 'files' => array_keys($files)]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]) as $contribution) {
                 $byOwner[$contribution->ownerKey] = $contribution->contentHash;
             }
             $client->shutdown();
@@ -116,7 +117,7 @@ final class RustWorkerTest extends KnossosTestCase
         try {
             $client = $this->rustWorkerClient();
             self::assertTrue(in_array('input_hashes', $client->initialize()->capabilities, true));
-            iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();
 
@@ -148,7 +149,7 @@ final class RustWorkerTest extends KnossosTestCase
             iterator_to_array($client->scan([
                 'root' => $root,
                 'files' => ['src/big.rs', 'src/dir.rs', 'src/gone.rs'],
-                'limits' => ['max_file_bytes' => 10],
+                'limits' => ['max_files' => 100_000, 'max_file_bytes' => 10],
             ]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $client->shutdown();

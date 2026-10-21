@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A file was emitted by the first program that reached it, whichever config
 // that program came from. A server config importing one shared React module
@@ -53,6 +54,7 @@ describe("a file is checked under the config that includes it", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: ["src/App.tsx"],
                 config_files: ["tsconfig.json", "tsconfig.web.json"],
@@ -89,6 +91,7 @@ describe("a file is checked under the config that includes it", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: ["app/src/main.ts", "lib/src/index.ts"],
                 config_files: ["app/tsconfig.json", "lib/tsconfig.json"],

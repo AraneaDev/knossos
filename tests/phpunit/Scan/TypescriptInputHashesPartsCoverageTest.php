@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -62,7 +63,7 @@ final class TypescriptInputHashesPartsCoverageTest extends KnossosTestCase
         $expected += self::absentTypescriptAliasConfigs();
 
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $this->root,
             'files' => ['src/entry.ts'],
         ]));
@@ -103,7 +104,7 @@ final class TypescriptInputHashesPartsCoverageTest extends KnossosTestCase
         file_put_contents($this->root . '/src/entry.ts', "import { value0 } from 'dep';\nexport const entry = value0;\n");
 
         $client = $this->typescriptWorkerClient();
-        iterator_to_array($client->scan(['root' => $this->root, 'files' => ['src/entry.ts']]));
+        iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => ['src/entry.ts']]));
         $result = $client->lastScanResult();
         $client->shutdown();
 
@@ -140,7 +141,7 @@ final class TypescriptInputHashesPartsCoverageTest extends KnossosTestCase
         file_put_contents($this->root . '/src/entry.ts', "export const entry = 1;\n");
 
         $client = $this->typescriptWorkerClient();
-        iterator_to_array($client->scan([
+        iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $this->root,
             'files' => ['src/entry.ts'],
             'config_files' => ['tsconfig.json'],

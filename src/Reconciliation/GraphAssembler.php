@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Reconciliation;
 
-use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
@@ -207,7 +206,7 @@ final readonly class GraphAssembler
     private function resolveEdges(string $projectId, array $contributions, array $nodeMap, array $fileIds): array
     {
         $external = [];
-        $edges = [];
+        $collapse = new EdgeCollapse($projectId, $fileIds);
         $unconfirmed = [];
         $warnings = [];
         $warnedReferences = [];
@@ -225,8 +224,7 @@ final readonly class GraphAssembler
                 $expanded = $targets->expandedTargets($edge->targetReference);
                 if ($expanded !== null) {
                     foreach ($expanded as $targetId) {
-                        $record = $this->edgeWithEvidence($projectId, $edge, $sourceId, $targetId, $contribution->ownerKey, $fileIds);
-                        $edges[$record['id']] = $record;
+                        $collapse->add($edge, $sourceId, $targetId, $contribution->ownerKey);
                     }
                     continue;
                 }
@@ -279,12 +277,11 @@ final readonly class GraphAssembler
                     $external[$targetId] ??= $externalNode;
                 }
 
-                $record = $this->edgeWithEvidence($projectId, $edge, $sourceId, $targetId, $contribution->ownerKey, $fileIds);
-                $edges[$record['id']] = $record;
+                $collapse->add($edge, $sourceId, $targetId, $contribution->ownerKey);
             }
         }
 
-        return [$external, $edges, $warnings, $unconfirmed];
+        return [$external, $collapse->records(), $warnings, $unconfirmed];
     }
 
     /**
@@ -327,26 +324,6 @@ final readonly class GraphAssembler
             sort($names, SORT_STRING);
             $nodes[$sourceId]['attributes']['unresolved_member_calls'] = $names;
         }
-    }
-
-    /**
-     * An edge's record, identified by its kind, ends and evidence.
-     *
-     * @param array<string, string> $fileIds
-     * @return array<string, mixed>
-     */
-    private function edgeWithEvidence(string $projectId, EdgeFact $edge, string $sourceId, string $targetId, string $ownerKey, array $fileIds): array
-    {
-        $evidenceKey = sprintf(
-            '%s:%d:%d:%s',
-            $edge->evidence->relativePath,
-            $edge->evidence->startLine,
-            $edge->evidence->endLine,
-            $ownerKey,
-        );
-        $id = StableId::edge($projectId, $edge->kind, $sourceId, $targetId, $evidenceKey);
-
-        return $this->edgeRecord($id, $edge, $sourceId, $targetId, $ownerKey, $fileIds);
     }
 
     /**
@@ -419,42 +396,6 @@ final readonly class GraphAssembler
             'attributes' => ['unresolved' => true, 'reference' => $reference],
             'owner_key' => $owner,
         ]];
-    }
-
-    /**
-     * Build the persisted row for one resolved edge.
-     *
-     * @param array<string, string> $fileIds @return array<string, mixed>
-     */
-    private function edgeRecord(
-        string $id,
-        EdgeFact $edge,
-        string $sourceId,
-        string $targetId,
-        string $owner,
-        array $fileIds,
-    ): array {
-        $fileId = $fileIds[$edge->evidence->relativePath] ?? null;
-        if ($fileId === null) {
-            throw new ReconciliationException(sprintf(
-                'Edge evidence file was not discovered: %s',
-                $edge->evidence->relativePath,
-            ));
-        }
-
-        return [
-            'id' => $id,
-            'kind' => $edge->kind,
-            'source_id' => $sourceId,
-            'target_id' => $targetId,
-            'file_id' => $fileId,
-            'start_line' => $edge->evidence->startLine,
-            'end_line' => $edge->evidence->endLine,
-            'origin' => $edge->origin->value,
-            'confidence' => $edge->confidence->value,
-            'attributes' => $edge->attributes,
-            'owner_key' => $owner,
-        ];
     }
 
     /**

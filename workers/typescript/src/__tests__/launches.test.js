@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A process a file starts runs a file of the project: the code naming it
 // launches that file, whichever language the file is in.
@@ -24,8 +25,9 @@ function launched(source) {
     fs.mkdirSync(dirname(join(root, "src/runner.js")), { recursive: true });
     fs.writeFileSync(join(root, "src/runner.js"), source);
     const contributions = [];
-    new TypeScriptScanner().scan({ root, files: ["src/runner.js"] }, (c) =>
-        contributions.push(c),
+    new TypeScriptScanner().scan(
+        { limits: SCAN_LIMITS, root, files: ["src/runner.js"] },
+        (c) => contributions.push(c),
     );
     return contributions
         .flatMap((c) => c.edges)

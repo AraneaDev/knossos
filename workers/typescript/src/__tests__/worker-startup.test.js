@@ -4,6 +4,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const workerPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -108,6 +109,7 @@ describe("worker startup", () => {
                     id: 2,
                     method: "scan",
                     params: {
+                        limits: SCAN_LIMITS,
                         root,
                         files: ["packages/shared/src/contracts.ts"],
                     },
@@ -149,7 +151,7 @@ describe("worker stdout under module resolution tracing", () => {
                     jsonrpc: "2.0",
                     id: 2,
                     method: "scan",
-                    params: { root, files: [file] },
+                    params: { limits: SCAN_LIMITS, root, files: [file] },
                 },
                 { jsonrpc: "2.0", id: 3, method: "shutdown", params: {} },
             ],

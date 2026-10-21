@@ -37,6 +37,17 @@ final class SourceClassifier
     /** Bytes read when probing an extensionless file's shebang; one short line is enough. */
     private const SHEBANG_PROBE_BYTES = 256;
 
+    /**
+     * The extensions routed to any of these languages.
+     *
+     * @param list<string> $languages
+     * @return list<string>
+     */
+    public static function extensionsFor(array $languages): array
+    {
+        return array_keys(array_filter(self::LANGUAGE_BY_EXTENSION, static fn(string $language): bool => in_array($language, $languages, true)));
+    }
+
     /** Whether a path names a package or build manifest, which makes its directory a manifest root. */
     public static function isManifest(string $relativePath): bool
     {

@@ -29,6 +29,17 @@ Run a worker conformance check with an argument-safe command after `--`:
 tools/scanner-conformance --require=partial_ast -- python3 worker.py
 ```
 
+`--language=<key>` (`php`, `typescript`, `python`, `rust`) runs a packaged
+worker instead, launched as a scan launches it, and adds the checks every
+packaged worker passes: `scan_limits` (a request whose `limits` are missing or
+not integers of at least 1 is refused, worded alike;
+[`scan-request.schema.json`](../../schemas/scanner/v1/scan-request.schema.json)),
+`relative_paths` (the paths in
+[`relative-paths.json`](../../tests/Fixtures/scanner/relative-paths.json) are
+accepted or refused exactly as the core's `RelativePath` judges them) and
+`duplicate_edges` (a function called twice is reported as two `calls` facts,
+which the core collapses).
+
 The command prints JSON and exits nonzero for malformed manifests, unsupported
 protocol/schema versions, missing required capabilities, invalid
 contributions, lifecycle errors, or unsafe protocol output.
@@ -74,9 +85,10 @@ to any file in `input_hashes`. `tools/scanner-conformance` checks that the
 fixture's contributions carry the field.
 
 Every contribution owns its facts through a stable `owner_key`. Re-emission
-replaces that owner's facts. IDs must be deterministic, evidence paths must be
-project-relative, and repeated edges should be collapsed to the persistence
-identity of kind/source/target within one owner.
+replaces that owner's facts. IDs must be deterministic and evidence paths must be
+project-relative. Report an edge once per site: the core collapses repeated
+edges by one rule, described under
+[Repeated edges](scanner-protocol-v1.md#repeated-edges).
 
 ## Security contract
 

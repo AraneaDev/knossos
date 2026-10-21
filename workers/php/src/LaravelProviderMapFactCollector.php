@@ -18,7 +18,7 @@ use PhpParser\Node\Stmt;
 final readonly class LaravelProviderMapFactCollector
 {
     public function __construct(
-        private LaravelFactStore $facts,
+        private FrameworkFactStore $facts,
         private LaravelTraversalContext $context,
     ) {}
 
@@ -38,15 +38,15 @@ final readonly class LaravelProviderMapFactCollector
                 continue;
             }
             foreach ($property->default->items as $item) {
-                $key = LaravelFactStore::classArgument($item?->key);
+                $key = FrameworkFactStore::classArgument($item?->key);
                 if ($key === null) {
                     continue;
                 }
-                foreach (LaravelFactStore::classArguments($item?->value) as $mapped) {
+                foreach (FrameworkFactStore::classArguments($item?->value) as $mapped) {
                     $this->facts->addEdge(
                         $name === 'listen' ? 'listens_to' : 'handles',
                         $source,
-                        LaravelFactStore::classReference($key),
+                        FrameworkFactStore::classReference($key),
                         $item,
                         [$name === 'listen' ? 'listener' : 'policy' => $mapped],
                     );

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -33,7 +34,13 @@ afterEach(() => {
 function scan(root, files, configFiles = ["tsconfig.json"], params = {}) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
-        { root, files, config_files: configFiles, ...params },
+        {
+            limits: SCAN_LIMITS,
+            root,
+            files,
+            config_files: configFiles,
+            ...params,
+        },
         (contribution) => contributions.push(contribution),
     );
     const byOwner = Object.fromEntries(
@@ -213,7 +220,13 @@ describe("the environment of a program no config describes", () => {
         const scanner = new TypeScriptScanner();
         const batch = (files) =>
             scanner.scan(
-                { root, files, config_files: [], source_files: sourceFiles },
+                {
+                    limits: SCAN_LIMITS,
+                    root,
+                    files,
+                    config_files: [],
+                    source_files: sourceFiles,
+                },
                 () => {},
             );
 

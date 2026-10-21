@@ -33,10 +33,6 @@ trait ResolvesClassName
     /** The parser's resolved name when it has one, else the name as written. */
     private function name(Name $name): string
     {
-        $resolved = $name->getAttribute('resolvedName');
-        if ($resolved instanceof Name) {
-            return $resolved->toString();
-        }
-        return $name->toString();
+        return FrameworkFactStore::name($name);
     }
 }

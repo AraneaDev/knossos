@@ -16,7 +16,7 @@ use PhpParser\NodeVisitorAbstract;
  */
 final class LaravelFactCollector extends NodeVisitorAbstract
 {
-    private readonly LaravelFactStore $facts;
+    private readonly FrameworkFactStore $facts;
     private readonly LaravelTraversalContext $context;
     private readonly LaravelRouteFactCollector $routes;
     private readonly LaravelContainerFactCollector $container;
@@ -28,7 +28,7 @@ final class LaravelFactCollector extends NodeVisitorAbstract
     /** @param string $relativePath the file being visited, carried onto every emitted fact */
     public function __construct(string $relativePath)
     {
-        $this->facts = new LaravelFactStore($relativePath);
+        $this->facts = new FrameworkFactStore($relativePath);
         $this->context = new LaravelTraversalContext($relativePath);
         $this->routes = new LaravelRouteFactCollector($this->facts);
         $this->container = new LaravelContainerFactCollector($this->facts, $this->context);

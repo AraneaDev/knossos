@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A method picked out of a table by a computed key, and a method called on a
 // destructured parameter that only the call site types.
@@ -26,8 +27,9 @@ function scan(files) {
         fs.writeFileSync(join(root, path), contents);
     }
     const contributions = [];
-    new TypeScriptScanner().scan({ root, files: Object.keys(files) }, (c) =>
-        contributions.push(c),
+    new TypeScriptScanner().scan(
+        { limits: SCAN_LIMITS, root, files: Object.keys(files) },
+        (c) => contributions.push(c),
     );
     return contributions;
 }
