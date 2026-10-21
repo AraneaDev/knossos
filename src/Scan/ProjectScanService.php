@@ -525,8 +525,8 @@ final class ProjectScanService implements ProjectScanner
         if ($name !== null && $name !== (string) $row['name']) {
             return null;
         }
-        $stored = json_decode((string) $row['config_json'], true);
-        if (!is_array($stored)) {
+        $stored = ProjectRepository::decodedConfig($row['config_json']);
+        if ($stored === null) {
             return null;
         }
         ksort($stored, SORT_STRING);

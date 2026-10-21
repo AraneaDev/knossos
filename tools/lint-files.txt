@@ -395,6 +395,7 @@ php	src/Scanner/ScannerClient.php
 php	src/Scanner/Sdk/ConformanceArgumentAnchor.php
 php	src/Scanner/Sdk/FixtureBuilder.php
 php	src/Scanner/Worker/ContributionDecoder.php
+php	src/Scanner/Worker/ContributionParams.php
 php	src/Scanner/Worker/InputHashesMap.php
 php	src/Scanner/Worker/NdjsonRpcChannel.php
 php	src/Scanner/Worker/ProcessScannerClient.php
@@ -887,6 +888,7 @@ php	tests/phpunit/Scanner/AnnotationReferenceTest.php
 php	tests/phpunit/Scanner/CommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/ComponentWorkerTest.php
 php	tests/phpunit/Scanner/ContributionDecoderGuardsTest.php
+php	tests/phpunit/Scanner/ContributionParamsTest.php
 php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
 php	tests/phpunit/Scanner/LaunchInterpretersAgreementTest.php
 php	tests/phpunit/Scanner/LimitsTest.php

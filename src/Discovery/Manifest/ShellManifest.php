@@ -63,7 +63,7 @@ final class ShellManifest implements ManifestReader
         preg_match_all('#\bcd\s+[\'"]?([A-Za-z0-9_][A-Za-z0-9_./-]*)#', $line, $matches);
         $anchors = [];
         foreach ($matches[1] as $target) {
-            $target = rtrim(str_starts_with($target, './') ? substr($target, 2) : $target, '/');
+            $target = rtrim(RelativePathRule::withoutDotSlash($target), '/');
             if ($target === '' || !RelativePathRule::isContained($target)) {
                 continue;
             }

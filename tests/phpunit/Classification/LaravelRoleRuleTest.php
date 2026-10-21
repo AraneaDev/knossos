@@ -91,7 +91,7 @@ final class LaravelRoleRuleTest extends TestCase
 
         assertSame(1, count($facts));
         assertSame('laravel.controller', $facts[0]->role);
-        assertSame('extends', $facts[0]->attributes['relation']);
+        assertSame('extends', $facts[0]->attributes['source']);
         assertSame('Illuminate\\Routing\\Controller', $facts[0]->attributes['target']);
     }
 
@@ -164,7 +164,7 @@ final class LaravelRoleRuleTest extends TestCase
 
         assertSame(1, count($facts));
         assertSame('laravel.queued', $facts[0]->role);
-        assertSame('implements', $facts[0]->attributes['relation']);
+        assertSame('implements', $facts[0]->attributes['source']);
         assertSame('Illuminate\\Contracts\\Queue\\ShouldQueue', $facts[0]->attributes['target']);
     }
 

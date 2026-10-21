@@ -89,7 +89,7 @@ final class ClassificationModuleTest extends KnossosTestCase
         // of LaravelRoleRule.php), NOT the canonicalName.
         assertSame('php:class:App\\Http\\UserController', $facts[0]->nodeReference);
         assertSame('laravel.explicit.types.v1', $facts[0]->ruleId);
-        assertSame(['relation' => 'extends', 'target' => 'Illuminate\\Routing\\Controller'], $facts[0]->attributes);
+        assertSame(['source' => 'extends', 'target' => 'Illuminate\\Routing\\Controller'], $facts[0]->attributes);
     }
 
     public function testLaravelRoleRuleRecognisesImplementsInterface(): void

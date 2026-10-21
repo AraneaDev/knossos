@@ -114,6 +114,34 @@ final readonly class ProjectRepository
     }
 
     /**
+     * The project's stored configuration, decoded, or null when the project is
+     * unknown or its configuration does not decode to an object.
+     *
+     * Lenient on purpose: the store wrote this JSON itself, so one that does
+     * not decode is damage for `doctor` to report, not a reason to fail the
+     * caller. Every caller has a safe answer without it: the default snapshot
+     * retention, or a full analysis instead of the no-change fast path.
+     *
+     * @return array<array-key, mixed>|null
+     */
+    public function config(string $id): ?array
+    {
+        return self::decodedConfig($this->configOf($id));
+    }
+
+    /**
+     * A config_json value as read from a row, decoded by the rule {@see config()} applies.
+     *
+     * @return array<array-key, mixed>|null
+     */
+    public static function decodedConfig(mixed $raw): ?array
+    {
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
      * Up to `$limit` project ids, in id order.
      *
      * @return list<string>

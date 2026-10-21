@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Discovery;
 
 use Knossos\Discovery\DiscoveredFile;
+use Knossos\Discovery\Manifest\ManifestPaths;
 use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Discovery\SourceClassifier;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -209,5 +210,20 @@ final class SourceClassifierTest extends TestCase
         $alone = $file('lib/mapped.js', $mapped);
 
         assertSame([$source, $alone], SourceClassifier::withoutCompiledSiblings([$source, $compiled, $alone]));
+    }
+
+    /**
+     * The extensions a manifest's entry point may name are the extensions a
+     * language is classified from, in the order the readers' patterns try them.
+     */
+    public function testEntryPointExtensionsAreTheClassifiedOnes(): void
+    {
+        assertSame(
+            ['php', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'vue', 'svelte', 'astro', 'py', 'pyi', 'rs'],
+            ManifestPaths::entryPointExtensions(),
+        );
+        foreach (ManifestPaths::entryPointExtensions() as $extension) {
+            self::assertNotNull(SourceClassifier::languageFor('src/a.' . strtoupper($extension)), $extension);
+        }
     }
 }

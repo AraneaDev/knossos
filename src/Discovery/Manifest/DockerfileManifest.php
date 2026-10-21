@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Filesystem\RelativePathRule;
+
 /**
  * Reads a Dockerfile for the scripts its CMD, ENTRYPOINT and RUN lines
  * start.
@@ -37,11 +39,13 @@ final class DockerfileManifest implements ManifestReader
         foreach ($lines as $line) {
             if (preg_match('#^\s*(?:COPY|ADD)\s+((?:--[a-z-]+=\S+\s+)*)(\S+)\s+(/\S+)\s*$#i', $line, $copy) !== 1
                 || str_contains($copy[1], '--from=')
-                || str_starts_with($copy[2], '/')
+                || !RelativePathRule::isContained($copy[2])
+                // Stricter than the segment rule, kept: a name with `..` inside
+                // it is no path a COPY of this project's files would spell.
                 || str_contains($copy[2], '..')) {
                 continue;
             }
-            $source = trim(str_starts_with($copy[2], './') ? substr($copy[2], 2) : $copy[2], '/');
+            $source = trim(RelativePathRule::withoutDotSlash($copy[2]), '/');
             $destination = rtrim($copy[3], '/');
             // A file copied into a directory keeps its name there.
             if (str_ends_with($copy[3], '/') && str_contains(basename($source), '.')) {

@@ -39,4 +39,13 @@ final class RelativePathRuleTest extends TestCase
     {
         self::assertSame($contained, RelativePathRule::isContained($path));
     }
+
+    /** One leading `./` is dropped and nothing else is touched. */
+    public function testWithoutDotSlash(): void
+    {
+        assertSame('a/b', RelativePathRule::withoutDotSlash('./a/b'));
+        assertSame('./a', RelativePathRule::withoutDotSlash('././a'));
+        assertSame('../a', RelativePathRule::withoutDotSlash('../a'));
+        assertSame('.a', RelativePathRule::withoutDotSlash('.a'));
+    }
 }

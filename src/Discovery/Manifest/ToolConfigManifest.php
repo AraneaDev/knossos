@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Filesystem\RelativePathRule;
+
 /**
  * Reads a tool config (a bundler, test runner or linter config) for the
  * files it tells its tool to load.
@@ -211,9 +213,9 @@ final class ToolConfigManifest implements ManifestReader
      */
     private static function entryGlob(string $glob, string $directory): ?string
     {
-        $glob = str_starts_with($glob, './') ? substr($glob, 2) : $glob;
+        $glob = RelativePathRule::withoutDotSlash($glob);
         if ($glob === '' || str_starts_with($glob, '/') || str_contains($glob, '..')
-            || !in_array(strtolower(pathinfo($glob, PATHINFO_EXTENSION)), ManifestPaths::ENTRY_POINT_EXTENSIONS, true)) {
+            || !in_array(strtolower(pathinfo($glob, PATHINFO_EXTENSION)), ManifestPaths::entryPointExtensions(), true)) {
             return null;
         }
 

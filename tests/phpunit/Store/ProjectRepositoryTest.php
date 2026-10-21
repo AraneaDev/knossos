@@ -187,4 +187,25 @@ final class ProjectRepositoryTest extends KnossosTestCase
             $projects->inCreationOrder(10, '2026-01-01T00:00:00Z', $ids['project'])[0],
         );
     }
+
+    /**
+     * A stored configuration that does not decode to an object reads as none,
+     * the same for every caller, rather than throwing for one and not another.
+     */
+    #[Group('store')]
+    public function testConfigDecodesAnObjectAndReadsAnythingElseAsNone(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $projects = new ProjectRepository($pdo);
+        $set = $pdo->prepare('UPDATE projects SET config_json = :config WHERE id = :id');
+
+        $set->execute(['config' => '{"snapshot_retention":3}', 'id' => $ids['project']]);
+        assertSame(['snapshot_retention' => 3], $projects->config($ids['project']));
+        foreach (['{not json', '"text"', '7'] as $stored) {
+            $set->execute(['config' => $stored, 'id' => $ids['project']]);
+            assertSame(null, $projects->config($ids['project']), $stored);
+        }
+        assertSame(null, $projects->config('no-such-project'));
+        assertSame(null, ProjectRepository::decodedConfig(null));
+    }
 }

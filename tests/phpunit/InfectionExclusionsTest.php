@@ -64,8 +64,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Query/GraphSummaryQuery.php:81',
                 'src/Query/LocationSuggestionService.php:142',
                 'src/Query/ProjectCatalogQueryService.php:139',
-                'src/Store/ProjectRepository.php:206',
-                'src/Store/ProjectRepository.php:230',
+                'src/Store/ProjectRepository.php:234',
+                'src/Store/ProjectRepository.php:258',
             ],
             '.*LIMIT %d\', self::\\w+ \\+ 1\\).*' => [
                 'src/Query/ChangeImpactQueryService.php:376',

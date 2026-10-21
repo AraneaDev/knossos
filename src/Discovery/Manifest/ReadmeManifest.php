@@ -29,7 +29,7 @@ final class ReadmeManifest implements ManifestReader
      */
     private static function readmeRunnerEntryPoints(string $contents, string $configPath): array
     {
-        $extensions = implode('|', array_map(preg_quote(...), ManifestPaths::ENTRY_POINT_EXTENSIONS));
+        $extensions = implode('|', array_map(preg_quote(...), ManifestPaths::entryPointExtensions()));
         preg_match_all(
             sprintf('#\b(?:node|nodejs|deno(?:\s+run)?|bun(?:\s+run)?|tsx|ts-node|python3?|php)\s+(?:-{1,2}[a-z][\w-]*(?:=\S+)?\s+)*([A-Za-z0-9_./-]+\.(?:%s))\b#', $extensions),
             $contents,

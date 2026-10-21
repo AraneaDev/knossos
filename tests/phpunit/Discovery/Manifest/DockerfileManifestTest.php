@@ -25,4 +25,18 @@ final class DockerfileManifestTest extends TestCase
             $rewrite->invoke(null, "COPY tools/report.mjs /opt/bin/\nCOPY scripts/probe /tmp/probe/\nRUN node /opt/bin/report.mjs && python3 /tmp/probe/check.py"),
         );
     }
+
+    /**
+     * A COPY source that leaves the project (an absolute path, a drive letter,
+     * a `..` segment) or merely contains `..` maps nothing, and a `./` prefix
+     * is dropped from the one that does.
+     */
+    public function testOnlyAContainedCopySourceIsMapped(): void
+    {
+        $rewrite = new \ReflectionMethod(DockerfileManifest::class, 'withCopySources');
+        $escaping = "COPY /etc/a /opt/a\nCOPY C:/b /opt/b\nCOPY ../c /opt/c\nCOPY d..e /opt/d\nRUN run /opt/a /opt/b /opt/c /opt/d";
+
+        assertSame($escaping, $rewrite->invoke(null, $escaping));
+        assertSame("COPY ./tools/x.sh /opt/x.sh\nRUN sh tools/x.sh", $rewrite->invoke(null, "COPY ./tools/x.sh /opt/x.sh\nRUN sh /opt/x.sh"));
+    }
 }

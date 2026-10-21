@@ -417,7 +417,7 @@ final class ScannerProtocolSession
         }
         $params = $message['params'] ?? null;
         if (!is_array($params) || array_is_list($params)) {
-            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'Contribution params must be an object.');
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, ContributionParams::NOT_AN_OBJECT);
         }
         return ContributionDecoder::decode($params, degradeMalformedFacts: true);
     }

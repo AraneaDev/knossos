@@ -69,7 +69,7 @@ final class YamlPaths
     public static function entryPoints(string $contents, string $configPath, array $extraAnchors = []): array
     {
         $directory = ManifestPaths::manifestDirectory($configPath);
-        $extensions = implode('|', array_map(preg_quote(...), ManifestPaths::ENTRY_POINT_EXTENSIONS));
+        $extensions = implode('|', array_map(preg_quote(...), ManifestPaths::entryPointExtensions()));
         $stripped = preg_replace('/#.*$/m', '', $contents) ?? $contents;
         if (preg_match_all(sprintf('#[A-Za-z0-9_./-]+\.(?:%s)\b#', $extensions), $stripped, $matches, PREG_OFFSET_CAPTURE) === false) {
             return [];

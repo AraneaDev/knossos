@@ -17,6 +17,23 @@ use Knossos\Scanner\Protocol\RelativePath;
  */
 final class SourceClassifier
 {
+    /**
+     * The language of each extension a scanner emits nodes for. The keys are
+     * also the extensions a manifest's entry point may name
+     * ({@see Manifest\ManifestPaths::entryPointExtensions()}), in the order
+     * the readers' patterns try them.
+     *
+     * @var array<string, string>
+     */
+    public const LANGUAGE_BY_EXTENSION = [
+        'php' => 'php',
+        'js' => 'javascript', 'jsx' => 'javascript', 'mjs' => 'javascript', 'cjs' => 'javascript',
+        'ts' => 'typescript', 'tsx' => 'typescript', 'mts' => 'typescript', 'cts' => 'typescript',
+        'vue' => 'typescript', 'svelte' => 'typescript', 'astro' => 'typescript',
+        'py' => 'python', 'pyi' => 'python',
+        'rs' => 'rust',
+    ];
+
     /** Bytes read when probing an extensionless file's shebang; one short line is enough. */
     private const SHEBANG_PROBE_BYTES = 256;
 
@@ -139,14 +156,7 @@ final class SourceClassifier
     public static function languageFor(string $relativePath, ?string $absolutePath = null): ?string
     {
         $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
-        $byExtension = match ($extension) {
-            'php' => 'php',
-            'ts', 'tsx', 'mts', 'cts', 'vue', 'svelte', 'astro' => 'typescript',
-            'js', 'jsx', 'mjs', 'cjs' => 'javascript',
-            'py', 'pyi' => 'python',
-            'rs' => 'rust',
-            default => null,
-        };
+        $byExtension = self::LANGUAGE_BY_EXTENSION[$extension] ?? null;
         if ($byExtension !== null || $extension !== '' || $absolutePath === null) {
             return $byExtension;
         }

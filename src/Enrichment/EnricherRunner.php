@@ -8,6 +8,7 @@ use Knossos\Configuration\EnricherDefinition;
 use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\ContributionDecoder;
+use Knossos\Scanner\Worker\ContributionParams;
 use Knossos\Scanner\Worker\NdjsonRpcChannel;
 use Knossos\Scanner\Worker\ScannerProtocolSession;
 use Knossos\Scanner\Worker\WorkerErrorCode;
@@ -105,10 +106,8 @@ final class EnricherRunner
         $nodes = [];
         $edges = [];
         $diagnostics = [];
-        foreach ($contributions as $params) {
-            if (!is_array($params) || array_is_list($params)) {
-                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'Contribution params must be an object.');
-            }
+        foreach ($contributions as $raw) {
+            $params = ContributionParams::of($raw);
             foreach (['nodes', 'edges'] as $field) {
                 if (is_array($params[$field] ?? null)) {
                     $params[$field] = array_map(self::withDefaults(...), $params[$field]);
