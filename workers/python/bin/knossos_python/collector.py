@@ -323,6 +323,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
             {"decorators": decorators, "python_framework_roles": roles},
         )
         self.facts.add_edge("contains", self.current(), local_id, node)
+        bases: list[str] = []
         for base in node.bases:
             # The `extends` edge below is what a base is; not also a reference.
             self.called_attributes.add(id(base))
@@ -330,6 +331,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
             target = self.resolve_name(name, "class") if name else None
             if target:
                 self.facts.add_edge("extends", local_id, target, base)
+                if target.startswith("py:class:"):
+                    bases.append(target.removeprefix("py:class:"))
         if any(is_protocol_base(base) for base in node.bases):
             self.protocols.add(canonical)
         if any(self.is_ast_visitor_base(base) for base in node.bases):
@@ -340,6 +343,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.stored_attributes[canonical] = assigned_self_attributes(node) - self.class_methods[canonical]
         self.django.remember_serializer(canonical, node)
         self.containers.append((local_id, canonical, "class"))
+        self.receivers.declare_class_attributes(canonical, node, bases)
         self.generic_visit(node)
         self.containers.pop()
 
@@ -653,7 +657,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
         elif isinstance(node.target, ast.Name):
             self.fastapi.register_assignment(node.target.id, node.value, not self.containers)
             self.flask.register_assignment(node.target.id, node.value, not self.containers)
-            self.receivers.remember_local(node.target.id, node.value, node.annotation)
+            if not (self.containers and self.containers[-1][2] == "class"):
+                # In a class body the name is the class's attribute, which
+                # `declare_class_attributes` read, not a local of a function around it.
+                self.receivers.remember_local(node.target.id, node.value, node.annotation)
         self.generic_visit(node)
 
     @staticmethod

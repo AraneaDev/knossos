@@ -2725,4 +2725,201 @@ PYTHON);
 
         self::assertContains('py:function:app.router.handler -> py:method:app.repo.Repo::count', $calls);
     }
+
+    #[Group('python-scanner')]
+    public function testAClassBodyAnnotationTypesTheInstanceAttribute(): void
+    {
+        // `index: Index` in a class body, as a mixin or a dataclass declares
+        // it, types `self.index` in every method of the class. An assignment
+        // that tracks another class wins over the annotation.
+        $root = sys_get_temp_dir() . '/knossos-py-class-annotation-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/index.py' => "class Index:\n    def lookup(self):\n        return 1\n\n\nclass Other:\n    def lookup(self):\n        return 2\n",
+            'app/mixin.py' => implode("\n", [
+                'from app.index import Index, Other',
+                '',
+                'class Mixin:',
+                '    index: Index',
+                '    other: Index',
+                '',
+                '    def __init__(self):',
+                '        self.other = Other()',
+                '',
+                '    def find(self):',
+                '        return self.index.lookup()',
+                '',
+                '    def find_other(self):',
+                '        return self.other.lookup()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/mixin.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        $untyped = null;
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls') {
+                    $calls[] = $edge->sourceReference . ' -> ' . $edge->targetReference;
+                }
+            }
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'module') {
+                    $untyped = $node->attributes['unresolved_member_calls'] ?? null;
+                }
+            }
+        }
+
+        self::assertContains('py:method:app.mixin.Mixin::find -> py:method:app.index.Index::lookup', $calls);
+        self::assertContains('py:method:app.mixin.Mixin::find_other -> py:method:app.index.Other::lookup', $calls);
+        self::assertNotContains('py:method:app.mixin.Mixin::find_other -> py:method:app.index.Index::lookup', $calls);
+        self::assertNull($untyped);
+    }
+
+    #[Group('python-scanner')]
+    public function testAMethodCalledThroughItsClassNameReachesTheDeclaringClass(): void
+    {
+        // `Repo.build()` calls a static method through the imported class, and
+        // `Repo.inherited()` a class method `Repo` inherits from a base it names
+        // through the base's module: the worker names it on `Repo`, and the
+        // persisted call reaches the base that declares it.
+        $root = sys_get_temp_dir() . '/knossos-py-class-call-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/base.py' => "class Base:\n    @classmethod\n    def inherited(cls):\n        return cls\n",
+            'app/repo.py' => implode("\n", [
+                'import app.base as b',
+                '',
+                '',
+                'class Repo(b.Base):',
+                '    @staticmethod',
+                '    def build():',
+                '        return 1',
+                '',
+            ]),
+            'app/service.py' => "from app.repo import Repo\n\n\ndef run():\n    Repo.build()\n    return Repo.inherited()\n",
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+        $database = tempnam(sys_get_temp_dir(), 'knossos-python-');
+        if ($database === false) {
+            throw new RuntimeException('Unable to allocate Python database.');
+        }
+
+        try {
+            $pdo = SqliteConnection::open($database);
+            (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Class calls');
+            $statement = $pdo->query(
+                'SELECT target.canonical_name FROM edges e'
+                . ' JOIN nodes source ON source.id = e.source_id'
+                . ' JOIN nodes target ON target.id = e.target_id'
+                . " WHERE e.kind = 'calls' AND source.canonical_name = 'app.service.run' AND target.kind = 'method'"
+                . ' ORDER BY 1',
+            );
+            self::assertNotFalse($statement);
+            $targets = $statement->fetchAll(\PDO::FETCH_COLUMN);
+        } finally {
+            unset($statement, $pdo);
+            foreach ([$database, $database . '-shm', $database . '-wal'] as $candidate) {
+                if (is_file($candidate)) {
+                    unlink($candidate);
+                }
+            }
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        self::assertSame(['app.base.Base::inherited', 'app.repo.Repo::build'], $targets);
+    }
+
+    #[Group('python-scanner')]
+    public function testABaseAnnotationInAnotherModuleAndAStringAnnotationTypeTheReceiver(): void
+    {
+        // `index: Index` on a base declared in another module types a
+        // subclass's `self.index`, through a base named by its module
+        // (`b.Base`, `mid.Mid`) too, and `"Index"` in quotes names the class
+        // as `Index` does.
+        $root = sys_get_temp_dir() . '/knossos-py-base-annotation-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/index.py' => "class Index:\n    def lookup(self):\n        return 1\n\n    def quoted(self):\n        return 2\n",
+            'app/base.py' => "from app.index import Index\n\n\nclass Base:\n    index: Index\n",
+            'app/mid.py' => "import app.base as b\n\n\nclass Mid(b.Base):\n    pass\n",
+            'app/child.py' => implode("\n", [
+                'from app import mid',
+                'from app.base import Base',
+                'from app.index import Index',
+                '',
+                'class Child(Base):',
+                '    def find(self):',
+                '        return self.index.lookup()',
+                '',
+                'class Deep(mid.Mid):',
+                '    def find_deep(self):',
+                '        return self.index.lookup()',
+                '',
+                'def quoted(given: "Index"):',
+                '    return given.quoted()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/child.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        $untyped = null;
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls') {
+                    $calls[] = $edge->sourceReference . ' -> ' . $edge->targetReference;
+                }
+            }
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'module') {
+                    $untyped = $node->attributes['unresolved_member_calls'] ?? null;
+                }
+            }
+        }
+
+        self::assertContains('py:method:app.child.Child::find -> py:method:app.index.Index::lookup', $calls);
+        self::assertContains('py:method:app.child.Deep::find_deep -> py:method:app.index.Index::lookup', $calls);
+        self::assertContains('py:function:app.child.quoted -> py:method:app.index.Index::quoted', $calls);
+        self::assertNull($untyped);
+    }
 }

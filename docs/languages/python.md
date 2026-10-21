@@ -69,8 +69,20 @@ edge.
 
 A call is attributed to a class when its receiver's class is known: a
 parameter or attribute annotated with the class, including `Cls | None`,
-`Optional[Cls]` and either written as a string, or a value built as `Cls()`,
-including the default in `self.x = injected or Cls()`.
+`Optional[Cls]` and any of them written as a string, or a value built as `Cls()`,
+including the default in `self.x = injected or Cls()`. An attribute annotated
+in the class body (`index: Cls`, with or without a value, as a dataclass or a
+mixin declares it) types `self.index` in every method of that class, unless a
+method assigns it a different class the scan can see. A subclass inherits the
+annotation from its bases and mixins, in this module or another, and the
+nearest class that annotates the attribute decides. A base counts whether it is
+imported by name (`class C(Base)`) or named through its module
+(`class C(models.Base)` after `import models` or `from app import models`).
+
+A call through a project class's own name, `Cls.build()` or
+`models.Cls.build()`, is attributed to that class's static, class or plain
+method. A member the class inherits is named on `Cls`, and the core resolves it
+to the base class that declares it.
 
 A cross-file reference resolves when the declaration is in the same scan
 request. Anything else stays an explicit unresolved or external fact.
