@@ -60,9 +60,9 @@ def test_module_for_prefers_deepest_source_root(worker: ModuleType, project) -> 
     )
     index = worker.ProjectModuleIndex(root, 2_000_000)
     # src-layout: the `src` prefix wins over the bare root.
-    assert index.module_for("src/app/models.py") == "app.models"
+    assert index.layout.module_for("src/app/models.py") == "app.models"
     # Top-level package keeps its full dotted path.
-    assert index.module_for("pkg/__init__.py") == "pkg"
+    assert index.layout.module_for("pkg/__init__.py") == "pkg"
 
 
 def test_module_file_prefers_package_over_module(worker: ModuleType, project) -> None:
@@ -76,16 +76,16 @@ def test_module_file_prefers_package_over_module(worker: ModuleType, project) ->
         }
     )
     index = worker.ProjectModuleIndex(root, 2_000_000)
-    assert index.module_file("shop.service") == root / "shop" / "service.py"
+    assert index.layout.module_file("shop.service") == root / "shop" / "service.py"
     # The package __init__.py is preferred over the same-named module file.
-    assert index.module_file("orders") == root / "orders" / "__init__.py"
-    assert index.module_file("does.not.exist") is None
+    assert index.layout.module_file("orders") == root / "orders" / "__init__.py"
+    assert index.layout.module_file("does.not.exist") is None
 
 
 def test_module_file_rejects_oversized_files(worker: ModuleType, project) -> None:
     root = project({"big.py": "x = 1\n" * 100})
     index = worker.ProjectModuleIndex(root, 3)
-    assert index.module_file("big") is None
+    assert index.layout.module_file("big") is None
 
 
 def test_module_file_rejects_candidates_below_excluded_directories(worker: ModuleType, project) -> None:
@@ -94,7 +94,7 @@ def test_module_file_rejects_candidates_below_excluded_directories(worker: Modul
 
     # The bare project-root prefix is still tried for dotted imports even
     # though discovery never enters site/. Resolution must not reintroduce it.
-    assert index.module_file("site.generated") is None
+    assert index.layout.module_file("site.generated") is None
 
 
 def test_module_declarations_are_parsed_and_memoized(worker: ModuleType, project) -> None:
@@ -185,7 +185,7 @@ def test_a_suffixless_python_script_resolves_to_its_own_file(worker: ModuleType,
     root = project({"scripts/check-thing": "#!/usr/bin/env python3\ndef check() -> int:\n    return 0\n"})
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.module_file("scripts.check-thing") == root / "scripts" / "check-thing"
+    assert index.layout.module_file("scripts.check-thing") == root / "scripts" / "check-thing"
     assert "check" in index.module_declarations("scripts.check-thing")
 
 
@@ -195,7 +195,7 @@ def test_a_suffixless_script_naming_another_interpreter_is_not_a_module(worker: 
     root = project({"scripts/config": "#!/bin/sh\necho hi\n"})
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.module_file("scripts.config") is None
+    assert index.layout.module_file("scripts.config") is None
 
 
 def test_a_real_module_still_wins_over_a_suffixless_neighbour(worker: ModuleType, project) -> None:
@@ -207,4 +207,4 @@ def test_a_real_module_still_wins_over_a_suffixless_neighbour(worker: ModuleType
     )
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.module_file("tool") == root / "tool.py"
+    assert index.layout.module_file("tool") == root / "tool.py"

@@ -48,7 +48,7 @@ fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
 /// and check the protocol's rules for an attributing worker on the answer.
 fn scan(root: &Path, requested: &[&str], params: &Value) -> Answer {
     let mut merged = serde_json::json!({
-        "root": std::fs::canonicalize(root).unwrap().to_str().unwrap(),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(root).unwrap().to_str().unwrap(),
         "files": requested,
     });
     for (key, value) in params.as_object().unwrap() {
@@ -320,7 +320,7 @@ fn a_crate_file_over_the_byte_cap_is_read_as_null_and_not_indexed() {
     let answer = scan(
         &root,
         &["src/lib.rs"],
-        &serde_json::json!({"source_files": sources(&files), "limits": {"max_file_bytes": 120}}),
+        &serde_json::json!({"source_files": sources(&files), "limits": {"max_files": 100000, "max_file_bytes": 120}}),
     );
     let _ = std::fs::remove_dir_all(&root);
 

@@ -34,7 +34,15 @@ describe("FactAccumulator edges", () => {
     it("reports every occurrence of an edge, in order", () => {
         const acc = make();
         acc.addEdge("imports", "m", "t", {}, { type_only: true });
-        acc.addEdge("imports", "m", "t", {}, { dynamic: true }, "ast", "probable");
+        acc.addEdge(
+            "imports",
+            "m",
+            "t",
+            {},
+            { dynamic: true },
+            "ast",
+            "probable",
+        );
         expect(acc.edges).toHaveLength(2);
         expect(acc.edges[0].attributes).toEqual({ type_only: true });
         expect(acc.edges[1]).toMatchObject({

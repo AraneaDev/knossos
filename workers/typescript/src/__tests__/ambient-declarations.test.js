@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // An ambient `declare module 'x'` in a project declaration file satisfies
 // `import … from 'x'` only when that file is in the importer's program. A
@@ -48,6 +49,7 @@ function scan(root, files, sourceFiles) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
         {
+            limits: SCAN_LIMITS,
             root,
             files,
             config_files: ["hooks/tsconfig.json"],
@@ -87,6 +89,7 @@ describe("a file outside every tsconfig importing an ambient module", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: ["other/uses.ts"],
                 config_files: ["hooks/tsconfig.json"],

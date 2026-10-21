@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -136,7 +137,7 @@ final class ComponentWorkerTest extends KnossosTestCase
         sort($files, SORT_STRING);
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => $files, 'config_files' => $configFiles, ...$extra]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => $files, 'config_files' => $configFiles, ...$extra]), false);
         } finally {
             $client->shutdown();
         }

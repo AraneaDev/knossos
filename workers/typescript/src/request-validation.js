@@ -26,10 +26,30 @@ import {
 // Bytes read when probing an extensionless file's shebang; one short line is enough.
 const SHEBANG_PROBE_BYTES = 256;
 
+/** The refusal of a request whose limits are missing or malformed, worded alike by every worker. */
+export const INVALID_LIMITS =
+    "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.";
+
+/**
+ * The request's `max_files` and `max_file_bytes`, which the core always
+ * sends: anything but two integers of at least 1 is refused, as every worker
+ * refuses it.
+ */
+export function scanLimitsFrom(limits) {
+    const maxFiles = limits?.max_files;
+    const maxFileBytes = limits?.max_file_bytes;
+    if (
+        !Number.isInteger(maxFiles) ||
+        !Number.isInteger(maxFileBytes) ||
+        maxFiles < 1 ||
+        maxFileBytes < 1
+    )
+        throw new Error(INVALID_LIMITS);
+    return { maxFiles, maxFileBytes };
+}
+
 export function maxFileBytesFrom(limits) {
-    return Number.isInteger(limits?.max_file_bytes)
-        ? limits.max_file_bytes
-        : 2_000_000;
+    return scanLimitsFrom(limits).maxFileBytes;
 }
 
 /**
@@ -68,7 +88,7 @@ class RefusedAfterRead extends Error {
     }
 }
 
-export function validateRequestedFiles(root, files, limits = {}) {
+export function validateRequestedFiles(root, files, limits) {
     if (
         !Array.isArray(files) ||
         files.some((file) => typeof file !== "string")
@@ -77,11 +97,8 @@ export function validateRequestedFiles(root, files, limits = {}) {
             "TypeScript scan files must be a list of project-relative paths.",
         );
     }
-    const maxFiles = Number.isInteger(limits?.max_files)
-        ? limits.max_files
-        : 100_000;
-    const maxFileBytes = maxFileBytesFrom(limits);
-    if (maxFiles < 1 || maxFileBytes < 1 || files.length > maxFiles)
+    const { maxFiles, maxFileBytes } = scanLimitsFrom(limits);
+    if (files.length > maxFiles)
         throw new Error("TypeScript scan limits are invalid or exceeded.");
 
     // A path this worker refuses, or a file that vanished between discovery and

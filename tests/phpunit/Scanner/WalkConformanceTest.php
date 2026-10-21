@@ -10,6 +10,7 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -106,7 +107,7 @@ final class WalkConformanceTest extends KnossosTestCase
         foreach ([[$this->typescriptWorkerClient(), 'app/main.ts'], [$this->pythonWorkerClient(), 'app/main.py']] as [$client, $file]) {
             try {
                 $error = captureThrows(
-                    fn() => iterator_to_array($client->scan(['root' => $this->root, 'files' => [$file], 'exclusions' => ['segments' => 'venv']]), false),
+                    fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => [$file], 'exclusions' => ['segments' => 'venv']]), false),
                     WorkerException::class,
                 );
             } finally {
@@ -140,7 +141,7 @@ final class WalkConformanceTest extends KnossosTestCase
     private function inputHashes(ProcessScannerClient $client, string $file, array $exclusions): array
     {
         try {
-            iterator_to_array($client->scan(['root' => $this->root, 'files' => [$file], 'exclusions' => $exclusions]), false);
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => [$file], 'exclusions' => $exclusions]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? [];
         } finally {
             $client->shutdown();

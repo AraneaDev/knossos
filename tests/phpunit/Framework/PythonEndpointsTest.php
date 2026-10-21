@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 
 use function PHPUnit\Framework\assertArrayHasKey;
 use function PHPUnit\Framework\assertArrayNotHasKey;
@@ -315,7 +316,7 @@ final class PythonEndpointsTest extends KnossosTestCase
         }
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]));
             $client->shutdown();
         } finally {
             $this->removeTempTree($root);
@@ -347,7 +348,7 @@ final class PythonEndpointsTest extends KnossosTestCase
     private function scan(): array
     {
         $client = $this->pythonWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/python-endpoints',
             'files' => ['app/__init__.py', 'app/api.py', 'app/clients.py', 'app/urls.py'],
         ]));

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -19,7 +20,7 @@ final class TypescriptRequireTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-require',
                 'files' => ['src/storage.ts'],
                 'config_files' => ['tsconfig.json'],
@@ -55,7 +56,7 @@ final class TypescriptRequireTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-require',
                 'files' => ['src/lexer.ts', 'src/local.ts', 'src/parser.ts', 'src/storage.ts'],
                 'config_files' => ['tsconfig.json'],
@@ -86,7 +87,7 @@ final class TypescriptRequireTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-require',
                 'files' => ['src/constructs.ts'],
                 'config_files' => ['tsconfig.json'],
@@ -119,7 +120,7 @@ final class TypescriptRequireTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-require',
                 'files' => ['src/lazy-service.ts', 'src/loader.ts'],
                 'config_files' => ['tsconfig.json'],

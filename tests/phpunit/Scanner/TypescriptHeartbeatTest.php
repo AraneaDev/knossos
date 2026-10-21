@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -26,7 +27,7 @@ final class TypescriptHeartbeatTest extends KnossosTestCase
             new WorkerLimits(requestTimeoutMs: 400, maxLineBytes: 2_000_000, maxOutputBytes: 30_000_000),
         );
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/typescript-app',
                 'files' => ['app/page.tsx', 'src/client.ts', 'src/hooks.ts'],
                 'config_files' => ['tsconfig.json'],

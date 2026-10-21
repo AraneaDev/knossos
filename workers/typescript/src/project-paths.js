@@ -178,16 +178,24 @@ export function validateRoot(input) {
 // Kept separate from reading the file: a path of the wrong shape cannot be
 // attributed to any file, so it fails the request, while a well-formed path that
 // simply cannot be scanned costs only that file.
+//
+// The shapes refused are the core's own (RelativePath::assertValid): a
+// backslash is no separator to translate but a path the core never sends, and
+// neither is a drive-absolute path, a control character or a lone surrogate.
 export function assertScannablePath(relative) {
     if (
         typeof relative !== "string" ||
         relative.length === 0 ||
         path.isAbsolute(relative) ||
-        relative.includes("\0")
+        /^[A-Za-z]:\//.test(relative) ||
+        relative.includes("\\") ||
+        // eslint-disable-next-line no-control-regex
+        /[\u0000-\u001f\u007f]/.test(relative) ||
+        !relative.isWellFormed()
     ) {
         throw new Error("Project-relative path is invalid.");
     }
-    const segments = normalize(relative).split("/");
+    const segments = relative.split("/");
     if (
         segments.some(
             (segment) => segment === "" || segment === "." || segment === "..",

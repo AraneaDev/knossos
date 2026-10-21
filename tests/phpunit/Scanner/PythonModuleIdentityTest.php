@@ -10,6 +10,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -150,7 +151,7 @@ final class PythonModuleIdentityTest extends KnossosTestCase
 
         // Over the byte cap, or left out by discovery, it is not read at all.
         $this->write('pyproject.toml', "[tool.setuptools.packages.find]\nwhere = [\"code\"]\n");
-        self::assertContains('py:function:code.mod.f', $this->nodeIds($this->scanned(['limits' => ['max_file_bytes' => 30]]), 'code/mod.py'));
+        self::assertContains('py:function:code.mod.f', $this->nodeIds($this->scanned(['limits' => ['max_files' => 100_000, 'max_file_bytes' => 30]]), 'code/mod.py'));
         $exclusions = ['segments' => [], 'prefixes' => [], 'sequences' => [], 'suffixes' => [], 'path_prefixes' => ['pyproject.toml'], 'patterns' => []];
         self::assertContains('py:function:code.mod.f', $this->nodeIds($this->scanned(['exclusions' => $exclusions]), 'code/mod.py'));
         self::assertContains('py:function:mod.f', $this->nodeIds($this->scanned(), 'code/mod.py'));
@@ -425,7 +426,7 @@ final class PythonModuleIdentityTest extends KnossosTestCase
         $client = $this->pythonWorkerClient();
         try {
             $byPath = [];
-            foreach ($client->scan(['root' => $this->root, 'files' => $files, 'source_files' => $files] + $params) as $contribution) {
+            foreach ($client->scan($params + ['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $files, 'source_files' => $files]) as $contribution) {
                 $byPath[substr($contribution->ownerKey, strlen('knossos.python:file:'))] = $contribution;
             }
         } finally {

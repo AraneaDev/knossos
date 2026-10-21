@@ -52,6 +52,25 @@ def write(message: dict[str, Any]) -> None:
 Emit = Callable[[dict[str, Any]], None]
 
 
+INVALID_LIMITS = "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1."
+
+
+def scan_limits(limits: Any) -> tuple[int, int]:
+    """The request's ``max_files`` and ``max_file_bytes``, which the core always sends.
+
+    Anything but two integers of at least 1 is refused, worded as every worker
+    words it; a boolean is no integer here.
+    """
+
+    values: list[int] = []
+    for key in ("max_files", "max_file_bytes"):
+        value = limits.get(key) if isinstance(limits, dict) else None
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError(INVALID_LIMITS)
+        values.append(value)
+    return values[0], values[1]
+
+
 def scan(params: dict[str, Any], emit: Emit, heartbeat: Callable[[], None] | None = None) -> dict[str, Any]:
     """Parse a bounded file set and emit one owned contribution per input."""
 
@@ -67,10 +86,7 @@ def scan(params: dict[str, Any], emit: Emit, heartbeat: Callable[[], None] | Non
 
     root = safe_root(params.get("root"))
     files = params.get("files")
-    raw_limits = params.get("limits")
-    limits: dict[str, Any] = raw_limits if isinstance(raw_limits, dict) else {}
-    max_files = int(limits.get("max_files", 100_000))
-    max_bytes = int(limits.get("max_file_bytes", 2_000_000))
+    max_files, max_bytes = scan_limits(params.get("limits"))
     if not isinstance(files, list) or len(files) > max_files:
         raise ValueError("Python scan files must be a bounded list.")
     source_files = params.get("source_files")
@@ -123,7 +139,7 @@ def scan(params: dict[str, Any], emit: Emit, heartbeat: Callable[[], None] | Non
             heartbeat()
     # Asked of every request that scanned a file, so a request whose files
     # all failed to parse still reports the source roots it ran under.
-    environment = index.environment() if resolved else None
+    environment = index.layout.environment() if resolved else None
     for contribution, keys in held:
         own = contribution["owner_key"].removeprefix("knossos.python:file:")
         contribution["reads"] = {key: index.read_hashes[key] for key in sorted(keys - {own})}

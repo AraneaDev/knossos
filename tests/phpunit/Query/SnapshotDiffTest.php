@@ -87,12 +87,13 @@ final class SnapshotDiffTest extends KnossosTestCase
             self::assertSame(count($diff->data['changes']['relationships']['moved']), $diff->data['changes']['relationships']['counts']['moved']);
             self::assertSame(0, $diff->data['changes']['relationships']['counts']['added'] + $diff->data['changes']['relationships']['counts']['removed']);
 
-            // A second call to the same method is a new occurrence: one added, the first kept.
+            // A second call to the same method is the same edge: the core
+            // collapses repeated edges, so nothing is added or removed.
             file_put_contents($root . '/src/Caller.php', $caller("        \$unused = 1;\n\n        Helper::shine();\n"));
             $second = $scanner->scan($root);
             $again = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($first->projectId, $first->snapshotId, $second->snapshotId);
             $added = array_values(array_filter($again->data['changes']['relationships']['added'], static fn(array $change): bool => $change['after']['kind'] === 'calls'));
-            self::assertCount(1, $added);
+            self::assertCount(0, $added);
             self::assertSame([], array_values(array_filter($again->data['changes']['relationships']['removed'], static fn(array $change): bool => $change['before']['kind'] === 'calls')));
         } finally {
             unset($pdo);

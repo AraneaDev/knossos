@@ -12,6 +12,7 @@ use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -132,7 +133,7 @@ final class TypescriptDeepImportChainTest extends KnossosTestCase
         $command = is_string($coverageDirectory) && $coverageDirectory !== ''
             ? ['env', 'NODE_V8_COVERAGE=' . $coverageDirectory, ...$descriptor->command]
             : $descriptor->command;
-        $request = ['root' => $this->root, 'files' => $files, 'config_files' => []];
+        $request = ['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $files, 'config_files' => []];
 
         $client = new ProcessScannerClient(
             $command,
@@ -203,7 +204,7 @@ final class TypescriptDeepImportChainTest extends KnossosTestCase
      */
     private function chainRequest(array $files = ['src/m0.ts'], array $configFiles = ['tsconfig.json']): array
     {
-        return ['root' => $this->root, 'files' => $files, 'config_files' => $configFiles];
+        return ['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $files, 'config_files' => $configFiles];
     }
 
     private function typescriptDescriptor(): LanguageDescriptor

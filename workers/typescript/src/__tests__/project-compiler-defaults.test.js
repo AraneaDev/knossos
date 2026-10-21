@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // TypeScript 6 changed defaults a project built with 5.x never opted into:
 // `types` went from every `@types` package to none, `strict` went from false to
@@ -54,7 +55,7 @@ function tree(extra) {
 function scan(root, versions, files = ["src/a.ts"]) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
-        { root, files, typescript_versions: versions },
+        { limits: SCAN_LIMITS, root, files, typescript_versions: versions },
         (c) => contributions.push(c),
     );
     const codes = contributions

@@ -20,7 +20,7 @@ pub fn scan_fixture_with_bytes(name: &str, files: &[(&str, &[u8])], params: &Val
         std::fs::write(&path, bytes).unwrap();
     }
     let base = serde_json::json!({
-        "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
         "files": files.iter().map(|(relative, _)| *relative).collect::<Vec<_>>(),
     });
     let mut merged = base.as_object().unwrap().clone();
@@ -61,7 +61,7 @@ pub fn scan_result_with_bytes(name: &str, files: &[(&str, &[u8])], params: &Valu
         std::fs::write(&path, bytes).unwrap();
     }
     let base = serde_json::json!({
-        "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
         "files": files.iter().map(|(relative, _)| *relative).collect::<Vec<_>>(),
     });
     let mut merged = base.as_object().unwrap().clone();
@@ -524,7 +524,7 @@ fn a_symlink_escaping_the_root_is_unscannable() {
         "id": 1,
         "method": "scan",
         "params": {
-            "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
             "files": ["src/escape.rs"],
         },
     });
@@ -748,13 +748,15 @@ pub fn go() {}
         .collect();
     imports.sort_unstable();
 
-    // An exact set, not a containment check: it pins that the symbol's own
+    // An exact list, not a containment check: it pins that the symbol's own
     // path is NOT emitted (a target built from the full path would read
     // `rust:module:std::collections::HashMap`), and that one `use` line
-    // naming two symbols from one module emits one edge, not two.
+    // naming two symbols from one module emits an edge per symbol, which the
+    // core collapses.
     assert_eq!(
         vec![
             "rust:module:crate::net",
+            "rust:module:serde",
             "rust:module:serde",
             "rust:module:serde_json",
             "rust:module:std::collections",
@@ -876,7 +878,7 @@ fn a_self_leaf_imports_the_prefix_module_itself() {
     // `use crate::foo::{self, bar};` binds `foo` to the module `crate::foo`,
     // not to a symbol inside it, so that leaf's edge points at `crate::foo`
     // while `bar`'s points at the module holding it — the same `crate::foo`.
-    // One edge covers both.
+    // Each leaf is its own fact; the core collapses the two.
     let source = r#"
 use crate::foo::{self, bar};
 
@@ -890,7 +892,10 @@ pub fn go() {}
         .map(|edge| edge["target"].as_str().unwrap())
         .collect();
 
-    assert_eq!(vec!["rust:module:crate::foo"], imports);
+    assert_eq!(
+        vec!["rust:module:crate::foo", "rust:module:crate::foo"],
+        imports
+    );
 }
 
 #[test]
@@ -1134,13 +1139,11 @@ impl Engine {
 }
 
 #[test]
-fn repeated_edges_collapse_to_one_row_per_kind_source_target() {
-    // The scanner SDK stores one edge per kind/source/target within an owner
-    // (docs/reference/scanner-sdk.md), and the Python worker keys its edge map
-    // the same way. Every symbol imported from one module renders the identical
-    // `imports` row, and a call repeated in two branches renders the identical
-    // `calls` row, so the contribution collapses them instead of shipping the
-    // duplicates.
+fn repeated_edges_are_reported_once_per_site() {
+    // The core collapses repeated edges to one per kind, source, target and
+    // owner (docs/reference/scanner-protocol-v1.md, "Repeated edges"), so the
+    // worker reports every site: each symbol imported from one module is an
+    // `imports` fact, and a call repeated in two branches is two `calls` facts.
     let source = r#"
 use crate::net::http::{get, post};
 use crate::net::http::head;
@@ -1153,27 +1156,65 @@ pub fn caller(flag: bool) {
     }
 }
 "#;
-    let contributions = scan_fixture("collapsed-edges", &[("src/lib.rs", source)]);
+    let contributions = scan_fixture("per-site-edges", &[("src/lib.rs", source)]);
     let edges = contributions[0]["edges"].as_array().unwrap();
-    let rows: Vec<(&str, &str)> = edges
+    let rows: Vec<(&str, &str, u64)> = edges
         .iter()
         .filter(|edge| edge["kind"] == "imports" || edge["kind"] == "calls")
         .map(|edge| {
             (
                 edge["kind"].as_str().unwrap(),
                 edge["target"].as_str().unwrap(),
+                edge["evidence"]["start_line"].as_u64().unwrap(),
             )
         })
         .collect();
 
     assert_eq!(
         vec![
-            ("calls", "rust:function:crate::helper"),
-            ("imports", "rust:module:crate::net::http"),
+            ("calls", "rust:function:crate::helper", 7),
+            ("calls", "rust:function:crate::helper", 9),
+            ("imports", "rust:module:crate::net::http", 2),
+            ("imports", "rust:module:crate::net::http", 2),
+            ("imports", "rust:module:crate::net::http", 3),
         ],
         rows,
-        "three imported symbols and two identical calls collapse to one row each"
+        "every imported symbol and every call site is its own fact"
     );
+}
+
+#[test]
+fn a_call_under_a_path_keyword_references_no_type() {
+    // `crate::helper()` sits under the crate root, a module: no `crate` type
+    // exists to reference, and neither does a `self` or `super` one.
+    let source = r#"
+pub fn helper() {}
+
+pub mod inner {
+    pub fn go() {
+        crate::helper();
+        self::local();
+        super::helper();
+    }
+
+    pub fn local() {}
+}
+"#;
+    let contributions = scan_fixture("path-keyword-owner", &[("src/lib.rs", source)]);
+    let edges = contributions[0]["edges"].as_array().unwrap();
+    let keyword_types: Vec<&str> = edges
+        .iter()
+        .filter(|edge| edge["kind"] == "references")
+        .map(|edge| edge["target"].as_str().unwrap())
+        .filter(|target| {
+            ["crate", "self", "super"].iter().any(|keyword| {
+                target.ends_with(&format!(":{keyword}"))
+                    || target.ends_with(&format!("::{keyword}"))
+            })
+        })
+        .collect();
+
+    assert_eq!(Vec::<&str>::new(), keyword_types);
 }
 
 #[test]
@@ -1313,8 +1354,8 @@ fn make() -> Policy { Policy }
             .iter()
             .filter(|(target, _)| target == "rust:method:crate::Policy::evaluate")
             .count(),
-        1,
-        "three receivers, one deduplicated edge: {by_binding:?}"
+        3,
+        "three receivers, one edge each: {by_binding:?}"
     );
     assert!(by_binding.contains(&("rust:method:crate::Policy::evaluate".to_owned(), true)));
 }
@@ -1638,7 +1679,7 @@ fn a_missing_file_is_a_diagnostic_not_a_failed_request() {
         "id": 1,
         "method": "scan",
         "params": {
-            "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
             "files": ["src/absent.rs"],
         },
     });
@@ -1677,7 +1718,7 @@ fn an_oversized_file_is_refused_by_the_byte_limit() {
         "params": {
             "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
             "files": ["src/big.rs"],
-            "limits": {"max_file_bytes": 10},
+            "limits": {"max_files": 100000, "max_file_bytes": 10},
         },
     });
     let mut output: Vec<u8> = Vec::new();
@@ -1714,7 +1755,7 @@ fn files_scanned_counts_this_request_only() {
         "id": 1,
         "method": "scan",
         "params": {
-            "root": canonical_root,
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": canonical_root,
             "files": ["src/a.rs", "src/b.rs"],
         },
     });
@@ -1723,7 +1764,7 @@ fn files_scanned_counts_this_request_only() {
         "id": 2,
         "method": "scan",
         "params": {
-            "root": canonical_root,
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": canonical_root,
             "files": ["src/c.rs"],
         },
     });
@@ -1817,7 +1858,7 @@ fn a_file_that_was_never_read_reports_no_hash() {
     let contributions = scan_fixture_with(
         "content-hash-unread",
         &[("src/big.rs", "pub fn big() {}\n")],
-        &serde_json::json!({"limits": {"max_file_bytes": 1}}),
+        &serde_json::json!({"limits": {"max_files": 100000, "max_file_bytes": 1}}),
     );
 
     assert_eq!(1, contributions.len());
@@ -1864,7 +1905,7 @@ fn scan_existing_root(
     params: &Value,
 ) -> (Vec<Value>, Value) {
     let mut merged = serde_json::json!({
-        "root": std::fs::canonicalize(root).unwrap().to_str().unwrap(),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(root).unwrap().to_str().unwrap(),
         "files": requested,
     });
     for (key, value) in params.as_object().unwrap() {
@@ -1918,7 +1959,7 @@ fn a_requested_file_whose_read_fails_is_reported_as_null() {
     let (contributions, result) = scan_existing_root(
         &root,
         &["src/big.rs", "src/dir.rs", "src/gone.rs", "src/out.rs"],
-        &serde_json::json!({"limits": {"max_file_bytes": 10}}),
+        &serde_json::json!({"limits": {"max_files": 100000, "max_file_bytes": 10}}),
     );
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&outside);
@@ -2080,7 +2121,7 @@ fn an_input_hashes_map_larger_than_one_part_goes_out_ahead_of_the_result_in_part
         "id": 1,
         "method": "scan",
         "params": {
-            "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": std::fs::canonicalize(&root).unwrap().to_str().unwrap(),
             "files": requested,
         },
     });
@@ -2174,7 +2215,7 @@ fn a_cargo_manifest_over_the_byte_cap_is_reported_as_null_and_names_no_crate() {
     let (contributions, result) = scan_existing_root(
         &root,
         &["src/lib.rs"],
-        &serde_json::json!({"config_files": ["Cargo.toml"], "limits": {"max_file_bytes": 40}}),
+        &serde_json::json!({"config_files": ["Cargo.toml"], "limits": {"max_files": 100000, "max_file_bytes": 40}}),
     );
     let _ = std::fs::remove_dir_all(&root);
 

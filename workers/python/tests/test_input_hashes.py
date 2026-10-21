@@ -56,7 +56,9 @@ def _includes(read_hashes: dict[str, str | None], expected: dict[str, str | None
 
 def _scan(worker: ModuleType, root: Path, files: list[str]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     emitted: list[dict[str, Any]] = []
-    result = worker.scan({"root": str(root), "files": files}, emitted.append)
+    result = worker.scan(
+        {"root": str(root), "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "files": files}, emitted.append
+    )
     return result, {item["owner_key"].rsplit(":", 1)[-1]: item for item in emitted}
 
 
@@ -239,7 +241,7 @@ def test_a_module_refused_for_linking_out_of_the_root_is_null(worker: ModuleType
     (root / "pkg" / "b.py").symlink_to(outside / "b.py")
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.module_file("pkg.b") is None
+    assert index.layout.module_file("pkg.b") is None
     assert index.module_declarations("pkg.b") == {}
     _includes(index.read_hashes, {"pkg/b.py": None})
 
@@ -324,7 +326,7 @@ def test_a_requested_file_the_filesystem_refuses_is_null_and_a_policy_refusal_is
         {
             "root": str(root),
             "files": ["big.py", "dir.py", "gone.py", "notes.txt", "out.py", "script"],
-            "limits": {"max_file_bytes": 50},
+            "limits": {"max_files": 100000, "max_file_bytes": 50},
         },
         emitted.append,
     )
@@ -406,7 +408,10 @@ def _scan_limited(
     worker: ModuleType, root: Path, files: list[str], max_bytes: int
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     emitted: list[dict[str, Any]] = []
-    result = worker.scan({"root": str(root), "files": files, "limits": {"max_file_bytes": max_bytes}}, emitted.append)
+    result = worker.scan(
+        {"root": str(root), "files": files, "limits": {"max_files": 100000, "max_file_bytes": max_bytes}},
+        emitted.append,
+    )
     return result, {item["owner_key"].rsplit(":", 1)[-1]: item for item in emitted}
 
 
@@ -812,7 +817,7 @@ def test_an_absolute_link_target_with_a_doubled_leading_slash_is_followed_inside
     (root / "q" / "l6.py").symlink_to("/" + str(root / "q" / "c.py"))
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.module_file("q.l6") is not None
+    assert index.layout.module_file("q.l6") is not None
     assert "Deep" in index.module_declarations("q.l6")
     _includes(index.read_hashes, {"q/c.py": _sha(DEEP)})
     assert _disagreements(index.read_hashes, _discovered(root)) == []

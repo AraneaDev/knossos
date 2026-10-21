@@ -146,7 +146,7 @@ def test_oversized_file_costs_only_itself(worker: ModuleType, project, scan_coll
     # The path is well-formed, so the request succeeds and the file arrives as a
     # diagnostic-only contribution; aborting would discard every other file's facts.
     root = project({"big.py": "x = 1\n" * 100, "small.py": "y = 2\n"})
-    contributions = scan_collect(root, ["big.py", "small.py"], limits={"max_file_bytes": 40})
+    contributions = scan_collect(root, ["big.py", "small.py"], limits={"max_files": 100000, "max_file_bytes": 40})
     by_owner = {c["owner_key"]: c for c in contributions}
     assert _diag_codes(by_owner["knossos.python:file:big.py"]) == ["PY_UNSCANNABLE_FILE"]
     assert by_owner["knossos.python:file:big.py"]["nodes"] == []
@@ -566,10 +566,11 @@ def test_a_base_or_mixin_annotation_in_the_same_module_types_a_subclass(
 
     [contribution] = scan_collect(tmp_path, ["mod.py"])
 
+    # One fact per call site: the core collapses the two `lookup` calls.
     calls = sorted(
         target for kind, source, target in _edges(contribution) if kind == "calls" and source.endswith("::run")
     )
-    assert calls == ["py:method:mod.Cache::grand_call", "py:method:mod.Index::lookup"]
+    assert calls == ["py:method:mod.Cache::grand_call", "py:method:mod.Index::lookup", "py:method:mod.Index::lookup"]
     assert _module_untyped(contribution) == []
 
 
@@ -1000,7 +1001,16 @@ def test_invalid_escape_sequences_leave_stderr_empty(tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
-        {"jsonrpc": "2.0", "id": 2, "method": "scan", "params": {"root": str(tmp_path), "files": ["a.py", "b.py"]}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "scan",
+            "params": {
+                "root": str(tmp_path),
+                "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+                "files": ["a.py", "b.py"],
+            },
+        },
         {"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": {}},
     ]
 
@@ -1032,7 +1042,10 @@ def test_directory_name_that_is_not_utf8_does_not_break_output(
         pytest.skip("filesystem rejects non-UTF-8 names")
     (tmp_path / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     emitted: list[dict] = []
-    result = worker.scan({"root": str(tmp_path), "files": ["m.py"]}, emitted.append)
+    result = worker.scan(
+        {"root": str(tmp_path), "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "files": ["m.py"]},
+        emitted.append,
+    )
     assert len(emitted) == 1
     for key in result["input_hashes"]:
         key.encode("utf-8")
@@ -1049,7 +1062,10 @@ def test_directory_name_with_a_control_character_is_not_reported_as_read(worker:
         pytest.skip("filesystem rejects control characters in names")
     (tmp_path / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     emitted: list[dict] = []
-    result = worker.scan({"root": str(tmp_path), "files": ["m.py"]}, emitted.append)
+    result = worker.scan(
+        {"root": str(tmp_path), "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "files": ["m.py"]},
+        emitted.append,
+    )
     assert len(emitted) == 1
     assert [key for key in result["input_hashes"] if any(ord(c) < 32 or ord(c) == 127 for c in key)] == []
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -20,7 +21,7 @@ final class TypescriptRunOnLoadScriptTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-run-on-load',
                 'files' => ['scripts/exported.js', 'scripts/import-rows.js', 'scripts/seed.js', 'src/main.ts', 'src/quiet.ts', 'src/start.ts'],
                 'config_files' => ['tsconfig.json'],

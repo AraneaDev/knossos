@@ -119,7 +119,10 @@ describe("addFrameworkRoute", () => {
 
     it("names a NestJS @All() route's methods ANY, as every worker does", () => {
         const nodes = [];
-        const context = { addNode: (...args) => nodes.push(args), addEdge: () => {} };
+        const context = {
+            addNode: (...args) => nodes.push(args),
+            addEdge: () => {},
+        };
 
         addFrameworkRoute(context, {
             id: "n2",
@@ -132,6 +135,10 @@ describe("addFrameworkRoute", () => {
             target: "n-handler",
         });
 
-        expect(nodes[0][5]).toEqual({ framework: "nestjs", methods: ["ANY"], path: "/cats" });
+        expect(nodes[0][5]).toEqual({
+            framework: "nestjs",
+            methods: ["ANY"],
+            path: "/cats",
+        });
     });
 });

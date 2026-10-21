@@ -12,6 +12,7 @@ use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PDOException;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
@@ -82,7 +83,7 @@ final class FaultInjectionTest extends KnossosTestCase
             $client->initialize();
             $polls = 0;
             $error = captureThrows(
-                fn() => iterator_to_array($client->scan(['request_id' => 'child-scan'], function () use (&$polls): bool {
+                fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'request_id' => 'child-scan'], function () use (&$polls): bool {
                     return ++$polls >= 4;
                 })),
                 WorkerException::class,

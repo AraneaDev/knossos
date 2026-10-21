@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scan;
 use Knossos\Query\StalenessProbe;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 
 use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertNotContains;
@@ -188,7 +189,7 @@ final class WebpackModuleRootsScanTest extends KnossosTestCase
     {
         // Through the worker client, as the core drives it, so the worker's coverage is counted.
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => $files]), false);
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => $files]), false);
         $client->shutdown();
         $targets = [];
         $unread = [];

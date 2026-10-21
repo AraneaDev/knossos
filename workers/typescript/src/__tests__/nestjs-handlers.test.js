@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // NestJS calls a method decorated with @Cron, @Interval, @OnEvent,
 // @EventPattern and the like on its own schedule or event, and Passport calls a
@@ -54,8 +55,9 @@ describe("NestJS methods the framework calls", () => {
             ].join("\n"),
         });
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/jobs.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/jobs.ts"] },
+            (c) => contributions.push(c),
         );
         const roles = Object.fromEntries(
             contributions

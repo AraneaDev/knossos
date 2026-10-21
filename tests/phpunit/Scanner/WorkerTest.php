@@ -10,6 +10,7 @@ use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 final class WorkerTest extends KnossosTestCase
@@ -21,7 +22,7 @@ final class WorkerTest extends KnossosTestCase
         $manifest = $client->initialize();
         assertSame('knossos.fake', $manifest->id);
 
-        $contributions = iterator_to_array($client->scan(['request_id' => 'scan-1']));
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'request_id' => 'scan-1']));
         assertSame(1, count($contributions));
         assertSame('worker:file:src/Checkout.ts', $contributions[0]->ownerKey);
         assertSame('Checkout', $contributions[0]->nodes[0]->displayName);
@@ -29,7 +30,7 @@ final class WorkerTest extends KnossosTestCase
         $client->cancel('scan-2');
         // An empty scan is the cheapest round trip left now that discover is
         // gone, and the fake worker echoes the ids it was told to cancel.
-        assertSame([], iterator_to_array($client->scan(['root' => '/workspace', 'files' => []])));
+        assertSame([], iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => '/workspace', 'files' => []])));
         assertSame(['scan-2'], $client->lastScanResult()['cancelled']);
         $client->shutdown();
     }
@@ -129,20 +130,20 @@ final class WorkerTest extends KnossosTestCase
     {
         // Six heartbeats 150 ms apart: 900 ms in all, each gap inside 400 ms.
         $busy = $this->fakeWorkerClient('heartbeat_scan', new WorkerLimits(requestTimeoutMs: 400));
-        iterator_to_array($busy->scan([]));
+        iterator_to_array($busy->scan(['limits' => ScanLimits::DEFAULT, ]));
         assertSame(true, $busy->lastScanResult() !== []);
 
         // Heartbeats alone never finish a scan: the hard cap still ends it.
         $endless = $this->fakeWorkerClient('heartbeat_forever', new WorkerLimits(requestTimeoutMs: 400, maxRequestMs: 1_200));
         $started = hrtime(true);
-        $error = captureThrows(fn() => iterator_to_array($endless->scan([])), WorkerException::class);
+        $error = captureThrows(fn() => iterator_to_array($endless->scan(['limits' => ScanLimits::DEFAULT, ])), WorkerException::class);
         assertSame('WORKER_TIMEOUT', $error->diagnosticCode);
         assertSame(true, (hrtime(true) - $started) / 1_000_000 < 3_000);
 
         // Nor does a worker that is never quiet long enough to be waited on.
         $flood = $this->fakeWorkerClient('heartbeat_flood', new WorkerLimits(requestTimeoutMs: 400, maxOutputBytes: 1_000_000_000, maxRequestMs: 1_200));
         $started = hrtime(true);
-        $error = captureThrows(fn() => iterator_to_array($flood->scan([])), WorkerException::class);
+        $error = captureThrows(fn() => iterator_to_array($flood->scan(['limits' => ScanLimits::DEFAULT, ])), WorkerException::class);
         assertSame('WORKER_TIMEOUT', $error->diagnosticCode);
         assertSame(true, (hrtime(true) - $started) / 1_000_000 < 3_000);
     }
@@ -156,11 +157,11 @@ final class WorkerTest extends KnossosTestCase
 
         $stderr = $this->fakeWorkerClient('stderr_flood', new WorkerLimits(maxStderrBytes: 100));
         // A noisy worker that answers correctly is not a failure.
-        $contributions = iterator_to_array($stderr->scan([]));
+        $contributions = iterator_to_array($stderr->scan(['limits' => ScanLimits::DEFAULT, ]));
         assertSame('worker:file:src/Checkout.ts', $contributions[0]->ownerKey);
 
         $output = $this->fakeWorkerClient('output_flood', new WorkerLimits(maxLineBytes: 1024, maxOutputBytes: 2048));
-        $error = captureThrows(fn() => iterator_to_array($output->scan([])), WorkerException::class);
+        $error = captureThrows(fn() => iterator_to_array($output->scan(['limits' => ScanLimits::DEFAULT, ])), WorkerException::class);
         assertSame('WORKER_OUTPUT_LIMIT', $error->diagnosticCode);
     }
 
@@ -174,7 +175,7 @@ final class WorkerTest extends KnossosTestCase
         assertThrows(fn() => new WorkerExecutionPolicy(120_001), InvalidArgumentException::class);
 
         $client = $this->fakeWorkerClient('valid_over_five_seconds', $policy->limits());
-        $contributions = iterator_to_array($client->scan(['files' => ['src/Checkout.ts']]));
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'files' => ['src/Checkout.ts']]));
         assertSame(1, count($contributions));
         assertSame(1, $client->lastScanResult()['count']);
         $client->shutdown();
@@ -184,7 +185,7 @@ final class WorkerTest extends KnossosTestCase
     public function testWorkerSupervisorSchemaValidatesContributions(): void
     {
         $client = $this->fakeWorkerClient('invalid_contribution');
-        $error = captureThrows(fn() => iterator_to_array($client->scan([])), WorkerException::class);
+        $error = captureThrows(fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, ])), WorkerException::class);
         assertSame('WORKER_CONTRIBUTION_INVALID', $error->diagnosticCode);
     }
 }

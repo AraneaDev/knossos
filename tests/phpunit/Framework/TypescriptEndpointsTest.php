@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Framework;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 
 use function PHPUnit\Framework\assertArrayHasKey;
 use function PHPUnit\Framework\assertContains;
@@ -212,7 +213,7 @@ final class TypescriptEndpointsTest extends KnossosTestCase
         $root = $this->writeTree($tree);
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => $files]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => $files]), false);
             $client->shutdown();
             $found = [];
             $edges = [];

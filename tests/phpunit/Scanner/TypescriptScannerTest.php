@@ -9,6 +9,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 final class TypescriptScannerTest extends KnossosTestCase
@@ -38,7 +39,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['bin/cli', 'bin/other'],
             ]));
@@ -98,7 +99,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['bin/cli', 'src/loop.mjs', 'src/helper.js'],
             ]));
@@ -214,7 +215,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => array_values(array_filter(
                     array_keys($files),
@@ -278,7 +279,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['src/ledger.ts'],
             ]));
@@ -344,7 +345,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/pool.ts']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/pool.ts']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -406,7 +407,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['web/app.mjs']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['web/app.mjs']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -461,7 +462,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/cli.ts']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/cli.ts']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -480,6 +481,8 @@ final class TypescriptScannerTest extends KnossosTestCase
                 }
             }
         }
+        // Distinct: a reference per site is the core's to collapse.
+        $references = array_values(array_unique($references));
         sort($references);
 
         assertSame(['ts:class:src/tui/App.ts#Panel', 'ts:function:src/tui/App.ts#App'], $references);
@@ -521,7 +524,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/reader.ts']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/reader.ts']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -576,7 +579,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/clip.ts']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/clip.ts']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -631,7 +634,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/input.ts']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/input.ts']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -703,7 +706,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/engines.ts']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/engines.ts']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -756,7 +759,7 @@ final class TypescriptScannerTest extends KnossosTestCase
 
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/editor.tsx'], 'config_files' => ['tsconfig.json']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/editor.tsx'], 'config_files' => ['tsconfig.json']]));
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -786,7 +789,7 @@ final class TypescriptScannerTest extends KnossosTestCase
         $client = $this->typescriptWorkerClient();
         assertSame('knossos.typescript', $client->initialize()->id);
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => $this->typescriptFixtureFiles(),
         ]));
@@ -833,8 +836,11 @@ final class TypescriptScannerTest extends KnossosTestCase
             fn(EdgeFact $edge): bool => $edge->kind === 'imports'
                 && $edge->targetReference === 'ts:module:packages/shared/src/contracts.ts',
         ));
-        assertSame(1, count($sharedImports));
-        assertSame([false, true], $sharedImports[0]->attributes['type_only_variants']);
+        // One fact per import statement, a type-only one and a runtime one,
+        // which the core collapses keeping both variants.
+        $variants = array_map(fn(EdgeFact $edge): bool => ($edge->attributes['type_only'] ?? false) === true, $sharedImports);
+        sort($variants);
+        assertSame([false, true], $variants);
 
         $shared = $byOwner['knossos.typescript:file:packages/shared/src/contracts.ts'];
         assertSame(1, count(array_filter(
@@ -850,7 +856,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/typescript-scanner';
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => $this->typescriptFixtureFiles(),
         ]));
@@ -901,13 +907,13 @@ final class TypescriptScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/typescript-scanner';
         $client = $this->typescriptWorkerClient();
-        $request = ['root' => $root, 'files' => ['packages/app/src/service.ts']];
+        $request = ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['packages/app/src/service.ts']];
         $first = iterator_to_array($client->scan($request));
         $second = iterator_to_array($client->scan($request));
         assertSame(json_encode($first, JSON_THROW_ON_ERROR), json_encode($second, JSON_THROW_ON_ERROR));
 
         $error = captureThrows(
-            fn() => iterator_to_array($client->scan(['root' => $root, 'files' => ['../package.json']])),
+            fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['../package.json']])),
             WorkerException::class,
         );
         assertSame('WORKER_RPC_ERROR', $error->diagnosticCode);
@@ -918,7 +924,7 @@ final class TypescriptScannerTest extends KnossosTestCase
         $contributions = iterator_to_array($limited->scan([
             'root' => $root,
             'files' => ['packages/app/src/service.ts'],
-            'limits' => ['max_file_bytes' => 1],
+            'limits' => ['max_files' => 100_000, 'max_file_bytes' => 1],
         ]));
         assertSame(1, count($contributions));
         assertSame([], $contributions[0]->nodes);
@@ -948,7 +954,7 @@ final class TypescriptScannerTest extends KnossosTestCase
         try {
             assertSame(true, in_array('content_hash', $client->initialize()->capabilities, true));
             $byOwner = [];
-            foreach ($client->scan(['root' => $root, 'files' => array_keys($files)]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]) as $contribution) {
                 $byOwner[$contribution->ownerKey] = $contribution->contentHash;
             }
 
@@ -981,7 +987,7 @@ final class TypescriptScannerTest extends KnossosTestCase
         $client = $this->typescriptWorkerClient();
         try {
             assertSame(true, in_array('input_hashes', $client->initialize()->capabilities, true));
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['src/User.ts']]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/User.ts']]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
             $expected = array_map(static fn(string $bytes): string => hash('sha256', $bytes), $files)
@@ -1014,7 +1020,7 @@ final class TypescriptScannerTest extends KnossosTestCase
             $contributions = iterator_to_array($client->scan([
                 'root' => $root,
                 'files' => ['bin/large', 'bin/tool', 'notes.txt'],
-                'limits' => ['max_file_bytes' => 64],
+                'limits' => ['max_files' => 100_000, 'max_file_bytes' => 64],
             ]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
@@ -1045,7 +1051,7 @@ final class TypescriptScannerTest extends KnossosTestCase
         file_put_contents($root . '/sub/s.ts', "export const s = 1;\n");
         $client = $this->typescriptWorkerClient();
         try {
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['src/a.ts'], 'limits' => ['max_file_bytes' => 128]]), false);
+            iterator_to_array($client->scan(['root' => $root, 'files' => ['src/a.ts'], 'limits' => ['max_files' => 100_000, 'max_file_bytes' => 128]]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? [];
 
             assertSame(hash('sha256', $package), $inputHashes['package.json'] ?? 'absent');
@@ -1073,7 +1079,7 @@ final class TypescriptScannerTest extends KnossosTestCase
         file_put_contents($root . '/src/a.ts', "export const a = 1;\n");
         $client = $this->typescriptWorkerClient();
         try {
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['src/a.ts'], 'config_files' => ['tsconfig.json']]), false);
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/a.ts'], 'config_files' => ['tsconfig.json']]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? [];
 
             assertSame(hash('sha256', $config), $inputHashes['tsconfig.json'] ?? 'absent');

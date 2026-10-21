@@ -14,6 +14,7 @@ import { discoverConfigFiles } from "../fallback-groups.js";
 import { TypeScriptScanner } from "../scanner.js";
 import { withoutAbsentAliasConfigs } from "./support/absent-alias-configs.mjs";
 import { absentRequireCandidates } from "./support/require-candidates.mjs";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -109,7 +110,7 @@ describe("TypeScriptScanner.scan", () => {
 
         const contributions = [];
         const summary = new TypeScriptScanner().scan(
-            { root, files: ["src/math.ts"] },
+            { limits: SCAN_LIMITS, root, files: ["src/math.ts"] },
             (c) => contributions.push(c),
         );
 
@@ -164,8 +165,9 @@ describe("TypeScriptScanner.scan", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/x.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/x.ts"] },
+            (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
         const edges = contributions.flatMap((c) => c.edges);
@@ -208,8 +210,9 @@ describe("TypeScriptScanner.scan JSX references", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/page.tsx"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/page.tsx"] },
+            (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
         const edges = contributions.flatMap((c) => c.edges);
@@ -254,8 +257,9 @@ describe("TypeScriptScanner.scan JSX references", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/twice.tsx"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/twice.tsx"] },
+            (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
         const edges = contributions.flatMap((c) => c.edges);
@@ -263,15 +267,14 @@ describe("TypeScriptScanner.scan JSX references", () => {
             (n) => n.kind === "function" && n.display_name === "Card",
         );
 
-        // Two renders of the same component collapse into one edge, and the
-        // closing tags contribute nothing: the accumulator keys on
-        // kind/source/target, so an edge per tag would be invisible here — the
-        // guard is that the closing tag never reaches the checker at all.
+        // Each render is its own fact (the core collapses them), and the
+        // closing tags contribute nothing: the closing tag never reaches the
+        // checker at all.
         expect(
             edges.filter(
                 (e) => e.kind === "references" && e.target === card.local_id,
             ).length,
-        ).toBe(1);
+        ).toBe(2);
     });
 });
 
@@ -291,8 +294,9 @@ describe("TypeScriptScanner.scan packages below node_modules", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/a.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
+            (c) => contributions.push(c),
         );
         const edges = contributions.flatMap((c) => c.edges);
         const nodes = contributions.flatMap((c) => c.nodes);
@@ -314,15 +318,20 @@ describe("TypeScriptScanner.scan packages below node_modules", () => {
 function packageTargets(source) {
     const root = fixture({ "src/a.ts": source });
     const contributions = [];
-    new TypeScriptScanner().scan({ root, files: ["src/a.ts"] }, (c) =>
-        contributions.push(c),
+    new TypeScriptScanner().scan(
+        { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
+        (c) => contributions.push(c),
     );
     return {
-        targets: contributions
-            .flatMap((c) => c.edges)
-            .filter((e) => e.kind === "imports")
-            .map((e) => e.target)
-            .sort(),
+        // Distinct: an import per site is the core's to collapse.
+        targets: [
+            ...new Set(
+                contributions
+                    .flatMap((c) => c.edges)
+                    .filter((e) => e.kind === "imports")
+                    .map((e) => e.target),
+            ),
+        ].sort(),
         nodes: contributions
             .flatMap((c) => c.nodes)
             .filter((n) => n.kind === "package")
@@ -373,7 +382,12 @@ describe("TypeScriptScanner.scan specifiers that look like packages", () => {
         });
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/a.ts"], config_files: ["tsconfig.json"] },
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["src/a.ts"],
+                config_files: ["tsconfig.json"],
+            },
             (c) => contributions.push(c),
         );
 
@@ -392,7 +406,12 @@ function importTargets(files) {
     const root = fixture(files);
     const contributions = [];
     new TypeScriptScanner().scan(
-        { root, files: ["src/a.ts"], config_files: ["tsconfig.json"] },
+        {
+            limits: SCAN_LIMITS,
+            root,
+            files: ["src/a.ts"],
+            config_files: ["tsconfig.json"],
+        },
         (c) => contributions.push(c),
     );
     return contributions
@@ -526,7 +545,11 @@ describe("TypeScriptScanner.scan dynamic default imports", () => {
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/pages/Admin.ts", "src/routes.ts"] },
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["src/pages/Admin.ts", "src/routes.ts"],
+            },
             (c) => contributions.push(c),
         );
         const edges = contributions.flatMap((c) => c.edges);
@@ -557,7 +580,11 @@ describe("TypeScriptScanner.scan dynamic default imports", () => {
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/named.ts", "src/load.ts"] },
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["src/named.ts", "src/load.ts"],
+            },
             (c) => contributions.push(c),
         );
         const only = contributions
@@ -593,8 +620,9 @@ describe("TypeScriptScanner.scan dynamic default imports", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/load.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/load.ts"] },
+            (c) => contributions.push(c),
         );
         const edges = contributions.flatMap((c) => c.edges);
         const nodes = contributions.flatMap((c) => c.nodes);
@@ -640,7 +668,11 @@ describe("TypeScriptScanner.scan facade re-exports", () => {
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/customerApi.ts", "src/apiClient.ts"] },
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["src/customerApi.ts", "src/apiClient.ts"],
+            },
             (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
@@ -673,7 +705,11 @@ describe("TypeScriptScanner.scan facade re-exports", () => {
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/dep.ts", "src/caller.ts"] },
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["src/dep.ts", "src/caller.ts"],
+            },
             (c) => contributions.push(c),
         );
         const edges = contributions.flatMap((c) => c.edges);
@@ -722,6 +758,7 @@ describe("TypeScriptScanner.scan import type marking", () => {
         const contributions = [];
         new TypeScriptScanner().scan(
             {
+                limits: SCAN_LIMITS,
                 root,
                 files: [
                     "src/dep.ts",
@@ -794,7 +831,7 @@ describe("TypeScriptScanner.scan reports a type-only import beside a dynamic imp
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/heavy.ts", path] },
+            { limits: SCAN_LIMITS, root, files: ["src/heavy.ts", path] },
             (c) => contributions.push(c),
         );
         const importEdges = contributions
@@ -825,7 +862,11 @@ describe("TypeScriptScanner.scan declaration files", () => {
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["scripts/color-debt.d.mts", "scripts/tokens.ts"] },
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["scripts/color-debt.d.mts", "scripts/tokens.ts"],
+            },
             (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
@@ -864,7 +905,7 @@ describe("TypeScriptScanner.scan value references", () => {
 
         const contributions = [];
         new TypeScriptScanner().scan(
-            { root, files: ["src/registry.ts"] },
+            { limits: SCAN_LIMITS, root, files: ["src/registry.ts"] },
             (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
@@ -903,8 +944,9 @@ describe("TypeScriptScanner.scan value references", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/lonely.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/lonely.ts"] },
+            (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
         const edges = contributions.flatMap((c) => c.edges);
@@ -936,8 +978,9 @@ describe("TypeScriptScanner.scan value references", () => {
         });
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/direct.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/direct.ts"] },
+            (c) => contributions.push(c),
         );
         const nodes = contributions.flatMap((c) => c.nodes);
         const edges = contributions.flatMap((c) => c.edges);
@@ -983,7 +1026,11 @@ describe("TypeScriptScanner.scan program cache", () => {
             const scanner = new TypeScriptScanner();
             const emitted = [];
             const summary = scanner.scan(
-                { root, files: ["a/x.ts", "b/y.ts", "c/z.ts"] },
+                {
+                    limits: SCAN_LIMITS,
+                    root,
+                    files: ["a/x.ts", "b/y.ts", "c/z.ts"],
+                },
                 (c) => emitted.push(c),
             );
 
@@ -1026,7 +1073,11 @@ describe("TypeScriptScanner.scan program cache", () => {
             };
 
             scanner.scan(
-                { root, files: ["a/x.ts", "b/y.ts", "c/z.ts"] },
+                {
+                    limits: SCAN_LIMITS,
+                    root,
+                    files: ["a/x.ts", "b/y.ts", "c/z.ts"],
+                },
                 () => {},
             );
 
@@ -1110,7 +1161,7 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 function scanOnce(scanner, root, files) {
     const contributions = [];
-    scanner.scan({ root, files }, (contribution) =>
+    scanner.scan({ limits: SCAN_LIMITS, root, files }, (contribution) =>
         contributions.push(contribution),
     );
     return Object.fromEntries(contributions.map((c) => [c.owner_key, c]));
@@ -1258,8 +1309,9 @@ describe("content_hash", () => {
 // Run one scan and keep its result as well as its contributions.
 function scanWithResult(scanner, root, files, extra = {}) {
     const contributions = [];
-    const result = scanner.scan({ root, files, ...extra }, (contribution) =>
-        contributions.push(contribution),
+    const result = scanner.scan(
+        { limits: SCAN_LIMITS, root, files, ...extra },
+        (contribution) => contributions.push(contribution),
     );
     return {
         result,
@@ -1603,7 +1655,7 @@ describe("input_hashes: a path that changes under the read", () => {
             new TypeScriptScanner(),
             root,
             ["src/a.ts"],
-            { limits: { max_file_bytes: 200 } },
+            { limits: { ...SCAN_LIMITS, max_file_bytes: 200 } },
         );
 
         expect(withoutAbsentAliasConfigs(result.input_hashes)).toEqual({
@@ -1821,7 +1873,7 @@ describe("input_hashes: a refused path reached through a symlink", () => {
             new TypeScriptScanner(),
             root,
             ["src/a.ts"],
-            { limits: { max_file_bytes: 300 } },
+            { limits: { ...SCAN_LIMITS, max_file_bytes: 300 } },
         );
 
         expect(withoutAbsentAliasConfigs(result.input_hashes)).toEqual({
@@ -1944,7 +1996,7 @@ describe("input_hashes: a link target with `..` after a linked directory", () =>
             new TypeScriptScanner(),
             root,
             ["src/a.ts"],
-            { limits: { max_file_bytes: 300 } },
+            { limits: { ...SCAN_LIMITS, max_file_bytes: 300 } },
         );
 
         expect(withoutAbsentAliasConfigs(result.input_hashes)).toEqual({

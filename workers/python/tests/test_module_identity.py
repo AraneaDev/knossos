@@ -19,7 +19,15 @@ import pytest
 def _scan(worker: ModuleType, root: Path, files: list[str]) -> dict[str, dict[str, Any]]:
     """Scan ``files`` as the whole project and return each contribution by its path."""
     emitted: list[dict[str, Any]] = []
-    worker.scan({"root": str(root), "files": files, "source_files": files}, emitted.append)
+    worker.scan(
+        {
+            "root": str(root),
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+            "files": files,
+            "source_files": files,
+        },
+        emitted.append,
+    )
     return {item["owner_key"].rsplit(":", 1)[-1]: item for item in emitted}
 
 
@@ -56,12 +64,16 @@ def test_src_is_a_source_root_only_without_a_marker(worker: ModuleType, project:
     index = worker.ProjectModuleIndex(root, 2_000_000)
     assert index.layout.prefixes == [(), ("src",)]
     assert index.read_hashes == {"pyproject.toml": None, "src/__init__.py": None}
-    assert [index.module_for(path) for path in ("src/a.py", "app/b.py", "tests/c.py")] == ["a", "app.b", "tests.c"]
+    assert [index.layout.module_for(path) for path in ("src/a.py", "app/b.py", "tests/c.py")] == [
+        "a",
+        "app.b",
+        "tests.c",
+    ]
 
     (root / "src" / "__init__.py").write_text("")
     packaged = worker.ProjectModuleIndex(root, 2_000_000)
     assert packaged.layout.prefixes == [()]
-    assert packaged.module_for("src/a.py") == "src.a"
+    assert packaged.layout.module_for("src/a.py") == "src.a"
 
 
 def test_an_excluded_or_oversized_pyproject_is_not_read(worker: ModuleType, project: Any) -> None:
@@ -79,21 +91,25 @@ def test_a_file_whose_location_another_file_owns_is_named_by_its_path(worker: Mo
     root = project({"utils.py": "", "src/utils.py": "", "pkg/mod.py": "", "pkg/mod.pyi": "", "pkg/ext.pyi": ""})
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.file_identity("utils.py", root / "utils.py") == ("utils", "utils", root / "utils.py")
-    assert index.file_identity("src/utils.py", root / "src/utils.py") == (
+    assert index.layout.file_identity("utils.py", root / "utils.py") == ("utils", "utils", root / "utils.py")
+    assert index.layout.file_identity("src/utils.py", root / "src/utils.py") == (
         "utils",
         "utils.<src/utils.py>",
         root / "utils.py",
     )
-    assert index.file_identity("pkg/mod.pyi", root / "pkg/mod.pyi")[1] == "pkg.mod.<pkg/mod.pyi>"
+    assert index.layout.file_identity("pkg/mod.pyi", root / "pkg/mod.pyi")[1] == "pkg.mod.<pkg/mod.pyi>"
     # A stub with no module beside it is what an import finds, so it owns its location.
-    assert index.file_identity("pkg/ext.pyi", root / "pkg/ext.pyi") == ("pkg.ext", "pkg.ext", root / "pkg/ext.pyi")
+    assert index.layout.file_identity("pkg/ext.pyi", root / "pkg/ext.pyi") == (
+        "pkg.ext",
+        "pkg.ext",
+        root / "pkg/ext.pyi",
+    )
     # Every spelling of an import names the file it finds by that file's own id.
-    assert index.canonical_module("src.utils") == "utils.<src/utils.py>"
-    assert index.canonical_module("utils") == "utils"
-    assert index.canonical_module("missing.mod") == "missing.mod"
+    assert index.layout.canonical_module("src.utils") == "utils.<src/utils.py>"
+    assert index.layout.canonical_module("utils") == "utils"
+    assert index.layout.canonical_module("missing.mod") == "missing.mod"
     # A path-qualified id is never probed as a dotted name.
-    assert index.module_file("utils.<src/utils.py>") is None
+    assert index.layout.module_file("utils.<src/utils.py>") is None
 
 
 def test_a_loser_resolves_its_own_names_to_itself(worker: ModuleType, project: Any) -> None:
@@ -172,7 +188,15 @@ def test_a_present_pyproject_is_a_shared_read_by_its_hash(worker: ModuleType, pr
     """The pyproject decides the roots whether or not discovery records it, so its bytes are the request's read."""
     root = project({"pyproject.toml": '[tool.setuptools.packages.find]\nwhere = ["lib"]\n', "lib/a.py": ""})
     emitted: list[dict[str, Any]] = []
-    result = worker.scan({"root": str(root), "files": ["lib/a.py"], "source_files": ["lib/a.py"]}, emitted.append)
+    result = worker.scan(
+        {
+            "root": str(root),
+            "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+            "files": ["lib/a.py"],
+            "source_files": ["lib/a.py"],
+        },
+        emitted.append,
+    )
 
     digest = hashlib.sha256((root / "pyproject.toml").read_bytes()).hexdigest()
     assert result["reads"]["pyproject.toml"] == result["input_hashes"]["pyproject.toml"] == digest

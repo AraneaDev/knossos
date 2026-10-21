@@ -16,6 +16,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -28,7 +29,7 @@ final class LaravelTest extends KnossosTestCase
         $discovery = (new ProjectDiscoverer(new DiscoveryConfig([$root])))->discover($root);
         $files = array_map(fn($file): string => $file->relativePath, $discovery->files);
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => $files,
             'frameworks' => ['laravel'],
@@ -82,7 +83,7 @@ final class LaravelTest extends KnossosTestCase
         );
 
         $plain = $this->phpWorkerClient();
-        $plainRoutes = iterator_to_array($plain->scan(['root' => $root, 'files' => ['routes/web.php']]));
+        $plainRoutes = iterator_to_array($plain->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['routes/web.php']]));
         $plain->shutdown();
         assertSame([], array_values(array_filter(
             $plainRoutes[0]->nodes,

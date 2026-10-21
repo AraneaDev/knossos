@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -23,7 +24,7 @@ final class NestJsTest extends KnossosTestCase
         $root = self::repositoryRoot() . '/tests/Fixtures/nest';
         $files = ['src/app.module.ts', 'src/cats.controller.ts', 'src/cats.service.ts'];
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => $files, 'config_files' => ['tsconfig.json']]));
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => $files, 'config_files' => ['tsconfig.json']]));
         $client->shutdown();
         $nodes = array_merge(...array_map(fn(ScanContribution $item): array => $item->nodes, $contributions));
         $edges = array_merge(...array_map(fn(ScanContribution $item): array => $item->edges, $contributions));
@@ -137,7 +138,7 @@ final class NestJsTest extends KnossosTestCase
         }
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]));
             $client->shutdown();
             $settings = [];
             foreach ($contributions as $contribution) {

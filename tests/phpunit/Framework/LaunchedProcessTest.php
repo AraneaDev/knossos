@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Framework;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PDO;
 
 use function PHPUnit\Framework\assertContains;
@@ -164,7 +165,7 @@ final class LaunchedProcessTest extends KnossosTestCase
         ]));
         try {
             $client = $this->typescriptWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['src/runner.js']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['src/runner.js']]));
             $client->shutdown();
             $targets = [];
             foreach ($contributions as $contribution) {

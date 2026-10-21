@@ -46,7 +46,7 @@ fn an_empty_scan_emits_no_contributions() {
         "jsonrpc": "2.0",
         "id": 2,
         "method": "scan",
-        "params": {"root": root.to_str().unwrap(), "files": []},
+        "params": {"limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": root.to_str().unwrap(), "files": []},
     });
     let replies = exchange(&[&request.to_string()]);
 
@@ -88,7 +88,7 @@ fn a_scan_outside_the_root_is_refused() {
         "jsonrpc": "2.0",
         "id": 6,
         "method": "scan",
-        "params": {"root": root.to_str().unwrap(), "files": ["../escape.rs"]},
+        "params": {"limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": root.to_str().unwrap(), "files": ["../escape.rs"]},
     });
     let replies = exchange(&[&request.to_string()]);
 
@@ -109,7 +109,7 @@ fn assert_scan_path_refused(id: i64, file: &str) {
         "jsonrpc": "2.0",
         "id": id,
         "method": "scan",
-        "params": {"root": root.to_str().unwrap(), "files": [file]},
+        "params": {"limits": {"max_files": 100000, "max_file_bytes": 2000000}, "root": root.to_str().unwrap(), "files": [file]},
     });
     let replies = exchange(&[&request.to_string()]);
 

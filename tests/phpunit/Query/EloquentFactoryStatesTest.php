@@ -105,7 +105,8 @@ final class EloquentFactoryStatesTest extends KnossosTestCase
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
             $queries = ArchitectureQueryService::forDatabase($pdo);
             $usages = static fn(string $symbol): int => count($queries->listUsages($projectId, $symbol)->data['usages'] ?? []);
-            self::assertSame(2, $usages('Database\\Factories\\CatalogueItemFactory::bundle'), 'bundle, through newFactory()');
+            // Two calls from one test method are one edge: the core collapses repeated edges.
+            self::assertSame(1, $usages('Database\\Factories\\CatalogueItemFactory::bundle'), 'bundle, through newFactory()');
             self::assertSame(1, $usages('Database\\Factories\\Account\\UserFactory::admin'), 'admin, through the naming convention');
             self::assertSame(0, $usages('Database\\Factories\\CatalogueItemFactory::retired'));
             // What create() and make() build is the model, held in a variable or read inline;

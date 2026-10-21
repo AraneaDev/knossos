@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -22,7 +23,7 @@ final class TypescriptMethodTableTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-method-tables',
                 'files' => ['src/named.js', 'src/registry.js', 'src/steps.js'],
                 'config_files' => ['tsconfig.json'],
@@ -30,13 +31,24 @@ final class TypescriptMethodTableTest extends KnossosTestCase
         } finally {
             $client->shutdown();
         }
-        $uses = [];
+        // A reference per site, collapsed as the core collapses them: the
+        // surest occurrence of each source and target decides.
+        $rank = ['possible' => 1, 'probable' => 2, 'certain' => 3];
+        $surest = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->edges as $edge) {
                 if ($edge->kind === 'references' && str_contains($edge->targetReference, '::')) {
-                    $uses[] = $edge->confidence->value . ' ' . $edge->sourceReference . ' -> ' . $edge->targetReference;
+                    $pair = $edge->sourceReference . ' -> ' . $edge->targetReference;
+                    $confidence = $edge->confidence->value;
+                    if (!isset($surest[$pair]) || $rank[$confidence] > $rank[$surest[$pair]]) {
+                        $surest[$pair] = $confidence;
+                    }
                 }
             }
+        }
+        $uses = [];
+        foreach ($surest as $pair => $confidence) {
+            $uses[] = $confidence . ' ' . $pair;
         }
         sort($uses);
 

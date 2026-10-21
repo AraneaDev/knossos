@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -66,7 +67,7 @@ final class TypescriptWorkerEdgeCasesTest extends KnossosTestCase
         );
 
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $this->root,
             'files' => ['src/entry.ts', 'other/legacy.ts'],
         ]));
@@ -102,7 +103,7 @@ final class TypescriptWorkerEdgeCasesTest extends KnossosTestCase
         ]));
 
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $this->root,
             'files' => ['lib/node_modules/nestedpkg/index.ts'],
         ]));
@@ -137,7 +138,7 @@ final class TypescriptWorkerEdgeCasesTest extends KnossosTestCase
         ]));
 
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $this->root,
             'files' => ['src/nested/uselink.ts', 'src/real/target.ts'],
         ]));
@@ -192,7 +193,7 @@ final class TypescriptWorkerEdgeCasesTest extends KnossosTestCase
         ]));
 
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $this->root,
             'files' => ['vendor/importFirst.ts', 'importSecond.ts', 'copies/second/index.ts'],
         ]));

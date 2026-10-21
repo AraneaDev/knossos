@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // A discovered file that is absent, or has become a link, while a request
 // resolves or reads it, and is restored before the scan re-checks the tree. The
@@ -37,7 +38,7 @@ const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 function scan(root, files, extra = {}) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
-        { root, files, ...extra },
+        { limits: SCAN_LIMITS, root, files, ...extra },
         (contribution) => contributions.push(contribution),
     );
     return { result, contributions };
