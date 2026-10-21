@@ -47,6 +47,7 @@ number that is enforced.
 | TypeScript/JavaScript    |        96% |        88.8% | 97.3% functions, 96% statements     |
 | Python scanner           |      96.4% |      tracked | branch data is in the total         |
 | Rust scanner             |      93.2% |          n/a | `cargo llvm-cov --fail-under-lines` |
+| Claude Code mod          |      96.9% |        88.2% | 94.2% functions, 95.4% statements   |
 
 PHP uses PCOV, which records executable-line coverage but not branch coverage.
 The JavaScript V8 report therefore carries the explicit ratcheted branch floor,
@@ -96,9 +97,15 @@ in `GitProcessRunnerHardeningTest`, needs root, and the suite runs as the
 Make a skipped test run rather than raise the budget.
 
 [Quality gates](quality.md#profiles-and-lanes) explains why coverage is one lane. The
-Claude Code mod is covered by its own suites (see
-[how the mod is built](mod-internals.md#the-tests)) and sits outside these
-gates.
+Claude Code mod (`hooks/lib`, `hooks/mod`) is measured by its own vitest suites
+(see [how the mod is built](mod-internals.md#the-tests)) in the same profile, and
+held to the `mod` floors in the table above: `tools/coverage` hands them to vitest
+from the same budgets file, and a shortfall fails the run like any other floor.
+
+`php tools/documentation-check.php` compares every number these tables and the
+skipped-test budget above restate with `coverage-budgets.json`, so a floor
+raised in the file without the page (or the other way round) fails the
+documentation check.
 
 The only first-party exclusions are `src/Application.php` and
 `src/Runtime/Version.php`. The first is a CLI composition/dispatch adapter whose

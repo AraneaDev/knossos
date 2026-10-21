@@ -42,6 +42,28 @@ const RATE_LIMIT_MAX_RETRIES = 2;
  * quality image once left out plugins/) cannot pass without checking it.
  */
 const DOCUMENTATION_ROOTS = ['docs', 'skills', 'plugins'];
+/**
+ * Where a contributor page restates a budget: the page, the budget file, and
+ * for each statement a pattern whose capture groups, in order, hold the number
+ * every dotted key in the matching entry of the key list holds.
+ */
+const RESTATED_BUDGETS = [
+    'docs/contribute/quality.md' => ['maintainability-budgets.json', [
+        ['/no more than (\d+) normalized cross-file duplicate blocks/', [['cross_file_duplicate_blocks']]],
+        ['/complexity no higher than (\d+) and function length no\s+higher than (\d+) lines/', [['max_php_function_complexity'], ['max_php_function_lines']]],
+        ['/dependency fanout no higher than (\d+)/', [['max_dependency_fanout']]],
+        ['/docstring coverage of ([\d.]+)% for `src`, `workers-php`, `tools` and overall/', [['min_docstring_coverage.src', 'min_docstring_coverage.workers-php', 'min_docstring_coverage.tools', 'min_docstring_coverage.overall']]],
+        ['/type-docblock coverage of ([\d.]+)%/', [['min_type_docblock_coverage']]],
+    ]],
+    'docs/contribute/coverage.md' => ['coverage-budgets.json', [
+        ['/^\| PHP core and PHP scanner\s*\|\s*([\d.]+)%\s*\|/m', [['php.aggregate_lines']]],
+        ['/^\| TypeScript\/JavaScript\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)% functions, ([\d.]+)% statements/m', [['typescript.lines'], ['typescript.branches'], ['typescript.functions'], ['typescript.statements']]],
+        ['/^\| Python scanner\s*\|\s*([\d.]+)%\s*\|/m', [['python.lines']]],
+        ['/^\| Rust scanner\s*\|\s*([\d.]+)%\s*\|/m', [['rust.lines']]],
+        ['/^\| Claude Code mod\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)% functions, ([\d.]+)% statements/m', [['mod.lines'], ['mod.branches'], ['mod.functions'], ['mod.statements']]],
+        ['/The budget is (\d+), the count/', [['skipped_tests']]],
+    ]],
+];
 $failures = [];
 $paths = array_values(array_filter([$root . '/README.md', $root . '/CONTRIBUTING.md'], 'is_file'));
 foreach (DOCUMENTATION_ROOTS as $documentationRoot) {
@@ -97,6 +119,7 @@ foreach ($paths as $path) {
         }
     }
 }
+$failures = [...$failures, ...restatedBudgetDrift($root)];
 $fetched = array_values(array_filter(array_keys($external), static function (string $url): bool {
     $host = strtolower((string) parse_url($url, PHP_URL_HOST));
 
@@ -303,4 +326,96 @@ function checkExternalUrl(string $url): array
         sleep($delay);
         $waited += $delay;
     }
+}
+
+/**
+ * Every number a contributor page states for a budget that the budget file
+ * does not hold, and every statement the page no longer makes. The PHP
+ * component floors are compared as a whole table, both ways. A tree that lacks
+ * the page or the file (a test fixture) has nothing to compare.
+ *
+ * @return list<string>
+ */
+function restatedBudgetDrift(string $root): array
+{
+    $failures = [];
+    foreach (RESTATED_BUDGETS as $page => [$file, $statements]) {
+        if (!is_file($root . '/' . $page) || !is_file($root . '/' . $file)) {
+            continue;
+        }
+        $contents = (string) file_get_contents($root . '/' . $page);
+        $budgets = json_decode((string) file_get_contents($root . '/' . $file), true);
+        if (!is_array($budgets)) {
+            $failures[] = $file . ': not a JSON object';
+            continue;
+        }
+        foreach ($statements as [$pattern, $keys]) {
+            if (preg_match($pattern, $contents, $match) !== 1) {
+                $failures[] = sprintf('%s: no longer states %s; update the page or RESTATED_BUDGETS in tools/documentation-check.php', $page, implode(', ', array_merge(...$keys)));
+                continue;
+            }
+            foreach ($keys as $group => $sameKeys) {
+                foreach ($sameKeys as $key) {
+                    $value = budgetValueAt($budgets, $key);
+                    if (!is_int($value) && !is_float($value) || abs((float) $match[$group + 1] - $value) > 1e-9) {
+                        $failures[] = sprintf('%s: states %s for %s, %s holds %s', $page, $match[$group + 1], $key, $file, json_encode($value));
+                    }
+                }
+            }
+        }
+        if ($page === 'docs/contribute/coverage.md') {
+            $failures = [...$failures, ...componentFloorDrift($page, $contents, $file, $budgets)];
+        }
+    }
+
+    return $failures;
+}
+
+/**
+ * The PHP component floor table on the coverage page against `php.components`:
+ * the same components, each with the same floor.
+ *
+ * @param array<mixed> $budgets
+ * @return list<string>
+ */
+function componentFloorDrift(string $page, string $contents, string $file, array $budgets): array
+{
+    preg_match_all('/^\| `([a-z-]+)`\s*\|\s*([\d.]+)%\s*\|$/m', $contents, $rows, PREG_SET_ORDER);
+    $stated = [];
+    foreach ($rows as $row) {
+        $stated[$row[1]] = (float) $row[2];
+    }
+    $held = budgetValueAt($budgets, 'php.components');
+    $held = is_array($held) ? $held : [];
+    $failures = [];
+    foreach ($held as $component => $floor) {
+        if (!array_key_exists($component, $stated)) {
+            $failures[] = sprintf('%s: has no row for the component floor %s in %s', $page, $component, $file);
+        } elseif (!is_int($floor) && !is_float($floor) || abs($stated[$component] - $floor) > 1e-9) {
+            $failures[] = sprintf('%s: states %s%% for the component %s, %s holds %s', $page, $stated[$component], $component, $file, json_encode($floor));
+        }
+    }
+    foreach (array_diff_key($stated, $held) as $component => $floor) {
+        $failures[] = sprintf('%s: states a floor for the component %s, which %s does not have', $page, $component, $file);
+    }
+
+    return $failures;
+}
+
+/**
+ * The value at a dotted key such as `typescript.lines`, or null when any step is missing.
+ *
+ * @param array<mixed> $budgets
+ */
+function budgetValueAt(array $budgets, string $key): mixed
+{
+    $value = $budgets;
+    foreach (explode('.', $key) as $step) {
+        if (!is_array($value) || !array_key_exists($step, $value)) {
+            return null;
+        }
+        $value = $value[$step];
+    }
+
+    return $value;
 }
