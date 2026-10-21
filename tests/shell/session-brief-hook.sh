@@ -106,17 +106,26 @@ expect_silent_success "no timeout binary available" \
 rm -rf "$tmp" "$EMPTY_DIR" "$EMPTY_PROJ"
 # A hook installed without its library must still be silent.
 NOLIB=$(mktemp -d)
-cp "$HOOK" "$NOLIB/session-brief.sh"
+cp "$HOOK" "${HOOK%/*}/guard.sh" "$NOLIB/"
 printf '#!/bin/sh\necho brief\n' > "$NOLIB/knossos"
 chmod +x "$NOLIB/knossos"
 expect_silent_success "missing lib.sh" \
     env KNOSSOS_BIN="$NOLIB/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$NOLIB/session-brief.sh"
 rm -rf "$NOLIB"
+# So must one installed without the guard it sources before anything else.
+NOGUARD=$(mktemp -d)
+cp "$HOOK" "${HOOK%/*}/lib.sh" "$NOGUARD/"
+printf '#!/bin/sh\necho brief\n' > "$NOGUARD/knossos"
+chmod +x "$NOGUARD/knossos"
+expect_silent_success "missing guard.sh" \
+    env KNOSSOS_BIN="$NOGUARD/knossos" CLAUDE_PROJECT_DIR=/tmp sh "$NOGUARD/session-brief.sh"
+rm -rf "$NOGUARD"
 
 # The container hook names the mounted project as git's safe directory: the container's user does not own it.
 BOX=$(mktemp -d)
 mkdir -p "$BOX/bin" "$BOX/proj"
 sed -e "s|__KNOSSOS_IMAGE__|img:1|" -e "s|__KNOSSOS_DATA__|/srv/data|" "${HOOK%/*}/session-brief-container.sh" > "$BOX/hook.sh"
+cp "${HOOK%/*}/guard.sh" "$BOX/guard.sh"
 cat > "$BOX/bin/docker" <<'STUB'
 #!/bin/sh
 if [ "$1" = rm ]; then printf '%s\n' "$*" >> "${0%/*}/removed"; exit 0; fi
@@ -206,6 +215,7 @@ printf '#!/bin/sh\nexit 0\n' > "$planted/trusted/knossos"
 printf '#!/bin/sh\nexit 0\n' > "$planted/dockerbin/docker"
 chmod +x "$planted/trusted/knossos" "$planted/dockerbin/docker"
 sed -e "s|__KNOSSOS_IMAGE__|img:1|" -e "s|__KNOSSOS_DATA__|/srv/data|" "${HOOK%/*}/session-brief-container.sh" > "$planted/container.sh"
+cp "${HOOK%/*}/guard.sh" "$planted/guard.sh"
 expect_no_planted_run() {
     label=$1; shift
     proj="$planted/proj"

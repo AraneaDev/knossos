@@ -41,7 +41,8 @@ beforeAll(() => {
   mkdirSync(join(work, 'bin'), { recursive: true })
   // The wrapper hands the binary the physical path: a TMPDIR behind a link differs from the spelling given.
   project = realpathSync(join(work, 'project'))
-  // The local wrapper beside its library, and the container variant with its placeholders filled, each where the mod looks for it.
+  // The local wrapper beside its library, and the container variant with its placeholders filled, each where the mod looks for it
+  // and each beside the guard and the argument checks it sources.
   for (const [dir, script, sed] of [
     ['local', 'knossos-run.sh', false],
     ['container', 'knossos-run-container.sh', true],
@@ -49,7 +50,8 @@ beforeAll(() => {
     mkdirSync(join(work, dir, 'hooks/scripts'), { recursive: true })
     const text = readFileSync(join(SCRIPTS, script), 'utf8')
     writeFileSync(join(work, dir, 'hooks/scripts/knossos-run.sh'), sed ? text.replace(/__KNOSSOS_IMAGE__/g, 'img:1').replace(/__KNOSSOS_DATA__/g, '/srv/data') : text)
-    if (!sed) writeFileSync(join(work, dir, 'hooks/scripts/lib.sh'), readFileSync(join(SCRIPTS, 'lib.sh'), 'utf8'))
+    const sourced = sed ? ['guard.sh', 'run-args.sh'] : ['guard.sh', 'run-args.sh', 'lib.sh']
+    for (const name of sourced) writeFileSync(join(work, dir, 'hooks/scripts', name), readFileSync(join(SCRIPTS, name), 'utf8'))
   }
   // Both stubs write their arguments, one run a line, and answer something.
   for (const name of ['knossos', 'docker']) writeFileSync(join(work, 'bin', name), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(work, 'ran')}'\nprintf '%s\\n' '{"status":"ok"}'\n`, { mode: 0o755 })
@@ -149,9 +151,9 @@ describe.each(['local', 'container'] as const)('every call the mod makes, throug
 })
 
 describe('the wrappers and the engine test agree on what runs', () => {
-  /** The subcommands a wrapper accepts, and each one's default bound, from its `case "$SUBCOMMAND"` list. */
-  const limitsOf = (script: string): Map<string, string> => {
-    const text = readFileSync(join(SCRIPTS, script), 'utf8')
+  /** The subcommands the wrappers accept, and each one's default bound, from the `case "$SUBCOMMAND"` list both source. */
+  const limitsOf = (): Map<string, string> => {
+    const text = readFileSync(join(SCRIPTS, 'run-args.sh'), 'utf8')
     const start = text.indexOf('case "$SUBCOMMAND" in\n')
     const block = text.slice(start, text.indexOf('\nesac', start))
     const limits = new Map<string, string>()
@@ -166,18 +168,135 @@ describe('the wrappers and the engine test agree on what runs', () => {
     const test = readFileSync(join(REPO, 'hooks/register.test.ts'), 'utf8')
     const answered = [...test.matchAll(/^\s+\['([a-z-]+)', queues\.[a-z]+\],?$/gm)].map(m => m[1]!)
     expect(answered.length).toBeGreaterThan(15)
-    for (const script of ['knossos-run.sh', 'knossos-run-container.sh']) {
-      const accepted = limitsOf(script)
-      expect(answered.filter(sub => !accepted.has(sub)), script).toEqual([])
-    }
+    const accepted = limitsOf()
+    expect(answered.filter(sub => !accepted.has(sub))).toEqual([])
+    expect(accepted.size).toBeGreaterThan(20)
   })
 
-  it('the local and the container wrapper accept the same subcommands with the same bounds', () => {
-    expect(Object.fromEntries(limitsOf('knossos-run-container.sh'))).toEqual(Object.fromEntries(limitsOf('knossos-run.sh')))
-    expect(limitsOf('knossos-run.sh').size).toBeGreaterThan(20)
+  it('both wrappers source the one copy of the argument checks', () => {
+    for (const script of ['knossos-run.sh', 'knossos-run-container.sh']) {
+      const text = readFileSync(join(SCRIPTS, script), 'utf8')
+      expect(text, script).toContain('. "$KNOSSOS_HOOK_DIR/run-args.sh"')
+      expect(text, script).not.toContain('case "$SUBCOMMAND" in\n    turn-brief)')
+    }
   })
 
   it('the watcher is started with the poll interval from the options', () => {
     expect(watchArgs(mod.watch.pollMs)).toEqual(['--poll-ms=1500'])
+  })
+})
+
+/**
+ * The local and the container wrapper let through exactly the same calls:
+ * each subcommand (and one neither knows) is run through both with every
+ * argument list below, valid and not, and what each did must agree. Either
+ * the same refusal, the same silence, or the binary run with the same
+ * arguments (for the container, what follows the image on docker's argv).
+ */
+describe('the local and the container wrapper accept and refuse the same arguments', () => {
+  const ARGUMENTS: string[][] = [
+    [],
+    ['x'],
+    ['-x'],
+    ['--db=/x'],
+    ['App\\Greeter'],
+    ['src/A.php'],
+    ['/etc/passwd'],
+    ['../x'],
+    ['src/../../x'],
+    ['src/A.php', 'x'],
+    ['--fan-in-threshold=20'],
+    ['--query=dash svc'],
+    ['--query='],
+    ['--query=a\tb'],
+    ['--component=App\\A'],
+    ['--component='],
+    ['--component=App\\A', 'x'],
+    ['--component=App\\A', '--value=a note'],
+    ['--component=App\\A', '--value=a note', '--execute'],
+    ['--component=App\\A', '--value='],
+    ['--component=App\\A', '--value=a\nb', '--execute'],
+    ['--component=App\\A', '--execute'],
+    ['--component=App\\A', '--execute', '--execute'],
+    ['--component=App\\A', '--remove'],
+    ['--component=App\\A', '--remove', '--execute'],
+    ['--component=App\\A', '--remove', '--author=model', '--kind=note', '--execute'],
+    ['--component=App\\A', '--remove', '--kind=note', '--author=model'],
+    ['--component=App\\A', '--remove', '--kind=check'],
+    ['--component=App\\A', '--remove', '--author=other'],
+    ['--component=App\\A', '--to=App\\B'],
+    ['--component=App\\A', '--to=App\\B', '--author=user', '--kind=intentional', '--execute'],
+    ['--component=App\\A', '--to='],
+    ['--from=a', '--to=b'],
+    ['--to=b', '--from=a'],
+    ['--from=a', '--to=b', '--db=/x'],
+    ['--filter=stale'],
+    ['--filter=stale', '--text=cache'],
+    ['--text=cache', '--filter=stale'],
+    ['--filter=other'],
+    ['--text=cache'],
+    ['--poll-ms=1500'],
+    ['--poll-ms=1e3'],
+    ['--poll-ms='],
+    ['--since=scan_ab12'],
+    ['--since=a b'],
+    ['--working-tree'],
+    [`--rev=${REV}`, '--file=src/a b.php'],
+    [`--rev=${REV}`, '--file=../x'],
+    [`--rev=${REV}`, '--file=/etc/passwd'],
+    ['--rev=0123', '--file=src/a.php'],
+    [`--rev=${REV.toUpperCase()}`, '--file=src/a.php'],
+    ['--execute'],
+    [`--component=${'a'.repeat(521)}`],
+  ]
+
+  /** Stubs for knossos and docker that write each run to the file the run names, so runs in parallel keep apart. */
+  const STUBS = (): string => join(work, 'cmp-bin')
+  beforeAll(() => {
+    mkdirSync(STUBS(), { recursive: true })
+    for (const name of ['knossos', 'docker']) writeFileSync(join(STUBS(), name), `#!/bin/sh\n{ printf '%s\\037' "$@"; printf '\\036'; } >> "$KNOSSOS_STUB_LOG"\nprintf '%s\\n' '{"status":"ok"}'\n`, { mode: 0o755 })
+  })
+
+  let runs = 0
+  /** One run of a wrapper: its stdout, and the argv the binary got (for docker, what follows the image). */
+  const outcome = (variant: 'local' | 'container', argv: string[], env: Record<string, string>): Promise<string> =>
+    new Promise(resolve => {
+      const log = join(work, `ran-${variant}-${++runs}`)
+      execFile(
+        'sh',
+        [join(work, variant, 'hooks/scripts/knossos-run.sh'), ...argv],
+        { env: { ...process.env, ...env, KNOSSOS_STUB_LOG: log, KNOSSOS_BIN: join(STUBS(), 'knossos'), KNOSSOS_ROOTS_FILE: join(work, 'roots.json'), PATH: `${STUBS()}:${process.env.PATH ?? ''}` }, timeout: 20_000 },
+        (_err, stdout) => {
+          // One run a record (\x1e), one argument a unit (\x1f): an argument may hold a line break.
+          const records = existsSync(log) ? readFileSync(log, 'utf8').split('\x1e').filter(r => r !== '') : []
+          rmSync(log, { force: true })
+          const binary = records.map(r => r.split('\x1f').slice(0, -1)).map(argv => (variant === 'local' ? argv : argv.slice(argv.indexOf('img:1') + 1)))
+          resolve(JSON.stringify({ stdout, binary }))
+        },
+      )
+    })
+
+  /** Every subcommand both accept, and one neither knows. */
+  const SUBCOMMANDS = [...new Set([...readFileSync(join(SCRIPTS, 'run-args.sh'), 'utf8').matchAll(/^\s+([a-z|-]+)\)\s*LIMIT=/gm)].flatMap(m => m[1]!.split('|')))]
+
+  it('covers every subcommand', () => {
+    expect(SUBCOMMANDS.length).toBeGreaterThan(20)
+  })
+
+  it.each([...SUBCOMMANDS, 'bogus'])('%s', async sub => {
+    const cases = ARGUMENTS.map(args => [sub, project, ...args])
+    const results = await Promise.all(cases.flatMap(argv => [outcome('local', argv, {}), outcome('container', argv, {})]))
+    for (let i = 0; i < cases.length; i++) expect(results[2 * i + 1], cases[i]!.join(' ')).toBe(results[2 * i])
+    // Not vacuous: something was let through, and something refused but where a subcommand checks no options.
+    expect(results.some(r => r.includes('"binary":[['))).toBe(sub !== 'bogus')
+    expect(results.some(r => r.includes('refused'))).toBe(!['dashboard', 'turn-brief'].includes(sub))
+  }, 60_000)
+
+  it.each(['0', '007', 'abc', '86401', '999999999999'])('KNOSSOS_RUN_TIMEOUT=%s', async limit => {
+    for (const sub of ['dashboard', 'watch']) {
+      const argv = [sub, project]
+      const [local, container] = await Promise.all([outcome('local', argv, { KNOSSOS_RUN_TIMEOUT: limit }), outcome('container', argv, { KNOSSOS_RUN_TIMEOUT: limit })])
+      expect(container, `${sub} ${limit}`).toBe(local)
+    }
   })
 })

@@ -1,9 +1,11 @@
 # The files each linter in tools/quality reads, derived from `git ls-files`
 # by tools/lint-files.php. Regenerate it with `php tools/lint-files.php --write`;
 # the static lane refuses a copy that differs from what git tracks.
+shell	hooks/scripts/guard.sh
 shell	hooks/scripts/knossos-run-container.sh
 shell	hooks/scripts/knossos-run.sh
 shell	hooks/scripts/lib.sh
+shell	hooks/scripts/run-args.sh
 shell	hooks/scripts/session-brief-container.sh
 shell	hooks/scripts/session-brief.sh
 shell	tests/shell/check-commit-style.sh
