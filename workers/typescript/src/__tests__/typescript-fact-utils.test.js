@@ -101,7 +101,7 @@ describe("addFrameworkRoute", () => {
                 "src/cats.ts#CatsController.find",
                 "find",
                 node,
-                { framework: "nestjs", http_methods: ["GET"], path: "/cats" },
+                { framework: "nestjs", methods: ["GET"], path: "/cats" },
                 "framework_convention",
             ],
         ]);
@@ -115,5 +115,23 @@ describe("addFrameworkRoute", () => {
                 "framework_convention",
             ],
         ]);
+    });
+
+    it("names a NestJS @All() route's methods ANY, as every worker does", () => {
+        const nodes = [];
+        const context = { addNode: (...args) => nodes.push(args), addEdge: () => {} };
+
+        addFrameworkRoute(context, {
+            id: "n2",
+            canonical: "ALL /cats => C.any",
+            displayName: "ALL /cats",
+            node: {},
+            framework: "nestjs",
+            httpMethod: "ALL",
+            path: "/cats",
+            target: "n-handler",
+        });
+
+        expect(nodes[0][5]).toEqual({ framework: "nestjs", methods: ["ANY"], path: "/cats" });
     });
 });

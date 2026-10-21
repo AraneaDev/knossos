@@ -908,6 +908,7 @@ php	tests/phpunit/Scanner/PythonReadAttributionTest.php
 php	tests/phpunit/Scanner/PythonScannerTest.php
 php	tests/phpunit/Scanner/PythonWorkerReadsTest.php
 php	tests/phpunit/Scanner/ReturnedReceiverTest.php
+php	tests/phpunit/Scanner/RouteAttributesAgreementTest.php
 php	tests/phpunit/Scanner/RustModuleIdentityTest.php
 php	tests/phpunit/Scanner/RustReadAttributionTest.php
 php	tests/phpunit/Scanner/RustWorkerTest.php
@@ -996,6 +997,7 @@ php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/Processes.php
 php	tests/phpunit/Support/QueryCountingStatement.php
 php	tests/phpunit/Support/RowCountingStatement.php
+php	tests/phpunit/Support/SchemaSubset.php
 php	tests/phpunit/Support/SupportTraitsTest.php
 php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempTrees.php

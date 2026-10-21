@@ -60,7 +60,7 @@ final readonly class RouteTemplates
                 continue;
             }
             $attributes = $node['attributes'];
-            $path = $attributes['uri'] ?? $attributes['path'] ?? null;
+            $path = $attributes['path'] ?? null;
             if (!is_string($path)) {
                 continue;
             }
@@ -114,20 +114,19 @@ final readonly class RouteTemplates
     }
 
     /**
-     * The upper-case methods a route answers, or ANY when it names none.
+     * The methods a route answers, upper case as the contribution schema
+     * requires, or ANY for a route that names none.
      *
      * @param array<string, mixed> $attributes
      * @return list<string>
      */
     private static function methods(array $attributes): array
     {
-        $methods = $attributes['methods'] ?? $attributes['http_methods'] ?? ['ANY'];
-        $methods = is_array($methods) && $methods !== [] ? $methods : ['ANY'];
+        $methods = $attributes['methods'] ?? null;
 
-        return array_values(array_unique(array_map(
-            static fn(mixed $method): string => ($upper = strtoupper((string) $method)) === 'ALL' ? 'ANY' : $upper,
-            $methods,
-        )));
+        return is_array($methods) && $methods !== []
+            ? array_values(array_unique(array_map('strval', $methods)))
+            : ['ANY'];
     }
 
     /**

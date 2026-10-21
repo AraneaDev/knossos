@@ -572,6 +572,7 @@ class DjangoFactEnricher:
                 node,
                 {
                     "framework": "django",
+                    "methods": ["ANY"],
                     "path": path,
                     "name": keyword_string(node, "basename"),
                     "router": ref("router", f"{self.module}.{variable}"),
@@ -611,6 +612,7 @@ class DjangoFactEnricher:
             expression,
             {
                 "framework": "django",
+                "methods": ["ANY"],
                 "path": path,
                 "name": keyword_string(expression, "name"),
                 "module": self.module,

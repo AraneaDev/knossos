@@ -54,7 +54,7 @@ final class LaravelTest extends KnossosTestCase
         ));
         assertSame(1, count($matchRoute));
         assertSame(['GET', 'POST'], $matchRoute[0]->attributes['methods']);
-        assertSame('/matched', $matchRoute[0]->attributes['uri']);
+        assertSame('/matched', $matchRoute[0]->attributes['path']);
         assertSame('App\\Http\\Controllers\\CheckoutController::show', $matchRoute[0]->attributes['action']);
 
         $edgeTuples = array_map(

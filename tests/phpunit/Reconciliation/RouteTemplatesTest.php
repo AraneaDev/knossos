@@ -14,7 +14,7 @@ final class RouteTemplatesTest extends KnossosTestCase
     public function testAMountedRouterPrefixesItsRoutes(): void
     {
         $nodes = [
-            'route-1' => self::route('route-1', ['framework' => 'fastapi', 'methods' => ['get'], 'path' => '/items/{id}', 'router' => 'py:router:app.items.router']),
+            'route-1' => self::route('route-1', ['framework' => 'fastapi', 'methods' => ['GET'], 'path' => '/items/{id}', 'router' => 'py:router:app.items.router']),
             'r-items' => self::router('r-items', 'py:router:app.items.router'),
         ];
         $edges = ['m1' => self::mount('m1', 'r-items', '/v1', 'app')];
@@ -81,9 +81,9 @@ final class RouteTemplatesTest extends KnossosTestCase
     }
 
     #[Group('reconciliation')]
-    public function testAllMeansAnyMethod(): void
+    public function testARouteThatNamesNoMethodAnswersAny(): void
     {
-        $nodes = ['route-1' => self::route('route-1', ['framework' => 'nestjs', 'http_methods' => ['ALL'], 'path' => '/cats'])];
+        $nodes = ['route-1' => self::route('route-1', ['framework' => 'nestjs', 'methods' => [], 'path' => '/cats'])];
 
         $routes = RouteTemplates::forRoutes($nodes, []);
 
@@ -191,10 +191,10 @@ final class RouteTemplatesTest extends KnossosTestCase
     public function testALaravelRouteFileThatAProviderMayLoadWithAPrefixIsUnknown(): void
     {
         $nodes = [
-            'web' => self::route('web', ['framework' => 'laravel', 'uri' => '/a']),
-            'admin' => self::route('admin', ['framework' => 'laravel', 'uri' => '/b']),
-            'nested' => self::route('nested', ['framework' => 'laravel', 'uri' => '/c']),
-            'elsewhere' => self::route('elsewhere', ['framework' => 'laravel', 'uri' => '/d']),
+            'web' => self::route('web', ['framework' => 'laravel', 'path' => '/a']),
+            'admin' => self::route('admin', ['framework' => 'laravel', 'path' => '/b']),
+            'nested' => self::route('nested', ['framework' => 'laravel', 'path' => '/c']),
+            'elsewhere' => self::route('elsewhere', ['framework' => 'laravel', 'path' => '/d']),
         ];
         $paths = ['web' => 'routes/web.php', 'admin' => 'routes/admin.php', 'nested' => 'app/routes/shop/v1.php', 'elsewhere' => 'app/Providers/Routes.php'];
 
@@ -239,7 +239,7 @@ final class RouteTemplatesTest extends KnossosTestCase
     #[Group('reconciliation')]
     public function testANestjsRouteTakesTheGlobalPrefixOnlyWhenOneLiteralPrefixIsSet(): void
     {
-        $route = self::route('r', ['framework' => 'nestjs', 'http_methods' => ['GET'], 'path' => '/users']);
+        $route = self::route('r', ['framework' => 'nestjs', 'methods' => ['GET'], 'path' => '/users']);
         $setting = static fn(string $id, ?string $prefix): array => [
             'id' => $id, 'kind' => 'setting', 'canonical_name' => $id . '#setGlobalPrefix',
             'attributes' => ['framework' => 'nestjs', 'global_prefix' => $prefix, 'exclude' => []], 'evidence_path' => 'src/main.ts',

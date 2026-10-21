@@ -150,6 +150,14 @@ The rule does not depend on the order facts arrive in, so a worker need not
 sort or merge its edges, and an incremental scan collapses exactly as a full
 scan does.
 
+#### Route nodes
+
+A `route` node carries the same three attributes whichever worker emits it,
+as `routeAttributes` in `schemas/scanner/v1/contribution.schema.json` states:
+`framework`, `methods` (the upper-case methods it answers, as a list, `ANY` for
+every method) and `path` (the path as the code declares it). The core reads only
+these names, so a route that spells them otherwise matches no endpoint.
+
 A contribution may also carry `content_hash`: the lowercase SHA-256 hex of the
 raw bytes the worker read for that contribution's file, exactly as they came
 off disk, before any decoding, byte-order-mark stripping or newline

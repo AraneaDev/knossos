@@ -377,7 +377,7 @@ final class SymfonyFactCollector extends NodeVisitorAbstract
         $this->facts->addNode($id, 'route', $canonical, implode('|', $methods) . ' ' . $uri, $route, [
             'framework' => 'symfony',
             'methods' => $methods,
-            'uri' => $uri,
+            'path' => $uri,
             'name' => $name,
         ]);
         $this->facts->addEdge('routes_to', $id, 'php:method:' . $handler, $route);
