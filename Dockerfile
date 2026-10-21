@@ -121,6 +121,36 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD ["php", "/opt/knossos/bin/knossos", "version", "--json"]
 
+# This commit's source that both the runtime and the quality image carry, in
+# one list: the two stages copy it from here, so neither can ship a tree the
+# other lacks. Nothing runs here. tools/runtime-image-key hashes exactly these
+# paths, and QualityDepsKeyTest holds the two lists to each other.
+#
+# `install-agent-plugin` materialises the plugin out of the installation it is
+# run from, reading the manifest, the hook scripts and the skill as templates,
+# so an image without them ships a command that cannot do its job. The quality
+# stage shellchecks the hook scripts as well, and cannot see a file the image
+# does not carry. `types` is the mod's API declaration, which the plugin
+# materialises and the quality stage's type-check reads. `web` is what
+# `knossos web` runs with node. Keep this list in step with PluginCommand's
+# DIRECTORIES, MANIFEST and COPIES, and with the scripts it reads by name.
+FROM scratch AS sources
+WORKDIR /opt/knossos
+COPY workers/php/src ./workers/php/src
+COPY workers/php/bin ./workers/php/bin
+COPY workers/typescript/src ./workers/typescript/src
+COPY workers/typescript/bin ./workers/typescript/bin
+COPY workers/python/bin ./workers/python/bin
+COPY bin ./bin
+COPY src ./src
+COPY migrations ./migrations
+COPY schemas ./schemas
+COPY .claude-plugin ./.claude-plugin
+COPY hooks ./hooks
+COPY web ./web
+COPY skills ./skills
+COPY types ./types
+
 # The shipped image: the dependencies above plus this commit's source. Nothing
 # here installs anything, so a source change rebuilds only these layers.
 FROM runtime_deps AS runtime
@@ -135,29 +165,8 @@ LABEL org.opencontainers.image.title="Knossos" \
       org.opencontainers.image.version="0.36.0"
 # x-release-please-end
 
-COPY workers/php/src ./workers/php/src
-COPY workers/php/bin ./workers/php/bin
-COPY workers/typescript/src ./workers/typescript/src
-COPY workers/typescript/bin ./workers/typescript/bin
-
-COPY workers/python/bin ./workers/python/bin
-
-COPY bin ./bin
-COPY src ./src
-COPY migrations ./migrations
-COPY schemas ./schemas
-# `install-agent-plugin` materialises the plugin out of the installation it is
-# run from, reading the manifest, the hook scripts and the skill as templates,
-# so an image without them ships a command that cannot do its job. The quality
-# stage shellchecks the hook scripts as well, and cannot see a file the image
-# does not carry. `types` is the mod's API declaration, which the plugin
-# materialises and the quality stage's type-check reads. Keep this list in step
-# with PluginCommand's DIRECTORIES, MANIFEST and COPIES, and with the scripts it
-# reads by name.
-COPY .claude-plugin ./.claude-plugin
-COPY hooks ./hooks
-COPY skills ./skills
-COPY types ./types
+# The source both images carry, from the sources stage above.
+COPY --from=sources /opt/knossos/ ./
 RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
     && composer dump-autoload --working-dir=workers/php --no-dev --optimize --no-interaction --no-scripts \
     && chmod 0755 \
@@ -381,20 +390,8 @@ LABEL org.opencontainers.image.title="Knossos" \
       org.opencontainers.image.version="0.36.0"
 # x-release-please-end
 
-COPY --chown=knossos:knossos workers/php/src ./workers/php/src
-COPY --chown=knossos:knossos workers/php/bin ./workers/php/bin
-COPY --chown=knossos:knossos workers/typescript/src ./workers/typescript/src
-COPY --chown=knossos:knossos workers/typescript/bin ./workers/typescript/bin
-COPY --chown=knossos:knossos workers/python/bin ./workers/python/bin
-COPY --chown=knossos:knossos bin ./bin
-COPY --chown=knossos:knossos src ./src
-COPY --chown=knossos:knossos migrations ./migrations
-COPY --chown=knossos:knossos schemas ./schemas
-COPY --chown=knossos:knossos .claude-plugin ./.claude-plugin
-COPY --chown=knossos:knossos hooks ./hooks
-COPY --chown=knossos:knossos web ./web
-COPY --chown=knossos:knossos skills ./skills
-COPY --chown=knossos:knossos types ./types
+# The same source the runtime image carries, from the sources stage.
+COPY --from=sources --chown=knossos:knossos /opt/knossos/ ./
 
 # The development classmap covers src/ and the dependencies, and is written
 # before tests/ is copied so it matches what the suite has always loaded. The

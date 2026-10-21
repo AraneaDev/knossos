@@ -1,10 +1,11 @@
 #!/bin/sh
 # Prints a key for the runtime image (the Dockerfile's `runtime` target): the
 # dependency key (tools/quality-deps-key) and the files the runtime stage
-# copies on top of it. The release lane labels the image it builds with this
-# key and builds again when the label of an image already present differs, so
-# a run never checks an image built from older source. QualityDepsKeyTest holds
-# the list below to the Dockerfile.
+# copies on top of it, all from the Dockerfile's `sources` stage. The release
+# lane labels the image it builds with this key and builds again when the
+# label of an image already present differs, so a run never checks an image
+# built from older source. QualityDepsKeyTest holds the list below to the
+# `sources` stage, path for path.
 #
 # What .dockerignore keeps out of these paths cannot reach the image and must
 # not move the key either.
@@ -26,6 +27,7 @@ migrations
 schemas
 .claude-plugin
 hooks
+web
 skills
 types'
 
