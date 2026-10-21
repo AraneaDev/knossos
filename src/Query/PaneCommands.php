@@ -6,7 +6,6 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
-use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -220,14 +219,24 @@ final readonly class PaneCommands
      */
     private function annotate(string $path, string $component, string $kind, string $value, bool $remove, bool $execute, string $author): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
+        return PaneProject::answer($this->pdo, $path, ['project_id' => null, 'snapshot_id' => null], function (array $project, array $envelope) use ($component, $kind, $value, $remove, $execute, $author): array {
+            // A scanned answer has always led with the project, then the path.
+            $envelope = ['project_id' => $project['id'], 'snapshot_id' => $project['snapshot_id']] + $envelope;
+
+            return $this->annotateIn($project['id'], $envelope, $component, $kind, $value, $remove, $execute, $author);
+        });
+    }
+
+    /**
+     * The note request of annotate() against the scanned project `$id`, its
+     * answer ending in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function annotateIn(string $id, array $envelope, string $component, string $kind, string $value, bool $remove, bool $execute, string $author): array
+    {
         try {
             if (!$remove && $author !== 'user') {
                 throw new InvalidArgumentException('A note written here is the person\'s: only a remove names an author.');
