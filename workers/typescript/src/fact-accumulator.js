@@ -9,6 +9,10 @@
  * the module's (`own.moduleId`), and every evidence line stays within the
  * file's own lines.
  */
+
+/** How sure an edge is, for keeping the surer of two occurrences. */
+const CONFIDENCE_RANK = { possible: 1, probable: 2, certain: 3 };
+
 export class FactAccumulator {
     constructor(sourceFile, relative, evidence, own = {}) {
         this.sourceFile = sourceFile;
@@ -137,6 +141,13 @@ export class FactAccumulator {
                     existing.attributes[attribute] = value;
                 }
             }
+            // The surer occurrence decides: `handlers[key]` then
+            // `handlers['ping']` reaches `ping` certainly.
+            if (
+                CONFIDENCE_RANK[confidence] >
+                CONFIDENCE_RANK[existing.confidence]
+            )
+                existing.confidence = confidence;
             return;
         }
         this.edgesByKey.set(key, {

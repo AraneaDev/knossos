@@ -36,6 +36,14 @@ describe("FactAccumulator edges", () => {
         expect(acc.edges).toHaveLength(1);
     });
 
+    it("keeps the surer confidence of two occurrences", () => {
+        const acc = make();
+        acc.addEdge("references", "a", "b", {}, {}, "ast", "possible");
+        acc.addEdge("references", "a", "b", {}, {}, "ast", "certain");
+        acc.addEdge("references", "a", "b", {}, {}, "ast", "probable");
+        expect(acc.edges[0].confidence).toBe("certain");
+    });
+
     it("keeps edges that differ only by kind or endpoint", () => {
         const acc = make();
         acc.addEdge("calls", "a", "b", {});

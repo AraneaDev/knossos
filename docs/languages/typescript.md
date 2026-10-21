@@ -5,8 +5,10 @@ files, plus `.vue`, `.svelte` and `.astro` components, with the TypeScript
 compiler's own symbol resolution. Imports, calls, types, inheritance and project
 references come from the compiler and are the primary facts. On top of them the
 worker layers a bounded set of application conventions. Their facts carry
-`framework_convention` provenance. Every edge is `certain`; the framework roles
-Knossos derives from them are probable, and certain for NestJS.
+`framework_convention` provenance. An edge is `certain` unless the worker had to
+infer which declaration code reaches (see [Dispatch the checker cannot
+resolve](#dispatch-the-checker-cannot-resolve)); the framework roles Knossos
+derives from them are probable, and certain for NestJS.
 
 No framework module is imported and no bundler or application is started.
 
@@ -116,6 +118,33 @@ such as `vue` aliased to `vue/dist/vue.esm-bundler.js`, is still that package),
 or when it could not be an npm package name, such as an alias your tsconfig does
 not know (`@/components`, `~/stores`): it names your own code, not a dependency,
 and in a file it type-checks the compiler reports it as a missing module.
+
+### Dispatch the checker cannot resolve
+
+Two call shapes reach project code that the compiler resolves to nothing.
+
+- **Lookup tables.** `STEP_HANDLERS[step.do](step, ctx)` picks a function out of
+  an object literal that a `const` binding holds, in the same module or
+  imported. With a key only the run time knows, the lookup references every
+  function or method the literal holds, as `possible`. A literal key,
+  `STEP_HANDLERS['wait']`, references only the entry it names, as `certain`.
+  The fan-out is bounded: a computed key into a table of more than 64 functions
+  references none of them, since such a registry could hand out anything and
+  edges to all of it would drown the in-degree signal.
+- **Destructured parameters.** `async hold(step, { tape }) { await tape.hold() }`
+  in plain JavaScript leaves `tape` untyped, so `tape.hold()` resolves to
+  nothing. When a call in the same file hands that function an object literal,
+  `{ tape }` or `{ tape: recorder() }`, the value's type stands in for the
+  binding's: each method call on the binding the checker could not resolve
+  becomes a `probable` `calls` edge (attribute `inferred_from: call_argument`)
+  to that member, when the member is declared in your project. This includes
+  functions reached through a lookup table. A parameter with a declared type,
+  a TypeScript annotation (`({ tape }: Context)`) or a JSDoc `@param`, already
+  types the binding, and its calls stay `certain`.
+
+When the same edge is found more than once, the surer confidence wins:
+`handlers[key]` and `handlers['ping']` in one function make the reference to
+`ping` certain.
 
 ## Declarations
 
