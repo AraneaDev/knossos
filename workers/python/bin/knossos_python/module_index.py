@@ -113,6 +113,11 @@ class ProjectModuleIndex(ReadRecorder):
         self._conftests: dict[str, tuple[dict[str, str], set[str]]] = {}
         # The project classes that declare their own ``__init__``, by ref (:meth:`initialiser`).
         self._initialised: set[str] = set()
+        # The project class each class-body annotation names, and the project
+        # classes each class derives from, by the class's canonical name
+        # (:meth:`class_attributes`).
+        self._class_attributes: dict[str, dict[str, str]] = {}
+        self._class_bases: dict[str, list[str]] = {}
 
     @property
     def prefixes(self) -> list[tuple[str, ...]]:
@@ -568,6 +573,7 @@ class ProjectModuleIndex(ReadRecorder):
         self._add_reexports(tree, location, is_package, declarations)
         imported = self._add_instances(tree, location, is_package, declarations, name)
         self._add_returns(tree, name, declarations, imported)
+        self._add_class_attributes(tree, name, declarations, imported)
         return declarations
 
     def is_protocol(self, owner: str) -> bool:
@@ -633,6 +639,44 @@ class ProjectModuleIndex(ReadRecorder):
                         held = returned(member)
                         if held is not None:
                             self._returns[ref("method", f"{name}.{child.name}::{member.name}")] = held
+
+    def _add_class_attributes(
+        self, tree: ast.Module, name: str, declarations: dict[str, str], imported: dict[str, str]
+    ) -> None:
+        """Record what each top-level class annotates its attributes as, and the classes it derives from.
+
+        ``index: Index`` in a class body types ``self.index`` in the class and
+        in every class deriving from it, in this module or another. Only an
+        annotation or a base naming a class this module declares or imports
+        counts, as for :meth:`_add_returns`.
+        """
+
+        def named_class(node: ast.AST | None) -> str | None:
+            named = dotted(node) if node is not None else None
+            target = None if named is None else declarations.get(named) or imported.get(named)
+            return target.removeprefix("py:class:") if target is not None and target.startswith("py:class:") else None
+
+        for child in module_statements(tree):
+            if not isinstance(child, ast.ClassDef):
+                continue
+            canonical = f"{name}.{child.name}"
+            attributes: dict[str, str] = {}
+            for item in child.body:
+                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                    held = named_class(optional_inner(item.annotation))
+                    if held is not None:
+                        attributes[item.target.id] = held
+            self._class_attributes[canonical] = attributes
+            self._class_bases[canonical] = [base for base in map(named_class, child.bases) if base is not None]
+
+    def class_attributes(self, held: str) -> tuple[dict[str, str], list[str]]:
+        """The attributes the project class ``held`` annotates in its body, and the project classes it derives from.
+
+        Reads the class's module first, through :meth:`module_declarations`,
+        so what that cost is named as read by whoever asked.
+        """
+        self.module_declarations(held.rpartition(".")[0])
+        return self._class_attributes.get(held, {}), self._class_bases.get(held, [])
 
     def initialiser(self, target: str) -> str | None:
         """The ``__init__`` a call of the class ``target`` runs, when its module was read and the class declares one."""

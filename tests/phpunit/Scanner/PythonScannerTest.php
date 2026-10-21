@@ -2853,4 +2853,65 @@ PYTHON);
 
         self::assertSame(['app.repo.Base::inherited', 'app.repo.Repo::build'], $targets);
     }
+
+    #[Group('python-scanner')]
+    public function testABaseAnnotationInAnotherModuleAndAStringAnnotationTypeTheReceiver(): void
+    {
+        // `index: Index` on a base declared in another module types a
+        // subclass's `self.index`, and `"Index"` in quotes names the class as
+        // `Index` does.
+        $root = sys_get_temp_dir() . '/knossos-py-base-annotation-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/index.py' => "class Index:\n    def lookup(self):\n        return 1\n\n    def quoted(self):\n        return 2\n",
+            'app/base.py' => "from app.index import Index\n\n\nclass Base:\n    index: Index\n",
+            'app/child.py' => implode("\n", [
+                'from app.base import Base',
+                'from app.index import Index',
+                '',
+                'class Child(Base):',
+                '    def find(self):',
+                '        return self.index.lookup()',
+                '',
+                'def quoted(given: "Index"):',
+                '    return given.quoted()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/child.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        $untyped = null;
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls') {
+                    $calls[] = $edge->sourceReference . ' -> ' . $edge->targetReference;
+                }
+            }
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'module') {
+                    $untyped = $node->attributes['unresolved_member_calls'] ?? null;
+                }
+            }
+        }
+
+        self::assertContains('py:method:app.child.Child::find -> py:method:app.index.Index::lookup', $calls);
+        self::assertContains('py:function:app.child.quoted -> py:method:app.index.Index::quoted', $calls);
+        self::assertNull($untyped);
+    }
 }

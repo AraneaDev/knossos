@@ -109,7 +109,8 @@ def is_none(node: ast.AST) -> bool:
 def optional_inner(annotation: ast.AST | None) -> ast.AST | None:
     """The type an optional annotation wraps: ``X | None``, ``Optional[X]`` or either as a string.
 
-    Anything else comes back unchanged, so a plain ``X`` still reads as ``X``.
+    Anything else comes back unchanged, so a plain ``X`` still reads as ``X``,
+    and a plain ``"X"`` as ``X`` too.
     """
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
         try:
@@ -117,7 +118,9 @@ def optional_inner(annotation: ast.AST | None) -> ast.AST | None:
         except SyntaxError:
             return annotation
         inner = optional_inner(parsed)
-        return inner if inner is not parsed else annotation
+        # `"Repo"` names the class as `Repo` does; anything else written as a
+        # string stays the string it was.
+        return inner if inner is not parsed or isinstance(parsed, (ast.Name, ast.Attribute)) else annotation
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         if is_none(annotation.right):
             return annotation.left

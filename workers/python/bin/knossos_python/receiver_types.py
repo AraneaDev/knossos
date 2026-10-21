@@ -19,6 +19,9 @@ class ReceiverTypeInference:
     letting a stale type attribute a call to the wrong class.
     """
 
+    # How many generations of bases a class-body annotation is looked up through.
+    MAX_BASE_DEPTH = 16
+
     def __init__(
         self,
         index: ProjectModuleIndex,
@@ -39,6 +42,10 @@ class ReceiverTypeInference:
         # declared type, which answers for `self.<name>` whenever no
         # assignment in the class's methods tracked a type of its own.
         self.declared_attributes: dict[str, dict[str, str]] = {}
+        # The project classes each class of this module derives from, nearest
+        # first, so a base's or a mixin's annotation types a subclass's
+        # `self.<name>` too.
+        self.class_bases: dict[str, list[str]] = {}
         self.local_variable_types: list[dict[str, str]] = []
         self.parameter_types: list[dict[str, str]] = []
         # The names each function being walked binds itself (parameters and
@@ -71,7 +78,7 @@ class ReceiverTypeInference:
         else:
             owned[attribute] = held
 
-    def declare_class_attributes(self, canonical: str, node: ast.ClassDef) -> None:
+    def declare_class_attributes(self, canonical: str, node: ast.ClassDef, bases: list[str]) -> None:
         """Record the class each attribute annotated in a class body holds.
 
         Read before the body is walked, so a method above the annotation
@@ -85,6 +92,34 @@ class ReceiverTypeInference:
                 if held is not None:
                     declared[item.target.id] = held
         self.declared_attributes[canonical] = declared
+        self.class_bases[canonical] = bases
+
+    def declared_attribute(self, owner: str, attribute: str) -> str | None:
+        """The class ``owner`` or the nearest of its bases annotates ``attribute`` as, in its class body.
+
+        A class of this module answers from its own walk; any other from what
+        the module index read of its module. Breadth first, nearest base first,
+        and bounded so a cycle of bases cannot hang the walk.
+        """
+        frontier: list[str] = [owner]
+        seen: set[str] = set()
+        for _ in range(self.MAX_BASE_DEPTH):
+            following: list[str] = []
+            for held in frontier:
+                if held in seen:
+                    continue
+                seen.add(held)
+                if held in self.declared_attributes:
+                    declared, bases = self.declared_attributes[held], self.class_bases.get(held, [])
+                else:
+                    declared, bases = self.index.class_attributes(held)
+                if attribute in declared:
+                    return declared[attribute]
+                following.extend(bases)
+            if not following:
+                return None
+            frontier = following
+        return None
 
     def remember_local(self, variable: str, value: ast.AST | None, annotation: ast.AST | None = None) -> None:
         """Record the class a local variable holds, for the function being walked."""
@@ -212,7 +247,7 @@ class ReceiverTypeInference:
                 # An assignment that tracked a type wins over the class body's
                 # annotation; one that tracked none leaves the annotation to say.
                 held = self.attribute_types.get(class_container[1], {}).get(attribute)
-                held = held or self.declared_attributes.get(class_container[1], {}).get(attribute)
+                held = held or self.declared_attribute(class_container[1], attribute)
         elif "." not in receiver:
             held = self.local_variable_types[-1].get(receiver) if self.local_variable_types else None
             if held is None and self.parameter_types:
