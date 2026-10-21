@@ -43,6 +43,25 @@ export const REFLOG_READ = 20
 const COMMIT_ENTRY = /^(?:(?:commit(?: \([a-z]+\))?|cherry-pick|revert): |merge [^:]*: (?!Fast-forward))/
 
 /**
+ * The entries of HEAD's reflog (`<sha>\x1f<subject>` lines, newest first, at
+ * most REFLOG_READ of them) newer than `before`, or all of them when `before`
+ * is not among them; null when there is no reflog to read.
+ */
+function reflogEntries(reflog: string, before: string): { sha: string; subject: string }[] | null {
+  const entries = reflog
+    .split('\n')
+    .filter(line => line !== '')
+    .slice(0, REFLOG_READ)
+    .map(line => {
+      const at = line.indexOf('\x1f')
+      return at < 0 ? { sha: line, subject: '' } : { sha: line.slice(0, at), subject: line.slice(at + 1) }
+    })
+  if (entries.length === 0) return null
+  const back = entries.findIndex(e => e.sha === before)
+  return back < 0 ? entries : entries.slice(0, back)
+}
+
+/**
  * Whether a commit was made in the project's repository while a shell
  * command ran, from HEAD before and after it (`git rev-parse`: the commit,
  * '' on a branch with no commit yet, null when the project is not in a
@@ -59,17 +78,9 @@ const COMMIT_ENTRY = /^(?:(?:commit(?: \([a-z]+\))?|cherry-pick|revert): |merge 
  */
 export function committedSince(before: string | null, after: string | null, reflog: string, output: string): boolean {
   if (before === null || after === null || after === '' || before === after) return false
-  const entries = reflog
-    .split('\n')
-    .filter(line => line !== '')
-    .slice(0, REFLOG_READ)
-    .map(line => {
-      const at = line.indexOf('\x1f')
-      return at < 0 ? { sha: line, subject: '' } : { sha: line.slice(0, at), subject: line.slice(at + 1) }
-    })
-  if (entries.length === 0) return madeCommit(output)
-  const back = entries.findIndex(e => e.sha === before)
-  return (back < 0 ? entries : entries.slice(0, back)).some(e => COMMIT_ENTRY.test(e.subject))
+  const entries = reflogEntries(reflog, before)
+  if (entries === null) return madeCommit(output)
+  return entries.some(e => COMMIT_ENTRY.test(e.subject))
 }
 
 /** A reflog entry that only records a commit: what it changed was in the working tree already. */
@@ -85,17 +96,9 @@ const RECORD_ENTRY = /^commit(?: \([a-z]+\))?: /
  */
 export function movedTree(before: string | null, after: string | null, reflog: string, output: string): boolean {
   if (before === null || after === null || after === '' || before === after) return false
-  const entries = reflog
-    .split('\n')
-    .filter(line => line !== '')
-    .slice(0, REFLOG_READ)
-    .map(line => {
-      const at = line.indexOf('\x1f')
-      return at < 0 ? { sha: line, subject: '' } : { sha: line.slice(0, at), subject: line.slice(at + 1) }
-    })
-  if (entries.length === 0) return !madeCommit(output)
-  const back = entries.findIndex(e => e.sha === before)
-  return (back < 0 ? entries : entries.slice(0, back)).some(e => !RECORD_ENTRY.test(e.subject))
+  const entries = reflogEntries(reflog, before)
+  if (entries === null) return !madeCommit(output)
+  return entries.some(e => !RECORD_ENTRY.test(e.subject))
 }
 
 /** The dashboard figures {@link stillReported} judges by: its policy check, and the snapshots it reaches back over. */

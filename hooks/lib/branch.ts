@@ -18,9 +18,9 @@ import type { BranchDiff, BranchItem, BranchState } from '../../types'
 import { stamp } from './changes'
 import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
-import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { boundaryColour, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { button, clip, inList, notListedRow, segmentsWidth, tinted, wrapGroups } from './rows'
+import { button, clip, inList, notListedRow, segmentsWidth, wrapGroups, walkedRow } from './rows'
 import { bar } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, grouped, padStart, plural, shortName, spaces, wrapWords } from './text'
@@ -203,12 +203,9 @@ const FINDINGS_MIN = 3
 /** The fewest rows the list of what changed shows, however short the pane. */
 const CHANGED_MIN = 3
 
-/** One walked row: the marker, then `content` fitted to what is left, tinted when marked. */
+/** One walked row: the marker and a space, then `content` fitted to what is left, tinted when marked. */
 function itemRow(key: string, marked: boolean, content: Segment[], columns: number): Row {
-  const kept = clip([{ text: marked ? '›' : ' ', color: ACCENT, bold: true }, { text: ' ' }, ...content], columns)
-  if (!marked) return { key, segments: kept }
-  const used = segmentsWidth(kept)
-  return { key, segments: tinted([...kept, ...(used < columns ? [{ text: spaces(columns - used) }] : [])], SELECTED_BG), tint: SELECTED_BG }
+  return walkedRow(key, marked, [{ text: ' ' }, ...content], columns)
 }
 
 /** A component's name as a pressable cut to `width`, then its boundary as a chip when it fits. */

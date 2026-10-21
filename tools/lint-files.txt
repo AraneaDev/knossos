@@ -1196,6 +1196,7 @@ js	hooks/mod/cells.ts
 js	hooks/mod/diff-actions.ts
 js	hooks/mod/dig.spec.ts
 js	hooks/mod/dig.ts
+js	hooks/mod/field-actions.ts
 js	hooks/mod/finder-actions.ts
 js	hooks/mod/frame.spec.ts
 js	hooks/mod/frame.ts

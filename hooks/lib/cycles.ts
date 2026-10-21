@@ -30,9 +30,9 @@ export { DIAGRAM_MIN } from './diagram'
 import type { DiagramNode, Hop } from './diagram'
 import type { Dashboard } from '../../types'
 import { countLabel } from './envelopes'
-import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { blank, button, clip, tinted, wrapGroups } from './rows'
+import { blank, button, clip, wrapGroups, tintedRow } from './rows'
 import { MARK, tableRow } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, lastSegment, plural } from './text'
@@ -242,7 +242,7 @@ function cycleLine(cycle: CycleLine, i: number, offset: number, on: boolean, col
   if (home !== null) head.push({ text: ' · ', dim: true }, ...chip(home, hues))
   const others = boundariesOf(cycle).filter(b => b !== home)
   if (others.length > 0) head.push({ text: ` +${others.length} ${others.length === 1 ? 'boundary' : 'boundaries'}`, dim: true })
-  return on ? { key: `cycle-${i}`, segments: tinted(clip(head, columns), SELECTED_BG), tint: SELECTED_BG } : { key: `cycle-${i}`, segments: clip(head, columns) }
+  return tintedRow(`cycle-${i}`, clip(head, columns), on)
 }
 
 /**

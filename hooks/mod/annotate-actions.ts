@@ -6,7 +6,7 @@
 import type { NoteState } from '../../types'
 import { BUSY_CODE, BUSY_SAID, parseAnnotate } from '../lib/envelopes'
 import { requestDetail } from './loaders'
-import { focusField } from './navigate-actions'
+import { focusField } from './field-actions'
 import { disable, say, wrapper } from './port'
 import type { Port } from './port'
 

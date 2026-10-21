@@ -101,6 +101,18 @@ const plannedPairs = (pairs, arms) =>
 /** A metric's value in the unit its label names: durations are kept in ms and shown in seconds. */
 const shown = (m, x) => x * (m.scale ?? 1);
 
+/** One row of a table of paired deltas: what is compared, the metric, how many tasks, the mean, its interval and the verdict. */
+const ciRow = (name, m, deltas, ci) => [
+    name,
+    m.label,
+    String(deltas.length),
+    ci ? signed(shown(m, ci.mean), 3) : "-",
+    ci
+        ? `[${signed(shown(m, ci.low), 3)}, ${signed(shown(m, ci.high), 3)}]`
+        : "-",
+    verdict(ci, m, deltas.length),
+];
+
 function comparisons(rows, seed, arms) {
     const body = [];
     let detect = null;
@@ -117,16 +129,7 @@ function comparisons(rows, seed, arms) {
                 m.key === "f1"
             )
                 detect = { n: deltas.length, half: (ci.high - ci.low) / 2 };
-            body.push([
-                `${a} vs ${b}`,
-                m.label,
-                String(deltas.length),
-                ci ? signed(shown(m, ci.mean), 3) : "-",
-                ci
-                    ? `[${signed(shown(m, ci.low), 3)}, ${signed(shown(m, ci.high), 3)}]`
-                    : "-",
-                verdict(ci, m, deltas.length),
-            ]);
+            body.push(ciRow(`${a} vs ${b}`, m, deltas, ci));
         }
     }
     const lines = table(
@@ -431,16 +434,7 @@ function learning(meta, rows) {
             const ci = bootstrapCi(deltas, {
                 seed: comparisonSeed(meta.seed, "learning", arm, key),
             });
-            body.push([
-                label(arm),
-                m.label,
-                String(deltas.length),
-                ci ? signed(shown(m, ci.mean), 3) : "-",
-                ci
-                    ? `[${signed(shown(m, ci.low), 3)}, ${signed(shown(m, ci.high), 3)}]`
-                    : "-",
-                verdict(ci, m, deltas.length),
-            ]);
+            body.push(ciRow(label(arm), m, deltas, ci));
         }
     }
     return [
