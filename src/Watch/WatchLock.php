@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Watch;
 
+use Knossos\Filesystem\AtomicFile;
+
 /**
  * One live watcher per project, across every session that shares a data
  * directory.
@@ -74,14 +76,11 @@ final class WatchLock
         // As a session sees them: from a container, the ids the hook named.
         $parent = SessionLink::sessionProcess();
         $text = json_encode(['pid' => SessionLink::ownProcess(), 'parent_pid' => $parent, 'heartbeat' => time()] + $state, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-        $temporary = $this->statePath . '.' . getmypid() . '.tmp';
         if ($text === false) {
             return;
         }
-        // A write that fails part way leaves a partial file, and a failed rename leaves the whole one.
-        if (@file_put_contents($temporary, $text) === false || !@rename($temporary, $this->statePath)) {
-            @unlink($temporary);
-        }
+        // A heartbeat that cannot be written is skipped; the next one tries again.
+        AtomicFile::write($this->statePath, $text);
     }
 
     /** Lets go: the state file goes first, so nobody reads a holder that is gone. */
