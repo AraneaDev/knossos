@@ -249,7 +249,6 @@ php	src/Query/Drift/WalkDriftOracle.php
 php	src/Query/EdgePage.php
 php	src/Query/EdgeWalk.php
 php	src/Query/EntryPointCriteria.php
-php	src/Query/ErasedTypeEdge.php
 php	src/Query/FileContextQueryService.php
 php	src/Query/FileContextService.php
 php	src/Query/FileDetailService.php
@@ -393,6 +392,7 @@ php	src/Scanner/Protocol/Confidence.php
 php	src/Scanner/Protocol/ConfidenceRank.php
 php	src/Scanner/Protocol/Diagnostic.php
 php	src/Scanner/Protocol/EdgeFact.php
+php	src/Scanner/Protocol/ErasedTypeEdge.php
 php	src/Scanner/Protocol/Evidence.php
 php	src/Scanner/Protocol/NodeFact.php
 php	src/Scanner/Protocol/Origin.php
@@ -803,6 +803,7 @@ php	tests/phpunit/Reconciliation/CrossLanguageExternalNodeTest.php
 php	tests/phpunit/Reconciliation/EdgeCollapseTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteBinderTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteReconcileTest.php
+php	tests/phpunit/Reconciliation/EnumCaseReceiverTest.php
 php	tests/phpunit/Reconciliation/FullScanRequestTest.php
 php	tests/phpunit/Reconciliation/GitTest.php
 php	tests/phpunit/Reconciliation/GraphReconcilerTest.php

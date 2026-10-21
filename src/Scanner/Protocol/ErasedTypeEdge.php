@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Query;
+namespace Knossos\Scanner\Protocol;
 
 /**
  * Whether an edge exists only in the source and is gone from the built code.
@@ -21,7 +21,7 @@ namespace Knossos\Query;
  * disagree it leaves `type_only_variants` behind, and a single value import
  * among them is enough to make the dependency real.
  *
- * A class of its own so that code fed rows by {@see SnapshotGraphReader},
+ * A class of its own so that code fed rows by {@see \Knossos\Query\SnapshotGraphReader},
  * as well as the query services, applies the one definition.
  */
 final readonly class ErasedTypeEdge

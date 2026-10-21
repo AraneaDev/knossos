@@ -50,7 +50,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
         'IncrementInteger' => [
             '(?:break|continue) \\d+;' => [
                 'src/Discovery/Manifest/HtmlManifest.php:164',
-                'src/Query/AbstractArchitectureQueryService.php:390',
+                'src/Query/AbstractArchitectureQueryService.php:391',
                 'src/Query/FlowQuery.php:248',
                 'src/Query/FlowQuery.php:277',
                 'src/Query/ImpactAnalysisQuery.php:191',

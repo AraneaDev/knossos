@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Reconciliation;
 
-use Knossos\Query\ErasedTypeEdge;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Scanner\Protocol\EdgeFact;
+use Knossos\Scanner\Protocol\ErasedTypeEdge;
 use Knossos\Store\StableId;
 
 /**
