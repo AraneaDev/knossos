@@ -431,6 +431,7 @@ php	src/Store/SqliteStatementCache.php
 php	src/Store/SqliteTransactions.php
 php	src/Store/SqliteValues.php
 php	src/Store/StableId.php
+php	src/Store/Upsert.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
 php	src/Watch/ScanTimeoutException.php
