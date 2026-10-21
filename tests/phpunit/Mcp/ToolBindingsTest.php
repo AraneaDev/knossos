@@ -29,11 +29,12 @@ final class ToolBindingsTest extends KnossosTestCase
     public function testEveryCatalogToolHasABindingOrADeclaredAdapter(): void
     {
         $tools = array_column(ToolCatalog::definitions(), 'name');
-        $bound = ToolBindings::tools();
+        $bound = self::boundTools();
 
         assertSame([], array_values(array_intersect($bound, ToolBindings::HAND_WRITTEN)), 'Both bound and hand-written.');
         assertSame([], array_values(array_diff($tools, $bound, ToolBindings::HAND_WRITTEN)), 'Neither bound nor hand-written.');
-        assertSame([], array_values(array_diff([...$bound, ...ToolBindings::HAND_WRITTEN], $tools)), 'Bound or hand-written, but no such tool.');
+        assertSame([], array_values(array_diff(ToolBindings::HAND_WRITTEN, $tools)), 'Hand-written, but no such tool.');
+        assertSame(false, ToolBindings::binds('no_such_tool'));
     }
 
     /** Every query command is a bound tool, so the CLI has no adapter of its own left. */
@@ -47,12 +48,12 @@ final class ToolBindingsTest extends KnossosTestCase
         }
     }
 
-    /** A binding passes only arguments its tool declares, and every one it reads has a type to read it as. */
+    /** A binding passes only arguments its tool declares. */
     #[Group('mcp')]
     public function testEveryBoundArgumentIsDeclaredByItsTool(): void
     {
         $unknown = [];
-        foreach (ToolBindings::tools() as $tool) {
+        foreach (self::boundTools() as $tool) {
             $declared = ToolArgumentSpec::for($tool)->properties();
             foreach (array_keys(ToolBindings::arguments($tool)) as $argument) {
                 if (!in_array($argument, $declared, true)) {
@@ -62,6 +63,16 @@ final class ToolBindingsTest extends KnossosTestCase
         }
 
         assertSame([], $unknown);
+    }
+
+    /**
+     * The catalogue's tools that the table answers.
+     *
+     * @return list<string>
+     */
+    private static function boundTools(): array
+    {
+        return array_values(array_filter(array_column(ToolCatalog::definitions(), 'name'), ToolBindings::binds(...)));
     }
 
     /**

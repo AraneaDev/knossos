@@ -49,16 +49,6 @@ final class ToolBindings
     }
 
     /**
-     * Every tool this table answers.
-     *
-     * @return list<string>
-     */
-    public static function tools(): array
-    {
-        return array_keys(self::table());
-    }
-
-    /**
      * The arguments `$tool` passes, in the order its service method takes them.
      *
      * @return array<string, array{positional?: string|null, rest?: true, option?: string, read?: Closure(array<string, mixed>): mixed}>
