@@ -340,6 +340,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.stored_attributes[canonical] = assigned_self_attributes(node) - self.class_methods[canonical]
         self.django.remember_serializer(canonical, node)
         self.containers.append((local_id, canonical, "class"))
+        self.receivers.declare_class_attributes(canonical, node)
         self.generic_visit(node)
         self.containers.pop()
 
@@ -653,7 +654,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
         elif isinstance(node.target, ast.Name):
             self.fastapi.register_assignment(node.target.id, node.value, not self.containers)
             self.flask.register_assignment(node.target.id, node.value, not self.containers)
-            self.receivers.remember_local(node.target.id, node.value, node.annotation)
+            if not (self.containers and self.containers[-1][2] == "class"):
+                # In a class body the name is the class's attribute, which
+                # `declare_class_attributes` read, not a local of a function around it.
+                self.receivers.remember_local(node.target.id, node.value, node.annotation)
         self.generic_visit(node)
 
     @staticmethod

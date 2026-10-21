@@ -307,6 +307,178 @@ def test_a_parameter_reassigned_to_something_untracked_stops_resolving(
     ]
 
 
+def _module_untyped(contribution: dict) -> list[str]:
+    module = next(node for node in contribution["nodes"] if node["kind"] == "module")
+    return module["attributes"].get("unresolved_member_calls", [])
+
+
+def test_a_class_body_annotation_types_the_instance_attribute(worker: ModuleType, tmp_path: Path, scan_collect) -> None:
+    # `index: Index` in a class body declares what every instance's `index`
+    # holds, as a dataclass field or a mixin's requirement does. Without it the
+    # call is untyped and every method by that name reads as possibly dead.
+    (tmp_path / "mod.py").write_text(
+        "class Index:\n"
+        "    def bare_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def default_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def early_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def kept_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Other:\n"
+        "    def kept_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Mixin:\n"
+        "    def early(self) -> None:\n"
+        "        self.later.early_call()\n"
+        "\n"
+        "    bare: Index\n"
+        "    default: Index | None = None\n"
+        "    later: Index\n"
+        "    untracked: Index\n"
+        "    shadowed: Index\n"
+        "\n"
+        "    def __init__(self, source) -> None:\n"
+        "        self.untracked = source.make()\n"
+        "        self.shadowed = Other()\n"
+        "\n"
+        "    def run(self) -> None:\n"
+        "        self.bare.bare_call()\n"
+        "        self.default.default_call()\n"
+        "        self.untracked.kept_call()\n"
+        "        self.shadowed.kept_call()\n",
+        encoding="utf-8",
+    )
+
+    [contribution] = scan_collect(tmp_path, ["mod.py"])
+
+    calls = sorted(
+        (source.rsplit("::", 1)[1], target)
+        for kind, source, target in _edges(contribution)
+        if kind == "calls" and source.startswith("py:method:mod.Mixin::")
+    )
+    # An assignment of an untracked value leaves the annotation to say; one of
+    # another tracked class wins over it.
+    assert calls == [
+        ("__init__", "py:class:mod.Other"),
+        ("early", "py:method:mod.Index::early_call"),
+        ("run", "py:method:mod.Index::bare_call"),
+        ("run", "py:method:mod.Index::default_call"),
+        ("run", "py:method:mod.Index::kept_call"),
+        ("run", "py:method:mod.Other::kept_call"),
+    ]
+    assert _module_untyped(contribution) == ["make"]
+
+
+def test_a_class_body_annotation_is_no_local_of_the_function_around_the_class(
+    worker: ModuleType, tmp_path: Path, scan_collect
+) -> None:
+    # A class declared in a function annotates its own attribute; the
+    # function's `held` is whatever the function assigned it.
+    (tmp_path / "mod.py").write_text(
+        "class Helper:\n"
+        "    def use(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "def run(held) -> None:\n"
+        "    class Local:\n"
+        "        held: Helper\n"
+        "\n"
+        "    held.use()\n",
+        encoding="utf-8",
+    )
+
+    [contribution] = scan_collect(tmp_path, ["mod.py"])
+
+    assert "py:method:mod.Helper::use" not in [
+        target for kind, source, target in _edges(contribution) if kind == "calls"
+    ]
+    assert _module_untyped(contribution) == ["use"]
+
+
+def test_a_method_called_through_its_class_name_resolves(worker: ModuleType, project, scan_collect) -> None:
+    # `Repo.build()` calls a static, class or plain method through the class
+    # itself, imported, reached through its module, or declared here. A member
+    # the class inherits is named on the class called; the core finds the base
+    # that declares it. A local named like the class holds what was assigned.
+    root = project(
+        {
+            "app/__init__.py": "",
+            "app/repo.py": (
+                "class Base:\n"
+                "    @classmethod\n"
+                "    def inherited(cls) -> None:\n"
+                "        pass\n"
+                "\n"
+                "\n"
+                "class Repo(Base):\n"
+                "    @staticmethod\n"
+                "    def build() -> None:\n"
+                "        pass\n"
+                "\n"
+                "    @classmethod\n"
+                "    def qualified(cls) -> None:\n"
+                "        pass\n"
+                "\n"
+                "    def plain(self) -> None:\n"
+                "        pass\n"
+                "\n"
+                "    def shadowed(self) -> None:\n"
+                "        pass\n"
+            ),
+            "app/service.py": (
+                "from pathlib import Path\n"
+                "\n"
+                "from app import repo\n"
+                "from app.repo import Repo\n"
+                "\n"
+                "\n"
+                "class Local:\n"
+                "    @staticmethod\n"
+                "    def own() -> None:\n"
+                "        pass\n"
+                "\n"
+                "\n"
+                "def run(item) -> None:\n"
+                "    Repo.build()\n"
+                "    Repo.inherited()\n"
+                "    repo.Repo.qualified()\n"
+                "    Repo.plain(item)\n"
+                "    Local.own()\n"
+                "    Path.cwd()\n"
+                "\n"
+                "\n"
+                "def shadow(Repo) -> None:\n"
+                "    Repo.shadowed()\n"
+            ),
+        }
+    )
+
+    [contribution] = scan_collect(root, ["app/service.py"])
+
+    calls = sorted(
+        (source.rsplit(".", 1)[1], target) for kind, source, target in _edges(contribution) if kind == "calls"
+    )
+    assert calls == [
+        ("run", "py:method:app.repo.Repo::build"),
+        ("run", "py:method:app.repo.Repo::inherited"),
+        ("run", "py:method:app.repo.Repo::plain"),
+        ("run", "py:method:app.repo.Repo::qualified"),
+        ("run", "py:method:app.service.Local::own"),
+    ]
+    # A class outside the project is no class to type by.
+    assert _module_untyped(contribution) == ["cwd", "shadowed"]
+
+
 def test_unreadable_file_costs_only_itself(monkeypatch, worker: ModuleType, project, scan_collect) -> None:
     """A file that vanishes between validation and the read.
 

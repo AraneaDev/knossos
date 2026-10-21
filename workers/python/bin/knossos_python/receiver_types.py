@@ -35,6 +35,10 @@ class ReceiverTypeInference:
         self.django = django
         self.resolve_name = resolve_name
         self.attribute_types: dict[str, dict[str, str]] = {}
+        # What a class body annotates its attributes as (`index: Index`): the
+        # declared type, which answers for `self.<name>` whenever no
+        # assignment in the class's methods tracked a type of its own.
+        self.declared_attributes: dict[str, dict[str, str]] = {}
         self.local_variable_types: list[dict[str, str]] = []
         self.parameter_types: list[dict[str, str]] = []
         # The names each function being walked binds itself (parameters and
@@ -66,6 +70,21 @@ class ReceiverTypeInference:
             owned.pop(attribute, None)
         else:
             owned[attribute] = held
+
+    def declare_class_attributes(self, canonical: str, node: ast.ClassDef) -> None:
+        """Record the class each attribute annotated in a class body holds.
+
+        Read before the body is walked, so a method above the annotation
+        sees it too. ``index: Index`` and ``index: Index = default`` both
+        declare what an instance's ``index`` holds.
+        """
+        declared: dict[str, str] = {}
+        for item in node.body:
+            if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                held = self.held_class(item.value, item.annotation)
+                if held is not None:
+                    declared[item.target.id] = held
+        self.declared_attributes[canonical] = declared
 
     def remember_local(self, variable: str, value: ast.AST | None, annotation: ast.AST | None = None) -> None:
         """Record the class a local variable holds, for the function being walked."""
@@ -143,11 +162,7 @@ class ReceiverTypeInference:
     def constructed_class(self, call: ast.Call) -> str | None:
         """The project class ``Repo()`` builds, when its name means that class here."""
         callee = dotted(call.func)
-        if callee is None or self.is_local_name(callee.split(".")[0]):
-            return None
-        resolved = self.resolve_name(callee, "class")
-        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
-        return held if held is not None and self.declares_class(held) else None
+        return None if callee is None else self.named_class(callee)
 
     def manager_lookup_class(self, call: ast.Call) -> str | None:
         """The project model ``<Model>.objects.<lookup>(...)`` returns an instance of, if any."""
@@ -193,7 +208,11 @@ class ReceiverTypeInference:
         if receiver.startswith("self.") and receiver.count(".") == 1:
             class_container = next((item for item in reversed(self.containers) if item[2] == "class"), None)
             if class_container is not None:
-                held = self.attribute_types.get(class_container[1], {}).get(receiver.split(".", 1)[1])
+                attribute = receiver.split(".", 1)[1]
+                # An assignment that tracked a type wins over the class body's
+                # annotation; one that tracked none leaves the annotation to say.
+                held = self.attribute_types.get(class_container[1], {}).get(attribute)
+                held = held or self.declared_attributes.get(class_container[1], {}).get(attribute)
         elif "." not in receiver:
             held = self.local_variable_types[-1].get(receiver) if self.local_variable_types else None
             if held is None and self.parameter_types:
@@ -203,4 +222,19 @@ class ReceiverTypeInference:
                 instance = self.aliases.get(receiver) or self.index.module_declarations(self.name).get(receiver)
                 if instance is not None and instance.startswith("py:instance:"):
                     held = instance.removeprefix("py:instance:")
+        if held is None and not receiver.startswith("self."):
+            held = self.named_class(receiver)
         return ref("method", f"{held}::{member}") if held else None
+
+    def named_class(self, receiver: str) -> str | None:
+        """The project class a receiver names itself: ``Repo`` in ``Repo.create()``.
+
+        A static, class or plain method called through the class, imported
+        or this module's own. A name the function binds holds whatever was
+        assigned to it, whatever class it is named like.
+        """
+        if self.is_local_name(receiver.split(".")[0]):
+            return None
+        resolved = self.resolve_name(receiver, "class")
+        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
+        return held if held is not None and self.declares_class(held) else None
