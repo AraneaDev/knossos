@@ -194,7 +194,7 @@ def _no_reads(monkeypatch, worker: ModuleType) -> list[str]:
 def test_a_module_that_no_longer_resolves_inside_the_root_is_null_and_not_read(
     monkeypatch, worker: ModuleType, project, tmp_path_factory
 ) -> None:
-    # A link retargeted outside the root after _is_project_file accepted it.
+    # A link retargeted outside the root after is_project_file accepted it.
     # Nothing is read from outside, but the importer's facts are now computed
     # without the module, so its own path is recorded as a failed read.
     outside = tmp_path_factory.mktemp("outside")
@@ -203,7 +203,7 @@ def test_a_module_that_no_longer_resolves_inside_the_root_is_null_and_not_read(
     (root / "pkg").mkdir()
     (root / "pkg" / "b.py").symlink_to(outside / "b.py")
     index = worker.ProjectModuleIndex(root, 2_000_000)
-    index._is_project_file = lambda path: path.exists()
+    index.layout.is_project_file = lambda path, hash_found=True: path.exists()
     reads = _no_reads(monkeypatch, worker)
 
     assert index.module_declarations("pkg.b") == {}
@@ -215,7 +215,7 @@ def test_a_module_that_no_longer_resolves_at_all_is_null(worker: ModuleType, pro
     # Accepted, then removed before the read resolved it.
     root = project({"app.py": IMPORTER})
     index = worker.ProjectModuleIndex(root, 2_000_000)
-    index._is_project_file = lambda path: path.name == "b.py"
+    index.layout.is_project_file = lambda path, hash_found=True: path.name == "b.py"
 
     assert index.module_declarations("pkg.b") == {}
     assert index.read_hashes == {"pkg/b.py": None, "pyproject.toml": None}
@@ -472,7 +472,7 @@ def test_a_module_retargeted_out_of_the_root_before_the_read_is_keyed_by_the_in_
     root = _linked_layout(project)
     index = worker.ProjectModuleIndex(root, 2_000_000)
     _escape([root / "pkg" / "real.py", root / "real" / "c.py"], outside)
-    index._is_project_file = lambda path: path.exists()
+    index.layout.is_project_file = lambda path, hash_found=True: path.exists()
 
     _declarations_of_linked_modules(index)
 
@@ -484,7 +484,7 @@ def test_a_module_removed_before_the_read_is_keyed_by_where_it_was(worker: Modul
     index = worker.ProjectModuleIndex(root, 2_000_000)
     (root / "pkg" / "real.py").unlink()
     (root / "real" / "c.py").unlink()
-    index._is_project_file = lambda path: path.name in {"alias.py", "c.py"}
+    index.layout.is_project_file = lambda path, hash_found=True: path.name in {"alias.py", "c.py"}
 
     _declarations_of_linked_modules(index)
 
@@ -536,7 +536,7 @@ def test_a_removed_target_behind_a_link_with_dot_dot_is_keyed_by_the_file_the_ke
 ) -> None:
     root = _dot_dot_layout(project)
     index = worker.ProjectModuleIndex(root, 2_000_000)
-    index._is_project_file = lambda path: path.name == "lnk.py"
+    index.layout.is_project_file = lambda path, hash_found=True: path.name == "lnk.py"
     (root / "deep" / "c.py").unlink()
 
     assert index.module_declarations("pkg.lnk") == {}
@@ -556,16 +556,16 @@ def test_a_stable_over_cap_target_behind_a_link_with_dot_dot_is_not_keyed_by_a_t
 
 
 # The cases below follow each path the way the kernel's lookup does. A module
-# name only reaches ``module_declarations`` through ``_is_project_file``, whose
+# name only reaches ``module_declarations`` through ``is_project_file``, whose
 # walk is itself a kernel lookup, so a path the kernel cannot resolve is refused
 # there and recorded as None under keys discovery never reports; the
-# ``_is_project_file`` override stands in for the tree changing between that
+# ``is_project_file`` override stands in for the tree changing between that
 # check and the read.
 DECOY = "class Decoy:\n    pass\n"
 
 
 def _accepting(index: Any, name: str) -> None:
-    index._is_project_file = lambda path: path.name == name
+    index.layout.is_project_file = lambda path, hash_found=True: path.name == name
 
 
 def _out_and_back_layout(project, tmp_path_factory, deep: bytes = DEEP) -> Path:
@@ -822,24 +822,25 @@ def test_a_module_swapped_for_a_directory_while_module_file_probes_it_fails_veri
     monkeypatch, worker: ModuleType, project
 ) -> None:
     # The reviewer's reproduction: the swap lasts exactly as long as the probe
-    # stage, with no _is_project_file override, and is restored before any read.
+    # stage, with no is_project_file override, and is restored before any read.
     root = project({"app.py": IMPORTER, "pkg/b.py": DECLARES.decode()})
     discovery = _discovered(root)
-    original = worker.ProjectModuleIndex.module_file
+    layout = sys.modules["knossos_python.module_layout"].ModuleLayout
+    original = layout.module_file
 
-    def swapping(self: Any, module: str) -> Path | None:
+    def swapping(self: Any, module: str, hash_found: bool = True) -> Path | None:
         if module != "pkg.b":
-            return original(self, module)
+            return original(self, module, hash_found)
         b = root / "pkg" / "b.py"
         b.unlink()
         b.mkdir()
         try:
-            return original(self, module)
+            return original(self, module, hash_found)
         finally:
             b.rmdir()
             b.write_bytes(DECLARES)
 
-    monkeypatch.setattr(worker.ProjectModuleIndex, "module_file", swapping)
+    monkeypatch.setattr(layout, "module_file", swapping)
     result, _ = _scan(worker, root, ["app.py"])
 
     assert _disagreements(result["input_hashes"], discovery) == ["pkg/b.py"]
@@ -888,7 +889,7 @@ def test_the_source_root_probe_records_an_absent_package_marker_and_not_a_presen
 
     index = worker.ProjectModuleIndex(root, 2_000_000)
 
-    assert index.prefixes == [(), ("src",)]
+    assert index.layout.prefixes == [(), ("src",)]
     assert index.read_hashes == {"pyproject.toml": None, "src/__init__.py": None}
 
 
@@ -901,7 +902,7 @@ def test_a_package_marker_absent_while_the_source_roots_are_detected_fails_verif
     marker.unlink()
     try:
         index = worker.ProjectModuleIndex(root, 2_000_000)
-        prefixes = index.prefixes
+        prefixes = index.layout.prefixes
     finally:
         marker.write_text("", encoding="utf-8")
 

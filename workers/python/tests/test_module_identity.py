@@ -47,20 +47,20 @@ def _edges(contribution: dict[str, Any]) -> set[tuple[str, str, str]]:
 def test_the_pyproject_declares_source_roots(worker: ModuleType, project: Any, pyproject: str, roots: list) -> None:
     """Each build backend's package directory is a source root; nothing unsafe or unparsable is."""
     root = project({"pyproject.toml": pyproject})
-    assert worker.ProjectModuleIndex(root, 2_000_000).prefixes == roots
+    assert worker.ProjectModuleIndex(root, 2_000_000).layout.prefixes == roots
 
 
 def test_src_is_a_source_root_only_without_a_marker(worker: ModuleType, project: Any) -> None:
     """``src/`` is the src layout's root, or a package with ``__init__.py``; no other directory is a root."""
     root = project({"src/a.py": "", "app/b.py": "", "tests/c.py": ""})
     index = worker.ProjectModuleIndex(root, 2_000_000)
-    assert index.prefixes == [(), ("src",)]
+    assert index.layout.prefixes == [(), ("src",)]
     assert index.read_hashes == {"pyproject.toml": None, "src/__init__.py": None}
     assert [index.module_for(path) for path in ("src/a.py", "app/b.py", "tests/c.py")] == ["a", "app.b", "tests.c"]
 
     (root / "src" / "__init__.py").write_text("")
     packaged = worker.ProjectModuleIndex(root, 2_000_000)
-    assert packaged.prefixes == [()]
+    assert packaged.layout.prefixes == [()]
     assert packaged.module_for("src/a.py") == "src.a"
 
 
@@ -69,9 +69,9 @@ def test_an_excluded_or_oversized_pyproject_is_not_read(worker: ModuleType, proj
     root = project({"pyproject.toml": '[tool.setuptools.packages.find]\nwhere = ["code"]\n'})
     rules = {"segments": [], "prefixes": [], "sequences": [], "suffixes": [], "path_prefixes": ["pyproject.toml"]}
     excluded = worker.Exclusions(rules | {"patterns": []})
-    assert worker.ProjectModuleIndex(root, 2_000_000, excluded).prefixes == [()]
-    assert worker.ProjectModuleIndex(root, 10).prefixes == [()]
-    assert worker.ProjectModuleIndex(root, 2_000_000).prefixes == [(), ("code",)]
+    assert worker.ProjectModuleIndex(root, 2_000_000, excluded).layout.prefixes == [()]
+    assert worker.ProjectModuleIndex(root, 10).layout.prefixes == [()]
+    assert worker.ProjectModuleIndex(root, 2_000_000).layout.prefixes == [(), ("code",)]
 
 
 def test_a_file_whose_location_another_file_owns_is_named_by_its_path(worker: ModuleType, project: Any) -> None:

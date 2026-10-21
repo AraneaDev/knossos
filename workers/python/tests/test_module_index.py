@@ -28,9 +28,9 @@ def test_source_roots_include_bare_root_and_non_package_dirs(worker: ModuleType,
     )
     index = worker.ProjectModuleIndex(root, 2_000_000)
     # `src` has no __init__.py -> source root; `pkg` is a package -> not a root.
-    assert () in index.prefixes
-    assert ("src",) in index.prefixes
-    assert ("pkg",) not in index.prefixes
+    assert () in index.layout.prefixes
+    assert ("src",) in index.layout.prefixes
+    assert ("pkg",) not in index.layout.prefixes
 
 
 def test_source_roots_exclude_the_knossos_namespace(worker: ModuleType, project) -> None:
@@ -45,9 +45,9 @@ def test_source_roots_exclude_the_knossos_namespace(worker: ModuleType, project)
         }
     )
     index = worker.ProjectModuleIndex(root, 2_000_000)
-    assert ("src",) in index.prefixes
-    assert (".knossos-src",) not in index.prefixes
-    assert (".knossos-ci",) not in index.prefixes
+    assert ("src",) in index.layout.prefixes
+    assert (".knossos-src",) not in index.layout.prefixes
+    assert (".knossos-ci",) not in index.layout.prefixes
 
 
 def test_module_for_prefers_deepest_source_root(worker: ModuleType, project) -> None:
