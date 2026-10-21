@@ -143,8 +143,21 @@ def constructor_assignments(node: ast.ClassDef) -> Iterator[tuple[str, str | Non
     ``self.layout = ModuleLayout(...)`` names the class it calls, and
     ``self.layout: ModuleLayout = ...`` the class it annotates; both as the
     dotted name the code spells, for the caller to resolve. Only statements
-    directly in the body: one under a branch may not run.
+    directly in the body: one under a branch may not run. An attribute the
+    class assigns anywhere else as well, again in ``__init__`` or in another
+    method, may hold something else by the time it is read, so it is left out.
     """
+    assigned: dict[str, int] = {}
+    for item in node.body:
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for inner in ast.walk(item):
+                if (
+                    isinstance(inner, ast.Attribute)
+                    and isinstance(inner.ctx, ast.Store)
+                    and isinstance(inner.value, ast.Name)
+                    and inner.value.id == "self"
+                ):
+                    assigned[inner.attr] = assigned.get(inner.attr, 0) + 1
     for item in node.body:
         if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) or item.name != "__init__":
             continue
@@ -162,6 +175,7 @@ def constructor_assignments(node: ast.ClassDef) -> Iterator[tuple[str, str | Non
                 and isinstance(target, ast.Attribute)
                 and isinstance(target.value, ast.Name)
                 and target.value.id == "self"
+                and assigned.get(target.attr) == 1
             ):
                 yield target.attr, named
 

@@ -288,6 +288,74 @@ def test_a_call_through_an_attribute_chain_resolves_when_every_link_is_typed(
     assert "untyped_call" in _module_untyped(use)
 
 
+def test_an_attribute_assigned_more_than_once_is_not_typed_by_its_constructor(
+    worker: ModuleType, project, scan_collect
+) -> None:
+    # `__init__` typing an attribute only answers when it is the class's one
+    # assignment of it: assigned twice in `__init__`, or again in another
+    # method, the attribute may hold anything by the time it is read. A class
+    # body annotation still decides, whatever the methods assign.
+    root = project(
+        {
+            "pkg/__init__.py": "",
+            "pkg/a.py": (
+                "class Foo:\n"
+                "    def run(self) -> None:\n"
+                "        pass\n"
+                "\n"
+                "\n"
+                "class Bar:\n"
+                "    def run(self) -> None:\n"
+                "        pass\n"
+            ),
+            "pkg/holder.py": (
+                "from pkg.a import Bar, Foo\n"
+                "\n"
+                "\n"
+                "class Holder:\n"
+                "    def __init__(self) -> None:\n"
+                "        self.twice = Foo()\n"
+                "        self.twice = Bar()\n"
+                "        self.swapped = Foo()\n"
+                "\n"
+                "    def swap(self, thing: object) -> None:\n"
+                "        self.swapped = thing\n"
+                "\n"
+                "\n"
+                "class Annotated:\n"
+                "    held: Foo\n"
+                "\n"
+                "    def __init__(self) -> None:\n"
+                "        self.held = Bar()\n"
+                "\n"
+                "    def swap(self, thing: Foo) -> None:\n"
+                "        self.held = thing\n"
+            ),
+            "pkg/use.py": (
+                "from pkg.holder import Annotated, Holder\n"
+                "\n"
+                "\n"
+                "def twice(h: Holder) -> None:\n"
+                "    h.twice.run()\n"
+                "\n"
+                "\n"
+                "def swapped(h: Holder) -> None:\n"
+                "    h.swapped.run()\n"
+                "\n"
+                "\n"
+                "def annotated(a: Annotated) -> None:\n"
+                "    a.held.run()\n"
+            ),
+        }
+    )
+
+    contributions = scan_collect(root, ["pkg/a.py", "pkg/holder.py", "pkg/use.py"])
+    use = next(c for c in contributions if c["owner_key"].endswith(":pkg/use.py"))
+
+    calls = sorted((s, t) for kind, s, t in _edges(use) if kind == "calls" and t.startswith("py:method:pkg.a."))
+    assert calls == [("py:function:pkg.use.annotated", "py:method:pkg.a.Foo::run")]
+
+
 def test_a_receiver_reassigned_to_something_untracked_stops_resolving(
     worker: ModuleType, tmp_path: Path, scan_collect
 ) -> None:
