@@ -28,7 +28,8 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * The one rule repeated edges collapse by: one edge per kind, source, target
  * and owner (and prefix for `mounts`), the surest occurrence winning, the
- * attributes unioned and the earliest evidence kept.
+ * attributes unioned and the winner's evidence kept, the earliest breaking a
+ * tie.
  */
 #[Group('reconciliation')]
 final class EdgeCollapseTest extends KnossosTestCase
@@ -49,7 +50,7 @@ final class EdgeCollapseTest extends KnossosTestCase
         assertSame('file-a', $record['file_id']);
     }
 
-    public function testTheSurerOccurrenceDecidesConfidenceOriginAndConflictingAttributes(): void
+    public function testTheSurerOccurrenceDecidesConfidenceOriginLineAndConflictingAttributes(): void
     {
         $records = $this->collapse([
             self::edge('calls', 2, Confidence::Possible, ['via' => 'guess', 'first' => true], Origin::Derived),
@@ -60,7 +61,10 @@ final class EdgeCollapseTest extends KnossosTestCase
         assertSame('certain', $record['confidence']);
         assertSame('ast', $record['origin']);
         assertSame(['via' => 'ast', 'second' => 1, 'first' => true], $record['attributes']);
-        assertSame(2, $record['start_line']);
+        // The line is the site that earned the confidence, not the earlier guess.
+        assertSame(7, $record['start_line']);
+        assertSame(7, $record['end_line']);
+        assertSame(StableId::edge('p', 'calls', 'S', 'T', 'src/A.php:7:7:' . self::OWNER), $record['id']);
     }
 
     public function testANonSpeculativeOccurrenceOutranksASpeculativeOneOfEqualConfidence(): void
@@ -71,6 +75,7 @@ final class EdgeCollapseTest extends KnossosTestCase
         ]);
 
         assertSame(['site' => 'b'], array_values($records)[0]['attributes']);
+        assertSame(5, array_values($records)[0]['start_line']);
     }
 
     public function testTypeOnlyVariantsAreKeptForEveryErasedTypeKind(): void

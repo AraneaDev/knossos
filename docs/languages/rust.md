@@ -95,7 +95,7 @@ identifier is named without its `r#`: `mod r#async;` is the module
 `crate::async`, the module of `src/async.rs`. When a
 target cannot be resolved, Knossos keeps no edge rather than a guess. The worker
 reports every site; the core collapses repeated edges to one per kind, source,
-target and owner, keeping the earliest evidence (see
+target and owner, keeping the surest site's evidence (see
 [Repeated edges](../reference/scanner-protocol-v1.md#repeated-edges)).
 
 ### Code nothing calls by name

@@ -21,8 +21,9 @@ use Knossos\Store\StableId;
  * edge. For an {@see ErasedTypeEdge} kind, when any occurrence carries
  * `type_only`, `type_only_variants` lists every value seen (a missing marker is
  * `false`), so one runtime import keeps the dependency real. The edge's
- * evidence is the earliest span (path, start line, end line), and its stable id
- * hashes that evidence.
+ * evidence is the winner's span (path, start line, end line), so the line
+ * points at the site that earned the confidence, and its stable id hashes that
+ * evidence.
  */
 final class EdgeCollapse
 {
@@ -74,17 +75,13 @@ final class EdgeCollapse
     private function collapse(array $occurrences): array
     {
         $winner = $occurrences[0];
-        $earliest = $occurrences[0]['edge'];
         foreach ($occurrences as $occurrence) {
             if (self::compareStrength($occurrence['edge'], $winner['edge']) > 0) {
                 $winner = $occurrence;
             }
-            if (self::compareEvidence($occurrence['edge'], $earliest) < 0) {
-                $earliest = $occurrence['edge'];
-            }
         }
         $edge = $winner['edge'];
-        $evidence = $earliest->evidence;
+        $evidence = $edge->evidence;
         $evidenceKey = sprintf('%s:%d:%d:%s', $evidence->relativePath, $evidence->startLine, $evidence->endLine, $winner['owner']);
         $id = StableId::edge($this->projectId, $edge->kind, $winner['source'], $winner['target'], $evidenceKey);
 

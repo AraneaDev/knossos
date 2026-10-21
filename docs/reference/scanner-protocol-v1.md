@@ -163,8 +163,8 @@ prefixes answers both). Within a group:
   edge gets `type_only_variants`: every `type_only` value seen, sorted, a
   missing marker counting as `false`. One runtime import among them keeps the
   dependency real.
-- The evidence is the earliest span, ordered by path, then start line, then end
-  line, and the edge's stable id hashes that evidence.
+- The evidence is the winner's span, so the edge's line points at the site
+  that earned its confidence, and the edge's stable id hashes that evidence.
 
 The rule does not depend on the order facts arrive in, so a worker need not
 sort or merge its edges, and an incremental scan collapses exactly as a full
