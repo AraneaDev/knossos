@@ -39,6 +39,9 @@ final readonly class ProjectFindings
     /** Files over the maintainability budget listed; `total` counts them all. */
     private const OVER_BUDGET = 30;
 
+    /** The policy section before any policy was evaluated: nothing found, nothing cut. */
+    private const NO_POLICY = ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false];
+
     /** Where a project declares its maintainability budgets, at its root. */
     public const BUDGETS_FILE = 'maintainability-budgets.json';
 
@@ -258,7 +261,7 @@ final readonly class ProjectFindings
      */
     public function policy(string $projectId, string $root, BoundaryLabels $labels): array
     {
-        $none = ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false];
+        $none = self::NO_POLICY;
         ['policies' => $policies, 'error' => $error] = FileViolationQuery::policies($root, null);
         if ($error !== null) {
             return ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $error] + $none;
@@ -315,7 +318,7 @@ final readonly class ProjectFindings
             'diagnostics' => ['total' => 0, 'errors' => 0, 'warnings' => 0, 'infos' => 0, 'items' => []],
             'complexity_hotspots' => [],
             'over_budget' => null,
-            'policy' => ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false],
+            'policy' => self::NO_POLICY,
         ];
     }
 
