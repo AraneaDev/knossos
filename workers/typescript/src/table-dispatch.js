@@ -11,14 +11,6 @@ import {
 } from "./typescript-fact-utils.js";
 
 /**
- * The most functions a lookup by a computed key fans out to. A larger table
- * is a registry the key could pick anything from; referencing every entry
- * would bury the in-degree signal hub and hotspot ranking depend on, so such
- * a lookup references none of them.
- */
-export const TABLE_FAN_OUT_LIMIT = 64;
-
-/**
  * Calls that reach a function through a table or hand it an object literal.
  *
  * `handlers[data.type](step, ctx)` picks a function out of an object literal
@@ -58,8 +50,8 @@ export class TableDispatch {
     /**
      * The functions `table[key]` can pick out of the object literal a
      * `const` binding (here or imported) holds, with each one's node
-     * reference; null when the receiver is no such literal, or a computed
-     * key would fan out over more than `TABLE_FAN_OUT_LIMIT` functions.
+     * reference; null when the receiver is no such literal. A computed key
+     * can pick any of them, however many the table holds.
      */
     members(node) {
         const checker = this.context.checker;
@@ -93,8 +85,6 @@ export class TableDispatch {
             );
             if (target !== null) entries.push({ target, fn });
         }
-        if (named === undefined && entries.length > TABLE_FAN_OUT_LIMIT)
-            return null;
         return { computed: named === undefined, entries };
     }
 

@@ -128,9 +128,9 @@ Two call shapes reach project code that the compiler resolves to nothing.
   imported. With a key only the run time knows, the lookup references every
   function or method the literal holds, as `possible`. A literal key,
   `STEP_HANDLERS['wait']`, references only the entry it names, as `certain`.
-  The fan-out is bounded: a computed key into a table of more than 64 functions
-  references none of them, since such a registry could hand out anything and
-  edges to all of it would drown the in-degree signal.
+  The fan-out is not capped: a computed key into a table of any size
+  references every entry, since dropping the edges would leave each entry
+  looking unused.
 - **Destructured parameters.** `async hold(step, { tape }) { await tape.hold() }`
   in plain JavaScript leaves `tape` untyped, so `tape.hold()` resolves to
   nothing. When a call in the same file hands that function an object literal,

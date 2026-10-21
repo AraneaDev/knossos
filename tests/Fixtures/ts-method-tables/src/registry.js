@@ -1,4 +1,4 @@
-// More functions than a computed lookup fans out to.
+// A large table: a computed lookup still references every entry.
 const REGISTRY = {
     entry1() { return 1; },
     entry2() { return 2; },

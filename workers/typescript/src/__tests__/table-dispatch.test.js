@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
-import { TABLE_FAN_OUT_LIMIT } from "../table-dispatch.js";
 
 // A method picked out of a table by a computed key, and a method called on a
 // destructured parameter that only the call site types.
@@ -46,18 +45,25 @@ function table(size) {
 }
 
 describe("a lookup by a computed key", () => {
-    it("fans out over a table of exactly the limit", () => {
-        const found = edges({ "src/t.js": table(TABLE_FAN_OUT_LIMIT) });
-        expect(found).toHaveLength(TABLE_FAN_OUT_LIMIT);
-        expect(found[0]).toBe(
+    it("references every function of a small table, as possible", () => {
+        const found = edges({ "src/t.js": table(3) });
+        expect(found).toEqual([
             "references possible ts:function:src/t.js#pick -> ts:method:src/t.js#T::m0",
-        );
+            "references possible ts:function:src/t.js#pick -> ts:method:src/t.js#T::m1",
+            "references possible ts:function:src/t.js#pick -> ts:method:src/t.js#T::m2",
+        ]);
     });
 
-    it("references nothing in a larger table", () => {
-        expect(edges({ "src/t.js": table(TABLE_FAN_OUT_LIMIT + 1) })).toEqual(
-            [],
-        );
+    it("references every function of a large table too", () => {
+        const found = edges({ "src/t.js": table(200) });
+        expect(found).toHaveLength(200);
+        expect(
+            found.every((edge) =>
+                edge.startsWith(
+                    "references possible ts:function:src/t.js#pick -> ts:method:src/t.js#T::m",
+                ),
+            ),
+        ).toBe(true);
     });
 });
 
