@@ -60,10 +60,11 @@ final class RuntimeFactory
             if ($cwd === false) {
                 throw new RuntimeException('Unable to determine the current working directory; set KNOSSOS_DATA_DIR or pass --db=PATH.');
             }
-            $directory = $cwd . '/.knossos';
+
+            return DataDirectory::databaseUnder($cwd);
         }
 
-        return rtrim($directory, '/') . '/knossos.sqlite';
+        return DataDirectory::databaseIn($directory);
     }
 
     /**
@@ -78,7 +79,7 @@ final class RuntimeFactory
         if (!is_string($home) || $home === '') {
             return null;
         }
-        $path = rtrim($home, '/') . '/.knossos/knossos.sqlite';
+        $path = DataDirectory::databaseUnder($home);
 
         return is_file($path) ? $path : null;
     }
