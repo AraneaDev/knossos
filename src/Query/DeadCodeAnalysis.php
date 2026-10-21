@@ -86,7 +86,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 'external_ancestor' => null,
                 'uncontracted_literal' => false,
             ];
-            $exclusion = self::exclusionOf($candidate['row'], $annotation, $context, $facts, $suppressions);
+            $exclusion = self::exclusionOf($candidate['row'], array_column($candidate['roles'], 'role'), $annotation, $context, $facts, $suppressions);
             if ($exclusion !== null) {
                 ++$excluded[$exclusion];
                 continue;
@@ -125,12 +125,20 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * The exclusion counter a candidate falls under, or null when it stays
      * reportable on these grounds.
      *
+     * The grounds the node itself shows come from
+     * {@see ReportableComponent::graphLocalExclusion()}, which the quality
+     * gate's count asks too, interleaved here with the ones that need the
+     * database in the order the counters have always been charged. A
+     * convention-discovered component never gets here: {@see self::isCandidate()}
+     * turns it away first and it is counted there.
+     *
      * @param array<string, mixed> $row
+     * @param list<string> $roles
      * @param array<string, mixed>|null $annotation
      * @param array{inherited: bool, implemented: bool, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @param list<string> $suppressions
      */
-    private static function exclusionOf(array $row, ?array $annotation, array $context, CandidateGraphFacts $facts, array $suppressions): ?string
+    private static function exclusionOf(array $row, array $roles, ?array $annotation, array $context, CandidateGraphFacts $facts, array $suppressions): ?string
     {
         if (self::isSuppressed((string) $row['canonical_name'], $suppressions)) {
             return 'suppressed';
@@ -145,8 +153,8 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         }
         // The scanner saw the supertype member this one fulfils, which may
         // live outside the graph, where the walk above cannot look.
-        if ($context['inherited']
-            || ReportableComponent::isDeclaredOverride((string) $row['kind'], $row['attributes_json'] ?? null)) {
+        $local = ReportableComponent::graphLocalExclusion($row, $roles);
+        if ($context['inherited'] || $local === 'inherited') {
             return 'inherited';
         }
         // A contract an implementation carries. Gated on the declaring type
@@ -162,8 +170,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // Marked by its scanner as called by a runtime or a foreign host
         // (`Drop::drop`, a `#[no_mangle]` export): no source names it,
         // however live it is. Counted with the engine-invoked members.
-        if (self::isEngineInvokedMemberOfReferencedType($row, $facts)
-            || ReportableComponent::isRuntimeInvoked($row['attributes_json'] ?? null)) {
+        if ($local === 'constructors' || self::isEngineInvokedMemberOfReferencedType($row, $facts)) {
             return 'constructors';
         }
         // A script's body is run by something outside the graph, so nothing
@@ -171,15 +178,14 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // information about whether it is wanted. An ordinary module that
         // nothing imports stays reportable — an orphaned one is precisely
         // what this analysis exists to surface.
-        if (ReportableComponent::isExecutableScript((string) $row['kind'], $row['attributes_json'] ?? null)
-            || self::isPackageInitWithModules($row, $facts)) {
+        if ($local === 'entry_scripts' || self::isPackageInitWithModules($row, $facts)) {
             return 'entry_scripts';
         }
         // A `.d.ts` declares what some other file implements. Its symbols
         // have an in-degree of zero by construction — call sites resolve to
         // the implementation — so reporting them is noise, and acting on
         // the report would break the build.
-        if (ReportableComponent::isTypeDeclaration($row['attributes_json'] ?? null)) {
+        if ($local === 'type_declarations') {
             return 'type_declarations';
         }
 

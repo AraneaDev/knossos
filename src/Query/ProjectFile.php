@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Filesystem\RelativePathRule;
+
 /** Whether a project-relative name is a regular file inside a project's root. */
 final class ProjectFile
 {
@@ -16,7 +18,7 @@ final class ProjectFile
      */
     public static function exists(string $root, string $relative): bool
     {
-        if ($root === '' || $relative === '' || str_starts_with($relative, '/') || in_array('..', explode('/', $relative), true)) {
+        if ($root === '' || $relative === '' || !RelativePathRule::isContained($relative)) {
             return false;
         }
         $real = realpath(rtrim($root, '/') . '/' . $relative);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Reconciliation;
 
+use InvalidArgumentException;
 use Knossos\Discovery\DiscoveryResult;
 use Knossos\Discovery\FilesystemContentReader;
 use Knossos\Discovery\GitIgnoreRules;
@@ -12,6 +13,7 @@ use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
+use Knossos\Scanner\Protocol\RelativePath;
 use Knossos\Scanner\Protocol\ScanContribution;
 use PDO;
 
@@ -119,11 +121,19 @@ final readonly class NamedFiles
         return array_map('strval', $paths);
     }
 
-    /** Whether `$path`, as written from the root, is a regular file inside it. */
+    /**
+     * Whether `$path`, as written from the root, is a regular file inside it.
+     *
+     * The path becomes the component's evidence, so it is held to the strict,
+     * normalised form evidence requires: a looser check let a backslash or a
+     * drive letter through to {@see Evidence}, which then refused it and
+     * aborted the scan.
+     */
     private static function isProjectFile(string $root, string $path): bool
     {
-        if ($path === '' || str_starts_with($path, '/') || str_contains($path, "\0")
-            || in_array('..', explode('/', $path), true) || in_array('.', explode('/', $path), true)) {
+        try {
+            RelativePath::assertValid($path);
+        } catch (InvalidArgumentException) {
             return false;
         }
         $absolute = $root . '/' . $path;

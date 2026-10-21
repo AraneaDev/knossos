@@ -104,7 +104,7 @@ final class ToolConfigManifest implements ManifestReader
         // Anchored to the config's own directory, so `../shared/stub.ts` is resolved
         // there first; only a path that then leaves the project is dropped.
         foreach (self::anchoredConfigPaths($contents) as $anchored) {
-            $resolved = self::withinProject($directory === '' ? $anchored : $directory . '/' . $anchored);
+            $resolved = ManifestPaths::withinProject($directory === '' ? $anchored : $directory . '/' . $anchored);
             $path = $resolved === null ? null : ManifestPaths::entryPointPath($resolved, '');
             if ($path !== null) {
                 $paths[$path] = true;
@@ -168,30 +168,6 @@ final class ToolConfigManifest implements ManifestReader
         }
 
         return $paths;
-    }
-
-    /**
-     * `$path` with its `.` and `..` segments folded, or null when it climbs
-     * above the project root.
-     */
-    private static function withinProject(string $path): ?string
-    {
-        $segments = [];
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || $segment === '.') {
-                continue;
-            }
-            if ($segment === '..') {
-                if ($segments === []) {
-                    return null;
-                }
-                array_pop($segments);
-                continue;
-            }
-            $segments[] = $segment;
-        }
-
-        return $segments === [] ? null : implode('/', $segments);
     }
 
     /**

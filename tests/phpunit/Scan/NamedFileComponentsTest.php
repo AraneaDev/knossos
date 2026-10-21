@@ -95,6 +95,30 @@ final class NamedFileComponentsTest extends KnossosTestCase
         assertSame([['scripts/deploy.sh', 'scripts/deploy.sh']], self::fileComponents($pdo));
     }
 
+    /**
+     * A note naming a path that is not project-relative names nothing, even
+     * when a file of that literal name exists. A backslash and a drive letter
+     * once passed the check here and then failed evidence validation, which
+     * aborted the scan.
+     */
+    #[Group('scan')]
+    public function testANoteOnANonRelativePathNamesNothing(): void
+    {
+        mkdir($this->root . '/C:', 0o700, true);
+        file_put_contents($this->root . '/C:/run', "#!/bin/sh\n");
+        file_put_contents($this->root . '/tools\\run', "#!/bin/sh\n");
+        $pdo = $this->freshTestDatabase();
+        $scanner = new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]);
+        $scanner->scan($this->root);
+        $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+        $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
+        $annotations->upsertAnnotation($projectId, 'C:/run', 'note', 'drive letter', true);
+        $annotations->upsertAnnotation($projectId, 'tools\\run', 'note', 'backslash', true);
+
+        $scanner->scan($this->root);
+        assertSame([['scripts/deploy.sh', 'scripts/deploy.sh']], self::fileComponents($pdo));
+    }
+
     #[Group('scan')]
     public function testANoteOnAFileComponentGoesStaleWhenTheFileChanges(): void
     {

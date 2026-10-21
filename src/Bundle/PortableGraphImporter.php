@@ -6,6 +6,7 @@ namespace Knossos\Bundle;
 
 use InvalidArgumentException;
 use JsonException;
+use Knossos\Filesystem\RelativePathRule;
 use PDO;
 use stdClass;
 
@@ -263,7 +264,7 @@ final readonly class PortableGraphImporter
     private function relativePath(mixed $value): string
     {
         $path = $this->text($value);
-        if (str_starts_with($path, '/') || str_contains($path, "\0") || in_array('..', explode('/', str_replace('\\', '/', $path)), true)) {
+        if (!RelativePathRule::isContained($path)) {
             throw new InvalidArgumentException('Bundle contains an unsafe file path.');
         }
         return $path;
