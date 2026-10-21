@@ -377,6 +377,45 @@ final class QueryCommandContractTest extends KnossosTestCase
         }
     }
 
+    /**
+     * The CLI refuses what the tool refuses, with the tool's message: the
+     * lengths, list sizes and enums the schema advertises held for an MCP
+     * call only, and the CLI passed anything through to the service.
+     *
+     * @return iterable<string, array{string, list<string>, array<string, list<string>>, string}>
+     */
+    public static function outOfBoundsValues(): iterable
+    {
+        yield 'suggest-location description too long' => ['suggest-location', [str_repeat('x', 2001)], [], 'feature_description must be a string of at most 2000 characters.'];
+        yield 'architecture-context task too long' => ['architecture-context', [], ['task' => [str_repeat('x', 2001)]], 'task_description must be a string of at most 2000 characters.'];
+        yield 'file-metrics language too long' => ['file-metrics', [], ['language' => [str_repeat('x', 101)]], 'language must be a string of at most 100 characters.'];
+        yield 'changed-files-impact base ref too long' => ['changed-files-impact', [], ['base-ref' => [str_repeat('x', 201)]], 'base_ref must be a string of at most 200 characters.'];
+        yield 'test-impact too many files' => ['test-impact', array_map(static fn(int $i): string => 'src/F' . $i . '.php', range(1, 51)), [], 'files must be a list of at most 50 strings.'];
+        yield 'search-architecture too many kinds' => ['search-architecture', ['Checkout'], ['kind' => array_fill(0, 21, 'class')], 'kinds must be a list of at most 20 strings.'];
+        yield 'annotate-component too much evidence' => ['annotate-component', ['App\\Checkout', 'note', 'v'], ['evidence' => array_fill(0, 6, 'src/Checkout.php')], 'evidence_paths must be a list of at most 5 strings.'];
+        yield 'list-boundaries unknown source' => ['list-boundaries', [], ['source' => ['bogus']], 'source must be explicit or inferred.'];
+    }
+
+    /**
+     * @param list<string> $arguments
+     * @param array<string, list<string>> $options
+     */
+    #[Group('cli')]
+    #[\PHPUnit\Framework\Attributes\DataProvider('outOfBoundsValues')]
+    public function testTheCliRefusesWhatTheToolRefuses(string $command, array $arguments, array $options, string $message): void
+    {
+        $database = sys_get_temp_dir() . '/knossos-stale-cli-bounds-' . bin2hex(random_bytes(4)) . '.sqlite';
+        [, $repository, $ids] = $this->storeFixture(null, (new RuntimeFactory(self::repositoryRoot()))->database($database));
+        $repository->completeScan($ids['project'], $ids['scan']);
+        try {
+            assertSame($message, self::errorFrom($command, [$ids['project'], ...$arguments], $options, $database));
+        } finally {
+            foreach ([$database, $database . '-wal', $database . '-shm'] as $file) {
+                @unlink($file);
+            }
+        }
+    }
+
     /** The documented annotation mutation flags must reach QueryCommand's executor. */
     #[Group('cli')]
     public function testAnnotateComponentAllowsMutationFlags(): void
@@ -468,7 +507,11 @@ final class QueryCommandContractTest extends KnossosTestCase
         });
     }
 
-    /** A removal carrying an over-long value is refused before anything is resolved, as an upsert is. */
+    /**
+     * A removal carrying an over-long value is refused before anything is
+     * resolved, as an upsert is, and with the tool's message: the CLI reads
+     * the value through the tool's maxLength before the service sees it.
+     */
     #[Group('cli')]
     public function testRemoveRefusesAnOverLongValue(): void
     {
@@ -478,7 +521,7 @@ final class QueryCommandContractTest extends KnossosTestCase
                 $run('annotate-component', [$project, 'Fixture\\CheckoutService', 'note', str_repeat('x', 2001)], ['execute' => [''], 'remove' => ['']]);
                 self::fail('An over-long value must be refused on removal too.');
             } catch (InvalidArgumentException $error) {
-                assertSame('value must not exceed 2000 characters.', $error->getMessage());
+                assertSame('value must be a string of at most 2000 characters.', $error->getMessage());
             }
 
             assertSame(['kept'], array_column($run('list-annotations', [$project], [])['data']['annotations'], 'value'));

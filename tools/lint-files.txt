@@ -195,6 +195,7 @@ php	src/Mcp/StdioServer.php
 php	src/Mcp/ToolArgumentPreflight.php
 php	src/Mcp/ToolArgumentSpec.php
 php	src/Mcp/ToolArguments.php
+php	src/Mcp/ToolBindings.php
 php	src/Mcp/ToolCatalog.php
 php	src/Mcp/ToolErrorMapper.php
 php	src/Mcp/ToolInputException.php
@@ -619,6 +620,7 @@ php	tests/phpunit/Mcp/ServerEnvironmentToolsTest.php
 php	tests/phpunit/Mcp/StdioFrames.php
 php	tests/phpunit/Mcp/ToolArgumentProbes.php
 php	tests/phpunit/Mcp/ToolArgumentSpecTest.php
+php	tests/phpunit/Mcp/ToolBindingsTest.php
 php	tests/phpunit/Mcp/ToolBoundsAgreementTest.php
 php	tests/phpunit/Mcp/ToolCatalogEdgeKindsTest.php
 php	tests/phpunit/Mcp/ToolCatalogPolicyTest.php
