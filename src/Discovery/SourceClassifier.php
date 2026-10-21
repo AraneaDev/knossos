@@ -20,18 +20,10 @@ final class SourceClassifier
     /** Bytes read when probing an extensionless file's shebang; one short line is enough. */
     private const SHEBANG_PROBE_BYTES = 256;
 
-    /**
-     * The unit kinds that make their directory a manifest root: each declares a
-     * package or a build, which is what puts build output (`dist`, `coverage`)
-     * beside it. Entry-point configs (YAML, HTML, agent and tool configs) name
-     * files to run, not a build root, so they are not on the list.
-     */
-    public const MANIFEST_UNIT_KINDS = ['cargo', 'composer', 'node', 'python', 'requirements', 'typescript'];
-
     /** Whether a path names a package or build manifest, which makes its directory a manifest root. */
     public static function isManifest(string $relativePath): bool
     {
-        return in_array(self::unitKindFor($relativePath), self::MANIFEST_UNIT_KINDS, true);
+        return UnitKind::tryFrom((string) self::unitKindFor($relativePath))?->isManifestRoot() === true;
     }
 
     /**
@@ -208,67 +200,67 @@ final class SourceClassifier
     {
         $basename = strtolower(basename($relativePath));
         if ($basename === '.gitignore') {
-            return 'gitignore';
+            return UnitKind::Gitignore->value;
         }
         // A README writes down the command that runs a one-off script.
         if (preg_match('/^readme(?:\.[a-z]+)?\.md$/', $basename) === 1) {
-            return 'readme';
+            return UnitKind::Readme->value;
         }
         // A shell script starts the programs it runs, which nothing imports.
         if (str_ends_with($basename, '.sh') || str_ends_with($basename, '.bash')) {
-            return 'shell';
+            return UnitKind::Shell->value;
         }
         // A container's CMD and ENTRYPOINT start a script nothing imports.
         if ($basename === 'dockerfile' || str_starts_with($basename, 'dockerfile.') || str_ends_with($basename, '.dockerfile')) {
-            return 'dockerfile';
+            return UnitKind::Dockerfile->value;
         }
         if ($basename === 'composer.json') {
-            return 'composer';
+            return UnitKind::Composer->value;
         }
         if ($basename === 'knossos.json' || $basename === 'knossos.jsonc') {
-            return 'knossos';
+            return UnitKind::Knossos->value;
         }
         if ($basename === 'package.json') {
-            return 'node';
+            return UnitKind::Node->value;
         }
         // An Azure Functions binding manifest. The basename is generic enough
         // that another tool could own it, so the reader below asks for the
         // `scriptFile` key rather than assuming the shape; a function.json that
         // is something else contributes no entry points and costs one unit.
         if ($basename === 'function.json') {
-            return 'azure_function';
+            return UnitKind::AzureFunction->value;
         }
         // An HTML shell is the only thing that reaches a single-page
         // application's entry module, and nothing in the project imports it.
         // Read as a unit rather than as a file: it contributes entry points,
         // not nodes, and no scanner parses HTML.
         if (str_ends_with($basename, '.html') || str_ends_with($basename, '.htm')) {
-            return 'html';
+            return UnitKind::Html->value;
         }
         // Compose files, CI workflows and deployment manifests all name source
         // files by path. Read for those paths only; no YAML parser is involved
         // and none is needed, for the same reason the Composer script reader
         // tokenises shell commands crudely.
         if (str_ends_with($basename, '.yml') || str_ends_with($basename, '.yaml')) {
-            return 'yaml';
+            return UnitKind::Yaml->value;
         }
         // NEON, PHPStan's config format, is YAML's shape: the rules and
         // extensions it registers are class names nothing in PHP references.
         if (str_ends_with($basename, '.neon') || str_ends_with($basename, '.neon.dist')) {
-            return 'yaml';
+            return UnitKind::Yaml->value;
         }
         // A Claude Code plugin runs its hooks and MCP servers from commands in
         // these files, which name the scripts by path; nothing imports them.
         $normalized = str_replace('\\', '/', $relativePath);
         if (in_array($basename, ['hooks.json', '.mcp.json', 'plugin.json'], true)
             || preg_match('#(?:^|/)\.claude/settings(?:\.[a-z]+)?\.json$#', strtolower($normalized)) === 1) {
-            return 'agent_config';
+            return UnitKind::AgentConfig->value;
         }
         if (in_array($basename, ['knip.json', 'knip.jsonc', '.knip.json', '.knip.jsonc'], true)) {
-            return 'knip';
+            return UnitKind::Knip->value;
         }
         if ($basename === 'pyproject.toml') {
-            return 'python';
+            return UnitKind::Python->value;
         }
         // requirements.txt and its per-environment siblings (requirements-dev.txt,
         // requirements-prod.txt) are the legacy Python dependency manifest — the
@@ -276,16 +268,16 @@ final class SourceClassifier
         // their own unit so an edit invalidates the analyzer cache the way a
         // composer.json edit does.
         if ($basename === 'requirements.txt' || (str_starts_with($basename, 'requirements-') && str_ends_with($basename, '.txt'))) {
-            return 'requirements';
+            return UnitKind::Requirements->value;
         }
         // A jsconfig.json is a tsconfig for JavaScript: the TypeScript worker reads it the same way.
         foreach (['tsconfig', 'jsconfig'] as $config) {
             if ($basename === $config . '.json' || (str_starts_with($basename, $config . '.') && str_ends_with($basename, '.json'))) {
-                return 'typescript';
+                return UnitKind::Typescript->value;
             }
         }
         if ($basename === 'cargo.toml') {
-            return 'cargo';
+            return UnitKind::Cargo->value;
         }
 
         // A tool config is read TWICE: as an ordinary source module by the
@@ -293,7 +285,7 @@ final class SourceClassifier
         // to load. The two `if` blocks in discover() are independent, so one
         // file may be both — which is why this needs no scanner change.
         if (ToolConfigModuleRule::isToolConfigPath($relativePath) || $basename === 'cypress.json') {
-            return 'tool_config';
+            return UnitKind::ToolConfig->value;
         }
 
         return null;

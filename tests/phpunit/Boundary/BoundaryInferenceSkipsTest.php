@@ -49,6 +49,24 @@ final class BoundaryInferenceSkipsTest extends KnossosTestCase
     }
 
     /**
+     * A pip requirements file is a manifest root but infers no boundary: it
+     * declares an environment's dependencies, not a package, so neither a
+     * `docs/requirements.txt` alone nor one beside a pyproject.toml (which
+     * would rename that package's boundary) makes or changes one.
+     */
+    #[Group('boundary')]
+    public function testARequirementsFileInfersNoBoundary(): void
+    {
+        $units = [
+            new ProjectUnit('requirements', 'docs/requirements.txt', 'h', []),
+            new ProjectUnit('requirements', 'packages/py/requirements.txt', 'h', []),
+            new ProjectUnit('python', 'packages/py/pyproject.toml', 'h', ['name' => 'acme-py']),
+        ];
+
+        assertSame(['python:acme-py'], self::namesOf((new BoundaryInference())->infer($units, [])));
+    }
+
+    /**
      * A synthetic node is skipped without stopping the walk, and a namespace
      * with a leading separator still names its first segment.
      */

@@ -45,7 +45,8 @@ final class UnitReader
         // TOML, plain text and text read for paths: none of them is JSON, and
         // feeding one to JsonConfig::decode() below would drop the unit as
         // DISCOVERY_CONFIG_INVALID.
-        $text = ManifestReaders::text($kind);
+        $unitKind = UnitKind::tryFrom($kind);
+        $text = $unitKind === null ? null : ManifestReaders::text($unitKind);
         if ($text !== null) {
             return new ProjectUnit($kind, $relative, $contentHash, $text->read($relative, $absolute, $contents));
         }
@@ -53,7 +54,7 @@ final class UnitReader
         try {
             $decoded = JsonConfig::decode(
                 $contents,
-                in_array($kind, ['typescript', 'knossos'], true) || str_ends_with(strtolower($relative), '.jsonc'),
+                $unitKind?->isJsonc() === true || str_ends_with(strtolower($relative), '.jsonc'),
             );
         } catch (DiscoveryException $error) {
             $diagnostics[] = new DiscoveryDiagnostic(
@@ -65,6 +66,6 @@ final class UnitReader
             return null;
         }
 
-        return new ProjectUnit($kind, $relative, $contentHash, ManifestReaders::json($kind)?->read($relative, $absolute, $decoded) ?? []);
+        return new ProjectUnit($kind, $relative, $contentHash, ($unitKind === null ? null : ManifestReaders::json($unitKind))?->read($relative, $absolute, $decoded) ?? []);
     }
 }

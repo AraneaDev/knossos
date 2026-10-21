@@ -97,7 +97,6 @@ final class SourceClassifierTest extends TestCase
         foreach (['knossos.json', 'index.html', 'ci.yml', 'Dockerfile', 'src/a.ts'] as $path) {
             self::assertFalse(SourceClassifier::isManifest($path), $path);
         }
-        assertSame(SourceClassifier::MANIFEST_UNIT_KINDS, ProjectDiscoverer::MANIFEST_UNIT_KINDS);
         self::assertTrue(ProjectDiscoverer::isManifest('composer.json'));
     }
 
