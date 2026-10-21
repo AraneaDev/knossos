@@ -15,7 +15,7 @@ final class DigQuestionToolsTest extends KnossosTestCase
     public function testEveryQuestionToolTheReminderWatchesExists(): void
     {
         $source = (string) file_get_contents(self::repositoryRoot() . '/hooks/mod/dig.ts');
-        self::assertSame(1, preg_match('/const QUESTIONS = new Set\(\[(.*?)\]\)/s', $source, $match), 'dig.ts declares no QUESTIONS set.');
+        self::assertSame(1, preg_match('/const QUESTIONS(?:: [\w<>]+)? = new Set\(\[(.*?)\]\)/s', $source, $match), 'dig.ts declares no QUESTIONS set.');
         preg_match_all("/'([^'\s]+)'/", $match[1], $names);
         $registered = array_column(ToolCatalog::definitions(), 'name');
 
