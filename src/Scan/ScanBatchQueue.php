@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Scan;
 
 use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 
@@ -83,7 +84,7 @@ final class ScanBatchQueue
         }
         if (++$this->requests > $this->requestCap) {
             throw new WorkerException(
-                'WORKER_REQUEST_CAP',
+                WorkerErrorCode::RequestCap->value,
                 sprintf(
                     'Knossos stopped scanning this language after %d requests, the cap for %d files in %d batches '
                     . '(two requests per file plus four per batch), so that no retry path grows past linear. The last '
@@ -397,7 +398,7 @@ final class ScanBatchQueue
      */
     private static function forOneFile(WorkerException $error, int $files): WorkerException
     {
-        if ($files !== 1 || $error->diagnosticCode !== 'WORKER_REQUEST_TOO_LARGE') {
+        if ($files !== 1 || $error->diagnosticCode !== WorkerErrorCode::RequestTooLarge->value) {
             return $error;
         }
 

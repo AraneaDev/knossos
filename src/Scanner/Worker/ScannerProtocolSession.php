@@ -53,20 +53,20 @@ final class ScannerProtocolSession
             $manifest = ScannerManifest::fromArray($result);
         } catch (Throwable $error) {
             $this->close(true);
-            throw new WorkerException('WORKER_MANIFEST_INVALID', $error->getMessage(), $error);
+            throw new WorkerException(WorkerErrorCode::ManifestInvalid->value, $error->getMessage(), $error);
         }
 
         if ($manifest->protocolVersion !== Protocol::VERSION) {
             $this->close(true);
             throw new WorkerException(
-                'WORKER_PROTOCOL_VERSION_MISMATCH',
+                WorkerErrorCode::ProtocolVersionMismatch->value,
                 sprintf('Worker protocol %s is incompatible with core protocol %s.', $manifest->protocolVersion, Protocol::VERSION),
             );
         }
         if ($manifest->outputSchemaVersion !== Protocol::OUTPUT_SCHEMA_VERSION) {
             $this->close(true);
             throw new WorkerException(
-                'WORKER_OUTPUT_SCHEMA_MISMATCH',
+                WorkerErrorCode::OutputSchemaMismatch->value,
                 sprintf(
                     'Worker output schema %s is incompatible with core schema %s.',
                     $manifest->outputSchemaVersion,
@@ -90,7 +90,7 @@ final class ScannerProtocolSession
         if ($missing !== []) {
             $this->close(true);
             throw new WorkerException(
-                'WORKER_CAPABILITY_MISMATCH',
+                WorkerErrorCode::CapabilityMismatch->value,
                 sprintf('Worker %s does not provide required capabilities: %s.', $manifest->id, implode(', ', $missing)),
             );
         }
@@ -125,7 +125,7 @@ final class ScannerProtocolSession
                 if ($cancelled !== null && $cancelled()) {
                     // Terminated by the catch below, like any other failure.
                     $this->cancel($id);
-                    throw new WorkerException('WORKER_CANCELLED', 'Scanner worker request was cancelled.');
+                    throw new WorkerException(WorkerErrorCode::Cancelled->value, 'Scanner worker request was cancelled.');
                 }
                 $message = $this->channel->readMessage($deadline, $cancelled);
                 if (!array_key_exists('id', $message)) {
@@ -200,7 +200,7 @@ final class ScannerProtocolSession
         $this->throwRpcError($message);
         $result = $message['result'] ?? null;
         if (!is_array($result) || ($result !== [] && array_is_list($result))) {
-            throw new WorkerException('WORKER_RESPONSE_INVALID', 'Worker scan result must be an object.');
+            throw new WorkerException(WorkerErrorCode::ResponseInvalid->value, 'Worker scan result must be an object.');
         }
         if ($inputHashes !== null) {
             $result = $this->withInputHashesParts($result, $inputHashes, $manifest);
@@ -326,7 +326,7 @@ final class ScannerProtocolSession
                 $this->throwRpcError($message);
                 $result = $message['result'] ?? null;
                 if (!is_array($result) || ($result !== [] && array_is_list($result))) {
-                    throw new WorkerException('WORKER_RESPONSE_INVALID', 'Worker result must be an object.');
+                    throw new WorkerException(WorkerErrorCode::ResponseInvalid->value, 'Worker result must be an object.');
                 }
 
                 return $result;
@@ -417,7 +417,7 @@ final class ScannerProtocolSession
         }
         $params = $message['params'] ?? null;
         if (!is_array($params) || array_is_list($params)) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', 'Contribution params must be an object.');
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'Contribution params must be an object.');
         }
         return ContributionDecoder::decode($params, degradeMalformedFacts: true);
     }
@@ -430,7 +430,7 @@ final class ScannerProtocolSession
     private function assertResponseId(array $message, int $expected): void
     {
         if (($message['id'] ?? null) !== $expected) {
-            throw new WorkerException('WORKER_UNEXPECTED_RESPONSE', 'Worker response ID does not match the active request.');
+            throw new WorkerException(WorkerErrorCode::UnexpectedResponse->value, 'Worker response ID does not match the active request.');
         }
     }
 
@@ -448,6 +448,6 @@ final class ScannerProtocolSession
         $detail = is_array($error) && is_string($error['message'] ?? null)
             ? $error['message']
             : 'Scanner worker returned an unspecified JSON-RPC error.';
-        throw new WorkerException('WORKER_RPC_ERROR', $detail);
+        throw new WorkerException(WorkerErrorCode::RpcError->value, $detail);
     }
 }

@@ -10,6 +10,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Worker\ContributionDecoder;
 use Knossos\Scanner\Worker\NdjsonRpcChannel;
 use Knossos\Scanner\Worker\ScannerProtocolSession;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Scanner\Worker\WorkerProcessSupervisor;
@@ -30,15 +31,6 @@ use Throwable;
  */
 final class EnricherRunner
 {
-    /** The worker-protocol failures that have a reason of their own; any other is a `protocol_error`. */
-    private const REASONS = [
-        'WORKER_START_FAILED' => 'missing_command',
-        'WORKER_CAPABILITY_MISMATCH' => 'no_enrichment_capability',
-        'WORKER_TIMEOUT' => 'timeout',
-        'WORKER_EXITED' => 'exit_nonzero',
-        'WORKER_CANCELLED' => 'cancelled',
-    ];
-
     /** The longest part of a failure's own message an outcome keeps. */
     private const DETAIL_CHARACTERS = 200;
 
@@ -82,7 +74,16 @@ final class EnricherRunner
             return 'exited_early';
         }
 
-        return self::REASONS[$error->diagnosticCode] ?? 'protocol_error';
+        // The worker-protocol failures that have a reason of their own; any
+        // other is a `protocol_error`.
+        return match (WorkerErrorCode::of($error)) {
+            WorkerErrorCode::StartFailed => 'missing_command',
+            WorkerErrorCode::CapabilityMismatch => 'no_enrichment_capability',
+            WorkerErrorCode::Timeout => 'timeout',
+            WorkerErrorCode::Exited => 'exit_nonzero',
+            WorkerErrorCode::Cancelled => 'cancelled',
+            default => 'protocol_error',
+        };
     }
 
     /** The first line of a failure's message, capped for a diagnostic. */
@@ -106,7 +107,7 @@ final class EnricherRunner
         $diagnostics = [];
         foreach ($contributions as $params) {
             if (!is_array($params) || array_is_list($params)) {
-                throw new WorkerException('WORKER_CONTRIBUTION_INVALID', 'Contribution params must be an object.');
+                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'Contribution params must be an object.');
             }
             foreach (['nodes', 'edges'] as $field) {
                 if (is_array($params[$field] ?? null)) {

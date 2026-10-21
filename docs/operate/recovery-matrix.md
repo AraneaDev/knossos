@@ -157,6 +157,39 @@ worker leaves a usable PHP and Python graph.
   attempt, the aborted scan is recorded as a `failed` scan row so stale-scan
   cleanup can reap it; no graph row is touched.
 
+## Worker diagnostic codes
+
+Every code a worker failure is reported under. Unless a row says otherwise,
+the failure degrades that language to an `error` diagnostic and the rest of
+the scan proceeds.
+
+| Code                               | Meaning                                                                                                                    |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `WORKER_CANCELLED`                 | The scan or enrichment was cancelled while a request was in flight. Reported as a cancelled scan, not a degraded language. |
+| `WORKER_CAPABILITY_MISMATCH`       | The worker's manifest does not declare a capability the request needs.                                                     |
+| `WORKER_CONTRIBUTION_INVALID`      | A contribution broke the protocol: a fact, read or path the core refuses. The worker's language degrades.                  |
+| `WORKER_DEGRADED_INCREMENTAL`      | A rescan failed for a language whose facts the active graph holds; the scan aborts and the graph is unchanged.             |
+| `WORKER_EVERY_FILE_LEFT_OUT`       | Every file of a language was left out as too large for the limits in force.                                                |
+| `WORKER_EXITED`                    | The worker process exited before answering.                                                                                |
+| `WORKER_FAILED`                    | A language failed with an error that carries no worker code of its own.                                                    |
+| `WORKER_FRAME_INVALID`             | The worker wrote an empty frame or one that is not a JSON-RPC object.                                                      |
+| `WORKER_FRAME_TOO_LARGE`           | One response frame outgrew the frame limit; the batch is searched for the file that caused it.                             |
+| `WORKER_IO_FAILED`                 | Reading from or polling the worker's pipes failed. Retryable in watch mode.                                                |
+| `WORKER_JSON_INVALID`              | The worker wrote a line that is not JSON.                                                                                  |
+| `WORKER_MANIFEST_INVALID`          | The worker's initialize response is not a valid manifest.                                                                  |
+| `WORKER_OUTPUT_LIMIT`              | The worker's output for one request outgrew the output limit; the batch is split.                                          |
+| `WORKER_OUTPUT_SCHEMA_MISMATCH`    | The worker declares an output schema the core does not read.                                                               |
+| `WORKER_PIPE_BROKEN`               | Writing a request to the worker failed. Retryable in watch mode.                                                           |
+| `WORKER_PROTOCOL_VERSION_MISMATCH` | The worker speaks a protocol version the core does not.                                                                    |
+| `WORKER_REQUEST_CAP`               | A language needed more requests than the request cap allows.                                                               |
+| `WORKER_REQUEST_INVALID`           | A request could not be encoded as JSON.                                                                                    |
+| `WORKER_REQUEST_TOO_LARGE`         | A request frame outgrew the frame limit; the batch is split.                                                               |
+| `WORKER_RESPONSE_INVALID`          | A response is valid JSON-RPC but breaks the shape the method returns.                                                      |
+| `WORKER_RPC_ERROR`                 | The worker answered a request with a JSON-RPC error.                                                                       |
+| `WORKER_START_FAILED`              | The worker process could not be started.                                                                                   |
+| `WORKER_TIMEOUT`                   | A request ran past its deadline. Retryable in watch mode.                                                                  |
+| `WORKER_UNEXPECTED_RESPONSE`       | A response names a request id other than the one in flight.                                                                |
+
 ## Fault-injection coverage
 
 The standard suite exercises malformed/crashed/slow/flooding workers,

@@ -81,7 +81,7 @@ final class WorkerProcessSupervisor implements ProcessSupervisorInterface
         // stopped being a loud WORKER_START_FAILED at spawn and became a
         // protocol timeout thirty seconds later.
         if (!self::isRunnable($this->command[0], $environment['PATH'] ?? '')) {
-            throw new WorkerException('WORKER_START_FAILED', 'Unable to start scanner worker.');
+            throw new WorkerException(WorkerErrorCode::StartFailed->value, 'Unable to start scanner worker.');
         }
         // A neutral working directory and an explicit, minimal environment keep
         // the untrusted-source parser from inheriting the server's cwd, PATH
@@ -94,7 +94,7 @@ final class WorkerProcessSupervisor implements ProcessSupervisorInterface
             $environment,
         );
         if (!is_resource($process)) {
-            throw new WorkerException('WORKER_START_FAILED', 'Unable to start scanner worker.');
+            throw new WorkerException(WorkerErrorCode::StartFailed->value, 'Unable to start scanner worker.');
         }
 
         $this->process = $process;

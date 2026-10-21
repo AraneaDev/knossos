@@ -28,7 +28,7 @@ final class ReadsMap
     public static function decode(mixed $value): array
     {
         if (!is_array($value) || ($value !== [] && array_is_list($value))) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', 'reads must be an object keyed by path.');
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'reads must be an object keyed by path.');
         }
         $reads = [];
         foreach ($value as $key => $hash) {
@@ -39,10 +39,10 @@ final class ReadsMap
             try {
                 RelativePath::assertValid($path, 'reads key');
             } catch (InvalidArgumentException $error) {
-                throw new WorkerException('WORKER_CONTRIBUTION_INVALID', $error->getMessage(), $error);
+                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, $error->getMessage(), $error);
             }
             if ($hash !== null && (!is_string($hash) || preg_match('/\A[0-9a-f]{64}\z/', $hash) !== 1)) {
-                throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('reads for %s must be null or a lowercase SHA-256 hex digest.', $path));
+                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('reads for %s must be null or a lowercase SHA-256 hex digest.', $path));
             }
             $reads[$path] = $hash;
         }

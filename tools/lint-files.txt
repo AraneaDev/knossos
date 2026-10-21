@@ -400,6 +400,7 @@ php	src/Scanner/Worker/ProcessSupervisorInterface.php
 php	src/Scanner/Worker/ReadsMap.php
 php	src/Scanner/Worker/RpcChannelInterface.php
 php	src/Scanner/Worker/ScannerProtocolSession.php
+php	src/Scanner/Worker/WorkerErrorCode.php
 php	src/Scanner/Worker/WorkerException.php
 php	src/Scanner/Worker/WorkerExecutionPolicy.php
 php	src/Scanner/Worker/WorkerLimits.php
@@ -951,6 +952,7 @@ php	tests/phpunit/Scanner/Worker/WorkerExceptionTest.php
 php	tests/phpunit/Scanner/Worker/WorkerExecutionPolicyTest.php
 php	tests/phpunit/Scanner/Worker/WorkerLimitsTest.php
 php	tests/phpunit/Scanner/Worker/WorkerProcessSupervisorTest.php
+php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
 php	tests/phpunit/Scanner/WorkerFallbackExclusionsTest.php
 php	tests/phpunit/Scanner/WorkerTest.php
 php	tests/phpunit/Store/BatchWriteTest.php

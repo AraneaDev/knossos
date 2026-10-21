@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerSignal;
 
@@ -20,8 +21,12 @@ use Knossos\Scanner\Worker\WorkerSignal;
  */
 final class OversizedBatch
 {
-    /** The codes that say the output or the request outgrew a cap sized for a batch. */
-    private const SIZE_CODES = ['WORKER_OUTPUT_LIMIT', 'WORKER_FRAME_TOO_LARGE', 'WORKER_REQUEST_TOO_LARGE'];
+    /**
+     * The codes that say the output or the request outgrew a cap sized for a batch.
+     *
+     * @var list<WorkerErrorCode>
+     */
+    private const SIZE_CODES = [WorkerErrorCode::OutputLimit, WorkerErrorCode::FrameTooLarge, WorkerErrorCode::RequestTooLarge];
 
     /**
      * Whether splitting the batch that raised $error could let it succeed.
@@ -45,13 +50,13 @@ final class OversizedBatch
      */
     public static function leavesAFileOut(WorkerException $error): bool
     {
-        return in_array($error->diagnosticCode, ['WORKER_FRAME_TOO_LARGE', 'WORKER_OUTPUT_LIMIT'], true);
+        return in_array(WorkerErrorCode::of($error), [WorkerErrorCode::FrameTooLarge, WorkerErrorCode::OutputLimit], true);
     }
 
     /** Whether the output or the request outgrew a cap sized for a batch. */
     private static function isSizeLimit(WorkerException $error): bool
     {
-        return in_array($error->diagnosticCode, self::SIZE_CODES, true);
+        return in_array(WorkerErrorCode::of($error), self::SIZE_CODES, true);
     }
 
     /**
@@ -67,7 +72,7 @@ final class OversizedBatch
      */
     private static function wasKilledFromOutside(WorkerException $error): bool
     {
-        return $error->diagnosticCode === 'WORKER_EXITED'
+        return $error->diagnosticCode === WorkerErrorCode::Exited->value
             && $error->terminatingSignal !== null
             && WorkerSignal::isMemoryPressureKill($error->terminatingSignal);
     }
@@ -89,7 +94,7 @@ final class OversizedBatch
     private static function isTypeScriptHeapExhaustion(LanguageDescriptor $descriptor, WorkerException $error, array $request): bool
     {
         if ($descriptor->key !== 'typescript'
-            || $error->diagnosticCode !== 'WORKER_EXITED'
+            || $error->diagnosticCode !== WorkerErrorCode::Exited->value
             || ($request['config_files'] ?? []) !== []) {
             return false;
         }

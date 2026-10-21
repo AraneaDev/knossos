@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Scanner\Protocol\{Diagnostic, Evidence, Protocol, ScanContribution, ScannerManifest};
-use Knossos\Scanner\Worker\{ContributionDecoder, WorkerException, WorkerLimits};
+use Knossos\Scanner\Worker\{ContributionDecoder, WorkerErrorCode, WorkerException, WorkerLimits};
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\ContributionCacheEntry;
 use PDO;
@@ -348,7 +348,7 @@ final readonly class ContributionCacheService
         if ($contribution->contentHash !== null) {
             $expected = $file->contentHash ?? null;
             if (!is_string($expected)) {
-                throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf(
+                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf(
                     '%s reported a content hash for %s, but discovery recorded no hash for it, so the hash cannot be verified.',
                     $manifest->id,
                     $file->relativePath,
@@ -364,7 +364,7 @@ final readonly class ContributionCacheService
             return !$declared;
         }
         if ($declared) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf(
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf(
                 '%s declares the %s capability but reported no content hash for %s.',
                 $manifest->id,
                 Protocol::CAPABILITY_CONTENT_HASH,
