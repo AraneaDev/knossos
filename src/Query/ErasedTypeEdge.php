@@ -15,8 +15,9 @@ namespace Knossos\Query;
  * module replacement intact, and `dependency_cycles` then reported the split
  * as a certain cycle, asking for a considered improvement to be undone.
  *
- * The scanner records one edge per source/target pair, so several import
- * statements between the same two modules collapse into one. When they
+ * The core collapses the edges of a scan to one per kind, source, target and
+ * owner ({@see \Knossos\Reconciliation\EdgeCollapse}), so several import
+ * statements between the same two modules become one edge. When they
  * disagree it leaves `type_only_variants` behind, and a single value import
  * among them is enough to make the dependency real.
  *
