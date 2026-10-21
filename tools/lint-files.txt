@@ -270,10 +270,9 @@ php	src/Query/LedgeredScanner.php
 php	src/Query/LocationSuggestionService.php
 php	src/Query/NotesService.php
 php	src/Query/OneTypeCycles.php
-php	src/Query/PaneCommands.php
 php	src/Query/Page.php
+php	src/Query/PaneCommands.php
 php	src/Query/PaneProject.php
-php	src/Query/PaneQueries.php
 php	src/Query/PathBetweenService.php
 php	src/Query/PolicyScope.php
 php	src/Query/ProjectCatalogQueryService.php
@@ -739,12 +738,10 @@ php	tests/phpunit/Query/NotesServiceTest.php
 php	tests/phpunit/Query/ObjectLiteralCallbackTest.php
 php	tests/phpunit/Query/ObjectLiteralImplementationTest.php
 php	tests/phpunit/Query/OneTypeCycleTest.php
+php	tests/phpunit/Query/PageTest.php
 php	tests/phpunit/Query/PaneCommandsTest.php
 php	tests/phpunit/Query/PaneCoreAgreementTest.php
-php	tests/phpunit/Query/PageTest.php
-php	tests/phpunit/Query/PaneCoreAgreementTest.php
 php	tests/phpunit/Query/PaneProjectTest.php
-php	tests/phpunit/Query/PaneQueriesTest.php
 php	tests/phpunit/Query/PolicyBoundaryReferencesTest.php
 php	tests/phpunit/Query/PolicyTest.php
 php	tests/phpunit/Query/PolicyValidationBoundsTest.php
@@ -980,8 +977,8 @@ php	tests/phpunit/Scanner/Worker/WorkerExceptionTest.php
 php	tests/phpunit/Scanner/Worker/WorkerExecutionPolicyTest.php
 php	tests/phpunit/Scanner/Worker/WorkerLimitsTest.php
 php	tests/phpunit/Scanner/Worker/WorkerProcessSupervisorTest.php
-php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
 php	tests/phpunit/Scanner/WorkerConstantAgreementTest.php
+php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
 php	tests/phpunit/Scanner/WorkerFallbackExclusionsTest.php
 php	tests/phpunit/Scanner/WorkerTest.php
 php	tests/phpunit/Store/BatchWriteTest.php
