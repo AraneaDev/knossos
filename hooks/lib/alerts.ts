@@ -68,11 +68,24 @@ export function freshAlerts(before: Dashboard | null, after: Dashboard, told: Re
   }
   // Policies that became unreadable are checked no more: said once, with the reason, until they read again.
   const unreadable = unreadablePolicies(after.policy)
-  if (unreadable !== null && unreadablePolicies(before.policy) === null) alerts.push({ key: `policies-unreadable:${unreadable}`, text: `knossos: ${unreadableText(unreadable)}` })
+  if (unreadable !== null && unreadablePolicies(before.policy) === null) alerts.push({ key: `${UNREADABLE}${unreadable}`, text: `knossos: ${unreadableText(unreadable)}` })
   const unsaid = alerts.filter(a => !told.has(a.key))
   if (unsaid.length <= ALERTS_MAX) return unsaid
   const rest = unsaid.slice(ALERTS_MAX - 1)
   return [...unsaid.slice(0, ALERTS_MAX - 1), { key: rest.map(a => a.key).join('\u0001'), text: `knossos: and ${rest.length} more new cycles or violations; the Issues and Cycles tabs list them` }]
+}
+
+/** The key prefix of the alert that says the policies became unreadable. */
+const UNREADABLE = 'policies-unreadable:'
+
+/**
+ * The keys in `told` that `after` settles: once a dashboard reads its
+ * policies again, the unreadable ones were fixed, so a later break is news
+ * and is said again, whatever its reason.
+ */
+export function readAgain(after: Dashboard, told: ReadonlySet<string>): string[] {
+  if (after.status !== 'ok' || unreadablePolicies(after.policy) !== null) return []
+  return [...told].filter(key => key.startsWith(UNREADABLE))
 }
 
 /** The keys an alert stands for: a summed-up one stands for each it counts. */

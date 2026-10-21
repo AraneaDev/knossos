@@ -257,6 +257,17 @@ describe('refreshing the dashboard', () => {
         expect(toasts).toHaveLength(1)
     })
 
+    it('toasts unreadable policies again after they were fixed and broke again', async () => {
+        const broken = (snapshot: string): Dashboard => ({ ...dashboard(snapshot), policy: { status: 'config_invalid', message: 'bad', total: 0, truncated: false, truncation_reasons: [], items: [] } }) as unknown as Dashboard
+        const { io, toasts, answers } = fakePort({ dashboard: dashboard('s1') }, { dashboard: json(broken('s2')) })
+        await refreshDashboard(io)
+        answers.dashboard = json(dashboard('s3'))
+        await refreshDashboard(io)
+        answers.dashboard = json(broken('s4'))
+        await refreshDashboard(io)
+        expect(toasts).toEqual(['knossos: policies unreadable: bad', 'knossos: policies unreadable: bad'])
+    })
+
     it('toasts nothing when notifications are off', async () => {
         reset({ ...options, notifications: false })
         const { io, toasts, values } = fakePort({ dashboard: dashboard('s1') }, { dashboard: json(dashboard('s2', { cycles: [cycle] })) })

@@ -117,6 +117,13 @@ describe('the Branch tab: did it break anything', () => {
     expect(t).not.toContain('no violations')
     expect(t).toContain('policies unreadable: Invalid JSON configuration: Syntax error')
   })
+
+  it('gives the default reason for unreadable policies whose message is empty', () => {
+    const unreadable = { ...none, violations: { status: 'config_invalid' as const, message: '  ', count: 0, truncated: false, items: [] } }
+    const t = flat(text(answer({ comparison: unreadable })))
+    expect(t).toContain('policies unreadable: knossos.json could not be read')
+    expect(t).not.toMatch(/policies unreadable: *$/m)
+  })
 })
 
 describe('the Branch tab: what changed', () => {

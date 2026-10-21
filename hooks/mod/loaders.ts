@@ -6,7 +6,7 @@
  * it is still the one wanted.
  */
 import type { BranchState, ChurnState, ComponentDetail, NotesFilter, NotesState, CouplingState, Dashboard, DetailState, DiffState, FileDetail, Inspected, KnossosView, RefreshState, RingsState, RouteState, SessionRev } from '../../types'
-import { alertKeys, freshAlerts } from '../lib/alerts'
+import { alertKeys, freshAlerts, readAgain } from '../lib/alerts'
 import { BASELINES_KEY, baselinesOf, remember } from '../lib/baseline'
 import { BOUNDARY_AXES } from '../lib/boundaries'
 import type { Baseline } from '../lib/baseline'
@@ -96,6 +96,8 @@ async function readDashboard(io: Port): Promise<void> {
   if (parsed.status === 'ok' && before?.status === 'ok' && before.snapshot_id !== parsed.snapshot_id) await startMotion(io, now)
   // A cycle or a policy violation the scan brought: said once, as a toast, unless the person turned that off.
   if (mod.alerts.on) {
+    // Policies read again: a later break of them is news once more.
+    for (const key of readAgain(parsed as Dashboard, mod.alerts.toasted)) mod.alerts.toasted.delete(key)
     for (const alert of freshAlerts(before, parsed as Dashboard, mod.alerts.toasted)) {
       alertKeys(alert).forEach(key => mod.alerts.toasted.add(key))
       io.ui.toast(alert.text)

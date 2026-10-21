@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard } from '../../types'
-import { alertKeys, ALERTS_MAX, freshAlerts } from './alerts'
+import { alertKeys, ALERTS_MAX, freshAlerts, readAgain } from './alerts'
 
 const ROOT = '/work/app'
 const violation = (i: number) => ({ policy_id: 'core-stays-out', source: `App\\Core\\Greeter${i}::greet`, source_kind: 'method', source_boundary: 'core', target: `App\\Edge\\Caller${i}`, target_kind: 'class', target_boundary: 'edge', path: 'src/Core/Greeter.php', line: 3 })
@@ -77,6 +77,18 @@ describe('alerts for what a scan brought', () => {
     expect(freshAlerts(dash({ policy: unread('earlier') }), after)).toEqual([])
     // No reason given: the default one is said.
     expect(freshAlerts(dash(), dash({ snapshot_id: 's2', policy: unread(null) }))[0]?.text).toBe('knossos: policies unreadable: knossos.json could not be read')
+  })
+
+  it('forgets an unreadable alert once the policies read again, so a repeat break is said again', () => {
+    const unread = { status: 'config_invalid', message: 'bad', total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy']
+    const told = new Set(['policies-unreadable:bad', 'cycle:x'])
+    // Still unreadable: the key stays, and the break is not said again.
+    expect(readAgain(dash({ policy: unread }), told)).toEqual([])
+    // Read again: only the unreadable key goes.
+    expect(readAgain(dash(), told)).toEqual(['policies-unreadable:bad'])
+    expect(readAgain({ status: 'error', message: 'boom' } as unknown as Dashboard, told)).toEqual([])
+    told.delete('policies-unreadable:bad')
+    expect(freshAlerts(dash(), dash({ snapshot_id: 's2', policy: unread }), told)).toEqual([{ key: 'policies-unreadable:bad', text: 'knossos: policies unreadable: bad' }])
   })
 
   it('says no count grew against an earlier search that stopped before it counted them', () => {

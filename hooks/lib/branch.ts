@@ -27,6 +27,7 @@ import type { Openable } from './views'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
 import { busy } from './motion'
 import { countLabel } from './envelopes'
+import { unreadablePolicies, unreadableText } from './policies'
 
 /** One component the Branch tab lists: what it shows, what it opens, where it is. */
 export type BranchLine = { name: string; canonical: string; boundary: string | null; place: string; loc: Loc | null }
@@ -158,12 +159,13 @@ export function branchInput(state: BranchState | null, root: string | null, fold
   const counted: [BranchFinding['kind'], number][] = [['policy', c.violations?.count ?? 0], ['cycle', c.cycles.count], ['crossing', c.crossing.count], ['hub', c.hubs.count], ['dead', c.dead_code.count]]
   const unlisted = counted.map(([kind, count]) => ({ kind, count: count - findings.filter(f => f.kind === kind).length })).filter(u => u.count > 0)
   // Policies knossos could not read were not checked: no "no violations" to claim, and the reason said.
-  const unreadable = c.violations?.status === 'config_invalid'
+  const reason = unreadablePolicies(c.violations)
+  const unreadable = reason !== null
   const policies = c.violations !== null && !unreadable
   const partial = policies && c.violations?.truncated === true
   const checks = ['no new cycles', 'no new crossings', 'no hubs grew', 'no dead code', ...(policies ? ['no violations'] : [])]
   const total = counted.reduce((s, [, n]) => s + n, 0)
-  const notes = unreadable ? { said: [...said, `policies unreadable: ${c.violations?.message ?? 'knossos.json could not be read'}`], warn: true } : { said, warn }
+  const notes = unreadable ? { said: [...said, unreadableText(reason)], warn: true } : { said, warn }
   return { heading, ...notes, loading, verdict: { state: total === 0 && !partial ? 'clean' : 'findings', checks }, findings, unlisted, policies, partial, changed }
 }
 
