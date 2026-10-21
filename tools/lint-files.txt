@@ -342,6 +342,7 @@ php	src/Scan/CachedReads.php
 php	src/Scan/ContributionCacheService.php
 php	src/Scan/ContributionPartition.php
 php	src/Scan/InvalidationWalk.php
+php	src/Scan/LanguageBatchRun.php
 php	src/Scan/LanguageDescriptor.php
 php	src/Scan/LanguageRunAccumulator.php
 php	src/Scan/LanguageScanResult.php
@@ -799,6 +800,7 @@ php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
 php	tests/phpunit/Roots/AllowedRootsTest.php
 php	tests/phpunit/Roots/RootExceptionTest.php
+php	tests/phpunit/Roots/RootGuardContainmentTest.php
 php	tests/phpunit/Roots/RootGuardTest.php
 php	tests/phpunit/Roots/RootsFileTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
@@ -1311,6 +1313,7 @@ js	web/server.ts
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js
 js	workers/typescript/src/__tests__/bundler-module-roots.test.js
+js	workers/typescript/src/__tests__/call-argument-sites.test.js
 js	workers/typescript/src/__tests__/component-source.test.js
 js	workers/typescript/src/__tests__/components.test.js
 js	workers/typescript/src/__tests__/config-ownership.test.js
