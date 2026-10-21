@@ -104,44 +104,7 @@ export function validateRequestedFiles(root, files, limits = {}) {
         assertScannablePath(relative);
         const requested = normalize(relative);
         try {
-            let absolute;
-            try {
-                absolute = validatedInside(root, relative);
-            } catch (error) {
-                throw new UnreadableInput(errorMessage(error));
-            }
-            // Discovery never follows a link, so a requested path always names
-            // its own file. One that now resolves elsewhere is read as another
-            // file, whose facts must not stand in for this one's, nor be
-            // emitted under the other file's key.
-            if (normalize(path.relative(root, absolute)) !== requested)
-                throw new UnreadableInput(
-                    `TypeScript input no longer resolves to itself: ${relative}`,
-                );
-            if (
-                !SOURCE_EXTENSIONS.has(path.extname(absolute).toLowerCase()) &&
-                componentDialect(absolute) === null
-            ) {
-                if (path.extname(absolute) !== "")
-                    throw new Error(
-                        `Unsupported TypeScript input: ${relative}`,
-                    );
-                if (!namesJavaScriptInShebang(absolute))
-                    throw new RefusedAfterRead(
-                        `Unsupported TypeScript input: ${relative}`,
-                        shebangRefusalEvidence(absolute, maxFileBytes),
-                    );
-            }
-            let stat;
-            try {
-                stat = fs.statSync(absolute);
-            } catch (error) {
-                throw new UnreadableInput(errorMessage(error));
-            }
-            if (!stat.isFile() || stat.size > maxFileBytes)
-                throw new UnreadableInput(
-                    `TypeScript input exceeds limits: ${relative}`,
-                );
+            validateOne(root, relative, maxFileBytes);
             accepted.push(requested);
         } catch (error) {
             rejected.push({
@@ -156,6 +119,52 @@ export function validateRequestedFiles(root, files, limits = {}) {
     }
 
     return { accepted, rejected };
+}
+
+/**
+ * Check one requested path, throwing why it is rejected: an
+ * {@link UnreadableInput} for a read the filesystem refused, a
+ * {@link RefusedAfterRead} for a script whose shebang names no JavaScript,
+ * any other error for an extension this worker does not scan.
+ */
+function validateOne(root, relative, maxFileBytes) {
+    const requested = normalize(relative);
+    let absolute;
+    try {
+        absolute = validatedInside(root, relative);
+    } catch (error) {
+        throw new UnreadableInput(errorMessage(error));
+    }
+    // Discovery never follows a link, so a requested path always names
+    // its own file. One that now resolves elsewhere is read as another
+    // file, whose facts must not stand in for this one's, nor be
+    // emitted under the other file's key.
+    if (normalize(path.relative(root, absolute)) !== requested)
+        throw new UnreadableInput(
+            `TypeScript input no longer resolves to itself: ${relative}`,
+        );
+    if (
+        !SOURCE_EXTENSIONS.has(path.extname(absolute).toLowerCase()) &&
+        componentDialect(absolute) === null
+    ) {
+        if (path.extname(absolute) !== "")
+            throw new Error(`Unsupported TypeScript input: ${relative}`);
+        if (!namesJavaScriptInShebang(absolute))
+            throw new RefusedAfterRead(
+                `Unsupported TypeScript input: ${relative}`,
+                shebangRefusalEvidence(absolute, maxFileBytes),
+            );
+    }
+    let stat;
+    try {
+        stat = fs.statSync(absolute);
+    } catch (error) {
+        throw new UnreadableInput(errorMessage(error));
+    }
+    if (!stat.isFile() || stat.size > maxFileBytes)
+        throw new UnreadableInput(
+            `TypeScript input exceeds limits: ${relative}`,
+        );
 }
 
 // Discovery classifies an extensionless script by its shebang and routes it
