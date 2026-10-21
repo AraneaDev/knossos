@@ -74,7 +74,13 @@ if ($checked === []) {
     $failures[] = 'no public interface method was found under ' . $root . '/src';
 }
 
-$javascript = (string) file_get_contents($root . '/workers/typescript/src/scanner.js');
+// The worker's documented exports are found by declaration across its src/
+// modules rather than in one pinned file, so moving a function between modules
+// keeps it checked. Each module is joined on its own line; a declaration
+// pattern below names one symbol, which the worker exports from one module.
+$javascriptModules = glob($root . '/workers/typescript/src/*.js') ?: [];
+sort($javascriptModules, SORT_STRING);
+$javascript = implode("\n", array_map(static fn(string $module): string => (string) file_get_contents($module), $javascriptModules));
 // `(?:(?!\*\/)[\s\S])*?` keeps each capture inside ONE docblock, for the same
 // reason the PHP branch above stopped at the immediately preceding one: a bare
 // `.*?` starts at the first `/**` in the file, so an undocumented declaration

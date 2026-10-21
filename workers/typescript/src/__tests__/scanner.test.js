@@ -10,7 +10,8 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { BUILT_IN_EXCLUSIONS, Exclusions } from "../exclusions.js";
-import { TypeScriptScanner, discoverConfigFiles } from "../scanner.js";
+import { discoverConfigFiles } from "../fallback-groups.js";
+import { TypeScriptScanner } from "../scanner.js";
 import { withoutAbsentAliasConfigs } from "./support/absent-alias-configs.mjs";
 import { absentRequireCandidates } from "./support/require-candidates.mjs";
 

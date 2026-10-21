@@ -116,7 +116,12 @@ foreach ($interfaces as $interface) {
     $api .= "\n";
 }
 
-$javascript = (string) file_get_contents($root . '/workers/typescript/src/scanner.js');
+// Documented worker exports are found by declaration across the worker's src/
+// modules, not in one pinned file, so moving a function between modules keeps
+// its row.
+$javascriptModules = glob($root . '/workers/typescript/src/*.js') ?: [];
+sort($javascriptModules, SORT_STRING);
+$javascript = implode("\n", array_map(static fn(string $module): string => (string) file_get_contents($module), $javascriptModules));
 // The worker script keeps the protocol (`scan`, `handle`); the collector it
 // drives lives in the package beside it.
 $python = (string) file_get_contents($root . '/workers/python/bin/worker.py') . (string) file_get_contents($root . '/workers/python/bin/knossos_python/collector.py');
