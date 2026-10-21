@@ -1271,6 +1271,29 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     }
 
     /**
+     * `--budgets` naming a file of `{}` reaches the gate as no budgets, as
+     * `budgets: {}` does over MCP: the refusal is the gate's own, not the
+     * loader's "must contain an object".
+     */
+    public function testQueryCommandQualityGateTakesAnEmptyBudgetsObjectAsNoBudgets(): void
+    {
+        [$dbPath, $projectId, , $archivedScanId, $cleanup] = $this->richPopulatedTestDatabase();
+        $budgetsFile = sys_get_temp_dir() . '/knossos-budgets-' . bin2hex(random_bytes(6)) . '.json';
+        file_put_contents($budgetsFile, '{}');
+        try {
+            $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), $dbPath);
+            $refused = captureThrows(
+                fn() => (new QueryCommand())->run('quality-gate', [$projectId, $archivedScanId], ['budgets' => [$budgetsFile]], $context),
+                InvalidArgumentException::class,
+            );
+            assertSame('budgets must contain one or more supported quality limits.', $refused->getMessage());
+        } finally {
+            @unlink($budgetsFile);
+            $cleanup();
+        }
+    }
+
+    /**
      * `quality-gate` fails the build when a budget is exceeded, and only then.
      *
      * The exit code is the whole point of the command in CI, and nothing tested
