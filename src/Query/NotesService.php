@@ -237,8 +237,7 @@ final readonly class NotesService
         );
         $statement->execute(['project' => $projectId, 'check' => AnnotationService::CHECK]);
         $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
-        $truncated = count($rows) > self::MAX_ROWS;
-        $rows = array_slice($rows, 0, self::MAX_ROWS);
+        [$rows, $truncated] = Page::cut($rows, self::MAX_ROWS);
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
         // Each file's own boundary, as the fan-in map and the Branch tab label it: the most specific, never one spanning the repository.
         $paths = array_values(array_unique(array_filter(array_map(static fn(array $row): ?string => $row['path'] === null ? null : (string) $row['path'], $rows), 'is_string')));

@@ -108,11 +108,11 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
             $poolEdges,
             static fn(array $edge): bool => isset($nodes[$edge['source_id']], $nodes[$edge['target_id']]),
         ));
-        if (count($edges) > $maxEdges) {
+        [$edges, $cut] = Page::cut($edges, $maxEdges);
+        if ($cut) {
             $truncated = true;
             $reasons[] = 'edge_limit';
         }
-        $edges = array_slice($edges, 0, $maxEdges);
         $evidence = [];
         foreach (array_slice($rows, 0, 100) as $row) {
             if ($row['relative_path'] !== null) {

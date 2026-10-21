@@ -264,6 +264,7 @@ php	src/Query/LedgeredScanner.php
 php	src/Query/LocationSuggestionService.php
 php	src/Query/NotesService.php
 php	src/Query/OneTypeCycles.php
+php	src/Query/Page.php
 php	src/Query/PaneProject.php
 php	src/Query/PaneQueries.php
 php	src/Query/PathBetweenService.php
@@ -723,6 +724,7 @@ php	tests/phpunit/Query/NotesServiceTest.php
 php	tests/phpunit/Query/ObjectLiteralCallbackTest.php
 php	tests/phpunit/Query/ObjectLiteralImplementationTest.php
 php	tests/phpunit/Query/OneTypeCycleTest.php
+php	tests/phpunit/Query/PageTest.php
 php	tests/phpunit/Query/PaneCoreAgreementTest.php
 php	tests/phpunit/Query/PaneProjectTest.php
 php	tests/phpunit/Query/PaneQueriesTest.php

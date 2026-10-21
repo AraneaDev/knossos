@@ -178,12 +178,11 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
             usort($inside, $largestFirst);
         }
         usort($components, $largestFirst);
-        if (count($components) > $limit) {
-            $components = array_slice($components, 0, $limit);
+        [$components, $cut] = Page::cut($components, $limit);
+        if ($cut) {
             $truncation->add('result_limit');
         }
-        $insideCut = count($inside) > $limit;
-        $inside = array_slice($inside, 0, $limit);
+        [$inside, $insideCut] = Page::cut($inside, $limit);
         $listed = [...$components, ...$inside];
 
         $detail = $this->cycleDetails($listed, $graph, $confidenceRank, $includeSelfLoops);

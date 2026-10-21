@@ -82,8 +82,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
         $statement->execute();
         $rows = $statement->fetchAll();
-        $truncated = count($rows) > $limit;
-        $rows = array_slice($rows, 0, $limit);
+        [$rows, $truncated] = Page::cut($rows, $limit);
         $boundaries = [];
         $evidence = [];
         foreach ($rows as $row) {

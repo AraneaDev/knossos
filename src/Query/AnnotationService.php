@@ -416,8 +416,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $statement->bindValue(':offset', $offset, \PDO::PARAM_INT);
         $statement->execute();
         $rows = $statement->fetchAll();
-        $truncated = count($rows) > $limit;
-        $rows = array_slice($rows, 0, $limit);
+        [$rows, $truncated] = Page::cut($rows, $limit);
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
         foreach ($rows as $index => $row) {
             unset($row['basis_json']);
