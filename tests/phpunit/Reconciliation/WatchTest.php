@@ -93,7 +93,7 @@ final class WatchTest extends KnossosTestCase
 
         // Scripted scanner: the first call is the baseline scan, later calls follow the
         // provided outcome list (a Throwable is raised, anything else scans cleanly).
-        $scriptedScanner = function (array $outcomes) use ($root): ProjectScanner {
+        $scriptedScanner = function (array $outcomes): ProjectScanner {
             return new class ($outcomes) implements ProjectScanner {
                 private int $calls = 0;
 

@@ -159,6 +159,8 @@ final readonly class SharedWatch
      * `limits.watch_scan_timeout_ms`, else {@see self::DEFAULT_SCAN_TIMEOUT_MS}.
      * A configuration that cannot be loaded gets the default and does not
      * stop the watch: the scan reports that fault itself.
+     *
+     * @phpstan-impure
      */
     public static function scanTimeoutMs(string $root, AllowedRoots $allowed): int
     {
