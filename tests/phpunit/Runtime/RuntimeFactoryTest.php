@@ -158,6 +158,23 @@ final class RuntimeFactoryTest extends TestCase
         assertSame($applied, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
     }
 
+    public function testDatabaseMigratesUnderALockFileBesideTheDatabase(): void
+    {
+        $root = $this->freshTempDir();
+
+        (new RuntimeFactory(self::projectRoot()))->database($root . '/runtime.sqlite');
+
+        assertSame(true, is_file($root . '/runtime.sqlite.migrate.lock'));
+    }
+
+    public function testAnInMemoryDatabaseTakesNoMigrationLock(): void
+    {
+        $pdo = (new RuntimeFactory(self::projectRoot()))->database(':memory:');
+
+        assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='projects'")->fetchColumn());
+        assertSame(false, is_file(':memory:.migrate.lock'));
+    }
+
     public function testDatabaseThrowsWhenTheParentDirectoryCannotBeCreated(): void
     {
         // /proc is a virtual filesystem: it cannot gain a new subdirectory, so
