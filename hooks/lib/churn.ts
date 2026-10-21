@@ -12,7 +12,7 @@
  * its detail.
  */
 import type { Churn, ChurnState } from '../../types'
-import { moreRows, noteOf, windowOf, shownOf } from './cards'
+import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block } from './cards'
 import { FAINT, HEADING, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
@@ -170,16 +170,16 @@ export function churnArrangement(input: ChurnInput, selected: number, tier: Tier
     grow: { length: input.files.length, min: LIST_MIN },
     make: (columns, limit, scrolled) => {
       if (input.files.length === 0) return { key: 'churn-list', title: 'Churn hotspots', note: noteOf(read), body: [dimRow('churn-none', `   No file the graph holds changed in the ${window}.`, columns)] }
-      const view = windowOf(input.files.length, limit, selected, scrolled)
       const spec = tableSpec(columns, input.files.map(f => f.path), tier === 'narrow' ? [] : input.files.map(f => f.boundary ?? ''), [numberWidth('commits', input.files.map(f => f.commits), tier), numberWidth('deps', input.files.map(f => f.dependents), tier)], 56, { tier })
       const max = Math.max(1, ...input.files.map(f => f.score))
-      const body: Row[] = [tableHead('churn-cols', spec, { name: 'file', boundary: 'boundary', numbers: ['commits', 'deps'] })]
-      input.files.slice(view.start, view.end).forEach((f, n) => {
-        const i = view.start + n
-        body.push(tableRow(`churn-${i}`, { name: f.path, boundary: tier === 'narrow' ? null : f.boundary, values: [f.commits, f.dependents], barValue: f.score, max, path: true, selected: i === selected, press: `row:${i}`, mark: { text: rankOf(i), dim: true } }, spec, hues))
-      })
-      body.push(...moreRows('churn-window', view, input.files.length, columns, 0))
-      return { key: 'churn-list', title: 'Churn hotspots', subtitle: 'commits × dependents', note: noteOf(input.files.length === 0 ? read : `${grouped(input.files.length)} files`), body, window: shownOf(view, input.files.length) }
+      const { rows, window: view } = windowedTable('churn-window', input.files, { columns, limit, local: selected, scrolled, walk: 0 }, (shown, start) => [
+        tableHead('churn-cols', spec, { name: 'file', boundary: 'boundary', numbers: ['commits', 'deps'] }),
+        ...shown.map((f, n) => {
+          const i = start + n
+          return tableRow(`churn-${i}`, { name: f.path, boundary: tier === 'narrow' ? null : f.boundary, values: [f.commits, f.dependents], barValue: f.score, max, path: true, selected: i === selected, press: `row:${i}`, mark: { text: rankOf(i), dim: true } }, spec, hues)
+        }),
+      ])
+      return { key: 'churn-list', title: 'Churn hotspots', subtitle: 'commits × dependents', note: noteOf(input.files.length === 0 ? read : `${grouped(input.files.length)} files`), body: rows, window: view }
     },
   }
   return { left: [plot, list] }

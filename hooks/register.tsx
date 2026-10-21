@@ -9,7 +9,8 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { begin, counts, finish } from './lib/activity'
 import { committedSince, movedTree } from './lib/agent'
-import { copyCommand, focusLanded, focusMoved, handlersOf, wheelScrolled } from './mod/actions'
+import { copyCommand, handlersOf } from './mod/actions'
+import { focusLanded, focusMoved, wheelScrolled } from './mod/navigate-actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
 import { cellChange, INITIAL } from './mod/cells'
 import { freshDig, observe } from './mod/dig'
@@ -135,9 +136,9 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const io = portOf($)
     // A refused registration (no session bound yet, after a hot reload) is retried; start-up goes on regardless.
-    const gen = ++mod.registerGen
-    mod.registerTimer?.cancel()
-    mod.registerTimer = null
+    const gen = ++mod.generations.register
+    mod.registration.timer?.cancel()
+    mod.registration.timer = null
     if (!(await registerCommand(io))) retryRegister(io, 0, gen)
     // A start-up that outlives the session (torn down under it) fails quietly, never as a stray rejection.
     $.clock.after(0, () => void startUp(io, openOnStart).catch(() => undefined))
@@ -155,10 +156,10 @@ export const register: Register = (on, options) => {
    * no slot of the turn's note cap: it comes once a turn at most, and a capped one would be lost for the whole turn.
    */
   const dug = <R extends { deny?: unknown; isError?: boolean; context?: readonly string[] }>(e: { tool: string; agentId?: string }, ran: R): R => {
-    if (mod.disabled || !mod.notesOn || ran.deny !== undefined || ran.isError === true) return ran
+    if (mod.session.disabled || !mod.agent.notesOn || ran.deny !== undefined || ran.isError === true) return ran
     const loop = e.agentId ?? ''
-    const seen = observe(mod.digs.get(loop) ?? freshDig(), e.tool, e)
-    mod.digs.set(loop, seen.dig)
+    const seen = observe(mod.agent.digs.get(loop) ?? freshDig(), e.tool, e)
+    mod.agent.digs.set(loop, seen.dig)
     return seen.remind === null ? ran : { ...ran, context: [...(ran.context ?? []), seen.remind] }
   }
 
@@ -168,14 +169,14 @@ export const register: Register = (on, options) => {
   // - by any tool at all: past a Knossos answer, a loop that keeps looking things up is asked, once a turn, to write
   //   down what it found, on the result of the call that completes the pattern.
   on('tool.call', async ($, e, next) => {
-    const timed = !mod.disabled && counts(e.tool)
-    const id = `${++mod.callSeq}`
-    if (timed) begin(mod.activity, id, await $.clock.now())
+    const timed = !mod.session.disabled && counts(e.tool)
+    const id = `${++mod.activity.callSeq}`
+    if (timed) begin(mod.activity.calls, id, await $.clock.now())
     try {
       return dug(e, await next(e))
     } finally {
       // A clock torn down under the call (the session ending) ends it where it began.
-      if (timed) finish(mod.activity, id, await $.clock.now().catch(() => mod.activity.running.get(id) ?? 0))
+      if (timed) finish(mod.activity.calls, id, await $.clock.now().catch(() => mod.activity.calls.running.get(id) ?? 0))
     }
   })
 
@@ -183,23 +184,23 @@ export const register: Register = (on, options) => {
     const io = portOf($)
     // Before the edit lands: the snapshot the turn's brief diffs against, whoever scans the edit first.
     // It becomes the turn's start only once the edit is known to have landed inside the project.
-    const base = mod.snapshot
+    const base = mod.session.snapshot
     const ran = await next(e)
-    if (!mod.disabled) mod.lastEditAt = await $.clock.now()
-    if (mod.disabled || ran.deny !== undefined || ran.isError === true) return ran
+    if (!mod.session.disabled) mod.turn.lastEditAt = await $.clock.now()
+    if (mod.session.disabled || ran.deny !== undefined || ran.isError === true) return ran
     // Tests run before this edit ran the old code.
-    mod.ranCommands = []
+    mod.turn.ranCommands = []
     return noteSafely(io, ran, async () => {
       const path = editedPath(e)
       const note = path === null ? null : await noteEdit(io, path, base)
       const key = note === null ? '' : `${e.agentId ?? ''}\u0000${note.path}`
       // Told already, on its Read or an earlier edit.
-      if (note === null || mod.noted.has(key)) return ran
+      if (note === null || mod.agent.noted.has(key)) return ran
       // Held back by this turn's cap: not delivered, so not noted; a later edit or Read says it.
-      if (mod.notesOn && !takeNoteSlot(e.agentId ?? '')) return ran
-      mod.noted.add(key)
+      if (mod.agent.notesOn && !takeNoteSlot(e.agentId ?? '')) return ran
+      mod.agent.noted.add(key)
       $.ui.toast(note.text)
-      return mod.notesOn ? { ...ran, context: [...(ran.context ?? []), note.text] } : ran
+      return mod.agent.notesOn ? { ...ran, context: [...(ran.context ?? []), note.text] } : ran
     })
   })
 
@@ -207,7 +208,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const io = portOf($)
     const ran = await next(e)
-    if (mod.disabled || ran.deny !== undefined || ran.isError === true) return ran
+    if (mod.session.disabled || ran.deny !== undefined || ran.isError === true) return ran
     return noteSafely(io, ran, async () => {
       const path = (e as { file_path?: unknown }).file_path
       const note = typeof path === 'string' ? await noteRead(io, path, e.agentId ?? '') : null
@@ -217,26 +218,26 @@ export const register: Register = (on, options) => {
 
   // Every command is kept for the turn-end note, which leaves out the tests the turn already ran.
   // A command marks the turn for its brief only on a cheap signal, never by a scan of its own (an incremental scan of
-  // a real project takes seconds): a change the live watcher noticed while it ran (see mod.shellActivity and
+  // a real project takes seconds): a change the live watcher noticed while it ran (see mod.activity.shell and
   // ./mod/watcher), or HEAD moved by more than a commit.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const io = portOf($)
     // Where the project's HEAD stood before the command: only a command that moved it can have committed there.
-    const repo = mod.disabled ? null : await projectRoot(io)
+    const repo = mod.session.disabled ? null : await projectRoot(io)
     const before = repo === null ? null : await headAt(io, repo)
-    const id = `${++mod.callSeq}`
+    const id = `${++mod.activity.callSeq}`
     // A clock torn down under the call (the session ending) keeps no span for it.
-    const startedAt = mod.disabled ? null : await $.clock.now().catch(() => null)
-    if (startedAt !== null) begin(mod.shellActivity, id, startedAt)
+    const startedAt = mod.session.disabled ? null : await $.clock.now().catch(() => null)
+    if (startedAt !== null) begin(mod.activity.shell, id, startedAt)
     let ran: Awaited<ReturnType<typeof next>>
     try {
       ran = await next(e)
     } catch (err) {
-      mod.shellActivity.running.delete(id)
+      mod.activity.shell.running.delete(id)
       throw err
     }
     const command = (e as { command?: unknown }).command
-    if (ran.deny === undefined && typeof command === 'string' && mod.ranCommands.length < COMMANDS_KEPT) mod.ranCommands.push(command)
+    if (ran.deny === undefined && typeof command === 'string' && mod.turn.ranCommands.length < COMMANDS_KEPT) mod.turn.ranCommands.push(command)
     // HEAD after it, and its reflog only when it moved: read once, for the turn and for the commit note.
     const after = repo === null || before === null ? null : await headAt(io, repo)
     const reflog = repo === null || after === null || after === before ? '' : await reflogAt(io, repo)
@@ -244,20 +245,20 @@ export const register: Register = (on, options) => {
       // A denied command wrote nothing. One that brought another tree in (a checkout, a reset, a pull) leaves its
       // files out of the verdict, along with anything a scan took in while it ran; the turn's brief still runs, so
       // the band and the Changes tab show where the checkout stands now.
-      mod.shellActivity.running.delete(id)
-      if (ran.deny === undefined && !mod.disabled) {
-        mod.shellScans.clear()
-        mod.dirty = true
+      mod.activity.shell.running.delete(id)
+      if (ran.deny === undefined && !mod.session.disabled) {
+        mod.activity.shellScans.clear()
+        mod.turn.dirty = true
         // A scan that lands later and reaches back over this command is the checkout's, even when an earlier command
         // ran inside the same window: fenced off (see fenced in ./mod/watcher).
         const endedAt = await $.clock.now().catch(() => null)
         if (startedAt !== null && endedAt !== null) fence(startedAt, endedAt)
       }
     } else {
-      finish(mod.shellActivity, id, await $.clock.now().catch(() => mod.shellActivity.running.get(id) ?? 0))
+      finish(mod.activity.shell, id, await $.clock.now().catch(() => mod.activity.shell.running.get(id) ?? 0))
     }
     // A commit, in any loop: what it carries that the graph knows of, said once.
-    if (mod.disabled || !mod.notesOn || ran.deny !== undefined || repo === null || before === null) return ran
+    if (mod.session.disabled || !mod.agent.notesOn || ran.deny !== undefined || repo === null || before === null) return ran
     return noteSafely(io, ran, async () => {
       if (!committedSince(before, after, reflog, ran.text ?? '')) return ran
       const note = await commitNoteFor(io, e.agentId ?? '')
@@ -267,7 +268,7 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    mod.digs.delete(e.agentId ?? '')
+    mod.agent.digs.delete(e.agentId ?? '')
     await endTurn(portOf($), e.agentId)
     return result
   })
@@ -311,7 +312,7 @@ export const register: Register = (on, options) => {
   on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     if (e.origin.kind !== 'person' || e.pointer === undefined) return next(e)
     // At a list's end, or over none, the page takes the wheel, as a browser hands it on.
-    return (await wheelScrolled(portOf($), mod.paneRows, mod.paneOffset, e.pointer, e.by)) ? {} : next(e)
+    return (await wheelScrolled(portOf($), mod.drawn.rows, mod.drawn.offset, e.pointer, e.by)) ? {} : next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

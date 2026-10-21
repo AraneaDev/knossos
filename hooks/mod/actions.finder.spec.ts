@@ -140,13 +140,13 @@ describe('opening and closing the finder', () => {
     it('keeps the marker it was opened from across a second `find`, and puts it back on close', async () => {
         const { io, values } = fakePort({ view: view({ selected: 5, filtering: true }) })
         await press(io, 'find')
-        expect(mod.findFrom).toBe(5)
+        expect(mod.search.findFrom).toBe(5)
         expect(values.view).toMatchObject({ finding: true, filtering: false, selected: 0 })
 
         // The marker moves inside the finder; a second `find` must not take that as where it came from.
         values.view = { ...(values.view as KnossosView), selected: 2 }
         await press(io, 'find')
-        expect(mod.findFrom).toBe(5)
+        expect(mod.search.findFrom).toBe(5)
 
         await press(io, 'find-close')
         expect(values.view).toMatchObject({ finding: false, picking: null, selected: 5 })
@@ -155,11 +155,11 @@ describe('opening and closing the finder', () => {
     it('closing a finder that is not open changes nothing on the view, but drops a pending open', async () => {
         const before = view({ selected: 3, finding: false })
         const { io, values } = fakePort({ view: before })
-        mod.findFrom = 7
-        mod.openWhenFound = true
+        mod.search.findFrom = 7
+        mod.search.openWhenFound = true
         await press(io, 'find-close')
         expect(values.view).toEqual(before)
-        expect(mod.openWhenFound).toBe(false)
+        expect(mod.search.openWhenFound).toBe(false)
     })
 })
 
@@ -184,7 +184,7 @@ describe('typing into the finder', () => {
 
     it('schedules nothing while the mod is off, though the text is kept', async () => {
         const { io, values, timers } = fakePort()
-        mod.disabled = true
+        mod.session.disabled = true
         handlersOf(io).type('find', 'ab')
         await settle()
         expect((values.search as SearchState).query).toBe('ab')
@@ -217,7 +217,7 @@ describe('typing into the finder', () => {
         handlersOf(io).type('find', 'greet')
         await settle()
         await runSearch()
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         const search = values.search as SearchState
         // It was searching when the mod went off; it never lands as an idle answer.
         expect(search.phase).toBe('searching')
@@ -234,14 +234,14 @@ describe('typing into the finder', () => {
         await runSearch()
         expect(searches()).toHaveLength(1)
         expect(values.search).toEqual({ query: 'greet', for: 'greet', phase: 'idle', answer: null })
-        expect(mod.disabled).toBe(false)
+        expect(mod.session.disabled).toBe(false)
     })
 })
 
 describe('Enter in the finder', () => {
     it('closes the finder on an empty field, the marker back where it stood', async () => {
         const { io, values, timers } = fakePort({ view: view({ finding: true, selected: 0 }) })
-        mod.findFrom = 6
+        mod.search.findFrom = 6
         handlersOf(io).submit('find', '  ')
         await settle()
         expect(values.view).toMatchObject({ finding: false, picking: null, selected: 6 })
@@ -251,13 +251,13 @@ describe('Enter in the finder', () => {
     it('opens the marked match at once when the answer for that text is already in', async () => {
         const answer = { status: 'ok', results: [GREETER], truncated: false }
         const { io, values, searchTimers, runs } = fakePort({ view: view({ finding: true, selected: 0 }), search: { query: 'greet', for: 'greet', phase: 'idle', answer } })
-        mod.findFrom = 4
+        mod.search.findFrom = 4
         handlersOf(io).submit('find', 'greet')
         await settle()
         expect(values.view).toMatchObject({ finding: false, inspect: { name: 'App\\Greeter', label: 'Greeter' }, opened: 4 })
         expect(searchTimers()).toEqual([])
         expect(runs.filter(argv => argv[2] === 'graph-search')).toEqual([])
-        expect(mod.openWhenFound).toBe(false)
+        expect(mod.search.openWhenFound).toBe(false)
     })
 
     it('keeps the submitted text as the query when it differs from what was stored', async () => {
@@ -269,16 +269,16 @@ describe('Enter in the finder', () => {
 
     it('pressed before the answer, opens the first match when it lands', async () => {
         const { io, values, searchTimers, runSearch, searches } = fakePort({ view: view({ finding: true }) }, async () => found([GREETER]))
-        mod.findFrom = 2
+        mod.search.findFrom = 2
         handlersOf(io).submit('find', 'greet')
         await settle()
-        expect(mod.openWhenFound).toBe(true)
+        expect(mod.search.openWhenFound).toBe(true)
         expect(searchTimers()).toHaveLength(1)
         expect((values.view as KnossosView).inspect).toBeNull()
 
         await runSearch()
         expect(searches()[0]).toContain('--query=greet')
-        expect(mod.openWhenFound).toBe(false)
+        expect(mod.search.openWhenFound).toBe(false)
         expect(values.view).toMatchObject({ finding: false, inspect: { name: 'App\\Greeter', label: 'Greeter' }, opened: 2 })
     })
 
@@ -288,7 +288,7 @@ describe('Enter in the finder', () => {
         handlersOf(io).submit('find', 'greet')
         await settle()
         expect((values.view as KnossosView).inspect).toBeNull()
-        expect(mod.openWhenFound).toBe(true)
+        expect(mod.search.openWhenFound).toBe(true)
 
         await runSearch()
         expect(values.view).toMatchObject({ finding: false, inspect: { name: 'App\\Greeter', label: 'Greeter' } })
@@ -309,7 +309,7 @@ describe('Enter in the finder', () => {
         expect(values.search).toMatchObject({ query: 'other', for: 'greet', phase: 'idle' })
         expect(values.view).toMatchObject({ finding: true, inspect: null })
         // Not this answer's to clear: the flag waits for the answer to what the field says now.
-        expect(mod.openWhenFound).toBe(true)
+        expect(mod.search.openWhenFound).toBe(true)
     })
 
     it('opens nothing and drops the pending open when the answer has no matches', async () => {
@@ -317,7 +317,7 @@ describe('Enter in the finder', () => {
         handlersOf(io).submit('find', 'zz')
         await settle()
         await runSearch()
-        expect(mod.openWhenFound).toBe(false)
+        expect(mod.search.openWhenFound).toBe(false)
         expect(values.view).toMatchObject({ finding: true, inspect: null })
         expect(values.search).toMatchObject({ query: 'zz', for: 'zz', phase: 'idle' })
     })

@@ -114,7 +114,7 @@ function drawSegment(act: Handlers, ui: Elements[RenderSurface], row: Row, s: Se
  */
 function drawRow(act: Handlers, ui: Elements[RenderSurface], line: Row, columns: number, terminal: boolean, places = true, hovers = false) {
   const { Box, Code } = ui
-  const spinning = spunRow(line, mod.spinFrame)
+  const spinning = spunRow(line, mod.motion.spinFrame)
   const row = places ? spinning : { ...spinning, segments: spinning.segments.map(({ press, ...s }) => (press === undefined || press.id.startsWith(FILE_PRESS) ? s : { ...s, press })) }
   // A change's hunks: the engine's own diff, gutters, markers and colours as Claude Code draws them.
   if (row.code !== undefined) {
@@ -307,13 +307,13 @@ export type BandHandlers = {
  * there is something to draw.
  */
 export async function drawBand(io: Port, resolve: () => Elements[RenderSurface], props: { hasSurvey: boolean; bodyColumns: number }, act: BandHandlers): Promise<RenderElement | null> {
-  if (mod.disabled || props.hasSurvey || (await io.state.view.read()).isBandHidden) {
-    mod.bandText = null
+  if (mod.session.disabled || props.hasSurvey || (await io.state.view.read()).isBandHidden) {
+    mod.pane.bandText = null
     return null
   }
   const d = await io.state.dashboard.read()
   const model = bandModel(await io.state.brief.read(), await io.state.job.read(), await io.clock.now(), d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined)
-  mod.bandText = model?.text ?? null
+  mod.pane.bandText = model?.text ?? null
   if (model === null) return null
   const { Box, Button, Text } = resolve()
   const color = model.tone === 'alert' ? 'error' : model.tone === 'warn' ? 'warning' : 'inactive'
@@ -373,8 +373,8 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
     const laidOut = paneLayout(input, columns, rows, offset)
     used = rowsHeight(laidOut.body.filter(r => !r.key.startsWith('fill-'))) + laidOut.footer.length
     // Kept for the wheel: the last layout drawn is the one on screen.
-    mod.paneRows = laidOut.body
-    mod.paneOffset = offset
+    mod.drawn.rows = laidOut.body
+    mod.drawn.offset = offset
     return laidOut
   }
   const draw = (laidOut: ReturnType<typeof layout>, lean: boolean): RenderElement => {
@@ -422,8 +422,8 @@ export async function drawPane(io: Port, ui: Elements[RenderSurface], surface: R
   await noteSpinners(io, [])
   const { weight, rows } = fitted
   // Still past the budget at the fewest rows: one line says so, rather than a tree the engine would refuse.
-  if (!mod.tooLargeLogged) {
-    mod.tooLargeLogged = true
+  if (!mod.pane.tooLargeLogged) {
+    mod.pane.tooLargeLogged = true
     io.ui.log(`knossos: the pane was too large to draw (${weight} characters at ${rows} rows), so it drew one line instead`, { to: 'debug' })
   }
   return (

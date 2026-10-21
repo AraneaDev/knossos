@@ -1101,6 +1101,7 @@ js	hooks/lib/paths.ts
 js	hooks/lib/peek.spec.ts
 js	hooks/lib/place.spec.ts
 js	hooks/lib/place.ts
+js	hooks/lib/policies.ts
 js	hooks/lib/printable.spec.ts
 js	hooks/lib/printable.ts
 js	hooks/lib/raster.spec.ts
@@ -1139,10 +1140,14 @@ js	hooks/mod/agent.head-at.spec.ts
 js	hooks/mod/agent.note-edit.spec.ts
 js	hooks/mod/agent.note-read.spec.ts
 js	hooks/mod/agent.ts
+js	hooks/mod/allow-actions.ts
+js	hooks/mod/annotate-actions.ts
 js	hooks/mod/cells.spec.ts
 js	hooks/mod/cells.ts
+js	hooks/mod/diff-actions.ts
 js	hooks/mod/dig.spec.ts
 js	hooks/mod/dig.ts
+js	hooks/mod/finder-actions.ts
 js	hooks/mod/frame.spec.ts
 js	hooks/mod/frame.ts
 js	hooks/mod/input.ts
@@ -1151,6 +1156,7 @@ js	hooks/mod/loaders.spec.ts
 js	hooks/mod/loaders.ts
 js	hooks/mod/motion.spec.ts
 js	hooks/mod/motion.ts
+js	hooks/mod/navigate-actions.ts
 js	hooks/mod/notes-actions.ts
 js	hooks/mod/port.ts
 js	hooks/mod/render.band.spec.ts
@@ -1165,6 +1171,7 @@ js	hooks/mod/session.retry.spec.ts
 js	hooks/mod/session.spec.ts
 js	hooks/mod/session.tick.spec.ts
 js	hooks/mod/session.ts
+js	hooks/mod/state.spec.ts
 js	hooks/mod/state.ts
 js	hooks/mod/watcher.rescan.spec.ts
 js	hooks/mod/watcher.scan.spec.ts

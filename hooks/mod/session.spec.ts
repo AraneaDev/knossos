@@ -222,9 +222,9 @@ describe('startUp', () => {
         expect(port.values.get('sessionRoot')).toBe(REAL_ROOT)
         expect(port.values.get('dashboard')).toEqual(dashboard)
         expect(port.tickers).toEqual([{ ms: 1000, cancelled: false }])
-        expect(mod.ticker).not.toBeNull()
+        expect(mod.motion.ticker).not.toBeNull()
         // The watcher is on its way: its start waits for a timer.
-        expect(mod.watchStarting).toBe(true)
+        expect(mod.watch.starting).toBe(true)
         expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
         await port.advance()
         // The dashboard was just stored: the opened pane asks for no second load.
@@ -259,7 +259,7 @@ describe('startUp', () => {
         reset(options)
         const port = fakePort()
         await startUp(port.io, false)
-        expect(mod.gitAsked).toBe(true)
+        expect(mod.session.gitAsked).toBe(true)
         expect(port.runsOf('session-head')).toBe(1)
         expect(port.values.get('gitHead')).toEqual({
             rev: REV,
@@ -288,7 +288,7 @@ describe('startUp', () => {
 
     it('does not read the git head again once it was asked', async () => {
         reset(options)
-        mod.gitAsked = true
+        mod.session.gitAsked = true
         const port = fakePort({
             stored: {
                 'sess-1': {
@@ -309,10 +309,10 @@ describe('startUp', () => {
             answers: { dashboard: JSON.stringify({ status: 'no-binary' }) },
         })
         await startUp(port.io, true)
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         expect(port.tickers).toEqual([])
-        expect(mod.ticker).toBeNull()
-        expect(mod.watchStarting).toBe(false)
+        expect(mod.motion.ticker).toBeNull()
+        expect(mod.watch.starting).toBe(false)
         expect(port.opened).toEqual([])
         await port.advance()
         expect(port.calls).not.toContain('spawn')
@@ -338,7 +338,7 @@ describe('startUp', () => {
         await port.advance()
         expect(port.runsOf('dashboard')).toBe(2)
         // A silent load marks the refresh failed; the mod stays on and its ticker runs.
-        expect(mod.disabled).toBe(false)
+        expect(mod.session.disabled).toBe(false)
         expect(port.tickers).toHaveLength(1)
     })
 
@@ -346,10 +346,10 @@ describe('startUp', () => {
         reset(options)
         const port = fakePort()
         await startUp(port.io, false)
-        const first = mod.ticker
+        const first = mod.motion.ticker
         await startUp(port.io, false)
         expect(port.tickers).toHaveLength(1)
-        expect(mod.ticker).toBe(first)
+        expect(mod.motion.ticker).toBe(first)
     })
 
     it('settles the baseline before it reads the git head or the dashboard', async () => {

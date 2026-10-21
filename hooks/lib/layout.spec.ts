@@ -33,7 +33,7 @@ import { CHIP_BG, languageColour, STAT_HUES, STATUS_COLOURS } from './palette'
 import { busy, dotGlyph, isBusy, NO_MOTION, spinGlyph } from './motion'
 import type { Motion } from './motion'
 import { chainGroups, cyclesInput } from './cycles'
-import { issueCount, issuesInput, issuesList, superscript } from './views'
+import { issueCount, issuesInput, issuesList, issuesWalk, ISSUES_WALK, superscript } from './views'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 const TABS: PaneTab[] = ['overview', 'hubs', 'boundaries', 'cycles', 'issues', 'changes']
@@ -781,6 +781,36 @@ describe('the issues tab', () => {
     const undeclared = full({ policy: { status: 'not_evaluated', total: 0, truncated: false, truncation_reasons: [], items: [] } })
     expect(textOf(paneRows(fullInput({ tab: 'issues' }, undeclared), 60))).toMatch(/Policy violations +no policies declared/)
     expect(issuesList(issuesInput(undeclared))).toHaveLength(7)
+  })
+  it('says the policies are unreadable, with the reason, when knossos.json could not be read', () => {
+    const broken = full({ policy: { status: 'config_invalid', message: 'knossos.json: unexpected token at line 3', total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
+    expect(issuesInput(broken).policy?.unreadable).toBe('knossos.json: unexpected token at line 3')
+    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violations +policies unreadable: knossos\.json: unexpected token at line 3/)
+    // No reason sent: the pane still says why it checked nothing.
+    const silent = full({ policy: { status: 'config_invalid', message: 42, total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
+    expect(issuesInput(silent).policy?.unreadable).toBe('knossos.json could not be read')
+    expect(issuesInput(full()).policy).not.toHaveProperty('unreadable')
+  })
+  it("takes the turn brief's reason when the dashboard's own policy check says nothing of it", () => {
+    const unread = brief({ policy: { status: 'config_invalid', message: 'bad rule', total: 0, violations: [], truncated: false } as unknown as TurnBrief['policy'] })
+    const older = input({ tab: 'issues' }, dash(), unread)
+    expect(older.issues.policy).toEqual({ evaluated: false, total: '0', count: 0, items: [], unreadable: 'bad rule' })
+    expect(textOf(paneRows(older, 90))).toMatch(/Policy violations +policies unreadable: bad rule/)
+    // The dashboard's own evaluated check stands.
+    expect(paneInput({ dashboard: full(), brief: unread, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true }).issues.policy).not.toHaveProperty('unreadable')
+  })
+  it('places each Issues list in the walk: violations, diagnostics, dead code, hotspots, files over budget', () => {
+    const issues = issuesInput(full())
+    const walk = issuesWalk(issues)
+    expect(ISSUES_WALK.map(part => walk[part])).toEqual([
+      { offset: 0, length: issues.policy?.items.length ?? 0 },
+      { offset: issues.policy?.items.length ?? 0, length: issues.diagnostics?.items.length ?? 0 },
+      { offset: (issues.policy?.items.length ?? 0) + (issues.diagnostics?.items.length ?? 0), length: issues.deadCode.items.length },
+      { offset: walk.dead.offset + issues.deadCode.items.length, length: issues.hotspots.length },
+      { offset: walk.hotspots.offset + issues.hotspots.length, length: issues.budget?.files.length ?? 0 },
+    ])
+    // The walk is the list the marker steps through, so the last list ends where it does.
+    expect(walk.budget.offset + walk.budget.length).toBe(issuesList(issues).length)
   })
   it('walks the diagnostics after the violations: each a press that opens its file at its line', () => {
     const issues = issuesInput(full())

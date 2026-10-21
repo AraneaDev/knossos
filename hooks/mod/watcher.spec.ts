@@ -159,12 +159,12 @@ beforeEach(() => reset(options))
 
 describe('ensureWatcher guards', () => {
     const guards: [string, () => void, Record<string, unknown>][] = [
-        ['the watcher is switched off', () => void (mod.watchOn = false), {}],
-        ['the mod is disabled', () => void (mod.disabled = true), {}],
-        ['a watcher runs', () => void (mod.watcher = channel().stream), {}],
-        ['a watcher is starting', () => void (mod.watchStarting = true), {}],
-        ['the root was refused', () => void (mod.watchRefused = true), {}],
-        ['the pause before a restart is not over', () => void (mod.watchRetryAt = 5), {}],
+        ['the watcher is switched off', () => void (mod.watch.on = false), {}],
+        ['the mod is disabled', () => void (mod.session.disabled = true), {}],
+        ['a watcher runs', () => void (mod.watcher.stream = channel().stream), {}],
+        ['a watcher is starting', () => void (mod.watch.starting = true), {}],
+        ['the root was refused', () => void (mod.watch.refused = true), {}],
+        ['the pause before a restart is not over', () => void (mod.watch.retryAt = 5), {}],
         ['there is no dashboard', () => undefined, { dashboard: null }],
         ['the dashboard is not ok', () => undefined, { dashboard: { status: 'unscanned' } }],
         ['the dashboard names no project root', () => undefined, { dashboard: dashboard({ project_root: null } as never) }],
@@ -173,12 +173,12 @@ describe('ensureWatcher guards', () => {
     it.each(guards)('schedules nothing when %s', async (_, arrange, initial) => {
         const port = fakePort(initial)
         arrange()
-        const gen = mod.watchGen
-        const starting = mod.watchStarting
+        const gen = mod.generations.watch
+        const starting = mod.watch.starting
         await ensureWatcher(port.io)
         expect(port.pending()).toBe(0)
-        expect(mod.watchGen).toBe(gen)
-        expect(mod.watchStarting).toBe(starting)
+        expect(mod.generations.watch).toBe(gen)
+        expect(mod.watch.starting).toBe(starting)
         await port.advance(0)
         expect(port.spawned).toEqual([])
     })
@@ -188,15 +188,15 @@ describe('starting the watcher', () => {
     it('marks it starting and bumps the generation at once, and spawns the watch on the next tick', async () => {
         const port = fakePort()
         port.streams.push(channel())
-        const gen = mod.watchGen
+        const gen = mod.generations.watch
         await ensureWatcher(port.io)
-        expect(mod.watchStarting).toBe(true)
-        expect(mod.watchGen).toBe(gen + 1)
+        expect(mod.watch.starting).toBe(true)
+        expect(mod.generations.watch).toBe(gen + 1)
         expect(port.spawned).toEqual([])
         await port.advance(0)
         expect(port.spawned).toEqual([['sh', SCRIPT, 'watch', ROOT, '--poll-ms=1000']])
-        expect(mod.watchStarting).toBe(false)
-        expect(mod.watcher).not.toBeNull()
+        expect(mod.watch.starting).toBe(false)
+        expect(mod.watcher.stream).not.toBeNull()
         expect(port.values.get('live')).toEqual({ phase: 'starting' })
     })
 
@@ -214,8 +214,8 @@ describe('starting the watcher', () => {
         await ensureWatcher(port.io)
         await port.advance(0)
         expect(port.spawned).toHaveLength(1)
-        expect(mod.watchRefused).toBe(true)
-        expect(mod.watcher).toBeNull()
+        expect(mod.watch.refused).toBe(true)
+        expect(mod.watcher.stream).toBeNull()
         // Not asked again.
         await ensureWatcher(port.io)
         expect(port.pending()).toBe(0)
@@ -225,12 +225,12 @@ describe('starting the watcher', () => {
 describe('the watcher stream', () => {
     it('a ready event takes the header out of off, resets the failures, and reads the ledger since the session began', async () => {
         const port = fakePort({ sessionStart: 's0' })
-        mod.watchFailures = 2
+        mod.watch.failures = 2
         const ch = await port.start()
         ch.event({ event: 'ready' })
         await settle()
         expect(port.values.get('live')).toEqual({ phase: 'live' })
-        expect(mod.watchFailures).toBe(0)
+        expect(mod.watch.failures).toBe(0)
         expect(port.ran('session-changes')).toEqual([['sh', SCRIPT, 'session-changes', ROOT, '--since=s0']])
     })
 
@@ -240,14 +240,14 @@ describe('the watcher stream', () => {
         ch.push('{"event":"ready","pid":4321}\n', 'stderr')
         await settle()
         expect(port.values.get('live')).toEqual({ phase: 'starting' })
-        expect(mod.watcherPid).toBeNull()
+        expect(mod.watcher.pid).toBeNull()
         ch.push('{"event":"rea')
         await settle()
         expect(port.values.get('live')).toEqual({ phase: 'starting' })
         ch.push('dy","pid":42}\n')
         await settle()
         expect(port.values.get('live')).toEqual({ phase: 'live' })
-        expect(mod.watcherPid).toBe(42)
+        expect(mod.watcher.pid).toBe(42)
         expect(port.ran('session-changes')).toHaveLength(1)
     })
 
@@ -257,10 +257,10 @@ describe('the watcher stream', () => {
         ch.event({ event: 'ready' })
         ch.event({ event: 'changes' })
         await settle()
-        expect(mod.watchPending).toBe(true)
+        expect(mod.watcher.pending).toBe(true)
         ch.event({ event: 'scan_completed' })
         await settle()
-        expect(mod.watchPending).toBe(false)
+        expect(mod.watcher.pending).toBe(false)
     })
 
     it.each(['absorbed', 'stopped'])('a %s event clears pending changes', async event => {
@@ -268,10 +268,10 @@ describe('the watcher stream', () => {
         const ch = await port.start()
         ch.event({ event: 'changes' })
         await settle()
-        expect(mod.watchPending).toBe(true)
+        expect(mod.watcher.pending).toBe(true)
         ch.event({ event })
         await settle()
-        expect(mod.watchPending).toBe(false)
+        expect(mod.watcher.pending).toBe(false)
     })
 
     it('records only a whole pid above 1', async () => {
@@ -279,19 +279,19 @@ describe('the watcher stream', () => {
         const ch = await port.start()
         for (const pid of [1, 12.5, '1234', 0, -7]) ch.event({ event: 'ready', pid })
         await settle()
-        expect(mod.watcherPid).toBeNull()
+        expect(mod.watcher.pid).toBeNull()
         ch.event({ event: 'ready', pid: 1234 })
         await settle()
-        expect(mod.watcherPid).toBe(1234)
+        expect(mod.watcher.pid).toBe(1234)
     })
 
     it('a new snapshot updates the known one and reloads the dashboard; the same one again does nothing', async () => {
         const port = fakePort()
-        mod.snapshot = 's0'
+        mod.session.snapshot = 's0'
         const ch = await port.start()
         ch.event({ event: 'snapshot', snapshot_id: 's1' })
         await settle()
-        expect(mod.snapshot).toBe('s1')
+        expect(mod.session.snapshot).toBe('s1')
         expect(port.ran('dashboard')).toHaveLength(1)
         ch.event({ event: 'snapshot', snapshot_id: 's1' })
         await settle()
@@ -299,7 +299,7 @@ describe('the watcher stream', () => {
     })
 
     it('turns the spinner for a scan the watcher starts, on an open pane', async () => {
-        mod.paneText = 'live'
+        mod.pane.text = 'live'
         const port = fakePort()
         const ch = await port.start()
         expect(port.everies).toEqual([])
@@ -314,12 +314,12 @@ describe('the watcher stream', () => {
         const ch = await port.start()
         ch.event({ event: 'scan_started' })
         await settle()
-        mod.activity.spans.push({ start: 100_200, end: 100_400 })
+        mod.activity.calls.spans.push({ start: 100_200, end: 100_400 })
         port.setNow(101_000)
         ch.event({ event: 'scan_completed', snapshot_id: 's1' })
         await settle()
         expect(port.values.get('sessionScans')).toEqual(['s1'])
-        expect(mod.lastScan).toEqual({ start: 100_000, end: 101_000 })
+        expect(mod.scans.last).toEqual({ start: 100_000, end: 101_000 })
     })
 
     it('does not keep a scan nothing of the session ran during', async () => {
@@ -333,7 +333,7 @@ describe('the watcher stream', () => {
         await settle()
         expect(port.values.get('sessionScans')).toEqual([])
         // Remembered as the last scan either way.
-        expect(mod.lastScan).toEqual({ start: 100_000, end: 101_000 })
+        expect(mod.scans.last).toEqual({ start: 100_000, end: 101_000 })
     })
 
     it.each(['absorbed', 'snapshot'])('an unseen %s scan is dated a poll and a followed scan back', async event => {
@@ -343,11 +343,11 @@ describe('the watcher stream', () => {
         const ch = await port.start()
         const start = now - 1_000 - FOLLOWED_SCAN_MS
         // Activity that ended exactly where the window opens counts.
-        mod.activity.spans.push({ start: start - LOOKBACK_MS - 500, end: start - LOOKBACK_MS })
+        mod.activity.calls.spans.push({ start: start - LOOKBACK_MS - 500, end: start - LOOKBACK_MS })
         ch.event({ event, snapshot_id: 's1' })
         await settle()
         expect(port.values.get('sessionScans')).toEqual(['s1'])
-        expect(mod.lastScan).toEqual({ start, end: now })
+        expect(mod.scans.last).toEqual({ start, end: now })
     })
 
     it('an unseen absorbed scan is not kept for activity just outside that window', async () => {
@@ -356,7 +356,7 @@ describe('the watcher stream', () => {
         port.setNow(now)
         const ch = await port.start()
         const start = now - 1_000 - FOLLOWED_SCAN_MS
-        mod.activity.spans.push({ start: start - LOOKBACK_MS - 500, end: start - LOOKBACK_MS - 1 })
+        mod.activity.calls.spans.push({ start: start - LOOKBACK_MS - 500, end: start - LOOKBACK_MS - 1 })
         ch.event({ event: 'absorbed', snapshot_id: 's1' })
         await settle()
         expect(port.values.get('sessionScans')).toEqual([])
@@ -369,11 +369,11 @@ describe('the end of the stream', () => {
         const ch = await port.start()
         ch.event({ event: 'refused' })
         await settle()
-        expect(mod.watchRefused).toBe(true)
-        expect(mod.watcher).toBeNull()
+        expect(mod.watch.refused).toBe(true)
+        expect(mod.watcher.stream).toBeNull()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
-        expect(mod.watchFailures).toBe(0)
-        expect(mod.watchRetryAt).toBe(0)
+        expect(mod.watch.failures).toBe(0)
+        expect(mod.watch.retryAt).toBe(0)
         await ensureWatcher(port.io)
         expect(port.pending()).toBe(0)
     })
@@ -384,10 +384,10 @@ describe('the end of the stream', () => {
         ch.event({ event: 'ready', pid: 99 })
         ch.event({ event: 'stopped' })
         await settle()
-        expect(mod.watcher).toBeNull()
-        expect(mod.watcherPid).toBeNull()
+        expect(mod.watcher.stream).toBeNull()
+        expect(mod.watcher.pid).toBeNull()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
-        expect(mod.watchFailures).toBe(1)
+        expect(mod.watch.failures).toBe(1)
     })
 
     it('a no-binary answer turns the mod off', async () => {
@@ -395,8 +395,8 @@ describe('the end of the stream', () => {
         const ch = await port.start()
         ch.event({ status: 'no-binary' })
         await settle()
-        expect(mod.disabled).toBe(true)
-        expect(mod.watcher).toBeNull()
+        expect(mod.session.disabled).toBe(true)
+        expect(mod.watcher.stream).toBeNull()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
     })
 
@@ -405,9 +405,9 @@ describe('the end of the stream', () => {
         const ch = await port.start()
         ch.end()
         await settle()
-        expect(mod.watchRefused).toBe(true)
-        expect(mod.watchFailures).toBe(0)
-        expect(mod.watcher).toBeNull()
+        expect(mod.watch.refused).toBe(true)
+        expect(mod.watch.failures).toBe(0)
+        expect(mod.watcher.stream).toBeNull()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
     })
 
@@ -417,15 +417,15 @@ describe('the end of the stream', () => {
         const ch = await port.start()
         ch.event({ event: 'ready', pid: 1234 })
         await settle()
-        expect(mod.watcherPid).toBe(1234)
+        expect(mod.watcher.pid).toBe(1234)
         ch.end()
         await settle()
-        expect(mod.watchFailures).toBe(1)
-        expect(mod.watchRetryAt).toBe(31_000)
-        expect(mod.watcher).toBeNull()
-        expect(mod.watcherPid).toBeNull()
+        expect(mod.watch.failures).toBe(1)
+        expect(mod.watch.retryAt).toBe(31_000)
+        expect(mod.watcher.stream).toBeNull()
+        expect(mod.watcher.pid).toBeNull()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
-        expect(mod.watchRefused).toBe(false)
+        expect(mod.watch.refused).toBe(false)
 
         // Not before the pause is over.
         port.setNow(30_999)
@@ -437,21 +437,21 @@ describe('the end of the stream', () => {
             [2, 60_000],
             [3, 90_000],
         ] as const) {
-            port.setNow(mod.watchRetryAt)
+            port.setNow(mod.watch.retryAt)
             const next = await port.start()
             next.event({ event: 'leading' })
             next.end()
             await settle()
-            expect(mod.watchFailures).toBe(failures)
-            expect(mod.watchRetryAt).toBe(port.now() + pause)
+            expect(mod.watch.failures).toBe(failures)
+            expect(mod.watch.retryAt).toBe(port.now() + pause)
         }
-        port.setNow(mod.watchRetryAt)
+        port.setNow(mod.watch.retryAt)
         const last = await port.start()
         last.event({ event: 'leading' })
         last.end()
         await settle()
-        expect(mod.watchFailures).toBe(4)
-        expect(mod.watchRetryAt).toBe(Number.POSITIVE_INFINITY)
+        expect(mod.watch.failures).toBe(4)
+        expect(mod.watch.retryAt).toBe(Number.POSITIVE_INFINITY)
         expect(port.spawned).toHaveLength(4)
     })
 
@@ -463,10 +463,10 @@ describe('the end of the stream', () => {
         await settle()
         ch.fail(new Error('torn down'))
         await settle()
-        expect(mod.watcher).toBeNull()
-        expect(mod.watcherPid).toBeNull()
-        expect(mod.watchFailures).toBe(1)
-        expect(mod.watchRetryAt).toBe(35_000)
+        expect(mod.watcher.stream).toBeNull()
+        expect(mod.watcher.pid).toBeNull()
+        expect(mod.watch.failures).toBe(1)
+        expect(mod.watch.retryAt).toBe(35_000)
         expect(port.values.get('live')).toEqual(LIVE_OFF)
     })
 
@@ -475,17 +475,17 @@ describe('the end of the stream', () => {
         const ch = await port.start()
         ch.event({ event: 'leading' })
         await settle()
-        mod.watchFailures = 2
+        mod.watch.failures = 2
         expect(port.values.get('live')).toEqual({ phase: 'live' })
         stopWatcher()
         ch.event({ event: 'changes' })
         await settle()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
-        expect(mod.watchFailures).toBe(2)
-        expect(mod.watchRetryAt).toBe(0)
-        expect(mod.watchRefused).toBe(false)
+        expect(mod.watch.failures).toBe(2)
+        expect(mod.watch.retryAt).toBe(0)
+        expect(mod.watch.refused).toBe(false)
         // The piece that arrived after the stop was not acted on.
-        expect(mod.watchPending).toBe(false)
+        expect(mod.watcher.pending).toBe(false)
     })
 
     it('stopped from outside while a newer watcher is starting, it leaves the header alone', async () => {
@@ -494,11 +494,11 @@ describe('the end of the stream', () => {
         ch.event({ event: 'leading' })
         await settle()
         stopWatcher()
-        mod.watchStarting = true
+        mod.watch.starting = true
         ch.event({ event: 'changes' })
         await settle()
         expect(port.values.get('live')).toEqual({ phase: 'live' })
-        expect(mod.watchFailures).toBe(0)
+        expect(mod.watch.failures).toBe(0)
     })
 })
 
@@ -517,7 +517,7 @@ describe('the session ledger', () => {
         const ch = await port.start()
         ch.event({ event: 'ready' })
         await settle()
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         expect(port.values.get('sessionLedger')).toBeNull()
     })
 
@@ -568,7 +568,7 @@ describe('the session ledger', () => {
 
 describe('the ledger on the web host', () => {
     it('asks for what is not committed, with no session start, and keeps the answer', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const answer = ledger('HEAD', { 'src/a.ts': { status: 'changed', dependents: 1, boundaries: [], boundary: null } } as never)
         const port = fakePort({}, { 'session-changes': JSON.stringify(answer) })
         const ch = await port.start()
@@ -579,7 +579,7 @@ describe('the ledger on the web host', () => {
     })
 
     it('shows what the ledger lists with no origins and counted from the last commit, whatever the session start', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const answer = ledger('HEAD', { 'src/a.ts': { status: 'changed', dependents: 1, boundaries: [], boundary: null } } as never)
         const port = fakePort({ sessionLedger: answer, sessionEdits: [], sessionBegan: null })
         await port.start()
@@ -595,7 +595,7 @@ describe('the ledger on the web host', () => {
         ['an error with nothing read before it', '{"status":"error","complete":false,"files":{}}', null, 'error'],
         ['the last good read over an error', '{"status":"error","complete":false,"files":{}}', ledger('HEAD'), 'ok'],
     ])('keeps %s', async (_, answer, before, kept) => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const port = fakePort({ sessionLedger: before }, { 'session-changes': answer })
         const ch = await port.start()
         ch.event({ event: 'ready' })
@@ -604,10 +604,10 @@ describe('the ledger on the web host', () => {
     })
 
     it('shows the changes with no watcher at all, and says why when there is no git or the read failed', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const answer = ledger('HEAD', { 'src/a.ts': { status: 'changed', dependents: 1, boundaries: [], boundary: null } } as never)
         const port = fakePort({ sessionLedger: answer })
-        expect(mod.watcher).toBeNull()
+        expect(mod.watcher.stream).toBeNull()
         const shown = await shownChanges(port.io, ROOT)
         expect(Object.keys(shown.files)).toEqual(['src/a.ts'])
         expect(shown.fallback).toBeUndefined()
@@ -643,7 +643,7 @@ describe('following the checkout\'s commit', () => {
     const head = (rev: string) => JSON.stringify({ status: 'ok', path: ROOT, rev, branch: 'main' })
 
     it('counts from a new commit: keeps it, drops the open diff and reads the changes again', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         let answer = head(REV)
         const port = fakePort({ view, sessionRev: { status: 'ok', rev: REV }, fileDiff: { stale: true }, gitHead: null }, { 'session-head': () => answer, 'session-changes': JSON.stringify(ledger('HEAD')) })
         await port.start()
@@ -667,9 +667,9 @@ describe('following the checkout\'s commit', () => {
     })
 
     it('reads the changes on every call while no watcher is live, moved or not, as git reads need none', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const port = fakePort({ view, sessionRev: { status: 'ok', rev: REV } }, { 'session-head': head(REV), 'session-changes': JSON.stringify(ledger('HEAD')) })
-        expect(mod.watcher).toBeNull()
+        expect(mod.watcher.stream).toBeNull()
         expect(await followHead(port.io)).toBe(false)
         await settle()
         expect(port.ran('session-changes')).toEqual([['sh', SCRIPT, 'session-changes', ROOT, '--working-tree']])
@@ -680,7 +680,7 @@ describe('following the checkout\'s commit', () => {
     })
 
     it('reads the changes outside git too, so the Changes tab can say why there are none', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const port = fakePort({ view, sessionRev: null }, { 'session-head': '{"status":"no-git"}', 'session-changes': '{"status":"no-git","complete":false,"files":{}}' })
         expect(await followHead(port.io)).toBe(false)
         await settle()
@@ -688,7 +688,7 @@ describe('following the checkout\'s commit', () => {
     })
 
     it('does nothing on silence or for a project git does not hold', async () => {
-        mod.host = 'web'
+        mod.session.host = 'web'
         const port = fakePort({ view, sessionRev: { status: 'ok', rev: REV } }, { 'session-head': '' })
         await port.start()
         expect(await followHead(port.io)).toBe(false)

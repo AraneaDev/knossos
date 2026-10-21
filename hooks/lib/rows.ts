@@ -395,6 +395,12 @@ export function wrapGroups(key: string, groups: Segment[][], columns: number, ga
 export const blank = (key: string): Row => ({ key, segments: [{ text: ' ' }] })
 export const dimRow = (key: string, text: string, columns: number): Row => ({ key, segments: [{ text: fit(text, columns), dim: true }] })
 
+/** The `+N not listed` under a list that holds fewer than its count: none when it holds them all. */
+export const notListedRow = (key: string, count: number, shown: number, columns: number): Row[] => (count > shown ? [dimRow(key, `   +${count - shown} not listed`, columns)] : [])
+
+/** The marker's index in a list `length` long (`local`, its place counted from the list's first item), or -1 when it is not in the list. */
+export const inList = (local: number, length: number): number => (local >= 0 && local < length ? local : -1)
+
 /** How a table of names, boundaries, a bar, numbers and (optionally) files fits `columns`; `compact` numbers (`31.7k`) on a narrow pane. */
 export type TableSpec = { name: number; boundary: number; bar: number; numbers: number[]; place?: number; kind?: number; compact?: true }
 

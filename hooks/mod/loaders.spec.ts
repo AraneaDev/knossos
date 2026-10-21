@@ -102,7 +102,7 @@ describe('the Notes tab loader', () => {
     await request(port.io, 'notes')
     await port.advance()
     expect(port.runs).toHaveLength(1)
-    mod.notesVersion += 1
+    mod.notes.version += 1
     await request(port.io, 'notes')
     await port.advance()
     expect(port.runs).toHaveLength(2)
@@ -157,7 +157,7 @@ describe('the keyed loader', () => {
     const port = fakePort({ dashboard: dashboard('s1'), gitHead: { rev: 'b', branch: 'main' } }, { churn: '{"status":"no-binary"}' })
     await request(port.io, 'churn')
     await port.advance()
-    expect(mod.disabled).toBe(true)
+    expect(mod.session.disabled).toBe(true)
     port.values.set('gitHead', { rev: 'c', branch: 'main' })
     await request(port.io, 'churn')
     expect(port.pending()).toBe(0)
@@ -177,12 +177,12 @@ describe('the keyed loader', () => {
     await port.advance()
     expect(port.runs.map(r => r[4])).toEqual(['App\\A', 'App\\B'])
     expect(port.values.get('detail')).toMatchObject({ name: 'App\\A', phase: 'done' })
-    expect(mod.fetching.size).toBe(0)
+    expect(mod.loads.fetching.size).toBe(0)
   })
 
   it('looks the marked row up beside the tab only once the marker rests, and a row with nothing to show shows none', async () => {
     reset(options)
-    mod.paneWide = true
+    mod.pane.wide = true
     const hub = (i: number) => ({ name: `C${i}`, canonical_name: `App\\C${i}`, kind: 'class', boundary: 'core', in_degree: 90 - i, out_degree: 1, cross_boundary_degree: 0, dependent_files: 40 - i, path: `src/C${i}.php`, line: 1, top_dependents: [] })
     const d = { ...dashboard('s1'), hubs: [hub(0), hub(1), hub(2)] } as Dashboard
     const port = fakePort({ dashboard: d, view: view({ tab: 'hubs' }) }, { 'component-detail': JSON.stringify({ status: 'not-found' }) })
@@ -201,7 +201,7 @@ describe('the keyed loader', () => {
     port.values.set('dashboard', { ...d, hubs: [] })
     await request(port.io, 'peek')
     expect(port.values.get('peek')).toBeNull()
-    expect(mod.peekNone).not.toBeNull()
+    expect(mod.loads.peekNone).not.toBeNull()
   })
 })
 

@@ -63,7 +63,7 @@ describe('commitNoteFor: when it says nothing', () => {
         const { io, reads } = fakePort({ changes: untestedOnly() })
         expect(await commitNoteFor(io, 'main')).toBeNull()
         expect(reads).not.toContain('changes')
-        expect(mod.commitNoted.size).toBe(0)
+        expect(mod.agent.commitNoted.size).toBe(0)
     })
 
     it('returns null when there is no dashboard', async () => {
@@ -80,8 +80,8 @@ describe('commitNoteFor: when it says nothing', () => {
     it('returns null and takes no slot when nothing is untested, violated or newly cyclic', async () => {
         const { io } = fakePort({ changes: changes({ files: { 'src/a.ts': file('changed', 2) } }) })
         expect(await commitNoteFor(io, 'main')).toBeNull()
-        expect(mod.commitNoted.size).toBe(0)
-        expect(mod.turnNotes.get('main')).toBeUndefined()
+        expect(mod.agent.commitNoted.size).toBe(0)
+        expect(mod.agent.turnNotes.get('main')).toBeUndefined()
     })
 })
 
@@ -164,6 +164,13 @@ describe('commitNoteFor: violations', () => {
         expect(note).toContain('(src/a.ts)')
         expect(note).not.toContain('boundary-policy')
     })
+
+    it('says the policies went unchecked when the dashboard could not read them, only while they are enforced', async () => {
+        const unread = { ...dashboard(), policy: { status: 'config_invalid', message: 'bad rule', total: 0, truncated: false, truncation_reasons: [], items: [] } } as unknown as Dashboard
+        expect(await commitNoteFor(fakePort({ dashboard: unread }).io, 'main')).toBe("knossos: this session's changes were not checked against the boundary policies (policies unreadable: bad rule).")
+        reset({ ...options, enforcePolicies: false })
+        expect(await commitNoteFor(fakePort({ dashboard: unread }).io, 'main')).toBeNull()
+    })
 })
 
 describe('commitNoteFor: once per loop and note, within the turn budget', () => {
@@ -171,16 +178,16 @@ describe('commitNoteFor: once per loop and note, within the turn budget', () => 
         const { io } = fakePort({ changes: untestedOnly() })
         const note = await commitNoteFor(io, 'main')
         expect(note).not.toBeNull()
-        expect([...mod.commitNoted]).toEqual([`main\u0000${note}`])
-        expect(mod.turnNotes.get('main')).toBe(1)
+        expect([...mod.agent.commitNoted]).toEqual([`main\u0000${note}`])
+        expect(mod.agent.turnNotes.get('main')).toBe(1)
     })
 
     it('says the same note only once in the same loop', async () => {
         const { io } = fakePort({ changes: untestedOnly() })
         expect(await commitNoteFor(io, 'main')).not.toBeNull()
         expect(await commitNoteFor(io, 'main')).toBeNull()
-        expect(mod.commitNoted.size).toBe(1)
-        expect(mod.turnNotes.get('main')).toBe(1)
+        expect(mod.agent.commitNoted.size).toBe(1)
+        expect(mod.agent.turnNotes.get('main')).toBe(1)
     })
 
     it('says the same note again in a different loop', async () => {
@@ -188,14 +195,14 @@ describe('commitNoteFor: once per loop and note, within the turn budget', () => 
         const first = await commitNoteFor(io, 'main')
         const second = await commitNoteFor(io, 'agent-7')
         expect(second).toBe(first)
-        expect(mod.commitNoted.size).toBe(2)
+        expect(mod.agent.commitNoted.size).toBe(2)
     })
 
     it('returns null and records nothing when the turn has no note slot left', async () => {
         const { io } = fakePort({ changes: untestedOnly() })
         while (takeNoteSlot('main'));
         expect(await commitNoteFor(io, 'main')).toBeNull()
-        expect(mod.commitNoted.size).toBe(0)
+        expect(mod.agent.commitNoted.size).toBe(0)
         // Another loop has its own budget.
         expect(await commitNoteFor(io, 'other')).not.toBeNull()
     })

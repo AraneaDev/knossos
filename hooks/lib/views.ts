@@ -9,7 +9,7 @@
  */
 import { diffBlock } from './diff'
 import type { DiffView } from './diff'
-import { NOTE_ROOM, moreRows, noteOf, shownOf, windowOf } from './cards'
+import { NOTE_ROOM, noteOf, windowOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, Inspected, NotesFilter, NoteState, PaneTab } from '../../types'
 import { ringsBlock, ringsList } from './rings'
@@ -20,7 +20,8 @@ import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
 import { absolute, placeOf } from './paths'
-import { blank, button, cells, chip, dimRow, displayName, fit, fitStart, pathSegments, grouped, MARK, numberWidth, shortName, segmentsWidth, spaces, SWATCH, tableHead, tableRow, tableSpec, tinted, wrapWords } from './rows'
+import { blank, button, cells, chip, dimRow, displayName, fit, fitStart, inList, notListedRow, pathSegments, grouped, MARK, numberWidth, shortName, segmentsWidth, spaces, SWATCH, tableHead, tableRow, tableSpec, tinted, wrapWords } from './rows'
+import { unreadablePolicies, unreadableText } from './policies'
 import { opensFile } from './editor'
 import type { Loc, Row, Segment } from './types'
 import type { Tier } from './rows'
@@ -69,7 +70,8 @@ export type DiagnosticLine = { severity: string; text: string; path: string | nu
 
 export type IssuesInput = {
   /** Null when the knossos that answered sends no policy section. */
-  policy: { evaluated: boolean; total: string; count: number; items: ViolationLine[] } | null
+  /** `unreadable` is why the project's policies could not be read, absent when they could. */
+  policy: { evaluated: boolean; total: string; count: number; items: ViolationLine[]; unreadable?: string } | null
   diagnostics: { errors: number; warnings: number; infos: number; items: DiagnosticLine[] } | null
   /** `probable` is how many of `total` are probably dead and `testOnly` how many only tests reach, each null from a knossos that does not say. */
   deadCode: { total: string; probable: number | null; testOnly: number | null; items: DeadLine[] }
@@ -148,6 +150,12 @@ export function locIn(root: string | null, path: string | null, line: number | n
   return root === null || path === null || path === '' ? null : { path: absolute(root, path), line }
 }
 
+/** The reason a policy check could not read the project's policies, as {@link IssuesInput}'s `unreadable`; nothing when it could. */
+export function unreadableOf(policy: { status: string } | null | undefined): { unreadable?: string } {
+  const reason = unreadablePolicies(policy)
+  return reason === null ? {} : { unreadable: reason }
+}
+
 /** The Issues tab's view of a dashboard. */
 export function issuesInput(d: Dashboard): IssuesInput {
   const policy = d.policy
@@ -159,6 +167,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
         ? null
         : {
             evaluated: policy.status === 'evaluated',
+            ...unreadableOf(policy),
             total: countLabel(policy.total, policy.truncated),
             count: policy.total,
             items: policy.items.map(v => ({
@@ -340,16 +349,40 @@ const none = (key: string): Row => ({ key, segments: [{ text: '   none', dim: tr
 /** The fewest rows each list on the Issues tab shows, however short the pane. */
 const ISSUES_MIN = 3
 
+/** The Issues tab's lists in the order the marker walks them. */
+export const ISSUES_WALK = ['violations', 'diagnostics', 'dead', 'hotspots', 'budget'] as const
+
+/** Where each of the Issues tab's lists stands in the marker's walk: its first row's place (`offset`) and how many it lists. */
+export type IssuesWalk = Record<(typeof ISSUES_WALK)[number], { offset: number; length: number }>
+
+/** The Issues tab's walk: the violations, the diagnostics, the dead code, the hotspots, the files over budget, one after another. */
+export function issuesWalk(issues: IssuesInput): IssuesWalk {
+  const lengths = { violations: issues.policy?.items.length ?? 0, diagnostics: issues.diagnostics?.items.length ?? 0, dead: issues.deadCode.items.length, hotspots: issues.hotspots.length, budget: issues.budget?.files.length ?? 0 }
+  let offset = 0
+  const walk = {} as IssuesWalk
+  for (const part of ISSUES_WALK) {
+    walk[part] = { offset, length: lengths[part] }
+    offset += lengths[part]
+  }
+  return walk
+}
+
+/** The marker's index in one list of the walk, -1 when it is on another. */
+const localTo = (part: { offset: number; length: number }, selected: number): number => inList(selected - part.offset, part.length)
+
 /**
- * The Issues tab's cards: policy violations, diagnostics, dead code, the
- * complexity hotspots (lines times dependents) and the files over the
- * project's function-length budget, each list as long as the pane allows.
- * Wide, they stand on a grid of equal rows (see {@link issueGrid}).
+ * A list of entries `limit` long around the marker (`local`: its index in this list), with what is above and below;
+ * `walk` is its first entry's place in the marker's walk.
  */
-export function issuesArrangement(issues: IssuesInput, selected: number, tier: Tier, hues: Hues = NO_HUES): Arrangement {
-  const policy = issues.policy
-  const violations = policy?.items ?? []
-  const violationEntries: Entry[] = violations.map((v, i) => ({
+function listedEntries(key: string, entries: Entry[], hues: Hues, at: { columns: number; limit: number; local: number; walk: number; scrolled?: number }): { body: Row[]; window: Section['window'] } {
+  const spec = entrySpec(at.columns, entries, hues)
+  const { rows, window } = windowedTable(`${key}-window`, entries, at, (shown, start) => shown.map((e, n) => entryRow(`${key}-${start + n}`, e, spec, hues)))
+  return { body: rows, window }
+}
+
+/** Each policy violation as an entry: its source, an arrow, its target on its boundary's swatch. */
+function violationEntries(violations: ViolationLine[], selected: number, hues: Hues): Entry[] {
+  return violations.map((v, i) => ({
     selected: i === selected,
     mark: mark(SEVERITY.error),
     boundary: v.source.boundary,
@@ -363,26 +396,31 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       return [button(`row:${i}`, a), { text: ' → ', dim: true }, ...swatch, { text: b }]
     },
   }))
-  const d = issues.diagnostics
-  // The walk: the violations, the diagnostics, the dead code, the hotspots, the files over budget.
-  const diagOffset = violations.length
-  const diagEntries: Entry[] = (d?.items ?? []).map((x, i) => ({
-    selected: diagOffset + i === selected,
+}
+
+/** Each diagnostic as an entry, marked by its severity, the first `offset` into the walk. */
+function diagnosticEntries(items: DiagnosticLine[], offset: number, selected: number): Entry[] {
+  return items.map((x, i) => ({
+    selected: offset + i === selected,
     mark: mark(x.severity === 'error' ? SEVERITY.error : x.severity === 'warning' ? SEVERITY.warn : SEVERITY.note),
     place: x.where,
     loc: x.loc,
     need: cells(x.text),
-    main: width => [button(`row:${diagOffset + i}`, fit(x.text, width))],
+    main: width => [button(`row:${offset + i}`, fit(x.text, width))],
   }))
-  const dead = issues.deadCode
-  const offset = diagOffset + diagEntries.length
-  // Two marks before the name, the card's note their legend: how sure the scan is, ● probable or a dim ○ possible
-  // (something no scan sees may reach it), then what reaches it, ◆ tests only in the warning colour (finished work
-  // no product path runs) or a dim ∅ nothing at all. Where even the marks would squeeze the names below
-  // {@link MAIN_MIN} they go from every row at once, so they never show on some rows and not others.
+}
+
+/**
+ * Each dead-code candidate as an entry, the first `offset` into the walk. Two marks before the name, the card's note
+ * their legend: how sure the scan is, ● probable or a dim ○ possible (something no scan sees may reach it), then what
+ * reaches it, ◆ tests only in the warning colour (finished work no product path runs) or a dim ∅ nothing at all. Where
+ * even the marks would squeeze the names below {@link MAIN_MIN} they go from every row at once, so they never show on
+ * some rows and not others.
+ */
+function deadEntries(items: DeadLine[], offset: number, selected: number): Entry[] {
   const MARKS = 6
-  const longestName = Math.max(1, ...dead.items.map(c => cells(c.name)))
-  const deadEntries: Entry[] = dead.items.map((c, i) => ({
+  const longestName = Math.max(1, ...items.map(c => cells(c.name)))
+  return items.map((c, i) => ({
     selected: offset + i === selected,
     boundary: c.boundary,
     place: c.place,
@@ -396,36 +434,34 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },
   }))
-  /**
-   * A list of entries `limit` long around the marker (`local`: its index in this list), with what is above and below;
-   * `walk` is its first entry's place in the marker's walk, absent for a list the marker does not walk.
-   */
-  const listed = (key: string, entries: Entry[], columns: number, limit: number, local: number, walk?: number, scrolled?: number): { body: Row[]; window: Section['window'] } => {
-    const spec = entrySpec(columns, entries, hues)
-    const window = windowOf(entries.length, limit, local, scrolled)
-    return { body: [...entries.slice(window.start, window.end).map((e, n) => entryRow(`${key}-${window.start + n}`, e, spec, hues)), ...moreRows(`${key}-window`, window, entries.length, columns, walk)], window: shownOf(window, entries.length) }
-  }
+}
 
-  const policyBlock: Block = {
+/** The verdict on the policy card's top edge: not reported, unreadable, none declared, clean, or how many. */
+function policyVerdict(policy: IssuesInput['policy']): Segment[] {
+  if (policy === null) return [{ text: 'not reported', dim: true }]
+  if (policy.unreadable !== undefined) return [{ text: unreadableText(policy.unreadable), color: STATUS_COLOURS.warn }]
+  if (!policy.evaluated) return [{ text: 'no policies declared', dim: true }]
+  return policy.count === 0 ? [mark(SEVERITY.ok, ' 0')] : [mark(SEVERITY.error, ` ${policy.total}`)]
+}
+
+/** The policy violations' card. */
+function policyBlock(policy: IssuesInput['policy'], entries: Entry[], selected: number, part: IssuesWalk['violations'], hues: Hues): Block {
+  return {
     key: 'policy',
-    grow: { length: violationEntries.length, min: ISSUES_MIN },
+    grow: { length: entries.length, min: ISSUES_MIN },
     make: (columns, limit, scrolled) => {
-      const verdict: Segment[] =
-        policy === null
-          ? [{ text: 'not reported', dim: true }]
-          : !policy.evaluated
-            ? [{ text: 'no policies declared', dim: true }]
-            : policy.count === 0
-              ? [mark(SEVERITY.ok, ' 0')]
-              : [mark(SEVERITY.error, ` ${policy.total}`)]
-      const { body, window } = listed('pol', violationEntries, columns, limit, selected < diagOffset ? selected : -1, 0, scrolled)
-      if (policy !== null && policy.evaluated && policy.count > violations.length) body.push(dimRow('pol-more', `   +${policy.count - violations.length} not listed`, columns))
-      return { key: 'policy', title: 'Policy violations', note: verdict, body, empty: 'none', ...(window === undefined ? {} : { window }) }
+      const { body, window } = listedEntries('pol', entries, hues, { columns, limit, local: selected < part.length ? selected : -1, walk: part.offset, scrolled })
+      if (policy?.evaluated === true) body.push(...notListedRow('pol-more', policy.count, entries.length, columns))
+      return { key: 'policy', title: 'Policy violations', note: policyVerdict(policy), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
-  const diagBlock: Block = {
+}
+
+/** The diagnostics' card: the errors, warnings and notes counted on its edge, the first errors and warnings listed. */
+function diagBlock(d: IssuesInput['diagnostics'], entries: Entry[], selected: number, part: IssuesWalk['diagnostics'], hues: Hues): Block {
+  return {
     key: 'diag',
-    grow: { length: diagEntries.length, min: ISSUES_MIN },
+    grow: { length: entries.length, min: ISSUES_MIN },
     make: (columns, limit, scrolled) => {
       const counts =
         d === null
@@ -433,22 +469,27 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
           : d.errors + d.warnings + d.infos === 0
             ? `${SEVERITY.ok.glyph} 0`
             : legend([[SEVERITY.error, d.errors], [SEVERITY.warn, d.warnings], [SEVERITY.note, d.infos]])
-      const local = selected - diagOffset
-      const { body, window } = listed('diag', diagEntries, columns, limit, local >= 0 && local < diagEntries.length ? local : -1, diagOffset, scrolled)
+      const { body, window } = listedEntries('diag', entries, hues, { columns, limit, local: localTo(part, selected), walk: part.offset, scrolled })
       // Only the first errors and warnings come listed; notes are counted, never listed.
-      if (d !== null && d.errors + d.warnings > d.items.length) body.push(dimRow('diag-more', `   +${d.errors + d.warnings - d.items.length} not listed`, columns))
+      if (d !== null) body.push(...notListedRow('diag-more', d.errors + d.warnings, d.items.length, columns))
       return { key: 'diag', title: 'Diagnostics', note: noteOf(counts), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
-  const deadBlock: Block = {
+}
+
+/** The dead code's card: the total, how many are probable and how many only tests reach, then the kinds when there is room. */
+function deadBlock(dead: IssuesInput['deadCode'], entries: Entry[], selected: number, part: IssuesWalk['dead'], hues: Hues): Block {
+  return {
     key: 'dead',
-    grow: { length: deadEntries.length, min: ISSUES_MIN },
+    grow: { length: entries.length, min: ISSUES_MIN },
     make: (columns, limit, scrolled) => {
       // The probable and test-only counts beside the total, so the card does not read as that much dead code.
       const sure =
         dead.total === '0' ? '' : ((key: string) => (key === '' ? '' : ` · ${key}`))(legend([[CERTAINTY.probable, dead.probable ?? 0], [REACH.testsOnly, dead.testOnly ?? 0]]))
       const deadNote = dead.items.length > 0 && dead.total !== String(dead.items.length) ? `${dead.total}${sure} · first ${dead.items.length}` : `${dead.total}${sure}`
-      const { body, window } = listed('dead', deadEntries, columns, limit, selected >= offset ? selected - offset : -1, offset, scrolled)
+      // A marker past the list (on the hotspots) counts as past its end: the window rests on its last rows.
+      const local = selected >= part.offset ? selected - part.offset : -1
+      const { body, window } = listedEntries('dead', entries, hues, { columns, limit, local, walk: part.offset, scrolled })
       // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
       const kinds = kindLegend(dead.items.map(c => c.kind))
       const keyed = kinds === '' ? deadNote : `${deadNote} · ${kinds}`
@@ -456,30 +497,35 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       return { key: 'dead', title: 'Dead code', note: noteOf(told), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
-  const spotOffset = offset + dead.items.length
-  const hotBlock: Block = {
+}
+
+/** The complexity hotspots' card: each file's path, a bar of its score (lines times dependents) and the two figures. */
+function hotBlock(list: IssuesInput['hotspots'], selected: number, part: IssuesWalk['hotspots'], tier: Tier, hues: Hues): Block {
+  return {
     key: 'hotspots',
-    grow: { length: issues.hotspots.length, min: ISSUES_MIN },
+    grow: { length: list.length, min: ISSUES_MIN },
     make: (columns, limit, scrolled) => {
-      const list = issues.hotspots
-      const local = selected - spotOffset
-      const window = windowOf(list.length, limit, local >= 0 && local < list.length ? local : -1, scrolled)
-      const shown = list.slice(window.start, window.end)
-      // The bar draws the score (lines times dependents); the two figures it is made of stand beside it.
-      const spec = tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth('deps', shown.map(f => f.dependents), tier)], 56, { tier })
       const max = Math.max(0, ...list.map(f => f.score))
-      const body: Row[] = list.length === 0 ? [] : [tableHead('hot-cols', spec, { name: 'file', boundary: '', numbers: ['lines', 'deps'] })]
-      shown.forEach((f, n) => {
-        const i = window.start + n
-        body.push(tableRow(`hot-${i}`, { name: f.path, boundary: null, values: [f.lines, f.dependents], barValue: f.score, max, path: true, press: `row:${spotOffset + i}`, selected: spotOffset + i === selected }, spec, hues))
+      const { rows, window } = windowedTable('hot-window', list, { columns, limit, local: localTo(part, selected), scrolled, walk: part.offset }, (shown, start) => {
+        // The bar draws the score (lines times dependents); the two figures it is made of stand beside it.
+        const spec = tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth('deps', shown.map(f => f.dependents), tier)], 56, { tier })
+        const head: Row[] = list.length === 0 ? [] : [tableHead('hot-cols', spec, { name: 'file', boundary: '', numbers: ['lines', 'deps'] })]
+        return [
+          ...head,
+          ...shown.map((f, n) => {
+            const i = start + n
+            return tableRow(`hot-${i}`, { name: f.path, boundary: null, values: [f.lines, f.dependents], barValue: f.score, max, path: true, press: `row:${part.offset + i}`, selected: part.offset + i === selected }, spec, hues)
+          }),
+        ]
       })
-      body.push(...moreRows('hot-window', window, list.length, columns, spotOffset))
-      return { key: 'hotspots', title: 'Complexity hotspots', note: noteOf(list.length > 0 ? 'lines × dependents' : ''), body, empty: 'none', window: shownOf(window, list.length) }
+      return { key: 'hotspots', title: 'Complexity hotspots', note: noteOf(list.length > 0 ? 'lines × dependents' : ''), body: rows, empty: 'none', window }
     },
   }
-  const budget = issues.budget
-  const overOffset = spotOffset + issues.hotspots.length
-  const budgetBlock: Block = {
+}
+
+/** The card of the files over the project's function-length budget: how many functions each has over it, and its longest. */
+function budgetBlock(budget: IssuesInput['budget'], selected: number, part: IssuesWalk['budget'], tier: Tier, hues: Hues): Block {
+  return {
     key: 'budget',
     grow: { length: budget?.files.length ?? 0, min: ISSUES_MIN },
     make: (columns, limit, scrolled) => {
@@ -488,21 +534,36 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
       if (budget === null) return { key: 'budget', title, note: [{ text: 'no maintainability-budgets.json', dim: true }], body: [], empty: 'none' }
       const rule = `functions over ${budget.max} lines`
       if (budget.files.length === 0) return { key: 'budget', title, note: [mark(SEVERITY.ok, ' 0'), { text: ` ${rule}`, dim: true }], body: [], empty: 'none' }
-      const local = selected - overOffset
-      const window = windowOf(budget.files.length, limit, local >= 0 && local < budget.files.length ? local : -1, scrolled)
-      const shown = budget.files.slice(window.start, window.end)
-      const spec = { ...tableSpec(columns, shown.map(f => f.path), [], [numberWidth('over', shown.map(f => f.functions), tier), numberWidth('longest', shown.map(f => f.longest), tier)], 56, { tier }), bar: 0 }
-      const body: Row[] = [tableHead('budget-cols', spec, { name: 'file', boundary: '', numbers: ['over', 'longest'] })]
-      shown.forEach((f, n) => {
-        const i = window.start + n
-        body.push(tableRow(`budget-${i}`, { name: f.path, boundary: null, values: [f.functions, f.longest], max: 0, path: true, press: `row:${overOffset + i}`, selected: overOffset + i === selected, mark: mark(SEVERITY.warn) }, spec, hues))
+      const { rows, window } = windowedTable('budget-window', budget.files, { columns, limit, local: localTo(part, selected), scrolled, walk: part.offset }, (shown, start) => {
+        const spec = { ...tableSpec(columns, shown.map(f => f.path), [], [numberWidth('over', shown.map(f => f.functions), tier), numberWidth('longest', shown.map(f => f.longest), tier)], 56, { tier }), bar: 0 }
+        return [
+          tableHead('budget-cols', spec, { name: 'file', boundary: '', numbers: ['over', 'longest'] }),
+          ...shown.map((f, n) => {
+            const i = start + n
+            return tableRow(`budget-${i}`, { name: f.path, boundary: null, values: [f.functions, f.longest], max: 0, path: true, press: `row:${part.offset + i}`, selected: part.offset + i === selected, mark: mark(SEVERITY.warn) }, spec, hues)
+          }),
+        ]
       })
-      body.push(...moreRows('budget-window', window, budget.files.length, columns, overOffset))
-      if (budget.total > budget.files.length) body.push(dimRow('budget-more', `   +${budget.total - budget.files.length} not listed`, columns))
-      return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none', window: shownOf(window, budget.files.length) }
+      const body = [...rows, ...notListedRow('budget-more', budget.total, budget.files.length, columns)]
+      return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none', window }
     },
   }
-  return { left: [policyBlock, diagBlock, budgetBlock], right: [deadBlock, hotBlock], rows: issueGrid([policyBlock, diagBlock, deadBlock, hotBlock, budgetBlock]) }
+}
+
+/**
+ * The Issues tab's cards: policy violations, diagnostics, dead code, the
+ * complexity hotspots (lines times dependents) and the files over the
+ * project's function-length budget, each list as long as the pane allows.
+ * Wide, they stand on a grid of equal rows (see {@link issueGrid}).
+ */
+export function issuesArrangement(issues: IssuesInput, selected: number, tier: Tier, hues: Hues = NO_HUES): Arrangement {
+  const walk = issuesWalk(issues)
+  const policy = policyBlock(issues.policy, violationEntries(issues.policy?.items ?? [], selected, hues), selected, walk.violations, hues)
+  const diag = diagBlock(issues.diagnostics, diagnosticEntries(issues.diagnostics?.items ?? [], walk.diagnostics.offset, selected), selected, walk.diagnostics, hues)
+  const dead = deadBlock(issues.deadCode, deadEntries(issues.deadCode.items, walk.dead.offset, selected), selected, walk.dead, hues)
+  const hot = hotBlock(issues.hotspots, selected, walk.hotspots, tier, hues)
+  const budget = budgetBlock(issues.budget, selected, walk.budget, tier, hues)
+  return { left: [policy, diag, budget], right: [dead, hot], rows: issueGrid([policy, diag, dead, hot, budget]) }
 }
 
 /**
@@ -532,17 +593,12 @@ function sideSection(prefix: string, side: Side, offset: number, columns: number
   const section = (body: Row[]): Section => ({ key: prefix, title: side.title, subtitle: side.count, note: noteOf(counted ? 'edges' : ''), body })
   if (side.items.length === 0) return section([none(`${prefix}-none`)])
   const max = Math.max(0, ...side.items.map(i => i.edges))
-  const local = selected - offset
-  const window = windowOf(side.items.length, limit, local >= 0 && local < side.items.length ? local : -1)
-  const rows = side.items
-    .slice(window.start, window.end)
-    .map((item, n) =>
-      tableRow(`${prefix}-${window.start + n}`, { name: item.name, boundary: item.boundary, values: counted ? [item.edges] : [], max, press: `rel:${offset + window.start + n}`, selected: offset + window.start + n === selected }, spec, hues),
-    )
-  rows.push(...moreRows(`${prefix}-window`, window, side.items.length, columns, offset))
-  const count = Number.parseInt(side.count, 10)
-  if (count > side.items.length) rows.push(dimRow(`${prefix}-more`, `   +${count - side.items.length} not listed`, columns))
-  return section(rows)
+  const { rows } = windowedTable(`${prefix}-window`, side.items, { columns, limit, local: inList(selected - offset, side.items.length), walk: offset }, (shown, start) =>
+    shown.map((item, n) =>
+      tableRow(`${prefix}-${start + n}`, { name: item.name, boundary: item.boundary, values: counted ? [item.edges] : [], max, press: `rel:${offset + start + n}`, selected: offset + start + n === selected }, spec, hues),
+    ),
+  )
+  return section([...rows, ...notListedRow(`${prefix}-more`, Number.parseInt(side.count, 10), side.items.length, columns)])
 }
 
 /**

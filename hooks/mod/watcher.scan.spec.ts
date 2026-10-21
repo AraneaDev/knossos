@@ -166,21 +166,21 @@ const settled = (p: Promise<unknown>) => {
 describe('scanSafely: what it asks the wrapper', () => {
     it('passes each drained file and the turn base, then empties both', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts', 'b.ts'])
-        mod.turnBase = 's0'
+        mod.turn.edited = new Set(['a.ts', 'b.ts'])
+        mod.turn.base = 's0'
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) } })
         await scanSafely(port.io)
         const [args] = port.argsOf('turn-brief')
         expect(args).toContain('--files=a.ts')
         expect(args).toContain('--files=b.ts')
         expect(args).toContain('--since=s0')
-        expect([...mod.edited]).toEqual([])
-        expect(mod.turnBase).toBeNull()
+        expect([...mod.turn.edited]).toEqual([])
+        expect(mod.turn.base).toBeNull()
     })
 
     it('passes no --since without a turn base', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts'])
+        mod.turn.edited = new Set(['a.ts'])
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) } })
         await scanSafely(port.io)
         expect(port.argsOf('turn-brief')[0]?.some(a => a.startsWith('--since='))).toBe(false)
@@ -210,7 +210,7 @@ describe('scanSafely: what it asks the wrapper', () => {
 
     it('with a watcher whose header is off passes no --reuse-scan', async () => {
         reset(options)
-        mod.watcher = runningWatcher()
+        mod.watcher.stream = runningWatcher()
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) } })
         await scanSafely(port.io)
         expect(port.argsOf('turn-brief')[0]).not.toContain('--reuse-scan')
@@ -218,7 +218,7 @@ describe('scanSafely: what it asks the wrapper', () => {
 
     it('with a live watcher waits a poll, the debounce and a margin after the last edit, then passes --reuse-scan and asks for the ledger', async () => {
         reset(options)
-        mod.watcher = runningWatcher()
+        mod.watcher.stream = runningWatcher()
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) }, initial: { live: { phase: 'live' }, sessionStart: 's0' } })
         const done = settled(scanSafely(port.io))
         // Lets the run reach its first look at the clock before time moves.
@@ -234,8 +234,8 @@ describe('scanSafely: what it asks the wrapper', () => {
 
     it('measures the quiet from the last edit, not from the start', async () => {
         reset(options)
-        mod.watcher = runningWatcher()
-        mod.lastEditAt = 1000
+        mod.watcher.stream = runningWatcher()
+        mod.turn.lastEditAt = 1000
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) }, initial: { live: { phase: 'live' } } })
         void scanSafely(port.io)
         await port.advance(0)
@@ -247,21 +247,21 @@ describe('scanSafely: what it asks the wrapper', () => {
 
     it('waits while the watcher holds changes it has not taken in', async () => {
         reset(options)
-        mod.watcher = runningWatcher()
-        mod.watchPending = true
+        mod.watcher.stream = runningWatcher()
+        mod.watcher.pending = true
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) }, initial: { live: { phase: 'live' } } })
         void scanSafely(port.io)
         await port.advance(0)
         await port.stepTo(QUIET_MS + 500)
         expect(port.runsOf('turn-brief')).toBe(0)
-        mod.watchPending = false
+        mod.watcher.pending = false
         await port.stepTo(QUIET_MS + 700)
         expect(port.runsOf('turn-brief')).toBe(1)
     })
 
     it('runs the brief anyway once 20 s pass with the watcher still scanning', async () => {
         reset(options)
-        mod.watcher = runningWatcher()
+        mod.watcher.stream = runningWatcher()
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) }, initial: { live: { phase: 'scanning' } } })
         const done = settled(scanSafely(port.io))
         // Lets the run reach its first look at the clock before time moves.
@@ -286,7 +286,7 @@ describe('scanSafely: an ok brief', () => {
         expect((port.values.get('changes') as typeof NO_CHANGES).turns).toBe(1)
         expect(Object.keys((port.values.get('changes') as typeof NO_CHANGES).files)).toEqual(['a.ts'])
         expect(port.values.get('job')).toEqual({ phase: 'idle', lastAttemptAt: 500 })
-        expect(mod.snapshot).toBe('s7')
+        expect(mod.session.snapshot).toBe('s7')
         expect(port.runsOf('dashboard')).toBe(1)
         // The dashboard is reloaded after the brief, not before it.
         expect(port.calls.indexOf('run:dashboard')).toBeGreaterThan(port.calls.indexOf('run:turn-brief'))
@@ -294,10 +294,10 @@ describe('scanSafely: an ok brief', () => {
 
     it('keeps the snapshot it knew when the brief names none', async () => {
         reset(options)
-        mod.snapshot = 'prev'
+        mod.session.snapshot = 'prev'
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief({ snapshot_id: null })) } })
         await scanSafely(port.io)
-        expect(mod.snapshot).toBe('prev')
+        expect(mod.session.snapshot).toBe('prev')
     })
 
     it("keeps the scan as the session's only when the brief scanned itself and names its snapshot", async () => {
@@ -316,12 +316,12 @@ describe('scanSafely: an ok brief', () => {
 
     it('does not put the drained files back', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts'])
-        mod.turnBase = 's0'
+        mod.turn.edited = new Set(['a.ts'])
+        mod.turn.base = 's0'
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) } })
         await scanSafely(port.io)
-        expect(mod.edited.size).toBe(0)
-        expect(mod.turnBase).toBeNull()
+        expect(mod.turn.edited.size).toBe(0)
+        expect(mod.turn.base).toBeNull()
     })
 
     it('turns the untested-only list back to every file once no shown file is untested', async () => {
@@ -379,33 +379,33 @@ describe('scanSafely: an ok brief', () => {
 describe('scanSafely: a brief that did not land', () => {
     it('on silence marks the job failed, keeps the old brief and puts the files and the base back', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts', 'b.ts'])
-        mod.turnBase = 's0'
+        mod.turn.edited = new Set(['a.ts', 'b.ts'])
+        mod.turn.base = 's0'
         const old = brief({ snapshot_id: 'old' })
         const port = fakePort({ initial: { brief: old } })
         await port.advance(300)
         await scanSafely(port.io)
         expect(port.values.get('job')).toEqual({ phase: 'failed', lastAttemptAt: 300 })
         expect(port.values.get('brief')).toBe(old)
-        expect([...mod.edited].sort()).toEqual(['a.ts', 'b.ts'])
-        expect(mod.turnBase).toBe('s0')
+        expect([...mod.turn.edited].sort()).toEqual(['a.ts', 'b.ts'])
+        expect(mod.turn.base).toBe('s0')
         expect(port.runsOf('dashboard')).toBe(0)
     })
 
     it('keeps a newer turn base set while the brief ran', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts'])
-        mod.turnBase = 's0'
+        mod.turn.edited = new Set(['a.ts'])
+        mod.turn.base = 's0'
         const port = fakePort({
             during: sub => {
                 if (sub !== 'turn-brief') return
-                mod.turnBase = 's5'
-                mod.edited.add('c.ts')
+                mod.turn.base = 's5'
+                mod.turn.edited.add('c.ts')
             },
         })
         await scanSafely(port.io)
-        expect(mod.turnBase).toBe('s5')
-        expect([...mod.edited].sort()).toEqual(['a.ts', 'c.ts'])
+        expect(mod.turn.base).toBe('s5')
+        expect([...mod.turn.edited].sort()).toEqual(['a.ts', 'c.ts'])
     })
 
     it('on an error envelope marks the job failed and keeps the old brief', async () => {
@@ -437,21 +437,21 @@ describe('scanSafely: a brief that did not land', () => {
 
     it('on no-binary marks the job idle, turns the mod off and loads no dashboard', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts'])
+        mod.turn.edited = new Set(['a.ts'])
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify({ status: 'no-binary' }) } })
         await port.advance(200)
         await scanSafely(port.io)
         expect(port.values.get('job')).toEqual({ phase: 'idle', lastAttemptAt: 200 })
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         expect(port.logs.some(l => l.text.includes('no knossos binary found'))).toBe(true)
         expect(port.runsOf('dashboard')).toBe(0)
-        expect([...mod.edited]).toEqual(['a.ts'])
+        expect([...mod.turn.edited]).toEqual(['a.ts'])
     })
 
     it.each(['unscanned', 'not-allowed'])('on %s stores the brief, idles the job, counts no turn, loads no dashboard and re-queues the files', async status => {
         reset(options)
-        mod.edited = new Set(['a.ts'])
-        mod.turnBase = 's0'
+        mod.turn.edited = new Set(['a.ts'])
+        mod.turn.base = 's0'
         const answer = { status, reason: 'not here', refused_root: status === 'not-allowed' ? ROOT : null }
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(answer) } })
         await port.advance(400)
@@ -460,21 +460,21 @@ describe('scanSafely: a brief that did not land', () => {
         expect(port.values.get('changes')).toEqual(NO_CHANGES)
         expect(port.values.get('job')).toEqual({ phase: 'idle', lastAttemptAt: 400 })
         expect(port.runsOf('dashboard')).toBe(0)
-        expect([...mod.edited]).toEqual(['a.ts'])
-        expect(mod.turnBase).toBe('s0')
+        expect([...mod.turn.edited]).toEqual(['a.ts'])
+        expect(mod.turn.base).toBe('s0')
     })
 })
 
 describe('scanSafely: a run that throws', () => {
     it('resolves with the job failed at now when the scanning mark is refused, and re-queues the files', async () => {
         reset(options)
-        mod.edited = new Set(['a.ts'])
+        mod.turn.edited = new Set(['a.ts'])
         const port = fakePort({ answers: { 'turn-brief': JSON.stringify(brief()) }, jobFails: n => n === 0 })
         await port.advance(900)
         await expect(scanSafely(port.io)).resolves.toBeUndefined()
         expect(port.values.get('job')).toEqual({ phase: 'failed', lastAttemptAt: 900 })
         expect(port.runsOf('turn-brief')).toBe(0)
-        expect([...mod.edited]).toEqual(['a.ts'])
+        expect([...mod.turn.edited]).toEqual(['a.ts'])
     })
 
     it('keeps the previous attempt time when the clock rejects too', async () => {

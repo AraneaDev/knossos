@@ -1,7 +1,8 @@
 /**
  * What a scan introduced that the person should hear about while they
  * work: a dependency cycle or a policy violation the graph did not hold
- * before. Each becomes a toast, once.
+ * before, or policies that could be read before and no longer can. Each
+ * becomes a toast, once.
  *
  * Pure: the dashboard before a scan and the one after in, the alerts out,
  * each keyed by what it is about (`cycle:<members>`, `policy:<rule> <from>
@@ -14,6 +15,7 @@
 import type { Dashboard } from '../../types'
 import { betweenTypes, cycleSearchStopped } from './envelopes'
 import { shortName } from './rows'
+import { unreadablePolicies, unreadableText } from './policies'
 
 /** One thing to say: its key (said once) and its words. */
 export type Alert = { key: string; text: string }
@@ -36,6 +38,8 @@ function chain(members: string[]): string {
  * holds. One is named new only when `before`'s list held every one it
  * counted: past a cut, a listed one may only be newly listed. Otherwise,
  * and when a count grew past what the lists show, the count is said.
+ * Policies `after` could not read are said with the reason, unless `before`
+ * could not read them either.
  */
 export function freshAlerts(before: Dashboard | null, after: Dashboard, told: ReadonlySet<string> = new Set()): Alert[] {
   if (before === null || before.status !== 'ok' || after.status !== 'ok') return []
@@ -62,6 +66,9 @@ export function freshAlerts(before: Dashboard | null, after: Dashboard, told: Re
     for (const v of fresh) alerts.push({ key: key(v), text: `knossos: a new policy violation (${v.policy_id}): ${shortName(v.source)} → ${shortName(v.target)}` })
     if (fresh.length === 0 && now.total > was.total) alerts.push({ key: `violations:${now.total}`, text: `knossos: ${now.total - was.total} new policy ${now.total - was.total === 1 ? 'violation' : 'violations'}, ${now.total} in all` })
   }
+  // Policies that became unreadable are checked no more: said once, with the reason, until they read again.
+  const unreadable = unreadablePolicies(after.policy)
+  if (unreadable !== null && unreadablePolicies(before.policy) === null) alerts.push({ key: `policies-unreadable:${unreadable}`, text: `knossos: ${unreadableText(unreadable)}` })
   const unsaid = alerts.filter(a => !told.has(a.key))
   if (unsaid.length <= ALERTS_MAX) return unsaid
   const rest = unsaid.slice(ALERTS_MAX - 1)

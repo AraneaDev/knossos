@@ -117,21 +117,21 @@ function fakePort(initial: Record<string, unknown> = lived(), setup: Setup = {})
 /** The mod as a session that ran for a while leaves it: notes said, a watcher running, a baseline settled. */
 function midSession(): void {
     reset(options)
-    mod.snapshot = 'snap-now'
-    mod.watchFailures = 3
-    mod.watchRetryAt = 999
-    mod.commitNoted = new Set(['c1'])
-    mod.toasted = new Set(['t1'])
-    mod.noted = new Set(['n1'])
-    mod.ruled = new Set(['r1'])
-    mod.testsNamed = new Set(['tn1'])
-    mod.violationsSeen = new Set(['v1'])
-    mod.truncationSaid = true
-    mod.baselineOf = 'sess-old'
-    mod.headAsked = true
-    mod.endedSession = null
-    mod.watcher = { return: async () => undefined } as never
-    mod.watcherPid = 4242
+    mod.session.snapshot = 'snap-now'
+    mod.watch.failures = 3
+    mod.watch.retryAt = 999
+    mod.agent.commitNoted = new Set(['c1'])
+    mod.alerts.toasted = new Set(['t1'])
+    mod.agent.noted = new Set(['n1'])
+    mod.agent.ruled = new Set(['r1'])
+    mod.agent.testsNamed = new Set(['tn1'])
+    mod.agent.violationsSeen = new Set(['v1'])
+    mod.agent.truncationSaid = true
+    mod.session.baselineOf = 'sess-old'
+    mod.session.headAsked = true
+    mod.session.ended = null
+    mod.watcher.stream = { return: async () => undefined } as never
+    mod.watcher.pid = 4242
 }
 
 describe('endSession', () => {
@@ -141,21 +141,21 @@ describe('endSession', () => {
         const before = new Map(port.values)
         await endSession(port.io, reason, 'sess-old')
         // The watcher ended: signalled and said to be off.
-        expect(mod.watcher).toBeNull()
+        expect(mod.watcher.stream).toBeNull()
         expect(port.runs).toContainEqual(['kill', '-TERM', '4242'])
         expect(port.values.get('live')).toEqual(LIVE_OFF)
-        expect(mod.watchRetryAt).toBe(Number.POSITIVE_INFINITY)
-        expect(mod.watchFailures).toBe(3)
-        expect([...mod.noted]).toEqual(['n1'])
-        expect([...mod.ruled]).toEqual(['r1'])
-        expect([...mod.testsNamed]).toEqual(['tn1'])
-        expect([...mod.violationsSeen]).toEqual(['v1'])
-        expect([...mod.commitNoted]).toEqual(['c1'])
-        expect([...mod.toasted]).toEqual(['t1'])
-        expect(mod.truncationSaid).toBe(true)
-        expect(mod.endedSession).toBeNull()
-        expect(mod.baselineOf).toBe('sess-old')
-        expect(mod.headAsked).toBe(true)
+        expect(mod.watch.retryAt).toBe(Number.POSITIVE_INFINITY)
+        expect(mod.watch.failures).toBe(3)
+        expect([...mod.agent.noted]).toEqual(['n1'])
+        expect([...mod.agent.ruled]).toEqual(['r1'])
+        expect([...mod.agent.testsNamed]).toEqual(['tn1'])
+        expect([...mod.agent.violationsSeen]).toEqual(['v1'])
+        expect([...mod.agent.commitNoted]).toEqual(['c1'])
+        expect([...mod.alerts.toasted]).toEqual(['t1'])
+        expect(mod.agent.truncationSaid).toBe(true)
+        expect(mod.session.ended).toBeNull()
+        expect(mod.session.baselineOf).toBe('sess-old')
+        expect(mod.session.headAsked).toBe(true)
         for (const [key, value] of before) if (key !== 'live') expect(port.values.get(key)).toEqual(value)
         expect(port.timers).toEqual([])
     })
@@ -164,18 +164,18 @@ describe('endSession', () => {
         midSession()
         const port = fakePort()
         await endSession(port.io, reason, 'sess-old')
-        expect(mod.watcher).toBeNull()
+        expect(mod.watcher.stream).toBeNull()
         expect(port.values.get('live')).toEqual(LIVE_OFF)
-        expect(mod.watchFailures).toBe(0)
-        expect(mod.watchRetryAt).toBe(0)
+        expect(mod.watch.failures).toBe(0)
+        expect(mod.watch.retryAt).toBe(0)
         expect(port.values.get('sessionStart')).toBe('snap-now')
-        expect(mod.commitNoted.size).toBe(0)
-        expect(mod.toasted.size).toBe(0)
-        expect(mod.noted.size).toBe(0)
-        expect(mod.ruled.size).toBe(0)
-        expect(mod.testsNamed.size).toBe(0)
-        expect(mod.violationsSeen.size).toBe(0)
-        expect(mod.truncationSaid).toBe(false)
+        expect(mod.agent.commitNoted.size).toBe(0)
+        expect(mod.alerts.toasted.size).toBe(0)
+        expect(mod.agent.noted.size).toBe(0)
+        expect(mod.agent.ruled.size).toBe(0)
+        expect(mod.agent.testsNamed.size).toBe(0)
+        expect(mod.agent.violationsSeen.size).toBe(0)
+        expect(mod.agent.truncationSaid).toBe(false)
         expect(port.values.get('sessionBegan')).toBeNull()
         expect(port.values.get('sessionEdits')).toEqual([])
         expect(port.values.get('sessionScans')).toEqual([])
@@ -208,9 +208,9 @@ describe('endSession', () => {
         midSession()
         const port = fakePort()
         await endSession(port.io, 'clear', 'sess-old')
-        expect(mod.endedSession).toBe('sess-old')
-        expect(mod.baselineOf).toBeNull()
-        expect(mod.headAsked).toBe(false)
+        expect(mod.session.ended).toBe('sess-old')
+        expect(mod.session.baselineOf).toBeNull()
+        expect(mod.session.headAsked).toBe(false)
         expect(port.timers.map(t => t.ms)).toEqual([0])
         // Nothing settles inside the hook.
         expect(port.stored).toEqual([])
@@ -224,9 +224,9 @@ describe('endSession', () => {
         await port.runTimers()
         // The timer did settle: it asked where the checkout stands, but kept nothing for the ended id.
         expect(port.runs.some(argv => argv[2] === 'session-head')).toBe(true)
-        expect(mod.headAsked).toBe(true)
+        expect(mod.session.headAsked).toBe(true)
         expect(port.stored).toEqual([])
-        expect(mod.baselineOf).toBeNull()
+        expect(mod.session.baselineOf).toBeNull()
     })
 
     it('records the baseline under the new session id once the process names it', async () => {
@@ -234,7 +234,7 @@ describe('endSession', () => {
         const port = fakePort(lived(), { sessionId: 'sess-new' })
         await endSession(port.io, 'resume', 'sess-old')
         await port.runTimers()
-        expect(mod.baselineOf).toBe('sess-new')
+        expect(mod.session.baselineOf).toBe('sess-new')
         expect(port.stored).toHaveLength(1)
         expect(port.stored[0]!.key).toBe(BASELINES_KEY)
         const saved = port.stored[0]!.value as Record<string, unknown>
@@ -251,7 +251,7 @@ describe('endSession', () => {
         port.setSession('sess-new')
         await endSession(port.io, 'clear', 'sess-old')
         await port.runTimers()
-        expect(mod.baselineOf).toBe('sess-new')
+        expect(mod.session.baselineOf).toBe('sess-new')
         expect(port.stored.map(s => Object.keys(s.value as object))).toEqual([['sess-new']])
     })
 
@@ -259,12 +259,12 @@ describe('endSession', () => {
         midSession()
         const port = fakePort(lived(), { liveFails: true })
         await expect(endSession(port.io, reason, 'sess-old')).resolves.toBeUndefined()
-        expect(mod.watcher).toBeNull()
+        expect(mod.watcher.stream).toBeNull()
         if (reason === 'clear') {
-            expect(mod.watchRetryAt).toBe(0)
-            expect(mod.endedSession).toBe('sess-old')
+            expect(mod.watch.retryAt).toBe(0)
+            expect(mod.session.ended).toBe('sess-old')
         } else {
-            expect(mod.watchRetryAt).toBe(Number.POSITIVE_INFINITY)
+            expect(mod.watch.retryAt).toBe(Number.POSITIVE_INFINITY)
         }
     })
 })

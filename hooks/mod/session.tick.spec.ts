@@ -187,10 +187,10 @@ async function started() {
     port.timers.length = 0
     port.invalidated.length = 0
     port.values.set('peek', null)
-    mod.bandText = null
-    mod.paneText = null
-    mod.paneWide = false
-    mod.peekNone = null
+    mod.pane.bandText = null
+    mod.pane.text = null
+    mod.pane.wide = false
+    mod.loads.peekNone = null
     return port
 }
 
@@ -200,10 +200,10 @@ describe('the age tick', () => {
     describe('settling the baseline of a session named late', () => {
         it('settles it once a new session is named after a /clear: its head is asked and the baseline saved under its id', async () => {
             const port = await started()
-            expect(mod.baselineOf).toBe('sess-1')
+            expect(mod.session.baselineOf).toBe('sess-1')
             // A /clear: the baseline is dropped and a new session named later, whose head is not asked yet.
-            mod.baselineOf = null
-            mod.headAsked = false
+            mod.session.baselineOf = null
+            mod.session.headAsked = false
             port.values.set('sessionRev', null)
             port.env.sessionId = 'sess-2'
             const heads = port.runsOf('session-head')
@@ -212,44 +212,44 @@ describe('the age tick', () => {
             expect(port.runsOf('session-head')).toBe(heads + 1)
             expect(port.values.get('sessionRev')).toMatchObject({ rev: 'abcdef1234567' })
             expect(port.savesOf()).toBe(saves + 1)
-            expect(mod.baselineOf).toBe('sess-2')
+            expect(mod.session.baselineOf).toBe('sess-2')
         })
 
         it('does not settle it again once it is settled', async () => {
             const port = await started()
-            mod.headAsked = false
+            mod.session.headAsked = false
             const heads = port.runsOf('session-head')
             const saves = port.savesOf()
             await port.tick()
             expect(port.runsOf('session-head')).toBe(heads)
             expect(port.savesOf()).toBe(saves)
-            expect(mod.baselineOf).toBe('sess-1')
+            expect(mod.session.baselineOf).toBe('sess-1')
         })
 
         it('does not settle it while the mod is off', async () => {
             const port = await started()
-            mod.baselineOf = null
-            mod.headAsked = false
-            mod.disabled = true
+            mod.session.baselineOf = null
+            mod.session.headAsked = false
+            mod.session.disabled = true
             const heads = port.runsOf('session-head')
             const saves = port.savesOf()
             await port.tick()
             expect(port.runsOf('session-head')).toBe(heads)
             expect(port.savesOf()).toBe(saves)
-            expect(mod.baselineOf).toBeNull()
+            expect(mod.session.baselineOf).toBeNull()
         })
 
         it('does not settle it while no session is named yet', async () => {
             const port = await started()
-            mod.baselineOf = null
-            mod.headAsked = false
+            mod.session.baselineOf = null
+            mod.session.headAsked = false
             port.env.sessionId = ''
             const heads = port.runsOf('session-head')
             const saves = port.savesOf()
             await port.tick()
             expect(port.runsOf('session-head')).toBe(heads)
             expect(port.savesOf()).toBe(saves)
-            expect(mod.baselineOf).toBeNull()
+            expect(mod.session.baselineOf).toBeNull()
         })
     })
 
@@ -297,8 +297,8 @@ describe('the age tick', () => {
     describe('looking up the marked row beside a wide pane', () => {
         it('asks for the marked row when the pane is wide, nothing is loaded and the row is not known to be empty', async () => {
             const port = await started()
-            mod.paneWide = true
-            mod.peekNone = 'some other row'
+            mod.pane.wide = true
+            mod.loads.peekNone = 'some other row'
             await port.tick()
             expect(port.values.get('peek')).toMatchObject({ shown: { name: 'App\\C0' }, detail: { phase: 'loading' } })
             expect(port.timers).toHaveLength(1)
@@ -306,17 +306,17 @@ describe('the age tick', () => {
 
         it('does not ask for a row already found to have nothing to show', async () => {
             const port = await started()
-            mod.paneWide = true
-            mod.peekNone = peekKey(view(), 's1')
+            mod.pane.wide = true
+            mod.loads.peekNone = peekKey(view(), 's1')
             await port.tick()
             expect(port.values.get('peek')).toBeNull()
             expect(port.timers).toEqual([])
-            expect(mod.peekNone).toBe(peekKey(view(), 's1'))
+            expect(mod.loads.peekNone).toBe(peekKey(view(), 's1'))
         })
 
         it('does not ask again while a looked-up row is loaded', async () => {
             const port = await started()
-            mod.paneWide = true
+            mod.pane.wide = true
             const loaded = { shown: { name: 'App\\C1' }, detail: { snapshot_id: 's1', name: 'App\\C1', detail: null, phase: 'done' } }
             port.values.set('peek', loaded)
             await port.tick()
@@ -340,9 +340,9 @@ describe('the age tick', () => {
             port.values.set('refresh', { fetchedAt: null, failed: true })
             port.env.panes = [{ id: PANE }]
             port.env.now = 0
-            mod.emptyShown = true
-            mod.dashboardMisses = misses
-            mod.dashboardTriedAt = 0
+            mod.pane.emptyShown = true
+            mod.loads.dashboardMisses = misses
+            mod.loads.dashboardTriedAt = 0
             return port
         }
 
@@ -367,28 +367,28 @@ describe('the age tick', () => {
             port.env.now = 60_000
             await port.tick()
             expect(port.runsOf('dashboard')).toBe(before)
-            expect(mod.emptyShown).toBe(false)
+            expect(mod.pane.emptyShown).toBe(false)
         })
     })
 
     describe('redrawing', () => {
         it('forgets a busy pane that is no longer open, so its spinner stops', async () => {
             const port = await started()
-            mod.paneBusy = true
+            mod.pane.busy = true
             port.env.panes = []
             await port.tick()
-            expect(mod.paneBusy).toBe(false)
+            expect(mod.pane.busy).toBe(false)
         })
 
         it('forgets a pane that is no longer open, and does not redraw for it', async () => {
             const port = await started()
-            mod.paneText = 'fresh'
-            mod.paneWide = true
-            mod.peekNone = peekKey(view(), 's1')
+            mod.pane.text = 'fresh'
+            mod.pane.wide = true
+            mod.loads.peekNone = peekKey(view(), 's1')
             port.env.panes = [{ id: 'some-other-pane' }]
             await port.tick()
-            expect(mod.paneText).toBeNull()
-            expect(mod.paneWide).toBe(false)
+            expect(mod.pane.text).toBeNull()
+            expect(mod.pane.wide).toBe(false)
             expect(port.invalidated).toEqual([])
         })
 
@@ -403,7 +403,7 @@ describe('the age tick', () => {
         it('redraws once when the band text it would draw differs from what it drew', async () => {
             const port = await started()
             port.values.set('job', { phase: 'scanning' })
-            mod.bandText = 'knossos · scan failed'
+            mod.pane.bandText = 'knossos · scan failed'
             await port.tick()
             expect(port.invalidated).toEqual(['ui.render'])
         })
@@ -414,8 +414,8 @@ describe('the age tick', () => {
             port.env.panes = [{ id: PANE }]
             const d = port.values.get('dashboard') as Dashboard
             // What the band would draw from these same cells, taken from the band's own model rather than written out here.
-            mod.bandText = bandModel(null, { phase: 'scanning' } as never, port.env.now, declaredOf(d), huesOf(d))!.text
-            mod.paneText = paneStatus(d, port.values.get('refresh') as never, port.values.get('rescan') as never, port.env.now, LIVE_OFF).text
+            mod.pane.bandText = bandModel(null, { phase: 'scanning' } as never, port.env.now, declaredOf(d), huesOf(d))!.text
+            mod.pane.text = paneStatus(d, port.values.get('refresh') as never, port.values.get('rescan') as never, port.env.now, LIVE_OFF).text
             await port.tick()
             expect(port.invalidated).toEqual([])
         })
@@ -425,12 +425,12 @@ describe('the age tick', () => {
             port.env.panes = [{ id: PANE }]
             const d = port.values.get('dashboard') as Dashboard
             const statusAt = (now: number) => paneStatus(d, port.values.get('refresh') as never, port.values.get('rescan') as never, now, LIVE_OFF).text
-            mod.paneText = statusAt(port.env.now)
+            mod.pane.text = statusAt(port.env.now)
             await port.tick()
             expect(port.invalidated).toEqual([])
             port.env.now += 120_000
             // The age the pane would show now is not the one it drew.
-            expect(statusAt(port.env.now)).not.toBe(mod.paneText)
+            expect(statusAt(port.env.now)).not.toBe(mod.pane.text)
             await port.tick()
             expect(port.invalidated).toEqual(['ui.render'])
         })
@@ -439,7 +439,7 @@ describe('the age tick', () => {
             const port = await started()
             port.env.panes = [{ id: PANE }]
             port.values.set('dashboard', { status: 'silent' })
-            mod.paneText = 'fresh · 1s'
+            mod.pane.text = 'fresh · 1s'
             await port.tick()
             expect(port.invalidated).toEqual(['ui.render'])
         })
@@ -451,7 +451,7 @@ describe('the age tick', () => {
         const lit = { names: ['App\\C0'], until: 1 }
         port.values.set('flash', lit)
         port.failing.add('feedback')
-        mod.bandText = 'knossos · scan failed'
+        mod.pane.bandText = 'knossos · scan failed'
         // An unhandled rejection would fail the run; the ticker's own catch keeps it in.
         await port.tick()
         expect(port.values.get('flash')).toBe(lit)

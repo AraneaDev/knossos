@@ -47,7 +47,7 @@ const press = (io: Port, id: string, surface?: RenderSurface) => {
 
 beforeEach(() => {
     vi.mocked(currentInput).mockReset()
-    mod.editor = undefined
+    mod.navigation.editor = undefined
 })
 
 /** `e` on a detail that shows `loc`, as the pane dispatches the press: without waiting for it, from `surface`. */
@@ -101,7 +101,7 @@ describe('e on a place: the editor', () => {
     })
 
     it('runs the editor command the plugin is set to, and says where to set it when it fails', async () => {
-        mod.editor = 'idea --line {line} {file}'
+        mod.navigation.editor = 'idea --line {line} {file}'
         const opened = port(exited(0))
         editing(opened.io, SURFACE)
         await settle()
@@ -115,15 +115,15 @@ describe('e on a place: the editor', () => {
     })
 
     it("names the web server's flag and variable, not the plugin setting, when it fails on the web", async () => {
-        mod.editor = 'idea --line {line} {file}'
-        mod.host = 'web'
+        mod.navigation.editor = 'idea --line {line} {file}'
+        mod.session.host = 'web'
         try {
             const failed = port(exited(2))
             editing(failed.io, SURFACE)
             await settle()
             expect(failed.toasts).toEqual(['knossos ran "idea --line 12 /work/app/src/A.php" to open the file. Set another editor command with `knossos web --editor=<command>` or KNOSSOS_EDITOR.'])
         } finally {
-            mod.host = 'claude'
+            mod.session.host = 'claude'
         }
     })
 

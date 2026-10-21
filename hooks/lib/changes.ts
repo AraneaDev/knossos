@@ -13,7 +13,7 @@ import type { Hues } from './palette'
 import { blank, button, cells, chip, clip, dimRow, grouped, numberWidth, padEnd, padStart, plural, spaces, segmentsWidth, tableHead, tableRow, tableSpec, tinted, wrapGroups, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './types'
 import type { Tier } from './rows'
-import { NOTE_ROOM, moreRows, noteOf, windowOf, shownOf } from './cards'
+import { NOTE_ROOM, noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -260,15 +260,16 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
     segments: [...head.segments, ...(tested === 0 ? [] : [{ text: ` ${padStart('tests', TESTS_WIDTH)}`, dim: true }]), ...(origin === 0 ? [] : [{ text: ` ${padEnd('from', ORIGIN_WIDTH)}`, dim: true }])],
   })
   const listed = listedFiles(input)
-  const window = windowOf(listed.length, limit, selected, scrolled)
-  listed.slice(window.start, window.end).forEach((f, n) => {
-    const i = window.start + n
-    const line = tableRow(`change-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, selected: i === selected, mark: statusMark(f.status), path: true, press: `row:${i}`, lit: lit.has(`change:${f.path}`) }, spec, hues)
-    const added: Segment[] = [...(tested === 0 ? [] : [{ text: ' ' }, testsCell(f.tests)]), ...(origin === 0 || f.origin === undefined ? [] : [{ text: ' ' }, originCell(f.origin)])]
-    return rows.push(added.length === 0 ? line : { ...line, segments: [...line.segments, ...(line.tint === undefined ? added : tinted(added, line.tint))] })
-  })
-  rows.push(...moreRows('changes-more', window, listed.length, columns, 0))
-  return { key: 'changes', title, note: noteOf(note), body: rows, window: shownOf(window, listed.length) }
+  const { rows: shown, window } = windowedTable('changes-more', listed, { columns, limit, local: selected, scrolled, walk: 0 }, (files, start) =>
+    files.map((f, n) => {
+      const i = start + n
+      const line = tableRow(`change-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, selected: i === selected, mark: statusMark(f.status), path: true, press: `row:${i}`, lit: lit.has(`change:${f.path}`) }, spec, hues)
+      const added: Segment[] = [...(tested === 0 ? [] : [{ text: ' ' }, testsCell(f.tests)]), ...(origin === 0 || f.origin === undefined ? [] : [{ text: ' ' }, originCell(f.origin)])]
+      return added.length === 0 ? line : { ...line, segments: [...line.segments, ...(line.tint === undefined ? added : tinted(added, line.tint))] }
+    }),
+  )
+  rows.push(...shown)
+  return { key: 'changes', title, note: noteOf(note), body: rows, window }
 }
 
 /** The cells the Changes tab's tests column takes: its title, `▲ none` and a count. */
@@ -300,17 +301,16 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
     const warn: Segment = input.untested > 0 ? button('untested-none', said, undefined, { color: STATUS_COLOURS.warn }) : { text: said, color: STATUS_COLOURS.warn }
     return { key: 'tests', title, body: [{ key: 'tests-none', segments: [{ text: '   ' }, warn] }] }
   }
-  const window = windowOf(input.tests.length, limit, -1, scrolled)
-  const shown = input.tests.slice(window.start, window.end)
-  const spec = { ...tableSpec(columns, shown.map(t => t.path), [], [numberWidth('hops', shown.map(t => t.distance))], PATH_MAX), bar: 0 }
-  const rows: Row[] = [tableHead('tests-cols', spec, { name: 'test', boundary: '', numbers: ['hops'] })]
-  shown.forEach((t, n) => rows.push(tableRow(`test-${window.start + n}`, { name: t.path, boundary: null, values: [t.distance], max: 0, path: true, opens: t.loc }, spec, hues)))
-  rows.push(...moreRows('tests-more', window, input.tests.length, columns))
+  const listed = windowedTable('tests-more', input.tests, { columns, limit, scrolled }, (shown, start) => {
+    const spec = { ...tableSpec(columns, shown.map(t => t.path), [], [numberWidth('hops', shown.map(t => t.distance))], PATH_MAX), bar: 0 }
+    return [tableHead('tests-cols', spec, { name: 'test', boundary: '', numbers: ['hops'] }), ...shown.map((t, n) => tableRow(`test-${start + n}`, { name: t.path, boundary: null, values: [t.distance], max: 0, path: true, opens: t.loc }, spec, hues))]
+  })
+  const rows: Row[] = [...listed.rows]
   if (input.command !== null) {
     rows.push(blank('gap-command'))
     wrapWords(input.command, Math.max(1, columns - 5)).forEach((line, i) =>
       rows.push({ key: `command-${i}`, segments: [{ text: i === 0 ? '   $ ' : '     ', dim: true }, { text: line, color: HEADING }] }),
     )
   }
-  return { key: 'tests', title, subtitle: count, note: noteOf('nearest first'), body: rows, window: shownOf(window, input.tests.length) }
+  return { key: 'tests', title, subtitle: count, note: noteOf('nearest first'), body: rows, window: listed.window }
 }

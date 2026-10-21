@@ -24,8 +24,8 @@ import { litAt } from './flash'
 import { finderInput } from './finder'
 import type { Flash } from './flash'
 import { cyclesInput } from './cycles'
-import { issuesInput, locIn } from './views'
-import type { DetailInput, NoteInput } from './views'
+import { issuesInput, locIn, unreadableOf } from './views'
+import type { DetailInput, IssuesInput, NoteInput } from './views'
 import type { PaneInput } from './pane-types'
 import { paneStatus, languagesOf, statsOf, summaryParts, pulseOf } from './pane-status'
 import { allowInput } from './empty-state'
@@ -83,12 +83,13 @@ export function paneInput(args: PaneInputArgs): PaneInput {
   const { dashboard: d, brief, refresh, rescan, view, now, terminal, detail = null, allow = null, session = NO_CHANGES, sessionRoot = null, live = LIVE_OFF, extras = {}, peek = null } = args
   const items = mergeRanked(d)
   const summary = summaryParts(d, items.length)
-  const issues = issuesInput(d)
+  const briefPolicy = brief?.status === 'ok' ? brief.policy : null
+  const issues = withBriefReason(issuesInput(d), briefPolicy)
   const hues = huesOf(d)
   const changes = changesInput(session, d.project_root, hues, sessionRoot, extras.untestedOnly === true)
   const drift = driftInput(d)
   const boundaries = boundariesInput(d)
-  const turn = brief?.status === 'ok' && brief.policy.status === 'evaluated' ? String(brief.policy.total) : null
+  const turn = briefPolicy?.status === 'evaluated' ? String(briefPolicy.total) : null
   const policy = issues.policy?.evaluated ? issues.policy.total : turn
   const diagnostics = issues.diagnostics === null ? null : issues.diagnostics.errors + issues.diagnostics.warnings
   const lit = litAt(extras.flash ?? null, now)
@@ -144,6 +145,20 @@ export function paneInput(args: PaneInputArgs): PaneInput {
     notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null, view.folds ?? []),
     route: route === null ? null : routeInput(extras.route ?? null, route.from, route.to, route.index, d.project_root),
   }
+}
+
+/**
+ * The Issues tab's view with the reason the turn brief's policy check could
+ * not read the project's policies, when the dashboard's own check neither
+ * ran nor says why (a dashboard older than the brief, or one with no policy
+ * section): the Issues card says the policies are unreadable either way.
+ */
+function withBriefReason(issues: IssuesInput, briefPolicy: { status: string } | null): IssuesInput {
+  const own = issues.policy
+  if (own?.evaluated === true || own?.unreadable !== undefined) return issues
+  const reason = unreadableOf(briefPolicy)
+  if (reason.unreadable === undefined) return issues
+  return { ...issues, policy: { ...(own ?? { evaluated: false, total: '0', count: 0, items: [] }), ...reason } }
 }
 
 /**

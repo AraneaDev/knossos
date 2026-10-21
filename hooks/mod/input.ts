@@ -36,7 +36,7 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
   const d = await io.state.dashboard.read()
   if (d?.status !== 'ok') return null
   // The pane's input carries the host: the layout and the diff's words are told it here, and never read `mod` themselves.
-  const host = mod.host === 'web' ? ('web' as const) : undefined
+  const host = mod.session.host === 'web' ? ('web' as const) : undefined
   const v = await io.state.view.read()
   const stored = await io.state.detail.read()
   const shown = v.inspect === null ? null : v.inspect.file ? fileDetailInput(v.inspect, stored, d.project_root, huesOf(d)) : detailInput(v.inspect, stored, d.project_root)
@@ -59,7 +59,7 @@ export async function currentInput(io: Port, terminal: boolean): Promise<PaneInp
     ...(host === undefined ? {} : { host }),
   }
   // The marked row's detail beside the tab: only while the pane is drawn wide.
-  const peeked = mod.paneWide ? await io.state.peek.read() : null
+  const peeked = mod.pane.wide ? await io.state.peek.read() : null
   const side = peeked === null ? null : peeked.shown.file === true ? fileDetailInput(peeked.shown, peeked.detail, d.project_root, huesOf(d)) : detailInput(peeked.shown, peeked.detail, d.project_root)
   if (side !== null && peeked !== null) side.diff = diffView(peeked.shown, await io.state.fileDiff.read(), await io.state.sessionRev.read(), null, host)
   return paneInput({ dashboard: d, brief: await io.state.brief.read(), refresh: await io.state.refresh.read(), rescan: await io.state.rescan.read(), view: v, now: await io.clock.now(), terminal, detail: shown, allow: await io.state.allow.read(), session: await shownChanges(io, d.project_root), sessionRoot: await io.state.sessionRoot.read(), live: await io.state.live.read(), extras, peek: side })

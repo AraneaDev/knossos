@@ -20,7 +20,7 @@ import { driftSection, fileDetailArrangement } from './files'
 import { boundaryLabel, FAINT } from './palette'
 import type { Hues } from './palette'
 import { baseName, placeOf } from './paths'
-import { blank, cells, clip, dimRow, grouped, numberWidth, rowsHeight, rowWidth, tableHead, tableRow, tableSpec, tierOf } from './rows'
+import { blank, cells, clip, dimRow, grouped, numberWidth, rowsHeight, rowWidth, tableHead, tableRow, tableSpec, tierOf, inList } from './rows'
 import type { Loc, Row, Segment } from './types'
 import type { TableSpec, Tier } from './rows'
 import { CARD_MAX, componentFigures, fileFigures, previewCard } from './hover'
@@ -33,7 +33,7 @@ import { routeArrangement } from './route'
 import { finderBlock } from './finder'
 import { cyclesArrangement } from './cycles'
 import { detailArrangement, issueCount, issuesArrangement, superscript } from './views'
-import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, scrolledTo, shownOf, windowOf } from './cards'
+import { DEFAULT_ROWS, NOTE_ROOM, arrange, besideRows, fillColumn, fitBlocks, gridColumns, moreRows, noteOf, scrolledTo, shownOf, windowOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import type { DetailInput } from './views'
 import { RANKING, kindLegend, legend } from './marks'
@@ -198,19 +198,19 @@ function fileHubsBlock(files: FileHub[], selected: number, offset: number, tier:
     key: 'files',
     grow: { length: files.length, min: FILES_MIN },
     make: (columns, limit, scrolled) => {
-      const local = selected - offset
-      const window = windowOf(files.length, limit, local >= 0 && local < files.length ? local : -1, scrolled)
       const shared = sharedBoundary(files)
       const labels = shared === null ? files.map(f => boundaryLabel(f.boundary, hues)) : []
       const spec = tableSpec(columns, files.map(f => f.path), labels, [numberWidth('', files.map(f => f.dependents), tier)], 56, { tier })
       const max = Math.max(0, ...files.map(f => f.dependents))
-      const body = files.slice(window.start, window.end).map((f, n) => {
-        const i = window.start + n
-        const preview = previewCard(`card-files-${i}`, { name: baseName(f.path), boundary: f.boundary, figures: fileFigures(f.dependents), top: f.top }, columns, hues)
-        return tableRow(`files-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, path: true, selected: offset + i === selected, press: `row:${offset + i}`, preview, lit: lit.has(`file:${f.path}`) }, spec, hues)
-      })
+      const { rows, window } = windowedTable('files-window', files, { columns, limit, local: inList(selected - offset, files.length), scrolled, walk: offset }, (shown, start) =>
+        shown.map((f, n) => {
+          const i = start + n
+          const preview = previewCard(`card-files-${i}`, { name: baseName(f.path), boundary: f.boundary, figures: fileFigures(f.dependents), top: f.top }, columns, hues)
+          return tableRow(`files-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, path: true, selected: offset + i === selected, press: `row:${offset + i}`, preview, lit: lit.has(`file:${f.path}`) }, spec, hues)
+        }),
+      )
       const said = [shared === null ? '' : `all in ${boundaryLabel(shared, hues)}`, note, 'dependent files'].filter(t => t !== '').join(' · ')
-      return { key: 'files', title: 'Files most depended on', note: noteOf(said), body: [...body, ...moreRows('files-window', window, files.length, columns, offset)], window: shownOf(window, files.length) }
+      return { key: 'files', title: 'Files most depended on', note: noteOf(said), body: rows, window }
     },
   }
 }
@@ -258,14 +258,15 @@ function fileListBlock(key: string, title: string, note: string, files: { path: 
     key,
     grow: { length: files.length, min: SECONDARY_MIN },
     make: (columns, limit, scrolled) => {
-      const window = windowOf(files.length, limit, -1, scrolled)
-      const shown = files.slice(window.start, window.end)
-      const spec = tableSpec(columns, shown.map(f => f.path), [], titles.map((t, i) => numberWidth(t, shown.map(f => f.values[i] ?? 0), tier)), 56, { tier })
       const max = Math.max(0, ...files.map(f => f.bar))
-      const body: Row[] = [tableHead(`${key}-cols`, spec, { name: 'file', boundary: '', numbers: titles })]
-      shown.forEach((f, n) => body.push(tableRow(`${key}-${window.start + n}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)))
-      body.push(...moreRows(`${key}-window`, window, files.length, columns))
-      return { key, title, note: noteOf(note), body, window: shownOf(window, files.length) }
+      const { rows, window } = windowedTable(`${key}-window`, files, { columns, limit, scrolled }, (shown, start) => {
+        const spec = tableSpec(columns, shown.map(f => f.path), [], titles.map((t, i) => numberWidth(t, shown.map(f => f.values[i] ?? 0), tier)), 56, { tier })
+        return [
+          tableHead(`${key}-cols`, spec, { name: 'file', boundary: '', numbers: titles }),
+          ...shown.map((f, n) => tableRow(`${key}-${start + n}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)),
+        ]
+      })
+      return { key, title, note: noteOf(note), body: rows, window }
     },
   }
 }
