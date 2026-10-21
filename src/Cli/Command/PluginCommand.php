@@ -70,16 +70,18 @@ final class PluginCommand implements CliCommand
 
     /**
      * Directories under `hooks/` the walk never descends into: the shell
-     * scripts are written by each mode itself with its own substitutions, and
-     * test fixtures are not the mod's.
+     * scripts are written by each mode itself with its own substitutions, test
+     * fixtures are not the mod's, and an installed dependency tree is not
+     * either. Hidden directories and symlinked ones are skipped as well, see
+     * {@see self::descends()}.
      */
-    private const UNSHIPPED_DIRECTORIES = ['scripts', '__tests__'];
+    private const UNSHIPPED_DIRECTORIES = ['scripts', '__tests__', 'node_modules'];
 
     /**
      * Files under `hooks/` that stay behind: specs and tests, the ambient
      * declarations only the type-checker reads, and its configuration.
      */
-    private const UNSHIPPED_FILE = '~(\.spec\.ts|\.test\.ts|\.d\.ts)$|^tsconfig.*\.json$~';
+    private const UNSHIPPED_FILE = '~(\.spec\.tsx?|\.test\.tsx?|\.d\.ts)$|^tsconfig.*\.json$~';
 
     /** The file types under `hooks/` that ship: the mod's sources and its hook configuration. */
     private const SHIPPED_FILE = '~\.(ts|tsx|json)$~';
@@ -639,7 +641,7 @@ final class PluginCommand implements CliCommand
             }
             $path = $relative . '/' . $entry;
             if (is_dir($root . $path)) {
-                if (!in_array($entry, self::UNSHIPPED_DIRECTORIES, true)) {
+                if (self::descends($root . $path, $entry)) {
                     $directories[] = $path;
                 }
                 continue;
@@ -653,5 +655,17 @@ final class PluginCommand implements CliCommand
         }
 
         return $files;
+    }
+
+    /**
+     * Whether the walk enters the directory $entry at $path: not a listed
+     * one, not a hidden one, and not a symlink, which could point anywhere,
+     * the walk's own ancestors included.
+     */
+    private static function descends(string $path, string $entry): bool
+    {
+        return !in_array($entry, self::UNSHIPPED_DIRECTORIES, true)
+            && !str_starts_with($entry, '.')
+            && !is_link($path);
     }
 }

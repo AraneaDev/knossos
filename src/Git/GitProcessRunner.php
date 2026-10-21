@@ -139,6 +139,12 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
     private const MAX_ENUMERATION_TIMEOUT_MS = 2_000;
 
     /**
+     * How long a child killed on the timeout or size-limit path gets to exit
+     * before it is left unreaped rather than waited on without bound.
+     */
+    private const KILL_GRACE_MS = 1_000;
+
+    /**
      * Upper bound on the number of distinct filter/diff-driver names {@see
      * self::parseDriverOverrides()} will neutralise in one call. A real
      * repository defines a handful (Git-LFS, git-crypt, and the like); this
@@ -550,6 +556,7 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
         $stdout = $stderr = '';
         $observedExit = -1;
         $deadline = hrtime(true) + ($timeoutMs * 1_000_000);
+        $killed = false;
         try {
             try {
                 while (true) {
@@ -570,6 +577,7 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
                 }
             } catch (Throwable $error) {
                 proc_terminate($process, 9);
+                $killed = true;
                 throw $error;
             }
             // What the child wrote between the last read and its exit, read no
@@ -580,14 +588,37 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
         } finally {
             fclose($pipes[1]);
             fclose($pipes[2]);
-            // Reaps the child on every path, the killed one included.
-            $closedExit = proc_close($process);
+            // Reaps the child on every path, the killed one included. A child
+            // that SIGKILL has not stopped within the grace period (one stuck
+            // in uninterruptible I/O) is left to the handle's destructor,
+            // which does not wait, because proc_close() would block on it.
+            $closedExit = !$killed || self::awaitExit($process, self::KILL_GRACE_MS) ? proc_close($process) : -1;
         }
         $exit = $observedExit >= 0 ? $observedExit : $closedExit;
         if ($exit !== 0) {
             throw new RuntimeException(sprintf('Git %s unavailable: %s', $operation, substr(trim($stderr), 0, 500)));
         }
         return $stdout;
+    }
+
+    /**
+     * Polls a signalled child until it is no longer running, for at most
+     * `$graceMs`.
+     *
+     * @param resource $process
+     * @return bool true once the child has exited, false when it still runs at the deadline
+     */
+    private static function awaitExit($process, int $graceMs): bool
+    {
+        $deadline = hrtime(true) + ($graceMs * 1_000_000);
+        while (proc_get_status($process)['running']) {
+            if (hrtime(true) > $deadline) {
+                return false;
+            }
+            usleep(5_000);
+        }
+
+        return true;
     }
 
     /**

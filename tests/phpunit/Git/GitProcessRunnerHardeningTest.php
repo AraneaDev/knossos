@@ -823,4 +823,47 @@ final class GitProcessRunnerHardeningTest extends TestCase
         $this->expectExceptionMessageMatches('#requested for /usr/bin/git-wrapper, which is not git#');
         (new GitProcessRunner())->run(['/usr/bin/git-wrapper', 'diff'], 1_000, 'wrapper probe');
     }
+
+    /**
+     * A command past its deadline is killed, the call returns soon after, and
+     * the child is reaped rather than left as a zombie.
+     *
+     * After the SIGKILL the runner waits a bounded time for the child to exit
+     * before closing the handle, so a child that never dies cannot hang the
+     * call. That case needs a process SIGKILL cannot stop, which a test cannot
+     * make cheaply; this pins the normal path: the wait still ends in a reap.
+     * A zombie still answers signal 0, so a failing posix_kill() proves the
+     * pid is gone.
+     */
+    public function testATimedOutCommandIsKilledAndReapedPromptly(): void
+    {
+        if (!function_exists('posix_kill')) {
+            self::markTestSkipped('posix_kill() is needed to observe the reap.');
+        }
+        $dir = sys_get_temp_dir() . '/knossos-git-timeout-' . bin2hex(random_bytes(8));
+        mkdir($dir, 0o700, true);
+        $fakeGit = $dir . '/git';
+        $pidFile = $dir . '/pid';
+        file_put_contents($fakeGit, sprintf("#!/bin/sh\necho \$\$ > %s\nexec sleep 30\n", escapeshellarg($pidFile)));
+        chmod($fakeGit, 0o700);
+        try {
+            $start = hrtime(true);
+            try {
+                (new GitProcessRunner(hardenGitConfig: false))->run([$fakeGit, 'diff'], 300, 'timeout probe');
+                self::fail('A command past its deadline must throw.');
+            } catch (\RuntimeException $error) {
+                self::assertSame('Git timeout probe timed out.', $error->getMessage());
+            }
+            $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+            self::assertLessThan(3_000, $elapsedMs, 'The call must return soon after the deadline.');
+            $pid = (int) trim((string) file_get_contents($pidFile));
+            self::assertGreaterThan(0, $pid);
+            self::assertFalse(posix_kill($pid, 0), 'The killed child must be reaped, not left as a zombie.');
+        } finally {
+            @unlink($fakeGit);
+            @unlink($pidFile);
+            @rmdir($dir);
+        }
+    }
 }

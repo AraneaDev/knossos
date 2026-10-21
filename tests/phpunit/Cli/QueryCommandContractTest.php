@@ -15,6 +15,8 @@ use Knossos\Query\ArchitectureQueryService;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Store\SqliteGraphRepository;
+use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 use Throwable;
@@ -312,17 +314,18 @@ final class QueryCommandContractTest extends KnossosTestCase
 
     /**
      * The flags the CLI gained to match its tools reach the query: the answer
-     * is the facade's for the same argument, and differs from the default one
-     * where the fixture shows the difference.
+     * is the facade's for the same argument, and differs from the default one,
+     * so a flag the CLI drops cannot pass.
      *
-     * @return iterable<string, array{string, list<string>, array<string, list<string>>, \Closure(ArchitectureQueryService, list<string>): ResultEnvelope, bool}>
+     * @return iterable<string, array{string, list<string>, array<string, list<string>>, \Closure(ArchitectureQueryService, list<string>): ResultEnvelope}>
      */
     public static function mirroredFlags(): iterable
     {
-        yield 'impact-analysis --rings' => ['impact-analysis', ['App\\Checkout'], ['rings' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->impactAnalysis($p[0], $p[1], rings: true), true];
-        yield 'impact-analysis --seed-members=false' => ['impact-analysis', ['App\\Checkout'], ['seed-members' => ['false']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->impactAnalysis($p[0], $p[1], seedMembers: false), false];
-        yield 'explain-flow --both-directions' => ['explain-flow', ['App\\Checkout', 'App\\InvoiceService'], ['both-directions' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->explainFlow($p[0], $p[1], $p[2], bothDirections: true), true];
-        yield 'search-architecture --files' => ['search-architecture', ['Checkout'], ['files' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->searchArchitecture($p[0], $p[1], includeFiles: true), true];
+        yield 'impact-analysis --rings' => ['impact-analysis', ['App\\Checkout'], ['rings' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->impactAnalysis($p[0], $p[1], rings: true)];
+        // App\Report reaches App\InvoiceService only through its member, so only a seeded walk finds it.
+        yield 'impact-analysis --seed-members=false' => ['impact-analysis', ['App\\InvoiceService'], ['seed-members' => ['false']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->impactAnalysis($p[0], $p[1], seedMembers: false)];
+        yield 'explain-flow --both-directions' => ['explain-flow', ['App\\Checkout', 'App\\InvoiceService'], ['both-directions' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->explainFlow($p[0], $p[1], $p[2], bothDirections: true)];
+        yield 'search-architecture --files' => ['search-architecture', ['Checkout'], ['files' => ['']], static fn(ArchitectureQueryService $q, array $p): ResultEnvelope => $q->searchArchitecture($p[0], $p[1], includeFiles: true)];
     }
 
     /**
@@ -332,12 +335,13 @@ final class QueryCommandContractTest extends KnossosTestCase
      */
     #[Group('cli')]
     #[\PHPUnit\Framework\Attributes\DataProvider('mirroredFlags')]
-    public function testEachMirroredFlagReachesTheQuery(string $command, array $arguments, array $options, \Closure $expected, bool $changesTheAnswer): void
+    public function testEachMirroredFlagReachesTheQuery(string $command, array $arguments, array $options, \Closure $expected): void
     {
         assertSame([], array_values(array_diff(array_keys($options), (new QueryCommand())->allowedOptions($command))));
         $database = sys_get_temp_dir() . '/knossos-stale-flags-' . bin2hex(random_bytes(4)) . '.sqlite';
         $pdo = (new RuntimeFactory(self::repositoryRoot()))->database($database);
         [, $repository, $ids] = $this->storeFixture(null, $pdo);
+        self::addMemberOnlyDependant($repository, $ids);
         $repository->completeScan($ids['project'], $ids['scan']);
         try {
             $positionals = [$ids['project'], ...$arguments];
@@ -346,11 +350,30 @@ final class QueryCommandContractTest extends KnossosTestCase
             $encoded = json_encode($data, JSON_THROW_ON_ERROR);
 
             assertSame(preg_replace('/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/', '<time>', $encoded), $answer);
-            assertSame($changesTheAnswer, $answer !== self::outcomeOf($command, $positionals, [], $database));
+            assertNotSame($answer, self::outcomeOf($command, $positionals, [], $database), 'The flag must change the answer, or the test cannot tell it reached the query.');
         } finally {
             foreach ([$database, $database . '-wal', $database . '-shm'] as $file) {
                 @unlink($file);
             }
+        }
+    }
+
+    /**
+     * Gives App\InvoiceService a member, App\InvoiceService::total, that
+     * App\Report calls, while App\Report never touches the class itself: a
+     * dependant that only a walk seeded with the class's members finds.
+     *
+     * @param array{project: string, scan: string, file: string} $ids
+     */
+    private static function addMemberOnlyDependant(SqliteGraphRepository $repository, array $ids): void
+    {
+        $invoice = StableId::symbol($ids['project'], 'php', 'class', 'App\\InvoiceService');
+        $total = StableId::symbol($ids['project'], 'php', 'method', 'App\\InvoiceService::total');
+        $report = StableId::symbol($ids['project'], 'php', 'class', 'App\\Report');
+        $repository->saveNode($total, $ids['project'], 'php', 'method', 'App\\InvoiceService::total', 'total', $invoice, $ids['file'], 24, 30, 'ast', 'certain', [], 'php:file:src/InvoiceService.php', $ids['scan']);
+        $repository->saveNode($report, $ids['project'], 'php', 'class', 'App\\Report', 'Report', null, $ids['file'], 40, 50, 'ast', 'certain', [], 'php:file:src/Report.php', $ids['scan']);
+        foreach ([['contains', $invoice, $total, 24], ['calls', $report, $total, 45]] as [$kind, $source, $target, $line]) {
+            $repository->saveEdge(StableId::edge($ids['project'], $kind, $source, $target, 'src/Checkout.php:' . $line), $ids['project'], $kind, $source, $target, $ids['file'], $line, $line, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         }
     }
 

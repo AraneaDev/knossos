@@ -378,6 +378,44 @@ final class PluginCommandTest extends KnossosTestCase
     }
 
     /**
+     * A new module directory two levels below an existing one is created by
+     * one recursive mkdir. Rollback removed only the deepest level, so its
+     * new parent, and with it hooks/ itself, outlived the failed emit.
+     */
+    #[Group('cli')]
+    public function testFailedEmitRemovesEveryLevelOfANestedDirectoryItCreated(): void
+    {
+        $root = $this->sourceRoot();
+        $out = $this->temporaryPath('knossos-plugin-nested');
+        mkdir($root . '/hooks/mod/deep/er', 0o755, true);
+        file_put_contents($root . '/hooks/mod/deep/er/nested.ts', 'export const nested = 1');
+        // The manifest is copied after every hooks file, and fails on a directory.
+        mkdir($out . '/.claude-plugin/plugin.json', 0o755, true);
+
+        try {
+            (new PluginCommand())->run(
+                'install-agent-plugin',
+                [],
+                ['out' => [$out], 'data' => ['/srv/knossos-data']],
+                $this->contextFor($root),
+            );
+            self::fail('Expected an InvalidArgumentException.');
+        } catch (InvalidArgumentException) {
+            // Expected: the manifest cannot be written over a directory.
+        } finally {
+            exec('rm -rf ' . escapeshellarg($root));
+        }
+
+        try {
+            assertSame(false, file_exists($out . '/hooks/mod/deep'));
+            assertSame(false, file_exists($out . '/hooks'));
+            assertSame(true, is_dir($out . '/.claude-plugin/plugin.json'));
+        } finally {
+            exec('rm -rf ' . escapeshellarg($out));
+        }
+    }
+
+    /**
      * emit() promises that "anything that was already on disk before this
      * call, whether that is the `--out` directory itself or files inside it,
      * is left exactly as it was found". Rollback tracked only the files it
@@ -436,8 +474,7 @@ final class PluginCommandTest extends KnossosTestCase
         $sources = array_values(array_filter(
             array_map(static fn(string $path): string => substr($path, strlen($root)), $found),
             static fn(string $path): bool => self::isModSource($path)
-                && !str_ends_with($path, '.spec.ts')
-                && !str_ends_with($path, '.test.ts')
+                && preg_match('~\.(spec|test)\.tsx?$~', $path) !== 1
                 && !str_ends_with($path, '.d.ts')
                 && !str_contains($path, '/__tests__/'),
         ));
@@ -501,6 +538,14 @@ final class PluginCommandTest extends KnossosTestCase
             // A spec sitting beside the sources it tests must stay behind.
             file_put_contents($root . '/hooks/lib/band.spec.ts', '// spec');
             file_put_contents($root . '/hooks/lib/band.test.ts', '// test');
+            file_put_contents($root . '/hooks/mod/pane.spec.tsx', '// spec');
+            file_put_contents($root . '/hooks/mod/pane.test.tsx', '// test');
+            // Directories that are not the mod's: hidden, installed dependencies, and a link that could point anywhere.
+            foreach (['/hooks/lib/.cache', '/hooks/lib/node_modules/dep', '/elsewhere'] as $directory) {
+                mkdir($root . $directory, 0o755, true);
+                file_put_contents($root . $directory . '/stray.ts', 'export const stray = 1');
+            }
+            symlink($root . '/elsewhere', $root . '/hooks/mod/linked');
             file_put_contents($root . '/hooks/tsconfig.json', '{}');
             file_put_contents($root . '/hooks/tsconfig.spec.json', '{}');
             file_put_contents($root . '/hooks/engine.d.ts', '// declarations');
@@ -518,6 +563,7 @@ final class PluginCommandTest extends KnossosTestCase
                 assertSame(false, str_contains($file, '__tests__') || str_ends_with($file, 'engine.d.ts') || (str_ends_with($file, '.md') && str_starts_with($file, '/hooks/')));
             }
             assertSame(true, in_array('/hooks/mod/added.ts', $tree, true));
+            assertSame([], array_values(array_filter($tree, static fn(string $file): bool => str_ends_with($file, 'stray.ts'))));
         } finally {
             exec('rm -rf ' . escapeshellarg($root));
         }

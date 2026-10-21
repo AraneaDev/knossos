@@ -117,8 +117,10 @@ own. Use it where the plugin is not also installed, so it loads once.
 - `.claude-plugin/marketplace.json`, the marketplace descriptor, generated;
 - `hooks/hooks.json`, the `SessionStart` hook and the mod's module;
 - `hooks/register.tsx`, `hooks/lib/*.ts` and `hooks/mod/*`, the mod, found by
-  walking `hooks/`; specs, tests, declaration files and `tsconfig` files beside
-  them are never copied;
+  walking `hooks/`; specs and tests (`.spec.ts(x)`, `.test.ts(x)`, `__tests__/`),
+  declaration files and `tsconfig` files beside them are never copied, and the
+  walk does not enter hidden directories, `node_modules/` or a symlinked
+  directory;
 - `hooks/scripts/`, the hook and wrapper scripts and their shared library, with
   the data directory and the path of the `knossos` binary written in;
 - `skills/graph/SKILL.md`, the routing skill;

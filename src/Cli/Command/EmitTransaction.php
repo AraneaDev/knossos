@@ -48,16 +48,29 @@ final class EmitTransaction
         return $this->existed;
     }
 
-    /** Create $path and its parents unless it is already a directory. */
+    /**
+     * Create $path and its parents unless it is already a directory.
+     *
+     * Every level the recursive mkdir creates is recorded, outermost first,
+     * so rollback removes them all, deepest first. Recording only $path left
+     * its new parents behind.
+     */
     public function mkdir(string $path): void
     {
         if (is_dir($path)) {
             return;
         }
+        $missing = [];
+        for ($level = $path; !file_exists($level) && !is_link($level); $level = dirname($level)) {
+            $missing[] = $level;
+            if (dirname($level) === $level) {
+                break;
+            }
+        }
         if (!@mkdir($path, 0o755, true)) {
             throw new InvalidArgumentException(sprintf('Unable to create %s.', $path));
         }
-        $this->createdDirectories[] = $path;
+        array_push($this->createdDirectories, ...array_reverse($missing));
     }
 
     /** Copy $source over $target, naming $label if the copy fails. */

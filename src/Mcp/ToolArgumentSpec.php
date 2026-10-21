@@ -19,6 +19,13 @@ use LogicException;
  * Asking for a default or a bound the schema does not declare is a
  * programming error, not a caller's: it throws LogicException, so a handler
  * cannot quietly invent a number the advertised schema does not carry.
+ *
+ * One exception: `scan_project`'s bounds (max_files, max_file_bytes,
+ * snapshot_retention, worker_timeout_ms) stay as literals in
+ * {@see ToolService::scan()}, because the schema gives them no default (an
+ * absent one leaves the project's knossos.json or built-in setting in force),
+ * so this spec has no default to hand out. ToolBoundsAgreementTest pins those literals to the
+ * schema's minimum and maximum.
  */
 final readonly class ToolArgumentSpec
 {
