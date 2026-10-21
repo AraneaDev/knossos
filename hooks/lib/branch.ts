@@ -16,11 +16,11 @@
  */
 import type { BranchDiff, BranchItem, BranchState } from '../../types'
 import { stamp } from './changes'
-import { noteOf, windowOf, moreRows, shownOf } from './cards'
+import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { bar, button, cells, chip, clip, displayName, fit, grouped, opensFile, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
+import { bar, button, cells, chip, clip, displayName, fit, grouped, inList, opensFile, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
 import type { Loc, Row, Segment } from './rows'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -240,11 +240,12 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
   // A check that stopped early found at least this many: "3+ things", or with none found, that it is not done.
   const looked = !input.partial ? `${plural(count, 'thing', 'things')} to look at` : count === 0 ? 'policies not fully checked' : `${countLabel(count, true)} things to look at`
   const head: Row = { key: 'branch-verdict', segments: clip([{ text: '   ' }, { text: `${SEVERITY.warn.glyph} ${looked}`, color: STATUS_COLOURS.warn, bold: true }], columns) }
-  const window = windowOf(input.findings.length, limit, selected < input.findings.length ? selected : -1)
-  const rows = input.findings.slice(window.start, window.end).map((f, n) => findingRow(f, window.start + n, selected, columns, hues))
+  const { rows } = windowedTable('branch-findings-window', input.findings, { columns, limit, local: inList(selected, input.findings.length), walk: 0 }, (shown, start) =>
+    shown.map((f, n) => findingRow(f, start + n, selected, columns, hues)),
+  )
   const rest = input.unlisted.map((u): Row => ({ key: `branch-unlisted-${u.kind}`, segments: [{ text: fit(`    +${grouped(u.count)} more ${WORST[u.kind].many} not listed`, columns), dim: true }] }))
   const stopped: Row[] = input.partial ? [{ key: 'branch-partial', segments: [{ text: fit('    the policy check stopped at its edge or time limit: more violations may be new', columns), dim: true }] }] : []
-  return [head, ...rows, ...moreRows('branch-findings-window', window, input.findings.length, columns, 0), ...rest, ...stopped]
+  return [head, ...rows, ...rest, ...stopped]
 }
 
 /**
@@ -311,12 +312,13 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
       if (walk.length === 0) return section([])
       const widest = Math.min(24, Math.max(8, Math.floor(columns / 4)), Math.max(...changed.groups.map(g => cells(labelOf(g)))))
       const most = Math.max(1, ...changed.groups.map(g => g.added + g.deleted))
-      const local = selected - at0
-      const window = windowOf(walk.length, limit, local >= 0 && local < walk.length ? local : -1, scrolled)
       // The reach column's title over the figures it heads, both ending at the card's edge.
       const head: Row = { key: 'branch-changed-head', segments: [{ text: spaces(Math.max(0, columns - REACH_CELLS)) }, { text: padStart('reach', REACH_CELLS), dim: true }] }
-      const rows = walk.slice(window.start, window.end).map((r, n) => (r.kind === 'group' ? groupRow(r.g, at0 + window.start + n, selected, widest, most, columns, hues) : fileRow(r.f, at0 + window.start + n, selected, columns)))
-      return { ...section([head, ...rows, ...moreRows('branch-changed-window', window, walk.length, columns, at0)]), window: shownOf(window, walk.length) }
+      const { rows, window } = windowedTable('branch-changed-window', walk, { columns, limit, local: inList(selected - at0, walk.length), scrolled, walk: at0 }, (shown, start) => [
+        head,
+        ...shown.map((r, n) => (r.kind === 'group' ? groupRow(r.g, at0 + start + n, selected, widest, most, columns, hues) : fileRow(r.f, at0 + start + n, selected, columns))),
+      ])
+      return { ...section(rows), window }
     },
   }
   return { left: [head, list] }
