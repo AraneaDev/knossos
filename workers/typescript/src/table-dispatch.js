@@ -6,14 +6,10 @@ import {
     unalias,
 } from "./declaration-kinds.js";
 import {
+    holderOf,
     isFunctionAssignment,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
-
-// The most distinct project members one method call on a destructured
-// binding is inferred to reach, across every call site that hands the
-// function a value. Past it the call says too little to name any of them.
-export const MAX_INFERRED_TARGETS = 8;
 
 /**
  * Calls that reach a function through a table or hand it an object literal.
@@ -27,8 +23,9 @@ export const MAX_INFERRED_TARGETS = 8;
 export class TableDispatch {
     constructor(context) {
         this.context = context;
-        // Each method call on a destructured binding, to its function's node
-        // reference and the members the call sites' values give it.
+        // Each method call on a destructured binding, to each node reference
+        // of the function it is in and the members the call sites' values
+        // give the binding there.
         this.inferred = new Map();
     }
 
@@ -107,26 +104,23 @@ export class TableDispatch {
 
     /**
      * Emit the inferred calls, once every call site of the file and of the
-     * other files has been read. A method call on a binding that more than
-     * MAX_INFERRED_TARGETS distinct project members could answer gets none:
-     * its name is among the module's unresolved member calls already, which
-     * leaves each such member only possibly dead.
+     * other files has been read: each distinct project member a call site's
+     * value gives the binding, however many call sites there are.
      */
     finish() {
         this.crossFileArguments();
-        for (const [call, { source, targets }] of this.inferred) {
-            if (targets.size > MAX_INFERRED_TARGETS) continue;
-            for (const target of targets)
-                this.context.addEdge(
-                    "calls",
-                    source,
-                    target,
-                    call,
-                    { inferred_from: "call_argument" },
-                    "ast",
-                    "probable",
-                );
-        }
+        for (const [call, bySource] of this.inferred)
+            for (const [source, targets] of bySource)
+                for (const target of targets)
+                    this.context.addEdge(
+                        "calls",
+                        source,
+                        target,
+                        call,
+                        { inferred_from: "call_argument" },
+                        "ast",
+                        "probable",
+                    );
         this.inferred.clear();
     }
 
@@ -138,7 +132,7 @@ export class TableDispatch {
         )
             return;
         fn.parameters.forEach((parameter, index) => {
-            const argument = unwrapExpression(node.arguments[index]);
+            const argument = positionalArgument(node, index);
             if (
                 !ts.isObjectBindingPattern(parameter.name) ||
                 argument === undefined ||
@@ -210,12 +204,11 @@ export class TableDispatch {
             target.startsWith("ts:external_")
         )
             return;
-        const inferred = this.inferred.get(call) ?? {
-            source,
-            targets: new Set(),
-        };
-        inferred.targets.add(target);
-        this.inferred.set(call, inferred);
+        const bySource = this.inferred.get(call) ?? new Map();
+        const targets = bySource.get(source) ?? new Set();
+        targets.add(target);
+        bySource.set(source, targets);
+        this.inferred.set(call, bySource);
     }
 
     /**
@@ -241,6 +234,41 @@ export class TableDispatch {
             ? undefined
             : checker.getTypeOfSymbolAtLocation(value, property);
     }
+}
+
+/**
+ * The argument a call hands the parameter at `index`, past any parentheses
+ * and casts; undefined when it hands none, or when a spread comes at or
+ * before it, since what the spread holds decides which parameter each later
+ * argument lands in.
+ */
+export function positionalArgument(call, index) {
+    const spread = call.arguments.findIndex((argument) =>
+        ts.isSpreadElement(argument),
+    );
+    if (spread !== -1 && spread <= index) return undefined;
+    return unwrapExpression(call.arguments[index]);
+}
+
+/**
+ * Whether a parameter destructures its argument with no type declared for
+ * it: no annotation, no JSDoc `@param`, and no annotation or JSDoc `@type` on
+ * the binding its function is the value of (`const f: Handler = ({ a }) =>`).
+ * Only such a binding is typed by what a call hands it.
+ */
+export function untypedBinding(parameter) {
+    if (
+        !ts.isObjectBindingPattern(parameter.name) ||
+        parameter.type !== undefined ||
+        ts.getJSDocType(parameter) !== undefined
+    )
+        return false;
+    const holder = holderOf(parameter.parent);
+    return !(
+        holder !== undefined &&
+        ts.isVariableDeclaration(holder) &&
+        (holder.type !== undefined || ts.getJSDocType(holder) !== undefined)
+    );
 }
 
 /**

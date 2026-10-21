@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
-import { MAX_INFERRED_TARGETS } from "../table-dispatch.js";
 
 // A method picked out of a table by a computed key, and a method called on a
 // destructured parameter that only the call site types.
@@ -84,6 +83,20 @@ describe("a method call on a destructured parameter", () => {
         ]);
     });
 
+    it("gives up on an argument a spread comes before", () => {
+        expect(
+            edges({
+                "src/a.js":
+                    "function make() { return { go() {} }; }\nfunction run({ it: x }) { x.go(); }\nexport function main(xs) { run(...xs, { it: make() }); }\n",
+                "src/b.js":
+                    "import { make } from './c.js';\nexport function walk({ it }) { it.go(); }\n",
+                "src/c.js": "export function make() { return { go() {} }; }\n",
+                "src/d.js":
+                    "import { walk } from './b.js';\nimport { make } from './c.js';\nexport function main(xs) { walk(...xs, { it: make() }); }\n",
+            }),
+        ).toEqual([]);
+    });
+
     it("leaves a binding the call does not give alone", () => {
         expect(
             edges({
@@ -128,24 +141,47 @@ describe("a method call on a destructured parameter, from another file", () => {
         );
     });
 
-    it(`reaches up to ${MAX_INFERRED_TARGETS} distinct members of one call`, () => {
-        const found = edges(callers(MAX_INFERRED_TARGETS));
-        expect(found).toHaveLength(MAX_INFERRED_TARGETS);
-        expect(
-            found.every((edge) =>
-                edge.startsWith(
-                    "calls probable ts:function:src/run.js#run -> ts:method:src/make.js#make",
+    it.each([8, 9, 40])(
+        "reaches every distinct member %i call sites give one call",
+        (count) => {
+            const found = edges(callers(count));
+            expect(found).toHaveLength(count);
+            expect(
+                found.every((edge) =>
+                    edge.startsWith(
+                        "calls probable ts:function:src/run.js#run -> ts:method:src/make.js#make",
+                    ),
                 ),
-            ),
-        ).toBe(true);
+            ).toBe(true);
+        },
+    );
+
+    it("follows an import renamed, a default import and a re-export", () => {
+        const make = "export function make() { return { go() {} }; }\n";
+        expect(
+            edges({
+                "src/make.js": make,
+                "src/run.js":
+                    "export function run({ it }) { it.go(); }\nexport default function walk({ it }) { it.go(); }\n",
+                "src/index.js": "export { run as start } from './run.js';\n",
+                "src/main.js":
+                    "import { run as go } from './run.js';\nimport stroll from './run.js';\nimport { start } from './index.js';\nimport { make } from './make.js';\nexport function main() { go({ it: make() }); stroll({ it: make() }); }\nexport function other() { start({ it: make() }); }\n",
+            }),
+        ).toEqual([
+            "calls probable ts:function:src/run.js#run -> ts:method:src/make.js#make.{object}@1:33::go",
+            "calls probable ts:function:src/run.js#walk -> ts:method:src/make.js#make.{object}@1:33::go",
+        ]);
     });
 
-    it("infers nothing past the cap, and names the call unresolved", () => {
-        const files = callers(MAX_INFERRED_TARGETS + 1);
-        expect(edges(files)).toEqual([]);
-        const module = scan(files)
-            .find((c) => c.owner_key === "knossos.typescript:file:src/run.js")
-            .nodes.find((node) => node.kind === "module");
-        expect(module.attributes.unresolved_member_calls).toEqual(["go"]);
+    it("leaves a typed callee to the checker", () => {
+        const run = scan({
+            "src/make.js": "export function make() { return { go() {} }; }\n",
+            "src/run.js":
+                "/** @param {{ it: { go(): void } }} context */\nexport function run({ it }) { it.go(); }\n",
+            "src/main.js":
+                "import { run } from './run.js';\nimport { make } from './make.js';\nrun({ it: make() });\n",
+        }).find((c) => c.owner_key === "knossos.typescript:file:src/run.js");
+        expect(run.edges.filter((e) => e.attributes.inferred_from)).toEqual([]);
+        expect(Object.keys(run.reads)).not.toContain("src/main.js");
     });
 });

@@ -142,15 +142,24 @@ Two call shapes reach project code that the compiler resolves to nothing.
   directly, through a named or default export, through a re-export (an
   `index.js` that does `export { hold } from './steps.js'`), or through a
   lookup table, imported or not. A parameter with a declared type, a
-  TypeScript annotation (`({ tape }: Context)`) or a JSDoc `@param`, already
-  types the binding, and its calls stay `certain` with no inferred edge beside
-  them.
+  TypeScript annotation (`({ tape }: Context)`), a JSDoc `@param`, or an
+  annotation on the binding the function is the value of
+  (`const hold: Step = ({ tape }) => ...`), already types the binding: its
+  calls stay `certain`, with no inferred edge beside them, and a call into it
+  from another file is not followed at all. An argument that comes after a
+  spread, `hold(...steps, { tape })`, is not read, since the spread decides
+  which parameter it lands in.
 
     When several call sites hand the function different values, the method call
-    reaches the member of each one. One method call on a binding gets at most 8
-    such targets; past that it gets none, and its name stays among the module's
-    `unresolved_member_calls`, so every member by that name reads as only
-    possibly dead rather than as called by one arbitrary pick.
+    reaches the member of each one, however many there are: the count is bounded
+    by the call sites in your source.
+
+    A call in another file is followed when its callee's name can reach such a
+    function: a name it is declared under, or one an import, export or
+    `require` renames it to (`import { hold as h }`, a default import,
+    `export { hold as keep } from`). Only files the same program describes take
+    part: a file another `tsconfig.json` lists is described by that config's
+    program, so its calls give a function of this program nothing.
 
     The edges belong to the function's own file, so that file's facts follow the
     files whose calls typed the binding: its contribution lists each of them
@@ -159,9 +168,9 @@ Two call shapes reach project code that the compiler resolves to nothing.
     argument or disappears. A file that starts handing a function of another
     file a literal is named by none of those reads yet, so which file hands
     which a literal is part of the program's environment: when that set changes,
-    every file of the program is rescanned, as when a global script changes.
-    A call from a file of another program, one a different `tsconfig.json`
-    owns, gives the function nothing.
+    every file of the program is rescanned, as when a global script changes. A
+    call into a typed function is no such pair and rescans nothing beyond its
+    own file.
 
 When the same edge is found more than once, the surer confidence wins:
 `handlers[key]` and `handlers['ping']` in one function make the reference to

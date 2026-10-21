@@ -143,6 +143,64 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         $this->assertMatchesAFullScan($pdo);
     }
 
+    /**
+     * A function whose parameter has a declared type is typed by the checker,
+     * whatever a call hands it, so a call that starts handing it a literal
+     * changes nothing beyond its own file: the other files' rows stay. A
+     * callback typed by its context elsewhere in the program does not count.
+     */
+    public function testALiteralCallIntoATypedCalleeRebuildsOnlyTheCaller(): void
+    {
+        $this->makeRoot();
+        $this->write('tsconfig.json', '{"compilerOptions": {"strict": true}, "include": ["src"]}' . "\n");
+        $this->write('src/steps.ts', "export type Options = { tape: { hold(): void } };\n\nexport function hold({ tape }: Options): void {\n    tape.hold();\n}\n");
+        $this->write('src/ids.ts', "export const ids = (rows: { id: number }[]) => rows.map(({ id }) => id);\n");
+        $this->write('src/shoot.ts', "import { hold } from './steps';\n\nexport const shoot = hold;\n");
+        $pdo = $this->freshTestDatabase();
+        $this->scan($pdo);
+        $this->stampCacheRows($pdo);
+
+        $this->write('src/shoot.ts', "import { hold } from './steps';\n\nexport const shoot = (): void => hold({ tape: { hold() {} } });\n");
+        $this->scan($pdo);
+
+        self::assertSame(['src/shoot.ts'], $this->rescannedFiles($pdo));
+        self::assertSame([], $this->inferredCalls($pdo));
+        $this->assertMatchesAFullScan($pdo);
+    }
+
+    /**
+     * `p/src/main.js` imports `q/src/helper.js`, which the q config owns, and
+     * that file hands p's `hold` a literal. Only the q program describes the
+     * helper, and it does not emit `hold`'s file, so `hold` gets nothing.
+     */
+    public function testACallFromAFileAnotherConfigOwnsGivesTheCalleeNothing(): void
+    {
+        $this->makeRoot();
+        mkdir($this->root . '/p/src', 0o777, true);
+        mkdir($this->root . '/q/src', 0o777, true);
+        $config = '{"compilerOptions": {"allowJs": true, "checkJs": false}, "include": ["src"]}' . "\n";
+        $this->write('p/tsconfig.json', $config);
+        $this->write('q/tsconfig.json', $config);
+        $this->write('p/src/devices.js', "export function recorder() {\n    return { hold() {} };\n}\n");
+        $this->write('p/src/steps.js', "export function hold({ tape }) {\n    tape.hold();\n}\n");
+        $this->write('p/src/main.js', "import { helper } from '../../q/src/helper.js';\n\nhelper();\n");
+        $this->write('q/src/helper.js', "import { hold } from '../../p/src/steps.js';\nimport { recorder } from '../../p/src/devices.js';\n\nexport function helper() {\n    hold({ tape: recorder() });\n}\n");
+        $pdo = $this->freshTestDatabase();
+        $this->scan($pdo);
+
+        self::assertSame([], $this->inferredCalls($pdo));
+        self::assertNotContains('q/src/helper.js', $pdo->query("SELECT read_path FROM contribution_reads WHERE owner_key = 'knossos.typescript:file:p/src/steps.js'")->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    private function makeRoot(): void
+    {
+        if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
+            self::markTestSkipped('node is not on PATH.');
+        }
+        $this->root = sys_get_temp_dir() . '/knossos-stale-ts-call-arguments-' . bin2hex(random_bytes(6));
+        mkdir($this->root . '/src', 0o777, true);
+    }
+
     private function scan(PDO $pdo): ResultEnvelope
     {
         return (new ProjectScanService($pdo, self::repositoryRoot(), [(string) $this->root]))->scan((string) $this->root);
