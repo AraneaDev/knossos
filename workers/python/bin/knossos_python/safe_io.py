@@ -157,12 +157,32 @@ def assert_scannable_path(value: Any) -> PurePosixPath:
     any file, so it fails the request, while a well-formed path that simply
     cannot be scanned costs only that file.
     """
-    if not isinstance(value, str) or not value or "\0" in value or "\\" in value:
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+        or not encodes_as_utf8(value)
+    ):
         raise ValueError("Python input must be a normalized project-relative path.")
-    relative = PurePosixPath(value)
-    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+    # Split by hand, as the core does (RelativePath::assertValid): PurePosixPath
+    # would collapse `a//b`, `a/./b`, `./a` and `a/` into paths the core refuses.
+    if (
+        value.startswith("/")
+        or re.match(r"[A-Za-z]:/", value)
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
         raise ValueError("Python input path is unsafe.")
-    return relative
+    return PurePosixPath(value)
+
+
+def encodes_as_utf8(value: str) -> bool:
+    """Whether a decoded string has a UTF-8 form, which a lone surrogate from a ``\\ud800`` escape lacks."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def safe_file(root: Path, value: Any, max_bytes: int) -> tuple[Path, str]:

@@ -6,7 +6,6 @@ namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\NodeQueries;
-use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -67,14 +66,20 @@ final readonly class BlastRadiusService
      */
     public function rings(string $path, string $component): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'component' => null, 'rings' => [], 'truncated' => false, 'truncation_reasons' => [], 'tests_partial' => false];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
+        $envelope = ['project_id' => null, 'snapshot_id' => null, 'component' => null, 'rings' => [], 'truncated' => false, 'truncation_reasons' => [], 'tests_partial' => false];
+
+        return PaneProject::answer($this->pdo, $path, $envelope, fn(array $project, array $envelope): array => $this->ringsIn($project['id'], $envelope, $component));
+    }
+
+    /**
+     * The rings around `$component` in the scanned project `$id`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function ringsIn(string $id, array $envelope, string $component): array
+    {
         $target = $this->component($id, $component);
         if ($target === null) {
             return ['status' => 'not-found'] + $envelope;

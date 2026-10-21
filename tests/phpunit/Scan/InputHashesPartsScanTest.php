@@ -65,11 +65,11 @@ final class InputHashesPartsScanTest extends KnossosTestCase
         for ($i = 0; $i < self::FILES; ++$i) {
             // A language the descriptor does not claim: discovered, never
             // requested, only read by the program.
-            $discovered[] = $this->write(sprintf('%s/module-%04d.ts', $directory, $i), sprintf("export const value%d = %d;\n", $i, $i), 'javascript');
+            $discovered[] = $this->write(sprintf('%s/module-%04d.ts', $directory, $i), sprintf("export const value%d = %d;\n", $i, $i), 'php');
         }
         $requested = $this->write('src/entry.ts', sprintf("import { value0 } from './%s/module-0000';\nexport const entry = value0;\n", substr($directory, 4)), 'typescript');
         $discovered[] = $requested;
-        $descriptor = new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['node', self::repositoryRoot() . '/workers/typescript/bin/worker.js']);
+        $descriptor = new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript', 'javascript'], command: ['node', self::repositoryRoot() . '/workers/typescript/bin/worker.js'], addedFilesAffectAll: true);
         $unit = new ProjectUnit('typescript', 'tsconfig.json', hash('sha256', (string) file_get_contents($this->root . '/tsconfig.json')));
 
         [$result, $inputHashes] = $this->runScan($descriptor, $discovered, [$unit]);

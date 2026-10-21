@@ -23,7 +23,7 @@ final readonly class LaravelRouteNameFactCollector
     private const SIGNED = ['signedroute', 'temporarysignedroute'];
 
     public function __construct(
-        private LaravelFactStore $facts,
+        private FrameworkFactStore $facts,
         private LaravelTraversalContext $context,
     ) {}
 

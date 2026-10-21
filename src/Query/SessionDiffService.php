@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Filesystem\RelativePathRule;
+use Knossos\Git\GitCommand;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
@@ -145,8 +146,7 @@ final readonly class SessionDiffService
      */
     private function git(string $dir, array $args): string
     {
-        // `--literal-pathspecs`: a file is named by its own path, never as a glob over others.
-        return $this->runner->run(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', $dir, ...$args], self::TIMEOUT_MS, 'session diff');
+        return $this->runner->run([...GitCommand::in($dir), ...$args], self::TIMEOUT_MS, 'session diff');
     }
 
     /**

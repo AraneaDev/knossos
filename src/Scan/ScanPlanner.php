@@ -6,7 +6,7 @@ namespace Knossos\Scan;
 
 use InvalidArgumentException;
 use Knossos\Configuration\{ProjectConfiguration, ProjectConfigurationLoader};
-use Knossos\Discovery\{DiscoveryConfig, ProjectDiscoverer};
+use Knossos\Discovery\{DiscoveryConfig, ProjectDiscoverer, UnitKind};
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\DirtyPathSet;
 use Knossos\Git\GitHeadResolver;
@@ -45,6 +45,30 @@ use PDO;
  */
 final readonly class ScanPlanner
 {
+    /**
+     * The unit kinds whose content each language's contribution cache key
+     * covers. The hash is over each unit's kind and path, so these lists are
+     * cache keys: a change here invalidates every cached contribution.
+     * {@see \Knossos\Tests\Phpunit\Scan\ScanPlannerConfigurationKindsTest} pins them.
+     *
+     * @var array<string, list<UnitKind>>
+     */
+    public const CONFIGURATION_KINDS = [
+        'php' => [UnitKind::Composer, UnitKind::Knossos],
+        // tool_config: the worker reads module aliases from vite, svelte, webpack and
+        // vue configs, so editing one must invalidate what was resolved under it.
+        'typescript' => [UnitKind::Node, UnitKind::Typescript, UnitKind::ToolConfig, UnitKind::Knossos],
+        // 'requirements' stays in the hash only so cache keys did not move
+        // when the unread Python frameworks field was dropped: the worker
+        // reads pyproject.toml but never requirements.txt, so editing it
+        // costs a Python rescan that changes nothing.
+        'python' => [UnitKind::Python, UnitKind::Requirements, UnitKind::Knossos],
+        // Cargo.toml is a recorded unit (kind 'cargo'), so editing it
+        // invalidates a Rust contribution's cache entry the same way
+        // composer.json and package.json do for PHP and TypeScript.
+        'rust' => [UnitKind::Cargo, UnitKind::Knossos],
+    ];
+
     private readonly AllowedRoots $roots;
 
     private readonly GitHeadResolver $gitHead;
@@ -139,21 +163,14 @@ final readonly class ScanPlanner
             ['axum' => 'axum', 'actix-web' => 'actix', 'rocket' => 'rocket'],
             $configuration->frameworks,
         );
-        $configurationHashes = [
-            'php' => $this->configurationHash($discovery->units, ['composer', 'knossos'], $configuration),
-            // tool_config: the worker reads module aliases from vite, svelte, webpack and
-            // vue configs, so editing one must invalidate what was resolved under it.
-            'typescript' => $this->configurationHash($discovery->units, ['node', 'typescript', 'tool_config', 'knossos'], $configuration),
-            // 'requirements' stays in the hash only so cache keys did not move
-            // when the unread Python frameworks field was dropped: the worker
-            // reads pyproject.toml but never requirements.txt, so editing it
-            // costs a Python rescan that changes nothing.
-            'python' => $this->configurationHash($discovery->units, ['python', 'requirements', 'knossos'], $configuration),
-            // Cargo.toml is now a recorded unit (kind 'cargo'), so editing it
-            // invalidates a Rust contribution's cache entry the same way
-            // composer.json and package.json do for PHP and TypeScript.
-            'rust' => $this->configurationHash($discovery->units, ['cargo', 'knossos'], $configuration),
-        ];
+        $configurationHashes = [];
+        foreach (self::CONFIGURATION_KINDS as $language => $kinds) {
+            $configurationHashes[$language] = $this->configurationHash(
+                $discovery->units,
+                array_map(static fn(UnitKind $kind): string => $kind->value, $kinds),
+                $configuration,
+            );
+        }
 
         return new ScanPreparation(
             $configuration,

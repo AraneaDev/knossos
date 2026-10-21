@@ -8,6 +8,7 @@ use Closure;
 use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use Throwable;

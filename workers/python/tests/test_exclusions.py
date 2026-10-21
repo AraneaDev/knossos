@@ -107,7 +107,11 @@ LAYOUT = {
 
 def _scan(worker: ModuleType, root: Path, exclusions: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
     emitted: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"root": str(root), "files": ["app/main.py"]}
+    params: dict[str, Any] = {
+        "root": str(root),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+        "files": ["app/main.py"],
+    }
     if exclusions is not None:
         params["exclusions"] = exclusions
     result = worker.scan(params, emitted.append)

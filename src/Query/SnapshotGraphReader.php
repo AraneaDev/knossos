@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
+use Knossos\Scanner\Protocol\ErasedTypeEdge;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotBounds;
 use Knossos\Store\SnapshotPayload;

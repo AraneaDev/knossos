@@ -106,8 +106,8 @@ final class McpDispatcher
     public function handle(array $message, ?Closure $pollCancellation = null): ?array
     {
         $id = JsonRpcId::reply($message['id'] ?? null);
-        if (($message['jsonrpc'] ?? null) !== '2.0') {
-            return self::error($id, -32600, 'Invalid Request');
+        if (($message['jsonrpc'] ?? null) !== JsonRpc::VERSION) {
+            return JsonRpc::error($id, JsonRpc::INVALID_REQUEST, 'Invalid Request');
         }
         if (!isset($message['method'])) {
             // A JSON-RPC response — id plus exactly one of result or error, no
@@ -120,10 +120,10 @@ final class McpDispatcher
             if (array_key_exists('id', $message) && $hasResult !== $hasError) {
                 return null;
             }
-            return self::error($id, -32600, 'Invalid Request');
+            return JsonRpc::error($id, JsonRpc::INVALID_REQUEST, 'Invalid Request');
         }
         if (!is_string($message['method'])) {
-            return self::error($id, -32600, 'Invalid Request');
+            return JsonRpc::error($id, JsonRpc::INVALID_REQUEST, 'Invalid Request');
         }
         $method = $message['method'];
         if (!array_key_exists('id', $message)) {
@@ -148,17 +148,17 @@ final class McpDispatcher
         if (JsonRpcId::isInvalid($message)) {
             // The id is present but neither an integer nor a string, so it
             // cannot be echoed: the request is invalid and answered with id null.
-            return self::error(null, -32600, 'Invalid Request');
+            return JsonRpc::error(null, JsonRpc::INVALID_REQUEST, 'Invalid Request');
         }
         $params = $message['params'] ?? [];
         if (!is_array($params) || ($params !== [] && array_is_list($params))) {
-            return self::error($id, -32602, 'Params must be an object.');
+            return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'Params must be an object.');
         }
 
         try {
             $profile = $this->negotiator->select($message);
         } catch (UnsupportedProtocolVersionException $unsupported) {
-            return self::error($id, $unsupported->getCode(), $unsupported->getMessage(), $unsupported->data());
+            return JsonRpc::error($id, $unsupported->getCode(), $unsupported->getMessage(), $unsupported->data());
         }
         $this->profile = $profile;
         $this->noteProtocol($message, $profile);
@@ -180,22 +180,6 @@ final class McpDispatcher
         return $response;
     }
 
-    /**
-     * A JSON-RPC error frame, optionally carrying structured data such as the supported revisions.
-     *
-     * Public so a transport's own framing failures use the identical shape.
-     *
-     * @param array<string, mixed>|null $data @return array<string, mixed>
-     */
-    public static function error(mixed $id, int $code, string $message, ?array $data = null): array
-    {
-        $error = ['code' => $code, 'message' => $message];
-        if ($data !== null) {
-            $error['data'] = $data;
-        }
-
-        return ['jsonrpc' => '2.0', 'id' => $id, 'error' => $error];
-    }
 
     /**
      * Route a validated request to its method handler.
@@ -207,7 +191,7 @@ final class McpDispatcher
     private function dispatchMethod(string $method, int|string $id, array $params, ProtocolProfile $profile, ?Closure $pollCancellation): ?array
     {
         if ($method === 'server/discover') {
-            return $this->success($id, [
+            return JsonRpc::success($id, [
                 'protocolVersions' => ProtocolNegotiator::supported(),
                 'capabilities' => $this->capabilities(true),
                 'serverInfo' => self::serverInfo(),
@@ -217,9 +201,9 @@ final class McpDispatcher
         if ($method === 'initialize') {
             $requested = $params['protocolVersion'] ?? null;
             if (!is_string($requested)) {
-                return self::error($id, -32602, 'protocolVersion must be a string.');
+                return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'protocolVersion must be a string.');
             }
-            return $this->success($id, [
+            return JsonRpc::success($id, [
                 'protocolVersion' => self::PROTOCOL_VERSION,
                 'capabilities' => $this->capabilities(false),
                 'serverInfo' => self::serverInfo(),
@@ -227,16 +211,16 @@ final class McpDispatcher
             ]);
         }
         if ($method === 'ping') {
-            return $this->success($id, (object) []);
+            return JsonRpc::success($id, (object) []);
         }
         if ($profile->requiresHandshake() && !$this->initialized) {
             // Distinct from the resource-not-found code so a client can tell
             // "not initialized yet" from "no such resource". Unreachable for
             // revisions that removed the handshake.
-            return self::error($id, -32003, 'Server has not received notifications/initialized.');
+            return JsonRpc::error($id, JsonRpc::NOT_INITIALIZED, 'Server has not received notifications/initialized.');
         }
         if ($method === 'tools/list') {
-            return $this->success($id, ['tools' => $this->tools->definitions()]);
+            return JsonRpc::success($id, ['tools' => $this->tools->definitions()]);
         }
         if ($method === 'tools/call') {
             return $this->callTool($id, $params, $pollCancellation);
@@ -245,41 +229,41 @@ final class McpDispatcher
         if ($this->resources !== null && $method === 'resources/list') {
             $cursor = $params['cursor'] ?? null;
             if ($cursor !== null && !is_string($cursor)) {
-                return self::error($id, -32602, 'Invalid cursor.');
+                return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'Invalid cursor.');
             }
             try {
-                return $this->success($id, $this->resources->list($cursor));
+                return JsonRpc::success($id, $this->resources->list($cursor));
             } catch (\InvalidArgumentException) {
-                return self::error($id, -32602, 'Invalid cursor.');
+                return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'Invalid cursor.');
             }
         }
         if ($this->resources !== null && $method === 'resources/read') {
             $uri = $params['uri'] ?? null;
             if (!is_string($uri)) {
-                return self::error($id, -32602, 'uri must be a string.');
+                return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'uri must be a string.');
             }
             $result = $this->resources->read($uri);
             return $result === null
-                ? self::error($id, $profile->resourceNotFoundCode(), 'Resource not found: ' . $uri)
-                : $this->success($id, $result);
+                ? JsonRpc::error($id, $profile->resourceNotFoundCode(), 'Resource not found: ' . $uri)
+                : JsonRpc::success($id, $result);
         }
 
         if ($this->prompts !== null && $method === 'prompts/list') {
-            return $this->success($id, ['prompts' => $this->prompts->list()]);
+            return JsonRpc::success($id, ['prompts' => $this->prompts->list()]);
         }
         if ($this->prompts !== null && $method === 'prompts/get') {
             $name = $params['name'] ?? null;
             $arguments = $params['arguments'] ?? [];
             if (!is_string($name) || !self::isArgumentObject($arguments)) {
-                return self::error($id, -32602, 'Prompt name and object arguments are required.');
+                return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'Prompt name and object arguments are required.');
             }
             $result = $this->prompts->get($name, array_filter($arguments, 'is_string'));
             return $result === null
-                ? self::error($id, -32602, 'Unknown prompt: ' . $name)
-                : $this->success($id, $result);
+                ? JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'Unknown prompt: ' . $name)
+                : JsonRpc::success($id, $result);
         }
 
-        return self::error($id, -32601, 'Method not found');
+        return JsonRpc::error($id, JsonRpc::METHOD_NOT_FOUND, 'Method not found');
     }
 
     /**
@@ -297,21 +281,21 @@ final class McpDispatcher
         $name = $params['name'] ?? null;
         $arguments = $params['arguments'] ?? [];
         if (!is_string($name) || !self::isArgumentObject($arguments)) {
-            return self::error($id, -32602, 'Tool name and object arguments are required.');
+            return JsonRpc::error($id, JsonRpc::INVALID_PARAMS, 'Tool name and object arguments are required.');
         }
         try {
             $cancellation = new CancellationToken(fn(): bool => $this->cancellationRequested($id, $pollCancellation));
             $envelope = $this->tools->call($name, $arguments, $cancellation);
             $structured = $envelope->jsonSerialize();
-            $response = $this->success($id, [
-                'content' => [['type' => 'text', 'text' => json_encode($structured, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE)]],
+            $response = JsonRpc::success($id, [
+                'content' => [['type' => 'text', 'text' => json_encode($structured, JsonRpc::WIRE_FLAGS)]],
                 'structuredContent' => $structured,
                 'isError' => false,
             ]);
         } catch (ToolInputException $invalid) {
             // Unknown tool or malformed arguments: a protocol-level invalid
             // params error, not a tool that ran and failed.
-            $response = self::error($id, -32602, $invalid->getMessage());
+            $response = JsonRpc::error($id, JsonRpc::INVALID_PARAMS, $invalid->getMessage());
         } catch (ScanCancelledException $cancelled) {
             if (isset($this->cancelledRequests[self::cancelKey($id)])) {
                 // The client asked to cancel this request and is no longer
@@ -361,15 +345,6 @@ final class McpDispatcher
         return true;
     }
 
-    /**
-     * A JSON-RPC success frame.
-     *
-     * @return array<string, mixed>
-     */
-    private function success(mixed $id, mixed $result): array
-    {
-        return ['jsonrpc' => '2.0', 'id' => $id, 'result' => $result];
-    }
 
     /**
      * Server capabilities, shared by `initialize` and `server/discover`.
@@ -409,7 +384,7 @@ final class McpDispatcher
     /** A tools/call failure that ran the tool: reported as an isError result, not a JSON-RPC error. @return array<string, mixed> */
     private function toolError(mixed $id, string $code, string $message): array
     {
-        return $this->success($id, [
+        return JsonRpc::success($id, [
             'content' => [['type' => 'text', 'text' => $code . ': ' . $message]],
             'structuredContent' => ['error' => ['code' => $code, 'message' => $message]],
             'isError' => true,

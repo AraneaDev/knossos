@@ -14,9 +14,9 @@ import { noteOf } from './cards'
 import type { Arrangement, Block } from './cards'
 import { box, boxWidth, canvas, DIAGRAM_MIN, dotted, doubled, LABEL_MAX, line, toRows, write } from './diagram'
 import type { Canvas } from './diagram'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, SECONDARY, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, SECONDARY, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { button, segmentsWidth, tinted } from './rows'
+import { button, segmentsWidth, tintedRow } from './rows'
 import { chip } from './chips'
 import { cells, displayName, fit, plural, spaces, wrapWords } from './text'
 import { placeOf } from './paths'
@@ -189,7 +189,7 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
               const hops = ` · ${plural(r.hops.length, 'hop', 'hops')}`
               const text = fit(chain, Math.max(4, columns - segmentsWidth(lead) - cells(hops)))
               const segments: Segment[] = [...lead, button(`route-pick:${i}`, text), { text: hops, dim: true }, { text: spaces(columns - segmentsWidth(lead) - cells(text) - cells(hops)) }]
-              return on ? { key: `route-other-${i}`, segments: tinted(segments, SELECTED_BG), tint: SELECTED_BG } : { key: `route-other-${i}`, segments }
+              return tintedRow(`route-other-${i}`, segments, on)
             }),
           },
   }

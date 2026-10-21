@@ -73,6 +73,23 @@ class PythonFrameworkRoleEnricher:
         return sorted(set(roles))
 
 
+def add_route(
+    facts: PythonFactAccumulator,
+    method: str,
+    path: str,
+    handler: str,
+    target: str | None,
+    at: ast.AST,
+    attributes: dict[str, Any],
+) -> None:
+    """Emit one ``route`` node and, when its handler resolved, the ``routes_to`` edge to it."""
+    canonical = f"{method} {path} => {handler}"
+    route_id = ref("route", canonical)
+    facts.add_node(route_id, "route", canonical, f"{method} {path}", at, attributes)
+    if target:
+        facts.add_edge("routes_to", route_id, target, at)
+
+
 class RouterMounts:
     """The routers a file assigns and mounts, shared by the FastAPI and Flask enrichers.
 
@@ -80,7 +97,15 @@ class RouterMounts:
     imported from another module is that module's node, which its own scan
     emits. A mount names the router node it reaches, so no edge points at a
     router nobody declares.
+
+    A subclass names its framework, the classes that build an application and
+    a router, and the keyword a router's prefix is given by.
     """
+
+    FRAMEWORK = ""
+    APP_CLASS = ""
+    ROUTER_CLASS = ""
+    PREFIX_KEYWORD = ""
 
     def __init__(
         self,
@@ -121,6 +146,64 @@ class RouterMounts:
         )
         self.facts.add_edge("contains", self.module_id, router_id, value)
         self.routers.add(variable)
+
+    def register_assignment(self, variable: str, value: ast.AST | None, module_level: bool = True) -> None:
+        """Track an application or router assigned to ``variable``, and declare a module-level router."""
+        if not isinstance(value, ast.Call):
+            return
+        called = dotted(value.func)
+        # Through resolve_name, so `fastapi.APIRouter()` off `import fastapi` counts too.
+        resolved = (called and self.resolve_name(called, "class")) or ""
+        prefix = keyword_string(value, self.PREFIX_KEYWORD) or ""
+        if resolved.endswith((self.APP_CLASS, self.ROUTER_CLASS)):
+            self.framework_objects[variable] = (self.FRAMEWORK, prefix)
+            self.bind(variable, resolved.endswith(self.APP_CLASS), module_level)
+        # A router built inside a function is that call's own, one per call:
+        # no module-level node names it, though its routes keep its prefix.
+        if module_level and resolved.endswith(self.ROUTER_CLASS):
+            self.emit_router(variable, value, self.FRAMEWORK, prefix)
+
+    def decorator_methods(self, decorator: ast.Call) -> list[str] | None:
+        """The methods a decorator routes, None when it is no route decorator."""
+        raise NotImplementedError
+
+    def route_decorators(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, str, ast.AST]]:
+        """The (method, path, decorator) of every route a function's decorators declare."""
+        result: list[tuple[str, str, ast.AST]] = []
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                continue
+            owner = dotted(decorator.func.value)
+            methods = self.decorator_methods(decorator)
+            if owner not in self.framework_objects or methods is None:
+                continue
+            raw_path = positional_string(decorator, 0)
+            if raw_path is None:
+                message = f"Dynamic {self.APP_CLASS.rpartition('.')[2]} route path was skipped."
+                self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", message, decorator)
+                continue
+            prefix = self.framework_objects[owner][1]
+            path = prefixed_path(prefix, raw_path)
+            for method in methods:
+                result.append((method.upper(), path or "/", decorator))
+        return result
+
+    def emit_route(self, method: str, path: str, handler: str, target: str, at: ast.AST) -> None:
+        """Emit a route of this framework, hung on the router or app ``at`` is called on."""
+        add_route(
+            self.facts,
+            method,
+            path,
+            handler,
+            target,
+            at,
+            {"framework": self.FRAMEWORK, "methods": [method], "path": path, **self.owner_attributes(at)},
+        )
+
+    def emit_routes(self, local_id: str, canonical: str, route_decorators: list[tuple[str, str, ast.AST]]) -> None:
+        """Emit the routes a function's decorators declare, each to that function."""
+        for method, path, decorator in route_decorators:
+            self.emit_route(method, path, canonical, local_id, decorator)
 
     def router_reference(self, variable: str | None) -> str | None:
         """The ``py:router:`` reference a router variable stands for, None for anything else."""
@@ -206,20 +289,11 @@ class RouterMounts:
 class FastApiFactEnricher(RouterMounts):
     """Add FastAPI routes, dependencies, routers, and middleware facts."""
 
-    def register_assignment(self, variable: str, value: ast.AST | None, module_level: bool = True) -> None:
-        if not isinstance(value, ast.Call):
-            return
-        called = dotted(value.func)
-        # Through resolve_name, so `fastapi.APIRouter()` off `import fastapi` counts too.
-        resolved = (called and self.resolve_name(called, "class")) or ""
-        if resolved.endswith(("fastapi.FastAPI", "fastapi.APIRouter")):
-            prefix = keyword_string(value, "prefix") or ""
-            self.framework_objects[variable] = ("fastapi", prefix)
-            self.bind(variable, resolved.endswith("fastapi.FastAPI"), module_level)
-        # A router built inside a function is that call's own, one per call:
-        # no module-level node names it, though its routes keep its prefix.
-        if module_level and resolved.endswith("fastapi.APIRouter"):
-            self.emit_router(variable, value, "fastapi", keyword_string(value, "prefix") or "")
+    FRAMEWORK = "fastapi"
+    APP_CLASS = "fastapi.FastAPI"
+    ROUTER_CLASS = "fastapi.APIRouter"
+    PREFIX_KEYWORD = "prefix"
+    VERBS = frozenset({"get", "post", "put", "patch", "delete", "options", "head", "trace"})
 
     def register_parameters(
         self, node: ast.FunctionDef | ast.AsyncFunctionDef
@@ -265,24 +339,9 @@ class FastApiFactEnricher(RouterMounts):
             else:
                 self.framework_objects[variable] = previous
 
-    def route_decorators(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, str, ast.AST]]:
-        result: list[tuple[str, str, ast.AST]] = []
-        methods = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
-        for decorator in node.decorator_list:
-            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-                continue
-            owner = dotted(decorator.func.value)
-            method = decorator.func.attr.lower()
-            if owner not in self.framework_objects or method not in methods:
-                continue
-            raw_path = positional_string(decorator, 0)
-            if raw_path is None:
-                self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic FastAPI route path was skipped.", decorator)
-                continue
-            prefix = self.framework_objects[owner][1]
-            path = prefixed_path(prefix, raw_path)
-            result.append((method.upper(), path or "/", decorator))
-        return result
+    def decorator_methods(self, decorator: ast.Call) -> list[str] | None:
+        method = decorator.func.attr.lower() if isinstance(decorator.func, ast.Attribute) else ""
+        return [method] if method in self.VERBS else None
 
     def enrich_function(
         self,
@@ -291,18 +350,7 @@ class FastApiFactEnricher(RouterMounts):
         canonical: str,
         route_decorators: list[tuple[str, str, ast.AST]],
     ) -> None:
-        for method, path, decorator in route_decorators:
-            route_canonical = f"{method} {path} => {canonical}"
-            route_id = ref("route", route_canonical)
-            self.facts.add_node(
-                route_id,
-                "route",
-                route_canonical,
-                f"{method} {path}",
-                decorator,
-                {"framework": "fastapi", "methods": [method], "path": path, **self.owner_attributes(decorator)},
-            )
-            self.facts.add_edge("routes_to", route_id, local_id, decorator)
+        self.emit_routes(local_id, canonical, route_decorators)
         self.decorator_dependencies(node, local_id)
         self.parameter_dependencies(node, local_id)
 
@@ -562,23 +610,21 @@ class DjangoFactEnricher:
         target = self.resolve_name(target_name, "class") if target_name else None
         base = prefix.strip("^$/")
         for path in (f"{base}/", f"{base}/{{pk}}/"):
-            canonical = f"ANY /{path} => {target_name or 'dynamic'}"
-            route_id = ref("route", canonical)
-            self.facts.add_node(
-                route_id,
-                "route",
-                canonical,
-                f"ANY /{path}",
+            add_route(
+                self.facts,
+                "ANY",
+                f"/{path}",
+                target_name or "dynamic",
+                target,
                 node,
                 {
                     "framework": "django",
+                    "methods": ["ANY"],
                     "path": path,
                     "name": keyword_string(node, "basename"),
                     "router": ref("router", f"{self.module}.{variable}"),
                 },
             )
-            if target:
-                self.facts.add_edge("routes_to", route_id, target, node)
 
     def url_pattern(self, expression: ast.AST) -> None:
         if not isinstance(expression, ast.Call):
@@ -601,16 +647,16 @@ class DjangoFactEnricher:
         if isinstance(target_expression, ast.Call) and isinstance(target_expression.func, ast.Attribute):
             target_name = dotted(target_expression.func.value)
         target = self.resolve_name(target_name, "function") if target_name else None
-        canonical = f"ANY /{path.lstrip('/')} => {target_name or 'dynamic'}"
-        route_id = ref("route", canonical)
-        self.facts.add_node(
-            route_id,
-            "route",
-            canonical,
-            f"ANY /{path.lstrip('/')}",
+        add_route(
+            self.facts,
+            "ANY",
+            f"/{path.lstrip('/')}",
+            target_name or "dynamic",
+            target,
             expression,
             {
                 "framework": "django",
+                "methods": ["ANY"],
                 "path": path,
                 "name": keyword_string(expression, "name"),
                 "module": self.module,
@@ -618,8 +664,6 @@ class DjangoFactEnricher:
                 **({"regex": True} if resolved.endswith("django.urls.re_path") else {}),
             },
         )
-        if target:
-            self.facts.add_edge("routes_to", route_id, target, expression)
 
     @staticmethod
     def literal_value(node: ast.AST) -> Any:
@@ -642,40 +686,16 @@ class FlaskFactEnricher(RouterMounts):
     (`PY_DYNAMIC_ROUTE_PATH`).
     """
 
-    def register_assignment(self, variable: str, value: ast.AST | None, module_level: bool = True) -> None:
-        if not isinstance(value, ast.Call):
-            return
-        called = dotted(value.func)
-        resolved = (called and self.resolve_name(called, "class")) or ""
-        if resolved.endswith(("flask.Flask", "flask.Blueprint")):
-            prefix = keyword_string(value, "url_prefix") or ""
-            self.framework_objects[variable] = ("flask", prefix)
-            self.bind(variable, resolved.endswith("flask.Flask"), module_level)
-        if module_level and resolved.endswith("flask.Blueprint"):
-            self.emit_router(variable, value, "flask", keyword_string(value, "url_prefix") or "")
+    FRAMEWORK = "flask"
+    APP_CLASS = "flask.Flask"
+    ROUTER_CLASS = "flask.Blueprint"
+    PREFIX_KEYWORD = "url_prefix"
 
-    def route_decorators(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, str, ast.AST]]:
-        result: list[tuple[str, str, ast.AST]] = []
-        for decorator in node.decorator_list:
-            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
-                continue
-            if decorator.func.attr != "route":
-                continue
-            owner = dotted(decorator.func.value)
-            if owner not in self.framework_objects:
-                continue
-            raw_path = positional_string(decorator, 0)
-            if raw_path is None:
-                self.facts.add_diagnostic("PY_DYNAMIC_ROUTE_PATH", "Dynamic Flask route path was skipped.", decorator)
-                continue
-            prefix = self.framework_objects[owner][1]
-            path = prefixed_path(prefix, raw_path)
-            methods = self.methods_keyword(decorator)
-            if methods is None:
-                methods = ["GET"]  # Flask's default when `methods` is absent
-            for method in methods:
-                result.append((method.upper(), path or "/", decorator))
-        return result
+    def decorator_methods(self, decorator: ast.Call) -> list[str] | None:
+        if not isinstance(decorator.func, ast.Attribute) or decorator.func.attr != "route":
+            return None
+        methods = self.methods_keyword(decorator)
+        return ["GET"] if methods is None else methods  # GET is Flask's default when `methods` is absent
 
     @staticmethod
     def methods_keyword(call: ast.Call) -> list[str] | None:
@@ -699,18 +719,7 @@ class FlaskFactEnricher(RouterMounts):
         canonical: str,
         route_decorators: list[tuple[str, str, ast.AST]],
     ) -> None:
-        for method, path, decorator in route_decorators:
-            route_canonical = f"{method} {path} => {canonical}"
-            route_id = ref("route", route_canonical)
-            self.facts.add_node(
-                route_id,
-                "route",
-                route_canonical,
-                f"{method} {path}",
-                decorator,
-                {"framework": "flask", "methods": [method], "path": path, **self.owner_attributes(decorator)},
-            )
-            self.facts.add_edge("routes_to", route_id, local_id, decorator)
+        self.emit_routes(local_id, canonical, route_decorators)
 
     def enrich_call(self, node: ast.Call, name: str | None) -> None:
         if name and name.endswith(".register_blueprint"):
@@ -742,14 +751,4 @@ class FlaskFactEnricher(RouterMounts):
             prefix = self.framework_objects.get(owner or "", ("flask", ""))[1]
             path = prefixed_path(prefix, raw_path)
             for method in methods:
-                canonical = f"{method.upper()} {path} => {target.removeprefix('py:function:')}"
-                route_id = ref("route", canonical)
-                self.facts.add_node(
-                    route_id,
-                    "route",
-                    canonical,
-                    f"{method.upper()} {path}",
-                    node,
-                    {"framework": "flask", "methods": [method.upper()], "path": path, **self.owner_attributes(node)},
-                )
-                self.facts.add_edge("routes_to", route_id, target, node)
+                self.emit_route(method.upper(), path, target.removeprefix("py:function:"), target, node)

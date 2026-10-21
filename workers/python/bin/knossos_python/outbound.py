@@ -159,7 +159,9 @@ class OutboundCallRecorder:
         module, _, function = (task or "").rpartition(".")
         if not module or not function:
             return False
-        found = self.index.canonical_module(module) if self.index.module_file(module) is not None else None
+        found = (
+            self.index.layout.canonical_module(module) if self.index.layout.module_file(module) is not None else None
+        )
         declared = self.index.module_declarations(found).get(function, "") if found else ""
         attributes: dict[str, Any] = {"celery": "signature"} if signature else {}
         if declared.startswith("py:function:"):

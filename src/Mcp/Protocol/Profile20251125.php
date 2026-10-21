@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp\Protocol;
 
+use Knossos\Mcp\JsonRpc;
+
 /**
  * MCP `2025-11-25`: the handshake-based revision.
  *
@@ -45,7 +47,7 @@ final readonly class Profile20251125 implements ProtocolProfile
      */
     public function resourceNotFoundCode(): int
     {
-        return -32002;
+        return JsonRpc::RESOURCE_NOT_FOUND;
     }
 
     /**

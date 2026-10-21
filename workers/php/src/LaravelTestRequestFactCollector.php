@@ -34,7 +34,7 @@ final readonly class LaravelTestRequestFactCollector
     private const WITH_METHOD = ['json', 'call'];
 
     public function __construct(
-        private LaravelFactStore $facts,
+        private FrameworkFactStore $facts,
         private LaravelTraversalContext $context,
     ) {}
 

@@ -6,6 +6,7 @@ namespace Knossos\Cli;
 
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Maintenance\DatabaseMaintenanceService;
+use Knossos\Mcp\JsonRpc;
 use Knossos\Runtime\RuntimeFactory;
 use PDO;
 
@@ -118,6 +119,6 @@ final class CliCommandContext
      */
     public function output(array $structured, bool $json, string $text): void
     {
-        echo ($json ? json_encode($structured, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) : $text) . PHP_EOL;
+        echo ($json ? json_encode($structured, JsonRpc::WIRE_FLAGS) : $text) . PHP_EOL;
     }
 }

@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -61,13 +62,26 @@ final class PhpAuditFixturesTest extends KnossosTestCase
             PHP);
         $pdo = $this->scan();
 
+        // The worker's facts, one per call site: the graph collapses them.
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => ['src/Svc.php']]), false);
+        $client->shutdown();
         $calls = [];
-        foreach ($this->edges($pdo) as $edge) {
-            if ($edge['kind'] === 'calls' && $edge['source'] === 'App\\Svc::m' && str_ends_with($edge['target'], '::run')) {
-                $calls[] = $edge['start_line'] . ' ' . $edge['target'] . ' ' . $edge['confidence'];
+        foreach ($contributions[0]->edges as $edge) {
+            if ($edge->kind === 'calls' && $edge->sourceReference === 'php:method:App\\Svc::m' && str_ends_with($edge->targetReference, '::run')) {
+                $calls[] = $edge->evidence->startLine . ' ' . substr($edge->targetReference, strlen('php:method:')) . ' ' . $edge->confidence->value;
             }
         }
         sort($calls);
+        $collapsed = [];
+        foreach ($this->edges($pdo) as $edge) {
+            if ($edge['kind'] === 'calls' && $edge['source'] === 'App\\Svc::m' && str_ends_with($edge['target'], '::run')) {
+                $collapsed[] = $edge['start_line'] . ' ' . $edge['target'] . ' ' . $edge['confidence'];
+            }
+        }
+        sort($collapsed);
+        // The surest occurrence decides the edge, at the earliest site.
+        self::assertSame(['7 App\\Foo::run certain', '9 App\\Bar::run certain'], $collapsed);
         self::assertSame([
             // Captured, by `use` and implicitly.
             '11 App\\Bar::run probable',

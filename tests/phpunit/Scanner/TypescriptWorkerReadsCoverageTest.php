@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -118,7 +119,7 @@ final class TypescriptWorkerReadsCoverageTest extends KnossosTestCase
         $client = $this->typescriptWorkerClient();
         try {
             $contributions = [];
-            foreach ($client->scan(['root' => $this->root, 'files' => $files] + $params) as $contribution) {
+            foreach ($client->scan($params + ['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $files]) as $contribution) {
                 $contributions[substr($contribution->ownerKey, strlen('knossos.typescript:file:'))] = $contribution;
             }
             $result = $client->lastScanResult();

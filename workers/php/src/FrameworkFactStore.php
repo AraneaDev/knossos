@@ -11,15 +11,17 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 
 /**
- * Accumulates the nodes, edges, and diagnostics one file's Laravel analysis found.
+ * Accumulates the nodes, edges, and diagnostics one file's framework analysis
+ * (Laravel or Symfony) found.
  *
- * Facts are collected rather than emitted as they are discovered, because a single
+ * A node keeps its first declaration; an edge is kept once per site, and the
+ * core collapses repeated edges. Facts are collected rather than emitted as they are discovered, because a single
  * file yields several kinds and the worker returns them as one contribution. The
  * static helpers read literal values out of the parse tree, returning null rather
  * than guessing whenever an argument is computed at runtime — an inferred value
  * recorded as certain would be worse than an absent one.
  */
-final class LaravelFactStore
+final class FrameworkFactStore
 {
     /** @var array<string, array<string, mixed>> */
     private array $nodes = [];
@@ -29,7 +31,7 @@ final class LaravelFactStore
     private array $diagnostics = [];
 
     /** @param string $relativePath the file these facts came from, used as their evidence path */
-    public function __construct(private readonly string $relativePath) {}
+    public function __construct(public readonly string $relativePath) {}
 
     /**
      * The node facts collected so far.
@@ -189,7 +191,18 @@ final class LaravelFactStore
      */
     private function evidence(Node $node): array
     {
+        return self::evidenceIn($this->relativePath, $node);
+    }
+
+    /**
+     * The evidence of a syntax node in a file: its lines, never before line 1
+     * and never ending before it starts.
+     *
+     * @return array{path: string, start_line: int, end_line: int}
+     */
+    public static function evidenceIn(string $relativePath, Node $node): array
+    {
         $start = max(1, $node->getStartLine());
-        return ['path' => $this->relativePath, 'start_line' => $start, 'end_line' => max($start, $node->getEndLine())];
+        return ['path' => $relativePath, 'start_line' => $start, 'end_line' => max($start, $node->getEndLine())];
     }
 }

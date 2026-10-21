@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp\Protocol;
 
+use Knossos\Mcp\JsonRpc;
 use Knossos\Runtime\Version;
 
 /**
@@ -64,7 +65,7 @@ final readonly class Profile20260728 implements ProtocolProfile
     /** {@inheritDoc} */
     public function resourceNotFoundCode(): int
     {
-        return -32602;
+        return JsonRpc::INVALID_PARAMS;
     }
 
     /** {@inheritDoc} */

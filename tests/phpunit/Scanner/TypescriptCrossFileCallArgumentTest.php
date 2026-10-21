@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -38,7 +39,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-cross-file-call-arguments',
                 'files' => ['src/cjs/deck.js', 'src/cjs/ejector.js', 'src/cjs/lib.js', 'src/cjs/rewinder.js', 'src/cjs/winder.js', 'src/devices.js', 'src/flash.js', 'src/handlers.js', 'src/lib/frame.js', 'src/lib/index.js', 'src/shoot.js', 'src/steps.js', 'src/typed.ts'],
                 'config_files' => ['tsconfig.json'],

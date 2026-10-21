@@ -203,6 +203,34 @@ final class ScannedPathsTest extends KnossosTestCase
     }
 
     /**
+     * A stored configuration that does not decode to an object, or whose
+     * ignores are no list, leaves only the built-in rules: the probe still
+     * answers rather than throwing, and a non-string entry is dropped.
+     */
+    #[Group('query')]
+    public function testAMalformedStoredConfigurationLeavesOnlyTheBuiltInRules(): void
+    {
+        [$pdo, $projectId, $root] = $this->seedProjectWithFiles(['src/a.php']);
+        try {
+            mkdir($root . '/src/legacy', 0o777, true);
+            file_put_contents($root . '/src/legacy/old.php', "<?php\n");
+            $tracked = function (string $config) use ($pdo, $projectId, $root): bool {
+                $pdo->prepare('UPDATE projects SET config_json = :config WHERE id = :id')
+                    ->execute(['config' => $config, 'id' => $projectId]);
+
+                return ScannedPaths::forProject($pdo, $projectId)->tracks('src/legacy/old.php', $root . '/src/legacy/old.php');
+            };
+
+            self::assertSame(
+                ['{' => true, '"legacy"' => true, '{"ignores":"legacy"}' => true, '{"ignores":[7,"legacy"]}' => false],
+                array_map($tracked, ['{' => '{', '"legacy"' => '"legacy"', '{"ignores":"legacy"}' => '{"ignores":"legacy"}', '{"ignores":[7,"legacy"]}' => '{"ignores":[7,"legacy"]}']),
+            );
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
      * A project root holding one source file and a knossos.json that ignores
      * one directory, scanned for real.
      *

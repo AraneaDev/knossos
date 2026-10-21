@@ -21,6 +21,7 @@ use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\FakeWorker;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -75,7 +76,7 @@ final class InputHashVerificationTest extends KnossosTestCase
         assertSame([], $result->workerDiagnostics);
         assertSame(['src/Checkout.ts'], array_map(static fn($contribution): string => $contribution->nodes[0]->evidence->relativePath, $result->contributions));
         assertSame(['src/Checkout.ts'], array_map(static fn($entry): string => $entry->filePath, $result->cacheEntries));
-        assertSame(['count' => 1], $result->scannerMetadata['knossos.fake']);
+        assertSame(['count' => 1], $result->scannerMetadata['knossos.typescript']);
     }
 
     public function testADeclaringWorkerThatSendsNoInputHashesDegradesThatLanguage(): void
@@ -113,7 +114,7 @@ final class InputHashVerificationTest extends KnossosTestCase
 
         assertSame([], $result->workerDiagnostics);
         assertSame(1, count($result->cacheEntries));
-        assertSame(1, $result->scannerMetadata['knossos.fake']['files_scanned']);
+        assertSame(1, $result->scannerMetadata['knossos.typescript']['files_scanned']);
     }
 
     public function testAHonestReadSentAheadOfTheResultScans(): void
@@ -162,10 +163,10 @@ final class InputHashVerificationTest extends KnossosTestCase
 
     private function runScan(string $mode, WorkerLimits $limits = new WorkerLimits()): LanguageScanResult
     {
-        $client = new ProcessScannerClient([PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php', $mode], $limits);
+        $descriptor = new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['php', '-r', 'echo 1']);
+        $client = new ProcessScannerClient([PHP_BINARY, FakeWorker::path(), $mode, FakeWorker::manifestFor($descriptor)], $limits);
         $pool = $this->createStub(LanguageWorkerPool::class);
         $pool->method('client')->willReturn($client);
-        $descriptor = new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['php', '-r', 'echo 1']);
         $runner = new LanguageScanRunner([$descriptor], $pool, new ContributionCacheService());
 
         try {

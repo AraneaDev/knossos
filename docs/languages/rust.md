@@ -93,9 +93,10 @@ A node's `local_id` and both ends of an edge are written
 `rust:<kind>:<canonical>`. `canonical_name` itself carries no prefix. A raw
 identifier is named without its `r#`: `mod r#async;` is the module
 `crate::async`, the module of `src/async.rs`. When a
-target cannot be resolved, Knossos keeps no edge rather than a guess. Repeated
-edges collapse to the persistence identity of kind, source and target within one
-contribution, and the earliest evidence is kept.
+target cannot be resolved, Knossos keeps no edge rather than a guess. The worker
+reports every site; the core collapses repeated edges to one per kind, source,
+target and owner, keeping the surest site's evidence (see
+[Repeated edges](../reference/scanner-protocol-v1.md#repeated-edges)).
 
 ### Code nothing calls by name
 

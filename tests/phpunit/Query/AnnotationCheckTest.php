@@ -10,7 +10,7 @@ use Knossos\Mcp\NextStepPlanner;
 use Knossos\Mcp\ResultEnricher;
 use Knossos\Mcp\ToolService;
 use Knossos\Query\ArchitectureQueryService;
-use Knossos\Query\PaneQueries;
+use Knossos\Query\PaneCommands;
 use Knossos\Query\StalenessProbe;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -143,7 +143,7 @@ final class AnnotationCheckTest extends KnossosTestCase
      */
     private function pane(PDO $pdo, string $root, array $options, bool $execute = false): array
     {
-        return (new PaneQueries($pdo))->answer('annotate', $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => $name === 'execute' && $execute);
+        return (new PaneCommands($pdo))->answer('annotate', $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => $name === 'execute' && $execute);
     }
 
     /**

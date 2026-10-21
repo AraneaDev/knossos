@@ -209,9 +209,11 @@ php tools/docstring-report.php
 php tools/api-documentation-check.php
 fi
 
+# Each packaged worker is launched by --language as a scan launches it, from
+# LanguageDescriptor::defaults, so no command is restated here.
 if in_lane rust; then
 if [ -x "$root/workers/rust/bin/knossos-rust-worker" ]; then
-    tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes -- workers/rust/bin/knossos-rust-worker
+    tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes --language=rust
 else
     quality_not_run 'scanner conformance of the Rust worker' 'workers/rust/bin/knossos-rust-worker is not built'
 fi
@@ -219,11 +221,10 @@ fi
 if in_lane tests; then
 # The PHP, Python and TypeScript workers are mandatory, so their protocol
 # conformance is checked unconditionally, not behind an existence probe like
-# the optional Rust one. The paths are relative on purpose: that is the form
-# docs/reference/scanner-sdk.md shows worker authors.
-tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes -- php workers/php/bin/worker
-tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes -- python3 -I -B -W ignore::SyntaxWarning workers/python/bin/worker.py
-tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes -- node workers/typescript/bin/worker.js
+# the optional Rust one.
+for language in php python typescript; do
+    tools/scanner-conformance --require=partial_ast --require=content_hash --require=input_hashes --language="$language"
+done
 fi
 
 if in_lane static; then

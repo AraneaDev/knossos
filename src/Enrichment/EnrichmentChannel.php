@@ -6,6 +6,7 @@ namespace Knossos\Enrichment;
 
 use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Worker\RpcChannelInterface;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 
 /**
@@ -41,7 +42,7 @@ final class EnrichmentChannel implements RpcChannelInterface
     public function beginRequest(): int
     {
         if (hrtime(true) >= $this->runDeadline) {
-            throw new WorkerException('WORKER_TIMEOUT', 'Enricher ran past its timeout.');
+            throw new WorkerException(WorkerErrorCode::Timeout->value, 'Enricher ran past its timeout.');
         }
 
         return min($this->inner->beginRequest(), $this->runDeadline);

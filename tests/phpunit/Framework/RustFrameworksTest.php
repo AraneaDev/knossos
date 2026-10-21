@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -90,7 +91,7 @@ RUST);
         $client = null;
         try {
             $client = $this->rustWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['src/routes.rs'],
                 'frameworks' => ['actix'],

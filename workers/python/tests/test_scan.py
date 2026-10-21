@@ -146,7 +146,7 @@ def test_oversized_file_costs_only_itself(worker: ModuleType, project, scan_coll
     # The path is well-formed, so the request succeeds and the file arrives as a
     # diagnostic-only contribution; aborting would discard every other file's facts.
     root = project({"big.py": "x = 1\n" * 100, "small.py": "y = 2\n"})
-    contributions = scan_collect(root, ["big.py", "small.py"], limits={"max_file_bytes": 40})
+    contributions = scan_collect(root, ["big.py", "small.py"], limits={"max_files": 100000, "max_file_bytes": 40})
     by_owner = {c["owner_key"]: c for c in contributions}
     assert _diag_codes(by_owner["knossos.python:file:big.py"]) == ["PY_UNSCANNABLE_FILE"]
     assert by_owner["knossos.python:file:big.py"]["nodes"] == []
@@ -214,6 +214,146 @@ def test_attribute_receivers_resolve_instead_of_inventing_members(
     assert not any("." in target.split("::", 1)[1] for _, _, target in _edges(contribution) if "::" in target), (
         "no edge may name a member containing a dot"
     )
+
+
+def test_a_call_through_an_attribute_chain_resolves_when_every_link_is_typed(
+    worker: ModuleType, project, scan_collect
+) -> None:
+    # `self.index.layout.canonical()` calls a method of whatever `layout` holds
+    # on whatever `self.index` holds. Each link is typed by what the owning
+    # class declares: its `__init__` assigning a constructor call, or a class
+    # body annotation. One untyped link leaves the call untyped.
+    root = project(
+        {
+            "pkg/__init__.py": "",
+            "pkg/layout.py": (
+                "class Layout:\n"
+                "    def canonical(self) -> str:\n"
+                "        return ''\n"
+                "\n"
+                "    def environment(self) -> str:\n"
+                "        return ''\n"
+                "\n"
+                "    def annotated(self) -> str:\n"
+                "        return ''\n"
+            ),
+            "pkg/index.py": (
+                "from pkg.layout import Layout\n"
+                "\n"
+                "\n"
+                "class Index:\n"
+                "    def __init__(self) -> None:\n"
+                "        self.layout = Layout()\n"
+                "        self.loose = make()\n"
+                "\n"
+                "\n"
+                "class Typed:\n"
+                "    layout: Layout\n"
+                "\n"
+                "\n"
+                "def make() -> object:\n"
+                "    return object()\n"
+            ),
+            "pkg/use.py": (
+                "from pkg.index import Index, Typed\n"
+                "\n"
+                "\n"
+                "class Collector:\n"
+                "    def __init__(self, index: Index, typed: Typed) -> None:\n"
+                "        self.index = index\n"
+                "        self.typed = typed\n"
+                "\n"
+                "    def run(self) -> None:\n"
+                "        self.index.layout.canonical()\n"
+                "        self.typed.layout.annotated()\n"
+                "        self.index.loose.untyped_call()\n"
+                "\n"
+                "\n"
+                "def scan() -> None:\n"
+                "    index = Index()\n"
+                "    index.layout.environment()\n"
+            ),
+        }
+    )
+
+    contributions = scan_collect(root, ["pkg/layout.py", "pkg/index.py", "pkg/use.py"])
+    use = next(c for c in contributions if c["owner_key"].endswith(":pkg/use.py"))
+
+    calls = sorted(t for kind, _, t in _edges(use) if kind == "calls" and t.startswith("py:method:pkg.layout."))
+    assert calls == [
+        "py:method:pkg.layout.Layout::annotated",
+        "py:method:pkg.layout.Layout::canonical",
+        "py:method:pkg.layout.Layout::environment",
+    ]
+    assert "untyped_call" in _module_untyped(use)
+
+
+def test_an_attribute_assigned_more_than_once_is_not_typed_by_its_constructor(
+    worker: ModuleType, project, scan_collect
+) -> None:
+    # `__init__` typing an attribute only answers when it is the class's one
+    # assignment of it: assigned twice in `__init__`, or again in another
+    # method, the attribute may hold anything by the time it is read. A class
+    # body annotation still decides, whatever the methods assign.
+    root = project(
+        {
+            "pkg/__init__.py": "",
+            "pkg/a.py": (
+                "class Foo:\n"
+                "    def run(self) -> None:\n"
+                "        pass\n"
+                "\n"
+                "\n"
+                "class Bar:\n"
+                "    def run(self) -> None:\n"
+                "        pass\n"
+            ),
+            "pkg/holder.py": (
+                "from pkg.a import Bar, Foo\n"
+                "\n"
+                "\n"
+                "class Holder:\n"
+                "    def __init__(self) -> None:\n"
+                "        self.twice = Foo()\n"
+                "        self.twice = Bar()\n"
+                "        self.swapped = Foo()\n"
+                "\n"
+                "    def swap(self, thing: object) -> None:\n"
+                "        self.swapped = thing\n"
+                "\n"
+                "\n"
+                "class Annotated:\n"
+                "    held: Foo\n"
+                "\n"
+                "    def __init__(self) -> None:\n"
+                "        self.held = Bar()\n"
+                "\n"
+                "    def swap(self, thing: Foo) -> None:\n"
+                "        self.held = thing\n"
+            ),
+            "pkg/use.py": (
+                "from pkg.holder import Annotated, Holder\n"
+                "\n"
+                "\n"
+                "def twice(h: Holder) -> None:\n"
+                "    h.twice.run()\n"
+                "\n"
+                "\n"
+                "def swapped(h: Holder) -> None:\n"
+                "    h.swapped.run()\n"
+                "\n"
+                "\n"
+                "def annotated(a: Annotated) -> None:\n"
+                "    a.held.run()\n"
+            ),
+        }
+    )
+
+    contributions = scan_collect(root, ["pkg/a.py", "pkg/holder.py", "pkg/use.py"])
+    use = next(c for c in contributions if c["owner_key"].endswith(":pkg/use.py"))
+
+    calls = sorted((s, t) for kind, s, t in _edges(use) if kind == "calls" and t.startswith("py:method:pkg.a."))
+    assert calls == [("py:function:pkg.use.annotated", "py:method:pkg.a.Foo::run")]
 
 
 def test_a_receiver_reassigned_to_something_untracked_stops_resolving(
@@ -566,10 +706,11 @@ def test_a_base_or_mixin_annotation_in_the_same_module_types_a_subclass(
 
     [contribution] = scan_collect(tmp_path, ["mod.py"])
 
+    # One fact per call site: the core collapses the two `lookup` calls.
     calls = sorted(
         target for kind, source, target in _edges(contribution) if kind == "calls" and source.endswith("::run")
     )
-    assert calls == ["py:method:mod.Cache::grand_call", "py:method:mod.Index::lookup"]
+    assert calls == ["py:method:mod.Cache::grand_call", "py:method:mod.Index::lookup", "py:method:mod.Index::lookup"]
     assert _module_untyped(contribution) == []
 
 
@@ -1000,7 +1141,16 @@ def test_invalid_escape_sequences_leave_stderr_empty(tmp_path: Path) -> None:
     (tmp_path / "b.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
-        {"jsonrpc": "2.0", "id": 2, "method": "scan", "params": {"root": str(tmp_path), "files": ["a.py", "b.py"]}},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "scan",
+            "params": {
+                "root": str(tmp_path),
+                "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+                "files": ["a.py", "b.py"],
+            },
+        },
         {"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": {}},
     ]
 
@@ -1032,7 +1182,10 @@ def test_directory_name_that_is_not_utf8_does_not_break_output(
         pytest.skip("filesystem rejects non-UTF-8 names")
     (tmp_path / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     emitted: list[dict] = []
-    result = worker.scan({"root": str(tmp_path), "files": ["m.py"]}, emitted.append)
+    result = worker.scan(
+        {"root": str(tmp_path), "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "files": ["m.py"]},
+        emitted.append,
+    )
     assert len(emitted) == 1
     for key in result["input_hashes"]:
         key.encode("utf-8")
@@ -1049,7 +1202,10 @@ def test_directory_name_with_a_control_character_is_not_reported_as_read(worker:
         pytest.skip("filesystem rejects control characters in names")
     (tmp_path / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     emitted: list[dict] = []
-    result = worker.scan({"root": str(tmp_path), "files": ["m.py"]}, emitted.append)
+    result = worker.scan(
+        {"root": str(tmp_path), "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "files": ["m.py"]},
+        emitted.append,
+    )
     assert len(emitted) == 1
     assert [key for key in result["input_hashes"] if any(ord(c) < 32 or ord(c) == 127 for c in key)] == []
 

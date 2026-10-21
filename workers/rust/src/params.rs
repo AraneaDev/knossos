@@ -8,11 +8,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-/// Default cap on one scanned file, overridden by `params.limits.max_file_bytes`.
-const DEFAULT_MAX_FILE_BYTES: u64 = 2_000_000;
-
-/// Default cap on files in one request, overridden by `params.limits.max_files`.
-const DEFAULT_MAX_FILES: usize = 100_000;
+/// The refusal of a request whose limits are missing or malformed, worded
+/// alike by every worker.
+pub(crate) const INVALID_LIMITS: &str =
+    "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.";
 
 /// A `scan` request whose parameters passed validation.
 pub(crate) struct ScanRequest {
@@ -36,8 +35,9 @@ impl ScanRequest {
     pub(crate) fn parse(params: &Value) -> Result<Self, String> {
         let root = safe_root(params.get("root"))?;
         let limits = params.get("limits");
-        let max_files = limit_of(limits, "max_files", DEFAULT_MAX_FILES as u64)? as usize;
-        let max_file_bytes = limit_of(limits, "max_file_bytes", DEFAULT_MAX_FILE_BYTES)?;
+        let max_files = usize::try_from(limit_of(limits, "max_files")?)
+            .map_err(|_| INVALID_LIMITS.to_owned())?;
+        let max_file_bytes = limit_of(limits, "max_file_bytes")?;
         let files = params
             .get("files")
             .and_then(Value::as_array)
@@ -110,14 +110,14 @@ fn safe_root(value: Option<&Value>) -> Result<PathBuf, String> {
     std::fs::canonicalize(raw).map_err(|error| format!("Unusable project root: {error}"))
 }
 
-/// One `limits` entry, or `fallback` when absent.
-fn limit_of(limits: Option<&Value>, key: &str, fallback: u64) -> Result<u64, String> {
-    match limits.and_then(|value| value.get(key)) {
-        None | Some(Value::Null) => Ok(fallback),
-        Some(value) => value
-            .as_u64()
-            .ok_or_else(|| format!("Limit {key} must be a non-negative integer.")),
-    }
+/// One `limits` entry, which the core always sends: anything but an integer
+/// of at least 1 is refused, as every worker refuses it.
+fn limit_of(limits: Option<&Value>, key: &str) -> Result<u64, String> {
+    limits
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_u64)
+        .filter(|limit| *limit >= 1)
+        .ok_or_else(|| INVALID_LIMITS.to_owned())
 }
 
 /// A requested path, refused unless it is a normalized, project-relative path.
@@ -133,8 +133,8 @@ fn limit_of(limits: Option<&Value>, key: &str, fallback: u64) -> Result<u64, Str
 /// walking `Path::components()`: that iterator silently collapses a leading
 /// `./` and a doubled `/` before a `.` or empty segment would ever be seen,
 /// which would let `./x` and `x//y` slip past unnoticed. This mirrors
-/// `assert_scannable_path` in `workers/python/bin/knossos_python/safe_io.py`:
-/// the two workers must refuse exactly the same shapes.
+/// the core's `RelativePath::assertValid`, and every packaged worker refuses
+/// exactly the shapes it does (`tests/Fixtures/scanner/relative-paths.json`).
 fn assert_scannable_path(value: &Value) -> Result<String, String> {
     let raw = value
         .as_str()
@@ -147,10 +147,13 @@ fn assert_scannable_path(value: &Value) -> Result<String, String> {
 /// The string form of [`assert_scannable_path`], for values already known to
 /// be strings.
 pub(crate) fn assert_scannable_str(raw: &str) -> Result<String, String> {
-    if raw.contains('\0') || raw.contains('\\') {
-        return Err(format!("Refusing an unnormalized scan path: {raw}"));
+    if raw.contains('\\') || raw.chars().any(|character| character.is_ascii_control()) {
+        return Err(format!("Refusing an unnormalized scan path: {raw:?}"));
     }
-    if Path::new(raw).is_absolute() {
+    let bytes = raw.as_bytes();
+    let drive =
+        bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/';
+    if Path::new(raw).is_absolute() || drive {
         return Err(format!("Refusing an absolute scan path: {raw}"));
     }
     if raw

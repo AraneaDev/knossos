@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
-use Knossos\Store\EnrichedFacts;
 use PDO;
 
 /**
  * The supertype methods a method fulfils: the methods of the same name that
- * the ancestors of its class declare, over `extends` and `implements`. A
- * call through an interface or a parent goes to the supertype method in the
- * graph, so a walk over dependants passes through these to reach the
+ * the ancestors of its class declare, over `extends`, `implements` and
+ * `uses_trait`. A trait is a supertype here: a method the trait declares
+ * (abstract or not) and calls on `$this` runs the using class's method of the
+ * same name, so the class's method fulfils it. A call through an interface,
+ * a parent or a trait goes to the supertype method in the graph, so a walk
+ * over dependants passes through these to reach the
  * implementation that may run (as {@see InheritanceGraph} lets dead-code
  * analysis keep such a method alive). {@see self::implementationsOf()} walks
  * the other way, for a flow that goes forward through such a call.
@@ -26,6 +28,9 @@ final class SupertypeMethods
     /** Bound on the ancestor walk, as {@see InheritanceGraph} bounds its own. */
     private const MAX_DEPTH = 20;
 
+    /** The edges from a class to its supertypes. */
+    private const EDGE_KINDS = ['extends', 'implements', 'uses_trait'];
+
     /** The kinds whose methods can fulfil a supertype's. */
     private const CLASS_KINDS = ['class', 'interface', 'trait', 'enum'];
 
@@ -38,7 +43,7 @@ final class SupertypeMethods
      */
     public static function of(PDO $pdo, string $projectId, array $nodeIds): array
     {
-        return self::related($pdo, $projectId, $nodeIds, 'source_id', 'target_id');
+        return self::related($pdo, $projectId, $nodeIds, Direction::Outgoing);
     }
 
     /**
@@ -51,20 +56,19 @@ final class SupertypeMethods
      */
     public static function implementationsOf(PDO $pdo, string $projectId, array $nodeIds): array
     {
-        return self::related($pdo, $projectId, $nodeIds, 'target_id', 'source_id');
+        return self::related($pdo, $projectId, $nodeIds, Direction::Incoming);
     }
 
     /**
      * The methods of the same name in the classes related to each method's
-     * class over `extends` and `implements`, walked from `$from` to `$to`:
-     * child to parent for supertypes, parent to child for implementations.
+     * class over {@see self::EDGE_KINDS}, walked in `$direction`: outgoing,
+     * child to parent, for supertypes; incoming, parent to child, for
+     * implementations.
      *
      * @param list<string> $nodeIds
-     * @param 'source_id'|'target_id' $from
-     * @param 'source_id'|'target_id' $to
      * @return array<string, list<string>>
      */
-    private static function related(PDO $pdo, string $projectId, array $nodeIds, string $from, string $to): array
+    private static function related(PDO $pdo, string $projectId, array $nodeIds, Direction $direction): array
     {
         if ($nodeIds === []) {
             return [];
@@ -81,25 +85,10 @@ final class SupertypeMethods
             return [];
         }
         // Every class's related classes, level by level from the methods' classes.
-        $links = [];
-        $frontier = array_values(array_unique(array_column($owners, 0)));
-        $read = array_fill_keys($frontier, true);
-        for ($level = 0; $level < self::MAX_DEPTH && $frontier !== []; ++$level) {
-            $next = [];
-            // An enricher's inheritance claim is a guess; only native edges make a hop.
-            $sql = "SELECT {$from}, {$to} FROM edges WHERE project_id = ? AND kind IN ('extends', 'implements')" . EnrichedFacts::nativeCondition('edges') . " AND {$from} IN (%s)";
-            foreach (ChunkedInQuery::rows($pdo, $sql, $frontier, [$projectId], mode: PDO::FETCH_NUM) as [$class, $related]) {
-                $links[(string) $class][] = (string) $related;
-                if (!isset($read[(string) $related])) {
-                    $read[(string) $related] = true;
-                    $next[] = (string) $related;
-                }
-            }
-            $frontier = $next;
-        }
+        $links = EdgeWalk::reach($pdo, $projectId, self::EDGE_KINDS, $direction, array_values(array_unique(array_column($owners, 0))), self::MAX_DEPTH);
         $reached = [];
         foreach (array_unique(array_column($owners, 0)) as $class) {
-            $reached[$class] = self::closure($class, $links);
+            $reached[$class] = EdgeWalk::closure($class, $links);
         }
         // The related classes' methods, by name.
         $declared = [];
@@ -124,29 +113,5 @@ final class SupertypeMethods
         }
 
         return $matches;
-    }
-
-    /**
-     * Every class `$class` reaches over `$links`, itself left out, each once however the hierarchy loops.
-     *
-     * @param array<string, list<string>> $links
-     * @return list<string>
-     */
-    private static function closure(string $class, array $links): array
-    {
-        $seen = [$class => true];
-        $stack = $links[$class] ?? [];
-        $found = [];
-        while ($stack !== []) {
-            $next = array_pop($stack);
-            if (isset($seen[$next])) {
-                continue;
-            }
-            $seen[$next] = true;
-            $found[] = $next;
-            array_push($stack, ...($links[$next] ?? []));
-        }
-
-        return $found;
     }
 }

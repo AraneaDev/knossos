@@ -58,7 +58,7 @@ final readonly class PhpScanner
         $ast = $this->parser->parse($source, $errors) ?? [];
         $collector = new FactCollector($relativePath);
         $laravelCollector = $laravel ? new LaravelFactCollector($relativePath) : null;
-        $symfonyCollector = $symfony ? new SymfonyFactCollector($relativePath) : null;
+        $symfonyCollector = $symfony ? new SymfonyFactCollector(new FrameworkFactStore($relativePath)) : null;
 
         if ($ast !== [] && self::exceedsDepth($ast, self::MAX_AST_DEPTH)) {
             return [

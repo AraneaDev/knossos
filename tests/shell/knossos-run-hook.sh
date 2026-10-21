@@ -115,6 +115,22 @@ expect_silent_success 'unenterable project dir' env KNOSSOS_BIN="$STUBS/echoing"
 expect_output 'passes arguments with spaces intact' "turn-brief|$ABS_PROJ|--files=a, b.php|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" '--files=a, b.php'
 
+# dashboard and turn-brief take only the options the mod builds: `--db=...`
+# would point the run at another graph, `--policies=...` would read a file.
+expect_output 'dashboard passes its threshold and axes' "dashboard|$ABS_PROJ|--fan-in-threshold=20|--boundaries=100|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --fan-in-threshold=20 --boundaries=100
+expect_refused 'dashboard refuses --db' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'dashboard refuses --db after its own options' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --fan-in-threshold=20 --db=/tmp/other.sqlite
+expect_refused 'dashboard refuses a threshold that is no number' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --fan-in-threshold=2x
+expect_refused 'dashboard refuses its options out of order' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" dashboard "$STUBS/proj" --boundaries=100 --fan-in-threshold=20
+expect_output 'turn-brief passes every option the mod builds' "turn-brief|$ABS_PROJ|--files=src/a.php|--files=/abs/b.php|--since=scan_1|--reuse-scan|--no-policies|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --files=src/a.php --files=/abs/b.php --since=scan_1 --reuse-scan --no-policies
+expect_refused 'turn-brief refuses --db' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --db=/tmp/other.sqlite
+expect_refused 'turn-brief refuses --db after its files' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --files=src/a.php --db=/tmp/other.sqlite
+expect_refused 'turn-brief refuses --policies' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --policies=/tmp/p.json
+expect_refused 'turn-brief refuses a file after a flag' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" --no-policies --files=src/a.php
+expect_refused 'turn-brief refuses a snapshot that is no plain id' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" turn-brief "$STUBS/proj" '--since=a b'
+
 # A relative project directory is resolved after the cd, so the binary and the
 # bind mount receive the absolute path rather than one that means nothing from
 # inside the directory.
@@ -126,7 +142,7 @@ expect_output 'relative project directory reaches the binary as an absolute path
 install_copy() {
     dir=$1; data=$2
     mkdir -p "$dir"
-    cp "$RUN" "$dir/knossos-run.sh"
+    cp "$RUN" "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$dir/"
     if [ -n "$data" ]; then
         sed "s|__KNOSSOS_DATA_DIR__|$data|" "$SCRIPTS/lib.sh" > "$dir/lib.sh"
     else
@@ -147,8 +163,15 @@ expect_output 'environment data location wins over the installed one' '/env|/x y
 
 # A wrapper installed without its library must still be silent.
 mkdir -p "$STUBS/nolib"
-cp "$RUN" "$STUBS/nolib/knossos-run.sh"
+cp "$RUN" "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$STUBS/nolib/"
 expect_silent_success 'missing lib.sh' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$STUBS/nolib/knossos-run.sh" dashboard /tmp
+# So must one without the guard or the argument checks it sources: nothing runs unchecked.
+for sourced in guard.sh run-args.sh; do
+    mkdir -p "$STUBS/no-$sourced"
+    cp "$RUN" "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$SCRIPTS/lib.sh" "$STUBS/no-$sourced/"
+    rm "$STUBS/no-$sourced/$sourced"
+    expect_silent_success "missing $sourced" env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$STUBS/no-$sourced/knossos-run.sh" dashboard /tmp
+done
 
 # component-detail: one component name after the project directory, passed
 # through intact; anything that could read as an option is refused.
@@ -396,6 +419,7 @@ fi
 # The container variant, emitted with its placeholders filled, against a docker stand-in.
 mkdir -p "$STUBS/container" "$STUBS/dockerbin"
 sed -e "s|__KNOSSOS_IMAGE__|img:1|" -e "s|__KNOSSOS_DATA__|/srv/data|" "$SCRIPTS/knossos-run-container.sh" > "$STUBS/container/knossos-run.sh"
+cp "$SCRIPTS/guard.sh" "$SCRIPTS/run-args.sh" "$STUBS/container/"
 # Drops `run --rm` and the `-v` mounts, writes each `-e` to `env` beside it, says `user=<uid:gid>` when the run names a user, then prints the image and its argv.
 # `--init` and `--name` are recorded in `flags` beside it, and `rm -f <name>` in `removed`.
 cat > "$STUBS/dockerbin/docker" <<'STUB'

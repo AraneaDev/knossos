@@ -7,57 +7,20 @@
 # brief cut off by the timeout, which prints one line saying so.
 set -u
 
-# The directory the hook works in, resolved below to its physical path.
-KNOSSOS_PATH_PROJECT=${CLAUDE_PROJECT_DIR:-$PWD}
-# Only absolute PATH entries that lie outside the project survive. The hook
-# runs inside the project, so a relative entry (`node_modules/.bin`, `.`, or an
-# empty one, which means the working directory) would resolve dirname, tr,
-# timeout, knossos or docker to a program the repository ships. So would an
-# absolute entry that points into the project, such as the
-# `<project>/node_modules/.bin` a tool manager adds, whether it names the
-# project directly or reaches it through a symbolic link. Each entry is
-# therefore compared by its physical path. One that does not resolve is dropped:
-# it names no directory to compare, and a dangling link could start to resolve
-# into the project later. A project that itself holds a bin directory on PATH
-# (the project is $HOME) drops that entry on purpose. Builtins only, done
-# first, before any program is looked up.
-KNOSSOS_PATH_PROJECT=$(CDPATH='' cd -P -- "${KNOSSOS_PATH_PROJECT:-/}" 2>/dev/null && pwd -P) || KNOSSOS_PATH_PROJECT=$(CDPATH='' cd -P -- "$PWD" 2>/dev/null && pwd -P) || KNOSSOS_PATH_PROJECT=''
-# The filesystem root holds every entry, so it is no directory to filter by.
-case $KNOSSOS_PATH_PROJECT in
-    /) KNOSSOS_PATH_PROJECT='' ;;
-esac
-KNOSSOS_SAFE_PATH=''
-KNOSSOS_SAVED_IFS=$IFS
-IFS=:
-set -f
-for KNOSSOS_PATH_ENTRY in ${PATH:-}; do
-    case $KNOSSOS_PATH_ENTRY in
-        /*) ;;
-        *) continue ;;
-    esac
-    KNOSSOS_PATH_REAL=$(CDPATH='' cd -P -- "$KNOSSOS_PATH_ENTRY" 2>/dev/null && pwd -P) || continue
-    case $KNOSSOS_PATH_PROJECT in
-        '') ;;
-        *)
-            case $KNOSSOS_PATH_REAL/ in
-                "$KNOSSOS_PATH_PROJECT"/*) continue ;;
-            esac
-            ;;
-    esac
-    KNOSSOS_SAFE_PATH="${KNOSSOS_SAFE_PATH:+$KNOSSOS_SAFE_PATH:}$KNOSSOS_PATH_ENTRY"
-done
-set +f
-IFS=$KNOSSOS_SAVED_IFS
-# An empty PATH would itself mean the working directory, so it never stays empty.
-PATH=${KNOSSOS_SAFE_PATH:-/usr/bin:/bin}
-export PATH
-unset KNOSSOS_SAFE_PATH KNOSSOS_SAVED_IFS KNOSSOS_PATH_ENTRY KNOSSOS_PATH_REAL KNOSSOS_PATH_PROJECT
+# The scripts this one sources sit beside it. Builtins only: PATH is not safe
+# to search until knossos_guard_path has run. Resolved to an absolute path
+# before the cd below, since $0 may be relative to the starting directory. A
+# missing script is silent like every other failure: a plain `.` of a missing
+# file would abort the shell with a diagnostic.
+case $0 in */*) KNOSSOS_HOOK_DIR=${0%/*}/ ;; *) KNOSSOS_HOOK_DIR=./ ;; esac
+KNOSSOS_HOOK_DIR=$(CDPATH='' cd -- "$KNOSSOS_HOOK_DIR" 2>/dev/null && pwd) || exit 0
+[ -r "$KNOSSOS_HOOK_DIR/guard.sh" ] || exit 0
+# shellcheck source=hooks/scripts/guard.sh
+. "$KNOSSOS_HOOK_DIR/guard.sh" 2>/dev/null || exit 0
+# The project the hook works in, or the working directory when that does not resolve.
+knossos_guard_path "${CLAUDE_PROJECT_DIR:-$PWD}" "$PWD"
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
-
-# Resolved to an absolute path before the cd below: $0 may be relative to the
-# starting directory.
-LIB="$(CDPATH='' cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)/lib.sh"
 
 # Run from the project directory so the working directory and the argument
 # agree. The command derives its database from the path it is given, but a
@@ -69,11 +32,10 @@ CDPATH='' cd -- "$PROJECT_DIR" 2>/dev/null || exit 0
 # Absolute from here on: a relative path would mean something else to the binary, the mount and the find below once the directory changes.
 PROJECT_DIR=$(pwd -P) || exit 0
 
-# Shared discovery helpers. A missing library is silent like every other
-# failure: a plain `.` of a missing file would abort the shell with a diagnostic.
-[ -r "$LIB" ] || exit 0
+# Shared discovery helpers.
+[ -r "$KNOSSOS_HOOK_DIR/lib.sh" ] || exit 0
 # shellcheck source=hooks/scripts/lib.sh
-. "$LIB" 2>/dev/null || exit 0
+. "$KNOSSOS_HOOK_DIR/lib.sh" 2>/dev/null || exit 0
 
 BIN="$(find_knossos)" || exit 0
 

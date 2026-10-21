@@ -41,13 +41,13 @@ final readonly class LaravelRoleRule implements ClassificationRule
         $roles = [];
         $parent = $node->attributes['extends'] ?? null;
         if (is_string($parent) && isset(self::BASE_ROLES[$parent])) {
-            $roles[self::BASE_ROLES[$parent]] = ['relation' => 'extends', 'target' => $parent];
+            $roles[self::BASE_ROLES[$parent]] = ['source' => 'extends', 'target' => $parent];
         }
         $interfaces = $node->attributes['implements'] ?? [];
         if (is_array($interfaces)) {
             foreach ($interfaces as $interface) {
                 if (is_string($interface) && isset(self::INTERFACE_ROLES[$interface])) {
-                    $roles[self::INTERFACE_ROLES[$interface]] = ['relation' => 'implements', 'target' => $interface];
+                    $roles[self::INTERFACE_ROLES[$interface]] = ['source' => 'implements', 'target' => $interface];
                 }
             }
         }

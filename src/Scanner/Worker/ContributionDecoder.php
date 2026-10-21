@@ -71,7 +71,7 @@ final class ContributionDecoder
         } catch (WorkerException $error) {
             throw $error;
         } catch (Throwable $error) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', $error->getMessage(), $error);
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, $error->getMessage(), $error);
         }
     }
 
@@ -91,7 +91,7 @@ final class ContributionDecoder
 
         return new Diagnostic(
             'error',
-            'WORKER_CONTRIBUTION_INVALID',
+            WorkerErrorCode::ContributionInvalid->value,
             sprintf(
                 'Left out of the graph: the scanner reported a malformed fact for %s (%s). '
                 . 'Its facts are omitted and the rest of the language is kept.',
@@ -167,7 +167,7 @@ final class ContributionDecoder
         $start = $data['start_line'] ?? null;
         $end = $data['end_line'] ?? null;
         if (!is_int($start) || !is_int($end)) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', 'Evidence lines must be integers.');
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'Evidence lines must be integers.');
         }
 
         return new Evidence(self::string($data, 'path'), $start, $end);
@@ -182,7 +182,7 @@ final class ContributionDecoder
     {
         $attributes = $data['attributes'] ?? [];
         if (!is_array($attributes) || ($attributes !== [] && array_is_list($attributes))) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', 'Fact attributes must be an object.');
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'Fact attributes must be an object.');
         }
 
         return $attributes;
@@ -196,7 +196,7 @@ final class ContributionDecoder
     private static function object(mixed $value, string $field): array
     {
         if (!is_array($value) || array_is_list($value)) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('%s must be an object.', $field));
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('%s must be an object.', $field));
         }
 
         return $value;
@@ -210,7 +210,7 @@ final class ContributionDecoder
     private static function string(array $data, string $field): string
     {
         if (!isset($data[$field]) || !is_string($data[$field]) || $data[$field] === '') {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('%s must be a non-empty string.', $field));
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('%s must be a non-empty string.', $field));
         }
 
         return $data[$field];
@@ -224,7 +224,7 @@ final class ContributionDecoder
     private static function bool(array $data, string $field): bool
     {
         if (!is_bool($data[$field] ?? null)) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('%s must be a boolean.', $field));
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('%s must be a boolean.', $field));
         }
 
         return $data[$field];
@@ -242,7 +242,7 @@ final class ContributionDecoder
             return null;
         }
         if (!is_string($data['content_hash'])) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', 'content_hash must be a string.');
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, 'content_hash must be a string.');
         }
 
         return $data['content_hash'];
@@ -252,7 +252,7 @@ final class ContributionDecoder
     private static function list(array $data, string $field): array
     {
         if (!isset($data[$field]) || !is_array($data[$field]) || !array_is_list($data[$field])) {
-            throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('%s must be a list.', $field));
+            throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('%s must be a list.', $field));
         }
 
         return $data[$field];

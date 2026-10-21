@@ -18,7 +18,7 @@ use PhpParser\Node\Identifier;
 final readonly class LaravelContainerFactCollector
 {
     public function __construct(
-        private LaravelFactStore $facts,
+        private FrameworkFactStore $facts,
         private LaravelTraversalContext $context,
     ) {}
 
@@ -30,10 +30,10 @@ final readonly class LaravelContainerFactCollector
             return;
         }
         $source = $this->context->currentSource();
-        $contract = LaravelFactStore::classArgument($node->args[0]->value ?? null);
-        $implementation = LaravelFactStore::classArgument($node->args[1]->value ?? null);
+        $contract = FrameworkFactStore::classArgument($node->args[0]->value ?? null);
+        $implementation = FrameworkFactStore::classArgument($node->args[1]->value ?? null);
         if ($source !== null && $contract !== null && $implementation !== null) {
-            $this->facts->addEdge('binds', $source, LaravelFactStore::classReference($implementation), $node, ['contract' => $contract]);
+            $this->facts->addEdge('binds', $source, FrameworkFactStore::classReference($implementation), $node, ['contract' => $contract]);
         }
     }
 }

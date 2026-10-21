@@ -404,10 +404,10 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
             ?: ($a['boundary']['source'] <=> $b['boundary']['source'])
             ?: ($a['boundary']['name'] <=> $b['boundary']['name'])
             ?: ($a['boundary']['id'] <=> $b['boundary']['id']));
-        if (count($candidates) > $limit) {
+        [$candidates, $cut] = Page::cut($candidates, $limit);
+        if ($cut) {
             $truncation->add('result_limit');
         }
-        $candidates = array_slice($candidates, 0, $limit);
         $evidence = [];
         foreach ($candidates as $candidateIndex => $candidate) {
             foreach ($candidate['related_members'] as $related) {

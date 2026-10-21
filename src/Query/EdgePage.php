@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EdgeQueries;
 use PDO;
 
@@ -58,9 +59,9 @@ final class EdgePage
         $anchorValues = $direction === Direction::Incoming && $withMembers ? [$nodeId, $nodeId] : [$nodeId];
         $statement->execute([$projectId, ...$anchorValues, ...$kinds, $minRank]);
         $rows = $statement->fetchAll();
-        if (count($rows) > self::LIMIT) {
+        [$rows, $cut] = Page::cut($rows, self::LIMIT);
+        if ($cut) {
             $truncation->add(self::TRUNCATION_REASON);
-            $rows = array_slice($rows, 0, self::LIMIT);
         }
 
         return $rows;

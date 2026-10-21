@@ -18,9 +18,23 @@ inputs:
   registry:
     description: "'true' on the registry route; 'false' on the local route (forks and Dependabot), which loads the image job's tarballs."
     required: true
+  token:
+    description: >-
+      The workflow's GITHUB_TOKEN, to log in to ghcr.io before the pulls on the
+      registry route. Empty when the caller logged in already.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
+    # A composite action cannot read the workflow's secrets, so the caller
+    # hands the token in. The local route pulls nothing and needs no login.
+    - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      if: ${{ inputs.registry == 'true' && inputs.token != '' }}
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
     # A pull from a registry in the same datacentre moves bytes instead of
     # reconstructing an image from cached layers, which is why the dependency
     # images live in the registry rather than the Actions cache. The source

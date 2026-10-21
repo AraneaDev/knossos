@@ -1,9 +1,11 @@
 # The files each linter in tools/quality reads, derived from `git ls-files`
 # by tools/lint-files.php. Regenerate it with `php tools/lint-files.php --write`;
 # the static lane refuses a copy that differs from what git tracks.
+shell	hooks/scripts/guard.sh
 shell	hooks/scripts/knossos-run-container.sh
 shell	hooks/scripts/knossos-run.sh
 shell	hooks/scripts/lib.sh
+shell	hooks/scripts/run-args.sh
 shell	hooks/scripts/session-brief-container.sh
 shell	hooks/scripts/session-brief.sh
 shell	tests/shell/check-commit-style.sh
@@ -148,6 +150,7 @@ php	src/Discovery/SourceClassifier.php
 php	src/Discovery/TreeWalkState.php
 php	src/Discovery/TreeWalker.php
 php	src/Discovery/UnitInputSet.php
+php	src/Discovery/UnitKind.php
 php	src/Discovery/UnitReader.php
 php	src/Enrichment/EnricherCarryOver.php
 php	src/Enrichment/EnricherOutcome.php
@@ -158,10 +161,12 @@ php	src/Enrichment/EnrichmentValidator.php
 php	src/Enrichment/NativeNodeIndex.php
 php	src/Enrichment/Profiles.php
 php	src/Enrichment/ValidatedEnrichment.php
+php	src/Filesystem/AtomicFile.php
 php	src/Filesystem/RegularFileOpener.php
 php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php
 php	src/Git/DirtyPathSet.php
+php	src/Git/GitCommand.php
 php	src/Git/GitHeadResolver.php
 php	src/Git/GitHistoryProvider.php
 php	src/Git/GitLogRecords.php
@@ -176,6 +181,7 @@ php	src/Mcp/BoundaryLegend.php
 php	src/Mcp/ComponentLegend.php
 php	src/Mcp/HttpEndpoint.php
 php	src/Mcp/HttpSessionStore.php
+php	src/Mcp/JsonRpc.php
 php	src/Mcp/JsonRpcId.php
 php	src/Mcp/LegendCompression.php
 php	src/Mcp/McpDispatcher.php
@@ -195,6 +201,7 @@ php	src/Mcp/StdioServer.php
 php	src/Mcp/ToolArgumentPreflight.php
 php	src/Mcp/ToolArgumentSpec.php
 php	src/Mcp/ToolArguments.php
+php	src/Mcp/ToolBindings.php
 php	src/Mcp/ToolCatalog.php
 php	src/Mcp/ToolErrorMapper.php
 php	src/Mcp/ToolInputException.php
@@ -218,7 +225,6 @@ php	src/Query/ChurnService.php
 php	src/Query/ComponentDetailService.php
 php	src/Query/ComponentQueryService.php
 php	src/Query/CompositionRoots.php
-php	src/Query/ConfidenceRank.php
 php	src/Query/ConstructedClasses.php
 php	src/Query/DashboardService.php
 php	src/Query/DeadCodeAnalysis.php
@@ -241,8 +247,8 @@ php	src/Query/Drift/ScannedPaths.php
 php	src/Query/Drift/TrackedPathPredicate.php
 php	src/Query/Drift/WalkDriftOracle.php
 php	src/Query/EdgePage.php
+php	src/Query/EdgeWalk.php
 php	src/Query/EntryPointCriteria.php
-php	src/Query/ErasedTypeEdge.php
 php	src/Query/FileContextQueryService.php
 php	src/Query/FileContextService.php
 php	src/Query/FileDetailService.php
@@ -262,7 +268,9 @@ php	src/Query/LedgeredScanner.php
 php	src/Query/LocationSuggestionService.php
 php	src/Query/NotesService.php
 php	src/Query/OneTypeCycles.php
-php	src/Query/PaneQueries.php
+php	src/Query/Page.php
+php	src/Query/PaneCommands.php
+php	src/Query/PaneProject.php
 php	src/Query/PathBetweenService.php
 php	src/Query/PolicyScope.php
 php	src/Query/ProjectCatalogQueryService.php
@@ -303,6 +311,7 @@ php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
 php	src/Query/TurnBriefService.php
 php	src/Reconciliation/CaseInsensitiveReferences.php
+php	src/Reconciliation/EdgeCollapse.php
 php	src/Reconciliation/EdgeTargetResolver.php
 php	src/Reconciliation/EndpointRouteBinder.php
 php	src/Reconciliation/EndpointRouteBinding.php
@@ -380,8 +389,10 @@ php	src/Scan/TreeFingerprint.php
 php	src/Scan/UndiscoveredInputVerifier.php
 php	src/Scan/UndiscoveredInputs.php
 php	src/Scanner/Protocol/Confidence.php
+php	src/Scanner/Protocol/ConfidenceRank.php
 php	src/Scanner/Protocol/Diagnostic.php
 php	src/Scanner/Protocol/EdgeFact.php
+php	src/Scanner/Protocol/ErasedTypeEdge.php
 php	src/Scanner/Protocol/Evidence.php
 php	src/Scanner/Protocol/NodeFact.php
 php	src/Scanner/Protocol/Origin.php
@@ -393,6 +404,7 @@ php	src/Scanner/ScannerClient.php
 php	src/Scanner/Sdk/ConformanceArgumentAnchor.php
 php	src/Scanner/Sdk/FixtureBuilder.php
 php	src/Scanner/Worker/ContributionDecoder.php
+php	src/Scanner/Worker/ContributionParams.php
 php	src/Scanner/Worker/InputHashesMap.php
 php	src/Scanner/Worker/NdjsonRpcChannel.php
 php	src/Scanner/Worker/ProcessScannerClient.php
@@ -400,6 +412,7 @@ php	src/Scanner/Worker/ProcessSupervisorInterface.php
 php	src/Scanner/Worker/ReadsMap.php
 php	src/Scanner/Worker/RpcChannelInterface.php
 php	src/Scanner/Worker/ScannerProtocolSession.php
+php	src/Scanner/Worker/WorkerErrorCode.php
 php	src/Scanner/Worker/WorkerException.php
 php	src/Scanner/Worker/WorkerExecutionPolicy.php
 php	src/Scanner/Worker/WorkerLimits.php
@@ -431,6 +444,7 @@ php	src/Store/SqliteStatementCache.php
 php	src/Store/SqliteTransactions.php
 php	src/Store/SqliteValues.php
 php	src/Store/StableId.php
+php	src/Store/Upsert.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
 php	src/Watch/ScanTimeoutException.php
@@ -482,6 +496,7 @@ php	tests/phpunit/Classification/ToolConfigModuleRuleTest.php
 php	tests/phpunit/Classification/TypeScriptFrameworkRoleRuleTest.php
 php	tests/phpunit/ClaudeCodeTypesTest.php
 php	tests/phpunit/Cli/BriefCommandTest.php
+php	tests/phpunit/Cli/CliArgumentsTest.php
 php	tests/phpunit/Cli/CliDocumentedOptionsTest.php
 php	tests/phpunit/Cli/CliHelpersTest.php
 php	tests/phpunit/Cli/CliOptionValueSplitTest.php
@@ -561,6 +576,7 @@ php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
 php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php
 php	tests/phpunit/FailOnWarningTest.php
+php	tests/phpunit/Filesystem/AtomicFileTest.php
 php	tests/phpunit/Filesystem/RelativePathRuleTest.php
 php	tests/phpunit/Framework/ClassificationTest.php
 php	tests/phpunit/Framework/DjangoUrlconfTest.php
@@ -577,6 +593,7 @@ php	tests/phpunit/Framework/SymfonyTest.php
 php	tests/phpunit/Framework/TypescriptAppTest.php
 php	tests/phpunit/Framework/TypescriptEndpointsTest.php
 php	tests/phpunit/Git/DirtyPathCaptureTest.php
+php	tests/phpunit/Git/GitCommandTest.php
 php	tests/phpunit/Git/GitHeadResolverTest.php
 php	tests/phpunit/Git/GitLogRecordsTest.php
 php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
@@ -607,6 +624,7 @@ php	tests/phpunit/Mcp/HttpRouterTest.php
 php	tests/phpunit/Mcp/HttpSessionStoreDefaultsTest.php
 php	tests/phpunit/Mcp/HttpTest.php
 php	tests/phpunit/Mcp/JsonRpcConformanceTest.php
+php	tests/phpunit/Mcp/JsonRpcTest.php
 php	tests/phpunit/Mcp/MaxCharsTest.php
 php	tests/phpunit/Mcp/McpTest.php
 php	tests/phpunit/Mcp/MoveProjectToolTest.php
@@ -619,6 +637,7 @@ php	tests/phpunit/Mcp/ServerEnvironmentToolsTest.php
 php	tests/phpunit/Mcp/StdioFrames.php
 php	tests/phpunit/Mcp/ToolArgumentProbes.php
 php	tests/phpunit/Mcp/ToolArgumentSpecTest.php
+php	tests/phpunit/Mcp/ToolBindingsTest.php
 php	tests/phpunit/Mcp/ToolBoundsAgreementTest.php
 php	tests/phpunit/Mcp/ToolCatalogEdgeKindsTest.php
 php	tests/phpunit/Mcp/ToolCatalogPolicyTest.php
@@ -677,6 +696,7 @@ php	tests/phpunit/Query/Drift/ScannedPathsTest.php
 php	tests/phpunit/Query/Drift/UnitInputDriftTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleAdditionsTest.php
 php	tests/phpunit/Query/Drift/WalkDriftOracleTest.php
+php	tests/phpunit/Query/EdgeWalkTest.php
 php	tests/phpunit/Query/EloquentFactoryStatesTest.php
 php	tests/phpunit/Query/EloquentMagicReferencesTest.php
 php	tests/phpunit/Query/EnrichedFactsExclusionTest.php
@@ -717,8 +737,10 @@ php	tests/phpunit/Query/NotesServiceTest.php
 php	tests/phpunit/Query/ObjectLiteralCallbackTest.php
 php	tests/phpunit/Query/ObjectLiteralImplementationTest.php
 php	tests/phpunit/Query/OneTypeCycleTest.php
+php	tests/phpunit/Query/PageTest.php
+php	tests/phpunit/Query/PaneCommandsTest.php
 php	tests/phpunit/Query/PaneCoreAgreementTest.php
-php	tests/phpunit/Query/PaneQueriesTest.php
+php	tests/phpunit/Query/PaneProjectTest.php
 php	tests/phpunit/Query/PolicyBoundaryReferencesTest.php
 php	tests/phpunit/Query/PolicyTest.php
 php	tests/phpunit/Query/PolicyValidationBoundsTest.php
@@ -778,8 +800,10 @@ php	tests/phpunit/Query/WiringReachTest.php
 php	tests/phpunit/Reconciliation/ArtisanCommandTargetTest.php
 php	tests/phpunit/Reconciliation/CaseInsensitiveReferencesTest.php
 php	tests/phpunit/Reconciliation/CrossLanguageExternalNodeTest.php
+php	tests/phpunit/Reconciliation/EdgeCollapseTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteBinderTest.php
 php	tests/phpunit/Reconciliation/EndpointRouteReconcileTest.php
+php	tests/phpunit/Reconciliation/EnumCaseReceiverTest.php
 php	tests/phpunit/Reconciliation/FullScanRequestTest.php
 php	tests/phpunit/Reconciliation/GitTest.php
 php	tests/phpunit/Reconciliation/GraphReconcilerTest.php
@@ -826,7 +850,6 @@ php	tests/phpunit/Scan/FailedScanTest.php
 php	tests/phpunit/Scan/FastPathTest.php
 php	tests/phpunit/Scan/IncrementalReadsScanTest.php
 php	tests/phpunit/Scan/InputHashVerificationTest.php
-php	tests/phpunit/Scan/InputHashesPartSizeAgreementTest.php
 php	tests/phpunit/Scan/InputHashesPartsScanTest.php
 php	tests/phpunit/Scan/JsconfigScanTest.php
 php	tests/phpunit/Scan/LanguageDescriptorAnalysisInputsTest.php
@@ -863,8 +886,10 @@ php	tests/phpunit/Scan/ScanInputHashesTest.php
 php	tests/phpunit/Scan/ScanLeafTest.php
 php	tests/phpunit/Scan/ScanLedgerTest.php
 php	tests/phpunit/Scan/ScanPlanTest.php
+php	tests/phpunit/Scan/ScanPlannerConfigurationKindsTest.php
 php	tests/phpunit/Scan/ScanPlannerDefaultsTest.php
 php	tests/phpunit/Scan/ScanPlannerTest.php
+php	tests/phpunit/Scan/ScanRequestSchemaTest.php
 php	tests/phpunit/Scan/ScanResultFactoryTest.php
 php	tests/phpunit/Scan/ScanSnapshotValidationTest.php
 php	tests/phpunit/Scan/ShebangScanTest.php
@@ -881,15 +906,17 @@ php	tests/phpunit/Scanner/AnnotationReferenceTest.php
 php	tests/phpunit/Scanner/CommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/ComponentWorkerTest.php
 php	tests/phpunit/Scanner/ContributionDecoderGuardsTest.php
+php	tests/phpunit/Scanner/ContributionParamsTest.php
 php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
-php	tests/phpunit/Scanner/LaunchInterpretersAgreementTest.php
 php	tests/phpunit/Scanner/LimitsTest.php
+php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
 php	tests/phpunit/Scanner/PhpWorkerScopeAndRouteFactsTest.php
 php	tests/phpunit/Scanner/PropertyReceiverTest.php
+php	tests/phpunit/Scanner/Protocol/ConfidenceRankTest.php
 php	tests/phpunit/Scanner/Protocol/ConfidenceTest.php
 php	tests/phpunit/Scanner/Protocol/DiagnosticTest.php
 php	tests/phpunit/Scanner/Protocol/EdgeFactTest.php
@@ -906,6 +933,7 @@ php	tests/phpunit/Scanner/PythonReadAttributionTest.php
 php	tests/phpunit/Scanner/PythonScannerTest.php
 php	tests/phpunit/Scanner/PythonWorkerReadsTest.php
 php	tests/phpunit/Scanner/ReturnedReceiverTest.php
+php	tests/phpunit/Scanner/RouteAttributesAgreementTest.php
 php	tests/phpunit/Scanner/RustModuleIdentityTest.php
 php	tests/phpunit/Scanner/RustReadAttributionTest.php
 php	tests/phpunit/Scanner/RustWorkerTest.php
@@ -950,6 +978,8 @@ php	tests/phpunit/Scanner/Worker/WorkerExceptionTest.php
 php	tests/phpunit/Scanner/Worker/WorkerExecutionPolicyTest.php
 php	tests/phpunit/Scanner/Worker/WorkerLimitsTest.php
 php	tests/phpunit/Scanner/Worker/WorkerProcessSupervisorTest.php
+php	tests/phpunit/Scanner/WorkerConstantAgreementTest.php
+php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
 php	tests/phpunit/Scanner/WorkerFallbackExclusionsTest.php
 php	tests/phpunit/Scanner/WorkerTest.php
 php	tests/phpunit/Store/BatchWriteTest.php
@@ -989,11 +1019,14 @@ php	tests/phpunit/Support/CountingDriftOracle.php
 php	tests/phpunit/Support/CountingStreamWrapper.php
 php	tests/phpunit/Support/EndpointRouteFixtures.php
 php	tests/phpunit/Support/EnricherFlowScans.php
+php	tests/phpunit/Support/FakeWorker.php
 php	tests/phpunit/Support/Fixtures.php
 php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/Processes.php
 php	tests/phpunit/Support/QueryCountingStatement.php
 php	tests/phpunit/Support/RowCountingStatement.php
+php	tests/phpunit/Support/ScanLimits.php
+php	tests/phpunit/Support/SchemaSubset.php
 php	tests/phpunit/Support/SupportTraitsTest.php
 php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempTrees.php
@@ -1045,11 +1078,11 @@ php	tools/trivy-allowlist.php
 php	workers/php/bin/worker
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
+php	workers/php/src/FrameworkFactStore.php
 php	workers/php/src/LaravelContainerFactCollector.php
 php	workers/php/src/LaravelDispatchFactCollector.php
 php	workers/php/src/LaravelEloquentFactCollector.php
 php	workers/php/src/LaravelFactCollector.php
-php	workers/php/src/LaravelFactStore.php
 php	workers/php/src/LaravelProviderMapFactCollector.php
 php	workers/php/src/LaravelRouteFactCollector.php
 php	workers/php/src/LaravelRouteNameFactCollector.php
@@ -1089,6 +1122,7 @@ js	hooks/lib/cards.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
 js	hooks/lib/chips.ts
+js	hooks/lib/chrome.keys.spec.ts
 js	hooks/lib/chrome.ts
 js	hooks/lib/churn.spec.ts
 js	hooks/lib/churn.ts
@@ -1192,6 +1226,7 @@ js	hooks/mod/cells.ts
 js	hooks/mod/diff-actions.ts
 js	hooks/mod/dig.spec.ts
 js	hooks/mod/dig.ts
+js	hooks/mod/field-actions.ts
 js	hooks/mod/finder-actions.ts
 js	hooks/mod/frame.spec.ts
 js	hooks/mod/frame.ts
@@ -1218,6 +1253,7 @@ js	hooks/mod/session.retry.spec.ts
 js	hooks/mod/session.spec.ts
 js	hooks/mod/session.tick.spec.ts
 js	hooks/mod/session.ts
+js	hooks/mod/settings.spec.ts
 js	hooks/mod/state.spec.ts
 js	hooks/mod/state.ts
 js	hooks/mod/watcher.rescan.spec.ts
@@ -1346,6 +1382,7 @@ js	workers/typescript/src/__tests__/supertype-members.test.js
 js	workers/typescript/src/__tests__/support/absent-alias-configs.mjs
 js	workers/typescript/src/__tests__/support/record-typescript-load.mjs
 js	workers/typescript/src/__tests__/support/require-candidates.mjs
+js	workers/typescript/src/__tests__/support/scan-limits.mjs
 js	workers/typescript/src/__tests__/table-dispatch.test.js
 js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js

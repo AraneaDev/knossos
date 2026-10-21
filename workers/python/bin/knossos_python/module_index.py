@@ -6,7 +6,9 @@ from pathlib import Path, PurePosixPath
 
 from .ast_helpers import (
     absolute_import,
+    annotated_name,
     assigned_declaration,
+    constructor_assignments,
     declared_protocols,
     dotted,
     module_statements,
@@ -84,34 +86,6 @@ class ProjectModuleIndex(ReadRecorder):
         # resolving their classes reads.
         self._self_scanned: set[str] = set()
 
-    def environment(self) -> str:
-        """The digest of the source roots (:meth:`ModuleLayout.environment`)."""
-        return self.layout.environment()
-
-    def module_for(self, relative: str) -> str:
-        """The dotted location of the file at ``relative`` (:meth:`ModuleLayout.module_for`)."""
-        return self.layout.module_for(relative)
-
-    def module_file(self, module: str) -> Path | None:
-        """The file ``module`` resolves to (:meth:`ModuleLayout.module_file`)."""
-        return self.layout.module_file(module)
-
-    def file_identity(self, relative: str, absolute: Path, found_as: str | None = None) -> tuple[str, str, Path | None]:
-        """How the module file at ``relative`` is named (:meth:`ModuleLayout.file_identity`)."""
-        return self.layout.file_identity(relative, absolute, found_as)
-
-    def canonical_module(self, module: str) -> str:
-        """The id of the file an import of ``module`` finds (:meth:`ModuleLayout.canonical_module`)."""
-        return self.layout.canonical_module(module)
-
-    def script_sibling_module(self, importer: str, module: str) -> str | None:
-        """The module an import names in the importer's directory (:meth:`ModuleLayout.script_sibling_module`)."""
-        return self.layout.script_sibling_module(importer, module)
-
-    def is_package_directory(self, directory: PurePosixPath) -> bool:
-        """Whether ``directory`` holds an ``__init__.py`` (:meth:`ModuleLayout.is_package_directory`)."""
-        return self.layout.is_package_directory(directory)
-
     def path_loaded_fixtures(self, relative: str) -> dict[str, str]:
         """The fixtures a test module at ``relative`` can take that load a project file by path, with its module.
 
@@ -162,7 +136,7 @@ class ProjectModuleIndex(ReadRecorder):
         modules: dict[str, str] = {}
         for name, loaded in path_loading_fixtures(tree, PurePosixPath(relative)).items():
             if loaded.suffix == ".py" and self.layout.is_project_file(self.root / loaded):
-                modules[name] = self.module_for(loaded.as_posix())
+                modules[name] = self.layout.module_for(loaded.as_posix())
         return modules
 
     def module_declarations(self, module: str) -> dict[str, str]:
@@ -170,7 +144,7 @@ class ProjectModuleIndex(ReadRecorder):
 
         Whoever asks, first or from the memo, names what finding and reading
         the module cost (:meth:`_expose`). The declarations are named by the
-        file found (:meth:`file_identity`), so ``src.shop.cart`` and
+        file found (:meth:`ModuleLayout.file_identity`), so ``src.shop.cart`` and
         ``shop.cart`` give the same ids. What the module re-exports was read
         for the module's own sake: a discovered module whose own scan derives
         the same declarations names it in its own contribution, so it is
@@ -188,7 +162,7 @@ class ProjectModuleIndex(ReadRecorder):
                 location, name, owner = (
                     (module, module, None)
                     if path is None
-                    else self.file_identity(path.relative_to(self.root).as_posix(), path, module)
+                    else self.layout.file_identity(path.relative_to(self.root).as_posix(), path, module)
                 )
             except BaseException:
                 # What was read before the failure is in input_hashes, so the
@@ -379,7 +353,7 @@ class ProjectModuleIndex(ReadRecorder):
         location: str,
         is_package: bool,
     ) -> None:
-        """Keep what each top-level class annotates its attributes as, and the classes it derives from, as written.
+        """Keep what each top-level class declares its attributes as, and the classes it derives from, as written.
 
         They are resolved when the module's own scan adopts it, or when a
         class of the module is first asked about (:meth:`_class_attribute_reads`), not here: a dotted name reads the
@@ -391,9 +365,12 @@ class ProjectModuleIndex(ReadRecorder):
             (
                 f"{name}.{child.name}",
                 [
-                    (item.target.id, dotted(inner) if (inner := optional_inner(item.annotation)) is not None else None)
-                    for item in child.body
-                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+                    *(
+                        (item.target.id, annotated_name(item.annotation))
+                        for item in child.body
+                        if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+                    ),
+                    *constructor_assignments(child),
                 ],
                 [dotted(base) for base in child.bases],
             )
@@ -440,10 +417,14 @@ class ProjectModuleIndex(ReadRecorder):
                 )
 
             for canonical, attributes, bases in classes:
-                held_by = {attribute: named_class(named) for attribute, named in attributes}
-                self._class_attributes[canonical] = {
-                    attribute: held for attribute, held in held_by.items() if held is not None
-                }
+                # The body's annotations come first and win; what `__init__`
+                # assigns only answers for an attribute they leave untyped.
+                held_by: dict[str, str] = {}
+                for attribute, named in attributes:
+                    held = named_class(named)
+                    if held is not None:
+                        held_by.setdefault(attribute, held)
+                self._class_attributes[canonical] = held_by
                 self._class_bases[canonical] = [base for base in map(named_class, bases) if base is not None]
         except BaseException:
             self._note(self.close_scope())
@@ -479,7 +460,7 @@ class ProjectModuleIndex(ReadRecorder):
                         continue
                     if alias.name == "*" or alias.name in self.module_declarations(source):
                         continue
-                    if self.module_file(f"{source}.{alias.name}") is not None:
+                    if self.layout.module_file(f"{source}.{alias.name}") is not None:
                         modules[alias.asname or alias.name] = f"{source}.{alias.name}"
         return modules
 
@@ -493,7 +474,11 @@ class ProjectModuleIndex(ReadRecorder):
         return self.module_declarations(owner).get(member)
 
     def class_attributes(self, held: str) -> tuple[dict[str, str], list[str]]:
-        """The attributes the project class ``held`` annotates in its body, and the project classes it derives from.
+        """The attributes the project class ``held`` declares, and the project classes it derives from.
+
+        An attribute is declared by an annotation in the class body, or else
+        by its ``__init__`` assigning it from a constructor call or with an
+        annotation (``self.layout = ModuleLayout(self)``).
 
         Reads the class's module first, through :meth:`module_declarations`,
         so what that cost is named as read by whoever asked.
@@ -573,14 +558,14 @@ class ProjectModuleIndex(ReadRecorder):
         from bytes other than the ones this scan hashed. Overwriting the entry
         with the hashed tree ties the file's own local resolution to its
         ``content_hash``. A file whose location another file owns (see
-        :meth:`file_identity`) is declared under its path-qualified id, which
+        :meth:`ModuleLayout.file_identity`) is declared under its path-qualified id, which
         no import shares, so seeding it never makes another importer's targets
         depend on batch order. The owner returned is that other file's path,
         ``None`` when this file owns its id or no import finds it.
         """
         self.open_scope()
         try:
-            location, name, owner = self.file_identity(relative, absolute)
+            location, name, owner = self.layout.file_identity(relative, absolute)
         finally:
             located = self.close_scope()
         # Which file the id resolves to is this file's fact too: a package

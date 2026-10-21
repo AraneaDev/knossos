@@ -37,7 +37,19 @@ scanner manifest:
     "protocol_version": "1.0",
     "output_schema_version": "1.0",
     "languages": ["typescript", "javascript"],
-    "file_extensions": ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
+    "file_extensions": [
+        "ts",
+        "tsx",
+        "mts",
+        "cts",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "vue",
+        "svelte",
+        "astro"
+    ],
     "capabilities": [
         "project_program",
         "partial_ast",
@@ -51,6 +63,14 @@ scanner manifest:
 
 Version mismatch is fatal and occurs before project paths are sent.
 
+A packaged worker's manifest names what the core's descriptor of that language
+says: the id it is launched as, the same languages, every extension discovery
+routes to those languages, and `added_files_affect_all` exactly when the
+descriptor treats an added file as affecting every other. Every scan checks it
+when a language's worker initializes (`ScannerManifest::assertDescribes`), and
+`doctor` does too: a manifest that says otherwise fails that language with
+`WORKER_MANIFEST_MISMATCH` before any file is sent.
+
 A compiled worker may add `source_hash`: the lowercase hex SHA-256 of the
 source it was built from. The Rust worker embeds it at build time, and `doctor`
 recomputes it over `workers/rust` to warn when the binary is older than the
@@ -60,7 +80,7 @@ workers leave the field out.
 
 ### `scan`
 
-Accepts a request ID and `params` that carry the project's real root (`root`), the project-relative paths this request must scan (`files`), and the bounds (`limits`: `max_files` and `max_file_bytes`). The core sends only the files that need scanning: a file whose cached contribution is still valid is not sent. The packaged workers receive extra fields for their own language: `frameworks` (PHP and Rust), `config_files` (TypeScript and Rust), `exclusions` (TypeScript and Python), `source_files` (TypeScript, Python and Rust: every discovered file of the language, sorted), and several TypeScript project lists. A worker streams zero or more
+Accepts a request ID and `params` that carry the project's real root (`root`), the project-relative paths this request must scan (`files`), and the bounds (`limits`: `max_files` and `max_file_bytes`, both integers of at least 1, as [`scan-request.schema.json`](../../schemas/scanner/v1/scan-request.schema.json) states). The core always sends both; a worker has no defaults of its own and refuses a request whose limits are missing or malformed. Every path in `files` is one the core's `RelativePath` accepts, and a worker refuses any other as a malformed request rather than translating it. The core sends only the files that need scanning: a file whose cached contribution is still valid is not sent. The packaged workers receive extra fields for their own language: `frameworks` (PHP and Rust), `config_files` (TypeScript and Rust), `exclusions` (TypeScript and Python), `source_files` (TypeScript, Python and Rust: every discovered file of the language, sorted), and several TypeScript project lists. A worker streams zero or more
 `scan/contribution` notifications, and zero or more `scan/input_hashes`
 notifications (below), followed by a final result containing counts.
 
@@ -123,6 +143,40 @@ Three consequences for a worker author:
 Each contribution has one stable owner key and lists node facts, unresolved edge
 facts, and diagnostics. Re-emitting an owner replaces that owner's previous
 facts atomically during reconciliation.
+
+#### Repeated edges
+
+A worker reports an edge once per site it saw: `helper(); helper();` is two
+`calls` facts. The core collapses them after resolving both ends, so the graph
+holds one edge per kind, source node, target node and owner key, and for
+`mounts` one per `prefix` attribute as well (a router mounted under two
+prefixes answers both). Within a group:
+
+- The surest occurrence wins: the higher `confidence` (`certain` over
+  `probable` over `possible`), then an occurrence without `speculative: true`
+  over one with it, then the earliest evidence. Its `origin` and `confidence`
+  are the edge's.
+- The attributes are the union of every occurrence's, the winner's value
+  standing on a key two occurrences disagree on. `speculative` is the winner's
+  alone.
+- For `imports` and `re_exports`, when any occurrence carries `type_only`, the
+  edge gets `type_only_variants`: every `type_only` value seen, sorted, a
+  missing marker counting as `false`. One runtime import among them keeps the
+  dependency real.
+- The evidence is the winner's span, so the edge's line points at the site
+  that earned its confidence, and the edge's stable id hashes that evidence.
+
+The rule does not depend on the order facts arrive in, so a worker need not
+sort or merge its edges, and an incremental scan collapses exactly as a full
+scan does.
+
+#### Route nodes
+
+A `route` node carries the same three attributes whichever worker emits it,
+as `routeAttributes` in `schemas/scanner/v1/contribution.schema.json` states:
+`framework`, `methods` (the upper-case methods it answers, as a list, `ANY` for
+every method) and `path` (the path as the code declares it). The core reads only
+these names, so a route that spells them otherwise matches no endpoint.
 
 A contribution may also carry `content_hash`: the lowercase SHA-256 hex of the
 raw bytes the worker read for that contribution's file, exactly as they came

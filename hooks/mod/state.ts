@@ -40,9 +40,9 @@ export async function revealThenFocus(io: { ui: Pick<EngineInterface['ui'], 'scr
 }
 
 /** The fan-in threshold when the options give none the dashboard command accepts. */
-const DEFAULT_THRESHOLD = 20
+export const DEFAULT_THRESHOLD = 20
 /** The largest threshold the dashboard command accepts. */
-const MAX_THRESHOLD = 100_000
+export const MAX_THRESHOLD = 100_000
 
 /** The fan-in threshold from the options: an integer the dashboard command accepts (1 to 100000), else the default. */
 function thresholdOf(value: unknown): number {

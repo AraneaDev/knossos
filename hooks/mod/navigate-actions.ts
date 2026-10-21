@@ -15,10 +15,11 @@ import { issuesInput, issuesWalk } from '../lib/views'
 import type { Loc, Row } from '../lib/types'
 import { currentInput, currentList } from './input'
 import { request, showComponent } from './loaders'
+import { narrowing } from './field-actions'
 import { askMove } from './notes-actions'
 import { say } from './port'
 import type { Port } from './port'
-import { fieldKey, mod, PANE, revealThenFocus } from './state'
+import { mod } from './state'
 import type { ProcessRunResult, RenderSurface } from 'claude-code'
 
 /** The editor command and the focus ring, which only these presses keep. */
@@ -115,31 +116,14 @@ export async function openRelated(io: Port, index: number): Promise<void> {
   if (item !== undefined) await showComponent(io, { name: item.canonical, label: item.name })
 }
 
-/**
- * Moves the focus into the field `id` once it is drawn, under its own key
- * ({@link fieldKey}): the call waits for the drawing that brings the field,
- * so it runs on a timer, never inside the press or a render.
- */
-export function focusField(io: Port, id: string, reveal = true): void {
-  io.clock.after(0, () => void (reveal ? revealThenFocus(io, fieldKey(id)) : io.ui.focus({ requestId: PANE, key: fieldKey(id) })).catch(() => undefined))
-}
-
-
+/** The hubs filter's field, narrowing the list in place as it is typed. */
+const HUBS_FILTER = narrowing('hubs', 'filter', 'filter')
 /** Opens the hubs filter's field and moves the focus into it once it is drawn. */
-export async function openFilter(io: Port): Promise<void> {
-  await io.state.view.update((v): KnossosView => ({ ...v, tab: 'hubs', filtering: true }))
-  focusField(io, 'filter')
-}
-
+export const openFilter = HUBS_FILTER.open
 /** The filter as typed, applied at once; the marker goes back to the top of the shorter list. */
-export async function typeFilter(io: Port, text: string): Promise<void> {
-  await io.state.view.update(v => ({ ...v, filter: text, selected: 0 }))
-}
-
+export const typeFilter = HUBS_FILTER.type
 /** Enter in the filter field: keep the text (an empty one clears the filter) and close the field. */
-export async function submitFilter(io: Port, text: string): Promise<void> {
-  await io.state.view.update(v => ({ ...v, filter: text.trim(), filtering: false, selected: 0 }))
-}
+export const submitFilter = HUBS_FILTER.submit
 
 /**
  * Where a focus ring headed for a tab's hidden hotkey twin (`tabkey:<id>`)

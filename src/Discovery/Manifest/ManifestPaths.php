@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Discovery\SourceClassifier;
 use Knossos\Filesystem\RelativePathRule;
 
 /**
@@ -14,10 +15,15 @@ use Knossos\Filesystem\RelativePathRule;
  */
 final class ManifestPaths
 {
-    /** Extensions a scanner emits nodes for (or anything else cannot be matched later). */
-    public const ENTRY_POINT_EXTENSIONS = [
-        'php', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'vue', 'svelte', 'astro', 'py', 'pyi', 'rs',
-    ];
+    /**
+     * Extensions a scanner emits nodes for (or anything else cannot be matched later).
+     *
+     * @return list<string>
+     */
+    public static function entryPointExtensions(): array
+    {
+        return array_keys(SourceClassifier::LANGUAGE_BY_EXTENSION);
+    }
 
     /**
      * Collect the source files a package manifest names, anchored to the
@@ -101,7 +107,7 @@ final class ManifestPaths
         if (str_contains($token, '*') || str_contains($token, '..')) {
             return null;
         }
-        if (!in_array(strtolower(pathinfo($token, PATHINFO_EXTENSION)), self::ENTRY_POINT_EXTENSIONS, true)) {
+        if (!in_array(strtolower(pathinfo($token, PATHINFO_EXTENSION)), self::entryPointExtensions(), true)) {
             return null;
         }
         $token = ltrim($token, '/');

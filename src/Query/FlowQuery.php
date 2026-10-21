@@ -426,8 +426,8 @@ final readonly class FlowQuery extends AbstractArchitectureQueryService
     {
         $paths = array_values($paths);
         usort($paths, static fn(array $left, array $right): int => self::comparePaths($left, $right));
-        if (count($paths) > $maxPaths) {
-            $paths = array_slice($paths, 0, $maxPaths);
+        [$paths, $cut] = Page::cut($paths, $maxPaths);
+        if ($cut) {
             // Recorded after any time or visit reason, never in place of one:
             // a timed-out search must not report only path trimming.
             $truncation->add('path_limit');

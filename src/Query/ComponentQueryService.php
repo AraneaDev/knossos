@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\NodeQueries;
 use PDO;
@@ -53,8 +54,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         if ($declaredIn !== null) {
             $rows = $this->declaredRows($projectId, $declaredIn, $limit + 1);
         }
-        $truncated = count($rows) > $limit;
-        $rows = array_slice($rows, 0, $limit);
+        [$rows, $truncated] = Page::cut($rows, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
         $apart = $this->declaredApart(array_column($rows, 'id'));
         $components = [];
@@ -133,7 +133,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $statement->execute($params);
         $paths = array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
 
-        return [array_slice($paths, 0, $limit), count($paths) > $limit];
+        return Page::cut($paths, $limit);
     }
 
     /**
@@ -166,9 +166,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         self::assertLimit($maxRelationships);
         self::assertLimit($maxChildren);
         $confidenceRank = self::CONFIDENCE_RANK;
-        if (!isset($confidenceRank[$minConfidence])) {
-            throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
-        }
+        ConfidenceRank::rank($minConfidence);
         $matches = $this->resolve($projectId, $component);
         if (count($matches) !== 1) {
             return new ResultEnvelope(
@@ -200,8 +198,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         $childrenStatement->bindValue(':limit', $maxChildren + 1, PDO::PARAM_INT);
         $childrenStatement->execute();
         $children = $childrenStatement->fetchAll();
-        $childrenTruncated = count($children) > $maxChildren;
-        $children = array_slice($children, 0, $maxChildren);
+        [$children, $childrenTruncated] = Page::cut($children, $maxChildren);
 
         $allowedConfidence = array_keys(array_filter(
             $confidenceRank,
@@ -220,8 +217,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             );
             $statement->execute([$projectId, $nodeId, ...$allowedConfidence, $maxRelationships + 1]);
             $rows = $statement->fetchAll();
-            $truncated = count($rows) > $maxRelationships;
-            $rows = array_slice($rows, 0, $maxRelationships);
+            [$rows, $truncated] = Page::cut($rows, $maxRelationships);
             return [array_map(static fn(array $row): array => [
                 'id' => $row['id'], 'kind' => $row['kind'], 'confidence' => $row['confidence'], 'origin' => $row['origin'],
                 'attributes' => self::decode($row['attributes_json']),
@@ -290,9 +286,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             throw new InvalidArgumentException('limit must be between 1 and 500.');
         }
         $confidenceRank = self::CONFIDENCE_RANK;
-        if (!isset($confidenceRank[$minConfidence])) {
-            throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
-        }
+        ConfidenceRank::rank($minConfidence);
         $edgeKinds = self::selectedEdgeKinds($edgeKinds, self::IMPACT_EDGE_KINDS, 'dependency');
         $project = $this->project($projectId);
         $matches = $this->resolve($projectId, $symbol);
@@ -326,8 +320,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         );
         $statement->execute([ReportableComponent::TEST_ROLE, ...$whereParameters, $limit + 1]);
         $rows = $statement->fetchAll();
-        $truncated = count($rows) > $limit;
-        $rows = array_slice($rows, 0, $limit);
+        [$rows, $truncated] = Page::cut($rows, $limit);
         // Fetching limit + 1 rows proves there are more but not how many, and
         // "Found 5 usage sites" for a symbol used 98 times understates the very
         // thing the caller asked for. Count only when the page did not already
@@ -452,8 +445,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $rows = $this->declaredRows($projectId, $declaredIn, $limit + 1);
             $match = 'declared_in';
         }
-        $truncated = count($rows) > $limit;
-        $rows = array_slice($rows, 0, $limit);
+        [$rows, $truncated] = Page::cut($rows, $limit);
         $rolesByNode = $this->roles(array_column($rows, 'id'));
         $boundariesByNode = $this->boundaryNames(array_column($rows, 'id'));
         $apart = $this->declaredApart(array_column($rows, 'id'));

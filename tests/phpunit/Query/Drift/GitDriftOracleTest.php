@@ -403,7 +403,7 @@ final class GitDriftOracleTest extends KnossosTestCase
         try {
             $runner = new CapturingGitRunner();
             (new GitDriftOracle($pdo, $runner))->drift($projectId, $scanId, $root, $this->finishedAt($pdo, $scanId));
-            $prefix = ['git', '--no-optional-locks', '--no-pager', '-C', $root];
+            $prefix = ['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', $root];
 
             self::assertSame([
                 [...$prefix, 'rev-parse', '--verify', self::HEAD . '^{commit}'],

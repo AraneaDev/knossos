@@ -101,7 +101,7 @@
     //
     // SQL placeholder lists are built as `implode(',', array_fill(0, count($x),
     // '?'))`. implode() reads values, never keys, so the start index of the
-    // fill (-1 or 1 for 0) produces the identical string. Fifty sites, all of
+    // fill (-1 or 1 for 0) produces the identical string. Forty-three sites, all of
     // that exact shape and with no other integer literal on the line; the count
     // argument is not an integer literal and keeps its mutants. Confirmed on
     // ChangeImpactQueryService.php:180 in the 2026-09-11 run, the changeSet()
@@ -111,8 +111,8 @@
     // written, deleted or queried the same way, so N +/- 1 yields the same rows.
     // Each size already sits well under SQLite's variable limit (the writer's
     // 15-column node batch of 60 is 900 of the historic 999 floor; this build
-    // allows 32766), so one more row per batch cannot cross it. Nine sites:
-    // SqliteGraphWriter x5, SqliteGraphPruner x2, ScanLedger's delete, and
+    // allows 32766), so one more row per batch cannot cross it. Six sites:
+    // SqliteGraphWriter x2, SqliteGraphPruner x2, ScanLedger's delete, and
     // AnnotationNotes, which sorts the merged rows on a full key afterwards so
     // the batch boundary cannot reorder them. Confirmed on
     // SqliteGraphPruner.php:87 and :108 in the 2026-09-11 run.

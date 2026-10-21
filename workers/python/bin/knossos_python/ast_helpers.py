@@ -131,6 +131,55 @@ def optional_inner(annotation: ast.AST | None) -> ast.AST | None:
     return annotation
 
 
+def annotated_name(annotation: ast.AST | None) -> str | None:
+    """The dotted name an annotation gives, an optional one's inner type: ``Repo`` for ``Repo | None``."""
+    inner = optional_inner(annotation)
+    return dotted(inner) if inner is not None else None
+
+
+def constructor_assignments(node: ast.ClassDef) -> Iterator[tuple[str, str | None]]:
+    """What a class's ``__init__`` assigns its attributes from, as written.
+
+    ``self.layout = ModuleLayout(...)`` names the class it calls, and
+    ``self.layout: ModuleLayout = ...`` the class it annotates; both as the
+    dotted name the code spells, for the caller to resolve. Only statements
+    directly in the body: one under a branch may not run. An attribute the
+    class assigns anywhere else as well, again in ``__init__`` or in another
+    method, may hold something else by the time it is read, so it is left out.
+    """
+    assigned: dict[str, int] = {}
+    for item in node.body:
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for inner in ast.walk(item):
+                if (
+                    isinstance(inner, ast.Attribute)
+                    and isinstance(inner.ctx, ast.Store)
+                    and isinstance(inner.value, ast.Name)
+                    and inner.value.id == "self"
+                ):
+                    assigned[inner.attr] = assigned.get(inner.attr, 0) + 1
+    for item in node.body:
+        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) or item.name != "__init__":
+            continue
+        for statement in item.body:
+            target: ast.expr
+            if isinstance(statement, ast.AnnAssign):
+                target, named = statement.target, annotated_name(statement.annotation)
+            elif isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+                target = statement.targets[0]
+                named = dotted(statement.value.func) if isinstance(statement.value, ast.Call) else None
+            else:
+                continue
+            if (
+                named is not None
+                and isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+                and assigned.get(target.attr) == 1
+            ):
+                yield target.attr, named
+
+
 def is_protocol_base(base: ast.expr) -> bool:
     """Whether a class base is ``Protocol``, generic (``Protocol[T]``) or not."""
     named = base.value if isinstance(base, ast.Subscript) else base

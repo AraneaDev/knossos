@@ -211,6 +211,7 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
                 scanBatchSourceBytes: $descriptor->scanBatchSourceBytes,
                 optional: $descriptor->optional,
                 workerMemoryMb: $descriptor->workerMemoryMb,
+                addedFilesAffectAll: $descriptor->addedFilesAffectAll,
             ),
             LanguageDescriptor::installed(self::repositoryRoot()),
         );

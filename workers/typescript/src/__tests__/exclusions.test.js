@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 
 import { excludedBy } from "../exclusions.js";
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -143,6 +144,7 @@ function scan(root, exclusions) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
         {
+            limits: SCAN_LIMITS,
             root,
             files: ["src/a.ts"],
             ...(exclusions === undefined ? {} : { exclusions }),
@@ -230,7 +232,7 @@ describe("exclusions from the request", () => {
         const contributions = [];
 
         const result = new TypeScriptScanner().scan(
-            { root, files: ["src/b.ts"] },
+            { limits: SCAN_LIMITS, root, files: ["src/b.ts"] },
             (contribution) => contributions.push(contribution),
         );
 
@@ -299,7 +301,7 @@ describe("build output", () => {
         const contributions = [];
 
         const result = new TypeScriptScanner().scan(
-            { root, files: ["src/b.ts"] },
+            { limits: SCAN_LIMITS, root, files: ["src/b.ts"] },
             (contribution) => contributions.push(contribution),
         );
 

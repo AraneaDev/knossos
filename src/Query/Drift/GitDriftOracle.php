@@ -6,6 +6,7 @@ namespace Knossos\Query\Drift;
 
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\DirtyPathSet;
+use Knossos\Git\GitCommand;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Store\ChunkedInQuery;
@@ -477,7 +478,7 @@ final readonly class GitDriftOracle implements DriftOracle
     private function run(string $root, array $arguments): string
     {
         return $this->runner->run(
-            array_merge(['git', '--no-optional-locks', '--no-pager', '-C', $root], $arguments),
+            [...GitCommand::in($root), ...$arguments],
             self::TIMEOUT_MS,
             'drift query',
         );

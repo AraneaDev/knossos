@@ -216,6 +216,26 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         }
     }
 
+    /**
+     * An empty object is an object: `{}` loads as no entries, the "no
+     * budgets" the MCP tools accept, while an empty list is still refused.
+     */
+    public function testInputLoaderJsonObjectAcceptsAnEmptyObjectButNotAnEmptyList(): void
+    {
+        $path = self::tempFile('empty.json');
+        try {
+            file_put_contents($path, " {}\n");
+            assertSame([], (new CliInputLoader())->jsonObject($path));
+            file_put_contents($path, '[]');
+            assertThrows(
+                fn() => (new CliInputLoader())->jsonObject($path),
+                InvalidArgumentException::class,
+            );
+        } finally {
+            unlink($path);
+        }
+    }
+
     public function testInputLoaderBundleReadsRawText(): void
     {
         $path = self::tempFile('bundle.gxt');

@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 use Knossos\Discovery\DiscoveredFile;
+use Knossos\Scan\LanguageDescriptor;
 use Knossos\Scan\ScanInputHashes;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Protocol\Protocol;
@@ -14,29 +15,58 @@ use Knossos\Scanner\Worker\WorkerException;
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 require_once __DIR__ . '/lib/cli-arguments.php';
+
+/** How every packaged worker words its refusal of missing or malformed limits. */
+const SCAN_LIMITS_INVALID = 'Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.';
+
+/** Per language, a file that calls one function twice on two lines. */
+const REPEATED_CALL_SOURCES = [
+    'php' => ['conformance.php', "<?php\nfunction helper(): void {}\nfunction run(): void\n{\n    helper();\n    helper();\n}\n"],
+    'python' => ['conformance.py', "def helper():\n    pass\n\n\ndef run():\n    helper()\n    helper()\n"],
+    'typescript' => ['conformance.ts', "export function helper(): void {}\nexport function run(): void {\n    helper();\n    helper();\n}\n"],
+    'rust' => ['src/lib.rs', "pub fn helper() {}\n\npub fn run() {\n    helper();\n    helper();\n}\n"],
+];
 // $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
 $argv = cliArguments();
 $separator = array_search('--', $argv, true);
-if ($separator === false || $separator === count($argv) - 1) {
-    fwrite(STDERR, "usage: tools/scanner-conformance [--require=capability] -- command [args...]\n");
-    exit(64);
-}
+$options = array_slice($argv, 1, $separator === false ? null : $separator - 1);
 $required = [];
-foreach (array_slice($argv, 1, $separator - 1) as $option) {
-    if (!str_starts_with($option, '--require=') || substr($option, 10) === '') {
+$language = null;
+foreach ($options as $option) {
+    if (str_starts_with($option, '--require=') && substr($option, 10) !== '') {
+        $required[] = substr($option, 10);
+    } elseif (str_starts_with($option, '--language=') && substr($option, 11) !== '') {
+        $language = substr($option, 11);
+    } else {
         fwrite(STDERR, "unknown conformance option: {$option}\n");
         exit(64);
     }
-    $required[] = substr($option, 10);
 }
-$command = array_slice($argv, $separator + 1);
+if (($language === null) === ($separator === false || $separator === count($argv) - 1)) {
+    fwrite(STDERR, "usage: tools/scanner-conformance [--require=capability] (--language=key | -- command [args...])\n");
+    exit(64);
+}
+if ($language !== null) {
+    // A packaged worker, launched exactly as a scan launches it.
+    $descriptors = array_column(array_map(
+        static fn(LanguageDescriptor $descriptor): array => ['key' => $descriptor->key, 'descriptor' => $descriptor],
+        LanguageDescriptor::defaults(dirname(__DIR__)),
+    ), 'descriptor', 'key');
+    if (!isset($descriptors[$language])) {
+        fwrite(STDERR, sprintf("unknown language: %s (packaged: %s)\n", $language, implode(', ', array_keys($descriptors))));
+        exit(64);
+    }
+    $command = $descriptors[$language]->command;
+} else {
+    $command = array_slice($argv, $separator + 1);
+}
 // The worker is started with the system temporary directory as its working
 // directory (see WorkerProcessSupervisor::workingDirectory()), not wherever
 // this tool was invoked from, so a path argument written relative to the
 // caller's directory would otherwise name nothing there. See
 // ConformanceArgumentAnchor for exactly which arguments that covers.
 $callerDirectory = getcwd();
-if ($callerDirectory !== false) {
+if ($callerDirectory !== false && $language === null) {
     $command = ConformanceArgumentAnchor::anchor($command, $callerDirectory);
 }
 $temporary = sys_get_temp_dir() . '/knossos-conformance-' . bin2hex(random_bytes(8));
@@ -46,12 +76,14 @@ if (!mkdir($temporary, 0o700)) {
 }
 
 $checks = [];
+// The core always sends limits; these are the defaults a project without its own is scanned under.
+$limits = ['max_files' => 100_000, 'max_file_bytes' => 2_000_000];
 $client = new ProcessScannerClient($command);
 $exitCode = 1;
 try {
     $manifest = $client->requireCapabilities($required);
     $checks[] = ['name' => 'initialize', 'status' => 'pass'];
-    $contributions = iterator_to_array($client->scan(['root' => $temporary, 'files' => []]));
+    $contributions = iterator_to_array($client->scan(['root' => $temporary, 'files' => [], 'limits' => $limits]));
     $checks[] = ['name' => 'empty_scan', 'status' => $contributions === [] ? 'pass' : 'fail'];
     $declaresContentHash = in_array(Protocol::CAPABILITY_CONTENT_HASH, $manifest->capabilities, true);
     $declaresInputHashes = in_array(Protocol::CAPABILITY_INPUT_HASHES, $manifest->capabilities, true);
@@ -76,7 +108,7 @@ try {
         $bytes = "\xEF\xBB\xBF\n";
         file_put_contents($temporary . '/' . $relativePath, $bytes);
         $expectedHash = hash('sha256', $bytes);
-        $hashed = iterator_to_array($client->scan(['root' => $temporary, 'files' => [$relativePath]]), false);
+        $hashed = iterator_to_array($client->scan(['root' => $temporary, 'files' => [$relativePath], 'limits' => $limits]), false);
         if ($declaresContentHash) {
             $matches = $hashed !== [] && array_filter(
                 $hashed,
@@ -113,6 +145,11 @@ try {
         }
         @unlink($temporary . '/' . $relativePath);
     }
+    if ($language !== null) {
+        $checks[] = ['name' => 'scan_limits', 'status' => conformsToLimits($client, $temporary) ? 'pass' : 'fail'];
+        $checks[] = ['name' => 'relative_paths', 'status' => conformsToRelativePaths($client, $temporary, $limits) ? 'pass' : 'fail'];
+        $checks[] = ['name' => 'duplicate_edges', 'status' => reportsEverySite($client, $temporary, $limits, $language) ? 'pass' : 'fail'];
+    }
     $client->shutdown();
     $checks[] = ['name' => 'shutdown', 'status' => 'pass'];
     $passed = !in_array('fail', array_column($checks, 'status'), true);
@@ -139,9 +176,102 @@ try {
     // fixture root behind on every run; the exit code is carried out instead
     // and applied once cleanup has actually happened.
     $client->shutdown();
-    foreach (glob($temporary . '/conformance.*') ?: [] as $leftover) {
+    foreach ([...(glob($temporary . '/conformance.*') ?: []), ...(glob($temporary . '/src/*') ?: [])] as $leftover) {
         @unlink($leftover);
     }
+    @rmdir($temporary . '/src');
     @rmdir($temporary);
 }
 exit($exitCode);
+
+/**
+ * Whether the worker refuses every request whose limits are missing or are not
+ * integers of at least 1, in the words every packaged worker uses.
+ */
+function conformsToLimits(ProcessScannerClient $client, string $root): bool
+{
+    $cases = [
+        [],
+        ['limits' => ['max_file_bytes' => 1]],
+        ['limits' => ['max_files' => 0, 'max_file_bytes' => 1]],
+        ['limits' => ['max_files' => 1, 'max_file_bytes' => -1]],
+        ['limits' => ['max_files' => '10', 'max_file_bytes' => 1]],
+        ['limits' => ['max_files' => 1, 'max_file_bytes' => 1.5]],
+        ['limits' => ['max_files' => true, 'max_file_bytes' => 1]],
+    ];
+    foreach ($cases as $case) {
+        try {
+            iterator_to_array($client->scan(['root' => $root, 'files' => []] + $case));
+
+            return false;
+        } catch (WorkerException $error) {
+            if ($error->diagnosticCode !== 'WORKER_RPC_ERROR' || $error->getMessage() !== SCAN_LIMITS_INVALID) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Whether the worker refuses exactly the paths the core refuses
+ * (RelativePath::assertValid), as tests/Fixtures/scanner/relative-paths.json
+ * lists them: a refused path fails the request, an accepted one that names
+ * no file costs only that file.
+ *
+ * @param array<string, int> $limits
+ */
+function conformsToRelativePaths(ProcessScannerClient $client, string $root, array $limits): bool
+{
+    $table = json_decode((string) file_get_contents(dirname(__DIR__) . '/tests/Fixtures/scanner/relative-paths.json'), true, 512, JSON_THROW_ON_ERROR);
+    foreach (['accept' => true, 'reject' => false] as $verdict => $accepted) {
+        foreach ($table[$verdict] as $path) {
+            try {
+                iterator_to_array($client->scan(['root' => $root, 'files' => [$path], 'limits' => $limits]));
+                $refused = false;
+            } catch (WorkerException $error) {
+                if ($error->diagnosticCode !== 'WORKER_RPC_ERROR') {
+                    throw $error;
+                }
+                $refused = true;
+            }
+            if ($refused === $accepted) {
+                fwrite(STDERR, sprintf("%s %s\n", $accepted ? 'refused' : 'accepted', json_encode($path)));
+
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Whether the worker reports a repeated call once per site, leaving the
+ * collapse to the core (docs/reference/scanner-protocol-v1.md, "Repeated
+ * edges"): two calls of one function become two `calls` facts.
+ *
+ * @param array<string, int> $limits
+ */
+function reportsEverySite(ProcessScannerClient $client, string $root, array $limits, string $language): bool
+{
+    [$path, $source] = REPEATED_CALL_SOURCES[$language] ?? [null, null];
+    if ($path === null) {
+        return false;
+    }
+    @mkdir(dirname($root . '/' . $path), 0o700, true);
+    file_put_contents($root . '/' . $path, $source);
+    $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => [$path], 'source_files' => [$path], 'limits' => $limits]), false);
+    @unlink($root . '/' . $path);
+    $sites = [];
+    foreach ($contributions as $contribution) {
+        foreach ($contribution->edges as $edge) {
+            if ($edge->kind === 'calls' && str_ends_with($edge->targetReference, 'helper')) {
+                $sites[$edge->sourceReference . "\0" . $edge->targetReference][$edge->evidence->startLine] = true;
+            }
+        }
+    }
+
+    return $sites !== [] && max(array_map('count', $sites)) >= 2;
+}

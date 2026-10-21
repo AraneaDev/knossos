@@ -36,7 +36,7 @@ trait EndpointRouteFixtures
             new ScanContribution(
                 'knossos.php:file:routes/web.php',
                 [new NodeFact('php:route:GET api/orders/{id}', 'route', 'GET api/orders/{id}', 'GET api/orders/{id}', Origin::FrameworkConvention, Confidence::Certain, $route, [
-                    'framework' => 'laravel', 'methods' => ['GET'], 'uri' => 'api/orders/{id}',
+                    'framework' => 'laravel', 'methods' => ['GET'], 'path' => 'api/orders/{id}',
                 ])],
                 [new EdgeFact('routes_to', 'php:route:GET api/orders/{id}', 'php:method:App\\OrdersController::show', Origin::FrameworkConvention, Confidence::Certain, $route)],
                 [],
@@ -88,7 +88,7 @@ trait EndpointRouteFixtures
         foreach ($routes as [$uri, $line]) {
             $name = 'GET ' . $uri;
             $nodes[] = new NodeFact('php:route:' . $name, 'route', $name, $name, Origin::FrameworkConvention, Confidence::Certain, new Evidence($path, $line, $line), [
-                'framework' => 'laravel', 'methods' => ['GET'], 'uri' => $uri,
+                'framework' => 'laravel', 'methods' => ['GET'], 'path' => $uri,
             ]);
         }
 

@@ -16,6 +16,7 @@ import {
     TEST_STACK_MB_VARIABLE,
     scanThreadResourceLimits,
 } from "../scan-thread-limits.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // TypeScript's exports are non-configurable getters, so vi.spyOn cannot replace
 // createProgram; the module is wrapped instead, with a hook each test sets.
@@ -78,7 +79,13 @@ function failingChecks(error) {
 function scan(root, files, configFiles, extra = {}) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
-        { root, files, config_files: configFiles, ...extra },
+        {
+            limits: SCAN_LIMITS,
+            root,
+            files,
+            config_files: configFiles,
+            ...extra,
+        },
         (contribution) => contributions.push(contribution),
     );
     const byPath = Object.fromEntries(

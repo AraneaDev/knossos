@@ -1599,7 +1599,7 @@ TOML);
     }
 
     /**
-     * `ENTRY_POINT_EXTENSIONS` is what lets a manifest-declared path be
+     * `ManifestPaths::entryPointExtensions()` is what lets a manifest-declared path be
      * recognised as a real source file. A `.rs` path named by a `bin` field
      * was silently dropped before `rs` was added to that list — extension
      * filtering happens before the value is ever compared against emitted

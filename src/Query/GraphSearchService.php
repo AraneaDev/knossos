@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -78,15 +77,22 @@ final readonly class GraphSearchService
      */
     public function search(string $path, string $query): array
     {
-        $absolute = realpath($path) ?: $path;
         $typed = mb_substr(trim($query), 0, self::QUERY_MAX);
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null, 'query' => $typed, 'results' => [], 'notes' => [], 'truncated' => false];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $id = (string) $project['id'];
-        $base = ['status' => 'ok', 'project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
+        $envelope = ['project_id' => null, 'snapshot_id' => null, 'query' => $typed, 'results' => [], 'notes' => [], 'truncated' => false];
+
+        return PaneProject::answer($this->pdo, $path, $envelope, fn(array $project, array $envelope): array => $this->searchIn($project['id'], $envelope, $typed));
+    }
+
+    /**
+     * The matches for `$typed` in the scanned project `$id`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function searchIn(string $id, array $envelope, string $typed): array
+    {
+        $base = ['status' => 'ok'] + $envelope;
         $needle = mb_strtolower(preg_replace('/\s+/u', '', $typed) ?? '');
         if ($needle === '') {
             return $base;

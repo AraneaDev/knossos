@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Reconciliation;
 
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\StableId;
 
 /**
@@ -16,8 +17,6 @@ use Knossos\Store\StableId;
  */
 final readonly class EndpointRouteBinder
 {
-    private const RANK = ['certain' => 3, 'probable' => 2, 'possible' => 1];
-
     /** The owner of the diagnostics: the join is made by the core, not by the scanner that read the endpoint. */
     public const OWNER = 'knossos.reconciliation:endpoint-routes';
 
@@ -191,8 +190,8 @@ final readonly class EndpointRouteBinder
             $literals = $entry['template']->literalCount();
             $best = $found[$id] ?? null;
             if ($best === null
-                || self::RANK[$grade[0]] > self::RANK[$best['confidence']]
-                || (self::RANK[$grade[0]] === self::RANK[$best['confidence']] && ($literals > $best['literals']
+                || ConfidenceRank::NAMES[$grade[0]] > ConfidenceRank::NAMES[$best['confidence']]
+                || (ConfidenceRank::NAMES[$grade[0]] === ConfidenceRank::NAMES[$best['confidence']] && ($literals > $best['literals']
                     || ($literals === $best['literals'] && $entry['slot'] < $best['slot'])))) {
                 $found[$id] = ['confidence' => $grade[0], 'match' => $grade[1], 'mounts' => $entry['mounts'], 'literals' => $literals, 'slot' => $entry['slot']];
             }
@@ -200,8 +199,8 @@ final readonly class EndpointRouteBinder
         if ($found === []) {
             return [];
         }
-        $top = max(array_map(static fn(array $match): int => self::RANK[$match['confidence']], $found));
-        $found = array_filter($found, static fn(array $match): bool => self::RANK[$match['confidence']] === $top);
+        $top = max(array_map(static fn(array $match): int => ConfidenceRank::NAMES[$match['confidence']], $found));
+        $found = array_filter($found, static fn(array $match): bool => ConfidenceRank::NAMES[$match['confidence']] === $top);
         $most = max(array_column($found, 'literals'));
         $found = array_filter($found, static fn(array $match): bool => $match['literals'] === $most);
         uksort($found, static fn(string $left, string $right): int => $index['order'][$left] <=> $index['order'][$right]);

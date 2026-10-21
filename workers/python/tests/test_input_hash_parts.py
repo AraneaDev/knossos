@@ -68,7 +68,14 @@ def test_a_scan_sends_all_but_the_last_part_ahead_of_its_result(monkeypatch, wor
     monkeypatch.setattr(worker, "INPUT_HASHES_PART_BYTES", 300)
 
     files = sorted(f"pkg/m{i}.py" for i in range(40))
-    worker.handle({"jsonrpc": "2.0", "id": 7, "method": "scan", "params": {"root": str(root), "files": files}})
+    worker.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "scan",
+            "params": {"root": str(root), "limits": {"max_files": 100000, "max_file_bytes": 2000000}, "files": files},
+        }
+    )
 
     parts = [message for message in written if message.get("method") == "scan/input_hashes"]
     result = written[-1]

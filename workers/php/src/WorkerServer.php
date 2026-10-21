@@ -16,6 +16,9 @@ final class WorkerServer
 {
     public const VERSION = '0.7.0';
 
+    /** The refusal of a request whose limits are missing or malformed, worded alike by every worker. */
+    public const INVALID_LIMITS = 'Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.';
+
     /** Bytes read when probing an extensionless file's shebang; one short line is enough. */
     private const SHEBANG_PROBE_BYTES = 256;
 
@@ -115,16 +118,14 @@ final class WorkerServer
         if (!is_array($files) || !array_is_list($files)) {
             throw new WorkerInputException('Scan files must be a list of project-relative paths.');
         }
-        $limits = is_array($params['limits'] ?? null) ? $params['limits'] : [];
-        $maxFiles = is_int($limits['max_files'] ?? null) ? $limits['max_files'] : 100_000;
-        $maxFileBytes = is_int($limits['max_file_bytes'] ?? null) ? $limits['max_file_bytes'] : 2_000_000;
+        [$maxFiles, $maxFileBytes] = self::limits($params['limits'] ?? null);
         $frameworks = $params['frameworks'] ?? [];
         if (!is_array($frameworks) || !array_is_list($frameworks)) {
             throw new WorkerInputException('Frameworks must be a list.');
         }
         $laravel = in_array('laravel', $frameworks, true);
         $symfony = in_array('symfony', $frameworks, true);
-        if ($maxFiles < 1 || $maxFileBytes < 1 || count($files) > $maxFiles) {
+        if (count($files) > $maxFiles) {
             throw new WorkerInputException('PHP scan limits are invalid or exceeded.');
         }
 
@@ -280,6 +281,24 @@ final class WorkerServer
         return str_replace('\\', '/', $real);
     }
     /**
+     * The request's `max_files` and `max_file_bytes`, which the core always
+     * sends: anything but two integers of at least 1 is refused, as every
+     * worker refuses it.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private static function limits(mixed $limits): array
+    {
+        $maxFiles = is_array($limits) ? ($limits['max_files'] ?? null) : null;
+        $maxFileBytes = is_array($limits) ? ($limits['max_file_bytes'] ?? null) : null;
+        if (!is_int($maxFiles) || !is_int($maxFileBytes) || $maxFiles < 1 || $maxFileBytes < 1) {
+            throw new WorkerInputException(self::INVALID_LIMITS);
+        }
+
+        return [$maxFiles, $maxFileBytes];
+    }
+
+    /**
      * A requested path, rejected unless it can name a file inside the project.
      *
      * Kept separate from reading the file: a path of the wrong shape cannot be
@@ -288,15 +307,19 @@ final class WorkerServer
      */
     private function assertScannablePath(string $relativePath): void
     {
-        $normalized = str_replace('\\', '/', $relativePath);
+        // The core's own rule (RelativePath::assertValid): a backslash is no
+        // separator to translate but a path the core never sends.
         if (
-            $normalized === ''
-            || str_starts_with($normalized, '/')
-            || str_contains($normalized, "\0")
+            $relativePath === ''
+            || str_starts_with($relativePath, '/')
+            || preg_match('/^[A-Za-z]:\//', $relativePath) === 1
+            || str_contains($relativePath, '\\')
+            || preg_match('//u', $relativePath) !== 1
+            || preg_match('/[\x00-\x1f\x7f]/', $relativePath) === 1
         ) {
             throw new WorkerInputException('PHP scan path is invalid.');
         }
-        foreach (explode('/', $normalized) as $segment) {
+        foreach (explode('/', $relativePath) as $segment) {
             if ($segment === '' || $segment === '.' || $segment === '..') {
                 throw new WorkerInputException('PHP scan path contains an invalid segment.');
             }

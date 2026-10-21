@@ -57,9 +57,11 @@ final class TypescriptVirtualSourceTest extends KnossosTestCase
             "SELECT canonical_name FROM nodes WHERE canonical_name LIKE '%\$props%' OR canonical_name LIKE '%#T' OR canonical_name LIKE '%#U' ORDER BY 1",
         )->fetchAll(PDO::FETCH_COLUMN);
         self::assertSame([], $phantoms);
-        // The component's own declarations stay, and Astro still reads Props by name.
+        // The component's own declarations stay, and Astro still reads Props
+        // by name: its read (line 5) and the declaration's (line 2) collapse
+        // into one edge at the earliest site.
         self::assertSame(
-            [['references', 'src/Tag.astro', 'src/Tag.astro#Props', 5]],
+            [['references', 'src/Tag.astro', 'src/Tag.astro#Props', 2]],
             $pdo->query(
                 "SELECT e.kind, s.canonical_name, t.canonical_name, e.start_line FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id WHERE e.kind = 'references' AND s.canonical_name = 'src/Tag.astro'",
             )->fetchAll(PDO::FETCH_NUM),

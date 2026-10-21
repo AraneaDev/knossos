@@ -8,6 +8,7 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -211,7 +212,7 @@ final class PythonAuditFixturesTest extends KnossosTestCase
         $out = [];
         try {
             foreach ($requests as $files) {
-                foreach ($client->scan(['root' => $this->root, 'files' => $files, 'source_files' => $sourceFiles]) as $contribution) {
+                foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $files, 'source_files' => $sourceFiles]) as $contribution) {
                     $path = substr($contribution->ownerKey, strlen('knossos.python:file:'));
                     $nodes = array_map(static fn(NodeFact $n): string => $n->localId, $contribution->nodes);
                     $edges = array_map(static fn(EdgeFact $e): string => $e->kind . ' ' . $e->sourceReference . ' -> ' . $e->targetReference . ' ' . json_encode($e->attributes), $contribution->edges);

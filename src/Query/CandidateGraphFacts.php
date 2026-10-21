@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\ProjectRepository;
 use PDO;
@@ -216,9 +217,8 @@ final class CandidateGraphFacts
     public function deadCodeSuppressions(): array
     {
         if ($this->suppressions === null) {
-            $raw = (new ProjectRepository($this->pdo))->configOf($this->projectId);
-            $config = $raw !== null ? json_decode($raw, true) : null;
-            $list = is_array($config) ? ($config['dead_code_suppressions'] ?? []) : [];
+            $config = (new ProjectRepository($this->pdo))->config($this->projectId);
+            $list = $config['dead_code_suppressions'] ?? [];
             $this->suppressions = is_array($list) && array_is_list($list) ? array_values(array_filter($list, 'is_string')) : [];
         }
 

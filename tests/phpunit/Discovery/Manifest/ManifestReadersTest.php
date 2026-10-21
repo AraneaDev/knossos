@@ -22,6 +22,7 @@ use Knossos\Discovery\Manifest\ShellManifest;
 use Knossos\Discovery\Manifest\ToolConfigManifest;
 use Knossos\Discovery\Manifest\TsconfigManifest;
 use Knossos\Discovery\Manifest\YamlManifest;
+use Knossos\Discovery\UnitKind;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -48,8 +49,8 @@ final class ManifestReadersTest extends TestCase
             'tool_config' => ToolConfigManifest::class,
         ];
         foreach ($readers as $kind => $class) {
-            self::assertInstanceOf($class, ManifestReaders::text($kind), $kind);
-            self::assertNull(ManifestReaders::json($kind), $kind);
+            self::assertInstanceOf($class, ManifestReaders::text(UnitKind::from($kind)), $kind);
+            self::assertNull(ManifestReaders::json(UnitKind::from($kind)), $kind);
         }
     }
 
@@ -64,15 +65,47 @@ final class ManifestReadersTest extends TestCase
             'knossos' => KnossosManifest::class,
         ];
         foreach ($readers as $kind => $class) {
-            self::assertInstanceOf($class, ManifestReaders::json($kind), $kind);
-            self::assertNull(ManifestReaders::text($kind), $kind);
+            self::assertInstanceOf($class, ManifestReaders::json(UnitKind::from($kind)), $kind);
+            self::assertNull(ManifestReaders::text(UnitKind::from($kind)), $kind);
         }
     }
 
-    public function testAnUnknownKindHasNoReader(): void
+    public function testAnUnknownKindIsNoUnitKind(): void
     {
-        self::assertNull(ManifestReaders::text('unknown'));
-        self::assertNull(ManifestReaders::json('unknown'));
+        self::assertNull(UnitKind::tryFrom('unknown'));
+    }
+
+    /** Every kind has exactly one reader, so none is read both ways or dropped. */
+    public function testEveryKindHasExactlyOneReader(): void
+    {
+        foreach (UnitKind::cases() as $kind) {
+            self::assertTrue((ManifestReaders::text($kind) === null) !== (ManifestReaders::json($kind) === null), $kind->value);
+        }
+    }
+
+    /** Only JSON kinds are read with comments allowed regardless of extension. */
+    public function testOnlyTsconfigAndKnossosConfigAreJsonc(): void
+    {
+        $jsonc = array_values(array_filter(UnitKind::cases(), static fn(UnitKind $kind): bool => $kind->isJsonc()));
+
+        self::assertSame([UnitKind::Knossos, UnitKind::Typescript], $jsonc);
+    }
+
+    /**
+     * Every manifest root infers a boundary except a pip requirements file,
+     * which declares an environment, not a package.
+     */
+    public function testManifestRootsAndBoundaryKinds(): void
+    {
+        $roots = array_values(array_map(static fn(UnitKind $kind): string => $kind->value, array_filter(UnitKind::cases(), static fn(UnitKind $kind): bool => $kind->isManifestRoot())));
+        sort($roots);
+        self::assertSame(['cargo', 'composer', 'node', 'python', 'requirements', 'typescript'], $roots);
+        $boundaries = array_values(array_map(
+            static fn(UnitKind $kind): string => $kind->value,
+            array_filter(UnitKind::cases(), static fn(UnitKind $kind): bool => $kind->infersBoundary()),
+        ));
+        sort($boundaries);
+        self::assertSame(['cargo', 'composer', 'node', 'python', 'typescript'], $boundaries);
     }
 
     /** The two readers with no parsing of their own answer exactly what the unit carries. */

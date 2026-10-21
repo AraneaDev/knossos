@@ -69,4 +69,12 @@ final class DataDirectoryTest extends KnossosTestCase
         putenv('KNOSSOS_DATA_DIR');
         self::assertNull(DataDirectory::named());
     }
+
+    /** The one place the graph's file name and its conventional directory are spelled out. */
+    public function testTheDatabasePathsJoinWithoutDoublingASlash(): void
+    {
+        self::assertSame('/data/knossos.sqlite', DataDirectory::databaseIn('/data/'));
+        self::assertSame('/repo/.knossos/knossos.sqlite', DataDirectory::databaseUnder('/repo/'));
+        self::assertSame('/.knossos/knossos.sqlite', DataDirectory::databaseUnder('/'));
+    }
 }

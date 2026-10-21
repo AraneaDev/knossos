@@ -33,7 +33,7 @@ final readonly class GitHeadResolver
     {
         try {
             $output = trim($this->runner->run(
-                ['git', '--no-optional-locks', '--no-pager', '-C', $projectRoot, 'rev-parse', '--verify', 'HEAD'],
+                [...GitCommand::in($projectRoot), 'rev-parse', '--verify', 'HEAD'],
                 self::TIMEOUT_MS,
                 'scan head',
             ));

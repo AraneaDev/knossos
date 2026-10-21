@@ -66,8 +66,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.index = index
         # Where the file sits, which relative imports climb from, and the id
         # its symbols take: the same unless ``owner``, the file an import of
-        # this location finds, is another file (see ProjectModuleIndex.file_identity).
-        self.module = index.module_for(relative)
+        # this location finds, is another file (see ModuleLayout.file_identity).
+        self.module = index.layout.module_for(relative)
         self.name = name or self.module
         self.owner = owner
         self.is_package = PurePosixPath(relative).stem == "__init__"
@@ -107,7 +107,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.module_id,
             self.aliases,
             self.resolve_name,
-            lambda module: index.canonical_module(module) if index.module_file(module) is not None else None,
+            lambda module: (
+                index.layout.canonical_module(module) if index.layout.module_file(module) is not None else None
+            ),
         )
         self.flask = FlaskFactEnricher(*routing)
         self.roles = PythonFrameworkRoleEnricher(django=self.django.imports_django(tree))
@@ -211,8 +213,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if len(parts) > 1 and parts[0] not in self.index.module_declarations(module):
             for end in range(len(parts) - 1, 0, -1):
                 spelled = ".".join([module, *parts[:end]])
-                if self.index.module_file(spelled) is not None:
-                    module, parts = self.index.canonical_module(spelled), parts[end:]
+                if self.index.layout.module_file(spelled) is not None:
+                    module, parts = self.index.layout.canonical_module(spelled), parts[end:]
                     break
         member = ".".join(parts)
         return self.index.module_declarations(module).get(member, ref(hint, f"{module}.{member}"))
@@ -222,9 +224,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
 
         Only when that directory is on ``sys.path`` (:meth:`runs_from_own_directory`).
         """
-        if self.index.module_file(module) is not None or not self.runs_from_own_directory():
+        if self.index.layout.module_file(module) is not None or not self.runs_from_own_directory():
             return module
-        return self.index.script_sibling_module(self.relative, module) or module
+        return self.index.layout.script_sibling_module(self.relative, module) or module
 
     def runs_from_own_directory(self) -> bool:
         """Whether this file's own directory is first on ``sys.path`` when it runs.
@@ -237,7 +239,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         if self.executable:
             return True
         directory = PurePosixPath(self.relative).parent
-        return bool(directory.parts) and not self.index.is_package_directory(directory)
+        return bool(directory.parts) and not self.index.layout.is_package_directory(directory)
 
     def visit_If(self, node: ast.If) -> None:
         """Walk an ``if TYPE_CHECKING:`` body as type-only; its ``else`` runs."""
@@ -261,11 +263,15 @@ class PythonAstFactCollector(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             spelled = self.script_import(alias.name)
-            target = ref("module", self.index.canonical_module(spelled))
+            target = ref("module", self.index.layout.canonical_module(spelled))
             # `import a.b` binds `a`, the spelling less the segments after the
             # first; `import a.b as m` binds `m` to `a.b`.
             depth = 0 if alias.asname else alias.name.count(".")
-            bound = target if depth == 0 else ref("module", self.index.canonical_module(spelled.rsplit(".", depth)[0]))
+            bound = (
+                target
+                if depth == 0
+                else ref("module", self.index.layout.canonical_module(spelled.rsplit(".", depth)[0]))
+            )
             self.aliases[alias.asname or alias.name.split(".")[0]] = bound
             self.facts.add_edge(
                 "imports", self.module_id, target, node, self.import_attributes({"alias": alias.asname})
@@ -288,7 +294,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
             )
             return
         # Named by the file the import finds, the id that file's own scan declares.
-        module = self.index.canonical_module(spelled)
+        module = self.index.layout.canonical_module(spelled)
         self.facts.add_edge(
             "imports",
             self.module_id,
@@ -300,10 +306,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
             if alias.name == "*":
                 continue
             target = self.index.module_declarations(spelled).get(alias.name)
-            if target is None and self.index.module_file(f"{spelled}.{alias.name}") is not None:
+            if target is None and self.index.layout.module_file(f"{spelled}.{alias.name}") is not None:
                 # `from .tools import cors` names the submodule `tools/cors.py`
                 # when the package declares no `cors` of its own.
-                target = ref("module", self.index.canonical_module(f"{spelled}.{alias.name}"))
+                target = ref("module", self.index.layout.canonical_module(f"{spelled}.{alias.name}"))
                 self.facts.add_edge(
                     "imports", self.module_id, target, node, self.import_attributes({"relative_level": node.level})
                 )
@@ -451,7 +457,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         """Whether a base names the standard library's ``ast.NodeVisitor`` or ``ast.NodeTransformer``."""
         name = dotted(base)
         target = self.resolve_name(name, "class") if name else None
-        if target is None or self.index.module_file("ast") is not None:
+        if target is None or self.index.layout.module_file("ast") is not None:
             return False
         return target.split(":", 2)[-1] in {"ast.NodeVisitor", "ast.NodeTransformer"}
 

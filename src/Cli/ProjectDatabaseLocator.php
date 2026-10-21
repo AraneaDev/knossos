@@ -67,6 +67,25 @@ final readonly class ProjectDatabaseLocator
     }
 
     /**
+     * The path to answer for and the database to read it from: the database
+     * {@see self::locate()} finds for `$target`, and `$target` itself unless
+     * it is a project id in place of a path, which is answered for that
+     * project's root when the database knows it.
+     *
+     * @param array<string, list<string>> $options
+     * @return array{0: string, 1: string}
+     */
+    public function target(string $target, array $options, CliCommandContext $context): array
+    {
+        $databasePath = $this->locate($target, $options, $context);
+        if (is_file($databasePath) && !file_exists($target)) {
+            $target = (new ProjectReference(SqliteConnection::open($databasePath), $databasePath))->byId($target)['root'] ?? $target;
+        }
+
+        return [$target, $databasePath];
+    }
+
+    /**
      * Whether the graph at `$database` knows the project `$target` names.
      * Read only, and false for a file that is no graph at all.
      */
@@ -99,7 +118,7 @@ final readonly class ProjectDatabaseLocator
         // Computed once and carried into the loop as its first candidate. The
         // loop used to recompute the same value from the same $current on its
         // first pass, which read as though the two could differ.
-        $candidate = $this->databaseIn($current);
+        $candidate = DataDirectory::databaseUnder($current);
         $path = $candidate;
         for ($depth = 0; $depth < self::MAX_ANCESTORS; $depth++) {
             if (is_file($path)) {
@@ -110,14 +129,8 @@ final readonly class ProjectDatabaseLocator
                 break;
             }
             $current = $parent;
-            $path = $this->databaseIn($current);
+            $path = DataDirectory::databaseUnder($current);
         }
         return $candidate;
-    }
-
-    /** The conventional data-directory path under one directory, without doubling a trailing slash at the filesystem root. */
-    private function databaseIn(string $directory): string
-    {
-        return rtrim($directory, '/') . '/.knossos/knossos.sqlite';
     }
 }

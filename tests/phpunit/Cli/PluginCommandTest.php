@@ -24,8 +24,10 @@ final class PluginCommandTest extends KnossosTestCase
         '.claude-plugin/marketplace.json',
         '.claude-plugin/plugin.json',
         'hooks/hooks.json',
+        'hooks/scripts/guard.sh',
         'hooks/scripts/knossos-run.sh',
         'hooks/scripts/lib.sh',
+        'hooks/scripts/run-args.sh',
         'hooks/scripts/session-brief.sh',
         'skills/graph/SKILL.md',
         'types/index.d.ts',
@@ -201,8 +203,10 @@ final class PluginCommandTest extends KnossosTestCase
         assertSame(true, in_array('hooks/scripts/session-brief.sh', $decoded['files'], true));
         assertSame(true, in_array('hooks/scripts/knossos-run.sh', $decoded['files'], true));
         assertSame(true, in_array('skills/graph/SKILL.md', $decoded['files'], true));
-        // The container scripts are standalone, so no shared library is shipped for them.
+        // The container scripts source the guard and the argument checks, never the host library.
         assertSame(false, in_array('hooks/scripts/lib.sh', $decoded['files'], true));
+        assertSame(true, in_array('hooks/scripts/guard.sh', $decoded['files'], true));
+        assertSame(true, in_array('hooks/scripts/run-args.sh', $decoded['files'], true));
         // Every listed file is really there, so the list cannot drift from what
         // emit() writes without this failing.
         foreach ($decoded['files'] as $relative) {
@@ -274,6 +278,8 @@ final class PluginCommandTest extends KnossosTestCase
             '/hooks/hooks.json',
             '/hooks/scripts/session-brief-container.sh',
             '/hooks/scripts/knossos-run-container.sh',
+            '/hooks/scripts/guard.sh',
+            '/hooks/scripts/run-args.sh',
             ...self::modSourcesOnDisk(),
             '/types/index.d.ts',
             '/skills/graph/SKILL.md',
@@ -524,7 +530,7 @@ final class PluginCommandTest extends KnossosTestCase
             assertSame(true, in_array('/hooks/mod/render.tsx', $onDisk, true));
             assertSame(true, in_array('/hooks/register.tsx', $onDisk, true));
             assertSame($onDisk, $shippedSources);
-            // The container emit ships no shared library; everything else is what a host install writes.
+            // The container emit ships no host library; everything else is what a host install writes.
             assertSame(array_values(array_diff(self::installed(), ['hooks/scripts/lib.sh'])), $decoded['files']);
         } finally {
             exec('rm -rf ' . escapeshellarg($out));
@@ -615,6 +621,10 @@ final class PluginCommandTest extends KnossosTestCase
             foreach ([$root . '/.plugin', $out] as $directory) {
                 foreach (['session-brief.sh', 'knossos-run.sh'] as $script) {
                     assertSame('0755', substr(sprintf('%o', fileperms($directory . '/hooks/scripts/' . $script)), -4));
+                }
+                // Sourced by both modes' scripts, so shipped by both, and executable by neither.
+                foreach (['guard.sh', 'run-args.sh'] as $script) {
+                    assertSame('0644', substr(sprintf('%o', fileperms($directory . '/hooks/scripts/' . $script)), -4));
                 }
             }
             assertSame('0644', substr(sprintf('%o', fileperms($root . '/.plugin/hooks/scripts/lib.sh')), -4));
@@ -891,6 +901,8 @@ final class PluginCommandTest extends KnossosTestCase
             '/hooks/scripts/knossos-run.sh',
             '/hooks/scripts/knossos-run-container.sh',
             '/hooks/scripts/lib.sh',
+            '/hooks/scripts/guard.sh',
+            '/hooks/scripts/run-args.sh',
             ...self::modSourcesOnDisk(),
             '/types/index.d.ts',
             '/skills/graph/SKILL.md',

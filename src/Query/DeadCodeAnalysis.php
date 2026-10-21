@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EnrichedFacts;
 
@@ -31,6 +32,9 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * `isEngineInvokedMemberOfReferencedType` matches by prefix.
      */
     private const CONSTRUCTOR_MEMBER_NAME = 'constructor';
+
+    /** Bound on the walk up a declaration's `contains` chain, as {@see InheritanceGraph} bounds its ancestor walk. */
+    private const MAX_CONTAINS_DEPTH = 20;
 
     /**
      * Node kinds an unreferenced-code candidate can be. Anything else — a route,
@@ -489,25 +493,15 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             $reads[] = [(string) $row['source_id'], (string) $row['target_id']];
         }
         // Each reader's enclosing declarations, up the `contains` chain.
-        $parentOf = [];
-        $frontier = array_values(array_unique(array_column($reads, 0)));
-        for ($depth = 0; $depth < 20 && $frontier !== []; ++$depth) {
-            $found = [];
-            foreach (ChunkedInQuery::rows(
-                $this->pdo,
-                "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind = 'contains' AND " . EnrichedFacts::excludeSql('edges') . ' AND target_id IN (%s)',
-                $frontier,
-                [$projectId],
-            ) as $row) {
-                $parentOf[(string) $row['target_id']] = (string) $row['source_id'];
-                $found[] = (string) $row['source_id'];
-            }
-            $frontier = array_values(array_diff(array_unique($found), array_keys($parentOf)));
-        }
+        // The last container read is the one a declaration has.
+        $parentOf = array_map(
+            static fn(array $parents): string => $parents[count($parents) - 1],
+            EdgeWalk::reach($this->pdo, $projectId, ['contains'], Direction::Incoming, array_column($reads, 0), self::MAX_CONTAINS_DEPTH),
+        );
         $referenced = [];
         foreach ($reads as [$source, $binding]) {
             $inside = false;
-            for ($id = $source, $steps = 0; $id !== null && $steps <= 20; $id = $parentOf[$id] ?? null, ++$steps) {
+            for ($id = $source, $steps = 0; $id !== null && $steps <= self::MAX_CONTAINS_DEPTH; $id = $parentOf[$id] ?? null, ++$steps) {
                 if ($id === $binding) {
                     $inside = true;
                     break;

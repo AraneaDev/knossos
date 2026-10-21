@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Scanner\Worker\ReadsMap;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 
 /**
@@ -64,7 +65,7 @@ final class RequestReads
             $reads = [];
             if ($attributing) {
                 if ($contribution->reads === null) {
-                    throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('%s declares %s but the contribution for %s carries no reads.', $manifest->id, Protocol::CAPABILITY_READ_ATTRIBUTION, $contribution->ownerKey));
+                    throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('%s declares %s but the contribution for %s carries no reads.', $manifest->id, Protocol::CAPABILITY_READ_ATTRIBUTION, $contribution->ownerKey));
                 }
                 $reads = $contribution->reads;
                 self::assertConfirmed($reads, $verifiedInputs, $manifest, $contribution->ownerKey);
@@ -89,7 +90,7 @@ final class RequestReads
         foreach ($reads as $path => $hash) {
             $path = (string) $path;
             if (!array_key_exists($path, $verifiedInputs) || $verifiedInputs[$path] !== $hash) {
-                throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf('%s reported a read of %s in %s that its input_hashes does not confirm.', $manifest->id, $path, $source));
+                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf('%s reported a read of %s in %s that its input_hashes does not confirm.', $manifest->id, $path, $source));
             }
         }
     }
@@ -114,7 +115,7 @@ final class RequestReads
         }
         foreach ($verifiedInputs as $path => $hash) {
             if (!array_key_exists((string) $path, $named)) {
-                throw new WorkerException('WORKER_CONTRIBUTION_INVALID', sprintf("%s read %s but named it in no contribution's reads and not in the request's shared reads.", $manifest->id, $path));
+                throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, sprintf("%s read %s but named it in no contribution's reads and not in the request's shared reads.", $manifest->id, $path));
             }
         }
     }

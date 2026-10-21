@@ -24,8 +24,6 @@ use Throwable;
  */
 final readonly class HttpEndpoint
 {
-    /** Mirrored headers disagree with the request body, or a required one is absent. */
-    private const HEADER_MISMATCH = -32020;
     private const BASE64_PREFIX = '=?base64?';
     private const BASE64_SUFFIX = '?=';
 
@@ -188,10 +186,7 @@ final readonly class HttpEndpoint
             // The specification requires the supported set to be advertised, so a
             // client can retry on common ground instead of blindly downgrading.
             $unsupported = new UnsupportedProtocolVersionException($protocol, ProtocolNegotiator::supported());
-            return $this->json(400, [
-                'jsonrpc' => '2.0', 'id' => null,
-                'error' => ['code' => $unsupported->getCode(), 'message' => $unsupported->getMessage(), 'data' => $unsupported->data()],
-            ], $baseHeaders);
+            return $this->json(400, JsonRpc::error(null, $unsupported->getCode(), $unsupported->getMessage(), $unsupported->data()), $baseHeaders);
         }
 
         return null;
@@ -212,11 +207,11 @@ final readonly class HttpEndpoint
                 throw new JsonException('JSON-RPC body must be an object.');
             }
         } catch (JsonException) {
-            return [null, $this->json(400, ['jsonrpc' => '2.0', 'id' => null, 'error' => ['code' => -32700, 'message' => 'Parse error']], $baseHeaders)];
+            return [null, $this->json(400, JsonRpc::error(null, JsonRpc::PARSE_ERROR, 'Parse error'), $baseHeaders)];
         }
         // The same id rule as stdio, before anything echoes the id back.
         if (JsonRpcId::isInvalid($decoded)) {
-            return [null, $this->json(400, ['jsonrpc' => '2.0', 'id' => null, 'error' => ['code' => -32600, 'message' => 'Invalid Request']], $baseHeaders)];
+            return [null, $this->json(400, JsonRpc::error(null, JsonRpc::INVALID_REQUEST, 'Invalid Request'), $baseHeaders)];
         }
 
         return [$decoded, null];
@@ -344,7 +339,7 @@ final readonly class HttpEndpoint
         // one is refused, as on the 2026-07-28 path, instead of silently winning.
         $mismatch = $this->versionMismatch($message, $headers);
         if ($mismatch !== null) {
-            return $this->json(400, ['jsonrpc' => '2.0', 'id' => $message['id'] ?? null, 'error' => ['code' => self::HEADER_MISMATCH, 'message' => $mismatch]], $baseHeaders);
+            return $this->json(400, JsonRpc::error($message['id'] ?? null, JsonRpc::HEADER_MISMATCH, $mismatch), $baseHeaders);
         }
         try {
             $dispatcher = $this->dispatcher();
@@ -380,11 +375,11 @@ final readonly class HttpEndpoint
             return ['status' => 202, 'headers' => $baseHeaders, 'body' => ''];
         }
         if (!is_string($rpcMethod)) {
-            return $this->json(400, ['jsonrpc' => '2.0', 'id' => $id, 'error' => ['code' => -32600, 'message' => 'Invalid Request']], $baseHeaders);
+            return $this->json(400, JsonRpc::error($id, JsonRpc::INVALID_REQUEST, 'Invalid Request'), $baseHeaders);
         }
         $mismatch = $this->headerMismatch($message, $rpcMethod, $headers);
         if ($mismatch !== null) {
-            return $this->json(400, ['jsonrpc' => '2.0', 'id' => $id, 'error' => ['code' => self::HEADER_MISMATCH, 'message' => $mismatch]], $baseHeaders);
+            return $this->json(400, JsonRpc::error($id, JsonRpc::HEADER_MISMATCH, $mismatch), $baseHeaders);
         }
         try {
             $response = $this->dispatcher()->handle($message);
@@ -397,7 +392,7 @@ final readonly class HttpEndpoint
         // An unimplemented method answers 404, which is how a client tells a
         // modern server apart from a legacy endpoint that does not host this
         // path at all. The JSON-RPC body is what disambiguates the two.
-        $status = ($response['error']['code'] ?? null) === -32601 ? 404 : 200;
+        $status = ($response['error']['code'] ?? null) === JsonRpc::METHOD_NOT_FOUND ? 404 : 200;
 
         return $this->json($status, $response, $baseHeaders);
     }
@@ -510,7 +505,7 @@ final readonly class HttpEndpoint
     private function internalError(mixed $id, Throwable $error, array $headers): array
     {
         error_log('knossos http endpoint: ' . $error->getMessage());
-        return $this->json(500, ['jsonrpc' => '2.0', 'id' => $id, 'error' => ['code' => -32603, 'message' => 'Internal error']], $headers);
+        return $this->json(500, JsonRpc::error($id, JsonRpc::INTERNAL_ERROR, 'Internal error'), $headers);
     }
 
     /**
@@ -520,10 +515,9 @@ final readonly class HttpEndpoint
      */
     private function json(int $status, array $payload, array $headers): array
     {
-        $encoded = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-        if (strlen($encoded) > $this->maxResponseBytes) {
+        [$encoded, $oversized] = JsonRpc::encode($payload, $this->maxResponseBytes);
+        if ($oversized) {
             $status = 500;
-            $encoded = json_encode(['jsonrpc' => '2.0', 'id' => $payload['id'] ?? null, 'error' => ['code' => -32001, 'message' => 'Response exceeds the configured byte limit.']], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
         }
         return ['status' => $status, 'headers' => $headers + ['Content-Type' => 'application/json'], 'body' => $encoded];
     }

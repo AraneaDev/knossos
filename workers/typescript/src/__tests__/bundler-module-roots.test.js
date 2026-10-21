@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // The module roots and extensions a webpack config's `resolve` declares,
 // read without running the config.
@@ -27,6 +28,7 @@ function scan(files, requested = Object.keys(files), configFiles) {
     const contributions = [];
     new TypeScriptScanner().scan(
         {
+            limits: SCAN_LIMITS,
             root,
             files: requested,
             ...(configFiles ? { config_files: configFiles } : {}),

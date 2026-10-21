@@ -60,7 +60,7 @@ final class ReconciliationTest extends KnossosTestCase
     }
 
     #[Group('reconciliation')]
-    public function testReconciliationSnapshotsAndBundlesPreserveRepeatedEdgeOccurrences(): void
+    public function testRepeatedEdgeOccurrencesCollapseToOneEdgeThroughSnapshotsAndBundles(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/mixed';
         $discovery = (new ProjectDiscoverer(new DiscoveryConfig([$root])))->discover($root);
@@ -105,11 +105,12 @@ final class ReconciliationTest extends KnossosTestCase
         (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
         $reconciler = new GraphReconciler(new SqliteGraphRepository($pdo));
         $first = $reconciler->reconcile($request);
-        assertSame(6, $first->edges);
-        assertSame(6, (int) $pdo->query('SELECT COUNT(*) FROM edges')->fetchColumn());
-        assertSame(6, (int) $pdo->query('SELECT COUNT(DISTINCT id) FROM edges')->fetchColumn());
-        foreach (['calls', 'constructs', 'imports'] as $kind) {
-            assertSame(2, (int) $pdo->query("SELECT COUNT(*) FROM edges WHERE kind = '" . $kind . "'")->fetchColumn());
+        // One edge per kind, source, target and owner, at the earliest site.
+        assertSame(3, $first->edges);
+        assertSame(3, (int) $pdo->query('SELECT COUNT(*) FROM edges')->fetchColumn());
+        assertSame(3, (int) $pdo->query('SELECT COUNT(DISTINCT id) FROM edges')->fetchColumn());
+        foreach (['calls' => 10, 'constructs' => 12, 'imports' => 14] as $kind => $line) {
+            assertSame([$line], array_map('intval', $pdo->query("SELECT start_line FROM edges WHERE kind = '" . $kind . "'")->fetchAll(\PDO::FETCH_COLUMN)));
         }
 
         $second = $reconciler->reconcile($request);
@@ -117,14 +118,14 @@ final class ReconciliationTest extends KnossosTestCase
             "SELECT payload_json FROM scan_snapshots WHERE scan_id = '" . $first->scanId . "'",
         )->fetchColumn();
         $snapshot = json_decode(SnapshotPayload::decode($snapshotJson), true, 512, JSON_THROW_ON_ERROR);
-        assertSame(6, count($snapshot['facts']['edges']));
+        assertSame(3, count($snapshot['facts']['edges']));
 
         $bundles = new GraphBundleService($pdo);
         $bundle = $bundles->export($second->projectId);
         $imported = $bundles->import($bundle, 'Repeated edge import');
         $importedEdges = $pdo->prepare('SELECT COUNT(*) FROM edges WHERE project_id = :project');
         $importedEdges->execute(['project' => $imported->projectId]);
-        assertSame(6, (int) $importedEdges->fetchColumn());
+        assertSame(3, (int) $importedEdges->fetchColumn());
     }
 
     #[Group('reconciliation')]

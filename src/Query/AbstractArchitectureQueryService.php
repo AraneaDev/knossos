@@ -8,6 +8,8 @@ use Closure;
 use InvalidArgumentException;
 use Knossos\Boundary\BoundaryAliases;
 use Knossos\Boundary\BoundaryReferences;
+use Knossos\Scanner\Protocol\ConfidenceRank;
+use Knossos\Scanner\Protocol\ErasedTypeEdge;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\ProjectRepository;
 use PDO;
@@ -54,12 +56,8 @@ abstract readonly class AbstractArchitectureQueryService
         'extends', 'implements', 'returns', 'exports', 're_exports', 'uses_trait',
         'calls_endpoint', 'resolves_to',
     ];
-    /**
-     * The three confidence levels in order, so two can be compared. One
-     * definition for every query that filters, ranks or merges by confidence,
-     * where there had been seven copies of this literal.
-     */
-    protected const CONFIDENCE_RANK = ['possible' => 1, 'probable' => 2, 'certain' => 3];
+    /** The three confidence levels in order, so two can be compared: {@see ConfidenceRank::NAMES}. */
+    protected const CONFIDENCE_RANK = ConfidenceRank::NAMES;
 
     public function __construct(
         protected PDO $pdo,
@@ -298,7 +296,8 @@ abstract readonly class AbstractArchitectureQueryService
     }
 
     /**
-     * Validate a confidence level, rejecting an unknown one rather than defaulting it.
+     * Validate a timeout and a confidence level, rejecting an unknown level
+     * rather than defaulting it ({@see ConfidenceRank::rank()}).
      *
      * @return array<string, int>
      */
@@ -307,11 +306,8 @@ abstract readonly class AbstractArchitectureQueryService
         if ($timeoutMs < 1 || $timeoutMs > 5000) {
             throw new InvalidArgumentException('timeout_ms must be between 1 and 5000.');
         }
-        $confidenceRank = self::CONFIDENCE_RANK;
-        if (!isset($confidenceRank[$minConfidence])) {
-            throw new InvalidArgumentException('min_confidence must be possible, probable, or certain.');
-        }
-        return $confidenceRank;
+        ConfidenceRank::rank($minConfidence);
+        return self::CONFIDENCE_RANK;
     }
 
     /**

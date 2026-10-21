@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -27,8 +28,10 @@ function fixture(files) {
 /** Collect every contribution a scan emits, keyed by the file it belongs to. */
 function scanned(root, files) {
     const byOwner = new Map();
-    const result = new TypeScriptScanner().scan({ root, files }, (c) =>
-        byOwner.set(c.owner_key.replace("knossos.typescript:file:", ""), c),
+    const result = new TypeScriptScanner().scan(
+        { limits: SCAN_LIMITS, root, files },
+        (c) =>
+            byOwner.set(c.owner_key.replace("knossos.typescript:file:", ""), c),
     );
     return { result, byOwner };
 }
@@ -163,7 +166,7 @@ describe("per-file rejection", () => {
             {
                 root,
                 files: ["src/small.js", "src/big.js"],
-                limits: { max_file_bytes: 100 },
+                limits: { ...SCAN_LIMITS, max_file_bytes: 100 },
             },
             (c) =>
                 seen.set(
@@ -191,7 +194,10 @@ describe("per-file rejection", () => {
         // A malformed path names no file, so there is nothing to attribute a
         // diagnostic to and the owner key would be invalid anyway.
         expect(() =>
-            new TypeScriptScanner().scan({ root, files: [bad] }, () => {}),
+            new TypeScriptScanner().scan(
+                { limits: SCAN_LIMITS, root, files: [bad] },
+                () => {},
+            ),
         ).toThrow();
     });
 });

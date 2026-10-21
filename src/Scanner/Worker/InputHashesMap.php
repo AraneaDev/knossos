@@ -105,6 +105,6 @@ final class InputHashesMap
     /** A malformed map, which costs the worker's language rather than the scan. */
     public static function invalid(string $workerId, string $detail): WorkerException
     {
-        return new WorkerException('WORKER_RESPONSE_INVALID', sprintf('%s %s.', $workerId, $detail));
+        return new WorkerException(WorkerErrorCode::ResponseInvalid->value, sprintf('%s %s.', $workerId, $detail));
     }
 }

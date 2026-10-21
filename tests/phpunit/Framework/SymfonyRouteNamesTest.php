@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 
 use function PHPUnit\Framework\assertSame;
 
@@ -123,6 +124,33 @@ final class SymfonyRouteNamesTest extends KnossosTestCase
         assertSame(['order_show'], $this->routeNames($nodes));
     }
 
+    public function testARouteNameReferencedTwiceKeepsItsFirstDeclaration(): void
+    {
+        // A Symfony node keeps its first declaration, as a Laravel one does.
+        [$nodes, $edges] = $this->scan(['src/Controller/TwiceController.php' => <<<'PHP'
+            <?php
+            namespace App\Controller;
+
+            use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+
+            final class TwiceController extends AbstractController
+            {
+                public function go()
+                {
+                    $first = $this->generateUrl('order_show');
+
+                    return [$first, $this->redirectToRoute('order_show')];
+                }
+            }
+            PHP]);
+
+        $endpoints = array_values(array_filter($nodes, fn(NodeFact $node): bool => $node->kind === 'endpoint'));
+        assertSame(1, count($endpoints));
+        assertSame(10, $endpoints[0]->evidence->startLine);
+        $calls = array_values(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'calls_endpoint'));
+        assertSame([10, 12], array_map(fn(EdgeFact $edge): int => $edge->evidence->startLine, $calls));
+    }
+
     /**
      * @param list<NodeFact> $nodes
      * @return list<string>
@@ -182,7 +210,7 @@ final class SymfonyRouteNamesTest extends KnossosTestCase
         }
         try {
             $client = $this->phpWorkerClient($assertions);
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => array_keys($files),
                 'frameworks' => ['symfony'],

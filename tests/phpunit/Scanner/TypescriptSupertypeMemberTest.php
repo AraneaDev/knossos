@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -22,7 +23,7 @@ final class TypescriptSupertypeMemberTest extends KnossosTestCase
     {
         $client = $this->typescriptWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/typescript-supertypes',
                 'files' => ['src/walker.ts'],
                 'config_files' => ['tsconfig.json'],

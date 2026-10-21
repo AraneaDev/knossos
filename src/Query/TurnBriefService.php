@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Discovery\FileFingerprint;
+use Knossos\Filesystem\RelativePathRule;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Result\PaneStatus;
 use Knossos\Scan\{ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
@@ -43,6 +44,9 @@ final readonly class TurnBriefService
 
     /** Violations listed in the brief; the total counts them all, exactly unless `policy.truncated`. */
     private const MAX_VIOLATIONS = 10;
+
+    /** The policy section before any policy was evaluated: no violation introduced. */
+    private const NO_POLICY = ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false];
 
     /**
      * @param string $databasePath where $pdo lives; locates `roots.json`
@@ -301,10 +305,7 @@ final readonly class TurnBriefService
         return array_map(
             static function (string $p) use ($prefix): string {
                 $p = self::resolved($p);
-                // Only a literal "./" prefix goes: ltrim() with a character list would also eat the dot of ".github/".
-                return str_starts_with($p, $prefix)
-                    ? substr($p, strlen($prefix))
-                    : (str_starts_with($p, './') ? substr($p, 2) : $p);
+                return str_starts_with($p, $prefix) ? substr($p, strlen($prefix)) : RelativePathRule::withoutDotSlash($p);
             },
             $paths,
         );
@@ -357,7 +358,7 @@ final readonly class TurnBriefService
             return ['status' => PaneStatus::POLICY_DISABLED, 'total' => 0, 'violations' => [], 'truncated' => false];
         }
         if ($live === [] || $before === null || $after === null) {
-            return ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false];
+            return self::NO_POLICY;
         }
         $introduced = array_values(array_diff_key($after['violations'], $before['violations']));
         return [
@@ -376,7 +377,7 @@ final readonly class TurnBriefService
             'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'roots_file' => null, 'refused_root' => null,
             'changed_files' => [], 'added_files' => [], 'deleted_files' => [],
             'impact' => [], 'tests' => [], 'tests_truncated' => false,
-            'policy' => ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false],
+            'policy' => self::NO_POLICY,
         ];
     }
 }

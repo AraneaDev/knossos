@@ -462,14 +462,15 @@ sources. The Rust worker is the one first-party runtime outside it: `tools/quali
 
 The budgets in `maintainability-budgets.json` are:
 
-- no more than 13 normalized cross-file duplicate blocks;
+- no more than 4 normalized cross-file duplicate blocks;
 - PHP function cyclomatic complexity no higher than 60 and function length no
   higher than 205 lines;
 - direct per-file dependency fanout no higher than 15;
 - docstring coverage of 100% for `src`, `workers-php`, `tools` and overall, and
   type-docblock coverage of 100%.
 
-Each of these must be in the file as a JSON number, and every area the
+`php tools/documentation-check.php` compares each number above with the file,
+so the list cannot drift from what the lane enforces. Each of these must be in the file as a JSON number, and every area the
 docstring report measures needs its own floor. A missing or quoted limit stops
 the lane with exit 1 and names the key, rather than being read as 0 or skipped.
 `php tools/maintainability-report.php` and `php tools/docstring-report.php`

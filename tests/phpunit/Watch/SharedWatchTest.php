@@ -248,12 +248,13 @@ final class SharedWatchTest extends KnossosTestCase
     }
 
     /**
-     * A state write that fails part way (here: a full device behind the
-     * temporary name) must not leave the temporary file behind; it used to
-     * be removed only when the rename failed.
+     * The state is written through a temporary file with a random name, so a
+     * file planted at a predictable one (here: a link to a full device at
+     * the old `<state>.<pid>.tmp` name) is neither written through nor
+     * removed, and the state still lands.
      */
     #[Group('watch')]
-    public function testAFailedStateWriteLeavesNoTemporaryFile(): void
+    public function testAStateWriteIgnoresAFilePlantedAtAPredictableTemporaryName(): void
     {
         if (!is_writable('/dev/full')) {
             self::markTestSkipped('needs /dev/full');
@@ -267,8 +268,8 @@ final class SharedWatchTest extends KnossosTestCase
 
         $lock->write(['phase' => 'idle']);
 
-        assertSame(false, is_link($temporary) || file_exists($temporary));
-        assertNull(WatchLock::owner($dir, 'project-a'));
+        assertSame(true, is_link($temporary));
+        assertSame('idle', WatchLock::owner($dir, 'project-a')['phase'] ?? null);
         $lock->release();
     }
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -17,7 +18,7 @@ function scanSource(source) {
     fs.writeFileSync(absolute, source);
     const contributions = [];
     new TypeScriptScanner().scan(
-        { root, files: ["src/a.ts"] },
+        { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
         (contribution) => contributions.push(contribution),
     );
     return contributions.flatMap((contribution) => contribution.nodes);

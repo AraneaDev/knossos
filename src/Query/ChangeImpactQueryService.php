@@ -174,10 +174,8 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
             $truncated = $truncated || $impact->truncated;
         }
         uasort($impacted, static fn(array $a, array $b): int => ($a['distance'] <=> $b['distance']) ?: ($a['node']['canonical_name'] <=> $b['node']['canonical_name']));
-        if (count($impacted) > $limit) {
-            $truncated = true;
-        }
-        $impacted = array_slice(array_values($impacted), 0, $limit);
+        [$impacted, $cut] = Page::cut(array_values($impacted), $limit);
+        $truncated = $truncated || $cut;
         ksort($entryPoints, SORT_STRING);
         $evidence = array_map(static fn(array $node): array => [
             'component_id' => $node['id'], 'path' => $node['relative_path'],
@@ -384,9 +382,9 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
         if ($git['truncated']) {
             $reasons[] = 'changed_file_limit';
         }
-        if (count($direct) > self::MAX_DIRECT_COMPONENTS) {
+        [$direct, $cut] = Page::cut($direct, self::MAX_DIRECT_COMPONENTS);
+        if ($cut) {
             $reasons[] = 'direct_component_limit';
-            $direct = array_slice($direct, 0, self::MAX_DIRECT_COMPONENTS);
         }
 
         return ['project' => $project, 'files' => $files, 'git' => $git, 'direct' => $direct, 'unresolved' => $unresolved, 'truncation_reasons' => $reasons];

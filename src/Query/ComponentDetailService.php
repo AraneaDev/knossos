@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
  * One component as the architecture pane shows it, addressed like the
  * dashboard: by a path inside the project, plus the component's name.
  *
- * Read-only, and resolved through {@see ProjectRepository::resolvePath()} exactly as
+ * Read-only, and resolved through {@see PaneProject::answer()} exactly as
  * {@see DashboardService} resolves its project, so the pane's detail and its
  * overview always come from the same graph. The lookup is the one
  * `inspect-component` makes; this service only reshapes its envelope into
@@ -53,23 +52,24 @@ final readonly class ComponentDetailService
      */
     public function detail(string $path, string $name): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = [
-            'status' => 'unscanned', 'path' => $absolute, 'name' => $name, 'project_id' => null,
-            'snapshot_id' => null, 'component' => null, 'candidates' => [],
-        ];
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        // A project row without an active scan has no graph to look in.
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return $envelope;
-        }
-        $id = (string) $project['id'];
+        $envelope = ['name' => $name, 'project_id' => null, 'snapshot_id' => null, 'component' => null, 'candidates' => []];
+
+        return PaneProject::answer($this->pdo, $path, $envelope, fn(array $project, array $envelope): array => $this->detailIn($project['id'], $name, $envelope));
+    }
+
+    /**
+     * The detail of `$name` in the scanned project `$id`, in `$envelope`.
+     *
+     * @param array<string, mixed> $envelope
+     *
+     * @return array<string, mixed>
+     */
+    private function detailIn(string $id, string $name, array $envelope): array
+    {
         $result = (new AnnotationNotes($this->pdo))->attach(($this->services ?? QueryServices::wire($this->pdo))->componentQueries->inspectComponent($id, $name, self::RELATIONSHIPS, 1));
-        $envelope['project_id'] = $id;
-        $envelope['snapshot_id'] = $project['active_scan_id'];
         $data = $result->data;
         if ($data['component'] === null) {
-            $envelope['status'] = $data['ambiguous'] ? 'ambiguous' : 'not-found';
+            $envelope = ['status' => $data['ambiguous'] ? 'ambiguous' : 'not-found'] + $envelope;
             $envelope['candidates'] = array_map(
                 static fn(array $candidate): string => (string) $candidate['canonical_name'],
                 array_slice($data['candidates'], 0, self::CANDIDATES),
@@ -84,7 +84,7 @@ final readonly class ComponentDetailService
             static fn(array $edge): string => (string) $edge['component']['id'],
             [...$component['incoming'], ...$component['outgoing']],
         ));
-        $envelope['status'] = 'ok';
+        $envelope = ['status' => 'ok'] + $envelope;
         $envelope['component'] = [
             'name' => (string) $component['canonical_name'],
             'display_name' => (string) $component['display_name'],

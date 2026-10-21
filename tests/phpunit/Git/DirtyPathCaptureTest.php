@@ -116,7 +116,7 @@ final class DirtyPathCaptureTest extends KnossosTestCase
         (new DirtyPathResolver($runner))->resolve('/tmp/knossos-dirty', self::HEAD, []);
 
         self::assertSame([[
-            'git', '--no-optional-locks', '--no-pager', '-C', '/tmp/knossos-dirty',
+            'git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', '/tmp/knossos-dirty',
             'ls-tree', '-r', '-z', self::HEAD, '--', '.',
         ]], $runner->commands);
         self::assertSame([2000], $runner->timeouts);

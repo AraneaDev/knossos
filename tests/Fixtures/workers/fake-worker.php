@@ -2,6 +2,23 @@
 
 declare(strict_types=1);
 
+// `--manifest=<json>`, anywhere on the command line, is the language the core
+// launched this worker for: its `id`, `languages`, `file_extensions` and
+// whether it declares `added_files_affect_all`. Without one it answers as
+// `knossos.fake`, which only a client started outside a scan accepts.
+$described = [];
+// Tests that wrap this worker set $argv themselves before requiring it.
+$argv ??= $_SERVER['argv'] ?? [];
+foreach ($argv as $index => $argument) {
+    if (str_starts_with($argument, '--manifest=')) {
+        $decoded = json_decode(substr($argument, strlen('--manifest=')), true);
+        $described = is_array($decoded) ? $decoded : [];
+        unset($argv[$index]);
+    }
+}
+$argv = array_values($argv);
+// Owner keys lead with the scanner id, as every real worker's do.
+$scannerId = $described['id'] ?? 'knossos.fake';
 $mode = $argv[1] ?? 'compliant';
 $pidFile = $argv[2] ?? null;
 // Batch-size threshold for the per_file_* modes: a scan request asking for more
@@ -52,6 +69,9 @@ while (($line = fgets(STDIN)) !== false) {
             match (true) {
                 str_starts_with($mode, 'inputs_') => ['partial_ast', 'content_hash', 'input_hashes'],
                 str_starts_with($mode, 'hash_') => ['partial_ast', 'content_hash'],
+                // Says each file read only itself, so the core reuses the
+                // others' cached contributions when one file changes.
+                $mode === 'per_file_malformed_bad' => ['partial_ast', 'read_attribution'],
                 default => ['partial_ast'],
             },
         ));
@@ -152,7 +172,7 @@ while (($line = fgets(STDIN)) !== false) {
             $root = (string) ($request['params']['root'] ?? '');
             foreach ($request['params']['files'] ?? [] as $relativePath) {
                 $relativePath = (string) $relativePath;
-                $owner = 'knossos.fake:file:' . $relativePath;
+                $owner = $scannerId . ':file:' . $relativePath;
                 $absolute = $root . '/' . $relativePath;
                 if ($mode === 'hash_unreadable') {
                     // What every bundled worker sends for a file it could not
@@ -196,7 +216,7 @@ while (($line = fgets(STDIN)) !== false) {
             $requested = array_map('strval', $request['params']['files'] ?? []);
             $inputs = [];
             foreach ($requested as $relativePath) {
-                $contribution = fileContribution('knossos.fake:file:' . $relativePath, $relativePath);
+                $contribution = fileContribution($scannerId . ':file:' . $relativePath, $relativePath);
                 $contribution['content_hash'] = hash('sha256', (string) file_get_contents($root . '/' . $relativePath));
                 notifyContribution($contribution);
                 $inputs[$relativePath] = $contribution['content_hash'];
@@ -346,7 +366,7 @@ while (($line = fgets(STDIN)) !== false) {
                     }
                 }
                 foreach ($requested as $relativePath) {
-                    notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                    notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                 }
                 respond($id, ['count' => count($requested), 'files_scanned' => count($requested)]);
                 continue;
@@ -354,14 +374,14 @@ while (($line = fgets(STDIN)) !== false) {
             // A broken worker: answers the first file of any batch of more
             // than one, then fails, whatever the files are.
             if ($mode === 'per_file_frame_too_large_after_one' && count($requested) > 1) {
-                notifyContribution(fileContribution('knossos.fake:file:' . $requested[0], (string) $requested[0]));
+                notifyContribution(fileContribution($scannerId . ':file:' . $requested[0], (string) $requested[0]));
                 fwrite(STDOUT, str_repeat('x', 150_000));
                 fflush(STDOUT);
                 exit(0);
             }
             if ($mode === 'per_file_frame_too_large_after_one') {
                 foreach ($requested as $relativePath) {
-                    notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                    notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                 }
                 respond($id, ['count' => count($requested), 'files_scanned' => count($requested)]);
                 continue;
@@ -370,7 +390,7 @@ while (($line = fgets(STDIN)) !== false) {
             // nothing at all: by elimination it belongs to no file.
             if ($mode === 'per_file_frame_too_large_after_all') {
                 foreach ($requested as $relativePath) {
-                    notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                    notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                 }
                 fwrite(STDOUT, str_repeat('x', 150_000));
                 fflush(STDOUT);
@@ -380,7 +400,7 @@ while (($line = fgets(STDIN)) !== false) {
             // one frame: an oversized frame that belongs to no file.
             if ($mode === 'per_file_frame_too_large_result') {
                 foreach ($requested as $relativePath) {
-                    notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                    notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                 }
                 fwrite(STDOUT, '{"jsonrpc":"2.0","id":' . json_encode($id) . ',"result":{"pad":"' . str_repeat('x', 150_000));
                 fflush(STDOUT);
@@ -396,7 +416,7 @@ while (($line = fgets(STDIN)) !== false) {
                         fflush(STDOUT);
                         exit(0);
                     }
-                    notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                    notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                 }
                 respond($id, ['count' => count($requested), 'files_scanned' => count($requested)]);
                 continue;
@@ -407,7 +427,7 @@ while (($line = fgets(STDIN)) !== false) {
             if ($mode === 'per_file_frame_too_large_for_huge') {
                 foreach ($requested as $relativePath) {
                     if (!str_contains((string) $relativePath, 'Huge')) {
-                        notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                        notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                     }
                 }
                 foreach ($requested as $relativePath) {
@@ -448,7 +468,7 @@ while (($line = fgets(STDIN)) !== false) {
                 // re-sends the same files, so a caller that kept the partial
                 // results would count them twice.
                 foreach ($requested as $relativePath) {
-                    notifyContribution(fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath));
+                    notifyContribution(fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath));
                 }
                 for ($chunk = 0; $chunk < 64; ++$chunk) {
                     // Ignored by the session's decoder, so only its bytes count.
@@ -464,11 +484,14 @@ while (($line = fgets(STDIN)) !== false) {
                 ? ['program' => 'fake-program', 'environment' => hash('sha256', 'the globals now')]
                 : [];
             foreach ($requested as $relativePath) {
-                $contribution = fileContribution('knossos.fake:file:' . $relativePath, (string) $relativePath) + $program;
+                $contribution = fileContribution($scannerId . ':file:' . $relativePath, (string) $relativePath) + $program;
                 // One malformed fact, for a file named Bad: the core keeps the
                 // file without facts and the rest of the language intact.
-                if ($mode === 'per_file_malformed_bad' && str_contains((string) $relativePath, 'Bad')) {
-                    $contribution['nodes'][0]['display_name'] = '';
+                if ($mode === 'per_file_malformed_bad') {
+                    $contribution['reads'] = (object) [];
+                    if (str_contains((string) $relativePath, 'Bad')) {
+                        $contribution['nodes'][0]['display_name'] = '';
+                    }
                 }
                 notifyContribution($contribution);
             }
@@ -517,15 +540,25 @@ while (($line = fgets(STDIN)) !== false) {
  */
 function manifest(string $protocol, array $capabilities = ['partial_ast']): array
 {
-    return [
-        'id' => 'knossos.fake',
+    global $described, $mode, $scannerId;
+    if (($described['added_files_affect_all'] ?? false) === true) {
+        $capabilities[] = 'added_files_affect_all';
+    }
+    $manifest = [
+        'id' => $scannerId,
         'version' => '0.1.0',
         'protocol_version' => $protocol,
         'output_schema_version' => '1.0',
-        'languages' => ['typescript'],
-        'file_extensions' => ['ts'],
+        'languages' => $described['languages'] ?? ['typescript'],
+        'file_extensions' => $described['file_extensions'] ?? ['ts'],
         'capabilities' => $capabilities,
     ];
+    // Valid, but the manifest of another worker than the one launched.
+    if ($mode === 'foreign_manifest') {
+        $manifest['id'] = 'knossos.foreign';
+    }
+
+    return $manifest;
 }
 
 /** @return array<string, mixed> */

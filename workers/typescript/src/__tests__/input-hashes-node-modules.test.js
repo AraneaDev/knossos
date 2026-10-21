@@ -8,6 +8,7 @@ import { fileURLToPath, URL } from "node:url";
 import ts from "typescript";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // Declarations under node_modules decide the facts of every file importing a
 // package, so their reads are reported like any other. Discovery never hashes
@@ -44,7 +45,10 @@ afterEach(() => {
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 function scan(scanner, root, files, limits) {
-    return scanner.scan({ root, files, limits }, () => {});
+    return scanner.scan(
+        { root, files, limits: { ...SCAN_LIMITS, ...limits } },
+        () => {},
+    );
 }
 
 /**
@@ -263,7 +267,7 @@ describe("input_hashes: the default library, file links and FIFOs", () => {
         const script = `
             const { TypeScriptScanner } = await import(${JSON.stringify(scanner)});
             const hashes = new TypeScriptScanner().scan(
-                { root: ${JSON.stringify(root)}, files: ["src/a.ts", "src/b.ts"] },
+                { limits: ${JSON.stringify(SCAN_LIMITS)}, root: ${JSON.stringify(root)}, files: ["src/a.ts", "src/b.ts"] },
                 () => {},
             ).input_hashes;
             process.stdout.write(JSON.stringify(hashes));
@@ -326,8 +330,9 @@ describe("input_hashes: a dependency's own layout governs below node_modules", (
         const root = distTree();
 
         const contributions = [];
-        new TypeScriptScanner().scan({ root, files: ["src/a.ts"] }, (c) =>
-            contributions.push(c),
+        new TypeScriptScanner().scan(
+            { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
+            (c) => contributions.push(c),
         );
 
         // The quiet half of the same defect. The edge exists either way — it
@@ -370,7 +375,7 @@ describe("input_hashes: a dependency's own layout governs below node_modules", (
 
         const contributions = [];
         const hashes = new TypeScriptScanner().scan(
-            { root, files: ["bin/cli.js"] },
+            { limits: SCAN_LIMITS, root, files: ["bin/cli.js"] },
             (c) => contributions.push(c),
         ).input_hashes;
 

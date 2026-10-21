@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp;
 
+use InvalidArgumentException;
 use LogicException;
 
 /**
@@ -29,10 +30,14 @@ use LogicException;
  */
 final readonly class ToolArgumentSpec
 {
-    /** @param array<string, array<string, mixed>> $properties the tool's input schema properties, by name */
+    /**
+     * @param array<string, array<string, mixed>> $properties the tool's input schema properties, by name
+     * @param list<string> $required the arguments the schema requires
+     */
     private function __construct(
         public string $tool,
         private array $properties,
+        private array $required = [],
     ) {}
 
     /** The spec of `$tool`, read from the full catalogue (environment tools included). */
@@ -44,7 +49,11 @@ final readonly class ToolArgumentSpec
             $specs = [];
             foreach (ToolCatalog::definitions() as $definition) {
                 $properties = $definition['inputSchema']['properties'] ?? [];
-                $specs[$definition['name']] = new self($definition['name'], is_array($properties) ? array_filter($properties, 'is_array') : []);
+                $specs[$definition['name']] = new self(
+                    $definition['name'],
+                    is_array($properties) ? array_filter($properties, 'is_array') : [],
+                    array_values($definition['inputSchema']['required'] ?? []),
+                );
             }
         }
 
@@ -59,6 +68,30 @@ final readonly class ToolArgumentSpec
     public function properties(): array
     {
         return array_keys($this->properties);
+    }
+
+    /** The JSON Schema type `$key` declares, such as `integer` or `array`. */
+    public function type(string $key): ?string
+    {
+        $type = $this->property($key)['type'] ?? null;
+
+        return is_string($type) ? $type : null;
+    }
+
+    /** The type a list argument's items declare, or null for an argument that is no list. */
+    public function itemType(string $key): ?string
+    {
+        $type = $this->property($key)['items']['type'] ?? null;
+
+        return is_string($type) ? $type : null;
+    }
+
+    /** Whether the schema requires `$key`. */
+    public function isRequired(string $key): bool
+    {
+        $this->property($key);
+
+        return in_array($key, $this->required, true);
     }
 
     /**
@@ -122,6 +155,89 @@ final readonly class ToolArgumentSpec
     public function string(array $arguments, string $key): string
     {
         return array_key_exists($key, $arguments) ? ToolArguments::string($arguments, $key) : $this->stringDefault($key);
+    }
+
+    /**
+     * One argument read the way its declared schema says, which is how every
+     * bound tool reads its arguments ({@see ToolBindings}):
+     *
+     * - an integer or boolean takes its advertised default and bounds;
+     * - a string with a default takes it when absent; one with a maxLength is
+     *   counted in characters; an optional one without a default is null
+     *   when absent;
+     * - a list of strings holds at most its maxItems entries (20 when none is
+     *   declared), and a list of objects is a list or absent (null);
+     * - an object is an object, an empty one included, or absent (null).
+     *
+     * @param array<string, mixed> $arguments
+     */
+    public function read(array $arguments, string $key): mixed
+    {
+        $spec = $this->property($key);
+
+        return match ($spec['type'] ?? null) {
+            'integer' => $this->integer($arguments, $key),
+            'boolean' => $this->boolean($arguments, $key),
+            'string' => $this->text($arguments, $key, $spec),
+            'array' => ($spec['items']['type'] ?? null) === 'string'
+                ? ToolArguments::strings($arguments, $key, (int) ($spec['maxItems'] ?? 20))
+                : self::objects($arguments, $key),
+            'object' => self::object($arguments, $key),
+            default => throw new LogicException(sprintf('%s.%s declares no type an argument is read as.', $this->tool, $key)),
+        };
+    }
+
+    /**
+     * A string argument per its schema: its default when it has one, else
+     * required, or null when optional and absent; bounded by its maxLength.
+     *
+     * @param array<string, mixed> $arguments
+     * @param array<string, mixed> $spec
+     */
+    private function text(array $arguments, string $key, array $spec): ?string
+    {
+        if (array_key_exists('default', $spec)) {
+            return $this->string($arguments, $key);
+        }
+        if (!array_key_exists($key, $arguments) && !in_array($key, $this->required, true)) {
+            return null;
+        }
+
+        return isset($spec['maxLength']) ? ToolArguments::text($arguments, $key, (int) $spec['maxLength']) : ToolArguments::string($arguments, $key);
+    }
+
+    /**
+     * A list of objects, such as policies, or null when absent; the entries
+     * are left to the service's own validator.
+     *
+     * @param array<string, mixed> $arguments
+     * @return list<mixed>|null
+     */
+    private static function objects(array $arguments, string $key): ?array
+    {
+        $value = $arguments[$key] ?? null;
+        if ($value !== null && (!is_array($value) || !array_is_list($value))) {
+            throw new InvalidArgumentException(sprintf('%s must be a list.', $key));
+        }
+
+        return $value;
+    }
+
+    /**
+     * An object, such as budgets, or null when absent. An empty JSON object
+     * decodes to an empty array, so that one is accepted as an object.
+     *
+     * @param array<string, mixed> $arguments
+     * @return array<mixed>|null
+     */
+    private static function object(array $arguments, string $key): ?array
+    {
+        $value = $arguments[$key] ?? null;
+        if ($value !== null && (!is_array($value) || ($value !== [] && array_is_list($value)))) {
+            throw new InvalidArgumentException(sprintf('%s must be an object.', $key));
+        }
+
+        return $value;
     }
 
     /**

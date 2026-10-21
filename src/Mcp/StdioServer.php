@@ -53,7 +53,7 @@ final class StdioServer
         stream_set_read_buffer($input, 0);
         while (($line = $this->nextLine($input, $output)) !== false) {
             if (strlen($line) > $this->maxLineBytes || !str_ends_with($line, "\n")) {
-                $this->write($output, McpDispatcher::error(null, -32700, 'Invalid or oversized JSON-RPC frame.'));
+                $this->write($output, JsonRpc::error(null, JsonRpc::PARSE_ERROR, 'Invalid or oversized JSON-RPC frame.'));
                 continue;
             }
             // Only a frame that does not decode is a parse error with id null.
@@ -67,7 +67,7 @@ final class StdioServer
                 }
             } catch (JsonException $error) {
                 fwrite($errors, $error->getMessage() . PHP_EOL);
-                $this->write($output, McpDispatcher::error(null, -32700, 'Parse error'));
+                $this->write($output, JsonRpc::error(null, JsonRpc::PARSE_ERROR, 'Parse error'));
                 continue;
             }
             $this->answer($output, $errors, $message);
@@ -95,7 +95,7 @@ final class StdioServer
             }
         } catch (Throwable $error) {
             fwrite($errors, $error->getMessage() . PHP_EOL);
-            $this->write($output, McpDispatcher::error($id, -32603, 'Internal error'));
+            $this->write($output, JsonRpc::error($id, JsonRpc::INTERNAL_ERROR, 'Internal error'));
         }
     }
 
@@ -106,15 +106,7 @@ final class StdioServer
      */
     private function write($output, array $message): void
     {
-        // ResultEnricher::WIRE_FLAGS measures max_chars with these same flags;
-        // a test pins the two equal, so change both together.
-        $encoded = json_encode($message, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-        if (strlen($encoded) > $this->maxResponseBytes) {
-            $encoded = json_encode(
-                McpDispatcher::error($message['id'] ?? null, -32001, 'Response exceeds the configured byte limit.'),
-                JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE,
-            );
-        }
+        [$encoded] = JsonRpc::encode($message, $this->maxResponseBytes);
         fwrite($output, $encoded . "\n");
         fflush($output);
     }
@@ -222,7 +214,7 @@ final class StdioServer
     private function sendKeepalive($output): void
     {
         $this->write($output, [
-            'jsonrpc' => '2.0',
+            'jsonrpc' => JsonRpc::VERSION,
             'id' => 'knossos-keepalive-' . (++$this->keepaliveSequence),
             'method' => 'ping',
         ]);
@@ -314,7 +306,7 @@ final class StdioServer
             $message = json_decode(trim($line), true);
             if ($this->output !== null && is_array($message) && isset($message['method']) && array_key_exists('id', $message)) {
                 // As answer() does: an id that is no integer or string comes back as null.
-                $this->write($this->output, McpDispatcher::error(JsonRpcId::reply($message['id']), -32000, 'Server busy: too many requests arrived during a scan; send it again.'));
+                $this->write($this->output, JsonRpc::error(JsonRpcId::reply($message['id']), JsonRpc::SERVER_BUSY, 'Server busy: too many requests arrived during a scan; send it again.'));
             }
             return;
         }

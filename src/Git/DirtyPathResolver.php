@@ -88,7 +88,7 @@ final readonly class DirtyPathResolver
     {
         try {
             $output = $this->runner->run(
-                ['git', '--no-optional-locks', '--no-pager', '-C', $projectRoot, 'ls-tree', '-r', '-z', $head, '--', '.'],
+                [...GitCommand::in($projectRoot), 'ls-tree', '-r', '-z', $head, '--', '.'],
                 self::TIMEOUT_MS,
                 'scan head tree',
             );

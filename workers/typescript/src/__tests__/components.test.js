@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // Components are offered to the compiler as position-preserving virtual
 // TypeScript under an alias the scanner strips again, so their facts and
@@ -29,6 +30,7 @@ function scan(files, requested = Object.keys(files), configFiles, extra = {}) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
         {
+            limits: SCAN_LIMITS,
             root,
             files: requested,
             ...(configFiles ? { config_files: configFiles } : {}),
@@ -755,12 +757,19 @@ describe("declarations the virtual source appends", () => {
             (e) => e.kind === "references",
         );
 
-        expect(references).toEqual([
+        // Every site is its own fact (the core collapses them): the one
+        // Astro's appended read makes sits on the component's last line.
+        expect(
+            new Set(references.map((e) => `${e.source} ${e.target}`)),
+        ).toEqual(
+            new Set([
+                "ts:module:src/Tag.astro ts:type_alias:src/Tag.astro#Props",
+            ]),
+        );
+        expect(references).toContainEqual(
             expect.objectContaining({
-                source: "ts:module:src/Tag.astro",
-                target: "ts:type_alias:src/Tag.astro#Props",
                 evidence: { path: "src/Tag.astro", start_line: 5, end_line: 5 },
             }),
-        ]);
+        );
     });
 });

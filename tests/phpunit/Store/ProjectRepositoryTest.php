@@ -29,6 +29,19 @@ final class ProjectRepositoryTest extends KnossosTestCase
         assertSame(null, $resolver->resolvePath('/definitely/not/a/scanned/project'));
     }
 
+    /** The ancestor walk is bounded: a root 64 levels up is past it, one level less is found. */
+    #[Group('query')]
+    public function testTheAncestorWalkStopsAfterSixtyFourLevels(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
+        $resolver = new ProjectRepository($pdo);
+
+        assertSame($ids['project'], $resolver->resolvePath($root . str_repeat('/d', 63))['id'] ?? null);
+        assertSame(null, $resolver->resolvePath($root . str_repeat('/d', 64)));
+    }
+
     /**
      * A relative path that does not exist still belongs to the project the
      * caller is standing in. realpath() cannot resolve it, and the fallback
@@ -186,5 +199,26 @@ final class ProjectRepositoryTest extends KnossosTestCase
             ['id' => 'p-bare-a', 'name' => 'Bare A', 'created_at' => '2026-01-02T00:00:00Z'],
             $projects->inCreationOrder(10, '2026-01-01T00:00:00Z', $ids['project'])[0],
         );
+    }
+
+    /**
+     * A stored configuration that does not decode to an object reads as none,
+     * the same for every caller, rather than throwing for one and not another.
+     */
+    #[Group('store')]
+    public function testConfigDecodesAnObjectAndReadsAnythingElseAsNone(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $projects = new ProjectRepository($pdo);
+        $set = $pdo->prepare('UPDATE projects SET config_json = :config WHERE id = :id');
+
+        $set->execute(['config' => '{"snapshot_retention":3}', 'id' => $ids['project']]);
+        assertSame(['snapshot_retention' => 3], $projects->config($ids['project']));
+        foreach (['{not json', '"text"', '7'] as $stored) {
+            $set->execute(['config' => $stored, 'id' => $ids['project']]);
+            assertSame(null, $projects->config($ids['project']), $stored);
+        }
+        assertSame(null, $projects->config('no-such-project'));
+        assertSame(null, ProjectRepository::decodedConfig(null));
     }
 }

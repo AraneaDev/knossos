@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Query;
+namespace Knossos\Scanner\Protocol;
 
 /**
  * Whether an edge exists only in the source and is gone from the built code.
@@ -15,12 +15,13 @@ namespace Knossos\Query;
  * module replacement intact, and `dependency_cycles` then reported the split
  * as a certain cycle, asking for a considered improvement to be undone.
  *
- * The scanner records one edge per source/target pair, so several import
- * statements between the same two modules collapse into one. When they
+ * The core collapses the edges of a scan to one per kind, source, target and
+ * owner ({@see \Knossos\Reconciliation\EdgeCollapse}), so several import
+ * statements between the same two modules become one edge. When they
  * disagree it leaves `type_only_variants` behind, and a single value import
  * among them is enough to make the dependency real.
  *
- * A class of its own so that code fed rows by {@see SnapshotGraphReader},
+ * A class of its own so that code fed rows by {@see \Knossos\Query\SnapshotGraphReader},
  * as well as the query services, applies the one definition.
  */
 final readonly class ErasedTypeEdge

@@ -18,6 +18,22 @@ final class DataDirectory
     /** The environment variable naming the directory. */
     public const VARIABLE = 'KNOSSOS_DATA_DIR';
 
+    /** The graph file inside a data directory. */
+    public static function databaseIn(string $directory): string
+    {
+        return rtrim($directory, '/') . '/knossos.sqlite';
+    }
+
+    /**
+     * The graph in the conventional data directory under `$directory`, a
+     * project or home directory: `<directory>/.knossos/knossos.sqlite`,
+     * without doubling a trailing slash at the filesystem root.
+     */
+    public static function databaseUnder(string $directory): string
+    {
+        return self::databaseIn(rtrim($directory, '/') . '/.knossos');
+    }
+
     /** The named directory as an absolute path, or null when the variable is unset or empty. */
     public static function resolve(): ?string
     {

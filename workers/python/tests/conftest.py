@@ -66,9 +66,11 @@ def scan_collect(worker: ModuleType):
 
     def run(root: Path, files: list[str], limits: dict | None = None) -> list[dict]:
         emitted: list[dict] = []
-        params: dict = {"root": str(root), "files": files}
-        if limits is not None:
-            params["limits"] = limits
+        params: dict = {
+            "root": str(root),
+            "files": files,
+            "limits": limits or {"max_files": 100000, "max_file_bytes": 2000000},
+        }
         worker.scan(params, emitted.append)
         return emitted
 

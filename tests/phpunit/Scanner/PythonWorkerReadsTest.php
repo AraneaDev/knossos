@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 use Knossos\Scan\RequestReads;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -64,7 +65,7 @@ final class PythonWorkerReadsTest extends KnossosTestCase
         $client = $this->pythonWorkerClient();
         try {
             $manifest = $client->initialize();
-            $contributions = iterator_to_array($client->scan(['root' => $this->root, 'files' => $requested, 'source_files' => $sources]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => $requested, 'source_files' => $sources]), false);
             $result = $client->lastScanResult();
         } finally {
             $client->shutdown();
@@ -125,7 +126,7 @@ final class PythonWorkerReadsTest extends KnossosTestCase
         }
         $tree['pkg/__init__.py'] = $exports;
         $this->writeTree($tree);
-        $params = ['root' => $this->root, 'files' => ['app.py'], 'source_files' => ['app.py', 'pkg/__init__.py']];
+        $params = ['limits' => ScanLimits::DEFAULT, 'root' => $this->root, 'files' => ['app.py'], 'source_files' => ['app.py', 'pkg/__init__.py']];
 
         $frames = $this->runPythonWorkerProtocol([
             json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'scan', 'params' => $params], JSON_THROW_ON_ERROR),

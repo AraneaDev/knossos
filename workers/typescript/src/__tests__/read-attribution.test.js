@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 
 import { TypeScriptScanner } from "../scanner.js";
 import { ALIAS_CONFIG_NAMES } from "./support/absent-alias-configs.mjs";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -33,7 +34,7 @@ const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 function scan(root, files, params = {}) {
     const contributions = [];
     const result = new TypeScriptScanner().scan(
-        { root, files, ...params },
+        { limits: SCAN_LIMITS, root, files, ...params },
         (contribution) => contributions.push(contribution),
     );
     const byOwner = Object.fromEntries(
@@ -463,7 +464,12 @@ describe("read attribution: the other reads a file's facts depend on", () => {
         for (const file of CHAIN_FILES) {
             const batch = [];
             result = scanner.scan(
-                { root, files: [file], config_files: ["tsconfig.json"] },
+                {
+                    limits: SCAN_LIMITS,
+                    root,
+                    files: [file],
+                    config_files: ["tsconfig.json"],
+                },
                 (contribution) => batch.push(contribution),
             );
             assertConfirmedByInputHashes(result, batch);

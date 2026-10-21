@@ -6,7 +6,6 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
-use Knossos\Store\ProjectRepository;
 use Knossos\Store\SqliteBusy;
 use Knossos\Store\SqliteTransactions;
 use PDO;
@@ -238,8 +237,7 @@ final readonly class NotesService
         );
         $statement->execute(['project' => $projectId, 'check' => AnnotationService::CHECK]);
         $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
-        $truncated = count($rows) > self::MAX_ROWS;
-        $rows = array_slice($rows, 0, self::MAX_ROWS);
+        [$rows, $truncated] = Page::cut($rows, self::MAX_ROWS);
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
         // Each file's own boundary, as the fan-in map and the Branch tab label it: the most specific, never one spanning the repository.
         $paths = array_values(array_unique(array_filter(array_map(static fn(array $row): ?string => $row['path'] === null ? null : (string) $row['path'], $rows), 'is_string')));
@@ -375,18 +373,13 @@ final readonly class NotesService
      */
     private function forProject(string $path, array $envelope, Closure $answer): array
     {
-        $absolute = realpath($path) ?: $path;
-        $envelope = ['path' => $absolute, 'project_id' => null, 'snapshot_id' => null] + $envelope;
-        $project = (new ProjectRepository($this->pdo))->resolvePath($absolute);
-        if ($project === null || !is_string($project['active_scan_id']) || $project['active_scan_id'] === '') {
-            return ['status' => 'unscanned'] + $envelope;
-        }
-        $envelope = ['project_id' => (string) $project['id'], 'snapshot_id' => $project['active_scan_id']] + $envelope;
-        try {
-            return $answer((string) $project['id']) + $envelope;
-        } catch (InvalidArgumentException $refused) {
-            return ['status' => 'refused', 'reason' => $refused->getMessage()] + $envelope;
-        }
+        return PaneProject::answer($this->pdo, $path, ['project_id' => null, 'snapshot_id' => null] + $envelope, static function (array $project, array $envelope) use ($answer): array {
+            try {
+                return $answer($project['id']) + $envelope;
+            } catch (InvalidArgumentException $refused) {
+                return ['status' => 'refused', 'reason' => $refused->getMessage()] + $envelope;
+            }
+        });
     }
 
     /**

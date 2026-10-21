@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -28,7 +29,7 @@ final class PythonFrameworksTest extends KnossosTestCase
     public function testCelerySubmissionsDispatchTheTaskTheyQueue(): void
     {
         $client = $this->pythonWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/python-celery',
             'files' => ['app/__init__.py', 'app/billing.py', 'app/submissions.py'],
         ]));
@@ -44,7 +45,10 @@ final class PythonFrameworksTest extends KnossosTestCase
         assertArrayContains(['dispatches', 'py:function:app.submissions.nightly', 'py:function:app.billing.reconcile_orders'], $tuples);
         $dispatch = function (string $source, string $target) use ($edges): EdgeFact {
             $found = array_values(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'dispatches' && $edge->sourceReference === $source && $edge->targetReference === $target));
-            assertSame(1, count($found), "{$source} -> {$target}");
+            assertSame(true, $found !== [], "{$source} -> {$target}");
+            // A fact per site; the surest one decides the edge the core keeps.
+            $rank = ['possible' => 1, 'probable' => 2, 'certain' => 3];
+            usort($found, fn(EdgeFact $a, EdgeFact $b): int => $rank[$b->confidence->value] <=> $rank[$a->confidence->value]);
             return $found[0];
         };
         assertSame('certain', $dispatch('py:function:app.submissions.place', 'py:function:app.submissions.deliver')->confidence->value);
@@ -101,7 +105,7 @@ final class PythonFrameworksTest extends KnossosTestCase
     public function testTheWorkerNamesTheValidatorBehindAValidatedFieldRead(): void
     {
         $client = $this->pythonWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/python-drf',
             'files' => ['app/__init__.py', 'app/actions.py', 'app/serializers.py', 'app/views.py'],
         ]));
@@ -137,7 +141,7 @@ final class PythonFrameworksTest extends KnossosTestCase
             'app/settings.py',
         ];
         $client = $this->pythonWorkerClient();
-        $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => $files]));
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => $files]));
         $client->shutdown();
         $nodes = array_merge(...array_map(fn(ScanContribution $item): array => $item->nodes, $contributions));
         $edges = array_merge(...array_map(fn(ScanContribution $item): array => $item->edges, $contributions));

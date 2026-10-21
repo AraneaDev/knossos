@@ -35,7 +35,11 @@ def _scan(
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Scan ``files`` and return the result and each contribution by its path."""
     emitted: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"root": str(root), "files": files}
+    params: dict[str, Any] = {
+        "root": str(root),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+        "files": files,
+    }
     if source_files is not None:
         params["source_files"] = source_files
     result = worker.scan(params, emitted.append)
@@ -196,7 +200,12 @@ def test_large_shared_reads_travel_in_parts(
     """The request's shared and unattributed reads are split like ``input_hashes``."""
     root = project(PACKAGE)
     monkeypatch.setattr(worker, "INPUT_HASHES_PART_BYTES", 40)
-    params = {"root": str(root), "files": ["app.py"], "source_files": sorted(PACKAGE)}
+    params = {
+        "root": str(root),
+        "limits": {"max_files": 100000, "max_file_bytes": 2000000},
+        "files": ["app.py"],
+        "source_files": sorted(PACKAGE),
+    }
     worker.handle({"jsonrpc": "2.0", "id": 7, "method": "scan", "params": params})
     frames = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
 

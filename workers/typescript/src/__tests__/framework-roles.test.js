@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { TypeScriptScanner } from "../scanner.js";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 const created = [];
 
@@ -21,7 +22,9 @@ function fixture(files) {
 /** Every framework role the scan assigned, keyed by declaration display name. */
 function rolesByName(root, files) {
     const contributions = [];
-    new TypeScriptScanner().scan({ root, files }, (c) => contributions.push(c));
+    new TypeScriptScanner().scan({ limits: SCAN_LIMITS, root, files }, (c) =>
+        contributions.push(c),
+    );
     const roles = {};
     for (const node of contributions.flatMap((c) => c.nodes)) {
         const assigned = node.attributes?.typescript_framework_roles ?? [];

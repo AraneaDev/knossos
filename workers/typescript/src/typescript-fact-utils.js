@@ -35,7 +35,7 @@ export function addFrameworkRoute(
         node,
         {
             framework,
-            http_methods: [httpMethod],
+            methods: [httpMethod === "ALL" ? "ANY" : httpMethod],
             path,
         },
         "framework_convention",

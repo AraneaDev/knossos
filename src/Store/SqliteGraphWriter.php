@@ -16,6 +16,16 @@ use PDO;
  */
 final class SqliteGraphWriter
 {
+    private const FILE_COLUMNS = ['id', 'project_id', 'relative_path', 'content_hash', 'size', 'mtime', 'language', 'scanner_version', 'last_scan_id', 'line_count'];
+
+    private const NODE_COLUMNS = ['id', 'project_id', 'language', 'kind', 'canonical_name', 'display_name', 'parent_id', 'file_id', 'start_line', 'end_line', 'origin', 'confidence', 'attributes_json', 'owner_key', 'last_scan_id'];
+
+    private const EDGE_COLUMNS = ['id', 'project_id', 'kind', 'source_id', 'target_id', 'file_id', 'start_line', 'end_line', 'origin', 'confidence', 'attributes_json', 'owner_key', 'last_scan_id'];
+
+    private const CLASSIFICATION_COLUMNS = ['id', 'project_id', 'node_id', 'role', 'origin', 'confidence', 'rule_id', 'file_id', 'start_line', 'end_line', 'attributes_json', 'last_scan_id'];
+
+    private const BOUNDARY_COLUMNS = ['id', 'project_id', 'name', 'matcher_json', 'source', 'last_scan_id'];
+
     public function __construct(private readonly SqliteStatementCache $statements) {}
 
     /** Record one discovered file and the fingerprint that lets the next scan decide whether to re-analyse it. */
@@ -31,26 +41,16 @@ final class SqliteGraphWriter
         string $scanId,
         int $lineCount,
     ): void {
-        $statement = $this->statements->prepare(
-            'INSERT INTO files(id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) ' .
-            'VALUES (:id, :project, :path, :hash, :size, :mtime, :language, :scanner, :scan, :lines) ' .
-            'ON CONFLICT(project_id, relative_path) DO UPDATE SET content_hash = excluded.content_hash, ' .
-            'size = excluded.size, mtime = excluded.mtime, language = excluded.language, ' .
-            'scanner_version = excluded.scanner_version, last_scan_id = excluded.last_scan_id, ' .
-            'line_count = excluded.line_count',
-        );
-        $statement->execute([
+        $this->saveFiles([[
             'id' => $id,
-            'project' => $projectId,
-            'path' => $relativePath,
-            'hash' => $contentHash,
+            'relative_path' => $relativePath,
+            'content_hash' => $contentHash,
             'size' => $size,
             'mtime' => $mtime,
             'language' => $language,
-            'scanner' => $scannerVersion,
-            'scan' => $scanId,
-            'lines' => $lineCount,
-        ]);
+            'scanner_version' => $scannerVersion,
+            'line_count' => $lineCount,
+        ]], $projectId, $scanId);
     }
 
     /**
@@ -77,34 +77,21 @@ final class SqliteGraphWriter
         string $ownerKey,
         string $scanId,
     ): void {
-        $statement = $this->statements->prepare(
-            'INSERT INTO nodes(id, project_id, language, kind, canonical_name, display_name, parent_id, file_id, start_line, ' .
-            'end_line, origin, confidence, attributes_json, owner_key, last_scan_id) ' .
-            'VALUES (:id, :project, :language, :kind, :canonical, :display, :parent, :file, :start, :end, :origin, ' .
-            ':confidence, :attributes, :owner, :scan) ' .
-            'ON CONFLICT(id) DO UPDATE SET language = excluded.language, kind = excluded.kind, canonical_name = excluded.canonical_name, ' .
-            'display_name = excluded.display_name, parent_id = excluded.parent_id, file_id = excluded.file_id, ' .
-            'start_line = excluded.start_line, end_line = excluded.end_line, origin = excluded.origin, ' .
-            'confidence = excluded.confidence, attributes_json = excluded.attributes_json, ' .
-            'owner_key = excluded.owner_key, last_scan_id = excluded.last_scan_id',
-        );
-        $statement->execute([
+        $this->saveNodes([[
             'id' => $id,
-            'project' => $projectId,
             'language' => $language,
             'kind' => $kind,
-            'canonical' => $canonicalName,
-            'display' => $displayName,
-            'parent' => $parentId,
-            'file' => $fileId,
-            'start' => $startLine,
-            'end' => $endLine,
+            'canonical_name' => $canonicalName,
+            'display_name' => $displayName,
+            'parent_id' => $parentId,
+            'file_id' => $fileId,
+            'start_line' => $startLine,
+            'end_line' => $endLine,
             'origin' => $origin,
             'confidence' => $confidence,
-            'attributes' => SqliteValues::json($attributes),
-            'owner' => $ownerKey,
-            'scan' => $scanId,
-        ]);
+            'attributes' => $attributes,
+            'owner_key' => $ownerKey,
+        ]], $projectId, $scanId);
     }
 
     /**
@@ -129,52 +116,36 @@ final class SqliteGraphWriter
         string $ownerKey,
         string $scanId,
     ): void {
-        $statement = $this->statements->prepare(
-            'INSERT INTO edges(id, project_id, kind, source_id, target_id, file_id, start_line, end_line, origin, ' .
-            'confidence, attributes_json, owner_key, last_scan_id) ' .
-            'VALUES (:id, :project, :kind, :source, :target, :file, :start, :end, :origin, :confidence, ' .
-            ':attributes, :owner, :scan) ' .
-            'ON CONFLICT(id) DO UPDATE SET kind = excluded.kind, source_id = excluded.source_id, ' .
-            'target_id = excluded.target_id, file_id = excluded.file_id, start_line = excluded.start_line, ' .
-            'end_line = excluded.end_line, origin = excluded.origin, confidence = excluded.confidence, ' .
-            'attributes_json = excluded.attributes_json, owner_key = excluded.owner_key, last_scan_id = excluded.last_scan_id',
-        );
-        $statement->execute([
+        $this->saveEdges([[
             'id' => $id,
-            'project' => $projectId,
             'kind' => $kind,
-            'source' => $sourceId,
-            'target' => $targetId,
-            'file' => $fileId,
-            'start' => $startLine,
-            'end' => $endLine,
+            'source_id' => $sourceId,
+            'target_id' => $targetId,
+            'file_id' => $fileId,
+            'start_line' => $startLine,
+            'end_line' => $endLine,
             'origin' => $origin,
             'confidence' => $confidence,
-            'attributes' => SqliteValues::json($attributes),
-            'owner' => $ownerKey,
-            'scan' => $scanId,
-        ]);
+            'attributes' => $attributes,
+            'owner_key' => $ownerKey,
+        ]], $projectId, $scanId);
     }
 
     /**
      * Insert many nodes in one prepared batch, since a scan writes thousands.
      *
+     * A row may carry parent_id; the reconciler's records do not, so a scan
+     * writes every node without a parent.
+     *
      * @param list<array<string, mixed>> $nodes rows shaped as GraphReconciler node records
      */
     public function saveNodes(array $nodes, string $projectId, string $scanId): void
     {
-        foreach (array_chunk($nodes, 60) as $chunk) { // 15 params/row keeps chunks under SQLite's 999-variable floor
-            $placeholders = implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'));
-            $sql = 'INSERT INTO nodes(id, project_id, language, kind, canonical_name, display_name, parent_id, file_id, start_line, end_line, origin, confidence, attributes_json, owner_key, last_scan_id) VALUES '
-                . $placeholders
-                . ' ON CONFLICT(id) DO UPDATE SET language = excluded.language, kind = excluded.kind, canonical_name = excluded.canonical_name, display_name = excluded.display_name, parent_id = excluded.parent_id, file_id = excluded.file_id, start_line = excluded.start_line, end_line = excluded.end_line, origin = excluded.origin, confidence = excluded.confidence, attributes_json = excluded.attributes_json, owner_key = excluded.owner_key, last_scan_id = excluded.last_scan_id'
-                . ' WHERE nodes.language IS NOT excluded.language OR nodes.kind IS NOT excluded.kind OR nodes.canonical_name IS NOT excluded.canonical_name OR nodes.display_name IS NOT excluded.display_name OR nodes.parent_id IS NOT excluded.parent_id OR nodes.file_id IS NOT excluded.file_id OR nodes.start_line IS NOT excluded.start_line OR nodes.end_line IS NOT excluded.end_line OR nodes.origin IS NOT excluded.origin OR nodes.confidence IS NOT excluded.confidence OR nodes.attributes_json IS NOT excluded.attributes_json OR nodes.owner_key IS NOT excluded.owner_key';
-            $values = [];
-            foreach ($chunk as $node) {
-                array_push($values, $node['id'], $projectId, $node['language'], $node['kind'], $node['canonical_name'], $node['display_name'], null, $node['file_id'], $node['start_line'], $node['end_line'], $node['origin'], $node['confidence'], SqliteValues::json($node['attributes']), $node['owner_key'], $scanId);
-            }
-            $this->statements->prepare($sql)->execute($values);
-        }
+        $this->upsert('nodes', self::NODE_COLUMNS, ['id'], array_map(static fn(array $node): array => [
+            $node['id'], $projectId, $node['language'], $node['kind'], $node['canonical_name'], $node['display_name'],
+            $node['parent_id'] ?? null, $node['file_id'], $node['start_line'], $node['end_line'], $node['origin'],
+            $node['confidence'], SqliteValues::json($node['attributes']), $node['owner_key'], $scanId,
+        ], $nodes));
     }
 
     /**
@@ -184,18 +155,11 @@ final class SqliteGraphWriter
      */
     public function saveEdges(array $edges, string $projectId, string $scanId): void
     {
-        foreach (array_chunk($edges, 70) as $chunk) { // 13 params/row
-            $placeholders = implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?,?,?,?,?,?,?,?)'));
-            $sql = 'INSERT INTO edges(id, project_id, kind, source_id, target_id, file_id, start_line, end_line, origin, confidence, attributes_json, owner_key, last_scan_id) VALUES '
-                . $placeholders
-                . ' ON CONFLICT(id) DO UPDATE SET kind = excluded.kind, source_id = excluded.source_id, target_id = excluded.target_id, file_id = excluded.file_id, start_line = excluded.start_line, end_line = excluded.end_line, origin = excluded.origin, confidence = excluded.confidence, attributes_json = excluded.attributes_json, owner_key = excluded.owner_key, last_scan_id = excluded.last_scan_id'
-                . ' WHERE edges.kind IS NOT excluded.kind OR edges.source_id IS NOT excluded.source_id OR edges.target_id IS NOT excluded.target_id OR edges.file_id IS NOT excluded.file_id OR edges.start_line IS NOT excluded.start_line OR edges.end_line IS NOT excluded.end_line OR edges.origin IS NOT excluded.origin OR edges.confidence IS NOT excluded.confidence OR edges.attributes_json IS NOT excluded.attributes_json OR edges.owner_key IS NOT excluded.owner_key';
-            $values = [];
-            foreach ($chunk as $edge) {
-                array_push($values, $edge['id'], $projectId, $edge['kind'], $edge['source_id'], $edge['target_id'], $edge['file_id'], $edge['start_line'], $edge['end_line'], $edge['origin'], $edge['confidence'], SqliteValues::json($edge['attributes']), $edge['owner_key'], $scanId);
-            }
-            $this->statements->prepare($sql)->execute($values);
-        }
+        $this->upsert('edges', self::EDGE_COLUMNS, ['id'], array_map(static fn(array $edge): array => [
+            $edge['id'], $projectId, $edge['kind'], $edge['source_id'], $edge['target_id'], $edge['file_id'],
+            $edge['start_line'], $edge['end_line'], $edge['origin'], $edge['confidence'],
+            SqliteValues::json($edge['attributes']), $edge['owner_key'], $scanId,
+        ], $edges));
     }
 
     /**
@@ -205,18 +169,10 @@ final class SqliteGraphWriter
      */
     public function saveFiles(array $files, string $projectId, string $scanId): void
     {
-        foreach (array_chunk($files, 90) as $chunk) { // 10 params/row
-            $placeholders = implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?,?,?,?,?)'));
-            $sql = 'INSERT INTO files(id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) VALUES '
-                . $placeholders
-                . ' ON CONFLICT(project_id, relative_path) DO UPDATE SET content_hash = excluded.content_hash, size = excluded.size, mtime = excluded.mtime, language = excluded.language, scanner_version = excluded.scanner_version, last_scan_id = excluded.last_scan_id, line_count = excluded.line_count'
-                . ' WHERE files.content_hash IS NOT excluded.content_hash OR files.size IS NOT excluded.size OR files.mtime IS NOT excluded.mtime OR files.language IS NOT excluded.language OR files.scanner_version IS NOT excluded.scanner_version OR files.line_count IS NOT excluded.line_count';
-            $values = [];
-            foreach ($chunk as $file) {
-                array_push($values, $file['id'], $projectId, $file['relative_path'], $file['content_hash'], $file['size'], $file['mtime'], $file['language'], $file['scanner_version'], $scanId, $file['line_count']);
-            }
-            $this->statements->prepare($sql)->execute($values);
-        }
+        $this->upsert('files', self::FILE_COLUMNS, ['project_id', 'relative_path'], array_map(static fn(array $file): array => [
+            $file['id'], $projectId, $file['relative_path'], $file['content_hash'], $file['size'], $file['mtime'],
+            $file['language'], $file['scanner_version'], $scanId, $file['line_count'],
+        ], $files));
     }
 
     /**
@@ -226,17 +182,27 @@ final class SqliteGraphWriter
      */
     public function saveClassifications(array $classifications, string $projectId, string $scanId): void
     {
-        foreach (array_chunk($classifications, 80) as $chunk) { // 12 params/row
-            $placeholders = implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?,?,?,?,?,?,?)'));
-            $sql = 'INSERT INTO classifications(id, project_id, node_id, role, origin, confidence, rule_id, file_id, start_line, end_line, attributes_json, last_scan_id) VALUES '
-                . $placeholders
-                . ' ON CONFLICT(id) DO UPDATE SET node_id = excluded.node_id, role = excluded.role, origin = excluded.origin, confidence = excluded.confidence, rule_id = excluded.rule_id, file_id = excluded.file_id, start_line = excluded.start_line, end_line = excluded.end_line, attributes_json = excluded.attributes_json, last_scan_id = excluded.last_scan_id'
-                . ' WHERE classifications.node_id IS NOT excluded.node_id OR classifications.role IS NOT excluded.role OR classifications.origin IS NOT excluded.origin OR classifications.confidence IS NOT excluded.confidence OR classifications.rule_id IS NOT excluded.rule_id OR classifications.file_id IS NOT excluded.file_id OR classifications.start_line IS NOT excluded.start_line OR classifications.end_line IS NOT excluded.end_line OR classifications.attributes_json IS NOT excluded.attributes_json';
-            $values = [];
-            foreach ($chunk as $classification) {
-                array_push($values, $classification['id'], $projectId, $classification['node_id'], $classification['role'], $classification['origin'], $classification['confidence'], $classification['rule_id'], $classification['file_id'], $classification['start_line'], $classification['end_line'], SqliteValues::json($classification['attributes']), $scanId);
-            }
-            $this->statements->prepare($sql)->execute($values);
+        $this->upsert('classifications', self::CLASSIFICATION_COLUMNS, ['id'], array_map(static fn(array $classification): array => [
+            $classification['id'], $projectId, $classification['node_id'], $classification['role'], $classification['origin'],
+            $classification['confidence'], $classification['rule_id'], $classification['file_id'], $classification['start_line'],
+            $classification['end_line'], SqliteValues::json($classification['attributes']), $scanId,
+        ], $classifications));
+    }
+
+    /**
+     * Write rows through the guarded upsert for $table, chunked to stay under
+     * SQLite's bound-variable limit.
+     *
+     * @param list<string> $columns
+     * @param list<string> $conflict
+     * @param list<list<mixed>> $rows each in $columns order
+     */
+    private function upsert(string $table, array $columns, array $conflict, array $rows): void
+    {
+        // 60 rows of at most 15 columns stay under SQLite's historic 999-variable floor.
+        foreach (array_chunk($rows, 60) as $chunk) {
+            $this->statements->prepare(Upsert::sql($table, $columns, $conflict, count($chunk)))
+                ->execute(array_merge(...$chunk));
         }
     }
 
@@ -308,16 +274,11 @@ final class SqliteGraphWriter
         array $attributes,
         string $scanId,
     ): void {
-        $statement = $this->statements->prepare(
-            'INSERT INTO classifications(id, project_id, node_id, role, origin, confidence, rule_id, file_id, ' .
-            'start_line, end_line, attributes_json, last_scan_id) VALUES (:id, :project, :node, :role, :origin, ' .
-            ':confidence, :rule, :file, :start, :end, :attributes, :scan)',
-        );
-        $statement->execute([
-            'id' => $id, 'project' => $projectId, 'node' => $nodeId, 'role' => $role,
-            'origin' => $origin, 'confidence' => $confidence, 'rule' => $ruleId, 'file' => $fileId,
-            'start' => $startLine, 'end' => $endLine, 'attributes' => SqliteValues::json($attributes), 'scan' => $scanId,
-        ]);
+        $this->saveClassifications([[
+            'id' => $id, 'node_id' => $nodeId, 'role' => $role, 'origin' => $origin, 'confidence' => $confidence,
+            'rule_id' => $ruleId, 'file_id' => $fileId, 'start_line' => $startLine, 'end_line' => $endLine,
+            'attributes' => $attributes,
+        ]], $projectId, $scanId);
     }
 
     /**
@@ -327,25 +288,15 @@ final class SqliteGraphWriter
      */
     public function saveBoundary(string $id, string $projectId, string $name, array $matcher, string $source, string $scanId): void
     {
-        $statement = $this->statements->prepare(
-            'INSERT INTO boundaries(id, project_id, name, matcher_json, source, last_scan_id) ' .
-            'VALUES (:id, :project, :name, :matcher, :source, :scan) ' .
-            'ON CONFLICT(id) DO UPDATE SET name = excluded.name, matcher_json = excluded.matcher_json, source = excluded.source, last_scan_id = excluded.last_scan_id ' .
-            'WHERE boundaries.name IS NOT excluded.name OR boundaries.matcher_json IS NOT excluded.matcher_json OR boundaries.source IS NOT excluded.source',
-        );
-        $statement->execute([
-            'id' => $id, 'project' => $projectId, 'name' => $name, 'matcher' => SqliteValues::json($matcher),
-            'source' => $source, 'scan' => $scanId,
-        ]);
+        $this->upsert('boundaries', self::BOUNDARY_COLUMNS, ['id'], [[
+            $id, $projectId, $name, SqliteValues::json($matcher), $source, $scanId,
+        ]]);
     }
 
     /** Attach a node to a boundary. Separate from the boundary itself so membership can be recomputed alone. */
     public function saveBoundaryMembership(string $boundaryId, string $projectId, string $nodeId, string $scanId): void
     {
-        $statement = $this->statements->prepare(
-            'INSERT INTO boundary_memberships(boundary_id, project_id, node_id, last_scan_id) VALUES (:boundary, :project, :node, :scan)',
-        );
-        $statement->execute(['boundary' => $boundaryId, 'project' => $projectId, 'node' => $nodeId, 'scan' => $scanId]);
+        $this->saveBoundaryMemberships([['boundary_id' => $boundaryId, 'node_id' => $nodeId]], $projectId, $scanId);
     }
 
     /**

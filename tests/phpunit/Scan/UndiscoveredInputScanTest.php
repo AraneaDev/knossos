@@ -21,6 +21,7 @@ use Knossos\Scanner\Worker\ProcessScannerClient;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\FakeWorker;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -173,8 +174,9 @@ final class UndiscoveredInputScanTest extends KnossosTestCase
         file_put_contents($this->root . '/src/Checkout.php', "<?php\nfinal class Checkout {}\n");
         mkdir($this->installation . '/workers/php/bin', 0o777, true);
         file_put_contents($this->installation . '/workers/php/bin/worker', sprintf(
-            "<?php\n\$argv = [__FILE__, %s];\nrequire %s;\n",
+            "<?php\n\$argv = [__FILE__, %s, %s];\nrequire %s;\n",
             var_export($mode, true),
+            var_export(FakeWorker::manifestForPackaged('php'), true),
             var_export(self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php', true),
         ));
 
@@ -185,8 +187,8 @@ final class UndiscoveredInputScanTest extends KnossosTestCase
     {
         $clients = [];
         $pool = $this->createStub(LanguageWorkerPool::class);
-        $pool->method('client')->willReturnCallback(function () use (&$clients, $mode): ProcessScannerClient {
-            return $clients[] = new ProcessScannerClient([PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php', $mode], new WorkerLimits());
+        $pool->method('client')->willReturnCallback(function (LanguageDescriptor $launched) use (&$clients, $mode): ProcessScannerClient {
+            return $clients[] = new ProcessScannerClient([PHP_BINARY, FakeWorker::path(), $mode, FakeWorker::manifestFor($launched)], new WorkerLimits());
         });
         $descriptors = [new LanguageDescriptor(key: 'typescript', stage: 'typescript-analysis', languages: ['typescript'], command: ['php', '-r', 'echo 1'], scanBatchFiles: $batchFiles)];
         if ($otherLanguage) {

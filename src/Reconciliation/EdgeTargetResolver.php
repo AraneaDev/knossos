@@ -519,7 +519,27 @@ final class EdgeTargetResolver
         return $this->returnTypes[$language . ':method:' . $callee]
             ?? $this->returnTypes[$language . ':function:' . $callee]
             ?? $this->inheritedReturnType($language, $callee)
-            ?? $this->modelFactoryType($language, $callee);
+            ?? $this->modelFactoryType($language, $callee)
+            ?? $this->enumCaseType($language, $callee);
+    }
+
+    /**
+     * The enum `Enum::from()` and `Enum::tryFrom()` return a case of.
+     *
+     * PHP declares both on every backed enum itself, so no declaration in the
+     * graph gives them a return type, and a call on the case they hand back
+     * (`Kind::tryFrom($x)?->label()`) was dropped. Only a type the graph holds
+     * as an enum counts: a class may declare a `from()` of its own.
+     */
+    private function enumCaseType(string $language, string $callee): ?string
+    {
+        $separator = strrpos($callee, '::');
+        if ($language !== 'php' || $separator === false || !in_array(strtolower(substr($callee, $separator + 2)), ['from', 'tryfrom'], true)) {
+            return null;
+        }
+        $enum = 'php:enum:' . substr($callee, 0, $separator);
+
+        return isset($this->nodeMap[$enum]) ? $enum : null;
     }
 
     /**

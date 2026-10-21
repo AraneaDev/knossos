@@ -15,12 +15,12 @@ import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, 
 import { ringsBlock, ringsList } from './rings'
 import type { RingsInput } from './rings'
 import { countLabel, detailLines } from './envelopes'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
 import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
 import { absolute, placeOf } from './paths'
-import { blank, button, dimRow, inList, notListedRow, segmentsWidth, tinted } from './rows'
+import { blank, button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
 import { MARK, numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, fitStart, pathSegments, grouped, shortName, spaces, wrapWords } from './text'
@@ -335,7 +335,7 @@ export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Ro
   // Places are left-aligned: a column of file names reads down its left edge.
   if (spec.place > 0) segments.push({ text: ' ' }, opensFile(fitStart(e.place, spec.place), e.loc ?? null, { dim: true }))
   const kept = segments.filter(s => s.text !== '')
-  return e.selected === true ? { key, segments: tinted(kept, SELECTED_BG), tint: SELECTED_BG } : { key, segments: kept }
+  return tintedRow(key, kept, e.selected === true)
 }
 
 /** Two names joined by an arrow in `width`, each cut only as far as it must be. */

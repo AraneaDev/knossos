@@ -55,17 +55,11 @@ final readonly class ScannedPaths implements TrackedPathPredicate
     public static function forProject(PDO $pdo, string $projectId): self
     {
         $row = (new ProjectRepository($pdo))->find($projectId, ['config_json', 'root_realpath']);
-        $raw = is_array($row) ? ($row['config_json'] ?? null) : null;
         $root = is_array($row) && is_string($row['root_realpath'] ?? null) ? rtrim($row['root_realpath'], '/') : null;
-        $patterns = [];
-        if (is_string($raw) && $raw !== '') {
-            // A malformed config must not make a probe throw: the graph is
-            // still answerable, and discovery reports the same fault properly.
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded) && is_array($decoded['ignores'] ?? null)) {
-                $patterns = array_values(array_filter($decoded['ignores'], is_string(...)));
-            }
-        }
+        // A malformed config must not make a probe throw: the graph is still
+        // answerable, and discovery reports the same fault properly.
+        $config = ProjectRepository::decodedConfig(is_array($row) ? ($row['config_json'] ?? null) : null);
+        $patterns = is_array($config['ignores'] ?? null) ? array_values(array_filter($config['ignores'], is_string(...))) : [];
 
         // Read from the tree as it stands: a `.gitignore` edited since the scan
         // is itself drift, so the verdict is stale either way.

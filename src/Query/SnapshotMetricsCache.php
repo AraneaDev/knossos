@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use JsonException;
+use Knossos\Scanner\Protocol\ErasedTypeEdge;
 use Knossos\Store\SharedNodeKinds;
 use Knossos\Store\SnapshotPayload;
 use PDO;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Scanner\Protocol\ErasedTypeEdge;
 use Knossos\Store\SharedNodeKinds;
 
 /**

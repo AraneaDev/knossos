@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Discovery;
 
 use Knossos\Discovery\ProjectDiscoverer;
+use Knossos\Discovery\UnitKind;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -32,7 +33,7 @@ final class ManifestRootDocumentationTest extends KnossosTestCase
         }
         $kinds = array_values(array_unique($kinds));
         sort($kinds);
-        $expected = ProjectDiscoverer::MANIFEST_UNIT_KINDS;
+        $expected = array_values(array_map(static fn(UnitKind $kind): string => $kind->value, array_filter(UnitKind::cases(), static fn(UnitKind $kind): bool => $kind->isManifestRoot())));
         sort($expected);
         assertSame($expected, $kinds);
     }

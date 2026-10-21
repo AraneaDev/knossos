@@ -18,6 +18,7 @@ use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 
@@ -36,7 +37,7 @@ final class PythonScannerTest extends KnossosTestCase
         // read until the scan it names has already finished.
         assertSame(['partial_ast', 'content_hash', 'input_hashes', 'read_attribution'], $manifest->capabilities);
 
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => $this->pythonFixtureFiles(),
         ]));
@@ -85,7 +86,7 @@ final class PythonScannerTest extends KnossosTestCase
     public function testPythonWorkerMarksScriptModulesExecutable(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/python';
-        $contributions = iterator_to_array($this->pythonWorkerClient()->scan([
+        $contributions = iterator_to_array($this->pythonWorkerClient()->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['shop/cli.py', 'shop/guarded.py', 'shop/service.py', 'shop/__init__.py'],
         ]));
@@ -150,7 +151,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan([
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['app/main.py', 'app/library.py'],
             ]));
@@ -213,7 +214,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['widget.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['widget.py']]));
             $client->shutdown();
         } finally {
             @unlink($root . '/widget.py');
@@ -260,7 +261,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/registry.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/registry.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -324,7 +325,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/user.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/user.py']]));
             $client->shutdown();
         } finally {
             $this->removeTempTree($root);
@@ -334,17 +335,20 @@ final class PythonScannerTest extends KnossosTestCase
         foreach ($contributions as $contribution) {
             foreach ($contribution->edges as $edge) {
                 if ($edge->kind === 'imports' && $edge->sourceReference === 'py:module:app.user') {
-                    $imports[$edge->targetReference] = $edge->attributes;
+                    // One fact per import statement; the core collapses them.
+                    $imports[$edge->targetReference][] = ($edge->attributes['type_only'] ?? false) === true;
                 }
             }
         }
 
-        assertSame(true, $imports['py:module:app.model']['type_only'] ?? null);
-        assertSame(true, $imports['py:module:app.shape']['type_only'] ?? null);
+        assertSame([true], array_values(array_unique($imports['py:module:app.model'])));
+        assertSame([true], array_values(array_unique($imports['py:module:app.shape'])));
         // The `else` branch runs.
-        assertSame(false, array_key_exists('type_only', $imports['py:module:app.view']));
-        // Imported for real as well, so the dependency stays.
-        assertSame([false, true], $imports['py:module:app.mixed']['type_only_variants'] ?? null);
+        assertSame([false], $imports['py:module:app.view']);
+        // Imported for real as well, so the collapsed edge keeps a runtime variant.
+        $mixed = $imports['py:module:app.mixed'];
+        sort($mixed);
+        assertSame([false, true], $mixed);
     }
 
     /**
@@ -380,7 +384,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['tools.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['tools.py']]));
             $client->shutdown();
         } finally {
             @unlink($root . '/tools.py');
@@ -457,7 +461,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['io.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['io.py']]));
             $client->shutdown();
         } finally {
             @unlink($root . '/io.py');
@@ -524,7 +528,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['pkg/idx.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['pkg/idx.py']]));
             $client->shutdown();
         } finally {
             $this->removeTempTree($root);
@@ -588,7 +592,7 @@ final class PythonScannerTest extends KnossosTestCase
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/service.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/service.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -627,24 +631,92 @@ final class PythonScannerTest extends KnossosTestCase
         assertSame(['count'], $untyped);
     }
 
+    /**
+     * A call through two attributes, `self.index.layout.canonical()` or
+     * `index.layout.environment()`, names the method of the class the last
+     * link holds, when every link is typed by what its class declares: an
+     * `__init__` assigning a constructor call, or a class body annotation.
+     * Untyped, the methods reached only that way read as unreferenced. The
+     * edge is as confident as a call through one attribute.
+     */
+    #[Group('python-scanner')]
+    public function testPythonWorkerResolvesACallThroughAChainOfTypedAttributes(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-py-chain-' . bin2hex(random_bytes(6));
+        mkdir($root . '/app', 0o755, true);
+        $files = [
+            'app/__init__.py' => '',
+            'app/layout.py' => "class Layout:\n    def canonical(self):\n        return ''\n\n    def environment(self):\n        return ''\n",
+            'app/index.py' => "from app.layout import Layout\n\n\nclass Index:\n    def __init__(self):\n        self.layout = Layout()\n\n    def own(self):\n        return self.layout.canonical()\n",
+            'app/collector.py' => implode("\n", [
+                'from app.index import Index',
+                '',
+                '',
+                'class Collector:',
+                '    def __init__(self, index: Index):',
+                '        self.index = index',
+                '',
+                '    def run(self):',
+                '        return self.index.layout.canonical()',
+                '',
+                '',
+                'def scan():',
+                '    index = Index()',
+                '    return index.layout.environment()',
+                '',
+            ]),
+        ];
+        foreach ($files as $relative => $contents) {
+            file_put_contents($root . '/' . $relative, $contents);
+        }
+
+        try {
+            $client = $this->pythonWorkerClient();
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/collector.py', 'app/index.py']]));
+            $client->shutdown();
+        } finally {
+            foreach (array_reverse(array_keys($files)) as $relative) {
+                @unlink($root . '/' . $relative);
+            }
+            @rmdir($root . '/app');
+            @rmdir($root);
+        }
+
+        $calls = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'calls' && str_starts_with($edge->targetReference, 'py:method:app.layout.')) {
+                    $calls[$edge->sourceReference . ' -> ' . $edge->targetReference] = $edge->confidence->value;
+                }
+            }
+        }
+        ksort($calls);
+
+        assertSame([
+            'py:function:app.collector.scan -> py:method:app.layout.Layout::environment' => $calls['py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical'] ?? 'missing',
+            'py:method:app.collector.Collector::run -> py:method:app.layout.Layout::canonical' => $calls['py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical'] ?? 'missing',
+            'py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical' => $calls['py:method:app.index.Index::own -> py:method:app.layout.Layout::canonical'] ?? 'missing',
+        ], $calls);
+    }
+
     #[Group('python-scanner')]
     public function testPythonWorkerIsDeterministicBoundedAndPathSafe(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/python';
         $client = $this->pythonWorkerClient();
-        $request = ['root' => $root, 'files' => ['shop/service.py', 'shop/api.py']];
+        $request = ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['shop/service.py', 'shop/api.py']];
         $first = iterator_to_array($client->scan($request));
         $second = iterator_to_array($client->scan($request));
         assertSame(json_encode($first, JSON_THROW_ON_ERROR), json_encode($second, JSON_THROW_ON_ERROR));
         $error = captureThrows(
-            fn() => iterator_to_array($client->scan(['root' => $root, 'files' => ['../pyproject.toml']])),
+            fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['../pyproject.toml']])),
             WorkerException::class,
         );
         assertSame('WORKER_RPC_ERROR', $error->diagnosticCode);
         // A file over the byte cap is well-formed, so it costs only itself: the
         // request succeeds and the file arrives as a diagnostic-only contribution.
         $contributions = iterator_to_array($client->scan(
-            ['root' => $root, 'files' => ['shop/service.py'], 'limits' => ['max_file_bytes' => 1]],
+            ['root' => $root, 'files' => ['shop/service.py'], 'limits' => ['max_files' => 100_000, 'max_file_bytes' => 1]],
         ));
         assertSame(1, count($contributions));
         assertSame([], $contributions[0]->nodes);
@@ -656,8 +728,8 @@ final class PythonScannerTest extends KnossosTestCase
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/python-nested';
         $client = $this->pythonWorkerClient();
-        $first = iterator_to_array($client->scan(['root' => $root, 'files' => ['nested.py']]));
-        $second = iterator_to_array($client->scan(['root' => $root, 'files' => ['nested.py']]));
+        $first = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['nested.py']]));
+        $second = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['nested.py']]));
         $client->shutdown();
         assertSame(json_encode($first, JSON_THROW_ON_ERROR), json_encode($second, JSON_THROW_ON_ERROR));
 
@@ -720,13 +792,13 @@ final class PythonScannerTest extends KnossosTestCase
                 json_encode(['id' => 1, 'params' => (object) []], JSON_THROW_ON_ERROR),
                 json_encode(['id' => 2, 'method' => 'cancel', 'params' => (object) []], JSON_THROW_ON_ERROR),
                 json_encode(['id' => 3, 'method' => 'unknown', 'params' => (object) []], JSON_THROW_ON_ERROR),
-                json_encode(['id' => 4, 'method' => 'scan', 'params' => ['root' => '', 'files' => []]], JSON_THROW_ON_ERROR),
-                json_encode(['id' => 5, 'method' => 'scan', 'params' => ['root' => $root . '/notes.txt', 'files' => []]], JSON_THROW_ON_ERROR),
-                json_encode(['id' => 6, 'method' => 'scan', 'params' => ['root' => $root, 'files' => 'edge.py']], JSON_THROW_ON_ERROR),
-                json_encode(['id' => 7, 'method' => 'scan', 'params' => ['root' => $root, 'files' => ['bad\\path.py']]], JSON_THROW_ON_ERROR),
-                json_encode(['id' => 8, 'method' => 'scan', 'params' => ['root' => $root, 'files' => ['notes.txt']]], JSON_THROW_ON_ERROR),
+                json_encode(['id' => 4, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => '', 'files' => []]], JSON_THROW_ON_ERROR),
+                json_encode(['id' => 5, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root . '/notes.txt', 'files' => []]], JSON_THROW_ON_ERROR),
+                json_encode(['id' => 6, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => 'edge.py']], JSON_THROW_ON_ERROR),
+                json_encode(['id' => 7, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['bad\\path.py']]], JSON_THROW_ON_ERROR),
+                json_encode(['id' => 8, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['notes.txt']]], JSON_THROW_ON_ERROR),
                 json_encode(['id' => 9, 'method' => 'scan', 'params' => ['root' => $root, 'files' => ['edge.py'], 'limits' => ['max_files' => 0]]], JSON_THROW_ON_ERROR),
-                json_encode(['id' => 10, 'method' => 'scan', 'params' => ['root' => $root, 'files' => ['edge.py', 'shop/service.py']]], JSON_THROW_ON_ERROR),
+                json_encode(['id' => 10, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['edge.py', 'shop/service.py']]], JSON_THROW_ON_ERROR),
                 json_encode(['id' => 11, 'method' => 'shutdown', 'params' => (object) []], JSON_THROW_ON_ERROR),
             ];
             $responses = $this->runPythonWorkerProtocol($messages);
@@ -834,7 +906,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['mod.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['mod.py']]));
             $client->shutdown();
 
             assertSame(1, count($contributions));
@@ -953,7 +1025,7 @@ PYTHON);
         mkdir($root, 0o700, true);
         file_put_contents($root . '/toplevel.py', "from . import helper\n");
         try {
-            $contributions = iterator_to_array($this->pythonWorkerClient()->scan([
+            $contributions = iterator_to_array($this->pythonWorkerClient()->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => $root,
                 'files' => ['toplevel.py'],
             ]));
@@ -986,7 +1058,7 @@ PYTHON);
         try {
             assertSame(true, in_array('content_hash', $client->initialize()->capabilities, true));
             $byOwner = [];
-            foreach ($client->scan(['root' => $root, 'files' => array_keys($files)]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]) as $contribution) {
                 $byOwner[$contribution->ownerKey] = $contribution->contentHash;
             }
 
@@ -1024,7 +1096,7 @@ PYTHON);
         try {
             assertSame(true, in_array('input_hashes', $client->initialize()->capabilities, true));
             $edges = [];
-            foreach ($client->scan(['root' => $root, 'files' => ['pkg/a.py']]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['pkg/a.py']]) as $contribution) {
                 foreach ($contribution->edges as $edge) {
                     $edges[] = $edge->kind . ' ' . $edge->targetReference;
                 }
@@ -1064,11 +1136,11 @@ PYTHON);
         $client = $this->pythonWorkerClient();
         try {
             $byOwner = [];
-            foreach ($client->scan(['root' => $root, 'files' => array_keys($files)]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]) as $contribution) {
                 $byOwner[$contribution->ownerKey] = $contribution->contentHash;
             }
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
-            iterator_to_array($client->scan(['root' => $root, 'files' => []]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => []]));
             $empty = $client->lastScanResult();
 
             $expected = array_map(static fn(string $bytes): string => hash('sha256', $bytes), $files);
@@ -1109,10 +1181,10 @@ PYTHON);
         }
         $client = $this->pythonWorkerClient();
         try {
-            iterator_to_array($client->scan(['root' => $root . '/one', 'files' => ['pkg/b.py', 'pkg/c.py']]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root . '/one', 'files' => ['pkg/b.py', 'pkg/c.py']]));
             $ownThenIndex = $client->lastScanResult()['input_hashes'] ?? null;
             $edges = [];
-            foreach ($client->scan(['root' => $root . '/two', 'files' => ['app.py']]) as $contribution) {
+            foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root . '/two', 'files' => ['app.py']]) as $contribution) {
                 foreach ($contribution->edges as $edge) {
                     $edges[] = $edge->kind . ' ' . $edge->sourceReference . ' ' . $edge->targetReference;
                 }
@@ -1156,7 +1228,7 @@ PYTHON);
             $contributions = iterator_to_array($client->scan([
                 'root' => $root,
                 'files' => ['bin/large', 'bin/tool', 'notes.txt'],
-                'limits' => ['max_file_bytes' => 64],
+                'limits' => ['max_files' => 100_000, 'max_file_bytes' => 64],
             ]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
@@ -1197,7 +1269,7 @@ PYTHON);
         symlink($root . '/real', $root . '/linked');
         $client = $this->pythonWorkerClient();
         try {
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['app.py']]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app.py']]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
             self::assertInputHashesInclude(
@@ -1234,7 +1306,7 @@ PYTHON);
         symlink('../real', $root . '/node_modules/linked');
         $client = $this->pythonWorkerClient();
         try {
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['app.py']]));
+            iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app.py']]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
             self::assertInputHashesInclude(
@@ -1275,7 +1347,7 @@ PYTHON);
         assertSame(true, posix_mkfifo($root . '/generated/models/__init__.py', 0o600));
         $client = $this->pythonWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app.py']]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
             self::assertInputHashesInclude(
@@ -1322,7 +1394,7 @@ PYTHON);
         file_put_contents($root . '/deep.py', $bytes);
         $client = $this->pythonWorkerClient();
         try {
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['deep.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['deep.py']]));
             $contribution = $contributions[0];
             assertSame([], $contribution->nodes);
             assertSame([], $contribution->edges);
@@ -1352,7 +1424,7 @@ PYTHON);
         try {
             $client = $this->pythonWorkerClient();
             $targets = function (array $files) use ($client, $root): array {
-                foreach ($client->scan(['root' => $root, 'files' => $files]) as $contribution) {
+                foreach ($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => $files]) as $contribution) {
                     if ($contribution->ownerKey === 'knossos.python:file:user.py') {
                         return array_map(
                             fn(EdgeFact $edge): string => $edge->kind . ' ' . $edge->targetReference,
@@ -1396,7 +1468,7 @@ PYTHON);
         $client = $this->pythonWorkerClient();
         try {
             $client->initialize();
-            iterator_to_array($client->scan(['root' => $root, 'files' => ['pkg/a.py'], 'limits' => ['max_file_bytes' => 100]]));
+            iterator_to_array($client->scan(['root' => $root, 'files' => ['pkg/a.py'], 'limits' => ['max_files' => 100_000, 'max_file_bytes' => 100]]));
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
             self::assertInputHashesInclude(['pkg/a.py' => hash('sha256', $importer), 'pkg/big.py' => null], $inputHashes);
@@ -1434,7 +1506,7 @@ PYTHON);
             $contributions = iterator_to_array($client->scan([
                 'root' => $root,
                 'files' => ['app/big.py', 'app/dir.py', 'app/gone.py', 'app/notes.txt', 'app/out.py'],
-                'limits' => ['max_file_bytes' => 100],
+                'limits' => ['max_files' => 100_000, 'max_file_bytes' => 100],
             ]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
 
@@ -1505,7 +1577,7 @@ PYTHON);
         $client = $this->pythonWorkerClient();
         try {
             $manifest = $client->initialize();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]), false);
             $inputHashes = $client->lastScanResult()['input_hashes'] ?? null;
             $edges = [];
             foreach ($contributions as $contribution) {
@@ -1598,7 +1670,7 @@ PYTHON);
         // re-exports what its submodules declare, and a caller reaches it
         // through the package.
         $root = self::repositoryRoot() . '/tests/Fixtures/python-reexport';
-        $contributions = iterator_to_array($this->pythonWorkerClient()->scan([
+        $contributions = iterator_to_array($this->pythonWorkerClient()->scan(['limits' => ScanLimits::DEFAULT,
             'root' => $root,
             'files' => ['app/__init__.py', 'app/config/__init__.py', 'app/config/limits.py', 'app/config/paths.py', 'app/service.py'],
         ]), false);
@@ -1708,7 +1780,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/service.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/service.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -1781,7 +1853,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/mounts.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/mounts.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -1847,7 +1919,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/api.py', 'app/canvas.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/api.py', 'app/canvas.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -1902,7 +1974,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/service.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/service.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -1970,7 +2042,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/handlers.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/handlers.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2032,7 +2104,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/service.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/service.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2081,7 +2153,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/migrations/029_seed.py', 'app/migrations/helpers.py']]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/migrations/029_seed.py', 'app/migrations/helpers.py']]), false);
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2164,7 +2236,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/visitors.py']]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/visitors.py']]), false);
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2240,7 +2312,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/visitors.py']]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/visitors.py']]), false);
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2322,7 +2394,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]), false);
             $client->shutdown();
         } finally {
             foreach (array_keys($files) as $relative) {
@@ -2400,7 +2472,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => array_keys($files)]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => array_keys($files)]), false);
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2445,7 +2517,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/router.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/router.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2507,7 +2579,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/service.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/service.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2600,7 +2672,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/endpoints.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/endpoints.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2650,7 +2722,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/lookalike.py', 'app/main.py', 'app/routes.py', 'app/wsgi.py']]), false);
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/lookalike.py', 'app/main.py', 'app/routes.py', 'app/wsgi.py']]), false);
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2704,7 +2776,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/router.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/router.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2761,7 +2833,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/mixin.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/mixin.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {
@@ -2892,7 +2964,7 @@ PYTHON);
 
         try {
             $client = $this->pythonWorkerClient();
-            $contributions = iterator_to_array($client->scan(['root' => $root, 'files' => ['app/child.py']]));
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['app/child.py']]));
             $client->shutdown();
         } finally {
             foreach (array_reverse(array_keys($files)) as $relative) {

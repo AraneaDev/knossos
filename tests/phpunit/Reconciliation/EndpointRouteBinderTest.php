@@ -16,8 +16,8 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/orders/new']),
-            self::route('new', ['methods' => ['GET'], 'uri' => '/orders/new']),
-            self::route('show', ['methods' => ['GET'], 'uri' => '/orders/{id}']),
+            self::route('new', ['methods' => ['GET'], 'path' => '/orders/new']),
+            self::route('show', ['methods' => ['GET'], 'path' => '/orders/{id}']),
         ]);
 
         self::assertEdge($binding, 'new', 'certain', 'exact');
@@ -29,7 +29,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/orders/42']),
-            self::route('show', ['methods' => ['GET'], 'uri' => '/orders/{id}']),
+            self::route('show', ['methods' => ['GET'], 'path' => '/orders/{id}']),
         ]);
 
         self::assertEdge($binding, 'show', 'probable', 'parameter');
@@ -51,7 +51,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/anything']),
-            self::route('slug', ['methods' => ['GET'], 'uri' => '/{slug}']),
+            self::route('slug', ['methods' => ['GET'], 'path' => '/{slug}']),
         ]);
 
         // The all-parameter route still fits by parameter, so it is the only way an
@@ -60,7 +60,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
 
         $longer = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/anything/deeper']),
-            self::route('slug', ['methods' => ['GET'], 'uri' => '/{slug}']),
+            self::route('slug', ['methods' => ['GET'], 'path' => '/{slug}']),
         ]);
         assertSame([], $longer->edges);
         assertSame('ENDPOINT_ROUTE_UNMATCHED', $longer->warnings[0]['code']);
@@ -73,8 +73,8 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/orders/{}']),
-            self::route('a', ['methods' => ['GET'], 'uri' => '/orders/{id}']),
-            self::route('b', ['methods' => ['GET'], 'uri' => '/orders/{order}']),
+            self::route('a', ['methods' => ['GET'], 'path' => '/orders/{id}']),
+            self::route('b', ['methods' => ['GET'], 'path' => '/orders/{order}']),
         ]);
 
         assertSame([], $binding->edges);
@@ -90,13 +90,13 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $head = self::bind([
             self::endpoint('e', ['method' => 'HEAD', 'template' => '/health']),
-            self::route('health', ['methods' => ['GET'], 'uri' => '/health']),
+            self::route('health', ['methods' => ['GET'], 'path' => '/health']),
         ]);
         self::assertEdge($head, 'health', 'certain', 'exact');
 
         $post = self::bind([
             self::endpoint('e', ['method' => 'POST', 'template' => '/health']),
-            self::route('health', ['methods' => ['GET'], 'uri' => '/health']),
+            self::route('health', ['methods' => ['GET'], 'path' => '/health']),
         ]);
         assertSame([], $post->edges);
         assertSame('ENDPOINT_ROUTE_UNMATCHED', $post->warnings[0]['code']);
@@ -124,7 +124,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/api/orders']),
-            self::route('orders', ['framework' => 'laravel', 'methods' => ['GET'], 'uri' => 'orders'], 'routes/api.php'),
+            self::route('orders', ['framework' => 'laravel', 'methods' => ['GET'], 'path' => 'orders'], 'routes/api.php'),
         ]);
 
         self::assertEdge($binding, 'orders', 'probable', 'exact');
@@ -135,7 +135,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $nodes = [
             self::endpoint('e', ['route_name' => 'orders.show', 'framework' => 'laravel']),
-            self::route('show', ['framework' => 'laravel', 'name' => 'orders.show', 'methods' => ['GET'], 'uri' => 'orders/{id}']),
+            self::route('show', ['framework' => 'laravel', 'name' => 'orders.show', 'methods' => ['GET'], 'path' => 'orders/{id}']),
         ];
         self::assertEdge(self::bind($nodes), 'show', 'certain', 'name');
 
@@ -152,8 +152,8 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['route_name' => 'orders.show', 'framework' => 'laravel']),
-            self::route('a', ['framework' => 'laravel', 'name' => 'orders.show', 'uri' => 'a']),
-            self::route('b', ['framework' => 'laravel', 'name' => 'orders.show', 'uri' => 'b']),
+            self::route('a', ['framework' => 'laravel', 'name' => 'orders.show', 'path' => 'a']),
+            self::route('b', ['framework' => 'laravel', 'name' => 'orders.show', 'path' => 'b']),
         ]);
 
         assertSame([], $binding->edges);
@@ -165,7 +165,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/nothing', 'external' => true]),
-            self::route('show', ['methods' => ['GET'], 'uri' => '/orders']),
+            self::route('show', ['methods' => ['GET'], 'path' => '/orders']),
         ]);
 
         assertSame([], $binding->edges);
@@ -186,7 +186,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/orders/42', 'prefix' => 'unknown']),
-            self::route('show', ['methods' => ['GET'], 'uri' => '/orders/{id}']),
+            self::route('show', ['methods' => ['GET'], 'path' => '/orders/{id}']),
         ]);
 
         self::assertEdge($binding, 'show', 'possible', 'suffix');
@@ -197,7 +197,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/orders']),
-            self::route('list', ['methods' => ['GET'], 'uri' => '/orders']),
+            self::route('list', ['methods' => ['GET'], 'path' => '/orders']),
         ]);
 
         $edge = array_values($binding->edges)[0];
@@ -215,8 +215,8 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'GET', 'template' => '/orders/42']),
-            self::route('wild', ['methods' => ['GET'], 'uri' => '/{a}/{b}']),
-            self::route('show', ['methods' => ['GET'], 'uri' => '/orders/{id}']),
+            self::route('wild', ['methods' => ['GET'], 'path' => '/{a}/{b}']),
+            self::route('show', ['methods' => ['GET'], 'path' => '/orders/{id}']),
         ]);
 
         self::assertEdge($binding, 'show', 'probable', 'parameter');
@@ -259,7 +259,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['route_name' => 'orders.show']),
-            self::route('show', ['name' => 'orders.show', 'methods' => ['GET'], 'uri' => '/orders/{id}']),
+            self::route('show', ['name' => 'orders.show', 'methods' => ['GET'], 'path' => '/orders/{id}']),
         ]);
 
         assertSame([], $binding->edges);
@@ -271,7 +271,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $binding = self::bind([
             self::endpoint('e', ['method' => 'ANY', 'template' => '/jobs']),
-            self::route('create', ['methods' => ['POST'], 'uri' => '/jobs']),
+            self::route('create', ['methods' => ['POST'], 'path' => '/jobs']),
         ]);
 
         self::assertEdge($binding, 'create', 'certain', 'exact');
@@ -282,7 +282,7 @@ final class EndpointRouteBinderTest extends KnossosTestCase
     {
         $records = [];
         for ($i = 0; $i < 2000; ++$i) {
-            $records[] = self::route('route-' . $i, ['methods' => ['GET', 'POST'], 'uri' => sprintf('/area%d/items/{id}', $i)]);
+            $records[] = self::route('route-' . $i, ['methods' => ['GET', 'POST'], 'path' => sprintf('/area%d/items/{id}', $i)]);
             $records[] = self::endpoint('endpoint-' . $i, ['method' => 'POST', 'template' => sprintf('/area%d/items/%d', $i, $i)]);
         }
         $records[] = self::endpoint('lost', ['method' => 'GET', 'template' => '/area0/other/1']);

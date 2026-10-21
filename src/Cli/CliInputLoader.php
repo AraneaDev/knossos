@@ -50,11 +50,15 @@ final class CliInputLoader
             throw new InvalidArgumentException('JSON object file is unreadable or exceeds 1000000 bytes: ' . $path);
         }
         $json = file_get_contents($path);
-        $decoded = is_string($json) ? json_decode($json, true, 64, JSON_THROW_ON_ERROR) : null;
-        if (!is_array($decoded) || array_is_list($decoded)) {
+        // Decoded as objects first, so `{}` is told from `[]`: both decode to
+        // [] as an array, and an empty object is an object, the same "no
+        // budgets" the MCP tools accept.
+        $object = is_string($json) ? json_decode($json, false, 64, JSON_THROW_ON_ERROR) : null;
+        if (!$object instanceof \stdClass) {
             throw new InvalidArgumentException('JSON file must contain an object.');
         }
-        return $decoded;
+        /** @var array<string, mixed> */
+        return json_decode((string) $json, true, 64, JSON_THROW_ON_ERROR);
     }
     /** Load a graph bundle, enforcing the size cap before decoding. */
 

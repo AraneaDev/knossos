@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { TypeScriptScanner } from "../scanner.js";
 import { withoutAbsentAliasConfigs } from "./support/absent-alias-configs.mjs";
 import { absentRequireCandidates } from "./support/require-candidates.mjs";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // Every layout here is reached through `/// <reference path>`, which hands the
 // host the linked name as written: TypeScript neither probes it with
@@ -67,8 +68,14 @@ function scan(root, { onRead, maxFileBytes } = {}) {
     const limits =
         maxFileBytes === undefined ? {} : { max_file_bytes: maxFileBytes };
     return withoutAbsentAliasConfigs(
-        scanner.scan({ root, files: ["src/a.ts"], limits }, () => {})
-            .input_hashes,
+        scanner.scan(
+            {
+                root,
+                files: ["src/a.ts"],
+                limits: { ...SCAN_LIMITS, ...limits },
+            },
+            () => {},
+        ).input_hashes,
     );
 }
 
@@ -199,7 +206,10 @@ describe("input_hashes: a directory changed under the read", () => {
             },
         });
         return withoutAbsentAliasConfigs(
-            scanner.scan({ root, files: ["src/a.ts"] }, () => {}).input_hashes,
+            scanner.scan(
+                { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
+                () => {},
+            ).input_hashes,
         );
     }
 
@@ -441,7 +451,7 @@ describe("host.readFile: the byte cap on files it reads (package.json and simila
                 {
                     root,
                     files: ["src/a.ts"],
-                    limits: { max_file_bytes: 200 },
+                    limits: { ...SCAN_LIMITS, max_file_bytes: 200 },
                 },
                 () => {},
             );
@@ -482,8 +492,10 @@ describe("input_hashes: a file replaced by a directory", () => {
             });
 
             const hashes = withoutAbsentAliasConfigs(
-                scanner.scan({ root, files: ["src/a.ts"] }, () => {})
-                    .input_hashes,
+                scanner.scan(
+                    { limits: SCAN_LIMITS, root, files: ["src/a.ts"] },
+                    () => {},
+                ).input_hashes,
             );
 
             expect(hashes).toEqual({

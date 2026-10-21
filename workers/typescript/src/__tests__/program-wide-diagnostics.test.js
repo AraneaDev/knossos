@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { SCAN_LIMITS } from "./support/scan-limits.mjs";
 
 // TypeScript's exports are non-configurable getters, so vi.spyOn cannot replace
 // createProgram; the module is wrapped instead, with a hook each test sets.
@@ -45,8 +46,9 @@ afterEach(() => {
 
 function scan(scanner, root, files, configFiles) {
     const contributions = [];
-    scanner.scan({ root, files, config_files: configFiles }, (contribution) =>
-        contributions.push(contribution),
+    scanner.scan(
+        { limits: SCAN_LIMITS, root, files, config_files: configFiles },
+        (contribution) => contributions.push(contribution),
     );
     return Object.fromEntries(
         contributions.map((contribution) => [

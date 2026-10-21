@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitCommand;
 use Knossos\Git\{GitProcessRunner, GitProcessRunnerInterface};
 use PDO;
 use Throwable;
@@ -95,7 +96,7 @@ final readonly class FileContextService
     public function commits(string $root, string $relative): array
     {
         try {
-            $out = $this->git->run(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '-C', $root, 'log', '-n', (string) self::COMMITS, '--format=%h%x1f%ct%x1f%s', '--', $relative], self::GIT_TIMEOUT_MS, 'file context');
+            $out = $this->git->run([...GitCommand::in($root), 'log', '-n', (string) self::COMMITS, '--format=%h%x1f%ct%x1f%s', '--', $relative], self::GIT_TIMEOUT_MS, 'file context');
         } catch (Throwable) {
             return [];
         }

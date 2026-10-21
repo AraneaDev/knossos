@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\ScanLimits;
 use Knossos\Tests\Phpunit\Support\WorkerClients;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -30,7 +31,7 @@ final class UnscannableFileTest extends KnossosTestCase
     public function testThePhpWorkerReportsAMissingFileAndStillScansTheRest(): void
     {
         $client = $this->phpWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
             'files' => ['src/Architecture.php', 'src/Missing.php'],
         ]));
@@ -45,7 +46,7 @@ final class UnscannableFileTest extends KnossosTestCase
     {
         $client = $this->phpWorkerClient();
         $error = captureThrows(
-            fn() => iterator_to_array($client->scan([
+            fn() => iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/php-scanner',
                 'files' => [1],
             ])),
@@ -60,7 +61,7 @@ final class UnscannableFileTest extends KnossosTestCase
     public function testTheTypescriptWorkerReportsAMissingFileAndStillScansTheRest(): void
     {
         $client = $this->typescriptWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/mixed',
             'files' => ['frontend/src/index.ts', 'frontend/src/missing.ts'],
         ]));
@@ -74,7 +75,7 @@ final class UnscannableFileTest extends KnossosTestCase
     public function testThePythonWorkerReportsAMissingFileAndStillScansTheRest(): void
     {
         $client = $this->pythonWorkerClient();
-        $contributions = iterator_to_array($client->scan([
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
             'root' => self::repositoryRoot() . '/tests/Fixtures/python',
             'files' => ['shop/service.py', 'shop/missing.py'],
         ]));
