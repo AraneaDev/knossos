@@ -107,7 +107,8 @@ final readonly class LedgeredScanner implements ProjectScanner
 
     /**
      * The violations each file about to change holds now, by path; null when
-     * the project declares no policies, the tree cannot be read, or more than
+     * the project declares no policies (or its `knossos.json` cannot be read,
+     * which the brief reports itself), the tree cannot be read, or more than
      * {@see self::MAX_CHECKED} files are about to change.
      *
      * @param array<string, string> $graph the hashes the graph holds
@@ -115,7 +116,7 @@ final readonly class LedgeredScanner implements ProjectScanner
      */
     private function baselines(string $projectId, string $root, array $graph): ?array
     {
-        $policies = FileViolationQuery::policies($root, $this->policies);
+        $policies = FileViolationQuery::policies($root, $this->policies)['policies'];
         if ($policies === []) {
             return null;
         }

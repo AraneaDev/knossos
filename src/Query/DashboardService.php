@@ -176,7 +176,8 @@ final readonly class DashboardService
             'fan_in_truncated' => count($fanIn) > $this->fanInCap,
             'summary' => $findings->summary($id),
             'boundaries' => $labels->listed(self::BOUNDARIES),
-            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null), min($boundaryAxes, BoundaryMatrix::AXES)),
+            // A `knossos.json` that cannot be read marks no cell forbidden; `policy` below carries the loader's message.
+            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null)['policies'], min($boundaryAxes, BoundaryMatrix::AXES)),
             'diagnostics' => $findings->diagnostics($id),
             'complexity_hotspots' => $findings->complexityHotspots($id),
             'over_budget' => $findings->overBudget($id, $root),

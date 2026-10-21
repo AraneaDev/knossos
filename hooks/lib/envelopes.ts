@@ -5,6 +5,9 @@ import { printableDeep } from './printable'
 // here so the rest of the mod keeps importing them from this module.
 export type { AllowRoot, BoundaryRef, ComponentDetail, Dashboard, FanIn, FileDetail, Listed, Related, Rescan, SessionLedger, TurnBrief, Violation }
 
+// Each status set below is a contract with the core: `src/Result/PaneStatus.php` lists the same
+// sets under the same names, and a test keeps the two in step. A status the set lacks makes
+// `parse` answer null, and the pane drops the envelope.
 // `no-binary` is the wrapper's own answer when there is nothing to run; every envelope may be it.
 const BRIEF = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'error', 'no-binary'])
 const DASH = new Set(['ok', 'unscanned', 'error', 'no-binary'])
@@ -23,6 +26,8 @@ const LEDGER = new Set([...DASH, 'no-git'])
 const LEDGER_ARRAYS = ['tests']
 const LEDGER_OBJECTS = ['files']
 const RESCAN = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'error', 'no-binary'])
+// `session-head`: a commit, or no git to read one from.
+const HEAD = new Set(['ok', 'no-git'])
 
 const isObject = (v: unknown): boolean => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -174,7 +179,7 @@ export function parseSessionDiff(stdout: string): SessionDiff | null {
  * `no-binary` is left to the caller.
  */
 export function parseSessionRev(stdout: string): SessionRev | null {
-  const parsed = parse(stdout, new Set(['ok', 'no-git']), [], []) as { status: string; rev?: unknown } | null
+  const parsed = parse(stdout, HEAD, [], []) as { status: string; rev?: unknown } | null
   if (parsed?.status === 'no-git') return { status: 'no-git' }
   return parsed?.status === 'ok' && typeof parsed.rev === 'string' && /^[0-9a-f]{7,64}$/.test(parsed.rev) ? { status: 'ok', rev: parsed.rev } : null
 }
@@ -185,7 +190,7 @@ export function parseSessionRev(stdout: string): SessionRev | null {
  * undefined for silence or anything unexpected (asked again later).
  */
 export function parseSessionHead(stdout: string): GitHead | undefined {
-  const parsed = parse(stdout, new Set(['ok', 'no-git']), [], []) as { status: string; rev?: unknown; branch?: unknown } | null
+  const parsed = parse(stdout, HEAD, [], []) as { status: string; rev?: unknown; branch?: unknown } | null
   if (parsed?.status === 'no-git') return null
   if (parsed?.status !== 'ok' || typeof parsed.rev !== 'string' || !/^[0-9a-f]{7,64}$/.test(parsed.rev)) return undefined
   // A branch name that carried a control character is not printed: the

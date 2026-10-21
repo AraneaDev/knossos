@@ -38,9 +38,18 @@ export type TurnBrief = {
   tests: { path: string; distance: number; js_runner?: JsRunner | null }[]
   /** Whether `tests` is cut: more reach the files than it lists, or the search ran out of time (absent from an older knossos). */
   tests_truncated?: boolean
-  /** Violations this turn introduced; `truncated` when the check hit its cap or time limit, so `total` is a bound. */
-  policy: { status: string; total: number; violations: Violation[]; truncated: boolean }
+  /**
+   * Violations this turn introduced; `truncated` when the check hit its cap or time limit, so `total` is a bound.
+   * `message` with status `config_invalid`: why the project's knossos.json could not be read (absent otherwise).
+   */
+  policy: { status: PolicyStatus; total: number; violations: Violation[]; truncated: boolean; message?: string }
 }
+/**
+ * Where a policy verdict stands: checked, not checked (no policies, or no baseline to compare with), turned off
+ * for the run, or not checked because the project's knossos.json could not be read. Kept in step with
+ * `PaneStatus::POLICY` in the core.
+ */
+export type PolicyStatus = 'evaluated' | 'not_evaluated' | 'disabled' | 'config_invalid'
 /** A component the pane lists: `name` to show, `canonical_name` to look it up by. */
 export type Listed = { name: string; canonical_name: string; kind: string }
 /**
@@ -185,7 +194,10 @@ export type Dashboard = {
    * that list stopped at its cap.
    */
   policy?: {
+    /** One of {@link PolicyStatus} from this knossos (never `disabled` here); typed open, as an older or newer knossos may send another. */
     status: string
+    /** With status `config_invalid`: why the project's knossos.json could not be read. */
+    message?: string
     total: number
     truncated: boolean
     truncation_reasons: string[]
@@ -408,7 +420,13 @@ export type BranchDiff = {
     cycles: { count: number; items: { size: number; members: BranchItem[] }[] }
     hubs: { count: number; items: { component: BranchItem; before: number; after: number }[] }
     dead_code: { count: number; items: BranchItem[] }
-    violations: { count: number; items: { policy_id: string; source: string; source_kind: string; target: string; target_kind: string }[]; truncated: boolean } | null
+    /**
+     * The new policy violations; null when the project declares no policies. `status` (absent from an older
+     * knossos, read as `evaluated`) is `config_invalid` with a `message` when the project's knossos.json could
+     * not be read, so nothing was checked. `truncated` when the check stopped at its edge or time limit, so
+     * `count` is a floor.
+     */
+    violations: { status?: 'evaluated' | 'config_invalid'; message?: string; count: number; items: { policy_id: string; source: string; source_kind: string; target: string; target_kind: string }[]; truncated: boolean } | null
   } | null
   /**
    * The files the branch touched: every one up to the cap (`truncated` past

@@ -43,21 +43,27 @@ final readonly class FileViolationQuery
     ) {}
 
     /**
-     * The policies to check: those supplied, else the project's `knossos.json`.
-     * A configuration that cannot be read declares none.
+     * The policies to check: those supplied, else the project's `knossos.json`,
+     * with `error` the loader's message when that file cannot be read.
+     *
+     * The loader answers a project without the file with an empty
+     * configuration, so a failure here is a real one: an ambiguous, unsafe or
+     * malformed file. Read as no policies, a typo in the file turned the
+     * checks off without a word; the caller reports the policies as
+     * unreadable instead, and checks none.
      *
      * @param list<array<string, mixed>>|null $policies
-     * @return list<array<string, mixed>>
+     * @return array{policies: list<array<string, mixed>>, error: string|null}
      */
     public static function policies(string $root, ?array $policies): array
     {
         if ($policies !== null) {
-            return $policies;
+            return ['policies' => $policies, 'error' => null];
         }
         try {
-            return ProjectConfigurationLoader::load($root, [$root])->policies;
-        } catch (Throwable) {
-            return [];
+            return ['policies' => ProjectConfigurationLoader::load($root, [$root])->policies, 'error' => null];
+        } catch (Throwable $error) {
+            return ['policies' => [], 'error' => $error->getMessage()];
         }
     }
 

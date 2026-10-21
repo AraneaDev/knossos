@@ -310,6 +310,7 @@ php	src/Reconciliation/ReconciliationException.php
 php	src/Reconciliation/ReconciliationResult.php
 php	src/Reconciliation/RouteTemplates.php
 php	src/Reconciliation/UrlTemplate.php
+php	src/Result/PaneStatus.php
 php	src/Result/ResultEnvelope.php
 php	src/Runtime/DoctorService.php
 php	src/Runtime/MemoryLimit.php
@@ -622,6 +623,7 @@ php	tests/phpunit/Query/BlastRadiusTestReachTest.php
 php	tests/phpunit/Query/BoundaryCouplingsServiceTest.php
 php	tests/phpunit/Query/BoundaryTest.php
 php	tests/phpunit/Query/BranchComparisonIdentityTest.php
+php	tests/phpunit/Query/BranchComparisonViolationCountTest.php
 php	tests/phpunit/Query/BranchDiffServiceTest.php
 php	tests/phpunit/Query/CandidateConfidenceSummaryTest.php
 php	tests/phpunit/Query/CandidateGraphFactsTest.php
@@ -740,6 +742,7 @@ php	tests/phpunit/Query/TestImpactTest.php
 php	tests/phpunit/Query/TestReachSearchTest.php
 php	tests/phpunit/Query/TrendRowLimitTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php
+php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
 php	tests/phpunit/Query/UntypedReceiverTest.php
 php	tests/phpunit/Query/ViteGlobImportTest.php
@@ -766,6 +769,7 @@ php	tests/phpunit/Reconciliation/RouteTemplatesTest.php
 php	tests/phpunit/Reconciliation/UrlTemplateTest.php
 php	tests/phpunit/Reconciliation/WatchTest.php
 php	tests/phpunit/ReleaseChecksTest.php
+php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php

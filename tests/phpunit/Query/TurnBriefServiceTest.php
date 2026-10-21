@@ -103,6 +103,27 @@ final class TurnBriefServiceTest extends KnossosTestCase
         }
     }
 
+    /**
+     * A brief that reuses another writer's scan reads knossos.json for its
+     * policies alone; one that cannot be read reported the policy as passed
+     * for want of rules. It is now not checked, and says why.
+     */
+    #[Group('query')]
+    public function testAnUnreadableConfigurationLeavesThePolicyUncheckedWithTheReason(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            file_put_contents($root . '/knossos.json', '{"version": 2}');
+            $brief = $this->service($pdo)->brief($root, [self::TARGET], reuseScan: true);
+            assertSame('ok', $brief['status']);
+            assertSame(['status' => 'config_invalid', 'message' => 'PROJECT_CONFIG_VERSION_UNSUPPORTED: version must be 1.', 'total' => 0, 'violations' => [], 'truncated' => false], $brief['policy']);
+            // Policies passed in are the ones checked: the file is not read.
+            assertSame('evaluated', $this->service($pdo)->brief($root, [self::TARGET], self::POLICIES, reuseScan: true)['policy']['status']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     #[Group('query')]
     public function testAnEditedFileIsReportedWithItsImpact(): void
     {

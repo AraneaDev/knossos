@@ -825,6 +825,20 @@ final class DashboardServiceTest extends KnossosTestCase
         }
     }
 
+    /** A knossos.json that cannot be read is not a project without policies: the policy says so, with the loader's reason. */
+    #[Group('query')]
+    public function testAnUnreadableConfigurationIsReportedAsSuchNotAsNoPolicies(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            file_put_contents($root . '/knossos.json', '{"version": 1,');
+            $d = (new DashboardService($pdo))->dashboard($root);
+            assertSame(['status' => 'config_invalid', 'message' => 'Invalid JSON configuration: Syntax error', 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false], $d['policy']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** Violations of the project's declared policies are counted and the first listed with their place. */
     #[Group('query')]
     public function testPolicyViolationsAreCountedAndListedWithTheirPlace(): void

@@ -97,6 +97,25 @@ describe('the Branch tab: did it break anything', () => {
     expect(hub.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:6')
     expect(plainText(hub)).toMatch(/^›/)
   })
+
+  it('never calls a policy check that stopped early clean: the count is a floor, and with none found it says the check is not done', () => {
+    const stopped = { ...none, violations: { count: 0, truncated: true, items: [] } }
+    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ comparison: stopped }) }, ROOT)
+    expect(input.verdict.state).toBe('findings')
+    const t = flat(text(answer({ comparison: stopped })))
+    expect(t).not.toContain('✓ no violations')
+    expect(t).toContain('▲ policies not fully checked')
+    expect(t).toContain('the policy check stopped at its edge or time limit')
+    const some = answer({ comparison: { ...none, violations: { count: 1, truncated: true, items: [{ policy_id: 'core-stays-out', source: 'App\\Core\\Greeter::greet', source_kind: 'method', target: 'App\\Edge\\Caller', target_kind: 'class' }] } } })
+    expect(flat(text(some))).toContain('▲ 1+ things to look at')
+  })
+
+  it('says policies knossos could not read are unreadable, and claims no violations for them', () => {
+    const unreadable = { ...none, violations: { status: 'config_invalid' as const, message: 'Invalid JSON configuration: Syntax error', count: 0, truncated: false, items: [] } }
+    const t = flat(text(answer({ comparison: unreadable })))
+    expect(t).not.toContain('no violations')
+    expect(t).toContain('policies unreadable: Invalid JSON configuration: Syntax error')
+  })
 })
 
 describe('the Branch tab: what changed', () => {

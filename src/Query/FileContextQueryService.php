@@ -41,8 +41,9 @@ final readonly class FileContextQueryService extends AbstractArchitectureQuerySe
         // here as the check resolves it, it is listed when it names the
         // boundary the file is labelled with.
         $references = $this->boundaryReferences($projectId);
+        ['policies' => $declared, 'error' => $error] = FileViolationQuery::policies($root, null);
         $policies = $boundary === null ? [] : array_values(array_filter(
-            FileViolationQuery::policies($root, null),
+            $declared,
             static fn(array $policy): bool => is_string($policy['from_boundary'] ?? null) && $references->nameOf($policy['from_boundary']) === $boundary,
         ));
 
@@ -52,7 +53,8 @@ final readonly class FileContextQueryService extends AbstractArchitectureQuerySe
             sprintf('%s%s: %d dependent file%s, %d declared rule%s.', $relative, $boundary === null ? '' : ' (' . $boundary . ')', $file['dependents']['count'], $file['dependents']['count'] === 1 ? '' : 's', count($policies), count($policies) === 1 ? '' : 's'),
             ['status' => 'ok', 'path' => $relative, 'file' => $file, 'policies' => $policies],
             [],
-            [],
+            // No rules listed because none could be read is not no rules: the warning says which.
+            $error === null ? [] : [sprintf('The project\'s knossos.json could not be read, so no declared rules are listed: %s', $error)],
             $file['tests']['more'],
         );
     }

@@ -243,7 +243,9 @@ final readonly class ProjectFindings
      * The project's boundary-policy violations against the policies its
      * `knossos.json` declares: the total and the first few, each with the
      * file and line of the offending reference. `not_evaluated` when the
-     * project declares no policy or its policies cannot be compiled.
+     * project declares no policy or its policies cannot be compiled;
+     * `config_invalid`, with the loader's `message`, when its `knossos.json`
+     * cannot be read, so a broken file never reads as no rules.
      *
      * Beside them, the rules themselves and the files they bind
      * ({@see PolicyScope}): what an agent reads before it edits such a file,
@@ -255,7 +257,10 @@ final readonly class ProjectFindings
     public function policy(string $projectId, string $root, BoundaryLabels $labels): array
     {
         $none = ['status' => 'not_evaluated', 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false];
-        $policies = FileViolationQuery::policies($root, null);
+        ['policies' => $policies, 'error' => $error] = FileViolationQuery::policies($root, null);
+        if ($error !== null) {
+            return ['status' => 'config_invalid', 'message' => $error] + $none;
+        }
         if ($policies === []) {
             return $none;
         }

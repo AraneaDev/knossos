@@ -73,6 +73,10 @@ final readonly class TurnBriefService
      * With `$reuseScan`, a brief whose reported files the graph already holds
      * as they are on disk does not scan again: another writer just did.
      *
+     * A `knossos.json` that cannot be read leaves the policy unchecked as
+     * `config_invalid`, with the loader's `message`, rather than passed for
+     * want of rules.
+     *
      * @param list<string> $extraFiles paths the caller saw edited, relative or absolute; merged into the diff
      * @param list<array<string, mixed>>|null $policies null reads knossos.json
      * @return array<string, mixed>
@@ -89,7 +93,7 @@ final readonly class TurnBriefService
         $projectId = (string) $project['id'];
         $reported = self::relative($root, $extraFiles);
         $violations = new FileViolationQuery($this->pdo, $this->policyTimeoutMs, $this->policyMaxEdges);
-        $policies = $enforcePolicies ? FileViolationQuery::policies($root, $policies) : [];
+        ['policies' => $policies, 'error' => $unreadable] = $enforcePolicies ? FileViolationQuery::policies($root, $policies) : ['policies' => [], 'error' => null];
         $ledger = new ScanLedger($this->pdo);
         $reuse = $reuseScan && self::onDisk($root, $reported, $ledger->hashes($projectId));
         // A brief that scans holds the project's write lease from before it reads the graph until its scan
@@ -145,7 +149,9 @@ final readonly class TurnBriefService
             'impact' => self::withTests((new FileFanInQuery($this->pdo))->forPaths($projectId, $live, self::TOP_DEPENDENTS), (new FileTestReach($this->pdo))->reach($projectId, $live)),
             'tests' => JsTestRunner::annotate($root, $tests['tests']),
             'tests_truncated' => $tests['truncated'],
-            'policy' => self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
+            'policy' => $unreadable !== null
+                ? ['status' => 'config_invalid', 'message' => $unreadable, 'total' => 0, 'violations' => [], 'truncated' => false]
+                : self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
         ] + $envelope;
     }
 
