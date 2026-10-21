@@ -1182,6 +1182,7 @@ js	hooks/mod/motion.spec.ts
 js	hooks/mod/motion.ts
 js	hooks/mod/navigate-actions.ts
 js	hooks/mod/notes-actions.ts
+js	hooks/mod/port-type.ts
 js	hooks/mod/port.ts
 js	hooks/mod/render.band.spec.ts
 js	hooks/mod/render.pane.spec.ts
