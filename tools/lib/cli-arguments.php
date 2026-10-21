@@ -65,7 +65,7 @@ function cliOptions(string $usage, array $valued, array $flags = [], int $usageE
 function writeJsonReport(string $path, array $report, string $what, int $mode = 0o775): void
 {
     $directory = dirname($path);
-    if (!is_dir($directory) && !mkdir($directory, $mode, true) && !is_dir($directory)) {
+    if (!is_dir($directory) && !@mkdir($directory, $mode, true) && !is_dir($directory)) {
         throw new RuntimeException(sprintf('Unable to create %s directory.', $what));
     }
     file_put_contents($path, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
