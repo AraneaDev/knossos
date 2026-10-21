@@ -306,6 +306,7 @@ php	src/Reconciliation/EdgeTargetResolver.php
 php	src/Reconciliation/EndpointRouteBinder.php
 php	src/Reconciliation/EndpointRouteBinding.php
 php	src/Reconciliation/FullScanRequest.php
+php	src/Reconciliation/GraphAssembler.php
 php	src/Reconciliation/GraphReconciler.php
 php	src/Reconciliation/Milliseconds.php
 php	src/Reconciliation/NamedFiles.php
@@ -337,6 +338,7 @@ php	src/Scan/ContributionCacheService.php
 php	src/Scan/ContributionPartition.php
 php	src/Scan/InvalidationWalk.php
 php	src/Scan/LanguageDescriptor.php
+php	src/Scan/LanguageRunAccumulator.php
 php	src/Scan/LanguageScanResult.php
 php	src/Scan/LanguageScanRunner.php
 php	src/Scan/LanguageWorkerPool.php
