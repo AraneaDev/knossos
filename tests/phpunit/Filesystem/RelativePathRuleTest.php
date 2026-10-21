@@ -47,5 +47,6 @@ final class RelativePathRuleTest extends TestCase
         assertSame('./a', RelativePathRule::withoutDotSlash('././a'));
         assertSame('../a', RelativePathRule::withoutDotSlash('../a'));
         assertSame('.a', RelativePathRule::withoutDotSlash('.a'));
+        assertSame('.github/workflows/ci.yml', RelativePathRule::withoutDotSlash('.github/workflows/ci.yml'));
     }
 }

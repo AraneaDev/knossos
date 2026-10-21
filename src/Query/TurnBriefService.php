@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Discovery\FileFingerprint;
+use Knossos\Filesystem\RelativePathRule;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Result\PaneStatus;
 use Knossos\Scan\{ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
@@ -304,10 +305,7 @@ final readonly class TurnBriefService
         return array_map(
             static function (string $p) use ($prefix): string {
                 $p = self::resolved($p);
-                // Only a literal "./" prefix goes: ltrim() with a character list would also eat the dot of ".github/".
-                return str_starts_with($p, $prefix)
-                    ? substr($p, strlen($prefix))
-                    : (str_starts_with($p, './') ? substr($p, 2) : $p);
+                return str_starts_with($p, $prefix) ? substr($p, strlen($prefix)) : RelativePathRule::withoutDotSlash($p);
             },
             $paths,
         );
