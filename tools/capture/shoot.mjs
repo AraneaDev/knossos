@@ -11,18 +11,12 @@
  * and every session are removed however the run ends. CAPTURE_TRACE=1 prints
  * each step with the frame count reached, for timing the GIF.
  */
-import { execFile } from "node:child_process";
-import { constants } from "node:fs";
 import {
     copyFile,
-    cp,
-    lstat,
     mkdir,
     mkdtemp,
     readdir,
     readFile,
-    readlink,
-    realpath,
     rm,
     writeFile,
 } from "node:fs/promises";
@@ -30,29 +24,23 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { clearInterval, setInterval } from "node:timers";
-import { promisify } from "node:util";
 import { cursor, plain, resize, send, snap, type, waitFor } from "./driver.mjs";
 import { framePage } from "./frame.mjs";
 import { buildGif } from "./gif.mjs";
 import { renderPng } from "./render.mjs";
 import {
-    copyData,
     createSession,
-    guardEnv,
     installExitHandlers,
     registerCleanup,
     runCleanups,
 } from "./session.mjs";
 import { FIXTURE, FRAME_MS, NEVER_SHOWN, SHOTS, WAIT_MS } from "./shots.mjs";
+import { REPO, resetTree, stageGraph, throwawayWorktree } from "./worktree.mjs";
 
-const run = promisify(execFile);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.resolve(HERE, "..", "..");
 const OUT = path.join(HERE, "out");
-const REAL_DATA = path.join(os.homedir(), ".knossos");
-const REAL_CONFIG = path.join(os.homedir(), ".claude");
 
 /** `--only=a,b` and `--out=dir`; every shot and docs/images/claude-code when left out. */
 export function parseArgs(argv, shots = SHOTS) {
@@ -72,272 +60,6 @@ export function parseArgs(argv, shots = SHOTS) {
         }
     }
     return { only, out };
-}
-
-const git = (dir, ...args) =>
-    run("git", ["-C", dir, ...args]).then(({ stdout }) => stdout.trim());
-
-/** The throwaway worktree's dir name: the pane header and Claude Code's `~/` path both show it. */
-export const WORKTREE_NAME = "knossos";
-
-/**
- * A detached worktree of HEAD at `<home>/<name>` (WORKTREE_NAME), so the pane's
- * header and Claude Code's `~/<name>` read the project's name, whatever this
- * checkout's dir is called. Its removal is registered before
- * it is added, so a signal or an error while git adds it still removes it.
- * Never `git config` in it: in a linked worktree that writes the shared
- * repository config.
- */
-export async function throwawayWorktree(
-    repo,
-    { home, name = WORKTREE_NAME, runGit = git, copy = cp },
-) {
-    const dir = path.join(home, name);
-    registerCleanup(async () => {
-        await runGit(repo, "worktree", "remove", "--force", dir).catch(
-            () => {},
-        );
-        await rm(dir, { recursive: true, force: true });
-        await runGit(repo, "worktree", "prune").catch(() => {});
-    });
-    await mkdir(home, { recursive: true });
-    await runGit(repo, "worktree", "add", "--detach", dir, "HEAD");
-    await copyInstalledPackages(repo, dir, runGit, copy);
-    return dir;
-}
-
-/**
- * Copies each `node_modules` the checkout has, tracked by git or not, into
- * the worktree at the same place. A scan types a call into a package from
- * that package's declarations, so without them the stills would show a graph
- * the checkout's own scan does not have. A copy, not a link: a scan reads
- * nothing outside the root it was given, and a shot's edit must never reach
- * the checkout. For the same reason a link inside the packages is copied only
- * when it is relative and lands inside the checkout, so its copy lands inside
- * the worktree; an absolute link (`npm link`) or one that climbs out is left
- * behind.
- */
-async function copyInstalledPackages(repo, dir, runGit, copy) {
-    // Every untracked path, ignored or not, with each untracked directory
-    // listed once rather than file by file.
-    const untracked = await runGit(
-        repo,
-        "ls-files",
-        "-z",
-        "--others",
-        "--directory",
-    );
-    const packages = [];
-    for (const entry of untracked.split("\0")) {
-        if (!entry.endsWith("/")) continue;
-        packages.push(...(await packageDirectories(repo, entry.slice(0, -1))));
-    }
-    const top = await realpath(repo);
-    for (const relative of packages)
-        await copy(path.join(repo, relative), path.join(dir, relative), {
-            recursive: true,
-            verbatimSymlinks: true,
-            mode: constants.COPYFILE_FICLONE,
-            filter: (source) => staysInside(source, top),
-        });
-}
-
-/** The `node_modules` directories at or under `relative`, not inside one another. */
-async function packageDirectories(repo, relative) {
-    if (path.basename(relative) === "node_modules") return [relative];
-    const entries = await readdir(path.join(repo, relative), {
-        withFileTypes: true,
-    }).catch(() => []);
-    const found = [];
-    for (const entry of entries)
-        if (entry.isDirectory() && entry.name !== ".git")
-            found.push(
-                ...(await packageDirectories(
-                    repo,
-                    path.join(relative, entry.name),
-                )),
-            );
-    return found;
-}
-
-/**
- * Anything but a link, or a link that reaches a real file or directory inside
- * `top` through relative links only. Every link on the way counts, a link in
- * the path's directories included: in the worktree each lands where it does
- * here, so one absolute hop, or one that climbs out, takes the copy outside.
- */
-async function staysInside(source, top) {
-    if (!(await lstat(source)).isSymbolicLink()) return true;
-    const directory = await realpath(path.dirname(source));
-    return reachesInside(
-        path.join(directory, path.basename(source)),
-        top,
-        MAX_LINK_HOPS,
-    );
-}
-
-const MAX_LINK_HOPS = 40;
-
-/** Walks `absolute` one component at a time from `top`, following each link. */
-async function reachesInside(absolute, top, hops) {
-    const relative = path.relative(top, absolute);
-    if (
-        relative === ".." ||
-        relative.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(relative)
-    )
-        return false;
-    const parts = relative === "" ? [] : relative.split(path.sep);
-    let current = top;
-    for (const [index, part] of parts.entries()) {
-        const next = path.join(current, part);
-        const stats = await lstat(next).catch(() => null);
-        // A dangling link reaches nothing here, but its copy could reach
-        // whatever the worktree holds at that name.
-        if (stats === null) return false;
-        if (stats.isSymbolicLink()) {
-            const target = await readlink(next);
-            if (path.isAbsolute(target) || hops === 0) return false;
-            return reachesInside(
-                path.join(
-                    path.resolve(current, target),
-                    ...parts.slice(index + 1),
-                ),
-                top,
-                hops - 1,
-            );
-        }
-        current = next;
-    }
-    return true;
-}
-
-/** The branch origin's HEAD names (`origin/main` gives `main`), or main when there is none. */
-export async function defaultBranch(dir, runGit = git) {
-    const ref = await runGit(
-        dir,
-        "symbolic-ref",
-        "--short",
-        "refs/remotes/origin/HEAD",
-    ).catch(() => "");
-    return ref.includes("/") ? ref.slice(ref.indexOf("/") + 1) : "main";
-}
-
-const knossosBin = path.join(REPO, "bin", "knossos");
-
-/**
- * A copy of the real graph in a fresh dir under `tmpRoot`, with the worktree
- * allowed and freshly scanned into it, for each session to copy in turn.
- * With `base`, the commit where HEAD left the default branch is scanned
- * first, so the Branch tab has a snapshot to compare with. After the scans
- * the notes of the checkout at `notesFrom` are copied onto the worktree's
- * project in the stage (`copyNotes`), so the Notes tab shows them.
- * `realDataDir` is only ever read: the stage is refused
- * inside it before anything is made.
- */
-export async function stageGraph(
-    worktree,
-    {
-        source = REAL_DATA,
-        realDataDir = REAL_DATA,
-        tmpRoot = os.tmpdir(),
-        base = false,
-        notesFrom = REPO,
-        copyNotes: copy = copyNotes,
-        runGit = git,
-        runScan = (args, options) => run(knossosBin, args, options),
-    } = {},
-) {
-    const guard = (dir) =>
-        guardEnv(
-            { KNOSSOS_DATA_DIR: dir, CLAUDE_CONFIG_DIR: dir },
-            { realDataDir, realConfigDir: REAL_CONFIG },
-        );
-    guard(path.join(tmpRoot, "knossos-capture-stage"));
-    const stage = await mkdtemp(path.join(tmpRoot, "knossos-capture-stage-"));
-    registerCleanup(() => rm(stage, { recursive: true, force: true }));
-    guard(stage);
-    const env = {
-        ...process.env,
-        KNOSSOS_DATA_DIR: stage,
-        KNOSSOS_ROOTS_FILE: path.join(stage, "roots.json"),
-    };
-    await copyData(source, stage);
-    const rootsFile = env.KNOSSOS_ROOTS_FILE;
-    const roots = JSON.parse(
-        await readFile(rootsFile, "utf8").catch(() => '{"roots":[]}'),
-    );
-    roots.roots = [...new Set([...(roots.roots ?? []), worktree])];
-    await writeFile(rootsFile, `${JSON.stringify(roots, null, 4)}\n`);
-    const scan = () =>
-        runScan(["scan", worktree, "--snapshot-retention=5"], {
-            env,
-            maxBuffer: 64 * 1024 * 1024,
-        });
-    if (base) {
-        const head = await runGit(worktree, "rev-parse", "HEAD");
-        const fork = await runGit(
-            worktree,
-            "merge-base",
-            "HEAD",
-            await defaultBranch(worktree, runGit),
-        );
-        await runGit(worktree, "checkout", "--quiet", "--detach", fork);
-        await scan();
-        await runGit(worktree, "checkout", "--quiet", "--detach", head);
-    }
-    await scan();
-    await copy(stage, notesFrom, worktree);
-    // Again, now the notes are in: a note on a file no worker scans makes that file a component only in a scan.
-    await scan();
-    return stage;
-}
-
-/**
- * Copies the notes of the project at `from` onto the project at `to`, in the
- * graph at `dataDir`: a project is its root path, so the worktree's starts
- * with none. A note the target already has is kept. Only ever a stage.
- */
-export async function copyNotes(dataDir, from, to) {
-    const { DatabaseSync } = await import("node:sqlite");
-    const real = (dir) => realpath(dir).catch(() => path.resolve(dir));
-    const [source, target] = await Promise.all([real(from), real(to)]);
-    const db = new DatabaseSync(path.join(dataDir, "knossos.sqlite"));
-    try {
-        const id = (root) =>
-            db
-                .prepare("SELECT id FROM projects WHERE root_realpath = ?")
-                .get(root)?.id;
-        const [fromId, toId] = [id(source), id(target)];
-        if (fromId === undefined || toId === undefined) return;
-        const columns = db
-            .prepare("PRAGMA table_info(annotations)")
-            .all()
-            .map((c) => c.name);
-        const picked = columns
-            .map((c) => (c === "project_id" ? "?" : c))
-            .join(", ");
-        db.prepare(
-            `INSERT OR IGNORE INTO annotations (${columns.join(", ")}) SELECT ${picked} FROM annotations WHERE project_id = ?`,
-        ).run(toId, fromId);
-    } finally {
-        db.close();
-    }
-}
-
-/**
- * Puts the worktree back to HEAD between shots: an earlier shot's edit, or a
- * file it left, is not the next one's. Run only after git itself says the
- * dir is the top of a worktree, and never this checkout.
- */
-async function resetTree(worktree) {
-    const top = await git(worktree, "rev-parse", "--show-toplevel");
-    if (top !== worktree || worktree === REPO)
-        throw new Error(
-            `refusing to clean ${worktree}: not the capture's worktree`,
-        );
-    await run("git", ["checkout", "--quiet", "--", "."], { cwd: worktree });
-    await run("git", ["clean", "-fdq"], { cwd: worktree });
 }
 
 const pad = (n) => String(n).padStart(5, "0");
@@ -598,6 +320,112 @@ function fixtureError(error, key) {
 }
 
 /**
+ * What each step kind does (see shots.mjs), by `step.do`. Each gets the step
+ * and the shot's context: its session, shot, worktree, recorder (`tape`),
+ * the stills taken so far, `from` (the frame count the step started at) and
+ * `runStep` for a step that runs steps of its own.
+ */
+export const STEP_HANDLERS = {
+    async type(step, { session }) {
+        if (step.delayMs) {
+            // By words for a long text, as a fast typist's bursts; by keys for a short one.
+            const parts =
+                step.words === true
+                    ? step.text.split(/(?<= )/)
+                    : [...step.text];
+            for (const part of parts) {
+                await type(session, part);
+                await sleep(step.delayMs);
+            }
+        } else {
+            await type(session, step.text);
+        }
+    },
+    async send(step, { session }) {
+        await send(session, ...step.keys);
+    },
+    async submit(step, { session, runStep }) {
+        await submit(session, step, runStep);
+    },
+    async press(step, { session }) {
+        await pressKey(
+            session,
+            Array.isArray(step.key) ? step.key : [step.key],
+            step.until,
+        );
+    },
+    async focus(step, { session }) {
+        await focusPane(session, {
+            field: step.field === true,
+            prompt: step.prompt === true,
+        });
+    },
+    async widen(step, { session }) {
+        await widen(session, step.columns);
+    },
+    async wait(step, { session, tape, from }) {
+        const re = new RegExp(step.match, "m");
+        const test =
+            step.absent === true ? (s) => !re.test(s) : (s) => re.test(s);
+        await waitFor(session, test, {
+            timeoutMs: step.timeoutMs ?? 30000,
+            step: step.step,
+        }).catch((error) => {
+            throw fixtureError(error, step.fixture);
+        });
+        tape.squeeze(from, step.lapse ?? 4);
+        await sleep(WAIT_MS);
+    },
+    async hold(step, { tape }) {
+        await tape.hold(step.ms);
+    },
+    async edit(step, { worktree }) {
+        const file = path.join(worktree, step.file);
+        await writeFile(
+            file,
+            insertBefore(
+                await readFile(file, "utf8"),
+                step.before,
+                step.text,
+                step.file,
+            ),
+        );
+    },
+    async resize(step, { session }) {
+        await resize(session, ...step.size);
+        // Until Claude Code has drawn at the new size: its prompt's rule spans the width.
+        await waitFor(
+            session,
+            (s) => new RegExp(`^─{${session.cols}}$`, "m").test(s),
+            {
+                timeoutMs: 20000,
+                step: `resize to ${step.size.join("x")}`,
+            },
+        );
+        await settle(session);
+    },
+    async roll(step, { session, tape }) {
+        // The GIF starts here, on a screen that has stopped drawing.
+        await settle(session);
+        tape.frames.splice(0);
+    },
+    async cut(step, { tape }) {
+        tape.stop();
+    },
+    async still(step, { session, shot, stills }) {
+        // With the size it was taken at: a `resize` can change it within a shot.
+        stills[step.name] = {
+            frame: checkStill(await settle(session), step.name),
+            view: {
+                cols: session.cols,
+                rows: session.rows,
+                theme: shot.theme,
+            },
+        };
+    },
+};
+
+/**
  * Runs one shot's steps in its session (see shots.mjs for what each does).
  * Returns the GIF's frames (ANSI), when the shot records, and the stills by name.
  */
@@ -606,111 +434,17 @@ export async function playShot(session, shot, { worktree, record = false }) {
     const stills = {};
     const runStep = async (step) => {
         const from = tape.mark();
-        switch (step.do) {
-            case "type":
-                if (step.delayMs) {
-                    // By words for a long text, as a fast typist's bursts; by keys for a short one.
-                    const parts =
-                        step.words === true
-                            ? step.text.split(/(?<= )/)
-                            : [...step.text];
-                    for (const part of parts) {
-                        await type(session, part);
-                        await sleep(step.delayMs);
-                    }
-                } else {
-                    await type(session, step.text);
-                }
-                break;
-            case "send":
-                await send(session, ...step.keys);
-                break;
-            case "submit":
-                await submit(session, step, runStep);
-                break;
-            case "press":
-                await pressKey(
-                    session,
-                    Array.isArray(step.key) ? step.key : [step.key],
-                    step.until,
-                );
-                break;
-            case "focus":
-                await focusPane(session, {
-                    field: step.field === true,
-                    prompt: step.prompt === true,
-                });
-                break;
-            case "widen":
-                await widen(session, step.columns);
-                break;
-            case "wait": {
-                const re = new RegExp(step.match, "m");
-                const test =
-                    step.absent === true
-                        ? (s) => !re.test(s)
-                        : (s) => re.test(s);
-                await waitFor(session, test, {
-                    timeoutMs: step.timeoutMs ?? 30000,
-                    step: step.step,
-                }).catch((error) => {
-                    throw fixtureError(error, step.fixture);
-                });
-                tape.squeeze(from, step.lapse ?? 4);
-                await sleep(WAIT_MS);
-                break;
-            }
-            case "hold":
-                await tape.hold(step.ms);
-                break;
-            case "edit": {
-                const file = path.join(worktree, step.file);
-                await writeFile(
-                    file,
-                    insertBefore(
-                        await readFile(file, "utf8"),
-                        step.before,
-                        step.text,
-                        step.file,
-                    ),
-                );
-                break;
-            }
-            case "resize":
-                await resize(session, ...step.size);
-                // Until Claude Code has drawn at the new size: its prompt's rule spans the width.
-                await waitFor(
-                    session,
-                    (s) => new RegExp(`^─{${session.cols}}$`, "m").test(s),
-                    {
-                        timeoutMs: 20000,
-                        step: `resize to ${step.size.join("x")}`,
-                    },
-                );
-                await settle(session);
-                break;
-            case "roll":
-                // The GIF starts here, on a screen that has stopped drawing.
-                await settle(session);
-                tape.frames.splice(0);
-                break;
-            case "cut":
-                tape.stop();
-                break;
-            case "still":
-                // With the size it was taken at: a `resize` can change it within a shot.
-                stills[step.name] = {
-                    frame: checkStill(await settle(session), step.name),
-                    view: {
-                        cols: session.cols,
-                        rows: session.rows,
-                        theme: shot.theme,
-                    },
-                };
-                break;
-            default:
-                throw new Error(`unknown step: ${step.do}`);
-        }
+        if (!Object.hasOwn(STEP_HANDLERS, step.do))
+            throw new Error(`unknown step: ${step.do}`);
+        await STEP_HANDLERS[step.do](step, {
+            session,
+            shot,
+            worktree,
+            tape,
+            stills,
+            from,
+            runStep,
+        });
         if (step.until !== undefined && step.do !== "press")
             await until(session, step.do, step.until);
         // A key and its checks show as their outcome, not as the time the checks took.

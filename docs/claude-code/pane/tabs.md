@@ -347,6 +347,11 @@ things to look at, then a row for each, the worst first: policy violations,
 new cycles, dependencies newly crossing from one boundary into another, hubs at
 least ten depend on that more depend on than before (`20 → 31 +11`), and new
 dead code. Past the first eight of a kind it says how many more are not listed.
+A policy check that stopped at its edge or time limit is never all clear: the
+count reads as a floor (`3+ things to look at`, or `policies not fully checked`
+when it found none) with a line saying the check stopped. When the project's
+`knossos.json` cannot be read, the verdict claims no `no violations` and says
+`policies unreadable:` with the reason.
 Every finding opens its component. The comparison is read when the tab opens
 and again for each new snapshot.
 

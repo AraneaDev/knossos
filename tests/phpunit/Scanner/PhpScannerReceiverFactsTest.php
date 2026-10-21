@@ -442,6 +442,51 @@ final class PhpScannerReceiverFactsTest extends KnossosTestCase
         assertArrayContains('stale', $scan['untyped']);
     }
 
+    /**
+     * A property read off what a call returns, and a call on what a call on a
+     * static call returns, name the path through the call, `name()`, for the
+     * reconciler to read through the declared return type. A call this file
+     * names outright stays a `method_of_return`.
+     */
+    public function testAChainThroughACallsResultNamesThePathThroughTheCall(): void
+    {
+        $scan = $this->scan(<<<'PHP'
+            <?php
+            namespace App;
+
+            final class Resources
+            {
+                public function __construct(private Queries $queries) {}
+
+                public function list(Graph $graph): void
+                {
+                    $this->queries->services()->catalog->first();
+                    Services::wire()->brief()->render();
+                    Services::wire()->brief();
+                    $catalog = $this->queries->services()->catalog;
+                    $catalog->last();
+                    $request = $graph->request;
+                    $request->paths()->encode();
+                    $untyped->services()->catalog->first();
+                    ($this->services ?? Services::wire())->gate->compare();
+                    ($untyped ?? Services::wire())->gate->fallback();
+                }
+            }
+            PHP);
+
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_property:App\Queries::services()::$catalog::first'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_property:App\Services::wire()::brief()::render'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_return:App\Services::wire::brief'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_property:App\Queries::services()::$catalog::last'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_property:App\Graph::$request::paths()::encode'], $scan['edges']);
+        // A coalescing receiver is its left operand when that has a path,
+        // else the fallback on its right.
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_property:App\Resources::$services::$gate::compare'], $scan['edges']);
+        assertArrayContains(['calls', 'php:method:App\Resources::list', 'php:method_of_property:App\Services::wire()::$gate::fallback'], $scan['edges']);
+        // A chain off a receiver nothing types names no path.
+        assertArrayContains('first', $scan['untyped']);
+    }
+
     public function testALoopOverAPropertyDocumentedAsAListTypesItsVariable(): void
     {
         $edges = $this->edges(<<<'PHP'

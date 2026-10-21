@@ -118,7 +118,11 @@ final class EndpointRouteFlowTest extends KnossosTestCase
         return $flow->data['paths'][0]['hops'];
     }
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     *
+     * @phpstan-impure
+     */
     private function resolvesFromLoad(\PDO $pdo, string $endpoint = 'GET /api/v1/items/{}'): array
     {
         $statement = $pdo->prepare(<<<'SQL'

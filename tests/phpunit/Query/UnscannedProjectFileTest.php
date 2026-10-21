@@ -24,7 +24,7 @@ final class UnscannedProjectFileTest extends KnossosTestCase
             mkdir($root . '/tools');
             file_put_contents($root . '/tools/quality', "#!/bin/sh\necho ok\n");
 
-            $result = ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($projectId, 'tools/quality', 'note', 'runs every lane', execute: true);
+            $result = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'tools/quality', 'note', 'runs every lane', execute: true);
 
             $warnings = implode(' ', $result->warnings);
             self::assertStringContainsString('tools/quality is a project file', $warnings);
@@ -47,13 +47,13 @@ final class UnscannedProjectFileTest extends KnossosTestCase
         try {
             $queries = ArchitectureQueryService::forDatabase($pdo);
 
-            $result = $queries->upsertAnnotation($projectId, 'src/A.php', 'note', 'the entry', execute: true);
+            $result = $queries->services()->annotationQueries->upsertAnnotation($projectId, 'src/A.php', 'note', 'the entry', execute: true);
 
             self::assertSame('src/A.php', $result->data['component']);
             $warnings = implode(' ', $result->warnings);
             self::assertStringNotContainsString('becomes a file component', $warnings);
             self::assertStringNotContainsString('not found', $warnings);
-            $listed = $queries->listAnnotations($projectId, 'src/A.php')->data['annotations'];
+            $listed = $queries->services()->annotationQueries->listAnnotations($projectId, 'src/A.php')->data['annotations'];
             self::assertSame(['present'], array_column($listed, 'component_status'));
         } finally {
             $this->removeTempTree($root);
@@ -66,7 +66,7 @@ final class UnscannedProjectFileTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->seedProjectWithFiles(['src/a.php']);
         try {
-            $result = ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($projectId, 'App\\Future', 'note', 'coming soon', execute: true);
+            $result = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Future', 'note', 'coming soon', execute: true);
 
             self::assertStringContainsString('dynamic or upcoming symbol', implode(' ', $result->warnings));
         } finally {

@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
+use Knossos\Result\PaneStatus;
 use Knossos\Scan\ProjectPathResolver;
 use PDO;
 use Throwable;
@@ -52,8 +53,9 @@ final readonly class BranchDiffService
     /**
      * @param PDO $pdo an existing, migrated graph database
      * @param GitProcessRunnerInterface|null $git how git is run; the hardened runner unless a test stands in
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
      */
-    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $git = null)
+    public function __construct(private PDO $pdo, ?GitProcessRunnerInterface $git = null, private ?QueryServices $services = null)
     {
         $this->git = $git ?? new GitProcessRunner();
     }
@@ -63,6 +65,9 @@ final readonly class BranchDiffService
      * `$path`. `status`: `ok`, `no-snapshot` (with or without a partial
      * comparison), `on-default` (the default branch itself is checked out),
      * `no-git`, `no-default` (no default branch to compare with), `unscanned`.
+     * The comparison's `violations` are null when the project declares no
+     * policies, and `config_invalid` with the loader's `message` when its
+     * `knossos.json` cannot be read.
      *
      * @return array<string, mixed>
      */
@@ -102,7 +107,12 @@ final readonly class BranchDiffService
         if ($base === null) {
             return ['status' => 'no-snapshot'] + $envelope;
         }
-        $comparison = ArchitectureQueryService::forDatabase($this->pdo)->branchComparison($id, $base['snapshot_id'], FileViolationQuery::policies($root, null), self::LIMIT);
+        ['policies' => $policies, 'error' => $unreadable] = FileViolationQuery::policies($root, null);
+        $comparison = ($this->services ?? QueryServices::wire($this->pdo))->gateQueries->branchComparison($id, $base['snapshot_id'], $policies, self::LIMIT);
+        if ($unreadable !== null) {
+            // Policies that could not be read were not checked: said so, never "no violations".
+            $comparison['violations'] = ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'count' => 0, 'items' => [], 'truncated' => false];
+        }
 
         return ['status' => $base['match'] === 'after' ? 'no-snapshot' : 'ok', 'comparison' => $comparison] + $envelope;
     }

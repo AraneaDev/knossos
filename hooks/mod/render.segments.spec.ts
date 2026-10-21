@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Dashboard, Inspected, KnossosView } from '../../types'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { NO_MOTION } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'

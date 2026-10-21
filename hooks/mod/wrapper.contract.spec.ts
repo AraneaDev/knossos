@@ -16,7 +16,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { NotesAsk } from '../../types'
-import { annotateArgs, searchArgs } from './actions'
+import { annotateArgs } from './annotate-actions'
+import { searchArgs } from './finder-actions'
 import { dashboardArgs, LOADERS } from './loaders'
 import type { Ask } from './loaders'
 import { argsOf } from './notes-actions'
@@ -177,6 +178,6 @@ describe('the wrappers and the engine test agree on what runs', () => {
   })
 
   it('the watcher is started with the poll interval from the options', () => {
-    expect(watchArgs(mod.watchPollMs)).toEqual(['--poll-ms=1500'])
+    expect(watchArgs(mod.watch.pollMs)).toEqual(['--poll-ms=1500'])
   })
 })

@@ -366,33 +366,41 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
 
     /**
      * The active graph's policy violations whose dependency is new: no impact
-     * edge joined the two components before. Null without policies;
-     * `truncated` when the check stopped early, so the count is a floor.
+     * edge joined the two components before. Null without policies.
+     *
+     * The base's edges are left out while the check streams, so `count` is
+     * exact however many violations the base already had; only `items` is
+     * capped. Filtering a capped page afterwards counted a new violation past
+     * the base's first 100 as none. `truncated` when the check stopped at its
+     * edge or time limit, so the count is a floor.
      *
      * @param list<array<string, mixed>> $policies
      * @param array<string, true> $edgesBefore the base graph's impact edges as identity-key pairs
      * @param array<string, string> $keysNow the active graph's identity keys by id
-     * @return array{count: int, items: list<array<string, mixed>>, truncated: bool}|null
+     * @return array{status: string, count: int, items: list<array<string, mixed>>, truncated: bool}|null
      */
     private function newViolations(string $projectId, array $policies, array $edgesBefore, array $keysNow, int $limit): ?array
     {
         if ($policies === []) {
             return null;
         }
+        $isNew = static fn(array $edge): bool => !isset($edgesBefore[($keysNow[(string) $edge['source_id']] ?? '') . "\0" . ($keysNow[(string) $edge['target_id']] ?? '')]);
         try {
-            $check = $this->policyQueries->checkArchitecture($projectId, $policies, limit: 100, timeoutMs: 5000);
+            $check = $this->policyQueries->checkArchitecture($projectId, $policies, limit: 100, timeoutMs: 5000, include: $isNew);
         } catch (InvalidArgumentException) {
             return null;
         }
-        $fresh = array_values(array_filter($check->data['violations'], static fn(array $v): bool => !isset($edgesBefore[($keysNow[$v['source']['id']] ?? '') . "\0" . ($keysNow[$v['target']['id']] ?? '')])));
+        $fresh = $check->data['violations'];
         // The check's own order follows the graph's storage; the list is the same on every read only once sorted.
         usort($fresh, static fn(array $a, array $b): int => [$a['policy_id'], $a['source']['canonical_name'], $a['target']['canonical_name']] <=> [$b['policy_id'], $b['source']['canonical_name'], $b['target']['canonical_name']]);
 
         return [
-            'count' => count($fresh),
+            'status' => 'evaluated',
+            'count' => (int) $check->data['bounds']['violation_count'],
             'items' => array_map(static fn(array $v): array => ['policy_id' => (string) $v['policy_id'], 'source' => (string) $v['source']['canonical_name'], 'source_kind' => (string) $v['source']['kind'],
                 'target' => (string) $v['target']['canonical_name'], 'target_kind' => (string) $v['target']['kind']], array_slice($fresh, 0, $limit)),
-            'truncated' => $check->truncated,
+            // A full listing is no early stop: the count goes on past it.
+            'truncated' => array_diff($check->data['bounds']['truncation_reasons'], ['result_limit']) !== [],
         ];
     }
 }

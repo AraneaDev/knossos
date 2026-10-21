@@ -39,7 +39,7 @@ final class QualityGateMemoryTest extends KnossosTestCase
         gc_collect_cycles();
         memory_reset_peak_usage();
         $before = memory_get_usage();
-        $gate = $queries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0, 'error_diagnostics' => 0], sarif: true);
+        $gate = $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0, 'error_diagnostics' => 0], sarif: true);
         $used = memory_get_peak_usage() - $before;
 
         self::assertTrue($gate->data['passed']);
@@ -60,7 +60,7 @@ final class QualityGateMemoryTest extends KnossosTestCase
         gc_collect_cycles();
         memory_reset_peak_usage();
         $before = memory_get_usage();
-        $trends = $queries->architectureTrends($ids['project'], 2);
+        $trends = $queries->services()->gateQueries->architectureTrends($ids['project'], 2);
         $used = memory_get_peak_usage() - $before;
 
         self::assertSame(60_003, $trends->data['series'][1]['counts']['relationships']);

@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\BranchDiffService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -33,7 +34,7 @@ final class BranchDiffServiceTest extends KnossosTestCase
     /** A scan that keeps its snapshot, as the watcher's do. */
     private function rescan(PDO $pdo, string $root): void
     {
-        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, snapshotRetention: 20);
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(snapshotRetention: 20));
     }
 
     /**
@@ -116,7 +117,7 @@ final class BranchDiffServiceTest extends KnossosTestCase
                 'cycles' => ['count' => 1, 'items' => [['size' => 2, 'members' => [$run, $greet]]]],
                 'hubs' => ['count' => 0, 'items' => []],
                 'dead_code' => ['count' => 1, 'items' => [['name' => 'Unused', 'canonical_name' => 'App\\Unused', 'kind' => 'class', 'path' => 'src/Core/Unused.php', 'line' => 7, 'boundary' => 'Core']]],
-                'violations' => ['count' => 2, 'items' => [$violation('App\\Caller', 'class'), $violation('App\\Caller::run', 'method')], 'truncated' => false],
+                'violations' => ['status' => 'evaluated', 'count' => 2, 'items' => [$violation('App\\Caller', 'class'), $violation('App\\Caller::run', 'method')], 'truncated' => false],
             ], $c);
         } finally {
             $this->removeTempTree($root);
@@ -319,6 +320,25 @@ final class BranchDiffServiceTest extends KnossosTestCase
             assertSame('unscanned', (new BranchDiffService($pdo))->diff(sys_get_temp_dir())['status']);
         } finally {
             $this->removeTempTree($plain);
+        }
+    }
+
+    /** A knossos.json that cannot be read leaves the policies unchecked and says why; it never reads as no violations. */
+    #[Group('query')]
+    public function testUnreadablePoliciesAreReportedAsNotCheckedWithTheLoadersMessage(): void
+    {
+        [$pdo, $root] = $this->repository();
+        try {
+            $this->branchWork($pdo, $root);
+            file_put_contents($root . '/knossos.json', '{"version": 1,');
+            $diff = (new BranchDiffService($pdo))->diff($root);
+            assertSame('ok', $diff['status']);
+            assertSame(
+                ['status' => 'config_invalid', 'message' => 'Invalid JSON configuration: Syntax error', 'count' => 0, 'items' => [], 'truncated' => false],
+                $diff['comparison']['violations'],
+            );
+        } finally {
+            $this->removeTempTree($root);
         }
     }
 }

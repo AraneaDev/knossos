@@ -65,7 +65,7 @@ final class PolicyTest extends KnossosTestCase
             ['id' => 'backend-no-unassigned', 'from_boundary' => $backend, 'deny_targets' => ['@unassigned'], 'edge_kinds' => ['calls']],
         ];
         $query = ArchitectureQueryService::forDatabase($pdo);
-        $result = $query->checkArchitecture($ids['project'], $policies);
+        $result = $query->services()->policyQueries->checkArchitecture($ids['project'], $policies);
         assertSame(4, count($result->data['violations']));
         $policyCounts = array_count_values(array_column($result->data['violations'], 'policy_id'));
         ksort($policyCounts);
@@ -77,9 +77,9 @@ final class PolicyTest extends KnossosTestCase
         assertSame(4, count($result->evidence));
         assertContains('static graph findings', $result->warnings[0]);
 
-        $certain = $query->checkArchitecture($ids['project'], $policies, minConfidence: 'certain');
+        $certain = $query->services()->policyQueries->checkArchitecture($ids['project'], $policies, minConfidence: 'certain');
         assertSame(2, count($certain->data['violations']));
-        $limited = $query->checkArchitecture($ids['project'], $policies, limit: 1);
+        $limited = $query->services()->policyQueries->checkArchitecture($ids['project'], $policies, limit: 1);
         assertSame(true, $limited->truncated);
         assertSame(['result_limit'], $limited->data['bounds']['truncation_reasons']);
         // The summary counts every violation found, not the page returned:
@@ -89,20 +89,20 @@ final class PolicyTest extends KnossosTestCase
         assertSame($limited->data['bounds']['violation_count'], count($result->data['violations']));
         assertSame(true, str_contains($limited->summary, sprintf('Found %d declared', $limited->data['bounds']['violation_count'])));
         assertSame(true, str_contains($limited->summary, 'Listing the first 1'));
-        $edgeLimited = $query->checkArchitecture($ids['project'], $policies, maxEdges: 1);
+        $edgeLimited = $query->services()->policyQueries->checkArchitecture($ids['project'], $policies, maxEdges: 1);
         assertSame(true, $edgeLimited->truncated);
         assertSame(true, in_array('edge_limit', $edgeLimited->data['bounds']['truncation_reasons'], true));
-        $filtered = $query->checkArchitecture($ids['project'], [[
+        $filtered = $query->services()->policyQueries->checkArchitecture($ids['project'], [[
             'id' => 'imports-only', 'from_boundary' => $backend, 'deny_targets' => [$billing], 'edge_kinds' => ['imports'],
         ]]);
         assertSame([], $filtered->data['violations']);
-        assertThrows(fn() => $query->checkArchitecture($ids['project'], [[
+        assertThrows(fn() => $query->services()->policyQueries->checkArchitecture($ids['project'], [[
             'id' => 'ambiguous', 'from_boundary' => 'Backend', 'deny_targets' => [$billing],
         ]]), InvalidArgumentException::class);
-        assertThrows(fn() => $query->checkArchitecture($ids['project'], [[
+        assertThrows(fn() => $query->services()->policyQueries->checkArchitecture($ids['project'], [[
             'id' => 'unknown', 'from_boundary' => 'Missing', 'deny_targets' => [$billing],
         ]]), InvalidArgumentException::class);
-        assertThrows(fn() => $query->checkArchitecture($ids['project'], [[
+        assertThrows(fn() => $query->services()->policyQueries->checkArchitecture($ids['project'], [[
             'id' => 'empty', 'from_boundary' => $backend,
         ]]), InvalidArgumentException::class);
 
@@ -111,7 +111,7 @@ final class PolicyTest extends KnossosTestCase
             $time += 2_000_000;
             return $time;
         });
-        $timed = $timedQuery->checkArchitecture($ids['project'], $policies, timeoutMs: 1);
+        $timed = $timedQuery->services()->policyQueries->checkArchitecture($ids['project'], $policies, timeoutMs: 1);
         assertSame(true, $timed->truncated);
         assertSame(['time_limit'], $timed->data['bounds']['truncation_reasons']);
     }

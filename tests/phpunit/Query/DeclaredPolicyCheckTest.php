@@ -23,7 +23,7 @@ final class DeclaredPolicyCheckTest extends KnossosTestCase
                 ['name' => 'Core', 'path_prefix' => 'src/Core/'],
                 ['name' => 'Edge', 'path_prefix' => 'src/Edge/'],
             ], 'policies' => [['id' => 'core-alone', 'from_boundary' => 'Core', 'deny_targets' => ['Edge']]]]));
-            self::assertSame(['core-alone'], array_column($queries->checkArchitecture($projectId, null)->data['policies_evaluated'], 'id'));
+            self::assertSame(['core-alone'], array_column($queries->services()->policyQueries->checkArchitecture($projectId, null)->data['policies_evaluated'], 'id'));
             // The file is named as it is spelled.
             unlink($root . '/knossos.json');
             file_put_contents($root . '/knossos.jsonc', "// rules\n{\"version\": 1}");
@@ -40,7 +40,7 @@ final class DeclaredPolicyCheckTest extends KnossosTestCase
     private function assertRefused(ArchitectureQueryService $queries, string $projectId, string $reason): void
     {
         try {
-            $queries->checkArchitecture($projectId, null);
+            $queries->services()->policyQueries->checkArchitecture($projectId, null);
         } catch (InvalidArgumentException $error) {
             self::assertStringContainsString($reason, $error->getMessage());
             self::assertStringContainsString('knossos.json', $error->getMessage());

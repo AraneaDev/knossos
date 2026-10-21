@@ -23,19 +23,19 @@ final class DiagnosticsQueryServiceTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $all = $queries->listDiagnostics($ids['project']);
+        $all = $queries->services()->diagnosticsQueries->listDiagnostics($ids['project']);
         self::assertSame(3, $all->data['total']);
         self::assertSame(['TS2322', 'TS6133', 'K1'], array_column($all->data['diagnostics'], 'code'));
         self::assertSame(['src/Checkout.php', 3], [$all->data['diagnostics'][0]['path'], $all->data['diagnostics'][0]['line']]);
-        self::assertSame(['TS2322'], array_column($queries->listDiagnostics($ids['project'], severity: 'error')->data['diagnostics'], 'code'));
-        self::assertSame(['TS2322', 'TS6133'], array_column($queries->listDiagnostics($ids['project'], pathPrefix: 'src/')->data['diagnostics'], 'code'));
-        self::assertSame([], $queries->listDiagnostics($ids['project'], pathPrefix: 'nowhere/')->data['diagnostics']);
+        self::assertSame(['TS2322'], array_column($queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], severity: 'error')->data['diagnostics'], 'code'));
+        self::assertSame(['TS2322', 'TS6133'], array_column($queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], pathPrefix: 'src/')->data['diagnostics'], 'code'));
+        self::assertSame([], $queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], pathPrefix: 'nowhere/')->data['diagnostics']);
         // A prefix is a path, and paths are case-sensitive.
-        self::assertSame([], $queries->listDiagnostics($ids['project'], pathPrefix: 'SRC/')->data['diagnostics']);
-        self::assertSame([], $queries->listDiagnostics($ids['project'], pathPrefix: 's_c/')->data['diagnostics']);
-        $page = $queries->listDiagnostics($ids['project'], limit: 2);
+        self::assertSame([], $queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], pathPrefix: 'SRC/')->data['diagnostics']);
+        self::assertSame([], $queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], pathPrefix: 's_c/')->data['diagnostics']);
+        $page = $queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], limit: 2);
         self::assertSame([2, true], [$page->data['pagination']['next_offset'], $page->truncated]);
         $this->expectException(InvalidArgumentException::class);
-        $queries->listDiagnostics($ids['project'], severity: 'fatal');
+        $queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], severity: 'fatal');
     }
 }

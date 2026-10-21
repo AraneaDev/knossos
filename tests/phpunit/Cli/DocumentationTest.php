@@ -602,8 +602,10 @@ final class DocumentationTest extends KnossosTestCase
     {
         $tree = sys_get_temp_dir() . '/knossos-api-doc-' . bin2hex(random_bytes(6));
         try {
+            foreach (glob(self::repositoryRoot() . '/workers/typescript/src/*.js') ?: [] as $module) {
+                $files['workers/typescript/src/' . basename($module)] = (string) file_get_contents($module);
+            }
             foreach ([
-                'workers/typescript/src/scanner.js',
                 'workers/python/bin/worker.py',
                 'workers/python/bin/knossos_python/collector.py',
                 'workers/rust/src/protocol.rs',

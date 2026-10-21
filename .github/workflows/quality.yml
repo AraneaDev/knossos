@@ -59,7 +59,7 @@ jobs:
     # quality and runtime images, hands them to the lanes as a short-lived
     # artifact, and never touches the registry.
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Lowercased because a registry reference must be. tools/dependency-image-key
@@ -146,7 +146,7 @@ jobs:
           outputs: type=docker,dest=/tmp/runtime.tar
       - name: Hand the images to the lanes
         if: ${{ env.REGISTRY_ROUTE != 'true' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: images
           path: |
@@ -186,11 +186,11 @@ jobs:
     outputs:
       release: ${{ steps.decide.outputs.release }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           ref: ${{ github.event.pull_request.base.sha }}
@@ -272,7 +272,7 @@ jobs:
       # Credentials are NOT persisted, for the same reason: the gate lane is
       # handed this checkout on a mount, and a token in .git/config would be
       # readable by everything the lane runs. This job only ever reads history.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: ${{ matrix.lane == 'gate' && '0' || '1' }}
           persist-credentials: false
@@ -392,7 +392,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -418,7 +418,7 @@ jobs:
       # coverage.py names its data files .coverage.<host>.<pid>.<random>, and
       # upload-artifact leaves dot files out unless told otherwise; without
       # them the Python figure would be measured on pytest alone.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-shard-${{ matrix.shard }}
           path: shard-${{ matrix.shard }}/
@@ -441,7 +441,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -481,7 +481,7 @@ jobs:
           docker rm knossos-quality
       - name: Upload coverage and benchmark reports
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-reports
           path: coverage/
@@ -508,10 +508,10 @@ jobs:
     steps:
       # Credentials are not persisted: the badge push below names its token
       # itself, and nothing else here writes to the repository.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           ref: ${{ github.event.pull_request.base.sha }}
@@ -557,7 +557,7 @@ jobs:
       # The script sums all three languages; PHP alone is the bulk of the code.
       - name: Setup Node LTS
         if: github.ref == 'refs/heads/main'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
       - name: Publish coverage badge

@@ -51,7 +51,7 @@ final class DiagnosticsContextTest extends KnossosTestCase
     {
         [$pdo, $project] = $this->withDiagnostics();
 
-        $items = ArchitectureQueryService::forDatabase($pdo)->listDiagnostics($project)->data['diagnostics'];
+        $items = ArchitectureQueryService::forDatabase($pdo)->services()->diagnosticsQueries->listDiagnostics($project)->data['diagnostics'];
 
         assertSame(['knossos.typescript', null], array_column($items, 'source'));
         assertSame(200, mb_strlen($items[0]['message']));

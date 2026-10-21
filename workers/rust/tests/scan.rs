@@ -1339,6 +1339,49 @@ fn something() -> u8 { 0 }
 }
 
 #[test]
+fn a_guarded_arm_binding_forgets_the_outer_receivers_type() {
+    // The arm binds `p` again, to a value of unknown type, behind a guard:
+    // the call inside the arm must not resolve through the parameter `p`.
+    let source = r#"
+pub struct Policy;
+impl Policy { pub fn evaluate(&self) {} }
+pub fn go(p: &Policy, other: Option<u8>) {
+    match other {
+        Some(p) if p > 0 => { p.evaluate(); }
+        _ => {}
+    }
+}
+"#;
+    let contributions = scan_fixture("guarded-arm-receiver", &[("src/lib.rs", source)]);
+
+    assert!(!method_calls(&contributions, "rust:function:crate::go")
+        .iter()
+        .any(|(target, _)| target.ends_with("::evaluate")),);
+}
+
+#[test]
+fn a_shorthand_receiver_references_its_own_type_at_the_self_token() {
+    let source = r#"
+pub struct Policy;
+impl Policy {
+    pub fn evaluate(
+        &self,
+    ) {}
+}
+"#;
+    let contributions = scan_fixture("shorthand-receiver", &[("src/lib.rs", source)]);
+    let edges = contributions[0]["edges"].as_array().unwrap();
+
+    assert!(
+        edges.iter().any(|edge| edge["kind"] == "references"
+            && edge["source"] == "rust:method:crate::Policy::evaluate"
+            && edge["target"] == "rust:class:crate::Policy"
+            && edge["evidence"]["start_line"] == 5),
+        "{edges:?}"
+    );
+}
+
+#[test]
 fn an_ambiguous_alias_emits_no_calls_edge_rather_than_guessing() {
     // `Thing` is bound to two different full paths by two different `use`
     // lines, so `Aliases::resolve` is poisoned for it (see resolve.rs). A

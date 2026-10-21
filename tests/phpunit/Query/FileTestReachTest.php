@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
-use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\ChangeImpactQueryService;
 use Knossos\Query\FileTestReach;
+use Knossos\Query\QueryServices;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
@@ -85,7 +85,7 @@ final class FileTestReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture(self::FIXTURE);
         try {
-            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $queries = QueryServices::wire($pdo)->changeQueries;
             // Two searches: fifty copies of the caller, then the greeter.
             $files = [...array_fill(0, ChangeImpactQueryService::MAX_FILES, 'src/Edge/Caller.php'), 'src/Core/Greeter.php'];
             $all = FileTestReach::testsOf($queries, $projectId, $files, 10);

@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\FileContextService;
 use Knossos\Query\FileTestReach;
+use Knossos\Query\QueryServices;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -56,7 +57,7 @@ final class WiringReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->wired();
         try {
-            $found = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Target.php']);
+            $found = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Target.php']);
             assertSame(['tests/TargetTest.php'], array_column($found->data['test_files'], 'path'));
             assertSame(['tests/AppTest.php'], array_column($found->data['test_files_via_wiring'], 'path'));
             assertSame(1, $found->data['bounds']['test_files_via_wiring_found']);
@@ -75,7 +76,7 @@ final class WiringReachTest extends KnossosTestCase
         try {
             file_put_contents($root . '/tests/BootTest.php', "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nuse App\\App;\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class BootTest extends TestCase\n{\n    public function testIt(): void\n    {\n        self::assertNotEmpty(App::boot());\n    }\n}\n");
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
-            $found = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Target.php']);
+            $found = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Target.php']);
             assertSame(['tests/TargetTest.php', 'tests/BootTest.php'], array_column($found->data['test_files'], 'path'));
             assertSame(['tests/AppTest.php'], array_column($found->data['test_files_via_wiring'], 'path'));
         } finally {
@@ -88,7 +89,7 @@ final class WiringReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->wired();
         try {
-            $found = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Wiring.php']);
+            $found = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Wiring.php']);
             assertSame(['tests/AppTest.php'], array_column($found->data['test_files'], 'path'));
             assertSame([], $found->data['test_files_via_wiring']);
         } finally {
@@ -101,7 +102,7 @@ final class WiringReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->wired();
         try {
-            $found = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Target.php'], limit: 1);
+            $found = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Target.php'], limit: 1);
             assertSame(['tests/TargetTest.php'], array_column($found->data['test_files'], 'path'));
             assertSame([], $found->data['test_files_via_wiring']);
             assertSame(['result_limit'], $found->data['bounds']['truncation_reasons']);
@@ -116,7 +117,7 @@ final class WiringReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->wired();
         try {
-            $listed = FileTestReach::testsOf(ArchitectureQueryService::forDatabase($pdo), $projectId, ['src/Core/Target.php'], 5);
+            $listed = FileTestReach::testsOf(QueryServices::wire($pdo)->changeQueries, $projectId, ['src/Core/Target.php'], 5);
             assertSame(['tests/TargetTest.php', 'tests/AppTest.php'], array_column($listed['tests'], 'path'));
             assertSame(['src/Core/Target.php' => 2], (new FileTestReach($pdo))->reach($projectId, ['src/Core/Target.php']));
             $context = (new FileContextService($pdo))->context($root . '/src/Core/Target.php');

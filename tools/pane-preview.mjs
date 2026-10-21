@@ -159,9 +159,10 @@ const layout = await import(join(REPO, 'hooks/lib/layout.ts'))
 const envelopes = await import(join(REPO, 'hooks/lib/envelopes.ts'))
 const raster = await import(join(REPO, 'hooks/lib/raster.ts'))
 const rows = await import(join(REPO, 'hooks/lib/rows.ts'))
+const textLib = await import(join(REPO, 'hooks/lib/text.ts'))
 const band = await import(join(REPO, 'hooks/lib/band.ts'))
 const palette = await import(join(REPO, 'hooks/lib/palette.ts'))
-const changesLib = await import(join(REPO, 'hooks/lib/changes.ts'))
+const sessionChanges = await import(join(REPO, 'hooks/lib/session-changes.ts'))
 const diffLib = await import(join(REPO, 'hooks/lib/diff.ts'))
 /** Claude Code's dark and light themes, the table every host of the pane resolves its theme keys with. */
 const { THEMES } = await import(join(REPO, 'hooks/lib/themes.ts'))
@@ -232,7 +233,7 @@ function sampleBrief(d) {
 
 /** What the first boundary depends on second most: where one press of `l` moves its cell. */
 function secondTarget(d) {
-  const input = layout.paneInput(d, null, FETCHED, IDLE, { ...BASE_VIEW, tab: 'boundaries' }, 0, true)
+  const input = layout.paneInput({ dashboard: d, brief: null, refresh: FETCHED, rescan: IDLE, view: { ...BASE_VIEW, tab: 'boundaries' }, now: 0, terminal: true })
   return layout.nextTarget(input.boundaries, 0, null) ?? undefined
 }
 
@@ -328,7 +329,7 @@ function ledgerSession(first) {
   const edited = new Set((diff.stdout ?? '').split('\n').filter(line => line !== ''))
   // The scans that took in those files are the session's, as the mod attributes a scan that took in its own edits.
   const scans = new Set(Object.entries(ledger.files).flatMap(([path, f]) => (edited.has(path) ? (f.scans ?? []) : [])))
-  return changesLib.fromLedger(ledger, layout.accumulate(layout.NO_CHANGES, first), edited, scans)
+  return sessionChanges.fromLedger(ledger, layout.accumulate(layout.NO_CHANGES, first), edited, scans)
 }
 
 const NOW = Date.now()
@@ -372,7 +373,7 @@ const RINGS =
 const ROUTE_ENDS = (() => {
   const far = RINGS?.answer?.rings?.find(r => r.hop >= 3)?.items?.[0] ?? RINGS?.answer?.rings?.find(r => r.hop === 2)?.items?.[0]
   if (far === undefined || detail?.component == null) return null
-  return { from: { name: far.canonical_name, label: rows.displayName(far) }, to: { name: detail.component.canonical, label: detail.component.name }, index: 0, back: null }
+  return { from: { name: far.canonical_name, label: textLib.displayName(far) }, to: { name: detail.component.canonical, label: detail.component.name }, index: 0, back: null }
 })()
 const ROUTE = ROUTE_ENDS === null ? null : { from: ROUTE_ENDS.from.name, to: ROUTE_ENDS.to.name, snapshot: dashboard.snapshot_id ?? null, phase: 'done', answer: envelopes.parsePathBetween(wrapper('path-between', `--from=${ROUTE_ENDS.from.name}`, `--to=${ROUTE_ENDS.to.name}`)) }
 
@@ -416,7 +417,7 @@ function couplingsFor(input) {
 
 /** The pane for a state: the view over BASE_VIEW, and what else the state holds. */
 function pane(view, { turn = null, shown = null, changes = session, refresh = FETCHED, rescan = IDLE, allow = null, live = LIVE, feedback = null, hover = false, peek = null, flash = null, search = null, note = null } = {}) {
-  const make = extras => layout.paneInput(dashboard, turn, refresh, rescan, { ...BASE_VIEW, ...view }, NOW, true, shown, allow, changes, null, live, extras, peek)
+  const make = extras => layout.paneInput({ dashboard, brief: turn, refresh, rescan, view: { ...BASE_VIEW, ...view }, now: NOW, terminal: true, detail: shown, allow, session: changes, sessionRoot: null, live, extras, peek })
   const base = { git: GIT, feedback, branch: BRANCH, flash, search, churn: CHURN, rings: RINGS, route: ROUTE, note }
   const input = make({ ...base, couplings: couplingsFor(make(base)) })
   // Sized by the pane's height too: its lists grow with the rows it has. `hover` draws the marked row's card as a resting pointer shows it.
@@ -474,7 +475,7 @@ function bandRows(cases) {
       // As the band hook: the text gives way to the buttons, each `[ label ]` and a space.
       const labels = [...(model.showDetails ? ['details'] : []), ...(model.copy === undefined ? [] : ['copy']), 'hide']
       const room = Math.max(1, columns - labels.reduce((n, l) => n + l.length + 5, 0) - 1)
-      const segments = [{ text: `${rows.fit(model.text, room)} `, color: tones[model.tone] }]
+      const segments = [{ text: `${textLib.fit(model.text, room)} `, color: tones[model.tone] }]
       if (model.showDetails) segments.push(rows.button('details', 'details'), { text: ' ' })
       if (model.copy !== undefined) segments.push(rows.button('copy', 'copy'), { text: ' ' })
       segments.push(rows.button('hide', 'hide'))
@@ -613,7 +614,7 @@ function rowCells(row, theme, term) {
       // label it is handed in a Box as wide as the segment, cutting at its edge, so the same label is cut here.
       const hot = s.press.hotkey === undefined ? 0 : [...`${s.press.hotkey}`].length
       const label = `${s.press.hotkey === undefined ? '' : `${s.press.hotkey}: `}${rows.pressLabel(s)}`
-      ;[...rows.padEnd(rows.fit(label, [...s.text].length), [...s.text].length)].forEach((ch, i) => {
+      ;[...textLib.padEnd(textLib.fit(label, [...s.text].length), [...s.text].length)].forEach((ch, i) => {
         let fg = i < hot ? theme.suggestion : term.fg
         if (s.dim) fg = mix(fg, term.bg, 0.5)
         out.push({ ch, fg, bg, bold: false })

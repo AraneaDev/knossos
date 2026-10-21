@@ -98,26 +98,26 @@ final readonly class DashboardService
         }
         $id = (string) $project['id'];
         $root = (string) $project['root_realpath'];
-        $queries = ArchitectureQueryService::forDatabase($this->pdo, $this->clock);
+        $queries = QueryServices::wire($this->pdo, $this->clock);
         $staleness = (new StalenessProbe($this->pdo))->snapshot($id);
         $probe = $staleness->staleness ?? [];
-        $healthResult = $queries->architectureHealth($id, limit: self::TOP, timeoutMs: $this->healthTimeoutMs);
+        $healthResult = $queries->healthQueries->architectureHealth($id, limit: self::TOP, timeoutMs: $this->healthTimeoutMs);
         $health = $healthResult->data;
         $hubLimits = array_values(array_diff($health['bounds']['truncation_reasons'], ['result_limit']));
         // Already ordered by the cycle search: the cycles between types largest first, then those inside one type.
         // Only the first count as cycles (the tile, the toasts, the gate); the others are counted and listed apart.
-        $cycleSearch = $queries->dependencyCycles($id, limit: $this->cycleLimit, withinType: true);
+        $cycleSearch = $queries->cycleQueries->dependencyCycles($id, limit: $this->cycleLimit, withinType: true);
         $everyCycle = $cycleSearch->data['cycles'];
         $cycles = array_values(array_filter($everyCycle, static fn(array $c): bool => $c['within_type'] !== true));
         $inside = array_values(array_filter($everyCycle, static fn(array $c): bool => $c['within_type'] === true));
         $fanIn = (new FileFanInQuery($this->pdo))->aboveThreshold($id, $fanInThreshold, $this->fanInCap + 1);
-        $series = $queries->architectureTrends($id, self::TREND_POINTS)->data['series'];
+        $series = $queries->gateQueries->architectureTrends($id, self::TREND_POINTS)->data['series'];
         $trend = self::trend($series);
         // The live graph past the rows the trend reads a snapshot whole within: its point is missing, and this says why.
         $activePoint = array_values(array_filter($series, static fn(array $point): bool => ($point['active'] ?? false) === true))[0] ?? null;
         $trendLimit = $activePoint['reason'] ?? null;
         $labels = BoundaryLabels::load($this->pdo, $id);
-        $findings = new ProjectFindings($this->pdo, $this->clock);
+        $findings = new ProjectFindings($this->pdo, $this->clock, $queries);
         $ranked = [...array_column($health['hubs'], 'component'), ...array_column($health['static_hotspots'], 'component')];
         $places = $this->places($ranked);
         $dependents = $this->dependentFiles($ranked);
@@ -176,7 +176,8 @@ final readonly class DashboardService
             'fan_in_truncated' => count($fanIn) > $this->fanInCap,
             'summary' => $findings->summary($id),
             'boundaries' => $labels->listed(self::BOUNDARIES),
-            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null), min($boundaryAxes, BoundaryMatrix::AXES)),
+            // A `knossos.json` that cannot be read marks no cell forbidden; `policy` below carries the loader's message.
+            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null)['policies'], min($boundaryAxes, BoundaryMatrix::AXES)),
             'diagnostics' => $findings->diagnostics($id),
             'complexity_hotspots' => $findings->complexityHotspots($id),
             'over_budget' => $findings->overBudget($id, $root),

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
@@ -80,7 +81,7 @@ final class MalformedFactScanTest extends KnossosTestCase
 
         // And a full scan from nothing agrees with the incremental one.
         $fresh = $this->freshTestDatabase();
-        (new ProjectScanService($fresh, $this->installation, [$this->root]))->scan($this->root, mode: 'full');
+        (new ProjectScanService($fresh, $this->installation, [$this->root]))->scan($this->root, new ScanOptions(mode: 'full'));
         assertSame($replayed, $this->graph($fresh));
     }
 

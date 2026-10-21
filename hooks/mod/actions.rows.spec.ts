@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KnossosView } from '../../types'
-import type { Openable } from '../lib/layout'
+import type { Openable } from '../lib/views'
 import { PRESSES, pressOf } from './actions'
 import { request, requestDetail, showComponent } from './loaders'
 import type { Port } from './port'
@@ -47,8 +47,8 @@ beforeEach(() => {
     vi.mocked(requestDetail).mockClear()
     vi.mocked(currentList).mockReset()
     vi.mocked(currentInput).mockReset()
-    mod.findFrom = 0
-    mod.openWhenFound = false
+    mod.search.findFrom = 0
+    mod.search.openWhenFound = false
 })
 
 describe('moving the marker', () => {
@@ -216,13 +216,13 @@ describe('opening a row', () => {
 describe('opening a match from the finder', () => {
     it('closes the finder, puts the tab marker back where it stood, and opens the match', async () => {
         list([item('Match0'), item('Match1')])
-        mod.findFrom = 5
-        mod.openWhenFound = true
+        mod.search.findFrom = 5
+        mod.search.openWhenFound = true
         const { io, view } = port({ finding: true, picking: null, selected: 1 } as Partial<KnossosView>)
         await press(io, 'row:1')
         expect(view().finding).toBe(false)
         expect(view().selected).toBe(5)
-        expect(mod.openWhenFound).toBe(false)
+        expect(mod.search.openWhenFound).toBe(false)
         expect(showComponent).toHaveBeenCalledWith(io, { name: 'App\\Match1', label: 'Match1' })
     })
 
@@ -245,14 +245,14 @@ describe('opening a match from the finder', () => {
         const from = { name: 'App\\Start', label: 'Start' }
         const inspect = { name: 'App\\Start', label: 'Start' }
         list([item('A'), item('End')])
-        mod.openWhenFound = true
+        mod.search.openWhenFound = true
         const { io, view } = port({ finding: true, picking: from, inspect, selected: 1 } as Partial<KnossosView>)
         await press(io, 'row:1')
         expect(view().route).toEqual({ from, to: { name: 'App\\End', label: 'End' }, index: 0, back: inspect })
         expect(view().picking).toBeNull()
         expect(view().finding).toBe(false)
         expect(view().selected).toBe(0)
-        expect(mod.openWhenFound).toBe(false)
+        expect(mod.search.openWhenFound).toBe(false)
         expect(request).toHaveBeenCalledWith(io, 'route')
         expect(showComponent).not.toHaveBeenCalled()
     })

@@ -12,8 +12,10 @@
 import { FRAME } from './cards'
 import { boundaryLabel, CARD_BG, HEADING, NO_HUES } from './palette'
 import type { Hues } from './palette'
-import { cells, chip, fit, grouped, pathText, segmentsWidth, spaces } from './rows'
-import type { Preview, Row, Segment } from './rows'
+import { segmentsWidth } from './rows'
+import { chip } from './chips'
+import { cells, fit, grouped, pathText, spaces } from './text'
+import type { Preview, Row, Segment } from './types'
 
 /** The widest a card is drawn, frame included, and the narrowest. */
 export const CARD_MAX = 52

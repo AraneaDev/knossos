@@ -6,7 +6,7 @@
   "require": {
     "php": ">=8.3",
     "ext-json": "*",
-    "nikic/php-parser": "^5.7"
+    "nikic/php-parser": "^5.9"
   },
   "autoload": {
     "psr-4": {

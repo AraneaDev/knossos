@@ -27,12 +27,12 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        $written = $queries->upsertAnnotation($this->project, 'App\\Checkout', 'note', str_repeat('x', 2000), execute: true);
+        $written = $queries->services()->annotationQueries->upsertAnnotation($this->project, 'App\\Checkout', 'note', str_repeat('x', 2000), execute: true);
 
         assertSame(true, $written->data['executed']);
         assertSame(2000, strlen($written->data['annotation']['value']));
         assertThrows(
-            fn() => $queries->upsertAnnotation($this->project, 'App\\Checkout', 'note', str_repeat('x', 2001), execute: true),
+            fn() => $queries->services()->annotationQueries->upsertAnnotation($this->project, 'App\\Checkout', 'note', str_repeat('x', 2001), execute: true),
             InvalidArgumentException::class,
         );
     }
@@ -53,7 +53,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
 
         foreach (['', '   ', "\t\n"] as $blank) {
             $error = captureThrows(
-                fn() => $queries->upsertAnnotation($this->project, $blank, 'note', 'x', execute: true),
+                fn() => $queries->services()->annotationQueries->upsertAnnotation($this->project, $blank, 'note', 'x', execute: true),
                 InvalidArgumentException::class,
             );
 
@@ -72,7 +72,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         [$pdo, $queries] = $this->connectedQueries();
 
-        $preview = $queries->upsertAnnotation($this->project, 'App\\Checkout', 'note', 'core flow');
+        $preview = $queries->services()->annotationQueries->upsertAnnotation($this->project, 'App\\Checkout', 'note', 'core flow');
 
         assertSame(['component', 'kind', 'action', 'executed', 'previous', 'annotation'], array_keys($preview->data));
         assertSame('upsert', $preview->data['action']);
@@ -82,7 +82,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
         assertSame('Set execute=true to apply the change.', $preview->warnings[count($preview->warnings) - 1]);
         assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
 
-        $removal = $queries->removeAnnotation($this->project, 'App\\Checkout', 'note');
+        $removal = $queries->services()->annotationQueries->removeAnnotation($this->project, 'App\\Checkout', 'note');
 
         assertSame('remove', $removal->data['action']);
         assertSame(null, $removal->data['annotation'], 'A removal previews no surviving annotation.');
@@ -94,10 +94,10 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        $recorded = $queries->upsertAnnotation($this->project, 'App\\Checkout', 'note', 'core flow', execute: true);
+        $recorded = $queries->services()->annotationQueries->upsertAnnotation($this->project, 'App\\Checkout', 'note', 'core flow', execute: true);
         assertSame('Recorded note annotation on App\\Checkout.', $recorded->summary);
 
-        $removed = $queries->removeAnnotation($this->project, 'App\\Checkout', 'note', execute: true);
+        $removed = $queries->services()->annotationQueries->removeAnnotation($this->project, 'App\\Checkout', 'note', execute: true);
         assertSame('Removed note annotation on App\\Checkout.', $removed->summary);
         assertSame(null, $removed->data['annotation']);
         assertSame('core flow', $removed->data['previous']['value'], 'What was there is reported, because it is gone now.');
@@ -112,10 +112,10 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
         foreach (['App\\Alpha', 'App\\Beta', 'App\\Gamma'] as $name) {
-            $queries->upsertAnnotation($this->project, $name, 'note', 'x', execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($this->project, $name, 'note', 'x', execute: true);
         }
 
-        $page = $queries->listAnnotations($this->project, limit: 2);
+        $page = $queries->services()->annotationQueries->listAnnotations($this->project, limit: 2);
 
         assertSame(2, count($page->data['annotations']), 'The look-ahead row is fetched, never returned.');
         assertSame(true, $page->truncated);
@@ -124,13 +124,13 @@ final class AnnotationBoundsTest extends KnossosTestCase
         assertSame('Found 2 annotations, 2 on a component the graph no longer has.', $page->summary);
         assertSame(['App\\Alpha', 'App\\Beta'], array_column($page->data['annotations'], 'canonical_name'));
 
-        $whole = $queries->listAnnotations($this->project, limit: 3);
+        $whole = $queries->services()->annotationQueries->listAnnotations($this->project, limit: 3);
 
         assertSame(3, count($whole->data['annotations']));
         assertSame(false, $whole->truncated, 'Exactly a page full is not a truncation.');
         assertSame(null, $whole->data['pagination']['next_offset']);
 
-        $single = $queries->listAnnotations($this->project, limit: 1);
+        $single = $queries->services()->annotationQueries->listAnnotations($this->project, limit: 1);
 
         assertSame('Found 1 annotation, 1 on a component the graph no longer has.', $single->summary);
         assertSame(1, $single->data['pagination']['next_offset']);
@@ -142,10 +142,10 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
         foreach (['App\\Alpha', 'App\\Beta', 'App\\Gamma'] as $name) {
-            $queries->upsertAnnotation($this->project, $name, 'note', 'x', execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($this->project, $name, 'note', 'x', execute: true);
         }
 
-        $next = $queries->listAnnotations($this->project, limit: 2, offset: 2);
+        $next = $queries->services()->annotationQueries->listAnnotations($this->project, limit: 2, offset: 2);
 
         assertSame(['App\\Gamma'], array_column($next->data['annotations'], 'canonical_name'));
         assertSame(2, $next->data['pagination']['offset']);
@@ -158,11 +158,11 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        assertSame([], $queries->listAnnotations($this->project, offset: 100_000)->data['annotations']);
-        assertThrows(fn() => $queries->listAnnotations($this->project, offset: 100_001), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->listAnnotations($this->project, offset: -1), InvalidArgumentException::class);
+        assertSame([], $queries->services()->annotationQueries->listAnnotations($this->project, offset: 100_000)->data['annotations']);
+        assertThrows(fn() => $queries->services()->annotationQueries->listAnnotations($this->project, offset: 100_001), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->annotationQueries->listAnnotations($this->project, offset: -1), InvalidArgumentException::class);
         // The limit is checked too, by the shared guard rather than here.
-        assertThrows(fn() => $queries->listAnnotations($this->project, limit: 0), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->annotationQueries->listAnnotations($this->project, limit: 0), InvalidArgumentException::class);
     }
 
     /** A listing filtered by a kind that is not a kind is refused, not answered empty. */
@@ -171,8 +171,8 @@ final class AnnotationBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        assertThrows(fn() => $queries->listAnnotations($this->project, kind: 'bogus_kind'), InvalidArgumentException::class);
-        assertSame([], $queries->listAnnotations($this->project, kind: 'note')->data['annotations']);
+        assertThrows(fn() => $queries->services()->annotationQueries->listAnnotations($this->project, kind: 'bogus_kind'), InvalidArgumentException::class);
+        assertSame([], $queries->services()->annotationQueries->listAnnotations($this->project, kind: 'note')->data['annotations']);
     }
 
     /**
@@ -212,7 +212,7 @@ final class AnnotationBoundsTest extends KnossosTestCase
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
         $error = captureThrows(
-            fn() => $queries->upsertAnnotation($ids['project'], 'Amb', 'note', 'x', execute: true),
+            fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'Amb', 'note', 'x', execute: true),
             InvalidArgumentException::class,
         );
 

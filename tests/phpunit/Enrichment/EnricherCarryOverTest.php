@@ -8,6 +8,7 @@ use Knossos\Discovery\EnrichersFile;
 use Knossos\Enrichment\EnricherCarryOver;
 use Knossos\Enrichment\NativeNodeIndex;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Scanner\Protocol\EdgeFact;
@@ -50,7 +51,7 @@ final class EnricherCarryOverTest extends KnossosTestCase
         ]]], JSON_UNESCAPED_SLASHES));
         $this->pdo = $this->freshTestDatabase();
         $service = new ProjectScanService($this->pdo, self::repositoryRoot(), [$this->root], enrichers: new EnrichersFile($this->installation . '/enrichers.json'));
-        $this->projectId = $service->scan($this->root, runEnrichers: true)->projectId;
+        $this->projectId = $service->scan($this->root, new ScanOptions(runEnrichers: true))->projectId;
     }
 
     protected function tearDown(): void

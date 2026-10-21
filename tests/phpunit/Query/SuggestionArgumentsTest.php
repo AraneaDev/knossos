@@ -26,8 +26,8 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $queries->suggestLocation($project, 'checkout ' . str_repeat('界', 1991));
-        $refused = captureThrows(static fn() => $queries->suggestLocation($project, 'checkout ' . str_repeat('界', 1992)), InvalidArgumentException::class);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout ' . str_repeat('界', 1991));
+        $refused = captureThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout ' . str_repeat('界', 1992)), InvalidArgumentException::class);
         assertSame('feature_description must contain between 1 and 2000 characters.', $refused->getMessage());
     }
 
@@ -38,8 +38,8 @@ final class SuggestionArgumentsTest extends KnossosTestCase
 
         $atLimit = 'checkout' . str_repeat('x', 1992);
         assertSame(2000, strlen($atLimit));
-        $queries->suggestLocation($project, $atLimit);
-        assertThrows(static fn() => $queries->suggestLocation($project, $atLimit . 'x'), InvalidArgumentException::class);
+        $queries->services()->locationQueries->suggestLocation($project, $atLimit);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, $atLimit . 'x'), InvalidArgumentException::class);
     }
 
     /**
@@ -56,10 +56,10 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $empty = captureThrows(static fn() => $queries->suggestLocation($project, ''), InvalidArgumentException::class);
+        $empty = captureThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, ''), InvalidArgumentException::class);
         assertContains('between 1 and 2000 characters', $empty->getMessage());
 
-        $blank = captureThrows(static fn() => $queries->suggestLocation($project, "   \t\n"), InvalidArgumentException::class);
+        $blank = captureThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, "   \t\n"), InvalidArgumentException::class);
         assertContains('meaningful letter or number token', $blank->getMessage());
     }
 
@@ -68,10 +68,10 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $queries->suggestLocation($project, 'checkout refunds', 1);
-        $queries->suggestLocation($project, 'checkout refunds', 20);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 0), InvalidArgumentException::class);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 21), InvalidArgumentException::class);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 1);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 20);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 0), InvalidArgumentException::class);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 21), InvalidArgumentException::class);
     }
 
     #[Group('query')]
@@ -79,10 +79,10 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $queries->suggestLocation($project, 'checkout refunds', 5, 1);
-        $queries->suggestLocation($project, 'checkout refunds', 5, 50_000);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 0), InvalidArgumentException::class);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 50_001), InvalidArgumentException::class);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 1);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 50_000);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 0), InvalidArgumentException::class);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 50_001), InvalidArgumentException::class);
     }
 
     #[Group('query')]
@@ -90,10 +90,10 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 1);
-        $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, QueryBounds::MAX_EDGES);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 0), InvalidArgumentException::class);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, QueryBounds::MAX_EDGES + 1), InvalidArgumentException::class);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 1);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, QueryBounds::MAX_EDGES);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 0), InvalidArgumentException::class);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, QueryBounds::MAX_EDGES + 1), InvalidArgumentException::class);
     }
 
     #[Group('query')]
@@ -101,10 +101,10 @@ final class SuggestionArgumentsTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 1);
-        $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 5000);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 0), InvalidArgumentException::class);
-        assertThrows(static fn() => $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 5001), InvalidArgumentException::class);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 1);
+        $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 5000);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 0), InvalidArgumentException::class);
+        assertThrows(static fn() => $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 100_000, 5001), InvalidArgumentException::class);
     }
 
     /** @return array{0: ArchitectureQueryService, 1: string} */

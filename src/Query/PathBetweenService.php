@@ -9,7 +9,7 @@ use PDO;
 
 /**
  * The architecture pane's path explorer: the routes by which one component
- * reaches another, as {@see ArchitectureQueryService::explainFlow()} finds
+ * reaches another, as {@see FlowQuery::explainFlow()} finds
  * them with the tool's own bounds, each hop with its kind, its step
  * (`identity` for an enricher's `represents` link, `relation` otherwise), its
  * confidence, its origin, whether it is derived (an interface method to the
@@ -31,8 +31,11 @@ final readonly class PathBetweenService
     /** How long each search may take: explain_flow's own default. */
     private const TIMEOUT_MS = FlowQuery::DEFAULT_TIMEOUT_MS;
 
-    /** @param PDO $pdo an existing, migrated graph database */
-    public function __construct(private PDO $pdo) {}
+    /**
+     * @param PDO $pdo an existing, migrated graph database
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
+     */
+    public function __construct(private PDO $pdo, private ?QueryServices $services = null) {}
 
     /**
      * The routes from `$from` to `$to` in the project owning `$path`;
@@ -50,8 +53,8 @@ final readonly class PathBetweenService
         }
         $id = (string) $project['id'];
         $envelope = ['project_id' => $id, 'snapshot_id' => $project['active_scan_id']] + $envelope;
-        $queries = ArchitectureQueryService::forDatabase($this->pdo);
-        $flow = $queries->explainFlow($id, $from, $to, self::DEPTH, self::ROUTES, timeoutMs: self::TIMEOUT_MS, bothDirections: true);
+        $flows = ($this->services ?? QueryServices::wire($this->pdo))->flowQueries;
+        $flow = (new AnnotationNotes($this->pdo))->attach($flows->explainFlow($id, $from, $to, self::DEPTH, self::ROUTES, timeoutMs: self::TIMEOUT_MS, bothDirections: true));
         foreach (['from' => $from, 'to' => $to] as $end => $asked) {
             $candidates = $flow->data[$end]['candidates'] ?? null;
             if (is_array($candidates) && count($candidates) !== 1) {

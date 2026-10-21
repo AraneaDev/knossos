@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView } from '../../types'
 import { cyclesArrangement, cyclesInput, cyclesList } from './cycles'
-import { paneInput, paneLayout } from './layout'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { plainText } from './__tests__/plain-text'
 import { cyclesOf } from '../mod/state'
 import { cyclesSinceStart } from './agent'
@@ -13,7 +14,7 @@ const inside = { size: 3, members: ['walk_item', 'walk_items', 'walk_mod'], node
 const dash = (cycles: Dashboard['cycles']): Dashboard =>
   ({ status: 'ok', path: ROOT, project_root: ROOT, project_id: 'p1', snapshot_id: 's1', freshness: { state: 'fresh', age_seconds: 1, drift_files: 0 }, hubs: [], hubs_truncated: false, hubs_truncation_reasons: [], hotspots: [], dead_code_candidates: 0, dead_code_truncated: false, cycles, trend: [], fan_in: [], fan_in_truncated: false }) as Dashboard
 const view = (over: Partial<KnossosView> = {}): KnossosView => ({ inspect: null, isBandHidden: false, tab: 'cycles', selected: 0, showKeys: false, filter: '', filtering: false, sort: 'in', ...over })
-const text = (d: Dashboard, v = view(), columns = 100) => paneLayout(paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null), columns, 60).body.map(plainText).join('\n')
+const text = (d: Dashboard, v = view(), columns = 100) => paneLayout(paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null }), columns, 60).body.map(plainText).join('\n')
 
 describe('cycles inside one type', () => {
   const both = dash({ count: 1, truncated: false, truncation_reasons: [], within_type: 1, largest: [between, inside] })

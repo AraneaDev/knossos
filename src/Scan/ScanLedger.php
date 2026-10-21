@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Scan;
 
 use Closure;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -50,11 +51,7 @@ final readonly class ScanLedger
     /** The project's active snapshot id, or null when it has none. */
     public function activeSnapshot(string $projectId): ?string
     {
-        $statement = $this->pdo->prepare('SELECT active_scan_id FROM projects WHERE id = ?');
-        $statement->execute([$projectId]);
-        $id = $statement->fetchColumn();
-
-        return is_string($id) && $id !== '' ? $id : null;
+        return (new ProjectRepository($this->pdo))->activeScanOf($projectId);
     }
 
     /**

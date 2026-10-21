@@ -22,6 +22,7 @@ mod paths;
 mod placement;
 mod routes;
 mod state;
+mod types;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
 pub use cfg::{collect_test_modules, is_test_module_path, TestModules};
@@ -270,7 +271,7 @@ impl Walk<'_> {
                 self.facts.speculative_edge(
                     "returns",
                     &reference("function", &canonical),
-                    &reference("class", paths::pointee_of(&returned)),
+                    &reference("class", types::pointee_of(&returned)),
                     node.sig.output.span(),
                 );
             }
@@ -348,35 +349,60 @@ impl Walk<'_> {
         node: &syn::ItemImpl,
         span: proc_macro2::Span,
     ) {
-        // An `impl` block is not a node: it declares members of a type that
-        // is declared elsewhere, possibly in another file. Its methods are
-        // attached to the type's canonical path so both halves of a split
-        // definition land on the same node. When that type was not declared
-        // in this file, `Facts::finish` drops the resulting `contains` edge
-        // (its source was never emitted as a node here) while the method
-        // nodes themselves still stand.
+        let Some(target) = self.impl_target(container, container_kind, node, span) else {
+            return;
+        };
+        // The impl target may live in another file. Its `implements`
+        // and `contains` edges use it as their SOURCE, and a source
+        // the contribution never declared is normally filtered in
+        // `Facts::finish`; the crate-wide index vouching for it keeps
+        // those edges instead of orphaning the methods. The index is
+        // the only acceptable vouching: it holds only files the core
+        // discovered and this worker parsed, so a vouch also
+        // guarantees the declaring file has a contribution, in this
+        // request or cached, whose node will resolve. A target the
+        // index cannot place stays unvouched and the edges ride out
+        // the old drop, because a `contains` edge whose source names
+        // nothing would make reconciliation throw.
+        if self.declarations.get(&target).copied() == Some(1) {
+            self.facts
+                .external_unless_declared(&reference("class", &target));
+        }
+        let old_target = self.current_impl_target.replace(target.clone());
+        self.record_associated_types(container, &target, node);
+        self.record_implements(container, &target, node, span);
+        self.walk_impl_methods(container, &target, node);
+        self.current_impl_target = old_target;
+    }
+
+    /// The canonical path an `impl` block's members attach to, or `None` for
+    /// an inherent impl that names no type.
+    ///
+    /// An `impl` block is not a node: it declares members of a type that is
+    /// declared elsewhere, possibly in another file. Its methods are attached
+    /// to the type's canonical path so both halves of a split definition land
+    /// on the same node. When that type was not declared in this file,
+    /// `Facts::finish` drops the resulting `contains` edge (its source was
+    /// never emitted as a node here) while the method nodes themselves still
+    /// stand.
+    fn impl_target(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        node: &syn::ItemImpl,
+        span: proc_macro2::Span,
+    ) -> Option<String> {
         let target = match (self.type_path(container, &node.self_ty), &node.trait_) {
             (Some(target), _) => target,
             // `impl<M: Matcher> Matcher for &M`: a blanket impl over a type
             // parameter, or a reference or tuple, names no type to attach to.
             // The block still implements the trait, so it becomes the
             // container, as an impl for a foreign type does below.
-            (None, Some((_, trait_path, _))) => {
-                let trait_name = trait_path
-                    .segments
-                    .last()
-                    .map(|segment| ident_name(&segment.ident))
-                    .unwrap_or_default();
+            (None, Some((trait_path, _))) => {
                 let type_name = type_label(&node.self_ty);
-                self.declare(
-                    container,
-                    container_kind,
-                    &format!("<impl {trait_name} for {type_name}>"),
-                    "class",
-                    span,
-                )
+                self.declare_trait_impl(container, container_kind, trait_path, &type_name, span)
             }
-            (None, None) => return,
+            (None, None) => return None,
         };
         // A type from outside this crate can only take a trait impl
         // (the orphan rule), and its path is a name the project does
@@ -396,43 +422,44 @@ impl Walk<'_> {
             }
             _ => false,
         };
-        let target = match &node.trait_ {
-            Some((_, trait_path, _))
+        Some(match &node.trait_ {
+            Some((trait_path, _))
                 if unplaced || (target != root && !target.starts_with(&format!("{root}::"))) =>
             {
-                let trait_name = trait_path
-                    .segments
-                    .last()
-                    .map(|segment| ident_name(&segment.ident))
-                    .unwrap_or_default();
                 let type_name = target.rsplit("::").next().unwrap_or(&target).to_owned();
-                self.declare(
-                    container,
-                    container_kind,
-                    &format!("<impl {trait_name} for {type_name}>"),
-                    "class",
-                    span,
-                )
+                self.declare_trait_impl(container, container_kind, trait_path, &type_name, span)
             }
             _ => target,
-        };
-        // The impl target may live in another file. Its `implements`
-        // and `contains` edges use it as their SOURCE, and a source
-        // the contribution never declared is normally filtered in
-        // `Facts::finish`; the crate-wide index vouching for it keeps
-        // those edges instead of orphaning the methods. The index is
-        // the only acceptable vouching: it holds only files the core
-        // discovered and this worker parsed, so a vouch also
-        // guarantees the declaring file has a contribution, in this
-        // request or cached, whose node will resolve. A target the
-        // index cannot place stays unvouched and the edges ride out
-        // the old drop, because a `contains` edge whose source names
-        // nothing would make reconciliation throw.
-        if self.declarations.get(&target).copied() == Some(1) {
-            self.facts
-                .external_unless_declared(&reference("class", &target));
-        }
-        let old_target = self.current_impl_target.replace(target.clone());
+        })
+    }
+
+    /// Declare the `<impl Trait for Type>` class that contains the members of
+    /// an impl block with no project type to attach them to.
+    fn declare_trait_impl(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        trait_path: &syn::Path,
+        type_name: &str,
+        span: proc_macro2::Span,
+    ) -> String {
+        let trait_name = trait_path
+            .segments
+            .last()
+            .map(|segment| ident_name(&segment.ident))
+            .unwrap_or_default();
+        self.declare(
+            container,
+            container_kind,
+            &format!("<impl {trait_name} for {type_name}>"),
+            "class",
+            span,
+        )
+    }
+
+    /// Record each associated type of an impl block as an alias of the type it
+    /// names, so a path through `Target::Assoc` resolves to it.
+    fn record_associated_types(&mut self, container: &str, target: &str, node: &syn::ItemImpl) {
         for member in &node.items {
             if let ImplItem::Type(associated) = member {
                 if let Some(named) = self.receiver_type(container, &associated.ty) {
@@ -443,28 +470,44 @@ impl Walk<'_> {
                 }
             }
         }
-        // `impl Trait for Type` names both endpoints explicitly, so the
-        // `implements` edge is `certain`. The trait name is resolved the
-        // same way any other path is, through `use` and the `self`/`super`/
-        // `crate` prefixes.
-        if let Some((_, trait_path, _)) = &node.trait_ {
+    }
+
+    /// Emit the `implements` edge of a trait impl.
+    ///
+    /// `impl Trait for Type` names both endpoints explicitly, so the edge is
+    /// `certain`. The trait name is resolved the same way any other path is,
+    /// through `use` and the `self`/`super`/`crate` prefixes.
+    fn record_implements(
+        &mut self,
+        container: &str,
+        target: &str,
+        node: &syn::ItemImpl,
+        span: proc_macro2::Span,
+    ) {
+        if let Some((trait_path, _)) = &node.trait_ {
             if let Some(interface) = self.path_target(container, trait_path) {
                 self.facts.edge(
                     "implements",
-                    &reference("class", &target),
+                    &reference("class", target),
                     &reference("interface", &interface),
                     "certain",
                     span,
                 );
             }
         }
+    }
+
+    /// Declare and walk the methods of an impl block under `target`, with the
+    /// facts only impl methods carry: the declared return type, `overrides`
+    /// for a trait impl, and `runtime_invoked` for what the runtime calls.
+    fn walk_impl_methods(&mut self, container: &str, target: &str, node: &syn::ItemImpl) {
         // `impl Drop for T` is the one trait whose method the runtime
         // calls: nothing in the graph names `drop`, so it reads as
         // unreferenced however heavily the type is used. Marked here,
         // on the trait rather than on the method name, so an ordinary
         // inherent method that happens to be called `drop` keeps its
         // reference check.
-        let drop_impl = node.trait_.as_ref().is_some_and(|(_, path, _)| {
+        let drop_impl = node.trait_.as_ref().is_some_and(|(path, _)| {
             path.segments
                 .last()
                 .is_some_and(|segment| segment.ident == "Drop")
@@ -479,7 +522,7 @@ impl Walk<'_> {
                 let name = ident_name(&method.sig.ident);
                 self.walk_member_fn(
                     container,
-                    &target,
+                    target,
                     "class",
                     &method.attrs,
                     &method.sig,
@@ -494,7 +537,7 @@ impl Walk<'_> {
                                 this.facts.speculative_edge(
                                     "returns",
                                     &reference("method", method_canonical),
-                                    &reference("class", paths::pointee_of(&returned)),
+                                    &reference("class", types::pointee_of(&returned)),
                                     method.sig.output.span(),
                                 );
                             }
@@ -524,7 +567,6 @@ impl Walk<'_> {
             }
         }
         self.type_params = outer;
-        self.current_impl_target = old_target;
     }
 
     /// Declare one trait or impl method under `owner` and walk its body, when

@@ -81,8 +81,8 @@ final class LaunchedProcessTest extends KnossosTestCase
         try {
             $queries = ArchitectureQueryService::forDatabase($pdo);
             $policy = ['id' => 'app-stays-out-of-js', 'from_boundary' => 'namespace:App', 'deny_targets' => ['module:js']];
-            assertSame(0, count($queries->checkArchitecture($projectId, [$policy])->data['violations']));
-            $named = $queries->checkArchitecture($projectId, [$policy + ['edge_kinds' => ['launches']]])->data['violations'];
+            assertSame(0, count($queries->services()->policyQueries->checkArchitecture($projectId, [$policy])->data['violations']));
+            $named = $queries->services()->policyQueries->checkArchitecture($projectId, [$policy + ['edge_kinds' => ['launches']]])->data['violations'];
             assertSame(1, count($named));
         } finally {
             unset($pdo);

@@ -28,14 +28,14 @@ final class FileMetricsBoundsTest extends KnossosTestCase
         [$pdo, $project] = $this->files(51);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $page = $queries->fileMetrics($project)->data['files'];
+        $page = $queries->services()->fileMetricsQueries->fileMetrics($project)->data['files'];
 
         assertSame(50, count($page), 'Fifty a page by default.');
         assertSame('src/File000.php', $page[0]['path'], 'Starting at the first file, not the second.');
 
         // The caller's own values are used when given.
-        assertSame(2, count($queries->fileMetrics($project, limit: 2)->data['files']));
-        assertSame('src/File001.php', $queries->fileMetrics($project, limit: 1, offset: 1)->data['files'][0]['path']);
+        assertSame(2, count($queries->services()->fileMetricsQueries->fileMetrics($project, limit: 2)->data['files']));
+        assertSame('src/File001.php', $queries->services()->fileMetricsQueries->fileMetrics($project, limit: 1, offset: 1)->data['files'][0]['path']);
     }
 
     /** The advertised offset ceiling is accepted, and one past it is refused. */
@@ -45,11 +45,11 @@ final class FileMetricsBoundsTest extends KnossosTestCase
         [$pdo, $project] = $this->files(1);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        assertSame([], $queries->fileMetrics($project, offset: 100_000)->data['files']);
-        assertThrows(fn() => $queries->fileMetrics($project, offset: 100_001), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->fileMetrics($project, offset: -1), InvalidArgumentException::class);
+        assertSame([], $queries->services()->fileMetricsQueries->fileMetrics($project, offset: 100_000)->data['files']);
+        assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($project, offset: 100_001), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($project, offset: -1), InvalidArgumentException::class);
         // The limit is checked too, by the shared guard.
-        assertThrows(fn() => $queries->fileMetrics($project, limit: 0), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($project, limit: 0), InvalidArgumentException::class);
     }
 
     /** Sizes and line counts are numbers, not the strings a driver might hand back. */
@@ -58,7 +58,7 @@ final class FileMetricsBoundsTest extends KnossosTestCase
     {
         [$pdo, $project] = $this->files(1);
 
-        $file = ArchitectureQueryService::forDatabase($pdo)->fileMetrics($project)->data['files'][0];
+        $file = ArchitectureQueryService::forDatabase($pdo)->services()->fileMetricsQueries->fileMetrics($project)->data['files'][0];
 
         assertSame(120, $file['bytes']);
         assertSame(12, $file['line_count']);
@@ -84,12 +84,12 @@ final class FileMetricsBoundsTest extends KnossosTestCase
 
         assertSame(
             ['src/a_b.php'],
-            array_column($queries->fileMetrics($project, pathContains: 'a_b')->data['files'], 'path'),
+            array_column($queries->services()->fileMetricsQueries->fileMetrics($project, pathContains: 'a_b')->data['files'], 'path'),
             'The underscore is a character here, not a wildcard.',
         );
         assertSame(
             ['src/100%done.php'],
-            array_column($queries->fileMetrics($project, pathContains: '100%d')->data['files'], 'path'),
+            array_column($queries->services()->fileMetricsQueries->fileMetrics($project, pathContains: '100%d')->data['files'], 'path'),
             'Nor is the percent sign.',
         );
     }
@@ -103,13 +103,13 @@ final class FileMetricsBoundsTest extends KnossosTestCase
         self::addFile($pdo, $project, 'src/zzz.php', lineCount: 900);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        assertSame('src/zzz.php', $queries->fileMetrics($project)->data['files'][0]['path'], 'Longest first by default.');
-        assertSame('src/aaa.php', $queries->fileMetrics($project, sortBy: 'line_count', order: 'asc')->data['files'][0]['path']);
-        assertSame('src/zzz.php', $queries->fileMetrics($project, sortBy: 'path')->data['files'][0]['path'], 'Path sort is descending by default too.');
-        assertSame('src/aaa.php', $queries->fileMetrics($project, sortBy: 'path', order: 'asc')->data['files'][0]['path']);
+        assertSame('src/zzz.php', $queries->services()->fileMetricsQueries->fileMetrics($project)->data['files'][0]['path'], 'Longest first by default.');
+        assertSame('src/aaa.php', $queries->services()->fileMetricsQueries->fileMetrics($project, sortBy: 'line_count', order: 'asc')->data['files'][0]['path']);
+        assertSame('src/zzz.php', $queries->services()->fileMetricsQueries->fileMetrics($project, sortBy: 'path')->data['files'][0]['path'], 'Path sort is descending by default too.');
+        assertSame('src/aaa.php', $queries->services()->fileMetricsQueries->fileMetrics($project, sortBy: 'path', order: 'asc')->data['files'][0]['path']);
 
-        assertThrows(fn() => $queries->fileMetrics($project, sortBy: 'bytes'), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->fileMetrics($project, order: 'sideways'), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($project, sortBy: 'bytes'), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($project, order: 'sideways'), InvalidArgumentException::class);
     }
 
     /** @return array{0: PDO, 1: string} */

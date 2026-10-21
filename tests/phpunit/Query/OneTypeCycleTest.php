@@ -27,10 +27,10 @@ final class OneTypeCycleTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $cycles = $queries->dependencyCycles($ids['project'])->data['cycles'];
+        $cycles = $queries->services()->cycleQueries->dependencyCycles($ids['project'])->data['cycles'];
         self::assertSame([['App\\A', 'App\\B']], array_map(static fn(array $cycle): array => self::names($cycle), $cycles), 'Only the cycle between two types counts.');
 
-        $withSelfLoops = $queries->dependencyCycles($ids['project'], includeSelfLoops: true)->data['cycles'];
+        $withSelfLoops = $queries->services()->cycleQueries->dependencyCycles($ids['project'], includeSelfLoops: true)->data['cycles'];
         self::assertCount(2, array_filter($withSelfLoops, static fn(array $cycle): bool => count($cycle['members']) > 1), 'Asked for, the recursion inside Walk is reported too.');
     }
 
@@ -49,7 +49,7 @@ final class OneTypeCycleTest extends KnossosTestCase
         $this->edge($repository, $ids['project'], $ids['file'], $ids['scan'], 'calls', $alone, $alone);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'], withinType: true)->data['cycles'];
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project'], withinType: true)->data['cycles'];
 
         self::assertSame(
             [[['App\\A', 'App\\B'], false, null], [['App\\Walk::walkItem', 'App\\Walk::walkItems'], true, 'App\\Walk']],
@@ -66,7 +66,7 @@ final class OneTypeCycleTest extends KnossosTestCase
         $this->graph($repository, $ids, $ids['scan'], withinType: true);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'])->data['cycles'];
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project'])->data['cycles'];
 
         self::assertCount(1, $cycles);
         self::assertArrayNotHasKey('within_type', $cycles[0]);
@@ -152,16 +152,16 @@ final class OneTypeCycleTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $one = $queries->dependencyCycles($ids['project'], limit: 1, withinType: true);
+        $one = $queries->services()->cycleQueries->dependencyCycles($ids['project'], limit: 1, withinType: true);
         self::assertSame([false, true], array_column($one->data['cycles'], 'within_type'));
         self::assertSame([], $one->data['bounds']['truncation_reasons']);
         self::assertFalse($one->truncated);
         self::assertTrue($one->data['bounds']['within_type_truncated']);
 
-        $two = $queries->dependencyCycles($ids['project'], limit: 2, withinType: true);
+        $two = $queries->services()->cycleQueries->dependencyCycles($ids['project'], limit: 2, withinType: true);
         self::assertSame([false, true, true], array_column($two->data['cycles'], 'within_type'));
         self::assertFalse($two->data['bounds']['within_type_truncated']);
-        self::assertArrayNotHasKey('within_type_truncated', $queries->dependencyCycles($ids['project'])->data['bounds']);
+        self::assertArrayNotHasKey('within_type_truncated', $queries->services()->cycleQueries->dependencyCycles($ids['project'])->data['bounds']);
     }
 
     /** Asked for alongside self-loops, a symbol that calls itself is not a cycle between types. */
@@ -175,7 +175,7 @@ final class OneTypeCycleTest extends KnossosTestCase
         $this->edge($repository, $ids['project'], $ids['file'], $ids['scan'], 'calls', $alone, $alone);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'], includeSelfLoops: true, withinType: true)->data['cycles'];
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project'], includeSelfLoops: true, withinType: true)->data['cycles'];
 
         self::assertSame([[2, false, null], [1, true, null]], array_map(static fn(array $cycle): array => [count($cycle['members']), $cycle['within_type'], $cycle['type']], $cycles));
         self::assertArrayHasKey('A', $n);
@@ -216,7 +216,7 @@ final class OneTypeCycleTest extends KnossosTestCase
         $n = $this->graph($repository, $ids, $ids['scan'], withinType: false);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $relationships = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'])->data['cycles'][0]['relationships'];
+        $relationships = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project'])->data['cycles'][0]['relationships'];
 
         self::assertSame([], array_values(array_filter($relationships, static fn(array $edge): bool => $edge['source_id'] === $edge['target_id'])));
         self::assertNotSame([], $relationships);
@@ -236,7 +236,7 @@ final class OneTypeCycleTest extends KnossosTestCase
         $this->graph($repository, $ids, $next, withinType: true);
         $repository->completeScan($ids['project'], $next);
 
-        $gate = ArchitectureQueryService::forDatabase($pdo)->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
+        $gate = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
 
         self::assertSame(0, $gate->data['metrics']['new_cycles']);
         self::assertTrue($gate->data['passed']);

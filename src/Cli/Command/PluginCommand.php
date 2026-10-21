@@ -7,6 +7,7 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
+use Knossos\Runtime\DataDirectory;
 use Throwable;
 
 /**
@@ -55,71 +56,35 @@ final class PluginCommand implements CliCommand
     private const DIRECTORIES = ['/.claude-plugin', '/hooks', '/hooks/lib', '/hooks/mod', '/hooks/scripts', '/skills', '/skills/graph', '/types'];
 
     /**
-     * Copied verbatim from the installation root into a materialised plugin.
-     *
-     * The mod's module files are named one by one, never globbed, so a spec
-     * or a tsconfig sitting beside them can never reach an installed plugin.
+     * Copied verbatim from the installation root into a materialised plugin,
+     * besides the mod's own files under `hooks/`, which {@see copies()} finds
+     * by walking the tree.
      */
     private const COPIES = [
-        '/hooks/hooks.json',
-        '/hooks/register.tsx',
-        '/hooks/lib/activity.ts',
-        '/hooks/lib/agent.ts',
-        '/hooks/lib/alerts.ts',
-        '/hooks/lib/band.ts',
-        '/hooks/lib/baseline.ts',
-        '/hooks/lib/boundaries.ts',
-        '/hooks/lib/branch.ts',
-        '/hooks/lib/cards.ts',
-        '/hooks/lib/changes.ts',
-        '/hooks/lib/churn.ts',
-        '/hooks/lib/cycles.ts',
-        '/hooks/lib/diagram.ts',
-        '/hooks/lib/diff.ts',
-        '/hooks/lib/envelopes.ts',
-        '/hooks/lib/files.ts',
-        '/hooks/lib/finder.ts',
-        '/hooks/lib/flash.ts',
-        '/hooks/lib/gauge.ts',
-        '/hooks/lib/hover.ts',
-        '/hooks/lib/layout.ts',
-        '/hooks/lib/live.ts',
-        '/hooks/lib/marks.ts',
-        '/hooks/lib/motion.ts',
-        '/hooks/lib/notes-tree.ts',
-        '/hooks/lib/notes-view.ts',
-        '/hooks/lib/notes.ts',
-        '/hooks/lib/overview.ts',
-        '/hooks/lib/palette.ts',
-        '/hooks/lib/paths.ts',
-        '/hooks/lib/place.ts',
-        '/hooks/lib/printable.ts',
-        '/hooks/lib/raster.ts',
-        '/hooks/lib/rings.ts',
-        '/hooks/lib/route.ts',
-        '/hooks/lib/rows.ts',
-        '/hooks/lib/scheduler.ts',
-        '/hooks/lib/sparkline.ts',
-        '/hooks/lib/themes.ts',
-        '/hooks/lib/tiles.ts',
-        '/hooks/lib/views.ts',
-        '/hooks/mod/actions.ts',
-        '/hooks/mod/agent.ts',
-        '/hooks/mod/cells.ts',
-        '/hooks/mod/dig.ts',
-        '/hooks/mod/frame.ts',
-        '/hooks/mod/input.ts',
-        '/hooks/mod/loaders.ts',
-        '/hooks/mod/motion.ts',
-        '/hooks/mod/notes-actions.ts',
-        '/hooks/mod/port.ts',
-        '/hooks/mod/render.tsx',
-        '/hooks/mod/session.ts',
-        '/hooks/mod/state.ts',
-        '/hooks/mod/watcher.ts',
         '/skills/graph/SKILL.md',
         '/types/index.d.ts',
     ];
+
+    /** The directory the mod's files are walked from, relative to the installation root. */
+    private const HOOKS_DIRECTORY = '/hooks';
+
+    /**
+     * Directories under `hooks/` the walk never descends into: the shell
+     * scripts are written by each mode itself with its own substitutions, test
+     * fixtures are not the mod's, and an installed dependency tree is not
+     * either. Hidden directories and symlinked ones are skipped as well, see
+     * {@see self::descends()}.
+     */
+    private const UNSHIPPED_DIRECTORIES = ['scripts', '__tests__', 'node_modules'];
+
+    /**
+     * Files under `hooks/` that stay behind: specs and tests, the ambient
+     * declarations only the type-checker reads, and its configuration.
+     */
+    private const UNSHIPPED_FILE = '~(\.spec\.tsx?|\.test\.tsx?|\.d\.ts)$|^tsconfig.*\.json$~';
+
+    /** The file types under `hooks/` that ship: the mod's sources and its hook configuration. */
+    private const SHIPPED_FILE = '~\.(ts|tsx|json)$~';
 
     /** The manifest, read from the installation root and rewritten with this CLI's version. */
     private const MANIFEST = '/.claude-plugin/plugin.json';
@@ -230,7 +195,8 @@ final class PluginCommand implements CliCommand
                 '__KNOSSOS_BIN__' => $this->singleQuoted($root . '/bin/knossos', 'installation root'),
             ],
         );
-        $this->materialise($root, $pluginDirectory, $scripts, prune: true);
+        $copies = $this->copies($root);
+        $this->materialise($root, $pluginDirectory, $copies, $scripts, prune: true);
         foreach ($commands as $line) {
             $status = 0;
             passthru($line, $status);
@@ -249,7 +215,7 @@ final class PluginCommand implements CliCommand
                 'scope' => $scope,
                 'plugin_directory' => $pluginDirectory,
                 'data_dir' => $dataDir,
-                'files' => $this->pluginFiles($scripts),
+                'files' => $this->pluginFiles($copies, $scripts),
                 'commands' => $commands,
                 'executed' => true,
             ],
@@ -298,7 +264,8 @@ final class PluginCommand implements CliCommand
             );
         }
         // Never pruned: `--out` names any directory (a person's own hooks directory among them), and what else is there is not the plugin's.
-        $existed = $this->materialise($root, $out, $scripts, prune: false);
+        $copies = $this->copies($root);
+        $existed = $this->materialise($root, $out, $copies, $scripts, prune: false);
 
         $message = sprintf('Wrote a container plugin to %s.', $out);
         if ($existed) {
@@ -323,7 +290,7 @@ final class PluginCommand implements CliCommand
                 'existed' => $existed,
                 'image' => $image,
                 'data' => $data,
-                'files' => $this->pluginFiles($scripts),
+                'files' => $this->pluginFiles($copies, $scripts),
             ],
             $context->options->flag($options, 'json'),
             $message,
@@ -346,31 +313,16 @@ final class PluginCommand implements CliCommand
      * already on disk before this call, whether that is $out itself or files
      * inside it, is left exactly as it was found.
      *
+     * @param list<string> $copies relative paths copied verbatim from $root, each with a leading slash
      * @param array<string, string> $scripts installed relative path => content
      * @param bool $prune whether to delete what an earlier install left that this one does not ship, files and the
      *   skill directories of earlier releases alike: only in the plugin directory this command manages, never in a
      *   directory `--out` names
      * @return bool whether $out already existed before this call
      */
-    private function materialise(string $root, string $out, array $scripts, bool $prune): bool
+    private function materialise(string $root, string $out, array $copies, array $scripts, bool $prune): bool
     {
-        $existed = file_exists($out);
-        $createdDirectories = [];
-        $createdFiles = [];
-        // Contents of files that were already there and are about to be
-        // replaced. Tracking only what was CREATED left an overwritten file
-        // holding the new bytes after a later step failed, which is exactly
-        // what this method's contract says cannot happen.
-        $replacedFiles = [];
-        $keepOriginal = static function (string $target) use (&$replacedFiles): void {
-            if (!is_file($target)) {
-                return;
-            }
-            $original = @file_get_contents($target);
-            if ($original !== false) {
-                $replacedFiles[$target] = $original;
-            }
-        };
+        $transaction = new EmitTransaction($out);
         // Where a stale skill directory from an earlier install was moved to,
         // so a failure further down can put it back.
         $retired = [];
@@ -378,33 +330,19 @@ final class PluginCommand implements CliCommand
         $pruned = [];
         try {
             foreach (self::DIRECTORIES as $directory) {
-                $path = $out . $directory;
-                if (is_dir($path)) {
-                    continue;
-                }
-                if (!@mkdir($path, 0o755, true)) {
-                    throw new InvalidArgumentException(sprintf('Unable to create %s.', $path));
-                }
-                $createdDirectories[] = $path;
+                $transaction->mkdir($out . $directory);
             }
             // Retiring renames and later deletes whole directories, so like the prune it is the managed
             // plugin directory's alone: a `--out` target's `skills/knossos` may be the person's own.
             if ($prune) {
                 $retired = $this->retireStaleSkills($out);
             }
-            foreach (self::COPIES as $relative) {
-                $target = $out . $relative;
-                $isNew = !file_exists($target);
-                $keepOriginal($target);
-                if (!@copy($root . $relative, $target)) {
-                    throw new InvalidArgumentException(sprintf('Unable to copy %s.', $relative));
-                }
-                if ($isNew) {
-                    $createdFiles[] = $target;
-                }
+            foreach ($copies as $relative) {
+                $transaction->mkdir(dirname($out . $relative));
+                $transaction->copy($root . $relative, $out . $relative, $relative);
             }
             if ($prune) {
-                $this->pruneUnshipped($out, $scripts, $pruned);
+                $this->pruneUnshipped($out, $this->pluginFiles($copies, $scripts), $pruned);
             }
             // Read and rewritten rather than copied. Claude Code caches an
             // installed plugin by the version in this file, so a manifest
@@ -413,33 +351,15 @@ final class PluginCommand implements CliCommand
             // reports there is nothing to do, leaving whatever was first
             // installed in place forever. Everything else in the file stays
             // the file's business.
-            $manifest = $out . self::MANIFEST;
-            $manifestIsNew = !file_exists($manifest);
-            $keepOriginal($manifest);
-            if (@file_put_contents($manifest, $this->versionedManifest($root . self::MANIFEST)) === false) {
-                throw new InvalidArgumentException(sprintf('Unable to write %s.', $manifest));
-            }
-            if ($manifestIsNew) {
-                $createdFiles[] = $manifest;
-            }
+            $transaction->write($out . self::MANIFEST, $this->versionedManifest($root . self::MANIFEST));
             // Generated, not copied. The descriptor is not committed, so a
             // fresh checkout legitimately has none to copy from, and a
             // materialise that depended on one would fail for every install.
-            $descriptor = $out . '/.claude-plugin/marketplace.json';
-            $keepOriginal($descriptor);
-            if ($this->writeDescriptor($descriptor, true)) {
-                $createdFiles[] = $descriptor;
-            }
+            // Written unconditionally, replacing a hand-edited one.
+            $transaction->write($out . '/.claude-plugin/marketplace.json', self::MARKETPLACE);
             foreach ($scripts as $relative => $content) {
                 $scriptPath = $out . '/' . $relative;
-                $scriptIsNew = !file_exists($scriptPath);
-                $keepOriginal($scriptPath);
-                if (@file_put_contents($scriptPath, $content) === false) {
-                    throw new InvalidArgumentException(sprintf('Unable to write %s.', $scriptPath));
-                }
-                if ($scriptIsNew) {
-                    $createdFiles[] = $scriptPath;
-                }
+                $transaction->write($scriptPath, $content);
                 if (!@chmod($scriptPath, $relative === self::LIBRARY_SCRIPT ? 0o644 : 0o755)) {
                     throw new InvalidArgumentException(sprintf('Unable to set the mode of %s.', $scriptPath));
                 }
@@ -449,15 +369,15 @@ final class PluginCommand implements CliCommand
             foreach ($retired as $original => $parked) {
                 @rename($parked, $original);
             }
-            $this->rollbackEmit($out, $existed, $createdDirectories, $createdFiles, $replacedFiles);
+            $transaction->rollback();
             throw $error;
         }
         // Only now that nothing after it can fail is the old copy deleted.
         foreach ($retired as $parked) {
-            $this->removeTree($parked);
+            EmitTransaction::removeTree($parked);
         }
 
-        return $existed;
+        return $transaction->existed();
     }
 
     /**
@@ -474,13 +394,13 @@ final class PluginCommand implements CliCommand
      * `hooks/` is not the plugin's to delete. Each file's bytes are kept so a later failure can
      * restore it.
      *
-     * @param array<string, string> $scripts installed relative path => content
+     * @param list<string> $files every file this install ships, relative to $out, as {@see pluginFiles()} lists them
      * @param array<string, array{link: ?string, contents: string, mode: int}> $pruned filled with each deleted file as it
      *   was, as it is deleted, so a failure half way still knows what to put back
      */
-    private function pruneUnshipped(string $out, array $scripts, array &$pruned): void
+    private function pruneUnshipped(string $out, array $files, array &$pruned): void
     {
-        $shipped = array_flip($this->pluginFiles($scripts));
+        $shipped = array_flip($files);
         $base = realpath($out);
         if ($base === false) {
             return;
@@ -583,12 +503,13 @@ final class PluginCommand implements CliCommand
     /**
      * Every file a materialised plugin holds, sorted, for reporting.
      *
+     * @param list<string> $copies relative paths copied verbatim, each with a leading slash
      * @param array<string, string> $scripts installed relative path => content
      * @return list<string>
      */
-    private function pluginFiles(array $scripts): array
+    private function pluginFiles(array $copies, array $scripts): array
     {
-        $copies = array_map(static fn(string $copy): string => ltrim($copy, '/'), self::COPIES);
+        $copies = array_map(static fn(string $copy): string => ltrim($copy, '/'), $copies);
         $files = [...self::WRITTEN_FILES, ...$copies, ...array_keys($scripts)];
         sort($files);
 
@@ -607,13 +528,14 @@ final class PluginCommand implements CliCommand
     {
         $value = $option;
         if ($value === null || $value === '') {
-            $fromEnvironment = getenv('KNOSSOS_DATA_DIR');
-            $value = is_string($fromEnvironment) ? $fromEnvironment : '';
+            $value = DataDirectory::named() ?? '';
         }
         if ($value !== '' && !str_starts_with($value, '/')) {
             // A relative path would be resolved against each project's
             // directory by the hooks, which is a different graph from the one
-            // the server reads.
+            // the server reads. The value is refused rather than anchored the
+            // way DataDirectory::resolve() anchors it, because the installer's
+            // working directory says nothing about where the person meant.
             throw new InvalidArgumentException(sprintf('data-dir must be an absolute path, got "%s".', $value));
         }
         $this->singleQuoted($value, 'data-dir');
@@ -683,81 +605,67 @@ final class PluginCommand implements CliCommand
     }
 
     /**
-     * Write the marketplace descriptor at $path, creating its directory.
+     * Every file copied verbatim into a materialised plugin, in copy order.
      *
-     * With $overwrite false an existing descriptor is left exactly as it is,
-     * because a checkout may carry a hand-edited one and an install is not the
-     * place to overwrite it. With $overwrite true the write is unconditional,
-     * matching what the copy() it replaced did to a `--out` target.
+     * The mod's files are found by walking `hooks/` in $root rather than kept
+     * in a list, so a module added to the tree can never be left out of an
+     * install and fail to load there. Specs, tests, declarations and
+     * configuration are excluded by name, and only the file types the mod is
+     * made of are taken, so nothing that sits beside the sources can reach an
+     * installed plugin. The entries outside `hooks/` follow.
      *
-     * @return bool whether the file did not exist before this call
+     * @return list<string> relative paths, each with a leading slash
      */
-    private function writeDescriptor(string $path, bool $overwrite): bool
+    private function copies(string $root): array
     {
-        $isNew = !file_exists($path);
-        if (!$isNew && !$overwrite) {
-            return false;
-        }
-        $directory = dirname($path);
-        if (!is_dir($directory) && !@mkdir($directory, 0o755, true)) {
-            throw new InvalidArgumentException(sprintf('Unable to create %s.', $directory));
-        }
-        if (@file_put_contents($path, self::MARKETPLACE) === false) {
-            throw new InvalidArgumentException(sprintf('Unable to write %s.', $path));
-        }
-        return $isNew;
+        return [...$this->hookFiles($root, self::HOOKS_DIRECTORY), ...self::COPIES];
     }
 
     /**
-     * Undo exactly what emit() created before it failed.
+     * The shipped files under $relative in $root: a directory's own files
+     * first, sorted, then each subdirectory's in turn.
      *
-     * When the `--out` target did not exist at all beforehand, everything
-     * under it is ours, so the whole tree is removed. Otherwise only the
-     * specific files and directories created during this call are removed,
-     * in reverse order, leaving anything that predates this call untouched.
-     *
-     * @param list<string> $createdDirectories
-     * @param list<string> $createdFiles
-     * @param array<string, string> $replacedFiles path => contents as found
+     * @return list<string> relative paths, each with a leading slash
      */
-    private function rollbackEmit(string $out, bool $outExisted, array $createdDirectories, array $createdFiles, array $replacedFiles = []): void
+    private function hookFiles(string $root, string $relative): array
     {
-        if (!$outExisted) {
-            $this->removeTree($out);
-            return;
+        $entries = @scandir($root . $relative);
+        if ($entries === false) {
+            throw new InvalidArgumentException(sprintf('Unable to read %s.', $root . $relative));
         }
-        // Restored before the created files are removed, so a path that was
-        // both is put back rather than deleted.
-        foreach ($replacedFiles as $file => $original) {
-            @file_put_contents($file, $original);
-        }
-        foreach ($createdFiles as $file) {
-            if (array_key_exists($file, $replacedFiles)) {
-                continue;
-            }
-            @unlink($file);
-        }
-        foreach (array_reverse($createdDirectories) as $directory) {
-            @rmdir($directory);
-        }
-    }
-
-    /** Recursively remove a path this command created, best-effort. */
-    private function removeTree(string $path): void
-    {
-        if (is_file($path) || is_link($path)) {
-            @unlink($path);
-            return;
-        }
-        if (!is_dir($path)) {
-            return;
-        }
-        foreach (scandir($path) ?: [] as $entry) {
+        $files = [];
+        $directories = [];
+        foreach ($entries as $entry) {
             if ($entry === '.' || $entry === '..') {
                 continue;
             }
-            $this->removeTree($path . '/' . $entry);
+            $path = $relative . '/' . $entry;
+            if (is_dir($root . $path)) {
+                if (self::descends($root . $path, $entry)) {
+                    $directories[] = $path;
+                }
+                continue;
+            }
+            if (preg_match(self::SHIPPED_FILE, $entry) === 1 && preg_match(self::UNSHIPPED_FILE, $entry) !== 1) {
+                $files[] = $path;
+            }
         }
-        @rmdir($path);
+        foreach ($directories as $directory) {
+            $files = [...$files, ...$this->hookFiles($root, $directory)];
+        }
+
+        return $files;
+    }
+
+    /**
+     * Whether the walk enters the directory $entry at $path: not a listed
+     * one, not a hidden one, and not a symlink, which could point anywhere,
+     * the walk's own ancestors included.
+     */
+    private static function descends(string $path, string $entry): bool
+    {
+        return !in_array($entry, self::UNSHIPPED_DIRECTORIES, true)
+            && !str_starts_with($entry, '.')
+            && !is_link($path);
     }
 }

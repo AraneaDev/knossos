@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Framework;
 use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
@@ -55,7 +56,7 @@ final class SymfonyTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Symfony Fixture');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Symfony Fixture'));
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'route'")->fetchColumn());
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'symfony.controller'")->fetchColumn());
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'symfony.command'")->fetchColumn());

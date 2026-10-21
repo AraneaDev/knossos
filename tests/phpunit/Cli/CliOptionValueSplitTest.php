@@ -83,6 +83,18 @@ final class CliOptionValueSplitTest extends KnossosTestCase
         assertSame(false, $parser->flag($parser->parse(['--json=false'])[1], 'json'));
     }
 
+    /** An absent switch is its default: off unless the caller says it is on, and a switch that is on turns off with =false. */
+    #[Group('cli')]
+    public function testAnAbsentSwitchIsItsDefault(): void
+    {
+        $parser = new CliOptionParser();
+
+        assertSame(false, $parser->flag([], 'seed-members'));
+        assertSame(true, $parser->flag([], 'seed-members', true));
+        assertSame(false, $parser->flag($parser->parse(['--seed-members=false'])[1], 'seed-members', true));
+        assertSame(true, $parser->flag($parser->parse(['--seed-members'])[1], 'seed-members', false));
+    }
+
     /** A boundary prefix may itself contain a colon. */
     #[Group('cli')]
     public function testABoundaryPrefixMayContainAColon(): void

@@ -7,6 +7,8 @@ namespace Knossos\Tests\Phpunit\Scan;
 use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
+use Knossos\Store\ScanBusyException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
@@ -28,7 +30,7 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
     {
         [$pdo, , $root] = $this->scanTempFixture('mixed');
         try {
-            $stages = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full')->data['metrics']['stages_ms'];
+            $stages = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->data['metrics']['stages_ms'];
 
             // 'snapshot_validation' is in the list for the same reason the rest
             // are, with one extra edge: it is the only stage whose work is pure
@@ -105,11 +107,19 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
 
             // The poll runs at every checkpoint; clearing the lock table there
             // takes the lease away while the scan still believes it holds it.
-            $service->scan($root, cancellation: new CancellationToken(static function () use ($pdo): bool {
-                $pdo->exec('DELETE FROM scan_locks');
+            // The scan finds out when it renews the lease before writing.
+            $busy = null;
+            try {
+                $service->scan($root, new ScanOptions(cancellation: new CancellationToken(static function () use ($pdo): bool {
+                    $pdo->exec('DELETE FROM scan_locks');
 
-                return false;
-            }));
+                    return false;
+                })));
+            } catch (ScanBusyException $error) {
+                $busy = $error;
+            }
+
+            assertSame(true, $busy instanceof ScanBusyException);
 
             assertSame(true, str_contains((string) file_get_contents((string) $log), 'released zero rows'));
         } finally {
@@ -136,7 +146,7 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
             });
 
             captureThrows(
-                static fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, cancellation: $token),
+                static fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(cancellation: $token)),
                 ScanCancelledException::class,
             );
 
@@ -166,18 +176,18 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
             // second scan on the same one skips the handshake the first
             // counted, and consults the token fewer times.
             $consulted = 0;
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, cancellation: new CancellationToken(static function () use (&$consulted): bool {
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(cancellation: new CancellationToken(static function () use (&$consulted): bool {
                 ++$consulted;
 
                 return false;
-            }));
+            })));
             $scans = self::scanCount($pdo);
 
             $seen = 0;
             $error = captureThrows(
-                static fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, cancellation: new CancellationToken(static function () use (&$seen, $consulted): bool {
+                static fn() => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(cancellation: new CancellationToken(static function () use (&$seen, $consulted): bool {
                     return ++$seen >= $consulted;
-                })),
+                }))),
                 ScanCancelledException::class,
             );
 
@@ -205,7 +215,7 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
             $service->scan($root);
 
-            $rescan = $service->scan($root, mode: 'full');
+            $rescan = $service->scan($root, new ScanOptions(mode: 'full'));
 
             assertSame('full', $rescan->data['mode']);
             assertSame(false, array_key_exists('fast_path', $rescan->data));

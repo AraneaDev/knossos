@@ -35,7 +35,7 @@ final class HealthTest extends KnossosTestCase
         $repository->saveBoundaryMembership($wholeRepository, $ids['project'], $ids['invoice'], $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project']);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project']);
 
         assertSame(1, $health->data['hubs'][0]['metrics']['cross_boundary_degree']);
     }
@@ -47,7 +47,7 @@ final class HealthTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $buckets = $health['in_degree_histogram'];
 
         assertSame([0, 1, 6, 21, 101], array_column($buckets, 'from'));
@@ -121,7 +121,7 @@ final class HealthTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $query = ArchitectureQueryService::forDatabase($pdo);
-        $health = $query->architectureHealth($ids['project']);
+        $health = $query->services()->healthQueries->architectureHealth($ids['project']);
         assertSame(['App\\Checkout', 'App\\InvoiceService'], array_column(array_column($health->data['hubs'], 'component'), 'canonical_name'));
         assertSame(2, $health->data['hubs'][0]['score']);
         assertSame(2, $health->data['hubs'][0]['metrics']['cross_boundary_degree']);
@@ -133,25 +133,25 @@ final class HealthTest extends KnossosTestCase
         assertContains('candidates only', $health->warnings[1]);
         assertSame(4, count($health->evidence));
 
-        $filtered = $query->architectureHealth($ids['project'], edgeKinds: ['imports']);
+        $filtered = $query->services()->healthQueries->architectureHealth($ids['project'], edgeKinds: ['imports']);
         assertSame([], $filtered->data['hubs']);
-        $limited = $query->architectureHealth($ids['project'], limit: 1);
+        $limited = $query->services()->healthQueries->architectureHealth($ids['project'], limit: 1);
         assertSame(true, $limited->truncated);
         assertSame(true, in_array('result_limit', $limited->data['bounds']['truncation_reasons'], true));
-        $nodeLimited = $query->architectureHealth($ids['project'], maxNodes: 1);
+        $nodeLimited = $query->services()->healthQueries->architectureHealth($ids['project'], maxNodes: 1);
         assertSame(true, $nodeLimited->truncated);
         assertSame(true, in_array('node_limit', $nodeLimited->data['bounds']['truncation_reasons'], true));
-        $edgeLimited = $query->architectureHealth($ids['project'], maxEdges: 1);
+        $edgeLimited = $query->services()->healthQueries->architectureHealth($ids['project'], maxEdges: 1);
         assertSame(true, $edgeLimited->truncated);
         assertSame(true, in_array('edge_limit', $edgeLimited->data['bounds']['truncation_reasons'], true));
-        assertThrows(fn() => $query->architectureHealth($ids['project'], edgeKinds: ['contains']), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->healthQueries->architectureHealth($ids['project'], edgeKinds: ['contains']), InvalidArgumentException::class);
 
         $time = 0;
         $timedQuery = ArchitectureQueryService::forDatabase($pdo, function () use (&$time): int {
             $time += 2_000_000;
             return $time;
         });
-        $timed = $timedQuery->architectureHealth($ids['project'], timeoutMs: 1);
+        $timed = $timedQuery->services()->healthQueries->architectureHealth($ids['project'], timeoutMs: 1);
         assertSame(true, $timed->truncated);
         assertSame(true, in_array('time_limit', $timed->data['bounds']['truncation_reasons'], true));
     }
@@ -188,7 +188,7 @@ final class HealthTest extends KnossosTestCase
 
         RowCountingStatement::reset();
         // Both budgets spent: the hub walk's and the candidate search's.
-        $envelope = $expired->architectureHealth($projectId, timeoutMs: 1, candidateTimeoutMs: 1);
+        $envelope = $expired->services()->healthQueries->architectureHealth($projectId, timeoutMs: 1, candidateTimeoutMs: 1);
 
         assertSame(true, $envelope->truncated);
         assertSame(true, in_array('time_limit', $envelope->data['bounds']['truncation_reasons'], true));
@@ -222,8 +222,8 @@ final class HealthTest extends KnossosTestCase
             return $time;
         });
 
-        $bounded = $expired->architectureHealth($ids['project'], timeoutMs: 1, candidateTimeoutMs: 1);
-        $whole = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project']);
+        $bounded = $expired->services()->healthQueries->architectureHealth($ids['project'], timeoutMs: 1, candidateTimeoutMs: 1);
+        $whole = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project']);
 
         assertSame(2, count($bounded->data['hubs']));
         assertSame(true, str_starts_with($bounded->summary, 'Ranked 2 hubs, 2 static hotspots, and 0 unreferenced-code candidates, 0 of them reached only by tests.'), $bounded->summary);
@@ -281,7 +281,7 @@ final class HealthTest extends KnossosTestCase
         );
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], maxNodes: 4);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], maxNodes: 4);
 
         assertSame(true, in_array('node_limit', $health->data['bounds']['truncation_reasons'], true));
         assertSame(1, $health->data['bounds']['excluded_constructors']);
@@ -313,7 +313,7 @@ final class HealthTest extends KnossosTestCase
         }
         $repository->completeScan($project, $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, maxNodes: 3);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, maxNodes: 3);
 
         assertSame('App\\Zeta', $health->data['hubs'][0]['component']['canonical_name']);
         assertSame(6, $health->data['hubs'][0]['metrics']['in_degree'], 'Callers outside the window still count.');
@@ -359,7 +359,7 @@ final class HealthTest extends KnossosTestCase
         });
         $repository->completeScan($project, $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project);
 
         assertSame(true, $health->data['bounds']['cycle_scan_truncated']);
         assertSame(true, in_array('cycle_scan', $health->data['bounds']['truncation_reasons'], true));
@@ -383,7 +383,7 @@ final class HealthTest extends KnossosTestCase
             return ++$reads === 1 ? 0 : PHP_INT_MAX >> 1;
         };
 
-        $health = ArchitectureQueryService::forDatabase($pdo, $clock)->architectureHealth($ids['project'], limit: 3);
+        $health = ArchitectureQueryService::forDatabase($pdo, $clock)->services()->healthQueries->architectureHealth($ids['project'], limit: 3);
 
         assertSame(['App\\Zeta', 'App\\Aaa01', 'App\\Aaa02'], array_column(array_column($health->data['hubs'], 'component'), 'canonical_name'));
         assertSame(6, $health->data['hubs'][0]['metrics']['in_degree']);
@@ -431,7 +431,7 @@ final class HealthTest extends KnossosTestCase
                 }
             }
             $actual = [];
-            foreach ($queries->architectureHealth($project, minConfidence: $minimum, limit: 100)->data['hubs'] as $hub) {
+            foreach ($queries->services()->healthQueries->architectureHealth($project, minConfidence: $minimum, limit: 100)->data['hubs'] as $hub) {
                 $metrics = array_filter($hub['metrics'], static fn(int $value, string $key): bool => $value > 0 && in_array($key, ['in_degree', 'out_degree'], true), ARRAY_FILTER_USE_BOTH);
                 $actual[$hub['component']['canonical_name']] = $metrics;
             }
@@ -467,7 +467,7 @@ final class HealthTest extends KnossosTestCase
         }
         $repository->completeScan($project, $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, maxNodes: 2);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, maxNodes: 2);
 
         assertSame('App\\Hub', $health->data['hubs'][0]['component']['canonical_name'] ?? null);
         assertSame(4, $health->data['hubs'][0]['metrics']['in_degree']);

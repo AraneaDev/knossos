@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Dashboard, JobState, KnossosView, TurnBrief } from '../../types'
-import { cells } from '../lib/rows'
+import { cells } from '../lib/text'
 import type { Port } from './port'
 import { drawBand } from './render'
 import type { BandHandlers } from './render'
@@ -97,29 +97,29 @@ beforeEach(() => {
 describe('drawBand: nothing drawn', () => {
     it('draws nothing while the mod is off, clears the band text and never resolves the elements', async () => {
         const { io } = fakePort()
-        mod.disabled = true
-        mod.bandText = 'stale'
+        mod.session.disabled = true
+        mod.pane.bandText = 'stale'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: false, bodyColumns: 80 }, handlers())).toBeNull()
-        expect(mod.bandText).toBeNull()
+        expect(mod.pane.bandText).toBeNull()
         expect(resolve).not.toHaveBeenCalled()
     })
 
     it('gives way to a survey', async () => {
         const { io } = fakePort()
-        mod.bandText = 'stale'
+        mod.pane.bandText = 'stale'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: true, bodyColumns: 80 }, handlers())).toBeNull()
-        expect(mod.bandText).toBeNull()
+        expect(mod.pane.bandText).toBeNull()
         expect(resolve).not.toHaveBeenCalled()
     })
 
     it('stays hidden while the view hides the band', async () => {
         const { io, reads } = fakePort({ view: view({ isBandHidden: true }) })
-        mod.bandText = 'stale'
+        mod.pane.bandText = 'stale'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: false, bodyColumns: 80 }, handlers())).toBeNull()
-        expect(mod.bandText).toBeNull()
+        expect(mod.pane.bandText).toBeNull()
         expect(resolve).not.toHaveBeenCalled()
         // Hidden is decided before the brief is even looked at.
         expect(reads).not.toContain('brief')
@@ -127,10 +127,10 @@ describe('drawBand: nothing drawn', () => {
 
     it('draws nothing when there is no brief and no scan to report', async () => {
         const { io } = fakePort({ brief: null })
-        mod.bandText = 'stale'
+        mod.pane.bandText = 'stale'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: false, bodyColumns: 80 }, handlers())).toBeNull()
-        expect(mod.bandText).toBeNull()
+        expect(mod.pane.bandText).toBeNull()
         expect(resolve).not.toHaveBeenCalled()
     })
 })
@@ -144,10 +144,10 @@ describe('drawBand: a turn that changed the graph', () => {
         const { band, textBox, shown } = partsOf(tree)
         expect(band).toMatchObject({ type: 'Box', key: 'band', props: { width: 200 } })
         expect(textBox).toMatchObject({ type: 'Box', key: 'band-text' })
-        expect(mod.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
+        expect(mod.pane.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
         // Wide enough for all of it: the text is the recorded one, then a space before the buttons.
-        expect(shown).toBe(`${mod.bandText} `)
-        expect(textBox.props.width).toBe(cells(mod.bandText!) + 1)
+        expect(shown).toBe(`${mod.pane.bandText} `)
+        expect(textBox.props.width).toBe(cells(mod.pane.bandText!) + 1)
     })
 
     it.each([
@@ -209,7 +209,7 @@ describe('drawBand: a narrow body', () => {
         expect(shown.startsWith('knossos · 1 file')).toBe(true)
         expect((textBox.props.width as number) + ('details'.length + 5) + ('hide'.length + 5)).toBeLessThanOrEqual(columns)
         // What the band records is the whole text, not the cut one.
-        expect(mod.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
+        expect(mod.pane.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
     })
 
     it('keeps at least one cell of text when the buttons take the whole body', async () => {
@@ -224,13 +224,13 @@ describe('drawBand: the dashboard', () => {
     it('names only the declared boundaries when the dashboard declares some', async () => {
         const { io } = fakePort({ dashboard: declaring() })
         await drawBand(io, () => elements as never, { hasSurvey: false, bodyColumns: 200 }, handlers())
-        expect(mod.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core')
+        expect(mod.pane.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core')
     })
 
     it('still draws without an ok dashboard, naming every boundary reached', async () => {
         const { io } = fakePort({ dashboard: { status: 'error', declared: ['core'] } })
         const tree = await drawBand(io, () => elements as never, { hasSurvey: false, bodyColumns: 200 }, handlers())
         expect(partsOf(tree).band.key).toBe('band')
-        expect(mod.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
+        expect(mod.pane.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
     })
 })

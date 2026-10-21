@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Bundle;
 use Knossos\Bundle\GraphBundleDecoder;
 use Knossos\Bundle\GraphBundleService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -60,7 +61,7 @@ final class BundleSchemaAgreementTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Schema Source');
+            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Schema Source'));
             // The fixture scans clean, and a table with no rows proves nothing about its columns.
             $scanId = (string) $pdo->query('SELECT active_scan_id FROM projects WHERE id = ' . $pdo->quote($scan->projectId))->fetchColumn();
             $pdo->prepare('INSERT INTO diagnostics(id, project_id, scan_id, file_id, severity, code, message, start_line, end_line, owner_key) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)')

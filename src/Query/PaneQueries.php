@@ -105,13 +105,13 @@ final readonly class PaneQueries
             if (!$remove && $author !== 'user') {
                 throw new InvalidArgumentException('A note written here is the person\'s: only a remove names an author.');
             }
-            $queries = ArchitectureQueryService::forDatabase($this->pdo);
-            NotesService::assertNamesItself($queries, $id, $component);
+            $annotations = QueryServices::wire($this->pdo)->annotationQueries;
+            NotesService::assertNamesItself($annotations, $id, $component);
             // The pane is where a person writes: what they record is theirs.
             // Only a remove names another author, to take away a model's note.
             $result = $remove
-                ? $queries->removeAnnotation($id, $component, $kind, $value, $execute, $author)
-                : $queries->upsertAnnotation($id, $component, $kind, $value, $execute, 'user');
+                ? $annotations->removeAnnotation($id, $component, $kind, $value, $execute, $author)
+                : $annotations->upsertAnnotation($id, $component, $kind, $value, $execute, 'user');
         } catch (InvalidArgumentException $refused) {
             return ['status' => 'refused', 'reason' => $refused->getMessage()] + $envelope;
         } catch (\Throwable $failed) {

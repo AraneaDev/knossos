@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Framework;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
@@ -61,7 +62,7 @@ final class TypescriptAppTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'TypeScript App');
+            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('TypeScript App'));
             assertSame(7, $result->data['parsed_files']);
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'nextjs.route_handler'")->fetchColumn());
             assertSame(2, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'react.component'")->fetchColumn());

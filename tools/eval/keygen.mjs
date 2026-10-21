@@ -12,7 +12,7 @@ import { parseArgs, promisify } from "node:util";
 import { matchEntries } from "./answer.mjs";
 import { loadCorpus } from "./corpus.mjs";
 import { evalEnv, evalPaths } from "./env.mjs";
-import { REPO_ROOT, settings } from "./run.mjs";
+import { REPO_ROOT, settings } from "./config.mjs";
 
 const exec = promisify(execFile);
 const CALL_KINDS = new Set(["calls", "dispatches"]);

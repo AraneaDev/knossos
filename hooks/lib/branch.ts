@@ -16,16 +16,23 @@
  */
 import type { BranchDiff, BranchItem, BranchState } from '../../types'
 import { stamp } from './changes'
-import { noteOf, windowOf, moreRows, shownOf } from './cards'
+import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { ACCENT, boundaryColour, FAINT, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { bar, button, cells, chip, clip, displayName, fit, grouped, opensFile, padStart, placeOf, plural, segmentsWidth, shortName, spaces, SWATCH, tinted, wrapGroups, wrapWords } from './rows'
-import type { Loc, Row, Segment } from './rows'
+import { button, clip, inList, notListedRow, segmentsWidth, tinted, wrapGroups } from './rows'
+import { bar } from './table'
+import { chip, SWATCH } from './chips'
+import { cells, displayName, fit, grouped, padStart, plural, shortName, spaces, wrapWords } from './text'
+import { opensFile } from './editor'
+import { placeOf } from './paths'
+import type { Loc, Row, Segment } from './types'
 import { locIn } from './views'
 import type { Openable } from './views'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
 import { busy } from './motion'
+import { countLabel } from './envelopes'
+import { unreadablePolicies, unreadableText } from './policies'
 
 /** One component the Branch tab lists: what it shows, what it opens, where it is. */
 export type BranchLine = { name: string; canonical: string; boundary: string | null; place: string; loc: Loc | null }
@@ -60,6 +67,8 @@ export type BranchInput = {
   unlisted: { kind: BranchFinding['kind']; count: number }[]
   /** Null when the project declares no policies, or the comparison holds no check: no violations to rule out. */
   policies: boolean
+  /** The policy check stopped at its edge or time limit: its count is a floor, and the verdict is never all clear. */
+  partial: boolean
   /** The touched files, by boundary; null on the default branch, or when git could not say. */
   changed: { count: number; added: number; deleted: number; reach: number; truncated: boolean; groups: BranchGroup[] } | null
 }
@@ -127,7 +136,7 @@ function changedOf(f: NonNullable<BranchDiff['files']>, root: string | null, fol
 
 /** The tab's view of the stored comparison; `root` places each component on disk, `folds` names the boundaries opened. */
 export function branchInput(state: BranchState | null, root: string | null, folds: string[] = []): BranchInput {
-  const nothing = { heading: null, findings: [], unlisted: [], policies: false, changed: null }
+  const nothing = { heading: null, findings: [], unlisted: [], policies: false, partial: false, changed: null }
   // A comparison for a newer graph on its way keeps the last one on show, saying so.
   const loading = state === null || state.phase === 'loading'
   const answer = state?.answer ?? null
@@ -143,7 +152,7 @@ export function branchInput(state: BranchState | null, root: string | null, fold
   }
   const changed = answer.files === null || answer.files === undefined ? null : changedOf(answer.files, root, folds)
   const c = answer.comparison ?? null
-  if (c === null) return { heading, said, warn, loading, verdict: { state: 'none', checks: [] }, findings: [], unlisted: [], policies: false, changed }
+  if (c === null) return { heading, said, warn, loading, verdict: { state: 'none', checks: [] }, findings: [], unlisted: [], policies: false, partial: false, changed }
   const line = (item: BranchItem) => lineOf(item, root)
   const findings: BranchFinding[] = [
     ...(c.violations?.items ?? []).map((v): BranchFinding => ({ kind: 'policy', line: { name: shortName(v.source), canonical: v.source, boundary: null, place: '', loc: null }, policy: v.policy_id, target: shortName(v.target) })),
@@ -154,10 +163,15 @@ export function branchInput(state: BranchState | null, root: string | null, fold
   ]
   const counted: [BranchFinding['kind'], number][] = [['policy', c.violations?.count ?? 0], ['cycle', c.cycles.count], ['crossing', c.crossing.count], ['hub', c.hubs.count], ['dead', c.dead_code.count]]
   const unlisted = counted.map(([kind, count]) => ({ kind, count: count - findings.filter(f => f.kind === kind).length })).filter(u => u.count > 0)
-  const policies = c.violations !== null
+  // Policies knossos could not read were not checked: no "no violations" to claim, and the reason said.
+  const reason = unreadablePolicies(c.violations)
+  const unreadable = reason !== null
+  const policies = c.violations !== null && !unreadable
+  const partial = policies && c.violations?.truncated === true
   const checks = ['no new cycles', 'no new crossings', 'no hubs grew', 'no dead code', ...(policies ? ['no violations'] : [])]
   const total = counted.reduce((s, [, n]) => s + n, 0)
-  return { heading, said, warn, loading, verdict: { state: total === 0 ? 'clean' : 'findings', checks }, findings, unlisted, policies, changed }
+  const notes = unreadable ? { said: [...said, unreadableText(reason)], warn: true } : { said, warn }
+  return { heading, ...notes, loading, verdict: { state: total === 0 && !partial ? 'clean' : 'findings', checks }, findings, unlisted, policies, partial, changed }
 }
 
 /** How many things the comparison found: what the tab's badge counts (the touched files are no finding). */
@@ -230,11 +244,15 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
     return wrapGroups('branch-verdict', input.verdict.checks.map((c): Segment[] => [{ text: `${SEVERITY.ok.glyph} ${c}`, color: STATUS_COLOURS.ok }]), columns, 3, 3)
   }
   const count = branchCount(input)
-  const head: Row = { key: 'branch-verdict', segments: clip([{ text: '   ' }, { text: `${SEVERITY.warn.glyph} ${plural(count, 'thing', 'things')} to look at`, color: STATUS_COLOURS.warn, bold: true }], columns) }
-  const window = windowOf(input.findings.length, limit, selected < input.findings.length ? selected : -1)
-  const rows = input.findings.slice(window.start, window.end).map((f, n) => findingRow(f, window.start + n, selected, columns, hues))
-  const rest = input.unlisted.map((u): Row => ({ key: `branch-unlisted-${u.kind}`, segments: [{ text: fit(`    +${grouped(u.count)} more ${WORST[u.kind].many} not listed`, columns), dim: true }] }))
-  return [head, ...rows, ...moreRows('branch-findings-window', window, input.findings.length, columns, 0), ...rest]
+  // A check that stopped early found at least this many: "3+ things", or with none found, that it is not done.
+  const looked = !input.partial ? `${plural(count, 'thing', 'things')} to look at` : count === 0 ? 'policies not fully checked' : `${countLabel(count, true)} things to look at`
+  const head: Row = { key: 'branch-verdict', segments: clip([{ text: '   ' }, { text: `${SEVERITY.warn.glyph} ${looked}`, color: STATUS_COLOURS.warn, bold: true }], columns) }
+  const { rows } = windowedTable('branch-findings-window', input.findings, { columns, limit, local: inList(selected, input.findings.length), walk: 0 }, (shown, start) =>
+    shown.map((f, n) => findingRow(f, start + n, selected, columns, hues)),
+  )
+  const rest = input.unlisted.flatMap(u => notListedRow(`branch-unlisted-${u.kind}`, u.count, 0, columns, { kind: WORST[u.kind].many, indent: 4 }))
+  const stopped: Row[] = input.partial ? [{ key: 'branch-partial', segments: [{ text: fit('    the policy check stopped at its edge or time limit: more violations may be new', columns), dim: true }] }] : []
+  return [head, ...rows, ...rest, ...stopped]
 }
 
 /**
@@ -301,12 +319,13 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
       if (walk.length === 0) return section([])
       const widest = Math.min(24, Math.max(8, Math.floor(columns / 4)), Math.max(...changed.groups.map(g => cells(labelOf(g)))))
       const most = Math.max(1, ...changed.groups.map(g => g.added + g.deleted))
-      const local = selected - at0
-      const window = windowOf(walk.length, limit, local >= 0 && local < walk.length ? local : -1, scrolled)
       // The reach column's title over the figures it heads, both ending at the card's edge.
       const head: Row = { key: 'branch-changed-head', segments: [{ text: spaces(Math.max(0, columns - REACH_CELLS)) }, { text: padStart('reach', REACH_CELLS), dim: true }] }
-      const rows = walk.slice(window.start, window.end).map((r, n) => (r.kind === 'group' ? groupRow(r.g, at0 + window.start + n, selected, widest, most, columns, hues) : fileRow(r.f, at0 + window.start + n, selected, columns)))
-      return { ...section([head, ...rows, ...moreRows('branch-changed-window', window, walk.length, columns, at0)]), window: shownOf(window, walk.length) }
+      const { rows, window } = windowedTable('branch-changed-window', walk, { columns, limit, local: inList(selected - at0, walk.length), scrolled, walk: at0 }, (shown, start) => [
+        head,
+        ...shown.map((r, n) => (r.kind === 'group' ? groupRow(r.g, at0 + start + n, selected, widest, most, columns, hues) : fileRow(r.f, at0 + start + n, selected, columns))),
+      ])
+      return { ...section(rows), window }
     },
   }
   return { left: [head, list] }

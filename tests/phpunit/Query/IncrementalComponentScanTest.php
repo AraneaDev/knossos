@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -41,12 +42,12 @@ final class IncrementalComponentScanTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
-            $service->scan($root, mode: 'full');
+            $service->scan($root, new ScanOptions(mode: 'full'));
             // Only the files that load the others change.
             file_put_contents($root . '/js/store/index.js', $files['js/store/index.js'] . "// edited\n");
             file_put_contents($root . '/js/app.js', $files['js/app.js'] . "// edited\n");
-            $projectId = $service->scan($root, mode: 'incremental')->projectId;
-            $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 100)->data;
+            $projectId = $service->scan($root, new ScanOptions(mode: 'incremental'))->projectId;
+            $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100)->data;
         } finally {
             $this->removeTempTree($root);
         }

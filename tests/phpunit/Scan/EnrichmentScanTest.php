@@ -7,9 +7,10 @@ namespace Knossos\Tests\Phpunit\Scan;
 use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\EnrichersFile;
 use Knossos\Query\DiagnosticsQueryService;
-use Knossos\Reconciliation\GraphReconciler;
+use Knossos\Reconciliation\ScannerSetHash;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -268,14 +269,14 @@ final class EnrichmentScanTest extends KnossosTestCase
     {
         $definition = new EnricherDefinition('fixture', ['enricher', 'a'], inputNodeKinds: ['function']);
 
-        $hash = GraphReconciler::scannerSetHash([], [$definition]);
+        $hash = ScannerSetHash::of([], [$definition]);
 
-        assertSame(GraphReconciler::scannerSetHash([]), GraphReconciler::scannerSetHash([], []), 'No enrichers hash as before.');
-        assertNotSame(GraphReconciler::scannerSetHash([]), $hash);
-        assertNotSame($hash, GraphReconciler::scannerSetHash([], [new EnricherDefinition('fixture', ['enricher', 'b'], inputNodeKinds: ['function'])]));
-        assertNotSame($hash, GraphReconciler::scannerSetHash([], [new EnricherDefinition('other', ['enricher', 'a'], inputNodeKinds: ['function'])]));
-        assertNotSame($hash, GraphReconciler::scannerSetHash([], [new EnricherDefinition('fixture', ['enricher', 'a'], inputNodeKinds: ['method'])]));
-        assertSame($hash, GraphReconciler::scannerSetHash([], [new EnricherDefinition('fixture', ['enricher', 'a'], 99, ['X' => 'y'], ['function'])]), 'Timeout and env are not part of what the facts depend on.');
+        assertSame(ScannerSetHash::of([]), ScannerSetHash::of([], []), 'No enrichers hash as before.');
+        assertNotSame(ScannerSetHash::of([]), $hash);
+        assertNotSame($hash, ScannerSetHash::of([], [new EnricherDefinition('fixture', ['enricher', 'b'], inputNodeKinds: ['function'])]));
+        assertNotSame($hash, ScannerSetHash::of([], [new EnricherDefinition('other', ['enricher', 'a'], inputNodeKinds: ['function'])]));
+        assertNotSame($hash, ScannerSetHash::of([], [new EnricherDefinition('fixture', ['enricher', 'a'], inputNodeKinds: ['method'])]));
+        assertSame($hash, ScannerSetHash::of([], [new EnricherDefinition('fixture', ['enricher', 'a'], 99, ['X' => 'y'], ['function'])]), 'Timeout and env are not part of what the facts depend on.');
     }
 
     /** Scan the fixture copy with the fixture enricher installed. */
@@ -283,7 +284,7 @@ final class EnrichmentScanTest extends KnossosTestCase
     {
         $service = new ProjectScanService($this->pdo, self::repositoryRoot(), [$this->root], enrichers: new EnrichersFile($this->installation . '/enrichers.json'));
 
-        return $service->scan($this->root, runEnrichers: $runEnrichers);
+        return $service->scan($this->root, new ScanOptions(runEnrichers: $runEnrichers));
     }
 
     /** @param list<string> $names */

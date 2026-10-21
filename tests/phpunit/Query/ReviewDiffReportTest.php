@@ -27,10 +27,10 @@ final class ReviewDiffReportTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        $one = $queries->reviewDiff($this->project, files: ['src/Checkout.php']);
+        $one = $queries->services()->reviewQueries->reviewDiff($this->project, files: ['src/Checkout.php']);
         assertSame(true, str_starts_with($one->summary, '1 changed file, '), $one->summary);
 
-        $two = $queries->reviewDiff($this->project, files: ['src/Checkout.php', 'src/Missing.php']);
+        $two = $queries->services()->reviewQueries->reviewDiff($this->project, files: ['src/Checkout.php', 'src/Missing.php']);
         assertSame(true, str_starts_with($two->summary, '2 changed files, '), $two->summary);
     }
 
@@ -38,7 +38,7 @@ final class ReviewDiffReportTest extends KnossosTestCase
     #[Group('query')]
     public function testAnUnevaluatedReviewSaysSoInTheSummary(): void
     {
-        $result = $this->queries()->reviewDiff($this->project, files: ['src/Checkout.php']);
+        $result = $this->queries()->services()->reviewQueries->reviewDiff($this->project, files: ['src/Checkout.php']);
 
         assertSame(true, str_contains($result->summary, ', policies not evaluated, '), $result->summary);
         assertSame(true, str_ends_with($result->summary, 'gate not evaluated.'), $result->summary);
@@ -60,7 +60,7 @@ final class ReviewDiffReportTest extends KnossosTestCase
         $repository->createScan($second, $ids['project'], 'full', hash('sha256', 'scanner-set'));
         $repository->completeScan($ids['project'], $second);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff(
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff(
             $ids['project'],
             files: ['src/Checkout.php'],
             budgets: ['new_cycles' => 0],
@@ -78,7 +78,7 @@ final class ReviewDiffReportTest extends KnossosTestCase
     #[Group('query')]
     public function testTheReportCarriesTheChangeKeysAndTheCycleBound(): void
     {
-        $result = $this->queries()->reviewDiff($this->project, files: ['src/Checkout.php']);
+        $result = $this->queries()->services()->reviewQueries->reviewDiff($this->project, files: ['src/Checkout.php']);
 
         assertSame(
             ['status', 'changed_files', 'unresolved_files', 'direct_components', 'impacted_components', 'git'],
@@ -119,7 +119,7 @@ final class ReviewDiffReportTest extends KnossosTestCase
         $repository->completeScan($project, $ids['scan']);
         $policies = [['id' => 'left-not-right', 'from_boundary' => 'Left', 'deny_targets' => ['Right']]];
 
-        $review = ArchitectureQueryService::forDatabase($pdo)->reviewDiff($project, files: ['src/Checkout.php'], policies: $policies);
+        $review = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff($project, files: ['src/Checkout.php'], policies: $policies);
 
         assertSame(151, $review->data['policy_check']['total_violations']);
         assertSame(1, $review->data['policy_check']['touching_violation_count']);
@@ -146,7 +146,7 @@ final class ReviewDiffReportTest extends KnossosTestCase
         }
         $repository->completeScan($project, $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $cycle = $queries->dependencyCycles($project, [], 'possible', 100, 50_000, 100_000, 1000)->data['cycles'][0];
+        $cycle = $queries->services()->cycleQueries->dependencyCycles($project, [], 'possible', 100, 50_000, 100_000, 1000)->data['cycles'][0];
         $shown = array_fill_keys(array_column($cycle['members'], 'id'), true);
         // A member that is not listed and whose dependants within the review's
         // depth of 1 are not listed either, so only member_ids can match it.
@@ -163,7 +163,7 @@ final class ReviewDiffReportTest extends KnossosTestCase
         $name = sprintf('App\\Ring%03d', $hidden);
         $repository->saveNode($ring[$hidden], $project, 'php', 'class', $name, $name, null, $file, 1, 1, 'ast', 'certain', [], 'php:file:src/Hidden.php', $ids['scan']);
 
-        $review = $queries->reviewDiff($project, files: ['src/Hidden.php'], maxDepth: 1);
+        $review = $queries->services()->reviewQueries->reviewDiff($project, files: ['src/Hidden.php'], maxDepth: 1);
 
         assertSame(1, count($review->data['cycles_touching_change']['cycles']));
     }

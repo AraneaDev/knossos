@@ -6,6 +6,7 @@ namespace Knossos\Bundle;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -51,7 +52,7 @@ final readonly class GraphBundleService
 
     private function readAndEncode(string $projectId, string $redaction): string
     {
-        $project = $this->one('SELECT id, name, active_scan_id, root_realpath FROM projects WHERE id = :id', ['id' => $projectId]);
+        $project = (new ProjectRepository($this->pdo))->find($projectId, ['id', 'name', 'active_scan_id', 'root_realpath']);
         if ($project === null || !is_string($project['active_scan_id'])) {
             throw new InvalidArgumentException('Project has no active snapshot to export.');
         }
@@ -124,7 +125,7 @@ final readonly class GraphBundleService
         // does not track a manually issued BEGIN, so ownership is tracked here.
         $this->pdo->exec('BEGIN IMMEDIATE');
         try {
-            if ($this->one('SELECT id FROM projects WHERE id = :id', ['id' => $projectId]) !== null) {
+            if ((new ProjectRepository($this->pdo))->exists($projectId)) {
                 throw new InvalidArgumentException('Bundle is already imported.');
             }
             (new PortableGraphImporter($this->pdo))->import($payload, $manifest, $maps, $projectId, $scanId, $checksum, $name);

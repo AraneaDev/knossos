@@ -107,7 +107,7 @@ describe('allow-yes', () => {
             const port = allowPort({ allow })
             await press(port.io, 'allow-yes')
             expect(port.timers).toEqual([])
-            expect(mod.allowing).toBe(false)
+            expect(mod.allow.inFlight).toBe(false)
             expect(port.allow()).toEqual(allow)
         },
     )
@@ -115,10 +115,10 @@ describe('allow-yes', () => {
     it('starts the run on a timer, not inside the press, and a second press adds nothing', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null } })
         await press(port.io, 'allow-yes')
-        expect(mod.allowing).toBe(true)
+        expect(mod.allow.inFlight).toBe(true)
         expect(port.allow()).toEqual({ phase: 'running', root: ROOT, reason: null })
         expect(port.runs).toEqual([])
-        // Put the question back: only mod.allowing keeps a second run from being queued.
+        // Put the question back: only mod.allow.inFlight keeps a second run from being queued.
         await port.io.state.allow.update(() => ({ phase: 'confirming', root: ROOT, reason: null }))
         await press(port.io, 'allow-yes')
         expect(port.timers).toHaveLength(1)
@@ -128,28 +128,28 @@ describe('allow-yes', () => {
 
     it('allowed: done, the refusal forgotten, the watcher may watch, and the scan requested', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, rescan: { phase: 'failed', reason: 'not an allowed root', refusedRoot: ROOT } })
-        mod.watchRefused = true
+        mod.watch.refused = true
         await press(port.io, 'allow-yes')
         await port.runTimers()
         expect(port.allow()).toEqual({ phase: 'done', root: ROOT, reason: null })
         expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: 'not an allowed root', refusedRoot: null })
-        expect(mod.watchRefused).toBe(false)
+        expect(mod.watch.refused).toBe(false)
         expect(vi.mocked(scanSafely)).toHaveBeenCalledTimes(1)
         expect(vi.mocked(scanSafely)).toHaveBeenCalledWith(port.io)
-        expect(mod.flight).not.toBeNull()
-        expect(mod.allowing).toBe(false)
+        expect(mod.scans.flight).not.toBeNull()
+        expect(mod.allow.inFlight).toBe(false)
     })
 
     it.each(['', 'not json', JSON.stringify({ path: ROOT, added: true, preview: true })])('an answer it cannot read (%j): failed, knossos did not allow it', async stdout => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, rescan: { phase: 'failed', reason: null, refusedRoot: ROOT }, stdout })
-        mod.watchRefused = true
+        mod.watch.refused = true
         await press(port.io, 'allow-yes')
         await port.runTimers()
         expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason: 'knossos did not allow it' })
         expect((port.values.get('rescan') as RescanState).refusedRoot).toBe(ROOT)
-        expect(mod.watchRefused).toBe(true)
+        expect(mod.watch.refused).toBe(true)
         expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
-        expect(mod.allowing).toBe(false)
+        expect(mod.allow.inFlight).toBe(false)
     })
 
     it('no binary: back to idle with no root, and the mod turns itself off', async () => {
@@ -157,16 +157,16 @@ describe('allow-yes', () => {
         await press(port.io, 'allow-yes')
         await port.runTimers()
         expect(port.allow()).toEqual(IDLE)
-        expect(mod.disabled).toBe(true)
+        expect(mod.session.disabled).toBe(true)
         expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
-        expect(mod.allowing).toBe(false)
+        expect(mod.allow.inFlight).toBe(false)
     })
 
     it('lets a later press run again when the run throws', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, refuse: 'done' })
         await press(port.io, 'allow-yes')
         await port.runTimers()
-        expect(mod.allowing).toBe(false)
+        expect(mod.allow.inFlight).toBe(false)
         expect(port.allow().phase).toBe('running')
         await port.io.state.allow.update(() => ({ phase: 'confirming', root: ROOT, reason: null }))
         await press(port.io, 'allow-yes')

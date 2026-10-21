@@ -15,8 +15,10 @@
 import { FRAME } from './cards'
 import type { Block, Section } from './cards'
 import { ACCENT, FLASH_BG, HEADING, STATUS_COLOURS } from './palette'
-import { cells, padEnd, spaces, wrapGroups } from './rows'
-import type { Row, Segment, Tier } from './rows'
+import { wrapGroups } from './rows'
+import { cells, padEnd, spaces } from './text'
+import type { Row, Segment } from './types'
+import type { Tier } from './table'
 import { sparkline } from './sparkline'
 import { signed } from './marks'
 

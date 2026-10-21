@@ -1,13 +1,13 @@
-FROM node:26-trixie-slim@sha256:14bf3eac4bf209d906d3c41256597d3ab1f926b2e93a79e9bdfe1efd32454239 AS node_runtime
+FROM node:26-trixie-slim@sha256:e556a144463cc8dc53afe8de6d2fa0db5c132fd39ffa232c17641bd40df2bf11 AS node_runtime
 
-RUN npm install --global npm@12.0.2 --ignore-scripts --no-audit --no-fund
+RUN npm install --global npm@12.2.0 --ignore-scripts --no-audit --no-fund
 
-FROM composer:2@sha256:d8f6343d3fae98107426bc49163ccad46ef85aabd4a27d80a74401fab4aba332 AS composer_runtime
+FROM composer:2@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac AS composer_runtime
 
 # The Rust worker is compiled here and copied in as a binary, so the shipped
 # runtime image carries no Rust toolchain. Same Debian release as the runtime
 # stage, so the glibc the binary links against is the one it runs on.
-FROM rust:1-slim-trixie@sha256:bce1476d4be4d78b83705bc5f428b86d640eeeea33e9dadafbc037b5703a53bf AS rust_builder
+FROM rust:1-slim-trixie@sha256:00544ccc9431a2fe93e65185d21381b0a039342f5cefcf84fbddac273c9e573d AS rust_builder
 WORKDIR /build
 COPY workers/rust ./
 RUN cargo build --release --locked
@@ -20,7 +20,7 @@ RUN cargo build --release --locked
 # quality stages below. A file copied into one of these stages that the key
 # does not hash would reuse a stale image; QualityDepsKeyTest holds the two to
 # each other.
-FROM php:8.5-cli-trixie@sha256:9ebdf4c28ab12c02085e171c31e22ac5f7bbb6a9f6927e3bc3dfe7ee23df51e0 AS runtime_deps
+FROM php:8.5-cli-trixie@sha256:8e5d746f87655d89573e76d2b9125ed1b1578e47d3c466a2b2fdfc35593d9b41 AS runtime_deps
 
 # The compiler toolchain the base image carries for `docker-php-ext-install` is
 # build-only, and it drags in `libc6-dev` -> `linux-libc-dev`. Kernel headers are
@@ -36,7 +36,7 @@ FROM php:8.5-cli-trixie@sha256:9ebdf4c28ab12c02085e171c31e22ac5f7bbb6a9f6927e3bc
 # newest tag as well as in the pinned digest. Upgrading here lets a rebuild pick the fix
 # up on its own instead of needing a per-CVE package pin every time.
 #
-# No `hadolint ignore=DL3005` is needed: hadolint v2.14.0, the version this repository
+# No `hadolint ignore=DL3005` is needed: hadolint v2.15.1, the version this repository
 # pins, no longer implements that rule -- a bare `RUN apt-get update && apt-get upgrade -y`
 # reports only DL3009 under it. A suppression here would suppress nothing and would read
 # as if the linter still objected.
@@ -211,11 +211,11 @@ RUN apt-get update \
     && docker-php-ext-install pcntl \
     && python3 -m venv /opt/quality-python \
     && /opt/quality-python/bin/pip install --no-cache-dir \
-        coverage==7.14.3 mypy==2.3.0 pre-commit==4.6.0 pytest==8.4.2 ruff==0.15.12 \
+        coverage==7.16.2 mypy==2.4.0 pre-commit==4.7.0 pytest==9.1.1 ruff==0.17.1 \
     && curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors \
         --output /usr/local/bin/hadolint \
-        https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-linux-x86_64 \
-    && printf '%s  %s\n' 6bf226944684f56c84dd014e8b979d27425c0148f61b3bd99bcc6f39e9dc5a47 /usr/local/bin/hadolint > /tmp/hadolint.sha256 \
+        https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64 \
+    && printf '%s  %s\n' c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507 /usr/local/bin/hadolint > /tmp/hadolint.sha256 \
     && sha256sum --check --strict /tmp/hadolint.sha256 \
     && chmod 0755 /usr/local/bin/hadolint \
     && apt-get purge -y --auto-remove $PHPIZE_DEPS \
@@ -233,15 +233,15 @@ ENV PATH="/opt/quality-python/bin:${PATH}"
 
 RUN curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors \
         --output /tmp/trivy.tar.gz \
-        https://github.com/aquasecurity/trivy/releases/download/v0.69.3/trivy_0.69.3_Linux-64bit.tar.gz \
-    && printf '%s  %s\n' 1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75 /tmp/trivy.tar.gz \
+        https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz \
+    && printf '%s  %s\n' e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7 /tmp/trivy.tar.gz \
         > /tmp/trivy.sha256 \
     && sha256sum --check --strict /tmp/trivy.sha256 \
     && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
     && curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors \
         --output /usr/local/bin/cosign \
-        https://github.com/sigstore/cosign/releases/download/v3.0.6/cosign-linux-amd64 \
-    && printf '%s  %s\n' c956e5dfcac53d52bcf058360d579472f0c1d2d9b69f55209e256fe7783f4c74 /usr/local/bin/cosign \
+        https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64 \
+    && printf '%s  %s\n' 424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa /usr/local/bin/cosign \
         > /tmp/cosign.sha256 \
     && sha256sum --check --strict /tmp/cosign.sha256 \
     && chmod 0755 /usr/local/bin/trivy /usr/local/bin/cosign \
@@ -254,8 +254,8 @@ RUN curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --ret
 RUN mkdir -p /usr/libexec/docker/cli-plugins \
     && curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors \
         --output /usr/libexec/docker/cli-plugins/docker-compose \
-        https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64 \
-    && printf '%s  %s\n' f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959 \
+        https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-linux-x86_64 \
+    && printf '%s  %s\n' 47737f4236e6d3ccea7291995203f8f018058783b4c3a9469119811a0b5db8c0 \
         /usr/libexec/docker/cli-plugins/docker-compose > /tmp/compose.sha256 \
     && sha256sum --check --strict /tmp/compose.sha256 \
     && chmod 0755 /usr/libexec/docker/cli-plugins/docker-compose \
@@ -280,7 +280,7 @@ RUN npm --prefix workers/typescript ci --ignore-scripts --no-audit --no-fund \
 # the native binary in place from its postinstall script, which this stage's
 # npm 12 does not run for a dependency on its own, so it is run explicitly.
 # Without it `claude` exits with "native binary not installed".
-RUN npm install --global @anthropic-ai/claude-code@2.1.303 --no-audit --no-fund \
+RUN npm install --global @anthropic-ai/claude-code@2.1.306 --no-audit --no-fund \
     && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs \
     && claude --version
 
@@ -303,8 +303,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && curl --fail --location --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors \
         --output /tmp/llvm-cov.tar.gz \
-        https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.0/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz \
-    && printf '%s  %s\n' b068f7c98841aacb9c4f382b4a0c184ae82f49b56a32d442b429b2961c73be15 /tmp/llvm-cov.tar.gz \
+        https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz \
+    && printf '%s  %s\n' b3f68e625481fed9b16444174f3fa5ebcdbde4a1878803a35eabe2dcefcdc41a /tmp/llvm-cov.tar.gz \
         > /tmp/llvm-cov.sha256 \
     && sha256sum --check --strict /tmp/llvm-cov.sha256 \
     && tar -xzf /tmp/llvm-cov.tar.gz -C /usr/local/cargo/bin cargo-llvm-cov \

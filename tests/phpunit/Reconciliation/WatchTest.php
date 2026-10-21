@@ -93,26 +93,15 @@ final class WatchTest extends KnossosTestCase
 
         // Scripted scanner: the first call is the baseline scan, later calls follow the
         // provided outcome list (a Throwable is raised, anything else scans cleanly).
-        $scriptedScanner = function (array $outcomes) use ($root): ProjectScanner {
+        $scriptedScanner = function (array $outcomes): ProjectScanner {
             return new class ($outcomes) implements ProjectScanner {
                 private int $calls = 0;
 
                 /** @param list<mixed> $outcomes */
                 public function __construct(private array $outcomes) {}
 
-                public function scan(
-                    string $root,
-                    ?string $name = null,
-                    ?int $maxFiles = null,
-                    ?int $maxFileBytes = null,
-                    ?array $explicitBoundaries = null,
-                    ?string $mode = null,
-                    ?CancellationToken $cancellation = null,
-                    ?int $snapshotRetention = null,
-                    ?int $workerTimeoutMs = null,
-                    ?int $workerMemoryMb = null,
-                    bool $runEnrichers = false,
-                ): ResultEnvelope {
+                public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+                {
                     $index = $this->calls;
                     ++$this->calls;
                     $outcome = $this->outcomes[$index] ?? $this->outcomes[array_key_last($this->outcomes)];

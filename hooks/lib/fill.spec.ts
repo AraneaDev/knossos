@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { BranchDiff, Dashboard, KnossosView, PaneTab } from '../../types'
-import { paneInput, paneLayout, statsOf } from './layout'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
+import { statsOf } from './pane-status'
 import { rawText } from './__tests__/plain-text'
-import type { Row } from './rows'
-import { rowsHeight, tierOf } from './rows'
+import type { Row } from './types'
+import { rowsHeight } from './rows'
+import { tierOf } from './table'
 
 const ROOT = '/work/app'
 const hub = (i: number) => ({ name: `Hub${i}`, canonical_name: `App\\Hub${i}`, kind: 'class', boundary: 'core', in_degree: 90 - i, out_degree: i, cross_boundary_degree: 0, dependent_files: 40 - i, path: `src/Hub${i}.php`, line: 3 })
@@ -47,7 +50,7 @@ const branch = (n: number): BranchDiff => ({
 })
 /** Churn with the branch's hub count of files: none, a few, many. */
 const churned = (n: number) => ({ head: 'h', phase: 'done' as const, answer: { status: 'ok' as const, days: 30, commits: 9, files: Array.from({ length: n }, (_, i) => ({ path: `src/F${i}.php`, commits: 9 - (i % 9), dependents: 40 - i, score: (9 - (i % 9)) * (40 - i), boundary: 'core' })) } })
-const pane = (tab: PaneTab, b: BranchDiff) => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(tab), 0, true, null, null, undefined, null, undefined, { branch: { snapshot: 's1', phase: 'done', answer: b }, churn: churned(b.comparison?.hubs.count ?? 0) })
+const pane = (tab: PaneTab, b: BranchDiff) => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view(tab), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { branch: { snapshot: 's1', phase: 'done', answer: b }, churn: churned(b.comparison?.hubs.count ?? 0) } })
 
 const blankRow = (r: Row): boolean => r.code === undefined && rawText(r).trim() === ''
 

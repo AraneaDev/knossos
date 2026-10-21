@@ -82,6 +82,7 @@ php	src/Cli/CliOptionParser.php
 php	src/Cli/Command/BriefCommand.php
 php	src/Cli/Command/BundleCommand.php
 php	src/Cli/Command/CliCommandSet.php
+php	src/Cli/Command/EmitTransaction.php
 php	src/Cli/Command/EnricherCommand.php
 php	src/Cli/Command/MaintenanceCommand.php
 php	src/Cli/Command/MetaCommand.php
@@ -190,9 +191,12 @@ php	src/Mcp/Protocol/ProtocolNegotiator.php
 php	src/Mcp/Protocol/ProtocolProfile.php
 php	src/Mcp/Protocol/UnsupportedProtocolVersionException.php
 php	src/Mcp/ResourceService.php
+php	src/Mcp/ResponseOptions.php
 php	src/Mcp/ResultEnricher.php
+php	src/Mcp/StaleScanRefresher.php
 php	src/Mcp/StdioServer.php
 php	src/Mcp/ToolArgumentPreflight.php
+php	src/Mcp/ToolArgumentSpec.php
 php	src/Mcp/ToolArguments.php
 php	src/Mcp/ToolCatalog.php
 php	src/Mcp/ToolErrorMapper.php
@@ -275,6 +279,7 @@ php	src/Query/RenameMatching.php
 php	src/Query/ReportableComponent.php
 php	src/Query/RescanService.php
 php	src/Query/ReviewDiffService.php
+php	src/Query/ReviewSection.php
 php	src/Query/SemanticRanker.php
 php	src/Query/SessionBrief.php
 php	src/Query/SessionBriefRenderer.php
@@ -290,6 +295,7 @@ php	src/Query/SnapshotTooLargeException.php
 php	src/Query/SourceExcerptReader.php
 php	src/Query/StalenessProbe.php
 php	src/Query/StalenessSnapshot.php
+php	src/Query/StandInExpansion.php
 php	src/Query/SupertypeMethods.php
 php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
@@ -302,6 +308,7 @@ php	src/Reconciliation/FullScanRequest.php
 php	src/Reconciliation/GraphReconciler.php
 php	src/Reconciliation/Milliseconds.php
 php	src/Reconciliation/NamedFiles.php
+php	src/Reconciliation/NodeIdentity.php
 php	src/Reconciliation/NodeReferenceIndex.php
 php	src/Reconciliation/PhaseTimer.php
 php	src/Reconciliation/PreparedGraph.php
@@ -309,8 +316,11 @@ php	src/Reconciliation/ReconciliationDiagnostics.php
 php	src/Reconciliation/ReconciliationException.php
 php	src/Reconciliation/ReconciliationResult.php
 php	src/Reconciliation/RouteTemplates.php
+php	src/Reconciliation/ScannerSetHash.php
 php	src/Reconciliation/UrlTemplate.php
+php	src/Result/PaneStatus.php
 php	src/Result/ResultEnvelope.php
+php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
 php	src/Runtime/MemoryLimit.php
 php	src/Runtime/RuntimeFactory.php
@@ -346,6 +356,7 @@ php	src/Scan/ScanBatchQueue.php
 php	src/Scan/ScanInputHashes.php
 php	src/Scan/ScanLedger.php
 php	src/Scan/ScanLedgerSpan.php
+php	src/Scan/ScanOptions.php
 php	src/Scan/ScanPlan.php
 php	src/Scan/ScanPlanner.php
 php	src/Scan/ScanPreparation.php
@@ -354,6 +365,7 @@ php	src/Scan/ScanResultFactory.php
 php	src/Scan/ScanSnapshotChangedException.php
 php	src/Scan/ScanSnapshotValidator.php
 php	src/Scan/ScanTarget.php
+php	src/Scan/StageClock.php
 php	src/Scan/TreeFingerprint.php
 php	src/Scan/UndiscoveredInputVerifier.php
 php	src/Scan/UndiscoveredInputs.php
@@ -389,6 +401,7 @@ php	src/Store/CountedSnapshotFigures.php
 php	src/Store/EnrichedFacts.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
+php	src/Store/ProjectRepository.php
 php	src/Store/ScanBusyException.php
 php	src/Store/SharedNodeKinds.php
 php	src/Store/SnapshotBounds.php
@@ -594,6 +607,7 @@ php	tests/phpunit/Mcp/ResultEnricherBudgetTest.php
 php	tests/phpunit/Mcp/ServerEnvironmentToolsTest.php
 php	tests/phpunit/Mcp/StdioFrames.php
 php	tests/phpunit/Mcp/ToolArgumentProbes.php
+php	tests/phpunit/Mcp/ToolArgumentSpecTest.php
 php	tests/phpunit/Mcp/ToolBoundsAgreementTest.php
 php	tests/phpunit/Mcp/ToolCatalogEdgeKindsTest.php
 php	tests/phpunit/Mcp/ToolCatalogPolicyTest.php
@@ -622,6 +636,7 @@ php	tests/phpunit/Query/BlastRadiusTestReachTest.php
 php	tests/phpunit/Query/BoundaryCouplingsServiceTest.php
 php	tests/phpunit/Query/BoundaryTest.php
 php	tests/phpunit/Query/BranchComparisonIdentityTest.php
+php	tests/phpunit/Query/BranchComparisonViolationCountTest.php
 php	tests/phpunit/Query/BranchDiffServiceTest.php
 php	tests/phpunit/Query/CandidateConfidenceSummaryTest.php
 php	tests/phpunit/Query/CandidateGraphFactsTest.php
@@ -740,6 +755,7 @@ php	tests/phpunit/Query/TestImpactTest.php
 php	tests/phpunit/Query/TestReachSearchTest.php
 php	tests/phpunit/Query/TrendRowLimitTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php
+php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
 php	tests/phpunit/Query/UntypedReceiverTest.php
 php	tests/phpunit/Query/ViteGlobImportTest.php
@@ -766,7 +782,9 @@ php	tests/phpunit/Reconciliation/RouteTemplatesTest.php
 php	tests/phpunit/Reconciliation/UrlTemplateTest.php
 php	tests/phpunit/Reconciliation/WatchTest.php
 php	tests/phpunit/ReleaseChecksTest.php
+php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
+php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php
 php	tests/phpunit/Runtime/DoctorServiceTest.php
@@ -876,6 +894,7 @@ php	tests/phpunit/Scanner/ScannerClientTest.php
 php	tests/phpunit/Scanner/ScannerSdkTest.php
 php	tests/phpunit/Scanner/TypescriptClassicScriptTest.php
 php	tests/phpunit/Scanner/TypescriptDeepImportChainTest.php
+php	tests/phpunit/Scanner/TypescriptDestructuredArgumentTest.php
 php	tests/phpunit/Scanner/TypescriptFallbackProgramTest.php
 php	tests/phpunit/Scanner/TypescriptFileDiagnosticsTest.php
 php	tests/phpunit/Scanner/TypescriptFunctionBindingTest.php
@@ -883,6 +902,7 @@ php	tests/phpunit/Scanner/TypescriptGlobalEditTest.php
 php	tests/phpunit/Scanner/TypescriptGlobalSetTest.php
 php	tests/phpunit/Scanner/TypescriptHeartbeatTest.php
 php	tests/phpunit/Scanner/TypescriptMemberValueTest.php
+php	tests/phpunit/Scanner/TypescriptMethodTableTest.php
 php	tests/phpunit/Scanner/TypescriptNestContractTest.php
 php	tests/phpunit/Scanner/TypescriptPackageNameTest.php
 php	tests/phpunit/Scanner/TypescriptProgramEnvironmentTest.php
@@ -1006,6 +1026,7 @@ php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
 php	workers/php/src/LaravelContainerFactCollector.php
 php	workers/php/src/LaravelDispatchFactCollector.php
+php	workers/php/src/LaravelEloquentFactCollector.php
 php	workers/php/src/LaravelFactCollector.php
 php	workers/php/src/LaravelFactStore.php
 php	workers/php/src/LaravelProviderMapFactCollector.php
@@ -1046,6 +1067,8 @@ js	hooks/lib/cards.spec.ts
 js	hooks/lib/cards.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
+js	hooks/lib/chips.ts
+js	hooks/lib/chrome.ts
 js	hooks/lib/churn.spec.ts
 js	hooks/lib/churn.ts
 js	hooks/lib/cycles.spec.ts
@@ -1054,6 +1077,8 @@ js	hooks/lib/diagram.spec.ts
 js	hooks/lib/diagram.ts
 js	hooks/lib/diff.spec.ts
 js	hooks/lib/diff.ts
+js	hooks/lib/editor.ts
+js	hooks/lib/empty-state.ts
 js	hooks/lib/envelopes.path.spec.ts
 js	hooks/lib/envelopes.spec.ts
 js	hooks/lib/envelopes.ts
@@ -1089,11 +1114,16 @@ js	hooks/lib/overview.spec.ts
 js	hooks/lib/overview.ts
 js	hooks/lib/palette.spec.ts
 js	hooks/lib/palette.ts
+js	hooks/lib/pane-input.ts
+js	hooks/lib/pane-list.ts
+js	hooks/lib/pane-status.ts
+js	hooks/lib/pane-types.ts
 js	hooks/lib/paths.spec.ts
 js	hooks/lib/paths.ts
 js	hooks/lib/peek.spec.ts
 js	hooks/lib/place.spec.ts
 js	hooks/lib/place.ts
+js	hooks/lib/policies.ts
 js	hooks/lib/printable.spec.ts
 js	hooks/lib/printable.ts
 js	hooks/lib/raster.spec.ts
@@ -1106,12 +1136,17 @@ js	hooks/lib/rows.spec.ts
 js	hooks/lib/rows.ts
 js	hooks/lib/scheduler.spec.ts
 js	hooks/lib/scheduler.ts
+js	hooks/lib/session-changes.ts
 js	hooks/lib/sparkline.spec.ts
 js	hooks/lib/sparkline.ts
+js	hooks/lib/table.ts
+js	hooks/lib/test-commands.ts
+js	hooks/lib/text.ts
 js	hooks/lib/themes.spec.ts
 js	hooks/lib/themes.ts
 js	hooks/lib/tiles.spec.ts
 js	hooks/lib/tiles.ts
+js	hooks/lib/types.ts
 js	hooks/lib/views.ts
 js	hooks/mod/actions.allow.spec.ts
 js	hooks/mod/actions.editor.spec.ts
@@ -1129,10 +1164,14 @@ js	hooks/mod/agent.head-at.spec.ts
 js	hooks/mod/agent.note-edit.spec.ts
 js	hooks/mod/agent.note-read.spec.ts
 js	hooks/mod/agent.ts
+js	hooks/mod/allow-actions.ts
+js	hooks/mod/annotate-actions.ts
 js	hooks/mod/cells.spec.ts
 js	hooks/mod/cells.ts
+js	hooks/mod/diff-actions.ts
 js	hooks/mod/dig.spec.ts
 js	hooks/mod/dig.ts
+js	hooks/mod/finder-actions.ts
 js	hooks/mod/frame.spec.ts
 js	hooks/mod/frame.ts
 js	hooks/mod/input.ts
@@ -1141,7 +1180,9 @@ js	hooks/mod/loaders.spec.ts
 js	hooks/mod/loaders.ts
 js	hooks/mod/motion.spec.ts
 js	hooks/mod/motion.ts
+js	hooks/mod/navigate-actions.ts
 js	hooks/mod/notes-actions.ts
+js	hooks/mod/port-type.ts
 js	hooks/mod/port.ts
 js	hooks/mod/render.band.spec.ts
 js	hooks/mod/render.pane.spec.ts
@@ -1155,6 +1196,7 @@ js	hooks/mod/session.retry.spec.ts
 js	hooks/mod/session.spec.ts
 js	hooks/mod/session.tick.spec.ts
 js	hooks/mod/session.ts
+js	hooks/mod/state.spec.ts
 js	hooks/mod/state.ts
 js	hooks/mod/watcher.rescan.spec.ts
 js	hooks/mod/watcher.scan.spec.ts
@@ -1176,6 +1218,7 @@ js	tools/capture/shoot.mjs
 js	tools/capture/shoot.spec.mjs
 js	tools/capture/shots.mjs
 js	tools/capture/shots.spec.mjs
+js	tools/capture/worktree.mjs
 js	tools/chaos-loop.mjs
 js	tools/core-loads.mjs
 js	tools/core-loads.spec.mjs
@@ -1187,6 +1230,7 @@ js	tools/eval/arms.mjs
 js	tools/eval/arms.spec.mjs
 js	tools/eval/calibrate.mjs
 js	tools/eval/calibrate.spec.mjs
+js	tools/eval/config.mjs
 js	tools/eval/corpus.mjs
 js	tools/eval/corpus.real.spec.mjs
 js	tools/eval/corpus.spec.mjs
@@ -1200,6 +1244,8 @@ js	tools/eval/keygen.mjs
 js	tools/eval/keygen.spec.mjs
 js	tools/eval/ledger.mjs
 js	tools/eval/ledger.spec.mjs
+js	tools/eval/lock.mjs
+js	tools/eval/provenance.mjs
 js	tools/eval/report.mjs
 js	tools/eval/report.spec.mjs
 js	tools/eval/rng.mjs
@@ -1277,19 +1323,23 @@ js	workers/typescript/src/__tests__/supertype-members.test.js
 js	workers/typescript/src/__tests__/support/absent-alias-configs.mjs
 js	workers/typescript/src/__tests__/support/record-typescript-load.mjs
 js	workers/typescript/src/__tests__/support/require-candidates.mjs
+js	workers/typescript/src/__tests__/table-dispatch.test.js
 js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js
 js	workers/typescript/src/__tests__/wrapped-function-properties.test.js
+js	workers/typescript/src/bundler-aliases.js
 js	workers/typescript/src/byte-caps.js
 js	workers/typescript/src/component-framework-enricher.js
+js	workers/typescript/src/component-resolution.js
 js	workers/typescript/src/component-source.js
 js	workers/typescript/src/declaration-kinds.js
 js	workers/typescript/src/dynamic-import-collector.js
 js	workers/typescript/src/errors.js
 js	workers/typescript/src/exclusions.js
 js	workers/typescript/src/fact-accumulator.js
+js	workers/typescript/src/fallback-groups.js
 js	workers/typescript/src/input-hashes-parts.js
 js	workers/typescript/src/input-reads.js
 js	workers/typescript/src/language-fact-collector.js
@@ -1308,6 +1358,7 @@ js	workers/typescript/src/scanner.js
 js	workers/typescript/src/source-caches.js
 js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
+js	workers/typescript/src/table-dispatch.js
 js	workers/typescript/src/typescript-application-enricher.js
 js	workers/typescript/src/typescript-fact-utils.js
 js	workers/typescript/vitest.config.js

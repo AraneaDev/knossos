@@ -307,6 +307,333 @@ def test_a_parameter_reassigned_to_something_untracked_stops_resolving(
     ]
 
 
+def _module_untyped(contribution: dict) -> list[str]:
+    module = next(node for node in contribution["nodes"] if node["kind"] == "module")
+    return module["attributes"].get("unresolved_member_calls", [])
+
+
+def test_a_class_body_annotation_types_the_instance_attribute(worker: ModuleType, tmp_path: Path, scan_collect) -> None:
+    # `index: Index` in a class body declares what every instance's `index`
+    # holds, as a dataclass field or a mixin's requirement does. Without it the
+    # call is untyped and every method by that name reads as possibly dead.
+    (tmp_path / "mod.py").write_text(
+        "class Index:\n"
+        "    def bare_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def default_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def early_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def kept_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Other:\n"
+        "    def kept_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Mixin:\n"
+        "    def early(self) -> None:\n"
+        "        self.later.early_call()\n"
+        "\n"
+        "    bare: Index\n"
+        "    default: Index | None = None\n"
+        "    later: Index\n"
+        "    untracked: Index\n"
+        "    shadowed: Index\n"
+        "\n"
+        "    def __init__(self, source) -> None:\n"
+        "        self.untracked = source.make()\n"
+        "        self.shadowed = Other()\n"
+        "\n"
+        "    def run(self) -> None:\n"
+        "        self.bare.bare_call()\n"
+        "        self.default.default_call()\n"
+        "        self.untracked.kept_call()\n"
+        "        self.shadowed.kept_call()\n",
+        encoding="utf-8",
+    )
+
+    [contribution] = scan_collect(tmp_path, ["mod.py"])
+
+    calls = sorted(
+        (source.rsplit("::", 1)[1], target)
+        for kind, source, target in _edges(contribution)
+        if kind == "calls" and source.startswith("py:method:mod.Mixin::")
+    )
+    # An assignment of an untracked value leaves the annotation to say; one of
+    # another tracked class wins over it.
+    assert calls == [
+        ("__init__", "py:class:mod.Other"),
+        ("early", "py:method:mod.Index::early_call"),
+        ("run", "py:method:mod.Index::bare_call"),
+        ("run", "py:method:mod.Index::default_call"),
+        ("run", "py:method:mod.Index::kept_call"),
+        ("run", "py:method:mod.Other::kept_call"),
+    ]
+    assert _module_untyped(contribution) == ["make"]
+
+
+def test_a_class_body_annotation_is_no_local_of_the_function_around_the_class(
+    worker: ModuleType, tmp_path: Path, scan_collect
+) -> None:
+    # A class declared in a function annotates its own attribute; the
+    # function's `held` is whatever the function assigned it.
+    (tmp_path / "mod.py").write_text(
+        "class Helper:\n"
+        "    def use(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "def run(held) -> None:\n"
+        "    class Local:\n"
+        "        held: Helper\n"
+        "\n"
+        "    held.use()\n",
+        encoding="utf-8",
+    )
+
+    [contribution] = scan_collect(tmp_path, ["mod.py"])
+
+    assert "py:method:mod.Helper::use" not in [
+        target for kind, source, target in _edges(contribution) if kind == "calls"
+    ]
+    assert _module_untyped(contribution) == ["use"]
+
+
+def test_a_method_called_through_its_class_name_resolves(worker: ModuleType, project, scan_collect) -> None:
+    # `Repo.build()` calls a static, class or plain method through the class
+    # itself, imported, reached through its module, or declared here. A member
+    # the class inherits is named on the class called; the core finds the base
+    # that declares it. A local named like the class holds what was assigned.
+    root = project(
+        {
+            "app/__init__.py": "",
+            "app/repo.py": (
+                "class Base:\n"
+                "    @classmethod\n"
+                "    def inherited(cls) -> None:\n"
+                "        pass\n"
+                "\n"
+                "\n"
+                "class Repo(Base):\n"
+                "    @staticmethod\n"
+                "    def build() -> None:\n"
+                "        pass\n"
+                "\n"
+                "    @classmethod\n"
+                "    def qualified(cls) -> None:\n"
+                "        pass\n"
+                "\n"
+                "    def plain(self) -> None:\n"
+                "        pass\n"
+                "\n"
+                "    def shadowed(self) -> None:\n"
+                "        pass\n"
+            ),
+            "app/service.py": (
+                "from pathlib import Path\n"
+                "\n"
+                "from app import repo\n"
+                "from app.repo import Repo\n"
+                "\n"
+                "\n"
+                "class Local:\n"
+                "    @staticmethod\n"
+                "    def own() -> None:\n"
+                "        pass\n"
+                "\n"
+                "\n"
+                "def run(item) -> None:\n"
+                "    Repo.build()\n"
+                "    Repo.inherited()\n"
+                "    repo.Repo.qualified()\n"
+                "    Repo.plain(item)\n"
+                "    Local.own()\n"
+                "    Path.cwd()\n"
+                "\n"
+                "\n"
+                "def shadow(Repo) -> None:\n"
+                "    Repo.shadowed()\n"
+            ),
+        }
+    )
+
+    [contribution] = scan_collect(root, ["app/service.py"])
+
+    calls = sorted(
+        (source.rsplit(".", 1)[1], target) for kind, source, target in _edges(contribution) if kind == "calls"
+    )
+    assert calls == [
+        ("run", "py:method:app.repo.Repo::build"),
+        ("run", "py:method:app.repo.Repo::inherited"),
+        ("run", "py:method:app.repo.Repo::plain"),
+        ("run", "py:method:app.repo.Repo::qualified"),
+        ("run", "py:method:app.service.Local::own"),
+    ]
+    # A class outside the project is no class to type by.
+    assert _module_untyped(contribution) == ["cwd", "shadowed"]
+
+
+def test_a_plain_string_annotation_types_like_the_bare_name(worker: ModuleType, tmp_path: Path, scan_collect) -> None:
+    # `"Repo"` is how an annotation names a class declared further down or
+    # imported for type checking only; it means what `Repo` means.
+    (tmp_path / "mod.py").write_text(
+        "class Owner:\n"
+        '    held: "Repo"\n'
+        "\n"
+        '    def run(self, passed: "Repo") -> None:\n'
+        "        passed.param_call()\n"
+        "        self.held.body_call()\n"
+        '        local: "Repo" = make()\n'
+        "        local.local_call()\n"
+        "\n"
+        "\n"
+        "class Repo:\n"
+        "    def param_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def body_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def local_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "def make():\n"
+        "    return Repo()\n",
+        encoding="utf-8",
+    )
+
+    [contribution] = scan_collect(tmp_path, ["mod.py"])
+
+    calls = sorted(
+        target for kind, source, target in _edges(contribution) if kind == "calls" and source.endswith("::run")
+    )
+    assert calls == [
+        "py:function:mod.make",
+        "py:method:mod.Repo::body_call",
+        "py:method:mod.Repo::local_call",
+        "py:method:mod.Repo::param_call",
+    ]
+    assert _module_untyped(contribution) == []
+
+
+def test_a_base_or_mixin_annotation_in_the_same_module_types_a_subclass(
+    worker: ModuleType, tmp_path: Path, scan_collect
+) -> None:
+    # A mixin states what the class mixing it in provides; a subclass's
+    # `self.index` holds what the nearest class annotating it says.
+    (tmp_path / "mod.py").write_text(
+        "class Index:\n"
+        "    def lookup(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Cache:\n"
+        "    def lookup(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "    def grand_call(self) -> None:\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Root:\n"
+        "    store: Cache\n"
+        "\n"
+        "\n"
+        "class Base(Root):\n"
+        "    index: Cache\n"
+        "\n"
+        "\n"
+        "class Mixin:\n"
+        "    other: Index\n"
+        "\n"
+        "\n"
+        "class Child(Base, Mixin):\n"
+        "    index: Index\n"
+        "\n"
+        "    def run(self) -> None:\n"
+        "        self.index.lookup()\n"
+        "        self.other.lookup()\n"
+        "        self.store.grand_call()\n",
+        encoding="utf-8",
+    )
+
+    [contribution] = scan_collect(tmp_path, ["mod.py"])
+
+    calls = sorted(
+        target for kind, source, target in _edges(contribution) if kind == "calls" and source.endswith("::run")
+    )
+    assert calls == ["py:method:mod.Cache::grand_call", "py:method:mod.Index::lookup"]
+    assert _module_untyped(contribution) == []
+
+
+def test_a_base_annotation_in_another_module_types_a_subclass(worker: ModuleType, project, scan_collect) -> None:
+    # The base, and the base it derives from, are declared in other modules:
+    # what their bodies annotate is read with their modules, and the reads are
+    # named by the file whose calls they type.
+    root = project(
+        {
+            "app/__init__.py": "",
+            "app/index.py": "class Index:\n    def lookup(self) -> None:\n        pass\n",
+            "app/root.py": "from app.index import Index\n\n\nclass Root:\n    index: Index\n",
+            "app/base.py": "from app.root import Root\n\n\nclass Base(Root):\n    pass\n",
+            "app/child.py": (
+                "from app.base import Base\n"
+                "\n"
+                "\n"
+                "class Child(Base):\n"
+                "    def run(self) -> None:\n"
+                "        self.index.lookup()\n"
+            ),
+        }
+    )
+
+    [contribution] = scan_collect(root, ["app/child.py"])
+
+    assert ("calls", "py:method:app.child.Child::run", "py:method:app.index.Index::lookup") in _edges(contribution)
+    assert _module_untyped(contribution) == []
+    assert {"app/base.py", "app/root.py", "app/index.py"} <= set(contribution["reads"])
+
+
+def test_a_base_named_through_its_module_is_followed_across_files(worker: ModuleType, project, scan_collect) -> None:
+    # `class Mid(models.Root)` and `class Base(m.Mid)` name their bases through
+    # an imported module, as `from ... import` would by name. The annotation
+    # two modules up still types the subclass, an annotation named through a
+    # module (`index: idx.Index`) too, and the reads are named by the file
+    # whose call they type.
+    root = project(
+        {
+            "app/__init__.py": "",
+            "app/index.py": "class Index:\n    def lookup(self) -> None:\n        pass\n",
+            "app/models.py": "from app import index as idx\n\n\nclass Root:\n    index: idx.Index\n",
+            "app/mid.py": "import app.models\n\n\nclass Mid(app.models.Root):\n    pass\n",
+            "app/base.py": "import app.mid as m\n\n\nclass Base(m.Mid):\n    pass\n",
+            "app/child.py": (
+                "from app import base\n"
+                "\n"
+                "\n"
+                "class Child(base.Base):\n"
+                "    def run(self) -> None:\n"
+                "        self.index.lookup()\n"
+            ),
+        }
+    )
+
+    [contribution] = scan_collect(root, ["app/child.py"])
+
+    edges = _edges(contribution)
+    assert ("extends", "py:class:app.child.Child", "py:class:app.base.Base") in edges
+    assert ("calls", "py:method:app.child.Child::run", "py:method:app.index.Index::lookup") in edges
+    assert _module_untyped(contribution) == []
+    assert {"app/base.py", "app/mid.py", "app/models.py", "app/index.py"} <= set(contribution["reads"])
+
+
 def test_unreadable_file_costs_only_itself(monkeypatch, worker: ModuleType, project, scan_collect) -> None:
     """A file that vanishes between validation and the read.
 

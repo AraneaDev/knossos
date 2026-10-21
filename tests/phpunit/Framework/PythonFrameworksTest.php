@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Framework;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\MigrationRunner;
@@ -170,7 +171,7 @@ final class PythonFrameworksTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Python Frameworks');
+            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Python Frameworks'));
             assertSame(5, $result->data['parsed_files']);
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'fastapi.route_handler'")->fetchColumn());
             assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM classifications WHERE role = 'django.model'")->fetchColumn());

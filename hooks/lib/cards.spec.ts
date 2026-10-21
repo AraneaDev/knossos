@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { arrange, BALANCE_SLACK, balanceColumns, besideRows, cardInner, cardRows, DEFAULT_ROWS, equalColumns, figures, fitBlocks, GLYPHS, gridColumns, gridRows, LIST_SOFT, moreRows, paneHeight, scrolledTo, topRow, wheelMove, wheelTarget, windowOf } from './cards'
+import { arrange, BALANCE_SLACK, balanceColumns, besideRows, cardInner, cardRows, DEFAULT_ROWS, equalColumns, figures, fitBlocks, GLYPHS, gridColumns, gridRows, LIST_SOFT, moreRows, paneHeight, scrolledTo, topRow, wheelMove, wheelTarget, windowedTable, windowOf } from './cards'
 import { issueGrid } from './views'
 import type { Block, Section } from './cards'
 import { rawText } from './__tests__/plain-text'
-import { BAR_SHARE, barRange, button, percentile, rowWidth, tableSpec, tierOf } from './rows'
+import { button, rowWidth } from './rows'
+import { BAR_SHARE, barRange, percentile, tableSpec, tierOf } from './table'
 import { HEADING, TITLE } from './palette'
-import type { Row, Tier } from './rows'
+import type { Row } from './types'
+import type { Tier } from './table'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 const HEIGHTS = [16, 24, 40, 60, 120] as const
@@ -185,6 +187,21 @@ describe('lists sized to the height', () => {
     expect(windowOf(10, 4, 0, -3)).toEqual({ start: 0, end: 4 })
     expect(windowOf(3, 4, 0, 2)).toEqual({ start: 0, end: 3 })
     expect(windowOf(10, 4, 9)).toEqual({ start: 6, end: 10 })
+  })
+  it('draw a table cut to its window, with the line that counts the rest', () => {
+    const items = Array.from({ length: 10 }, (_, i) => `item ${i}`)
+    const drawn: { shown: string[]; start: number }[] = []
+    const { rows, window } = windowedTable('t-window', items, { columns: 40, limit: 4, local: 6, walk: 3 }, (shown, start) => {
+      drawn.push({ shown, start })
+      return shown.map((text, n) => ({ key: `t-${start + n}`, segments: [{ text }] }))
+    })
+    expect(drawn).toEqual([{ shown: ['item 3', 'item 4', 'item 5', 'item 6'], start: 3 }])
+    expect(rows.map(r => r.key)).toEqual(['t-3', 't-4', 't-5', 't-6', 't-window'])
+    expect(rows.at(-1)).toEqual(moreRows('t-window', { start: 3, end: 7 }, 10, 40, 3)[0])
+    expect(window).toEqual({ start: 3, shown: 4, length: 10 })
+    // Where the wheel left it, and a list that shows whole: no line under it.
+    expect(windowedTable('t-window', items, { columns: 40, limit: 4, scrolled: 5 }, (shown, start) => shown.map((text, n) => ({ key: `t-${start + n}`, segments: [{ text }] }))).window).toEqual({ start: 5, shown: 4, length: 10 })
+    expect(windowedTable('t-window', items.slice(0, 2), { columns: 40, limit: 4 }, shown => shown.map(text => ({ key: text, segments: [{ text }] }))).rows).toHaveLength(2)
   })
 })
 

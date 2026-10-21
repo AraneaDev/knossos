@@ -38,7 +38,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout is called by nothing either, so the reportable set is it
         // plus OrphanService — never the test method, constructor, or external.
@@ -62,7 +62,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout from the baseline plus the orphan module — never the script.
         assertSame(2, $gate->data['metrics']['unreferenced_candidates']);
@@ -89,7 +89,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout from the baseline plus the .mjs — neither declaration node.
         assertSame(2, $gate->data['metrics']['unreferenced_candidates']);
@@ -111,7 +111,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout from the baseline plus the class: only a module can be a script.
         assertSame(2, $gate->data['metrics']['unreferenced_candidates']);
@@ -147,7 +147,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['hub_degree_growth' => 0]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['hub_degree_growth' => 0]);
 
         // The production graph's busiest node still has degree 1 (Checkout ->
         // Invoice), so nothing about the architecture grew and the budget holds.
@@ -182,7 +182,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['hub_degree_growth' => 0]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['hub_degree_growth' => 0]);
 
         assertSame(
             0,
@@ -208,7 +208,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // Only App\Checkout from the fixture, which nothing calls. Neither
         // lifecycle method is something a maintainer can reference.
@@ -246,7 +246,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // Only App\Checkout, which nothing calls. SqlRepo::save is reached
         // through App\Repo::save and is not a candidate.
@@ -272,7 +272,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout, App\Repo::save and App\SqlRepo::save. App\Repo itself
         // has the implements edge as an inbound reference, so it is not a
@@ -322,7 +322,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout from the fixture, plus the unmarked App\Cache::drop.
         assertSame(2, $gate->data['metrics']['unreferenced_candidates']);
@@ -342,7 +342,7 @@ final class QualityGateMetricsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $gate = ArchitectureQueryService::forDatabase($pdo)
-            ->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
+            ->services()->gateQueries->qualityGate($ids['project'], $ids['baseline'], ['unreferenced_candidates' => 100]);
 
         // App\Checkout from the fixture, plus the unmarked App\Visitor::helper.
         assertSame(2, $gate->data['metrics']['unreferenced_candidates']);

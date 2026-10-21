@@ -40,8 +40,11 @@ final readonly class NotesService
     /** The most rows read; `truncated` says when there are more. */
     public const MAX_ROWS = 2000;
 
-    /** @param PDO $pdo an existing, migrated graph database */
-    public function __construct(private PDO $pdo) {}
+    /**
+     * @param PDO $pdo an existing, migrated graph database
+     * @param QueryServices|null $services the query services to write notes through; null wires them against `$pdo` per write
+     */
+    public function __construct(private PDO $pdo, private ?QueryServices $services = null) {}
 
     /**
      * The project's notes, grouped and narrowed by `$filter` and by `$text`
@@ -103,14 +106,14 @@ final readonly class NotesService
      */
     public function adopt(string $path, string $component, ?string $value = null, bool $execute = false): array
     {
-        return $this->write($path, function (ArchitectureQueryService $queries, string $projectId) use ($component, $value, $execute): array {
+        return $this->write($path, function (AnnotationService $annotations, string $projectId) use ($component, $value, $execute): array {
             $model = $this->stored($projectId, $component, 'note', 'model');
             if ($model === null) {
                 throw new InvalidArgumentException(sprintf('%s has no note by the model to adopt.', $component));
             }
-            self::assertNamesItself($queries, $projectId, $component);
+            self::assertNamesItself($annotations, $projectId, $component);
 
-            return self::answered($queries->upsertAnnotation($projectId, $component, 'note', $value ?? $model, $execute, 'user')->data, 'adopt');
+            return self::answered($annotations->upsertAnnotation($projectId, $component, 'note', $value ?? $model, $execute, 'user')->data, 'adopt');
         });
     }
 
@@ -127,7 +130,7 @@ final readonly class NotesService
      */
     public function move(string $path, string $component, string $to, string $kind = 'note', string $author = 'user', bool $execute = false): array
     {
-        return $this->write($path, fn(ArchitectureQueryService $queries, string $projectId): array => (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $component, $to, $kind, $author, $execute): array {
+        return $this->write($path, fn(AnnotationService $annotations, string $projectId): array => (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $component, $to, $kind, $author, $execute): array {
             $source = $this->pdo->prepare('SELECT value, basis_json, created_at FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
             $source->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
             $row = $source->fetch(PDO::FETCH_ASSOC);
@@ -168,13 +171,13 @@ final readonly class NotesService
      */
     public function check(string $path, string $component, string $value = '', bool $remove = false, bool $execute = false): array
     {
-        return $this->write($path, static function (ArchitectureQueryService $queries, string $projectId) use ($component, $value, $remove, $execute): array {
-            self::assertNamesItself($queries, $projectId, $component);
+        return $this->write($path, static function (AnnotationService $annotations, string $projectId) use ($component, $value, $remove, $execute): array {
+            self::assertNamesItself($annotations, $projectId, $component);
 
             return self::answered(
                 $remove
-                    ? $queries->removeAnnotation($projectId, $component, AnnotationService::CHECK, '', $execute, 'user')->data
-                    : $queries->upsertAnnotation($projectId, $component, AnnotationService::CHECK, $value, $execute, 'user')->data,
+                    ? $annotations->removeAnnotation($projectId, $component, AnnotationService::CHECK, '', $execute, 'user')->data
+                    : $annotations->upsertAnnotation($projectId, $component, AnnotationService::CHECK, $value, $execute, 'user')->data,
                 $remove ? 'uncheck' : 'check',
             );
         });
@@ -189,10 +192,10 @@ final readonly class NotesService
      */
     public function confirm(string $path, string $component, string $kind = 'note', bool $execute = false): array
     {
-        return $this->write($path, static function (ArchitectureQueryService $queries, string $projectId) use ($component, $kind, $execute): array {
-            self::assertNamesItself($queries, $projectId, $component);
+        return $this->write($path, static function (AnnotationService $annotations, string $projectId) use ($component, $kind, $execute): array {
+            self::assertNamesItself($annotations, $projectId, $component);
 
-            return self::answered($queries->confirmAnnotation($projectId, $component, $kind, $execute)->data, 'confirm');
+            return self::answered($annotations->confirmAnnotation($projectId, $component, $kind, $execute)->data, 'confirm');
         });
     }
 
@@ -203,9 +206,9 @@ final readonly class NotesService
      * left on such a short name would be written over that component's.
      * Asked of the service's own preview, so the two never disagree.
      */
-    public static function assertNamesItself(ArchitectureQueryService $queries, string $projectId, string $component): void
+    public static function assertNamesItself(AnnotationService $annotations, string $projectId, string $component): void
     {
-        $lands = (string) $queries->upsertAnnotation($projectId, $component, 'note', '', false, 'user')->data['component'];
+        $lands = (string) $annotations->upsertAnnotation($projectId, $component, 'note', '', false, 'user')->data['component'];
         if ($lands !== $component) {
             throw new InvalidArgumentException(sprintf('%s names %s in the graph: move the note there first.', $component, $lands));
         }
@@ -331,14 +334,14 @@ final readonly class NotesService
     /**
      * A write for the project owning `$path`, its refusal or failure said as an answer.
      *
-     * @param Closure(ArchitectureQueryService, string): array<string, mixed> $write
+     * @param Closure(AnnotationService, string): array<string, mixed> $write
      * @return array<string, mixed>
      */
     private function write(string $path, Closure $write): array
     {
         return $this->forProject($path, [], function (string $projectId) use ($write): array {
             try {
-                return $write(ArchitectureQueryService::forDatabase($this->pdo), $projectId);
+                return $write(($this->services ?? QueryServices::wire($this->pdo))->annotationQueries, $projectId);
             } catch (InvalidArgumentException $refused) {
                 return ['status' => 'refused', 'reason' => $refused->getMessage()];
             } catch (Throwable $failed) {

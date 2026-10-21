@@ -46,14 +46,13 @@ import {
     normalize,
     relativeInside,
 } from "./project-paths.js";
-import { componentSources } from "./source-caches.js";
 import {
     isClassicScript,
-    isK6Script,
     REQUIRE_SUFFIXES,
     runsOnLoad,
     storeMemberNames,
 } from "./syntax-predicates.js";
+import { TableDispatch } from "./table-dispatch.js";
 import { TypeScriptApplicationEnricher } from "./typescript-application-enricher.js";
 import {
     callName,
@@ -69,25 +68,24 @@ import {
 export class TypeScriptLanguageFactCollector {
     constructor(root, sourceFile, checker, project = {}) {
         this.root = root;
-        // The program's compiler options.
+        // The program's compiler options, how to look up its files, and the
+        // request's exclusions.
         this.project = project;
         this.sourceFile = sourceFile;
         this.checker = checker;
         this.relative = relativeInside(root, sourceFile.fileName);
         this.container = [];
         this.moduleId = reference("module", this.relative);
-        const ownEnd = componentSources.get(sourceFile)?.sourceLength;
-        this.accumulator = new FactAccumulator(
+        this.accumulator = FactAccumulator.forSource(
             sourceFile,
             this.relative,
             evidence,
-            ownEnd === undefined
-                ? {}
-                : { end: ownEnd, moduleId: this.moduleId },
+            this.moduleId,
         );
         this.application = new TypeScriptApplicationEnricher(this);
         this.nest = new NestJsFactEnricher(this);
         this.launches = new LaunchFacts(this);
+        this.tables = new TableDispatch(this);
         this.frameworks = new ComponentFrameworkEnricher(this);
         this.dynamicImports = new DynamicImportCollector(this);
         this.untypedCalls = new Set();
@@ -127,13 +125,7 @@ export class TypeScriptLanguageFactCollector {
      * it reaches, so the core reports that method as only possibly dead.
      */
     finish() {
-        const component = componentSources.get(this.sourceFile);
-        if (component !== undefined)
-            this.frameworks.unresolvedTemplateNames(component.templateRanges);
-        if (component?.dialect === "astro") this.frameworks.astroProps();
-        if (component?.dialect === "vue")
-            this.frameworks.vueOptions(component.templateRanges);
-        if (isK6Script(this.sourceFile)) this.frameworks.k6Script();
+        this.frameworks.finish();
         if (this.untypedCalls.size === 0) return;
         this.accumulator.nodesById.get(
             this.moduleId,
@@ -214,7 +206,7 @@ export class TypeScriptLanguageFactCollector {
         if (ts.isArrayLiteralExpression(node)) this.launches.array(node);
         if (ts.isTypeReferenceNode(node)) this.typeReference(node);
         if (ts.isIdentifier(node)) this.valueReference(node);
-        if (ts.isElementAccessExpression(node)) this.tableLookup(node);
+        if (ts.isElementAccessExpression(node)) this.tables.lookup(node);
         if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent))
             this.destructuredMember(node);
     }
@@ -443,7 +435,12 @@ export class TypeScriptLanguageFactCollector {
     }
 
     newExpression(node) {
-        const url = importMetaUrlModule(node, this.sourceFile, this.root);
+        const url = importMetaUrlModule(
+            node,
+            this.sourceFile,
+            this.root,
+            this.project.exclusions,
+        );
         if (url !== null)
             this.addEdge(
                 "imports",
@@ -519,28 +516,33 @@ export class TypeScriptLanguageFactCollector {
             : null;
     }
 
+    /**
+     * The `imports` edge of an `import('x')` or `require('x')` whose one
+     * argument is a string literal, carrying `attributes`.
+     */
+    literalModuleImport(node, attributes) {
+        const specifier = node.arguments[0];
+        const target = this.moduleTarget(specifier.text, specifier);
+        if (target !== null)
+            this.addEdge(
+                "imports",
+                this.currentSource() ?? this.moduleId,
+                target,
+                node,
+                attributes,
+            );
+    }
+
     callExpression(node) {
         this.nest.callExpression(node);
         this.launches.call(node);
-        if (
-            node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        const literal =
             node.arguments.length === 1 &&
-            ts.isStringLiteral(node.arguments[0])
-        ) {
-            const target = this.moduleTarget(
-                node.arguments[0].text,
-                node.arguments[0],
-            );
-            if (target !== null)
-                this.addEdge(
-                    "imports",
-                    this.currentSource() ?? this.moduleId,
-                    target,
-                    node,
-                    { dynamic: true, type_only: false },
-                );
+            ts.isStringLiteral(node.arguments[0]);
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword && literal) {
+            this.literalModuleImport(node, { dynamic: true, type_only: false });
             // Only when the import resolved to a module INSIDE the project.
-            // `target` above is non-null for an external package too —
+            // The edge above is added for an external package too —
             // moduleTarget() falls back to minting a `package` node for
             // anything that isn't internal — so gating on it here would still
             // let dynamicDefaultImport resolve a real default export an npm
@@ -555,21 +557,12 @@ export class TypeScriptLanguageFactCollector {
         if (
             ts.isIdentifier(node.expression) &&
             node.expression.text === "require" &&
-            node.arguments.length === 1 &&
-            ts.isStringLiteral(node.arguments[0])
+            literal
         ) {
-            const target = this.moduleTarget(
-                node.arguments[0].text,
-                node.arguments[0],
-            );
-            if (target !== null)
-                this.addEdge(
-                    "imports",
-                    this.currentSource() ?? this.moduleId,
-                    target,
-                    node,
-                    { commonjs: true, type_only: false },
-                );
+            this.literalModuleImport(node, {
+                commonjs: true,
+                type_only: false,
+            });
             return;
         }
 
@@ -591,6 +584,7 @@ export class TypeScriptLanguageFactCollector {
         }
         const source = this.currentSource();
         const target = this.callEdge(node, signature, source);
+        this.tables.objectArguments(node, signature, source);
 
         const calledName = callName(node.expression);
         if (source !== null && calledName?.startsWith("use") && target !== null)
@@ -671,7 +665,11 @@ export class TypeScriptLanguageFactCollector {
             // existence is asked, as the compiler host asks it, so nothing is
             // read; the answer is attributed to this file like any probe.
             if (
-                allowedCompilerPath(this.root, fileName) &&
+                allowedCompilerPath(
+                    this.root,
+                    fileName,
+                    this.project.exclusions,
+                ) &&
                 this.project.fileExists(fileName)
             )
                 return { fileName };
@@ -746,44 +744,6 @@ export class TypeScriptLanguageFactCollector {
         const source = this.currentSource();
         if (source !== null && target !== null && source !== target)
             this.addEdge("references", source, target, node);
-    }
-
-    /**
-     * `handlers[data.type]` picks a function out of a module's table by a key
-     * only the run time knows. No identifier names the entry, so every
-     * function the table holds read as unused: the lookup references each of
-     * them. A literal key, `handlers['ping']`, reaches only the entry it names.
-     */
-    tableLookup(node) {
-        const symbol = unalias(
-            this.checker,
-            this.checker.getSymbolAtLocation(node.expression),
-        );
-        const binding = symbol?.declarations?.find(
-            (item) => ts.isVariableDeclaration(item) && item.initializer,
-        );
-        const table =
-            binding === undefined
-                ? undefined
-                : unwrapExpression(binding.initializer);
-        if (table === undefined || !ts.isObjectLiteralExpression(table)) return;
-        const key = unwrapExpression(node.argumentExpression);
-        const named =
-            ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)
-                ? key.text
-                : undefined;
-        const source = this.currentSource();
-        for (const property of table.properties) {
-            if (!isFunctionAssignment(property)) continue;
-            if (named !== undefined && property.name.text !== named) continue;
-            const target = this.symbolReference(
-                this.checker.getSymbolAtLocation(property.name),
-                "method",
-                true,
-            );
-            if (target !== null && target !== source)
-                this.addEdge("references", source, target, node);
-        }
     }
 
     /**

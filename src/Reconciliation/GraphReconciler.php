@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Knossos\Reconciliation;
 
 use Knossos\Discovery\DiscoveredFile;
-use Knossos\Discovery\EnricherDefinition;
 use Knossos\Discovery\UnitInputSet;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\Evidence;
@@ -80,7 +79,7 @@ final readonly class GraphReconciler
     private function prepare(FullScanRequest $request): PreparedGraph
     {
         $projectId = StableId::project($request->projectIdentity);
-        $scannerSetHash = self::scannerSetHash($request->scanners, $request->enrichers);
+        $scannerSetHash = ScannerSetHash::of($request->scanners, $request->enrichers);
         $scanId = $request->scanId ?? StableId::scan($projectId, bin2hex(random_bytes(16)));
 
         $fileIds = [];
@@ -349,7 +348,7 @@ final readonly class GraphReconciler
         foreach ($contributions as $contribution) {
             $scanner = $this->scannerFromOwner($contribution->ownerKey);
             foreach ($contribution->nodes as $node) {
-                [$language, $id] = self::nodeIdentity($projectId, $node);
+                [$language, $id] = NodeIdentity::of($projectId, $node);
                 if (isset($references[$node->localId]) && $references[$node->localId] !== $id) {
                     throw new ReconciliationException(sprintf('Conflicting scanner reference: %s', $node->localId));
                 }
@@ -718,74 +717,11 @@ final readonly class GraphReconciler
         return $versions;
     }
 
-    /**
-     * Identity of the analyzer set, so a change invalidates incremental reuse.
-     *
-     * The active external enrichers count too, by name, command and the
-     * native node kinds they take: adding, removing or changing one changes
-     * the facts a scan produces. Their timeout and environment do not. With
-     * no enrichers the hash is what it was before enrichers existed, so a
-     * stored graph keeps its fast path.
-     *
-     * @param list<ScannerManifest> $scanners
-     * @param list<EnricherDefinition> $enrichers
-     */
-    public static function scannerSetHash(array $scanners, array $enrichers = []): string
-    {
-        $serialized = [];
-        foreach ($scanners as $scanner) {
-            $serialized[$scanner->id] = $scanner->jsonSerialize();
-        }
-        ksort($serialized, SORT_STRING);
-        if ($enrichers !== []) {
-            $active = [];
-            foreach ($enrichers as $enricher) {
-                $active[$enricher->name] = ['command' => $enricher->command, 'input_node_kinds' => $enricher->inputNodeKinds];
-            }
-            ksort($active, SORT_STRING);
-            // A key no scanner id takes, since none starts with a colon.
-            $serialized[':enrichers'] = $active;
-        }
-        return hash('sha256', json_encode($serialized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
-    }
     /** The owning scanner for a fact, from its owner key. */
 
     private function scannerFromOwner(string $owner): string
     {
         $parts = explode(':', $owner, 2);
-        return $parts[0];
-    }
-    /**
-     * The language and stable id a reported node gets.
-     *
-     * The one place this is computed, so whoever needs a native node's stable
-     * id before reconcile runs (the enrichment pass) cannot drift from the id
-     * the reconciler assigns.
-     *
-     * Native nodes keep the language their local id names; enriched nodes get `ext:<enricher>`.
-     *
-     * @return array{0: string, 1: string} [language, stable id]
-     */
-    public static function nodeIdentity(string $projectId, NodeFact $node): array
-    {
-        $language = self::languageFromReference($node->localId);
-        // An enricher's local id is `ext:<enricher>/<id>`. The language names the enricher too, so two enrichers
-        // that report the same kind and canonical name get two stable ids and two nodes, each under its own owner.
-        if ($language === 'ext' && preg_match('#^ext:([^/]+)/#', $node->localId, $matches) === 1) {
-            $language = 'ext:' . $matches[1];
-        }
-
-        return [$language, StableId::symbol($projectId, $language, $node->kind, $node->canonicalName)];
-    }
-
-    /** The language a canonical reference belongs to, used when synthesising an external node. */
-
-    private static function languageFromReference(string $reference): string
-    {
-        $parts = explode(':', $reference, 2);
-        if (count($parts) !== 2 || $parts[0] === '') {
-            throw new ReconciliationException(sprintf('Node local ID has no language namespace: %s', $reference));
-        }
         return $parts[0];
     }
     /** The short name shown to a reader, derived from the canonical name. */

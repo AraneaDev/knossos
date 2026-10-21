@@ -221,7 +221,7 @@ final class NotesServiceTest extends KnossosTestCase
     {
         [$pdo, $root, $projectId] = $this->notesGraph();
         $cited = ['src/App/User.php', 'src/App/Maybe.php', 'src/App/Chain2.php', 'src/App/Chain3.php', 'src/App/Port.php'];
-        ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($projectId, 'App\\Chain1', 'note', 'Wraps the user, as five others do.', true, 'model', $cited, true);
+        ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Chain1', 'note', 'Wraps the user, as five others do.', true, 'model', $cited, true);
         $pdo->prepare("UPDATE files SET content_hash = 'edited again' WHERE project_id = ? AND relative_path = 'src/App/Chain1.php'")->execute([$projectId]);
         $service = new NotesService($pdo);
         assertSame(true, self::row($service->notes($root), 'App\\Chain1')['stale']);
@@ -237,7 +237,7 @@ final class NotesServiceTest extends KnossosTestCase
     public function testConfirmingANoteWhoseCitedFileWasRemovedDropsThatFile(): void
     {
         [$pdo, $root, $projectId] = $this->notesGraph();
-        ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($projectId, 'App\\Chain1', 'note', 'Wraps the user, unlike Maybe.', true, 'model', ['src/App/User.php', 'src/App/Maybe.php'], true);
+        ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Chain1', 'note', 'Wraps the user, unlike Maybe.', true, 'model', ['src/App/User.php', 'src/App/Maybe.php'], true);
         $pdo->prepare("DELETE FROM files WHERE project_id = ? AND relative_path = 'src/App/Maybe.php'")->execute([$projectId]);
         $service = new NotesService($pdo);
         assertSame('written before src/App/Maybe.php was removed', self::row($service->notes($root), 'App\\Chain1')['stale_reason']);
@@ -391,10 +391,10 @@ final class NotesServiceTest extends KnossosTestCase
         [$pdo, $root, $projectId] = $this->paneAgreementGraph();
         $queries = ArchitectureQueryService::forDatabase($pdo);
         // Recorded again through the service, so it rests on its file and is not stale.
-        $queries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Built once per request; the zebrafish cache keeps it.', execute: true);
-        $queries->upsertAnnotation($projectId, 'App\\Chain1', 'note', 'Wraps the user.', execute: true);
-        $queries->upsertAnnotation($projectId, 'App\\Maybe', 'note', 'Calls the target on a guess.', execute: true);
-        $queries->upsertAnnotation($projectId, 'App\\User', 'note', 'Mine.', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Built once per request; the zebrafish cache keeps it.', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Chain1', 'note', 'Wraps the user.', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Maybe', 'note', 'Calls the target on a guess.', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\User', 'note', 'Mine.', execute: true, author: 'user');
         $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, 'App\\Target', 'check', 'is the cache still per request?', 'user', '2026-10-16T10:00:00Z', '2026-10-16T10:00:00Z')")->execute([$projectId]);
         $at = 0;
         foreach (['App\\Target', 'App\\Gone', 'App\\Chain1', 'App\\Maybe', 'App\\User'] as $name) {
@@ -425,7 +425,11 @@ final class NotesServiceTest extends KnossosTestCase
         throw new \RuntimeException("no model note on {$component}");
     }
 
-    /** @return list<string> the values stored on a component by an author */
+    /**
+     * @return list<string> the values stored on a component by an author
+     *
+     * @phpstan-impure
+     */
     private static function stored(PDO $pdo, string $projectId, string $component, string $author, string $kind = 'note'): array
     {
         $statement = $pdo->prepare('SELECT value FROM annotations WHERE project_id = ? AND canonical_name = ? AND kind = ? AND author = ?');

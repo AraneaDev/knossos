@@ -8,6 +8,8 @@ use InvalidArgumentException;
 use Knossos\Discovery\{AllowedRoots, RootsFile};
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\{ProjectScanService, ProjectScanner, ProjectWriterLock};
+use Knossos\Scan\ScanOptions;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use Throwable;
 
@@ -78,7 +80,7 @@ final readonly class ProjectMoveService
         $data['roots'] = $roots?->replace($source['root'], $target);
         if (!$targetExists) {
             // Asked for, so explicit: enrichers run, since the old project's enriched facts are not moved.
-            $scanner->scan($target, runEnrichers: true);
+            $scanner->scan($target, new ScanOptions(runEnrichers: true));
             $data['scanned'] = true;
         }
         $this->moveAndRemove($source['id'], $targetId, $conflicts);
@@ -120,11 +122,10 @@ final readonly class ProjectMoveService
      */
     private function source(string $from): array
     {
-        $statement = str_starts_with($from, 'project_')
-            ? $this->pdo->prepare('SELECT id, name, root_realpath FROM projects WHERE id = :value')
-            : $this->pdo->prepare('SELECT id, name, root_realpath FROM projects WHERE root_realpath = :value');
-        $statement->execute(['value' => str_starts_with($from, 'project_') ? $from : AllowedRoots::normaliseRoot($from)]);
-        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        $projects = new ProjectRepository($this->pdo);
+        $row = str_starts_with($from, 'project_')
+            ? $projects->find($from, ['id', 'name', 'root_realpath'])
+            : $projects->byRoot(AllowedRoots::normaliseRoot($from), ['id', 'name', 'root_realpath']);
         if (!is_array($row)) {
             throw new InvalidArgumentException(sprintf('PROJECT_NOT_FOUND: no project has root or id %s.', $from));
         }
@@ -144,10 +145,7 @@ final readonly class ProjectMoveService
     /** Whether the target root has been scanned yet, which decides whether execute scans it first. */
     private function projectExists(string $projectId): bool
     {
-        $statement = $this->pdo->prepare('SELECT 1 FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-
-        return $statement->fetchColumn() !== false;
+        return (new ProjectRepository($this->pdo))->exists($projectId);
     }
 
     /**
@@ -228,8 +226,7 @@ final readonly class ProjectMoveService
                 ->execute(['target' => $targetId, 'source' => $sourceId]);
             // As DatabaseMaintenanceService::removeProject does it: the cascade
             // takes the graph, snapshots and scan history with the row.
-            $this->pdo->prepare('UPDATE projects SET active_scan_id = NULL WHERE id = :project')->execute(['project' => $sourceId]);
-            $this->pdo->prepare('DELETE FROM projects WHERE id = :project')->execute(['project' => $sourceId]);
+            (new ProjectRepository($this->pdo))->remove($sourceId);
             $this->pdo->commit();
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {

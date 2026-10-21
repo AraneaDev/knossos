@@ -39,10 +39,10 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->done();
 
         foreach ([['sinceDays' => 1], ['sinceDays' => 3650], ['maxCommits' => 1], ['maxCommits' => 5000]] as $inside) {
-            assertSame($target, $queries->changeImpact($this->ids['project'], $target, ...$inside)->data['target']['id']);
+            assertSame($target, $queries->services()->changeQueries->changeImpact($this->ids['project'], $target, ...($inside + ['sinceDays' => 90, 'maxCommits' => 500, 'maxDepth' => 4, 'limit' => 100, 'edgeKinds' => [], 'minConfidence' => 'possible', 'timeoutMs' => 1000]))->data['target']['id']);
         }
         foreach ([['sinceDays' => 0], ['sinceDays' => 3651], ['maxCommits' => 0], ['maxCommits' => 5001]] as $outside) {
-            assertThrows(fn() => $queries->changeImpact($this->ids['project'], $target, ...$outside), InvalidArgumentException::class);
+            assertThrows(fn() => $queries->services()->changeQueries->changeImpact($this->ids['project'], $target, ...($outside + ['sinceDays' => 90, 'maxCommits' => 500, 'maxDepth' => 4, 'limit' => 100, 'edgeKinds' => [], 'minConfidence' => 'possible', 'timeoutMs' => 1000])), InvalidArgumentException::class);
         }
     }
 
@@ -56,11 +56,11 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->done();
         $queries = $this->queries(self::history([]));
 
-        $unmatched = $queries->changeImpact($this->ids['project'], 'Nowhere');
+        $unmatched = $queries->services()->changeQueries->changeImpact($this->ids['project'], 'Nowhere', 90, 500, 4, 100, [], 'possible', 1000);
         assertSame(['available' => false, 'reason' => 'unmatched_target'], $unmatched->data['git']);
         assertSame([], $unmatched->data['risk_ranking']);
 
-        $ambiguous = $queries->changeImpact($this->ids['project'], 'Ledger');
+        $ambiguous = $queries->services()->changeQueries->changeImpact($this->ids['project'], 'Ledger', 90, 500, 4, 100, [], 'possible', 1000);
         assertSame(['available' => false, 'reason' => 'ambiguous_target'], $ambiguous->data['git']);
     }
 
@@ -89,7 +89,7 @@ final class ChangeImpactRankingTest extends KnossosTestCase
             'src/Aardvark.php' => ['commit_count' => 0, 'authors' => ['b@example.test'], 'last_changed_at' => '2026-09-01T00:00:00+00:00'],
         ]));
 
-        $result = $queries->changeImpact($this->ids['project'], $target, maxDepth: 2);
+        $result = $queries->services()->changeQueries->changeImpact($this->ids['project'], $target, sinceDays: 90, maxCommits: 500, maxDepth: 2, limit: 100, edgeKinds: [], minConfidence: 'possible', timeoutMs: 1000);
         $ranking = $result->data['risk_ranking'];
 
         // Far: 1 commit x3 + 1 author + 1 hop to spare = 5. Target: 3 hops to
@@ -118,12 +118,12 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $target = $this->node('App\\Target', 'src/Target.php');
         $this->done();
 
-        $complete = $this->queries(self::history([]))->changeImpact($this->ids['project'], $target);
+        $complete = $this->queries(self::history([]))->services()->changeQueries->changeImpact($this->ids['project'], $target, 90, 500, 4, 100, [], 'possible', 1000);
         assertSame('Ranked 1 statically impacted component with recent Git change signals.', $complete->summary);
         assertSame(false, $complete->truncated);
-        assertSame(false, $this->queries()->changeImpact($this->ids['project'], $target)->truncated, 'No history, nothing cut short.');
+        assertSame(false, $this->queries()->services()->changeQueries->changeImpact($this->ids['project'], $target, 90, 500, 4, 100, [], 'possible', 1000)->truncated, 'No history, nothing cut short.');
 
-        $cut = $this->queries(self::history([], truncated: true))->changeImpact($this->ids['project'], $target);
+        $cut = $this->queries(self::history([], truncated: true))->services()->changeQueries->changeImpact($this->ids['project'], $target, 90, 500, 4, 100, [], 'possible', 1000);
         assertSame(true, $cut->truncated, 'A history read that stopped early leaves the ranking incomplete.');
     }
 
@@ -141,7 +141,7 @@ final class ChangeImpactRankingTest extends KnossosTestCase
             }
         };
 
-        $git = $this->queries($failing)->changeImpact($this->ids['project'], $target)->data['git'];
+        $git = $this->queries($failing)->services()->changeQueries->changeImpact($this->ids['project'], $target, 90, 500, 4, 100, [], 'possible', 1000)->data['git'];
 
         assertSame(false, $git['available']);
         assertSame('R' . str_repeat('x', 499), $git['reason']);
@@ -154,10 +154,10 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->done();
         $paths = array_map(static fn(int $index): string => sprintf('src/F%02d.php', $index), range(1, 50));
 
-        $result = $this->queries()->changedFilesImpact($this->ids['project'], $paths);
+        $result = $this->queries()->services()->changeQueries->changedFilesImpact($this->ids['project'], $paths);
 
         assertSame(50, count($result->data['unresolved_files']));
-        assertThrows(fn() => $this->queries()->changedFilesImpact($this->ids['project'], [...$paths, 'src/F51.php']), InvalidArgumentException::class);
+        assertThrows(fn() => $this->queries()->services()->changeQueries->changedFilesImpact($this->ids['project'], [...$paths, 'src/F51.php']), InvalidArgumentException::class);
     }
 
     /** With no working-tree provider the refusal names that, not the null call it would otherwise make. */
@@ -167,7 +167,7 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->graph();
         $this->done();
 
-        $error = captureThrows(fn() => $this->queries()->changedFilesImpact($this->ids['project'], workingTree: true), InvalidArgumentException::class);
+        $error = captureThrows(fn() => $this->queries()->services()->changeQueries->changedFilesImpact($this->ids['project'], workingTree: true), InvalidArgumentException::class);
 
         assertSame('Working-tree change discovery is unavailable.', $error->getMessage());
     }
@@ -188,11 +188,11 @@ final class ChangeImpactRankingTest extends KnossosTestCase
             }
         };
 
-        $fromTree = ArchitectureQueryService::forDatabase($this->pdo, gitWorkingTree: $tree)->changedFilesImpact($this->ids['project'], workingTree: true);
+        $fromTree = ArchitectureQueryService::forDatabase($this->pdo, gitWorkingTree: $tree)->services()->changeQueries->changedFilesImpact($this->ids['project'], workingTree: true);
         assertSame(true, $fromTree->data['git']['truncated']);
         assertSame(true, $fromTree->truncated);
 
-        $explicit = $this->queries()->changedFilesImpact($this->ids['project'], ['src/Changed.php']);
+        $explicit = $this->queries()->services()->changeQueries->changedFilesImpact($this->ids['project'], ['src/Changed.php']);
         assertSame(false, $explicit->data['git']['truncated']);
         assertSame(false, $explicit->truncated);
     }
@@ -219,7 +219,7 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->edge($this->node('App\\Aaa', 'src/Aaa.php'), $kept);
         $this->done();
 
-        $result = $this->queries()->changedFilesImpact($this->ids['project'], ['src/B.php', 'src/A.php']);
+        $result = $this->queries()->services()->changeQueries->changedFilesImpact($this->ids['project'], ['src/B.php', 'src/A.php']);
 
         $confidence = array_column(array_map(static fn(array $record): array => [$record['node']['canonical_name'], $record['path_confidence']], $result->data['impacted_components']), 1, 0);
         assertSame('certain', $confidence['App\\Upgraded'], 'The surer path from the second file replaces the first one found.');
@@ -240,13 +240,13 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->done();
         $queries = $this->queries();
 
-        $atLimit = $queries->changedFilesImpact($this->ids['project'], ['src/Changed.php'], limit: 2);
+        $atLimit = $queries->services()->changeQueries->changedFilesImpact($this->ids['project'], ['src/Changed.php'], limit: 2);
         assertSame(2, count($atLimit->data['impacted_components']));
         assertSame(false, $atLimit->truncated);
 
         // One changed component whose own search stops at the limit: the merged
         // set fits, but the search that fed it was cut short.
-        $cut = $queries->changedFilesImpact($this->ids['project'], ['src/Changed.php'], limit: 1);
+        $cut = $queries->services()->changeQueries->changedFilesImpact($this->ids['project'], ['src/Changed.php'], limit: 1);
         assertSame(1, count($cut->data['impacted_components']));
         assertSame(true, $cut->truncated);
     }
@@ -267,7 +267,7 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         $this->done();
         $queries = $this->queries();
 
-        $whole = $queries->changedFilesImpact($this->ids['project'], ['src/Big.php']);
+        $whole = $queries->services()->changeQueries->changedFilesImpact($this->ids['project'], ['src/Big.php']);
         assertSame(1000, count($whole->data['direct_components']));
         assertSame(false, $whole->truncated);
         assertSame(100, count($whole->evidence));
@@ -276,7 +276,7 @@ final class ChangeImpactRankingTest extends KnossosTestCase
         // component past the bound is also the one that would have found it.
         $last = $this->node('App\\Big9999', 'src/Big.php');
         $this->edge($this->node('App\\Caller', 'src/Caller.php'), $last);
-        $over = $queries->changedFilesImpact($this->ids['project'], ['src/Big.php']);
+        $over = $queries->services()->changeQueries->changedFilesImpact($this->ids['project'], ['src/Big.php']);
         assertSame(1000, count($over->data['direct_components']));
         assertSame(true, $over->truncated);
         assertSame([], $over->data['impacted_components']);

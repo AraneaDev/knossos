@@ -77,6 +77,13 @@ describe('a commit', () => {
     expect(commitNote([], Array.from({ length: 8 }, (_, i) => `f${i}`), { count: 0, chains: [] })).toBe("knossos: this session's changes carry 8 changed files no test reaches (f0, f1, f2, f3, f4, and 3 more). Check them before you push.")
   })
 
+  it('says the policies went unchecked when knossos could not read them', () => {
+    expect(commitNote([], [], { count: 0, chains: [] }, 'bad rule')).toBe("knossos: this session's changes were not checked against the boundary policies (policies unreadable: bad rule).")
+    expect(commitNote([], ['src/Kernel.php'], { count: 0, chains: [] }, 'bad rule')).toBe(
+      "knossos: this session's changes carry 1 changed file no test reaches (src/Kernel.php). Check them before you push. They were not checked against the boundary policies (policies unreadable: bad rule).",
+    )
+  })
+
   it('counts cycles new since the session began only against a start that counted them all', () => {
     const cycle = (members: string[]) => ({ size: members.length, members })
     const now = { count: 2, truncated: false, largest: [cycle(['A', 'B']), cycle(['C', 'D'])] }

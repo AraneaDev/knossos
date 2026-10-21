@@ -25,8 +25,8 @@
  * `inactive`, a highlighted path in the accent, a forbidden one in `error`.
  */
 import { ACCENT, FAINT, HEADING, SELECTED_BG, STATUS_COLOURS } from './palette'
-import { cells, fit, padEnd, spaces } from './rows'
-import type { Press, Row, Segment } from './rows'
+import { cells, fit, padEnd, spaces } from './text'
+import type { Press, Row, Segment } from './types'
 
 /** The narrowest a diagram is drawn: below it, a view says the same as text. */
 export const DIAGRAM_MIN = 50

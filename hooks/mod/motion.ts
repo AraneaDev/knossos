@@ -7,15 +7,23 @@
  * sake.
  */
 import { BUSY_SPIN_MS, MOTION_FRAME_MS, moving, NO_MOTION } from '../lib/motion'
-import type { Port } from './port'
+import type { Port } from './port-type'
 import { mod } from './state'
+
+/** Stops the clocks that redraw: the band's age tick and the motion's frames. */
+export function stopClocks(): void {
+  mod.motion.ticker?.cancel()
+  mod.motion.ticker = null
+  mod.motion.timer?.cancel()
+  mod.motion.timer = null
+}
 
 /** Starts the frames: from `landed` when a scan just landed (null while one only runs, or a line is under way); one timer however often it is called. */
 export async function startMotion(io: Port, landed: number | null): Promise<void> {
-  if (mod.paneText === null && !mod.paneBusy) return
-  mod.motionGen++
+  if (mod.pane.text === null && !mod.pane.busy) return
+  mod.motion.gen++
   if (landed !== null) await io.state.motion.update(() => ({ since: landed, frame: 0 }))
-  mod.motionTimer ??= io.clock.every(MOTION_FRAME_MS, () => void frame(io).catch(() => undefined))
+  mod.motion.timer ??= io.clock.every(MOTION_FRAME_MS, () => void frame(io).catch(() => undefined))
 }
 
 /**
@@ -26,20 +34,20 @@ export async function startMotion(io: Port, landed: number | null): Promise<void
  * deciding to the next.
  */
 async function frame(io: Port): Promise<void> {
-  const gen = mod.motionGen
+  const gen = mod.motion.gen
   const now = await io.clock.now()
   const scanning = (await io.state.live.read()).phase === 'scanning' || (await io.state.rescan.read()).phase === 'scanning'
   const lasting = moving(await io.state.motion.read(), now)
-  const busy = mod.paneBusy && now - mod.busySince < BUSY_SPIN_MS
-  if (gen !== mod.motionGen) return
-  if (busy || (mod.paneText !== null && (lasting || scanning))) {
-    mod.motionTicks++
-    if (!lasting && mod.motionTicks % 2 === 1) return
+  const busy = mod.pane.busy && now - mod.pane.busySince < BUSY_SPIN_MS
+  if (gen !== mod.motion.gen) return
+  if (busy || (mod.pane.text !== null && (lasting || scanning))) {
+    mod.motion.ticks++
+    if (!lasting && mod.motion.ticks % 2 === 1) return
     await io.state.motion.update(m => ({ ...m, frame: m.frame + 1 }))
     return
   }
-  mod.motionTimer?.cancel()
-  mod.motionTimer = null
+  mod.motion.timer?.cancel()
+  mod.motion.timer = null
   // At rest: the dot full, the bars whole, unless the motion started again meanwhile.
-  await io.state.motion.update(m => (gen === mod.motionGen ? NO_MOTION : m))
+  await io.state.motion.update(m => (gen === mod.motion.gen ? NO_MOTION : m))
 }

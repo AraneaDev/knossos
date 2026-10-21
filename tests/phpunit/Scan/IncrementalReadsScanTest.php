@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Discovery\UnitInputSet;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Store\SqliteGraphRepository;
@@ -251,7 +252,7 @@ final class IncrementalReadsScanTest extends KnossosTestCase
 
     private function scan(PDO $pdo, ?int $maxFileBytes = null): \Knossos\Result\ResultEnvelope
     {
-        return (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, maxFileBytes: $maxFileBytes);
+        return (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root, new ScanOptions(maxFileBytes: $maxFileBytes));
     }
 
     /** @return array<string, string> */

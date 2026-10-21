@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectWriterLease;
 use Knossos\Scan\ProjectWriterLock;
+use Knossos\Store\ProjectRepository;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -49,10 +50,7 @@ final readonly class DatabaseMaintenanceService
         $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
         try {
             $this->pdo->beginTransaction();
-            $clear = $this->pdo->prepare('UPDATE projects SET active_scan_id = NULL WHERE id = :project');
-            $clear->execute(['project' => $projectId]);
-            $delete = $this->pdo->prepare('DELETE FROM projects WHERE id = :project');
-            $delete->execute(['project' => $projectId]);
+            (new ProjectRepository($this->pdo))->remove($projectId);
             $this->pdo->commit();
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
@@ -229,9 +227,7 @@ final readonly class DatabaseMaintenanceService
      */
     private function project(string $projectId): array
     {
-        $statement = $this->pdo->prepare('SELECT id, name, active_scan_id FROM projects WHERE id = :project');
-        $statement->execute(['project' => $projectId]);
-        $project = $statement->fetch();
+        $project = (new ProjectRepository($this->pdo))->find($projectId, ['id', 'name', 'active_scan_id']);
         if (!is_array($project)) {
             throw new InvalidArgumentException(sprintf('Unknown project: %s', $projectId));
         }

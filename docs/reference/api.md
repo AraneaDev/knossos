@@ -34,7 +34,7 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 
 ### `Knossos\Scan\ProjectScanner`
 
-- `scan(string $root, ?string $name = null, ?int $maxFiles = null, ?int $maxFileBytes = null, ?array $explicitBoundaries = null, ?string $mode = null, ?Knossos\Cancellation\CancellationToken $cancellation = null, ?int $snapshotRetention = null, ?int $workerTimeoutMs = null, ?int $workerMemoryMb = null, bool $runEnrichers = false): Knossos\Result\ResultEnvelope`: Build or refresh a project's graph and return the result envelope
+- `scan(string $root, Knossos\Scan\ScanOptions $options = {"name":null,"maxFiles":null,"maxFileBytes":null,"explicitBoundaries":null,"mode":null,"cancellation":null,"snapshotRetention":null,"workerTimeoutMs":null,"workerMemoryMb":null,"runEnrichers":false,"lease":null}): Knossos\Result\ResultEnvelope`: Build or refresh a project's graph and return the result envelope
 
 ### `Knossos\Scanner\ScannerClient`
 

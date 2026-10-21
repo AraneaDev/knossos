@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KnossosView } from '../../types'
-import type { Row } from '../lib/layout'
-import { focusLanded, focusMoved, wheelScrolled } from './actions'
+import type { Row } from '../lib/types'
+import { focusLanded, focusMoved, wheelScrolled } from './navigate-actions'
 import { request } from './loaders'
 import type { Port } from './port'
 import { mod } from './state'
@@ -19,25 +19,25 @@ function port(view: Partial<KnossosView> = {}) {
 
 beforeEach(() => {
   vi.mocked(request).mockClear()
-  mod.focused = null
+  mod.navigation.focused = null
 })
 
 describe('focusMoved', () => {
   it('lets a focus on an ordinary element stand, and notes it', async () => {
     expect(await focusMoved(port().io, 'row:3')).toBeNull()
-    expect(mod.focused).toBe('row:3')
+    expect(mod.navigation.focused).toBe('row:3')
   })
 
   it('redirects a tab key to its tab, and refuses the move backward past the first tab', async () => {
     expect(await focusMoved(port().io, 'tabkey:hubs')).toEqual({ to: 'tab:hubs' })
-    expect(mod.focused).toBe('tab:hubs')
+    expect(mod.navigation.focused).toBe('tab:hubs')
     expect(await focusMoved(port().io, 'tabkey:overview')).toEqual({ to: 'tab:overview' })
     expect(await focusMoved(port().io, 'tabkey:overview')).toEqual({ refuse: true })
   })
 
   it('notes no element for a focus that names none', async () => {
     expect(await focusMoved(port().io, undefined)).toBeNull()
-    expect(mod.focused).toBeNull()
+    expect(mod.navigation.focused).toBeNull()
   })
 })
 

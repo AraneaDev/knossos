@@ -8,7 +8,9 @@ use Closure;
 use Knossos\Discovery\EnrichersFile;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
+use Knossos\Result\PaneStatus;
 use Knossos\Scan\{ProjectScanService, ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
+use Knossos\Scan\ScanOptions;
 use PDO;
 use Throwable;
 
@@ -73,6 +75,10 @@ final readonly class TurnBriefService
      * With `$reuseScan`, a brief whose reported files the graph already holds
      * as they are on disk does not scan again: another writer just did.
      *
+     * A `knossos.json` that cannot be read leaves the policy unchecked as
+     * `config_invalid`, with the loader's `message`, rather than passed for
+     * want of rules.
+     *
      * @param list<string> $extraFiles paths the caller saw edited, relative or absolute; merged into the diff
      * @param list<array<string, mixed>>|null $policies null reads knossos.json
      * @return array<string, mixed>
@@ -88,8 +94,10 @@ final readonly class TurnBriefService
         $root = (string) $project['root_realpath'];
         $projectId = (string) $project['id'];
         $reported = self::relative($root, $extraFiles);
-        $violations = new FileViolationQuery($this->pdo, $this->policyTimeoutMs, $this->policyMaxEdges);
-        $policies = $enforcePolicies ? FileViolationQuery::policies($root, $policies) : [];
+        // Wired once for the whole brief: the policy check, the test search and the per-file reach all read through it.
+        $queries = QueryServices::wire($this->pdo, gitWorkingTree: new ProcessGitWorkingTreeProvider());
+        $violations = new FileViolationQuery($this->pdo, $this->policyTimeoutMs, $this->policyMaxEdges, $queries);
+        ['policies' => $policies, 'error' => $unreadable] = $enforcePolicies ? FileViolationQuery::policies($root, $policies) : ['policies' => [], 'error' => null];
         $ledger = new ScanLedger($this->pdo);
         $reuse = $reuseScan && self::onDisk($root, $reported, $ledger->hashes($projectId));
         // A brief that scans holds the project's write lease from before it reads the graph until its scan
@@ -108,7 +116,7 @@ final readonly class TurnBriefService
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
-                $scan = $lease === null ? null : (new ProjectScanService($this->pdo, $this->installationRoot, $allowed, enrichers: EnrichersFile::forDatabase($this->databasePath)))->scan($root, mode: 'incremental', lease: $lease);
+                $scan = $lease === null ? null : (new ProjectScanService($this->pdo, $this->installationRoot, $allowed, enrichers: EnrichersFile::forDatabase($this->databasePath)))->scan($root, new ScanOptions(mode: 'incremental', lease: $lease));
                 // Read the moment the scan returns: the ledger work and the test
                 // search that follow are not the scan, and the search alone can
                 // take seconds.
@@ -129,8 +137,7 @@ final readonly class TurnBriefService
         // Policy looks only at what the turn itself edited: a checkout, a formatter or a shell command
         // can change many files at once, and their old violations are not the model's to fix.
         $edited = array_values(array_intersect($live, $reported));
-        $queries = ArchitectureQueryService::forDatabase($this->pdo, gitWorkingTree: new ProcessGitWorkingTreeProvider());
-        $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries, $projectId, $live, self::MAX_TESTS);
+        $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $live, self::MAX_TESTS);
         return [
             'status' => 'ok',
             'project_root' => $root,
@@ -142,10 +149,12 @@ final readonly class TurnBriefService
             'changed_files' => $changed,
             'added_files' => $added,
             'deleted_files' => $deleted,
-            'impact' => self::withTests((new FileFanInQuery($this->pdo))->forPaths($projectId, $live, self::TOP_DEPENDENTS), (new FileTestReach($this->pdo))->reach($projectId, $live)),
+            'impact' => self::withTests((new FileFanInQuery($this->pdo))->forPaths($projectId, $live, self::TOP_DEPENDENTS), (new FileTestReach($this->pdo, services: $queries))->reach($projectId, $live)),
             'tests' => JsTestRunner::annotate($root, $tests['tests']),
             'tests_truncated' => $tests['truncated'],
-            'policy' => self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
+            'policy' => $unreadable !== null
+                ? ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'total' => 0, 'violations' => [], 'truncated' => false]
+                : self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
         ] + $envelope;
     }
 
@@ -346,14 +355,14 @@ final readonly class TurnBriefService
     private static function policy(bool $enforce, array $live, ?array $before, ?array $after): array
     {
         if (!$enforce) {
-            return ['status' => 'disabled', 'total' => 0, 'violations' => [], 'truncated' => false];
+            return ['status' => PaneStatus::POLICY_DISABLED, 'total' => 0, 'violations' => [], 'truncated' => false];
         }
         if ($live === [] || $before === null || $after === null) {
-            return ['status' => 'not_evaluated', 'total' => 0, 'violations' => [], 'truncated' => false];
+            return ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false];
         }
         $introduced = array_values(array_diff_key($after['violations'], $before['violations']));
         return [
-            'status' => 'evaluated',
+            'status' => PaneStatus::POLICY_EVALUATED,
             'total' => count($introduced),
             'violations' => array_slice($introduced, 0, self::MAX_VIOLATIONS),
             'truncated' => $before['truncated'] || $after['truncated'],
@@ -368,7 +377,7 @@ final readonly class TurnBriefService
             'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'roots_file' => null, 'refused_root' => null,
             'changed_files' => [], 'added_files' => [], 'deleted_files' => [],
             'impact' => [], 'tests' => [], 'tests_truncated' => false,
-            'policy' => ['status' => 'not_evaluated', 'total' => 0, 'violations' => [], 'truncated' => false],
+            'policy' => ['status' => PaneStatus::POLICY_NOT_EVALUATED, 'total' => 0, 'violations' => [], 'truncated' => false],
         ];
     }
 }

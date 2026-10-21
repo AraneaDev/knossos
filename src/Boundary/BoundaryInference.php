@@ -24,6 +24,15 @@ final class BoundaryInference
     private const SYNTHETIC_NODE_KINDS = ['route', 'endpoint'];
     private const PHP_NAMESPACE_SEGMENT = '/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/';
     private const PATH_SEGMENT = '/^[A-Za-z0-9_.@-]+$/';
+    /**
+     * Node id prefix => rule key prefix and matcher type of the rule its
+     * first namespace or path segment seeds.
+     */
+    private const NODE_RULES = [
+        'php:' => ['namespace:', 'namespace_prefix'],
+        'ts:' => ['module:', 'path_prefix'],
+        'py:' => ['python-package:', 'path_prefix'],
+    ];
 
     /**
      * Infer boundaries from manifests and directory structure, and add the declared ones.
@@ -41,6 +50,24 @@ final class BoundaryInference
                 $nodes[$node->localId] = $node;
             }
         }
+        [$rules, $legacyIdentityCounts] = $this->manifestRules($units);
+        $rules = self::disambiguateIdentities($rules, $legacyIdentityCounts);
+        $rules = $this->inferredNodeRules($nodes, $rules);
+        $rules = $this->explicitRules($explicit, $rules);
+        ksort($rules, SORT_STRING);
+
+        return $this->boundaryFacts(self::mergeSameMatcher($rules), $nodes);
+    }
+
+    /**
+     * One rule per manifest unit, keyed by its kind and config path, with the
+     * count of each pre-fix identity those rules display.
+     *
+     * @param list<ProjectUnit> $units
+     * @return array{0: array<string, array<string, mixed>>, 1: array<string, int>}
+     */
+    private function manifestRules(array $units): array
+    {
         $rules = [];
         $manifestKinds = ['cargo', 'composer', 'node', 'python', 'typescript'];
         $legacyIdentityCounts = [];
@@ -67,7 +94,7 @@ final class BoundaryInference
                 $rule['display'] = $unit->kind . ':' . $label;
                 // $rule['display'] is also the pre-fix rule key: every already-persisted
                 // boundary's stable id was derived from exactly this string. Counting it
-                // here lets the pass below reuse it as $identityName whenever it is
+                // here lets disambiguateIdentities() reuse it as $identityName whenever it is
                 // still unique, so the overwhelmingly common case (one manifest per
                 // kind) keeps its existing id even though the array key that groups
                 // rules is no longer this string.
@@ -75,6 +102,20 @@ final class BoundaryInference
             }
             $rules[$unit->kind . ':' . $unit->configPath] = $rule;
         }
+
+        return [$rules, $legacyIdentityCounts];
+    }
+
+    /**
+     * Pin each manifest rule's stable identity, and rename the rules whose
+     * declared name another manifest shares.
+     *
+     * @param array<string, array<string, mixed>> $rules
+     * @param array<string, int> $legacyIdentityCounts
+     * @return array<string, array<string, mixed>>
+     */
+    private static function disambiguateIdentities(array $rules, array $legacyIdentityCounts): array
+    {
         foreach ($rules as $key => $rule) {
             if (isset($rule['display']) && isset($legacyIdentityCounts[$rule['display']])) {
                 // Two manifests colliding on the same declared name is exactly the case
@@ -100,6 +141,19 @@ final class BoundaryInference
                 }
             }
         }
+
+        return $rules;
+    }
+
+    /**
+     * Add the namespace, module and package rules the scanned nodes imply.
+     *
+     * @param array<string, NodeFact> $nodes
+     * @param array<string, array<string, mixed>> $rules
+     * @return array<string, array<string, mixed>>
+     */
+    private function inferredNodeRules(array $nodes, array $rules): array
+    {
         foreach ($nodes as $node) {
             // Synthetic nodes (routes, endpoints) have canonical names like
             // "GET /x => App\C::m" — structured labels, not namespaces or paths.
@@ -107,29 +161,52 @@ final class BoundaryInference
             if (in_array($node->kind, self::SYNTHETIC_NODE_KINDS, true)) {
                 continue;
             }
-            if (str_starts_with($node->localId, 'php:') && str_contains($node->canonicalName, '\\')) {
-                $namespace = explode('\\', ltrim($node->canonicalName, '\\'))[0];
-                if ($namespace !== '' && preg_match(self::PHP_NAMESPACE_SEGMENT, $namespace) === 1) {
-                    $rules['namespace:' . $namespace] = ['source' => 'inferred', 'matcher' => ['type' => 'namespace_prefix', 'value' => $namespace . '\\']];
+            foreach (self::NODE_RULES as $idPrefix => [$keyPrefix, $matcherType]) {
+                if (!str_starts_with($node->localId, $idPrefix)) {
+                    continue;
                 }
-            }
-            if (str_starts_with($node->localId, 'ts:')) {
-                $path = explode('#', $node->canonicalName)[0];
-                $top = explode('/', ltrim($path, '/'))[0] ?? '';
-                if ($top !== '' && str_contains($path, '/') && preg_match(self::PATH_SEGMENT, $top) === 1) {
-                    $rules['module:' . $top] = ['source' => 'inferred', 'matcher' => ['type' => 'path_prefix', 'value' => $top . '/']];
-                }
-            }
-            if (str_starts_with($node->localId, 'py:')) {
-                // Not trimmed: Evidence refuses a path with a leading separator,
-                // so unlike the TypeScript canonical name above there is nothing
-                // here to trim.
-                $top = explode('/', $node->evidence->relativePath)[0] ?? '';
-                if ($top !== '' && str_contains($node->evidence->relativePath, '/') && preg_match(self::PATH_SEGMENT, $top) === 1) {
-                    $rules['python-package:' . $top] = ['source' => 'inferred', 'matcher' => ['type' => 'path_prefix', 'value' => $top . '/']];
+                $top = self::topSegment($idPrefix, $node);
+                if ($top !== null) {
+                    $rules[$keyPrefix . $top] = ['source' => 'inferred', 'matcher' => ['type' => $matcherType, 'value' => $top . ($matcherType === 'namespace_prefix' ? '\\' : '/')]];
                 }
             }
         }
+
+        return $rules;
+    }
+
+    /**
+     * The first namespace or path segment a node seeds a rule with, or null
+     * when it seeds none.
+     */
+    private static function topSegment(string $idPrefix, NodeFact $node): ?string
+    {
+        if ($idPrefix === 'php:') {
+            if (!str_contains($node->canonicalName, '\\')) {
+                return null;
+            }
+            $namespace = explode('\\', ltrim($node->canonicalName, '\\'))[0];
+
+            return $namespace !== '' && preg_match(self::PHP_NAMESPACE_SEGMENT, $namespace) === 1 ? $namespace : null;
+        }
+        // Python is not trimmed: Evidence refuses a path with a leading
+        // separator, so unlike the TypeScript canonical name there is nothing
+        // there to trim.
+        $path = $idPrefix === 'ts:' ? explode('#', $node->canonicalName)[0] : $node->evidence->relativePath;
+        $top = explode('/', $idPrefix === 'ts:' ? ltrim($path, '/') : $path)[0] ?? '';
+
+        return $top !== '' && str_contains($path, '/') && preg_match(self::PATH_SEGMENT, $top) === 1 ? $top : null;
+    }
+
+    /**
+     * Validate the declared boundaries and add one rule for each.
+     *
+     * @param list<array<string, mixed>> $explicit
+     * @param array<string, array<string, mixed>> $rules
+     * @return array<string, array<string, mixed>>
+     */
+    private function explicitRules(array $explicit, array $rules): array
+    {
         $seenExplicit = [];
         foreach ($explicit as $rule) {
             if (!is_string($rule['name'] ?? null)) {
@@ -153,7 +230,18 @@ final class BoundaryInference
             }
             $rules['explicit:' . $rule['name']] = ['source' => 'explicit', 'matcher' => $matcher, 'display' => $rule['name']];
         }
-        ksort($rules, SORT_STRING);
+
+        return $rules;
+    }
+
+    /**
+     * Keep one inferred rule per matcher, folding the others' names into it.
+     *
+     * @param array<string, array<string, mixed>> $rules
+     * @return array<string, array<string, mixed>>
+     */
+    private static function mergeSameMatcher(array $rules): array
+    {
         // Identical matchers produce identical member sets by construction; keep one
         // boundary per matcher. Only inferred rules merge — an explicit rule is a
         // user declaration and keeps its own identity even on a shared matcher.
@@ -178,6 +266,19 @@ final class BoundaryInference
                 }
             }
         }
+
+        return $rules;
+    }
+
+    /**
+     * One boundary fact per rule, with the nodes it matches.
+     *
+     * @param array<string, array<string, mixed>> $rules
+     * @param array<string, NodeFact> $nodes
+     * @return list<BoundaryFact>
+     */
+    private function boundaryFacts(array $rules, array $nodes): array
+    {
         $facts = [];
         foreach ($rules as $name => $rule) {
             $members = [];
@@ -189,7 +290,7 @@ final class BoundaryInference
             sort($members, SORT_STRING);
             $baseName = $rule['display'] ?? $name;
             $displayName = $baseName;
-            // A manifest rule's pinned identity (see above) keeps its stable id fixed
+            // A manifest rule's pinned identity (see manifestRules()) keeps its stable id fixed
             // even though it now groups on a different, path-based array key than the
             // one that used to double as both key and display name. Rules with no
             // pinned identity (language-derived and explicit rules) fall back to null,
@@ -211,6 +312,7 @@ final class BoundaryInference
             }
             $facts[] = new BoundaryFact($displayName, $rule['matcher'], $rule['source'], $members, $identityName, self::aliases($rule['aliases'] ?? [], $displayName));
         }
+
         return $facts;
     }
 

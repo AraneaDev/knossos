@@ -11,6 +11,7 @@ use Knossos\Query\DashboardService;
 use Knossos\Query\FileFanInQuery;
 use Knossos\Query\PolicyScope;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -58,7 +59,7 @@ final class DashboardServiceTest extends KnossosTestCase
             assertLessThanOrEqual(10, count($d['cycles']['largest']));
             assertSame(0, $d['cycles']['count']);
             assertSame(['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0], $d['notes']);
-            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($projectId, 'App\\Gone', 'note', 'left behind', execute: true);
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Gone', 'note', 'left behind', execute: true);
             assertSame(['total' => 1, 'missing' => 1, 'stale' => 0, 'flagged' => 0], (new DashboardService($pdo))->dashboard($root, 1)['notes']);
         } finally {
             $this->removeTempTree($root);
@@ -199,7 +200,7 @@ final class DashboardServiceTest extends KnossosTestCase
             assertSame([[0, 0], [1, 5], [6, 20], [21, 100], [101, null]], array_map(static fn(array $b): array => [$b['from'], $b['to']], $buckets));
             assertSame(false, $d['in_degree']['truncated']);
             // The health check's own walk, so the buckets add up to what it ranked from: tests and external code left out.
-            $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 50)->data;
+            $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 50)->data;
             assertSame($health['in_degree_histogram'], $buckets);
             $nothing = array_sum(array_map(static fn(array $h): int => $h['metrics']['in_degree'] > 0 ? 1 : 0, $health['hubs']));
             assertSame($nothing, array_sum(array_column(array_slice($buckets, 1), 'components')));
@@ -236,7 +237,7 @@ final class DashboardServiceTest extends KnossosTestCase
     private function rescan(PDO $pdo, string $root): void
     {
         // Retention at its ceiling so every scan stays a trend point.
-        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, snapshotRetention: 20);
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(snapshotRetention: 20));
     }
 
     #[Group('query')]
@@ -317,7 +318,7 @@ final class DashboardServiceTest extends KnossosTestCase
             $this->writeCycle($root, 'Bb', 4);
             $this->rescan($pdo, $root);
             $d = (new DashboardService($pdo))->dashboard($root);
-            $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 50)->data;
+            $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 50)->data;
             // The page is fifty, enough for a tall pane: the fixture's every ranked component fits in it.
             assertGreaterThan(10, count($d['hubs']));
             assertLessThanOrEqual(50, count($d['hubs']));
@@ -797,7 +798,7 @@ final class DashboardServiceTest extends KnossosTestCase
                 ['name', 'canonical_name', 'kind', 'boundary', 'reachability', 'confidence', 'path', 'line'],
                 array_keys($d['dead_code'][0]),
             );
-            $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 50)->data;
+            $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 50)->data;
             assertSame(
                 array_map(static fn(array $c): string => $c['component']['canonical_name'], $health['dead_code_candidates']),
                 array_column($d['dead_code'], 'canonical_name'),
@@ -820,6 +821,20 @@ final class DashboardServiceTest extends KnossosTestCase
         try {
             $policy = (new DashboardService($pdo))->dashboard($root)['policy'];
             assertSame(['status' => 'not_evaluated', 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false], $policy);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A knossos.json that cannot be read is not a project without policies: the policy says so, with the loader's reason. */
+    #[Group('query')]
+    public function testAnUnreadableConfigurationIsReportedAsSuchNotAsNoPolicies(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            file_put_contents($root . '/knossos.json', '{"version": 1,');
+            $d = (new DashboardService($pdo))->dashboard($root);
+            assertSame(['status' => 'config_invalid', 'message' => 'Invalid JSON configuration: Syntax error', 'total' => 0, 'truncated' => false, 'truncation_reasons' => [], 'items' => [], 'rules' => [], 'boundaries' => [], 'files' => [], 'files_truncated' => false], $d['policy']);
         } finally {
             $this->removeTempTree($root);
         }

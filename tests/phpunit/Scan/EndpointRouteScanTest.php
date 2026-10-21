@@ -104,7 +104,7 @@ final class EndpointRouteScanTest extends KnossosTestCase
         ]);
         try {
             $queries = ArchitectureQueryService::forDatabase($pdo);
-            $impact = $queries->changedFilesImpact($projectId, ['src/a.ts']);
+            $impact = $queries->services()->changeQueries->changedFilesImpact($projectId, ['src/a.ts']);
             $reached = array_map(
                 static fn(array $row): string => (string) $row['node']['canonical_name'],
                 $impact->data['impacted_components'],
@@ -128,7 +128,7 @@ final class EndpointRouteScanTest extends KnossosTestCase
         ]);
         try {
             $queries = ArchitectureQueryService::forDatabase($pdo);
-            $result = $queries->checkArchitecture($projectId, [
+            $result = $queries->services()->policyQueries->checkArchitecture($projectId, [
                 ['id' => 'admin-not-shop', 'from_boundary' => 'module:admin', 'deny_targets' => ['module:shop']],
             ]);
             assertSame([], $result->data['violations'], json_encode($result->data['violations']));
@@ -150,7 +150,7 @@ final class EndpointRouteScanTest extends KnossosTestCase
         ]);
         try {
             $queries = ArchitectureQueryService::forDatabase($pdo);
-            $result = $queries->checkArchitecture($projectId, [
+            $result = $queries->services()->policyQueries->checkArchitecture($projectId, [
                 ['id' => 'admin-not-backend', 'from_boundary' => 'module:admin', 'deny_targets' => ['python-package:backend']],
             ]);
             $sources = array_map(static fn(array $v): string => $v['source']['canonical_name'] . ' -> ' . $v['target']['canonical_name'], $result->data['violations']);

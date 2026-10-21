@@ -29,16 +29,16 @@ final class DeadlineBoundaryTest extends KnossosTestCase
     public static function queries(): iterable
     {
         $timeout = self::TIMEOUT_MS;
-        yield 'architecture_health' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->architectureHealth($ids['project'], timeoutMs: $timeout)];
-        yield 'check_architecture' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->checkArchitecture($ids['project'], [
+        yield 'architecture_health' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->services()->healthQueries->architectureHealth($ids['project'], timeoutMs: $timeout)];
+        yield 'check_architecture' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->services()->policyQueries->checkArchitecture($ids['project'], [
             ['id' => 'backend-deny-billing', 'from_boundary' => $ids['backend'], 'deny_targets' => [$ids['billing']], 'edge_kinds' => ['calls']],
         ], timeoutMs: $timeout)];
-        yield 'changed_files_impact' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->changedFilesImpact($ids['project'], ['src/Checkout.php'], timeoutMs: $timeout)];
-        yield 'test_impact' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->testImpact($ids['project'], ['src/Checkout.php'], timeoutMs: $timeout)];
-        yield 'dependency_cycles' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->dependencyCycles($ids['project'], timeoutMs: $timeout)];
+        yield 'changed_files_impact' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->services()->changeQueries->changedFilesImpact($ids['project'], ['src/Checkout.php'], timeoutMs: $timeout)];
+        yield 'test_impact' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->services()->changeQueries->testImpact($ids['project'], ['src/Checkout.php'], timeoutMs: $timeout)];
+        yield 'dependency_cycles' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->services()->cycleQueries->dependencyCycles($ids['project'], timeoutMs: $timeout)];
         yield 'explain_flow' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->explainFlow($ids['project'], 'App\\Checkout', 'App\\InvoiceService', timeoutMs: $timeout)];
         yield 'impact_analysis' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->impactAnalysis($ids['project'], 'App\\InvoiceService', timeoutMs: $timeout)];
-        yield 'suggest_location' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->suggestLocation($ids['project'], 'checkout invoice service', timeoutMs: $timeout)];
+        yield 'suggest_location' => [static fn(ArchitectureQueryService $q, array $ids): ResultEnvelope => $q->services()->locationQueries->suggestLocation($ids['project'], 'checkout invoice service', timeoutMs: $timeout)];
     }
 
     /** @param Closure(ArchitectureQueryService, array<string, string>): ResultEnvelope $query */

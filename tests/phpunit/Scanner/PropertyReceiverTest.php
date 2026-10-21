@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -122,7 +123,7 @@ final class PropertyReceiverTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
 
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
 
             $calls = $pdo->query(
                 'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
@@ -219,7 +220,7 @@ final class PropertyReceiverTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
 
-            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full');
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
 
             $calls = $pdo->query(
                 'SELECT s.canonical_name AS source, t.canonical_name AS target FROM edges e ' .
@@ -233,6 +234,140 @@ final class PropertyReceiverTest extends KnossosTestCase
                     ['source' => 'Fixture\\Reconciler::open', 'target' => 'Fixture\\Request::root'],
                 ],
                 array_map(static fn(array $row): array => ['source' => $row['source'], 'target' => $row['target']], $calls),
+            );
+        } finally {
+            unset($pdo);
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * `$this->queries->services()->catalog->first()` reads a property off what
+     * a method returns, and `Services::wire()->brief()->render()` calls on
+     * what a call on a static call's result returns. Every declaration on the
+     * way is in another file, so the reconciler follows the declared return
+     * and property types; a step nothing declares a type for drops the edge.
+     * `($this->services ?? Services::wire())` is read as its left operand.
+     */
+    #[Group('php-scanner')]
+    public function testACallThroughAReturnedValuesPropertyOrAChainedCallResolvesToTheDeclaringMethod(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-return-chain-' . bin2hex(random_bytes(6));
+        if (!mkdir($root . '/src', 0o755, true)) {
+            throw new \RuntimeException('Unable to create fixture tree.');
+        }
+        try {
+            file_put_contents($root . '/composer.json', json_encode(['name' => 'fixture/return-chain'], JSON_THROW_ON_ERROR));
+            file_put_contents($root . '/src/Catalog.php', <<<'PHP'
+                <?php
+
+                namespace Fixture;
+
+                final class Catalog
+                {
+                    public function first(): string
+                    {
+                        return '';
+                    }
+
+                    public function last(): string
+                    {
+                        return '';
+                    }
+                }
+                PHP);
+            file_put_contents($root . '/src/Brief.php', <<<'PHP'
+                <?php
+
+                namespace Fixture;
+
+                final class Brief
+                {
+                    public function render(): string
+                    {
+                        return '';
+                    }
+                }
+                PHP);
+            file_put_contents($root . '/src/Services.php', <<<'PHP'
+                <?php
+
+                namespace Fixture;
+
+                final readonly class Services
+                {
+                    public function __construct(public Catalog $catalog, public $untyped = null) {}
+
+                    public static function wire(): self
+                    {
+                        return new self(new Catalog());
+                    }
+
+                    public function brief(): Brief
+                    {
+                        return new Brief();
+                    }
+
+                    public function loose()
+                    {
+                        return new Brief();
+                    }
+                }
+                PHP);
+            file_put_contents($root . '/src/Queries.php', <<<'PHP'
+                <?php
+
+                namespace Fixture;
+
+                final class Queries
+                {
+                    public function services(): Services
+                    {
+                        return Services::wire();
+                    }
+                }
+                PHP);
+            file_put_contents($root . '/src/Resources.php', <<<'PHP'
+                <?php
+
+                namespace Fixture;
+
+                final class Resources
+                {
+                    public function __construct(private Queries $queries, private ?Services $services = null) {}
+
+                    public function list(): string
+                    {
+                        $this->queries->services()->untyped->missing();
+                        Services::wire()->loose()->absent();
+                        ($this->services ?? Services::wire())->catalog->last();
+
+                        return $this->queries->services()->catalog->first() . Services::wire()->brief()->render();
+                    }
+                }
+                PHP);
+            $pdo = SqliteConnection::open($root . '/graph.sqlite');
+            (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
+
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
+
+            $calls = $pdo->query(
+                'SELECT DISTINCT t.canonical_name AS target, e.confidence FROM edges e ' .
+                'JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id ' .
+                "WHERE e.kind = 'calls' AND t.kind = 'method' AND s.canonical_name = 'Fixture\\Resources::list' ORDER BY t.canonical_name",
+            )->fetchAll();
+
+            assertSame(
+                [
+                    ['target' => 'Fixture\\Brief::render', 'confidence' => 'probable'],
+                    ['target' => 'Fixture\\Catalog::first', 'confidence' => 'probable'],
+                    ['target' => 'Fixture\\Catalog::last', 'confidence' => 'probable'],
+                    ['target' => 'Fixture\\Queries::services', 'confidence' => 'certain'],
+                    ['target' => 'Fixture\\Services::brief', 'confidence' => 'probable'],
+                    ['target' => 'Fixture\\Services::loose', 'confidence' => 'probable'],
+                    ['target' => 'Fixture\\Services::wire', 'confidence' => 'certain'],
+                ],
+                array_map(static fn(array $row): array => ['target' => $row['target'], 'confidence' => $row['confidence']], $calls),
             );
         } finally {
             unset($pdo);

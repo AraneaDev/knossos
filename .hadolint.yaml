@@ -13,3 +13,7 @@ ignored:
   # the extracted source tree. A WORKDIR would leak that directory into later
   # instructions, so the build cds within its own layer and cds back out.
   - DL3003
+  # Both users the image switches to exist inside it: `www-data` from the base
+  # image's passwd and `knossos` from the quality stage's useradd. The rule is
+  # about a host that cannot resolve a name, which never has to here.
+  - DL3066

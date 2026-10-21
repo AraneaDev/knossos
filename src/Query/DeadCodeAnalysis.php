@@ -64,33 +64,21 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             }
         }
         $inheritance = $this->inheritedMethodContext($projectId, array_keys($methodNames), $methodNames);
-        $excludedInherited = 0;
-        $excludedConstructors = 0;
-        $excludedContracts = 0;
-        $excludedEntryScripts = 0;
-        $excludedTypeDeclarations = 0;
+        $excluded = [
+            'inherited' => 0,
+            'contracts' => 0,
+            'constructors' => 0,
+            'entry_scripts' => 0,
+            'type_declarations' => 0,
+            'suppressed' => 0,
+            'annotated_false_positives' => 0,
+            'annotated_intentional' => 0,
+        ];
         $suppressions = $facts->deadCodeSuppressions();
-        $suppressedCount = 0;
         $annotationsByName = $facts->componentAnnotations();
-        $annotatedFalsePositives = 0;
-        $annotatedIntentional = 0;
         $memberReachability = $this->containerMemberReachability($projectId, $provisional, $edgeKinds, $minConfidenceRank);
         foreach ($provisional as $id => $candidate) {
-            if (self::isSuppressed((string) $candidate['row']['canonical_name'], $suppressions)) {
-                ++$suppressedCount;
-                continue;
-            }
             $annotation = $annotationsByName[(string) $candidate['row']['canonical_name']] ?? null;
-            if ($annotation !== null && $annotation['kind'] === 'false_positive') {
-                ++$annotatedFalsePositives;
-                continue;
-            }
-            // True and meant (a parked route, a test-only helper): left out so
-            // it does not bury the real findings, but counted apart.
-            if ($annotation !== null && $annotation['kind'] === 'intentional') {
-                ++$annotatedIntentional;
-                continue;
-            }
             $context = $inheritance[$id] ?? [
                 'inherited' => false,
                 'implemented' => false,
@@ -98,49 +86,9 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 'external_ancestor' => null,
                 'uncontracted_literal' => false,
             ];
-            // The scanner saw the supertype member this one fulfils, which may
-            // live outside the graph, where the walk above cannot look.
-            if ($context['inherited']
-                || ReportableComponent::isDeclaredOverride((string) $candidate['row']['kind'], $candidate['row']['attributes_json'] ?? null)) {
-                ++$excludedInherited;
-                continue;
-            }
-            // A contract an implementation carries. Gated on the declaring type
-            // being referenced for the same reason constructors are: when
-            // nothing uses the type, the type is the unit worth deleting and
-            // both it and its members stay reportable.
-            if ($context['implemented'] && $context['declaring_type'] !== null) {
-                $declaringType = $context['declaring_type'];
-                $declaringUses = $facts->inDegree($declaringType) - $facts->inheritanceInDegree($declaringType);
-                if ($declaringUses > 0) {
-                    ++$excludedContracts;
-                    continue;
-                }
-            }
-            // Marked by its scanner as called by a runtime or a foreign host
-            // (`Drop::drop`, a `#[no_mangle]` export): no source names it,
-            // however live it is. Counted with the engine-invoked members.
-            if (self::isEngineInvokedMemberOfReferencedType($candidate['row'], $facts)
-                || ReportableComponent::isRuntimeInvoked($candidate['row']['attributes_json'] ?? null)) {
-                ++$excludedConstructors;
-                continue;
-            }
-            // A script's body is run by something outside the graph, so nothing
-            // in the codebase references it and "unreferenced" carries no
-            // information about whether it is wanted. An ordinary module that
-            // nothing imports stays reportable — an orphaned one is precisely
-            // what this analysis exists to surface.
-            if (ReportableComponent::isExecutableScript((string) $candidate['row']['kind'], $candidate['row']['attributes_json'] ?? null)
-                || self::isPackageInitWithModules($candidate['row'], $facts)) {
-                ++$excludedEntryScripts;
-                continue;
-            }
-            // A `.d.ts` declares what some other file implements. Its symbols
-            // have an in-degree of zero by construction — call sites resolve to
-            // the implementation — so reporting them is noise, and acting on
-            // the report would break the build.
-            if (ReportableComponent::isTypeDeclaration($candidate['row']['attributes_json'] ?? null)) {
-                ++$excludedTypeDeclarations;
+            $exclusion = self::exclusionOf($candidate['row'], $annotation, $context, $facts, $suppressions);
+            if ($exclusion !== null) {
+                ++$excluded[$exclusion];
                 continue;
             }
             // A class/module is often reached through a member call rather than
@@ -152,34 +100,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             if ($memberUse !== null && ($memberUse['production'] || $includeTests)) {
                 continue;
             }
-            $dynamicRisk = $candidate['row']['origin'] !== 'ast' || $this->hasFrameworkRole($candidate['roles']);
-            $confidence = $dynamicRisk ? 'possible' : 'probable';
             $reachability = $candidate['reachability'] ?? 'unreferenced';
             if ($memberUse !== null && $reachability === 'unreferenced') {
                 $reachability = 'test_only';
             }
-            $reason = $reachability === 'test_only'
-                ? 'The only inbound static references come from test code, so nothing the product runs reaches this.'
-                : 'No inbound static reference was found among the selected edge kinds.';
-            // A call by this name on a receiver its scanner could not type may
-            // be the one that reaches it, so the absence of an edge proves less.
-            if ($confidence === 'probable'
-                && in_array($candidate['row']['kind'], ['method', 'function'], true)
-                && $facts->mayBeCalledUntyped((string) ($candidate['row']['language'] ?? ''), (string) $candidate['row']['display_name'])) {
-                $confidence = 'possible';
-                $reason = 'No inbound static reference was found, but a member of this name is called on a receiver the scan could not type, which may be this one.';
-            }
-            if ($context['uncontracted_literal'] && $confidence === 'probable') {
-                $confidence = 'possible';
-                $reason = 'No inbound static reference was found, but this method belongs to an object literal handed to other code with no type naming its methods; whatever receives the literal may call it.';
-            }
-            if ($context['external_ancestor'] !== null) {
-                $confidence = 'possible';
-                $reason = sprintf(
-                    'No inbound static reference was found, but the declaring type extends or implements %s, whose members are not statically visible; dispatch may reach this method.',
-                    $context['external_ancestor'],
-                );
-            }
+            [$confidence, $reason] = $this->confidenceAndReason($candidate, $reachability, $context, $facts);
             $entry = [
                 'component' => $candidate['component'],
                 'reachability' => $reachability,
@@ -193,21 +118,110 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             $candidates[] = $entry;
         }
 
-        return [
-            'candidates' => $candidates,
-            'excluded' => [
-                'inherited' => $excludedInherited,
-                'contracts' => $excludedContracts,
-                'constructors' => $excludedConstructors,
-                'entry_scripts' => $excludedEntryScripts,
-                'type_declarations' => $excludedTypeDeclarations,
-                'suppressed' => $suppressedCount,
-                'annotated_false_positives' => $annotatedFalsePositives,
-                'annotated_intentional' => $annotatedIntentional,
-            ],
-        ];
+        return ['candidates' => $candidates, 'excluded' => $excluded];
     }
 
+    /**
+     * The exclusion counter a candidate falls under, or null when it stays
+     * reportable on these grounds.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed>|null $annotation
+     * @param array{inherited: bool, implemented: bool, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param list<string> $suppressions
+     */
+    private static function exclusionOf(array $row, ?array $annotation, array $context, CandidateGraphFacts $facts, array $suppressions): ?string
+    {
+        if (self::isSuppressed((string) $row['canonical_name'], $suppressions)) {
+            return 'suppressed';
+        }
+        if ($annotation !== null && $annotation['kind'] === 'false_positive') {
+            return 'annotated_false_positives';
+        }
+        // True and meant (a parked route, a test-only helper): left out so
+        // it does not bury the real findings, but counted apart.
+        if ($annotation !== null && $annotation['kind'] === 'intentional') {
+            return 'annotated_intentional';
+        }
+        // The scanner saw the supertype member this one fulfils, which may
+        // live outside the graph, where the walk above cannot look.
+        if ($context['inherited']
+            || ReportableComponent::isDeclaredOverride((string) $row['kind'], $row['attributes_json'] ?? null)) {
+            return 'inherited';
+        }
+        // A contract an implementation carries. Gated on the declaring type
+        // being referenced for the same reason constructors are: when
+        // nothing uses the type, the type is the unit worth deleting and
+        // both it and its members stay reportable.
+        if ($context['implemented'] && $context['declaring_type'] !== null) {
+            $declaringType = $context['declaring_type'];
+            if ($facts->inDegree($declaringType) - $facts->inheritanceInDegree($declaringType) > 0) {
+                return 'contracts';
+            }
+        }
+        // Marked by its scanner as called by a runtime or a foreign host
+        // (`Drop::drop`, a `#[no_mangle]` export): no source names it,
+        // however live it is. Counted with the engine-invoked members.
+        if (self::isEngineInvokedMemberOfReferencedType($row, $facts)
+            || ReportableComponent::isRuntimeInvoked($row['attributes_json'] ?? null)) {
+            return 'constructors';
+        }
+        // A script's body is run by something outside the graph, so nothing
+        // in the codebase references it and "unreferenced" carries no
+        // information about whether it is wanted. An ordinary module that
+        // nothing imports stays reportable — an orphaned one is precisely
+        // what this analysis exists to surface.
+        if (ReportableComponent::isExecutableScript((string) $row['kind'], $row['attributes_json'] ?? null)
+            || self::isPackageInitWithModules($row, $facts)) {
+            return 'entry_scripts';
+        }
+        // A `.d.ts` declares what some other file implements. Its symbols
+        // have an in-degree of zero by construction — call sites resolve to
+        // the implementation — so reporting them is noise, and acting on
+        // the report would break the build.
+        if (ReportableComponent::isTypeDeclaration($row['attributes_json'] ?? null)) {
+            return 'type_declarations';
+        }
+
+        return null;
+    }
+
+    /**
+     * How sure the report is that a candidate is dead, and why.
+     *
+     * @param array{component: array<string, mixed>, row: array<string, mixed>, roles: list<array<string, mixed>>, out_degree: int, reachability: string} $candidate
+     * @param array{inherited: bool, implemented: bool, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @return array{0: string, 1: string}
+     */
+    private function confidenceAndReason(array $candidate, string $reachability, array $context, CandidateGraphFacts $facts): array
+    {
+        $dynamicRisk = $candidate['row']['origin'] !== 'ast' || $this->hasFrameworkRole($candidate['roles']);
+        $confidence = $dynamicRisk ? 'possible' : 'probable';
+        $reason = $reachability === 'test_only'
+            ? 'The only inbound static references come from test code, so nothing the product runs reaches this.'
+            : 'No inbound static reference was found among the selected edge kinds.';
+        // A call by this name on a receiver its scanner could not type may
+        // be the one that reaches it, so the absence of an edge proves less.
+        if ($confidence === 'probable'
+            && in_array($candidate['row']['kind'], ['method', 'function'], true)
+            && $facts->mayBeCalledUntyped((string) ($candidate['row']['language'] ?? ''), (string) $candidate['row']['display_name'])) {
+            $confidence = 'possible';
+            $reason = 'No inbound static reference was found, but a member of this name is called on a receiver the scan could not type, which may be this one.';
+        }
+        if ($context['uncontracted_literal'] && $confidence === 'probable') {
+            $confidence = 'possible';
+            $reason = 'No inbound static reference was found, but this method belongs to an object literal handed to other code with no type naming its methods; whatever receives the literal may call it.';
+        }
+        if ($context['external_ancestor'] !== null) {
+            $confidence = 'possible';
+            $reason = sprintf(
+                'No inbound static reference was found, but the declaring type extends or implements %s, whose members are not statically visible; dispatch may reach this method.',
+                $context['external_ancestor'],
+            );
+        }
+
+        return [$confidence, $reason];
+    }
 
     /**
      * True when the candidate is a member the language runtime invokes, rather

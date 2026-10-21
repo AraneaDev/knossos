@@ -9,6 +9,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanner;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Worker\WorkerException;
 use Throwable;
 
@@ -66,7 +67,7 @@ final readonly class WatchScanAttempt
         }
         try {
             // A closure takes the root, the mode and the cancellation: a scanner that needs no other option.
-            $result = $scanner instanceof \Closure ? $scanner($root, $mode, $cancellation) : $scanner->scan($root, mode: $mode, cancellation: $cancellation);
+            $result = $scanner instanceof \Closure ? $scanner($root, $mode, $cancellation) : $scanner->scan($root, new ScanOptions(mode: $mode, cancellation: $cancellation));
             return new self(self::SUCCESS, $result, null);
         } catch (ScanCancelledException) {
             return new self(self::CANCELLED, null, null);

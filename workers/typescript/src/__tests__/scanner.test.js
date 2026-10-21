@@ -9,7 +9,9 @@ import fs, {
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { TypeScriptScanner, discoverConfigFiles } from "../scanner.js";
+import { BUILT_IN_EXCLUSIONS, Exclusions } from "../exclusions.js";
+import { discoverConfigFiles } from "../fallback-groups.js";
+import { TypeScriptScanner } from "../scanner.js";
 import { withoutAbsentAliasConfigs } from "./support/absent-alias-configs.mjs";
 import { absentRequireCandidates } from "./support/require-candidates.mjs";
 
@@ -34,6 +36,8 @@ afterEach(() => {
 });
 
 describe("discoverConfigFiles", () => {
+    const builtIn = new Exclusions(BUILT_IN_EXCLUSIONS);
+
     it("discovers tsconfig files below the root when none are supplied", () => {
         const root = fixture({
             "tsconfig.json": "{}\n",
@@ -45,7 +49,7 @@ describe("discoverConfigFiles", () => {
         // Not re-sorted here: sorting the result before comparing it made the
         // function's own configs.sort() untestable — a `configs.sort().reverse()`
         // mutant produced the same assertion.
-        expect(discoverConfigFiles(root)).toEqual([
+        expect(discoverConfigFiles(root, builtIn)).toEqual([
             "packages/app/tsconfig.build.json",
             "tsconfig.json",
         ]);
@@ -62,7 +66,7 @@ describe("discoverConfigFiles", () => {
             ".knossos-ci/tsconfig.json": "{}\n",
         });
 
-        expect(discoverConfigFiles(root)).toEqual(["tsconfig.json"]);
+        expect(discoverConfigFiles(root, builtIn)).toEqual(["tsconfig.json"]);
     });
 
     it("keeps excluded directories out of compiler inputs from a broad config", () => {

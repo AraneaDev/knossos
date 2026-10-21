@@ -1,7 +1,6 @@
 """The AST visitor that collects one Python file's facts."""
 
 import ast
-import re
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -11,70 +10,16 @@ from .ast_helpers import (
     bound_names,
     declared_protocols,
     dotted,
-    is_none,
     is_protocol_base,
     is_type_checking_guard,
-    module_statements,
     names_main_guard,
-    optional_inner,
-    positional_string,
     ref,
 )
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
+from .launches import LaunchRecorder
 from .module_index import ProjectModuleIndex
-
-HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
-# The Celery task methods that queue the task, and those that build a signature of it.
-# Programs that run the script named after them, by basename: an argv starting with one launches that script.
-INTERPRETERS = {"php", "node", "nodejs", "bun", "deno", "python", "python3", "ruby", "perl", "bash", "sh", "zsh"}
-CELERY_SUBMISSIONS = {"delay", "apply_async"}
-CELERY_SIGNATURES = {"s", "si", "signature"}
-ABSOLUTE_URL = re.compile(r"^([a-z][a-z0-9+.-]*:|//)", re.IGNORECASE)
-
-
-def keyword_value(node: ast.Call, name: str) -> ast.expr | None:
-    return next((item.value for item in node.keywords if item.arg == name), None)
-
-
-def static_method(node: ast.AST) -> str:
-    """An HTTP method written as a string literal, upper-cased; ``ANY`` when it is computed."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value.strip().upper()
-    return "ANY"
-
-
-def request_url(node: ast.AST | None) -> str | None:
-    """A URL as written, each f-string substitution as ``{}``; None for anything else or only substitutions."""
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
-    if isinstance(node, ast.JoinedStr):
-        uri = "".join(
-            part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else "{}"
-            for part in node.values
-        )
-        return uri if uri.replace("{}", "") else None
-    return None
-
-
-def url_template(uri: str, prefix_unknown: bool) -> str:
-    """The path template a URL stands for, as the core normalises it."""
-    path = re.sub(r"[?#].*$", "", uri, flags=re.DOTALL)
-    segments = ["{}" if "{}" in segment else segment for segment in path.split("/") if segment]
-    return "/" + "/".join(segments[1:] if prefix_unknown else segments)
-
-
-def imports_django(tree: ast.Module) -> bool:
-    """Whether the module imports Django or its REST framework at its top level."""
-    for statement in module_statements(tree):
-        if isinstance(statement, ast.Import):
-            names = [alias.name for alias in statement.names]
-        elif isinstance(statement, ast.ImportFrom) and statement.level == 0:
-            names = [statement.module or ""]
-        else:
-            continue
-        if any(name.split(".")[0] in {"django", "rest_framework"} for name in names):
-            return True
-    return False
+from .outbound import OutboundCallRecorder
+from .receiver_types import ReceiverTypeInference
 
 
 def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
@@ -141,19 +86,6 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.stored_attributes: dict[str, frozenset[str]] = {}
         # `self.<name>` nodes that are the callee of a call: those are `calls`.
         self.called_attributes: set[int] = set()
-        # What a receiver holds, so a call on it names the method that runs.
-        # Attributes are keyed by the class that owns them; locals by the
-        # function being walked. Both are inferences from local flow, so a
-        # reassignment to anything untracked drops the entry rather than
-        # letting a stale type attribute a call to the wrong class.
-        self.attribute_types: dict[str, dict[str, str]] = {}
-        # The serializer class a Django REST framework view declares, by view.
-        self.serializer_classes: dict[str, str] = {}
-        self.local_variable_types: list[dict[str, str]] = []
-        self.parameter_types: list[dict[str, str]] = []
-        # The names each function being walked binds itself (parameters and
-        # assignments), which shadow a module-level instance of the same name.
-        self.bound_names: list[frozenset[str]] = []
         # Member names called on a receiver no type was inferred for.
         self.untyped_calls: set[str] = set()
         # Structural protocols this file declares: a call through one may
@@ -167,7 +99,6 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.serves_app = False
         self.module_id = ref("module", self.name)
         self.facts = PythonFactAccumulator(relative)
-        self.roles = PythonFrameworkRoleEnricher(django=imports_django(tree))
         routing = (self.facts, self.name, self.module_id, self.aliases, self.resolve_name, index.module_declarations)
         self.fastapi = FastApiFactEnricher(*routing)
         self.django = DjangoFactEnricher(
@@ -179,6 +110,13 @@ class PythonAstFactCollector(ast.NodeVisitor):
             lambda module: index.canonical_module(module) if index.module_file(module) is not None else None,
         )
         self.flask = FlaskFactEnricher(*routing)
+        self.roles = PythonFrameworkRoleEnricher(django=self.django.imports_django(tree))
+        # What a receiver holds, so a call on it names the method that runs.
+        self.receivers = ReceiverTypeInference(
+            index, self.name, self.aliases, self.containers, self.django, self.resolve_name
+        )
+        self.outbound = OutboundCallRecorder(self.facts, index, self.aliases, self.resolve_name, self.current)
+        self.launches = LaunchRecorder(self.facts, self.aliases, self.current)
 
     def collect(self) -> dict[str, Any]:
         self.facts.add_node(
@@ -385,6 +323,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
             {"decorators": decorators, "python_framework_roles": roles},
         )
         self.facts.add_edge("contains", self.current(), local_id, node)
+        bases: list[str] = []
         for base in node.bases:
             # The `extends` edge below is what a base is; not also a reference.
             self.called_attributes.add(id(base))
@@ -392,6 +331,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
             target = self.resolve_name(name, "class") if name else None
             if target:
                 self.facts.add_edge("extends", local_id, target, base)
+                if target.startswith("py:class:"):
+                    bases.append(target.removeprefix("py:class:"))
         if any(is_protocol_base(base) for base in node.bases):
             self.protocols.add(canonical)
         if any(self.is_ast_visitor_base(base) for base in node.bases):
@@ -400,54 +341,20 @@ class PythonAstFactCollector(ast.NodeVisitor):
             item.name for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
         )
         self.stored_attributes[canonical] = assigned_self_attributes(node) - self.class_methods[canonical]
-        serializer = self.declared_serializer(node)
-        if serializer is not None:
-            self.serializer_classes[canonical] = serializer
+        self.django.remember_serializer(canonical, node)
         self.containers.append((local_id, canonical, "class"))
+        self.receivers.declare_class_attributes(canonical, node, bases)
         self.generic_visit(node)
         self.containers.pop()
 
-    def declared_serializer(self, node: ast.ClassDef) -> str | None:
-        """The project class a view's ``serializer_class = X`` names, wherever in the body it stands."""
-        for item in node.body:
-            if (
-                isinstance(item, ast.Assign)
-                and len(item.targets) == 1
-                and isinstance(item.targets[0], ast.Name)
-                and item.targets[0].id == "serializer_class"
-            ):
-                name = dotted(item.value)
-                resolved = self.resolve_name(name, "class") if name else None
-                if resolved and resolved.startswith("py:class:"):
-                    return resolved.removeprefix("py:class:")
-        return None
-
     def validated_field(self, node: ast.AST) -> None:
-        """A field read off a serializer's ``validated_data``: what its ``validate_<field>`` returned.
+        """A view's read of a serializer's validated field depends on the ``validate_<field>`` that produced it.
 
-        Django REST framework stores the return of ``validate_<field>`` as the
-        field's validated value, so ``serializer.validated_data["method"]``
-        hands the view whatever ``validate_method`` chose, a function to call
-        among them. The view depends on that method as it would on a call.
         Only a serializer whose class is known counts, and the edge is kept
         only when the class declares the method.
         """
-        receiver: ast.AST | None = None
-        field: ast.AST | None = None
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
-            receiver, field = node.func.value, node.args[0] if node.args else None
-        elif isinstance(node, ast.Subscript):
-            receiver, field = node.value, node.slice
-        if not (
-            isinstance(receiver, ast.Attribute)
-            and receiver.attr == "validated_data"
-            and isinstance(field, ast.Constant)
-            and isinstance(field.value, str)
-            and field.value.isidentifier()
-        ):
-            return
-        serializer = dotted(receiver.value)
-        member = self.receiver_member(serializer, f"validate_{field.value}") if serializer else None
+        read = self.django.validated_field(node)
+        member = self.receivers.receiver_member(*read) if read is not None else None
         if member is not None:
             self.facts.add_edge(
                 "references",
@@ -499,9 +406,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.flask.enrich_function(node, local_id, canonical, flask_routes)
         self.containers.append((local_id, canonical, kind))
         self.local_function_scopes.append(self.local_function_declarations(node, canonical, self.name))
-        self.local_variable_types.append({})
-        self.parameter_types.append(self.annotated_parameters(node))
-        self.bound_names.append(bound_names(node))
+        self.receivers.local_variable_types.append({})
+        self.receivers.parameter_types.append(self.receivers.annotated_parameters(node))
+        self.receivers.bound_names.append(bound_names(node))
         self.fastapi.enter_scope()
         self.flask.enter_scope()
         restore_fastapi = self.fastapi.register_parameters(node)
@@ -515,9 +422,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.fastapi.restore_parameters(restore_fastapi)
         self.fastapi.leave_scope()
         self.flask.leave_scope()
-        self.parameter_types.pop()
-        self.bound_names.pop()
-        self.local_variable_types.pop()
+        self.receivers.parameter_types.pop()
+        self.receivers.bound_names.pop()
+        self.receivers.local_variable_types.pop()
         self.local_function_scopes.pop()
         self.containers.pop()
 
@@ -613,19 +520,6 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 return True
         return False
 
-    def annotated_parameters(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, str]:
-        """The class each annotated parameter declares it holds."""
-
-        annotated: dict[str, str] = {}
-        arguments = node.args
-        for argument in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]:
-            if argument.annotation is None:
-                continue
-            held = self.held_class(None, argument.annotation)
-            if held is not None:
-                annotated[argument.arg] = held
-        return annotated
-
     @staticmethod
     def local_function_declarations(
         node: ast.FunctionDef | ast.AsyncFunctionDef, parent_canonical: str, module: str
@@ -719,7 +613,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 callee = dotted(built.func) if isinstance(built, ast.Call) else None
                 resolved = self.resolve_name(callee, "class") if callee else None
                 constructs = resolved is not None and resolved.startswith("py:class:")
-                self.remember_local(item.optional_vars.id, built if constructs else None)
+                self.receivers.remember_local(item.optional_vars.id, built if constructs else None)
         self.generic_visit(node)
 
     visit_AsyncWith = visit_With
@@ -732,11 +626,11 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.fastapi.register_assignment(variable, node.value, not self.containers)
             self.django.enrich_assignment(variable, node.value, node, not self.containers)
             self.flask.register_assignment(variable, node.value, not self.containers)
-            self.remember_local(variable, node.value)
+            self.receivers.remember_local(variable, node.value)
         if len(node.targets) == 1:
             attribute = self.self_attribute(node.targets[0])
             if attribute is not None:
-                self.remember_attribute(attribute, node.value)
+                self.receivers.remember_attribute(attribute, node.value)
         self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -746,40 +640,12 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_List(self, node: ast.List) -> None:
-        self.launched_file(node.elts, node)
+        self.launches.launched_file(node.elts, node)
         self.generic_visit(node)
 
     def visit_Tuple(self, node: ast.Tuple) -> None:
-        self.launched_file(node.elts, node)
+        self.launches.launched_file(node.elts, node)
         self.generic_visit(node)
-
-    def launched_file(self, values: list[ast.expr], node: ast.AST) -> None:
-        """An argv the code builds: ``[sys.executable, ..., str(ROOT / "worker.py")]`` or
-        ``["node", "js/worker.js"]``, or ``[str(ROOT) + "/bin/tool", ...]``.
-
-        Its script (the first path after an interpreter) or its program (a path joined to a
-        root in first place) is a file the process runs, so a speculative ``launches`` edge
-        names it by path; the core resolves the path to that file's module and drops the edge
-        when the project holds no such file.
-        """
-        if not values:
-            return
-        first = values[0]
-        spelled = dotted(first) or ""
-        head = spelled.split(".")[0]
-        interpreter = (
-            isinstance(first, ast.Constant)
-            and isinstance(first.value, str)
-            and first.value.rsplit("/", 1)[-1] in INTERPRETERS
-        ) or (spelled.endswith(".executable") and self.aliases.get(head, head) in {"sys", "py:module:sys"})
-        for value in values[1:] if interpreter else values[:1]:
-            path = argv_path(value, program=not interpreter)
-            if path is not None:
-                attributes = {"speculative": True}
-                self.facts.add_edge(
-                    "launches", self.current(), ref("launched_file", path), node, attributes, confidence="probable"
-                )
-                return
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         self.note_served_app(node.value)
@@ -787,11 +653,14 @@ class PythonAstFactCollector(ast.NodeVisitor):
         attribute = self.self_attribute(node.target)
         if attribute is not None:
             # An annotation states the type outright, which beats inferring it.
-            self.remember_attribute(attribute, node.value, node.annotation)
+            self.receivers.remember_attribute(attribute, node.value, node.annotation)
         elif isinstance(node.target, ast.Name):
             self.fastapi.register_assignment(node.target.id, node.value, not self.containers)
             self.flask.register_assignment(node.target.id, node.value, not self.containers)
-            self.remember_local(node.target.id, node.value, node.annotation)
+            if not (self.containers and self.containers[-1][2] == "class"):
+                # In a class body the name is the class's attribute, which
+                # `declare_class_attributes` read, not a local of a function around it.
+                self.receivers.remember_local(node.target.id, node.value, node.annotation)
         self.generic_visit(node)
 
     @staticmethod
@@ -803,190 +672,6 @@ class PythonAstFactCollector(ast.NodeVisitor):
             if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
             else None
         )
-
-    def remember_attribute(self, attribute: str, value: ast.AST | None, annotation: ast.AST | None = None) -> None:
-        """Record the class an attribute of the enclosing class holds."""
-
-        class_container = next((item for item in reversed(self.containers) if item[2] == "class"), None)
-        if class_container is None:
-            return
-        held = self.held_class(value, annotation)
-        owned = self.attribute_types.setdefault(class_container[1], {})
-        if held is None:
-            owned.pop(attribute, None)
-        else:
-            owned[attribute] = held
-
-    def remember_local(self, variable: str, value: ast.AST | None, annotation: ast.AST | None = None) -> None:
-        """Record the class a local variable holds, for the function being walked."""
-
-        if not self.local_variable_types:
-            return
-        held = self.held_class(value, annotation)
-        if held is None:
-            self.local_variable_types[-1].pop(variable, None)
-            # A parameter reassigned to something untracked no longer holds what
-            # its annotation declared. Dropping only the local would leave the
-            # annotation to answer for the name and attribute a later call to a
-            # class it has lost.
-            self.parameter_types[-1].pop(variable, None)
-        else:
-            self.local_variable_types[-1][variable] = held
-
-    def held_class(self, value: ast.AST | None, annotation: ast.AST | None = None) -> str | None:
-        """The class reference an assigned value or annotation names, if any."""
-
-        if isinstance(value, ast.Call) and dotted(value.func) == "self.get_serializer":
-            # A REST framework view builds the serializer its class declares.
-            view = next((item for item in reversed(self.containers) if item[2] == "class"), None)
-            if view is not None and view[1] in self.serializer_classes:
-                return self.serializer_classes[view[1]]
-        if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
-            # `injected or Default()`: the attribute holds one class when every
-            # side that can be truthy names the same one.
-            sides = {self.held_class(side) for side in value.values if not is_none(side)}
-            return sides.pop() if len(sides) == 1 else None
-        for candidate in (optional_inner(annotation), value.func if isinstance(value, ast.Call) else None):
-            name = dotted(candidate) if candidate is not None else None
-            resolved = self.resolve_name(name, "class") if name else None
-            if resolved and resolved.startswith("py:class:"):
-                return resolved.removeprefix("py:class:")
-        if isinstance(value, ast.Call):
-            returned = self.returned_class(value)
-            if returned is not None:
-                return returned
-        # A name passed straight through carries whatever it is tracked as, from
-        # the same two stacks a receiver is resolved against and in the same
-        # order, so `other = local` propagates as `other = parameter` does.
-        if isinstance(value, ast.Name):
-            if self.local_variable_types and value.id in self.local_variable_types[-1]:
-                return self.local_variable_types[-1][value.id]
-            if self.parameter_types:
-                return self.parameter_types[-1].get(value.id)
-        return None
-
-    # A model manager's lookups that hand back one instance of the model, and
-    # the queryset steps that may come between: `Document.objects.filter(...).first()`.
-    MANAGER_LOOKUPS = frozenset({"get", "create", "first", "last", "latest", "earliest"})
-    QUERYSET_STEPS = frozenset(
-        {
-            "all",
-            "filter",
-            "exclude",
-            "order_by",
-            "select_related",
-            "prefetch_related",
-            "only",
-            "defer",
-            "using",
-            "annotate",
-            "distinct",
-            "select_for_update",
-            "reverse",
-        }
-    )
-
-    def returned_class(self, call: ast.Call) -> str | None:
-        """The project class a call hands back, as the code states it.
-
-        ``load(pk)`` returns what ``def load(pk) -> Document`` annotates, and
-        ``repo.find(pk)`` what the method of ``repo``'s class annotates. A
-        model manager's lookup returns its model: ``Document.objects.get(...)``.
-        """
-        model = self.manager_lookup_class(call)
-        if model is not None:
-            return model
-        func = call.func
-        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Call):
-            # `Repo().find(pk)` or `load(pk).owner()`: the inner call's class is
-            # one it builds or one it returns, read here rather than through
-            # `held_class`, which reads it through this.
-            held = self.constructed_class(func.value) or self.returned_class(func.value)
-            return None if held is None else self.index.return_type(ref("method", f"{held}::{func.attr}"))
-        name = dotted(func)
-        if name is None:
-            return None
-        member = name.rsplit(".", 1)
-        target = self.receiver_member(member[0], member[1]) if len(member) == 2 else None
-        target = target or self.resolve_name(name, "function")
-        return None if target is None else self.index.return_type(target)
-
-    def constructed_class(self, call: ast.Call) -> str | None:
-        """The project class ``Repo()`` builds, when its name means that class here."""
-        callee = dotted(call.func)
-        if callee is None or self.is_local_name(callee.split(".")[0]):
-            return None
-        resolved = self.resolve_name(callee, "class")
-        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
-        return held if held is not None and self.declares_class(held) else None
-
-    def manager_lookup_class(self, call: ast.Call) -> str | None:
-        """The project model ``<Model>.objects.<lookup>(...)`` returns an instance of, if any."""
-        func = call.func
-        if not isinstance(func, ast.Attribute) or func.attr not in self.MANAGER_LOOKUPS:
-            return None
-        current = func.value
-        while (
-            isinstance(current, ast.Call)
-            and isinstance(current.func, ast.Attribute)
-            and current.func.attr in self.QUERYSET_STEPS
-        ):
-            current = current.func.value
-        if not isinstance(current, ast.Attribute) or current.attr != "objects":
-            return None
-        named = dotted(current.value)
-        if named is None or self.is_local_name(named.split(".")[0]):
-            return None
-        resolved = self.resolve_name(named, "class")
-        held = resolved.removeprefix("py:class:") if resolved and resolved.startswith("py:class:") else None
-        return held if held is not None and self.declares_class(held) else None
-
-    def fresh_instance_class(self, call: ast.Call) -> str | None:
-        """The project class ``Repo()`` builds, when its name means that class here.
-
-        A name off a module outside the project (``requests.get(url)``) reads
-        as a class only because nothing says otherwise, and a parameter or
-        local named like an imported class holds whatever was passed in. A
-        call on another call's result, ``Repo().find(pk)``, has no name of its
-        own; what the inner call holds types it (see `returned_class`).
-        """
-        callee = dotted(call.func)
-        if callee is not None and self.is_local_name(callee.split(".")[0]):
-            return None
-        held = self.held_class(call)
-        return held if held is not None and self.declares_class(held) else None
-
-    def shadows_builtin(self, name: str) -> bool:
-        """Whether this scope, an import or the module binds ``name`` over the builtin."""
-        return self.is_local_name(name) or name in self.aliases or name in self.index.module_declarations(self.name)
-
-    def declares_class(self, held: str) -> bool:
-        """Whether a project module declares ``held`` as a top-level class."""
-        module, _, name = held.rpartition(".")
-        return bool(module) and self.index.module_declarations(module).get(name) == ref("class", held)
-
-    def is_local_name(self, name: str) -> bool:
-        """Whether the function being walked binds ``name`` itself."""
-        return bool(self.bound_names) and name in self.bound_names[-1]
-
-    def receiver_member(self, receiver: str, member: str) -> str | None:
-        """The method a call names when its receiver's class is known."""
-
-        held = None
-        if receiver.startswith("self.") and receiver.count(".") == 1:
-            class_container = next((item for item in reversed(self.containers) if item[2] == "class"), None)
-            if class_container is not None:
-                held = self.attribute_types.get(class_container[1], {}).get(receiver.split(".", 1)[1])
-        elif "." not in receiver:
-            held = self.local_variable_types[-1].get(receiver) if self.local_variable_types else None
-            if held is None and self.parameter_types:
-                held = self.parameter_types[-1].get(receiver)
-            if held is None and not self.is_local_name(receiver):
-                # A module-level instance, this module's own or imported.
-                instance = self.aliases.get(receiver) or self.index.module_declarations(self.name).get(receiver)
-                if instance is not None and instance.startswith("py:instance:"):
-                    held = instance.removeprefix("py:instance:")
-        return ref("method", f"{held}::{member}") if held else None
 
     def visit_Name(self, node: ast.Name) -> None:
         """A function or class named as a value: returned, registered, passed.
@@ -1003,7 +688,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 (scope[node.id] for scope in reversed(self.local_function_scopes) if node.id in scope),
                 None,
             )
-            if target is None and not any(node.id in names for names in self.bound_names):
+            if target is None and not any(node.id in names for names in self.receivers.bound_names):
                 # A name this function, or one around it, binds is a local
                 # there, whatever the module declares under that name.
                 target = self.aliases.get(node.id) or self.index.module_declarations(self.name).get(node.id)
@@ -1034,10 +719,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
             # bound method handed on, or a data attribute. Only the class can
             # tell, so the reconciler keeps the edge when the member resolves.
             receiver = dotted(node.value)
-            member = self.receiver_member(receiver, node.attr) if receiver else None
+            member = self.receivers.receiver_member(receiver, node.attr) if receiver else None
             if member is None and isinstance(node.value, ast.Call):
                 # `partial(Repo().rows, 1)`: the class just built types the read.
-                held = self.fresh_instance_class(node.value)
+                held = self.receivers.fresh_instance_class(node.value)
                 if held is not None:
                     member = ref("method", f"{held}::{node.attr}")
             if member is not None:
@@ -1052,139 +737,16 @@ class PythonAstFactCollector(ast.NodeVisitor):
                     self.facts.add_edge("references", self.current(), named, node)
         self.generic_visit(node)
 
-    def submitted_task(self, name: str | None) -> tuple[str, bool] | None:
-        """The function a Celery submission queues, and whether it is only a signature.
-
-        ``<task>.delay(...)`` and ``<task>.apply_async(...)`` queue the task.
-        A signature, ``<task>.s(...)``, ``.si(...)`` or ``.signature(...)``,
-        queues it once something applies it: a chain, a chord, a group, or
-        the caller it is returned to. Nearly every signature is built to be
-        applied, so it counts too, as a probable dispatch. Only a receiver
-        that resolves to a function of the project counts.
-        """
-        if not name or "." not in name:
-            return None
-        receiver, method = name.rsplit(".", 1)
-        if method not in CELERY_SUBMISSIONS and method not in CELERY_SIGNATURES:
-            return None
-        target = self.resolve_name(receiver, "function")
-        if target is None or not target.startswith("py:function:"):
-            return None
-        return target, method in CELERY_SIGNATURES
-
-    def request_endpoint(self, node: ast.Call, name: str | None) -> None:
-        """Record the URL an HTTP client call or an App Engine task names as an endpoint."""
-        if not name or name.count(".") != 1:
-            return
-        head, member = name.split(".")
-        bound = (self.aliases.get(head) or "").split(":", 2)[-1]
-        if bound in {"requests", "httpx"}:
-            if member in HTTP_METHODS:
-                url, method = node.args[0] if node.args else keyword_value(node, "url"), member.upper()
-            elif member == "request":
-                given = node.args[0] if node.args else keyword_value(node, "method")
-                if given is None:
-                    return
-                url = node.args[1] if len(node.args) > 1 else keyword_value(node, "url")
-                method = static_method(given)
-            else:
-                return
-            uri = request_url(url)
-            if uri is not None:
-                self.add_endpoint("calls_endpoint", bound, method, uri, node)
-        elif bound == "google.appengine.api.taskqueue" and member in {"add", "Task"}:
-            uri = request_url(keyword_value(node, "url"))
-            method_node = keyword_value(node, "method")
-            method = "POST" if method_node is None else static_method(method_node)
-            if uri is not None:
-                self.add_endpoint("dispatches", "appengine", method, uri, node)
-
-    def add_endpoint(self, edge_kind: str, framework: str, method: str, uri: str, node: ast.Call) -> None:
-        unknown = uri.startswith("{}")
-        endpoint = ref("endpoint", f"{method} {uri}")
-        self.facts.add_node(
-            endpoint,
-            "endpoint",
-            f"{method} {uri}",
-            f"{method} {uri}",
-            node,
-            {
-                "framework": framework,
-                "method": method,
-                "uri": uri,
-                "template": url_template(uri, unknown),
-                "prefix": "unknown" if unknown else "known",
-                "external": bool(ABSOLUTE_URL.match(uri)),
-            },
-            "framework_convention",
-        )
-        self.facts.add_edge(edge_kind, self.current(), endpoint, node, None, "framework_convention")
-
-    def task_by_name(self, node: ast.Call, name: str | None) -> bool:
-        """Record a Celery task queued by its name as a dispatch; whether the call was one.
-
-        ``<app>.send_task("shop.tasks.deliver")`` queues the task registered
-        under that name, and ``celery.signature("shop.tasks.deliver")`` builds
-        a signature of it. Celery names a task after its module and function
-        unless the decorator says otherwise, so the name is read that way: a
-        function the named module declares is the target; any other name is a
-        speculative target the core keeps only when it exists. A name that is
-        not a literal names nothing.
-        """
-        if not name:
-            return False
-        if name.endswith(".send_task"):
-            signature = False
-        elif name.rsplit(".", 1)[-1] == "signature" and self.aliases.get(name, name).endswith("celery.signature"):
-            signature = True
-        else:
-            return False
-        task = positional_string(node, 0)
-        module, _, function = (task or "").rpartition(".")
-        if not module or not function:
-            return False
-        found = self.index.canonical_module(module) if self.index.module_file(module) is not None else None
-        declared = self.index.module_declarations(found).get(function, "") if found else ""
-        attributes: dict[str, Any] = {"celery": "signature"} if signature else {}
-        if declared.startswith("py:function:"):
-            confidence = "probable" if signature else "certain"
-            self.facts.add_edge("dispatches", self.current(), declared, node, attributes, confidence=confidence)
-        else:
-            attributes = {"celery": "signature" if signature else "by_name", "speculative": True}
-            self.facts.add_edge(
-                "dispatches", self.current(), ref("function", task or ""), node, attributes, confidence="probable"
-            )
-        return True
-
-    def record_submission(self, node: ast.Call, name: str | None) -> bool:
-        """Record a Celery submission or signature as a dispatch; whether the call was one.
-
-        `deliver.delay(order_id)` queues `deliver` to run later: a dispatch,
-        not a call, and `delay` is no function of the project.
-        """
-        if self.task_by_name(node, name):
-            return True
-        submitted = self.submitted_task(name)
-        if submitted is None:
-            return False
-        task, signature = submitted
-        if signature:
-            attributes = {"celery": "signature"}
-            self.facts.add_edge("dispatches", self.current(), task, node, attributes, confidence="probable")
-        else:
-            self.facts.add_edge("dispatches", self.current(), task, node)
-        return True
-
     def visit_Call(self, node: ast.Call) -> None:
         self.called_attributes.add(id(node.func))
         name = dotted(node.func)
         self.validated_field(node)
-        self.request_endpoint(node, name)
+        self.outbound.request_endpoint(node, name)
         target = None
-        if not self.record_submission(node, name) and name:
+        if not self.outbound.record_submission(node, name) and name:
             member = name.rsplit(".", 1)
             if len(member) == 2:
-                target = self.receiver_member(member[0], member[1])
+                target = self.receivers.receiver_member(member[0], member[1])
             if target is None and name.startswith("self.") and name.count(".") == 1 and self.containers:
                 # Only a direct `self.<name>()`. `self.a.b()` is a call on
                 # whatever `a` holds, and reading it as a member of this class
@@ -1200,14 +762,14 @@ class PythonAstFactCollector(ast.NodeVisitor):
             # `Repo().count()`: the class just instantiated types the receiver,
             # and so does the class a call returns (see `returned_class`). Any
             # other call's result has no type this worker follows.
-            held = self.fresh_instance_class(node.func.value)
+            held = self.receivers.fresh_instance_class(node.func.value)
             if held is None:
                 self.untyped_calls.add(node.func.attr)
             else:
                 target = ref("method", f"{held}::{node.func.attr}")
         if (
             name == "getattr"
-            and not self.shadows_builtin("getattr")
+            and not self.receivers.shadows_builtin("getattr")
             and len(node.args) >= 2
             and isinstance(node.args[1], ast.Constant)
             and isinstance(node.args[1].value, str)
@@ -1229,52 +791,3 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.flask.enrich_call(node, name)
         self.django.enrich_call(node, name)
         self.generic_visit(node)
-
-
-def argv_path(value: ast.expr, program: bool) -> str | None:
-    """The project-relative path an argv element names, when it reads as a path to a file.
-
-    A string literal, or the literal parts a path is joined from: ``str(ROOT / "a" / "b.py")``,
-    ``ROOT + "/bin/tool"``, ``f"{ROOT}/bin/tool"`` or ``os.path.join(ROOT, "bin", "tool")``. A
-    program in first place must be joined to something, since a bare literal there is a command
-    looked up on PATH; an option (``-I``, ``--flag``) is never a path, and a name with no
-    directory is one only with a script's extension (``run.py``).
-    """
-    if isinstance(value, ast.Call) and dotted(value.func) == "str" and len(value.args) == 1:
-        value = value.args[0]
-    literal: str | None = None
-    if isinstance(value, ast.Constant) and isinstance(value.value, str):
-        literal = None if program else value.value
-    elif isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
-        parts: list[str] = []
-        while isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
-            if not (isinstance(value.right, ast.Constant) and isinstance(value.right.value, str)):
-                break
-            parts.append(value.right.value)
-            value = value.left
-        literal = "/".join(reversed(parts)) if parts else None
-    elif isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
-        right = value.right
-        literal = right.value if isinstance(right, ast.Constant) and isinstance(right.value, str) else None
-    elif isinstance(value, ast.JoinedStr) and len(value.values) > 1:
-        last = value.values[-1]
-        literal = last.value if isinstance(last, ast.Constant) and isinstance(last.value, str) else None
-    elif isinstance(value, ast.Call) and (dotted(value.func) or "").endswith("path.join"):
-        tail: list[str] = []
-        for argument in reversed(value.args):
-            if not (isinstance(argument, ast.Constant) and isinstance(argument.value, str)):
-                break
-            tail.append(argument.value)
-        literal = "/".join(reversed(tail)) if tail and len(tail) < len(value.args) else None
-    if literal is None:
-        return None
-    path = literal.removeprefix("./").lstrip("/")
-    script = path.endswith((".py", ".js", ".mjs", ".cjs", ".ts", ".php", ".rb", ".pl", ".sh"))
-    if (
-        path.startswith("-")
-        or ("/" not in path and not script)
-        or path.endswith("/")
-        or any(c in path for c in " \t=:")
-    ):
-        return None
-    return path

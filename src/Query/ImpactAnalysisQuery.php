@@ -143,30 +143,10 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
      */
     private function searchDependants(string $projectId, array $target, int $maxDepth, int $limit, array $edgeKinds, int $minimumRank, int $deadline, Truncation $truncation, bool $seedMembers, bool $frameworkHooks): array
     {
+        [$queue, $seen, $bestRank, $throughMember] = $this->seedQueue($projectId, $target, $seedMembers);
         // A head index instead of array_shift, which re-indexes the whole queue
         // on every pop; the visit order is the same first-in, first-out order.
-        $queue = [[$target, 0]];
         $head = 0;
-        $seen = [$target['id'] => true];
-        // Best confidence rank found for each node at its shortest distance.
-        // Read at dequeue rather than carried in the queued tuple: every
-        // rediscovery at distance d+1 comes from a level-d node, and FIFO order
-        // dequeues all level-d nodes before any level-d+1 node, so by the time
-        // a node is dequeued no further upgrade of its rank is possible and the
-        // value read here is final.
-        $bestRank = [$target['id'] => 3];
-        // A class or module is changed through its members too: the walk starts from
-        // each of them as well, and what it finds through one names that member.
-        $throughMember = [];
-        foreach ($seedMembers ? $this->members($projectId, $target) : [] as $member) {
-            if (isset($seen[$member['id']])) {
-                continue;
-            }
-            $queue[] = [$member, 0];
-            $seen[$member['id']] = true;
-            $bestRank[$member['id']] = 3;
-            $throughMember[$member['id']] = (string) $member['canonical_name'];
-        }
         $dependants = [];
         $recordIndex = [];
         $edgesTruncated = false;
@@ -188,62 +168,12 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
             if ($distance >= $maxDepth) {
                 continue;
             }
-            // A call through an interface or a parent goes to the supertype's method, so what calls that may
-            // run this one: its edges count as this node's, the supertype method itself never listed for it.
-            // Which implementation runs is a guess, so such an edge is probable at best.
-            $edges = $this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgesTruncated);
-            foreach (SupertypeMethods::of($this->pdo, $projectId, [$current['id']])[$current['id']] ?? [] as $supertype) {
-                foreach ($this->impactEdges($projectId, $supertype, $edgeKinds, $minimumRank, $edgesTruncated) as $edge) {
-                    $edges[] = $edge['confidence'] === 'certain' ? ['confidence' => 'probable'] + $edge : $edge;
-                }
-            }
-            // Nothing points at a property: its class's methods read it, so what uses the class may use it.
-            // Which use touches the property is a guess, so such an edge is probable at best.
-            foreach (PropertyOwners::of($this->pdo, $projectId, [$current['id']]) as $class) {
-                foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated) as $edge) {
-                    $edges[] = $edge['confidence'] === 'certain' ? ['confidence' => 'probable'] + $edge : $edge;
-                }
-            }
-            // Constructing a class runs its constructor, and the graph records that against the class: what
-            // constructs it is this constructor's dependant, at the construction's own confidence. Only that edge:
-            // a type in a signature constructs nothing. The class itself is never listed for it.
-            if (in_array(ConstructedClasses::EDGE_KIND, $edgeKinds, true)) {
-                foreach (ConstructedClasses::of($this->pdo, $projectId, [$current['id']])[$current['id']] ?? [] as $class) {
-                    array_push($edges, ...$this->impactEdges($projectId, $class, [ConstructedClasses::EDGE_KIND], $minimumRank, $edgesTruncated));
-                }
-            }
-            // The framework calls a hook (`booted`, `newFactory`) whenever its class is used, so nothing names it:
-            // what uses the class or one of its members depends on the hook. Which use runs it is a guess.
-            if ($frameworkHooks && $current['kind'] === 'method' && FrameworkHookMethods::isHookName((string) $current['display_name'])) {
-                foreach (FrameworkHookMethods::among($this->pdo, $projectId, [(string) $current['id']]) as $class) {
-                    foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated, withMembers: true) as $edge) {
-                        if ($edge['source_id'] !== $current['id']) {
-                            $edges[] = $edge['confidence'] === 'certain' ? ['confidence' => 'probable'] + $edge : $edge;
-                        }
-                    }
-                }
-            }
-            foreach ($edges as $edge) {
+            foreach ($this->dependantEdges($projectId, $current, $edgeKinds, $minimumRank, $frameworkHooks, $edgesTruncated) as $edge) {
                 if ($edge['source_id'] !== $target['id']) {
                     $links[$edge['source_id'] . '>' . $current['id']] = [(string) $edge['source_id'], (string) $current['id']];
                 }
-                $edgeConfidence = self::CONFIDENCE_RANK[$edge['confidence']];
                 if (isset($seen[$edge['source_id']])) {
-                    // Already discovered: if this equal-distance alternate path
-                    // carries higher confidence, prefer it (max per distance)
-                    // rather than keeping the first-discovered, weaker value.
-                    $existingIndex = $recordIndex[$edge['source_id']] ?? null;
-                    if ($existingIndex !== null && $dependants[$existingIndex]['distance'] === $distance + 1) {
-                        $candidateRank = min($pathConfidence, $edgeConfidence);
-                        if ($candidateRank > $bestRank[$edge['source_id']]) {
-                            // Raise the record, the hop that justifies it (and
-                            // so its evidence), and the rank its own dependants
-                            // inherit together, so the three never disagree.
-                            $bestRank[$edge['source_id']] = $candidateRank;
-                            $dependants[$existingIndex]['path_confidence'] = self::rankName($candidateRank);
-                            $dependants[$existingIndex]['via'] = $this->impactHop($edge);
-                        }
-                    }
+                    $this->relaxRank($edge, $distance, $pathConfidence, $bestRank, $dependants, $recordIndex);
                     continue;
                 }
                 $node = $this->node($edge['source_id']);
@@ -251,17 +181,7 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
                     continue;
                 }
                 $seen[$node['id']] = true;
-                $bestRank[$node['id']] = min($pathConfidence, $edgeConfidence);
-                $member = $throughMember[$current['id']] ?? null;
-                $dependants[] = [
-                    'node' => $node,
-                    'distance' => $distance + 1,
-                    'path_confidence' => self::rankName($bestRank[$node['id']]),
-                    'via' => $this->impactHop($edge),
-                ] + ($member === null ? [] : ['via_member' => $member]);
-                if ($member !== null) {
-                    $throughMember[$node['id']] = $member;
-                }
+                $dependants[] = $this->recordDependant($node, $edge, $current, $distance, $pathConfidence, $bestRank, $throughMember);
                 // limit+1 semantics: keep exactly $limit, flag truncation only
                 // when a further dependant actually exists.
                 if (count($dependants) > $limit) {
@@ -280,6 +200,137 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         }
 
         return ['dependants' => $dependants, 'visited' => $visited, 'links' => array_values($links)];
+    }
+
+    /**
+     * The walk's starting state: the target, and its members when the walk
+     * seeds them, all at distance 0 and certain.
+     *
+     * @param array<string, mixed> $target
+     * @return array{0: list<array{0: array<string, mixed>, 1: int}>, 1: array<string, true>, 2: array<string, int>, 3: array<string, string>}
+     *         the queue, the seen ids, the best rank per id, and the member each seeded id was reached through
+     */
+    private function seedQueue(string $projectId, array $target, bool $seedMembers): array
+    {
+        $queue = [[$target, 0]];
+        $seen = [$target['id'] => true];
+        // Best confidence rank found for each node at its shortest distance.
+        // Read at dequeue rather than carried in the queued tuple: every
+        // rediscovery at distance d+1 comes from a level-d node, and FIFO order
+        // dequeues all level-d nodes before any level-d+1 node, so by the time
+        // a node is dequeued no further upgrade of its rank is possible and the
+        // value read here is final.
+        $bestRank = [$target['id'] => 3];
+        // A class or module is changed through its members too: the walk starts from
+        // each of them as well, and what it finds through one names that member.
+        $throughMember = [];
+        foreach ($seedMembers ? $this->members($projectId, $target) : [] as $member) {
+            if (isset($seen[$member['id']])) {
+                continue;
+            }
+            $queue[] = [$member, 0];
+            $seen[$member['id']] = true;
+            $bestRank[$member['id']] = 3;
+            $throughMember[$member['id']] = (string) $member['canonical_name'];
+        }
+
+        return [$queue, $seen, $bestRank, $throughMember];
+    }
+
+    /**
+     * The edges into one dequeued node, and those read through its stand-ins.
+     *
+     * @param array<string, mixed> $current
+     * @param list<string> $edgeKinds
+     * @return list<array<string, mixed>>
+     */
+    private function dependantEdges(string $projectId, array $current, array $edgeKinds, int $minimumRank, bool $frameworkHooks, bool &$edgesTruncated): array
+    {
+        // A call through an interface or a parent goes to the supertype's method, so what calls that may
+        // run this one: its edges count as this node's, the supertype method itself never listed for it.
+        // Nothing points at a property: its class's methods read it, so what uses the class may use it.
+        // Which implementation runs, or which use touches the property, is a guess, so such an edge is
+        // probable at best.
+        $edges = $this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgesTruncated);
+        $standIns = StandInExpansion::of($this->pdo, $projectId, [(string) $current['id']], $edgeKinds);
+        foreach ($standIns['through'] as [$standIn]) {
+            foreach ($this->impactEdges($projectId, $standIn, $edgeKinds, $minimumRank, $edgesTruncated) as $edge) {
+                $edges[] = StandInExpansion::downgradeCertain($edge);
+            }
+        }
+        // Constructing a class runs its constructor, and the graph records that against the class: what
+        // constructs it is this constructor's dependant, at the construction's own confidence. Only that edge:
+        // a type in a signature constructs nothing. The class itself is never listed for it.
+        foreach ($standIns['constructed'] as [$class]) {
+            array_push($edges, ...$this->impactEdges($projectId, $class, [ConstructedClasses::EDGE_KIND], $minimumRank, $edgesTruncated));
+        }
+        // The framework calls a hook (`booted`, `newFactory`) whenever its class is used, so nothing names it:
+        // what uses the class or one of its members depends on the hook. Which use runs it is a guess.
+        if ($frameworkHooks && $current['kind'] === 'method' && FrameworkHookMethods::isHookName((string) $current['display_name'])) {
+            foreach (FrameworkHookMethods::among($this->pdo, $projectId, [(string) $current['id']]) as $class) {
+                foreach ($this->impactEdges($projectId, $class, $edgeKinds, $minimumRank, $edgesTruncated, withMembers: true) as $edge) {
+                    if ($edge['source_id'] !== $current['id']) {
+                        $edges[] = StandInExpansion::downgradeCertain($edge);
+                    }
+                }
+            }
+        }
+
+        return $edges;
+    }
+
+    /**
+     * Raise an already recorded dependant when an alternate path of the same
+     * length carries a higher confidence (max per distance) rather than
+     * keeping the first-discovered, weaker value.
+     *
+     * @param array<string, mixed> $edge
+     * @param array<array-key, int> $bestRank
+     * @param list<array<string, mixed>> $dependants
+     * @param array<string, int> $recordIndex
+     */
+    private function relaxRank(array $edge, int $distance, int $pathConfidence, array &$bestRank, array &$dependants, array $recordIndex): void
+    {
+        $existingIndex = $recordIndex[$edge['source_id']] ?? null;
+        if ($existingIndex === null || $dependants[$existingIndex]['distance'] !== $distance + 1) {
+            return;
+        }
+        $candidateRank = min($pathConfidence, self::CONFIDENCE_RANK[$edge['confidence']]);
+        if ($candidateRank > $bestRank[$edge['source_id']]) {
+            // Raise the record, the hop that justifies it (and
+            // so its evidence), and the rank its own dependants
+            // inherit together, so the three never disagree.
+            $bestRank[$edge['source_id']] = $candidateRank;
+            $dependants[$existingIndex]['path_confidence'] = self::rankName($candidateRank);
+            $dependants[$existingIndex]['via'] = $this->impactHop($edge);
+        }
+    }
+
+    /**
+     * A newly found dependant's record, its rank and the member it was
+     * reached through remembered for its own dependants.
+     *
+     * @param array<string, mixed> $node
+     * @param array<string, mixed> $edge
+     * @param array<string, mixed> $current
+     * @param array<array-key, int> $bestRank
+     * @param array<array-key, string> $throughMember
+     * @return array<string, mixed>
+     */
+    private function recordDependant(array $node, array $edge, array $current, int $distance, int $pathConfidence, array &$bestRank, array &$throughMember): array
+    {
+        $bestRank[$node['id']] = min($pathConfidence, self::CONFIDENCE_RANK[$edge['confidence']]);
+        $member = $throughMember[$current['id']] ?? null;
+        if ($member !== null) {
+            $throughMember[$node['id']] = $member;
+        }
+
+        return [
+            'node' => $node,
+            'distance' => $distance + 1,
+            'path_confidence' => self::rankName($bestRank[$node['id']]),
+            'via' => $this->impactHop($edge),
+        ] + ($member === null ? [] : ['via_member' => $member]);
     }
 
     /**

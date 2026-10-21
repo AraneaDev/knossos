@@ -239,7 +239,7 @@ final class PaneQueriesTest extends KnossosTestCase
             $queries = new PaneQueries($pdo);
             $ask = fn(array $options): array => $queries->answer('annotate', $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
             $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
-            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
             $ask(['component' => 'App\\Greeter', 'value' => 'mine', 'execute' => '1']);
             assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
 
@@ -280,8 +280,8 @@ final class PaneQueriesTest extends KnossosTestCase
             $queries = new PaneQueries($pdo);
             $ask = fn(string $command, array $options): array => $queries->answer($command, $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
             $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
-            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
-            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($project, 'App\\Gone', 'note', 'left behind', execute: true);
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($project, 'App\\Greeter', 'note', 'an agent found this', execute: true);
+            \Knossos\Query\ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($project, 'App\\Gone', 'note', 'left behind', execute: true);
 
             $check = $ask('note-check', ['component' => 'App\\Greeter', 'value' => 'still right?', 'execute' => '1']);
             $adopt = $ask('note-adopt', ['component' => 'App\\Greeter', 'execute' => '1']);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -39,7 +40,7 @@ final class NestedPackageFallbackTest extends KnossosTestCase
 
         try {
             $pdo = $this->freshTestDatabase();
-            $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, mode: 'full')->projectId;
+            $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
             $statement = $pdo->prepare('SELECT d.code FROM diagnostics d JOIN files f ON f.id = d.file_id WHERE d.project_id = ? AND f.relative_path = ?');
             $statement->execute([$projectId, 'tools/build.ts']);
             $codes = $statement->fetchAll(\PDO::FETCH_COLUMN);

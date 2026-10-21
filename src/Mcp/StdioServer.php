@@ -266,13 +266,15 @@ final class StdioServer
                     $this->rememberPendingLine($line);
                     continue;
                 }
-                if (
-                    is_array($message)
-                    && ($message['method'] ?? null) === 'notifications/cancelled'
-                    && (($message['params']['requestId'] ?? null) === $requestId)
-                ) {
-                    $cancelled = true;
-                    continue;
+                if (is_array($message) && ($message['method'] ?? null) === 'notifications/cancelled') {
+                    $cancelledId = $message['params']['requestId'] ?? null;
+                    if ($cancelledId === $requestId) {
+                        $cancelled = true;
+                        continue;
+                    }
+                    if ((is_int($cancelledId) || is_string($cancelledId)) && $this->dropPendingRequest($cancelledId)) {
+                        continue;
+                    }
                 }
                 $this->rememberPendingLine($line);
             }
@@ -280,6 +282,25 @@ final class StdioServer
             stream_set_blocking($this->input, true);
         }
         return $cancelled;
+    }
+
+    /**
+     * Drop the request with `$id` still parked for the main loop, so a request
+     * cancelled before it started never runs. A cancelled request gets no
+     * response, as the MCP cancellation notification asks.
+     *
+     * @return bool whether a parked request had that id
+     */
+    private function dropPendingRequest(int|string $id): bool
+    {
+        foreach ($this->pendingLines as $index => $line) {
+            $message = json_decode(trim($line), true);
+            if (is_array($message) && isset($message['method']) && array_key_exists('id', $message) && $message['id'] === $id) {
+                array_splice($this->pendingLines, $index, 1);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

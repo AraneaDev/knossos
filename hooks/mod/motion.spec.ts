@@ -53,7 +53,7 @@ function motionPort(live = LIVE_OFF, onRead: (key: string) => void = () => undef
 
 beforeEach(() => {
   reset({ fanInThreshold: 20, enforcePolicies: true, agentNotes: true, watch: true, watchPollMs: 1000, notifications: true })
-  mod.paneText = 'live'
+  mod.pane.text = 'live'
 })
 
 describe('the frames motion draws', () => {
@@ -90,22 +90,22 @@ describe('the frames motion draws', () => {
   })
 
   it('keeps turning while the pane shows a line under way, even with no figures drawn, and stops once none shows', async () => {
-    mod.paneText = null
-    mod.paneBusy = true
+    mod.pane.text = null
+    mod.pane.busy = true
     const port = motionPort()
     await startMotion(port.io, null)
     expect(port.running()).toHaveLength(1)
     for (let i = 0; i < 4; i++) await port.frame()
     expect((port.values.get('motion') as { frame: number }).frame).toBe(2)
-    mod.paneBusy = false
+    mod.pane.busy = false
     await port.frame()
     expect(port.running()).toEqual([])
   })
 
   it('lets a line under way stand still once it has spun for a minute: a lost answer keeps nothing redrawing', async () => {
-    mod.paneText = null
-    mod.paneBusy = true
-    mod.busySince = 1_000
+    mod.pane.text = null
+    mod.pane.busy = true
+    mod.pane.busySince = 1_000
     const port = motionPort()
     await startMotion(port.io, null)
     while (port.env.now < 1_000 + BUSY_SPIN_MS - MOTION_FRAME_MS) await port.frame()
@@ -115,7 +115,7 @@ describe('the frames motion draws', () => {
   })
 
   it('draws no frames for a pane nobody has open', async () => {
-    mod.paneText = null
+    mod.pane.text = null
     const port = motionPort()
     await startMotion(port.io, 1_000)
     expect(port.running()).toEqual([])
@@ -153,7 +153,7 @@ describe('the frames motion draws', () => {
     const before = (port.values.get('motion') as { frame: number }).frame
     for (let i = 0; i < 8; i++) await port.frame()
     expect((port.values.get('motion') as { frame: number }).frame - before).toBe(4)
-    mod.paneText = null
+    mod.pane.text = null
     await port.frame()
     expect(port.running()).toEqual([])
   })

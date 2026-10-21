@@ -21,7 +21,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
     {
         [$queries, $project, $pdo] = $this->withNote('first finding');
 
-        $refused = $queries->upsertAnnotation($project, 'App\\Checkout', 'note', 'second finding', execute: true);
+        $refused = $queries->services()->annotationQueries->upsertAnnotation($project, 'App\\Checkout', 'note', 'second finding', execute: true);
 
         self::assertFalse($refused->data['executed']);
         self::assertSame('refused', $refused->data['action']);
@@ -35,7 +35,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
     {
         [$queries, $project, $pdo] = $this->withNote('first finding');
 
-        $written = $queries->upsertAnnotation($project, 'App\\Checkout', 'note', 'second finding', execute: true, replace: true);
+        $written = $queries->services()->annotationQueries->upsertAnnotation($project, 'App\\Checkout', 'note', 'second finding', execute: true, replace: true);
 
         self::assertTrue($written->data['executed']);
         self::assertStringContainsString('Replaced', $written->summary);
@@ -48,7 +48,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
     {
         [$queries, $project, $pdo] = $this->withNote('first finding');
 
-        $written = $queries->upsertAnnotation($project, 'App\\Checkout', 'note', 'first finding; and a second one', execute: true);
+        $written = $queries->services()->annotationQueries->upsertAnnotation($project, 'App\\Checkout', 'note', 'first finding; and a second one', execute: true);
 
         self::assertTrue($written->data['executed']);
         self::assertSame('first finding; and a second one', $pdo->query("SELECT value FROM annotations WHERE kind = 'note'")->fetchColumn());
@@ -60,7 +60,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
     {
         [$queries, $project] = $this->withNote('first finding');
 
-        self::assertTrue($queries->upsertAnnotation($project, 'App\\Checkout', 'note', 'first finding', execute: true)->data['executed']);
+        self::assertTrue($queries->services()->annotationQueries->upsertAnnotation($project, 'App\\Checkout', 'note', 'first finding', execute: true)->data['executed']);
     }
 
     /** A person edits their own note in the pane; the guard is for one agent overwriting another. */
@@ -69,7 +69,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
     {
         [$queries, $project] = $this->withNote('the team says so', 'user');
 
-        self::assertTrue($queries->upsertAnnotation($project, 'App\\Checkout', 'note', 'the team changed its mind', execute: true, author: 'user')->data['executed']);
+        self::assertTrue($queries->services()->annotationQueries->upsertAnnotation($project, 'App\\Checkout', 'note', 'the team changed its mind', execute: true, author: 'user')->data['executed']);
     }
 
     /** A preview says, in its summary, that nothing was written. */
@@ -78,7 +78,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
     {
         [$queries, $project] = $this->withNote('first finding');
 
-        $preview = $queries->upsertAnnotation($project, 'App\\Checkout', 'note', 'second finding');
+        $preview = $queries->services()->annotationQueries->upsertAnnotation($project, 'App\\Checkout', 'note', 'second finding');
 
         self::assertStringStartsWith('Preview only, nothing written:', $preview->summary);
         self::assertStringContainsString('replace', implode(' ', $preview->warnings), 'The preview already says the write would be refused.');
@@ -90,7 +90,7 @@ final class AnnotationOverwriteTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', $value, execute: true, author: $author);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', $value, execute: true, author: $author);
 
         return [$queries, $ids['project'], $pdo];
     }

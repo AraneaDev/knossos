@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, SessionChanges } from '../../types'
 import { cardRows } from './cards'
-import { changesInput, lookAtOf, NO_CHANGES } from './changes'
-import { listFor, paneInput, paneLayout } from './layout'
+import { changesInput, lookAtOf } from './changes'
+import { NO_CHANGES } from './session-changes'
+import { listFor } from './pane-list'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { bucketLabel, compositionBlock, concentrationBlock, flowsBlock, healthBlock, overviewData, overviewList, percent, sessionBlock, shares } from './overview'
 import { BOUNDARY_COLOURS, heat, huesOf, STATUS_COLOURS } from './palette'
-import { cells, rowWidth, tierOf } from './rows'
-import type { Row } from './rows'
+import { rowWidth } from './rows'
+import { tierOf } from './table'
+import { cells } from './text'
+import type { Row } from './types'
 import { plainText, rawText } from './__tests__/plain-text'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
@@ -302,7 +307,7 @@ describe('the overview pane', () => {
     for (const columns of WIDTHS) {
       for (const height of HEIGHTS) {
         for (const selected of [0, 3, 8]) {
-          const input = paneInput(dash, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, { ...VIEW, selected }, 0, true, null, null, session)
+          const input = paneInput({ dashboard: dash, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: { ...VIEW, selected }, now: 0, terminal: true, detail: null, allow: null, session })
           const { body, footer } = paneLayout(input, columns, height)
           for (const r of [...body, ...footer]) expect(rowWidth(r), `${columns}x${height} ${r.key}`).toBeLessThanOrEqual(columns)
           const keys = body.flatMap(r => r.key.split('|'))
@@ -313,14 +318,14 @@ describe('the overview pane', () => {
       }
     }
     // The marker's list is the Overview's walk.
-    const input = paneInput(dash, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, VIEW, 0, true, null, null, session)
+    const input = paneInput({ dashboard: dash, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: VIEW, now: 0, terminal: true, detail: null, allow: null, session })
     expect(listFor(input)).toHaveLength(1 + 5 + 3)
   })
 })
 
 describe("the Overview's line about notes", () => {
   const counted = { ...dash, notes: { total: 142, missing: 3, stale: 5, flagged: 1 } }
-  const drawn = (d: Dashboard) => paneLayout(paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, VIEW, 0, true, null, null), 120, 60).body.map(plainText).join('\n')
+  const drawn = (d: Dashboard) => paneLayout(paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: VIEW, now: 0, terminal: true, detail: null, allow: null }), 120, 60).body.map(plainText).join('\n')
 
   it('counts the notes and those that need the person, and opens the Notes tab on the most pressing', () => {
     expect(drawn(counted)).toContain('142 notes · 3 missing · 5 stale · 1 flagged')

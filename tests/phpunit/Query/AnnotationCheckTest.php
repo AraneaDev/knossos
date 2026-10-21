@@ -47,7 +47,7 @@ final class AnnotationCheckTest extends KnossosTestCase
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
         try {
-            $queries->upsertAnnotation($projectId, 'App\\Target', 'check', 'look', execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Target', 'check', 'look', execute: true);
             self::fail('a model check was written');
         } catch (InvalidArgumentException $refused) {
             assertSame('check is written by the person, from the pane.', $refused->getMessage());
@@ -78,13 +78,13 @@ final class AnnotationCheckTest extends KnossosTestCase
         $this->pane($pdo, $root, ['component' => 'App\\User', 'kind' => 'check'], execute: true);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($projectId, 'App\\User', 'note', 'Calls Target once per request.', execute: true);
-        $queries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Built once per request; checked again.', execute: true, replace: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\User', 'note', 'Calls Target once per request.', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Built once per request; checked again.', execute: true, replace: true);
 
         assertSame([], self::checks($pdo, $projectId, 'App\\Target'));
         assertSame([], self::checks($pdo, $projectId, 'App\\User'));
         $this->pane($pdo, $root, ['component' => 'App\\User', 'kind' => 'check'], execute: true);
-        $queries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Built once per request; checked again.', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Built once per request; checked again.', execute: true);
         assertSame([['user', '']], self::checks($pdo, $projectId, 'App\\User'));
     }
 
@@ -94,8 +94,8 @@ final class AnnotationCheckTest extends KnossosTestCase
         $this->pane($pdo, $root, ['component' => 'App\\Target', 'kind' => 'check'], execute: true);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($projectId, 'App\\Target', 'note', 'A preview.');
-        $refused = $queries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Different text, no replace.', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Target', 'note', 'A preview.');
+        $refused = $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Target', 'note', 'Different text, no replace.', execute: true);
 
         assertSame('refused', $refused->data['action']);
         assertSame([['user', '']], self::checks($pdo, $projectId, 'App\\Target'));
@@ -124,13 +124,13 @@ final class AnnotationCheckTest extends KnossosTestCase
     {
         [$pdo, $root, $projectId] = $this->paneAgreementGraph();
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($projectId, 'App\\User', 'note', 'the model saw this', execute: true);
-        $queries->upsertAnnotation($projectId, 'App\\User', 'note', 'and so did I', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\User', 'note', 'the model saw this', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'App\\User', 'note', 'and so did I', execute: true, author: 'user');
         $this->pane($pdo, $root, ['component' => 'App\\User', 'kind' => 'check'], execute: true);
 
-        $queries->removeAnnotation($projectId, 'App\\User', 'note', execute: true);
+        $queries->services()->annotationQueries->removeAnnotation($projectId, 'App\\User', 'note', execute: true);
         assertSame([['user', '']], self::checks($pdo, $projectId, 'App\\User'));
-        $queries->removeAnnotation($projectId, 'App\\User', 'note', execute: true, author: 'user');
+        $queries->services()->annotationQueries->removeAnnotation($projectId, 'App\\User', 'note', execute: true, author: 'user');
 
         assertSame([], self::checks($pdo, $projectId, 'App\\User'));
     }

@@ -73,14 +73,15 @@ final class CliOptionParser
     /**
      * Resolves a boolean flag, treating an explicit `--flag=false|0|no|off` as
      * disabled (last occurrence wins) rather than the mere presence of the key.
-     * A bare `--flag` and an empty `--flag=` are both on.
+     * A bare `--flag` and an empty `--flag=` are both on; an absent one is
+     * `$default`, so a flag that is on unless turned off reads `--flag=false`.
      *
      * @param array<string, list<string>> $options
      */
-    public function flag(array $options, string $name): bool
+    public function flag(array $options, string $name, bool $default = false): bool
     {
         if (!isset($options[$name]) || $options[$name] === []) {
-            return false;
+            return $default;
         }
         $value = strtolower((string) $options[$name][array_key_last($options[$name])]);
 

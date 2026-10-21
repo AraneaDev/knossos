@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BranchDiff, Dashboard, KnossosView } from '../../types'
 import { branchCount, branchInput, branchList } from './branch'
-import { paneInput, paneLayout } from './layout'
+import { paneInput } from './pane-input'
+import { paneLayout } from './layout'
 import { plainText } from './__tests__/plain-text'
 import { rowsHeight, rowWidth } from './rows'
 
@@ -43,7 +44,7 @@ const answer = (over: Partial<BranchDiff> = {}, n = 2): BranchDiff => ({
   files: touched(n),
   ...over,
 })
-const pane = (a: BranchDiff | null, v = view(), phase: 'loading' | 'done' = 'done') => paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, v, 0, true, null, null, undefined, null, undefined, { branch: { snapshot: 's9', phase, answer: a } })
+const pane = (a: BranchDiff | null, v = view(), phase: 'loading' | 'done' = 'done') => paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: v, now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { branch: { snapshot: 's9', phase, answer: a } } })
 const rowsOf = (a: BranchDiff | null, v = view(), columns = 100, height = 60) => paneLayout(pane(a, v), columns, height).body
 const text = (a: BranchDiff | null, columns = 100, phase: 'loading' | 'done' = 'done') => paneLayout(pane(a, view(), phase), columns, 60).body.map(plainText).join('\n')
 const flat = (t: string) => t.replace(/\s+/g, ' ')
@@ -96,6 +97,32 @@ describe('the Branch tab: did it break anything', () => {
     const hub = rows.find(r => r.key.split('|').some(k => k === 'finding-6'))!
     expect(hub.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:6')
     expect(plainText(hub)).toMatch(/^›/)
+  })
+
+  it('never calls a policy check that stopped early clean: the count is a floor, and with none found it says the check is not done', () => {
+    const stopped = { ...none, violations: { count: 0, truncated: true, items: [] } }
+    const input = branchInput({ snapshot: 's9', phase: 'done', answer: answer({ comparison: stopped }) }, ROOT)
+    expect(input.verdict.state).toBe('findings')
+    const t = flat(text(answer({ comparison: stopped })))
+    expect(t).not.toContain('✓ no violations')
+    expect(t).toContain('▲ policies not fully checked')
+    expect(t).toContain('the policy check stopped at its edge or time limit')
+    const some = answer({ comparison: { ...none, violations: { count: 1, truncated: true, items: [{ policy_id: 'core-stays-out', source: 'App\\Core\\Greeter::greet', source_kind: 'method', target: 'App\\Edge\\Caller', target_kind: 'class' }] } } })
+    expect(flat(text(some))).toContain('▲ 1+ things to look at')
+  })
+
+  it('says policies knossos could not read are unreadable, and claims no violations for them', () => {
+    const unreadable = { ...none, violations: { status: 'config_invalid' as const, message: 'Invalid JSON configuration: Syntax error', count: 0, truncated: false, items: [] } }
+    const t = flat(text(answer({ comparison: unreadable })))
+    expect(t).not.toContain('no violations')
+    expect(t).toContain('policies unreadable: Invalid JSON configuration: Syntax error')
+  })
+
+  it('gives the default reason for unreadable policies whose message is empty', () => {
+    const unreadable = { ...none, violations: { status: 'config_invalid' as const, message: '  ', count: 0, truncated: false, items: [] } }
+    const t = flat(text(answer({ comparison: unreadable })))
+    expect(t).toContain('policies unreadable: knossos.json could not be read')
+    expect(t).not.toMatch(/policies unreadable: *$/m)
   })
 })
 
@@ -154,7 +181,7 @@ describe('the Branch tab on the pane', () => {
 
   it('leaves the churn hotspots to the Churn tab', () => {
     const churn = { head: 'h', phase: 'done' as const, answer: { status: 'ok' as const, days: 30, commits: 9, files: Array.from({ length: 8 }, (_, i) => ({ path: `src/Hot${i}.php`, commits: 9 - i, dependents: 40 - i, score: (9 - i) * (40 - i), boundary: 'core' })) } }
-    const rows = paneLayout(paneInput(d, null, { fetchedAt: 0, failed: false }, { phase: 'idle', reason: null }, view(), 0, true, null, null, undefined, null, undefined, { branch: { snapshot: 's9', phase: 'done', answer: answer({ comparison: none }) }, churn }), 200, 60).body
+    const rows = paneLayout(paneInput({ dashboard: d, brief: null, refresh: { fetchedAt: 0, failed: false }, rescan: { phase: 'idle', reason: null }, view: view(), now: 0, terminal: true, detail: null, allow: null, sessionRoot: null, extras: { branch: { snapshot: 's9', phase: 'done', answer: answer({ comparison: none }) }, churn } }), 200, 60).body
     expect(rows.some(r => r.key.includes('churn'))).toBe(false)
   })
 

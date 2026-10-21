@@ -9,6 +9,7 @@ use Knossos\Discovery\FilesystemContentReader;
 use Knossos\Discovery\GitIgnoreRules;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Discovery\ProjectDiscoverer;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -53,9 +54,7 @@ final readonly class ScannedPaths implements TrackedPathPredicate
      */
     public static function forProject(PDO $pdo, string $projectId): self
     {
-        $statement = $pdo->prepare('SELECT config_json, root_realpath FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        $row = (new ProjectRepository($pdo))->find($projectId, ['config_json', 'root_realpath']);
         $raw = is_array($row) ? ($row['config_json'] ?? null) : null;
         $root = is_array($row) && is_string($row['root_realpath'] ?? null) ? rtrim($row['root_realpath'], '/') : null;
         $patterns = [];

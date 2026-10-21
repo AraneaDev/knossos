@@ -320,6 +320,54 @@ final class MigrationRunnerRaceTest extends TestCase
         $this->assertNoOpenTransaction($pdo);
     }
 
+    // ----- the runner's COMMIT of a no-transaction migration -----
+
+    /**
+     * A COMMIT that fails for any reason other than "no transaction is active"
+     * is a real failure: the migration's open transaction is rolled back, its
+     * version is not recorded, and the driver's error reaches the caller.
+     */
+    public function testANoTransactionCommitFailureIsRolledBackAndRethrown(): void
+    {
+        $this->writeMigration('001_open.sql', "-- migrate:no-transaction\nBEGIN;\nCREATE TABLE half (id INTEGER PRIMARY KEY);\n");
+        $pdo = $this->hookedConnection();
+        // The first COMMIT releases the claim's lock probe; the second is the
+        // runner's commit of the migration, and that one fails.
+        $pdo->onceBefore('COMMIT', static function () use ($pdo): void {
+            $pdo->onceBefore('COMMIT', static function (): void {
+                throw new PDOException('SQLSTATE[HY000]: General error: 10 disk I/O error');
+            });
+        });
+
+        $error = captureThrows(
+            fn() => (new MigrationRunner($pdo, $this->tempDir))->migrate(),
+            PDOException::class,
+        );
+
+        assertSame('SQLSTATE[HY000]: General error: 10 disk I/O error', $error->getMessage());
+        assertSame(false, $this->tableExists($pdo, 'half'), 'the open transaction must be rolled back');
+        assertSame([], $this->recorded($pdo));
+        assertSame('1', $this->foreignKeys($pdo));
+        $this->assertNoOpenTransaction($pdo);
+    }
+
+    /**
+     * A legacy no-transaction migration that commits its own transaction makes
+     * the runner's COMMIT answer "no transaction is active": nothing is left
+     * to commit, so the error is swallowed and the version counts as applied.
+     */
+    public function testANoTransactionMigrationThatCommittedItselfIsStillApplied(): void
+    {
+        $this->writeMigration('001_legacy.sql', "-- migrate:no-transaction\nBEGIN;\nCREATE TABLE legacy (id INTEGER PRIMARY KEY);\nCOMMIT;\n");
+        $pdo = SqliteConnection::open($this->tempSqlite);
+
+        assertSame(['001_legacy'], (new MigrationRunner($pdo, $this->tempDir))->migrate());
+
+        assertSame(true, $this->tableExists($pdo, 'legacy'));
+        assertSame(['001_legacy'], array_keys($this->recorded($pdo)));
+        $this->assertNoOpenTransaction($pdo);
+    }
+
     // ----- directory and file guards -----
 
     public function testAnUnreadableDirectoryThrowsInsteadOfApplyingNothing(): void

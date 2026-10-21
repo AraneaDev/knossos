@@ -25,15 +25,17 @@ import {
 } from "./session.mjs";
 import {
     checkLength,
-    defaultBranch,
     insertBefore,
     playShot,
     promptReady,
-    stageGraph,
-    copyNotes,
     submit,
-    throwawayWorktree,
 } from "./shoot.mjs";
+import {
+    copyNotes,
+    defaultBranch,
+    stageGraph,
+    throwawayWorktree,
+} from "./worktree.mjs";
 import { COMMAND_LIST, PROMPT } from "./shots.mjs";
 
 const run = promisify(execFile);

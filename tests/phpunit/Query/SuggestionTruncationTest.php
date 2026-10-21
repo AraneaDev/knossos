@@ -28,11 +28,11 @@ final class SuggestionTruncationTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $atLimit = $queries->suggestLocation($project, 'checkout refunds', 5, 2)->data['bounds'];
+        $atLimit = $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 2)->data['bounds'];
         assertSame(false, in_array('member_limit', $atLimit['truncation_reasons'], true), 'Two members fit a limit of two.');
         assertSame(2, $atLimit['members_examined']);
 
-        $over = $queries->suggestLocation($project, 'checkout refunds', 5, 1);
+        $over = $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 1);
         assertSame(true, in_array('member_limit', $over->data['bounds']['truncation_reasons'], true));
         assertSame(true, $over->truncated);
         assertSame(1, $over->data['bounds']['members_examined'], 'Only the members within the limit are examined.');
@@ -43,11 +43,11 @@ final class SuggestionTruncationTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $atLimit = $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 2)->data['bounds'];
+        $atLimit = $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 2)->data['bounds'];
         assertSame(false, in_array('edge_limit', $atLimit['truncation_reasons'], true), 'Two edges fit a limit of two.');
         assertSame(2, $atLimit['edges_examined']);
 
-        $over = $queries->suggestLocation($project, 'checkout refunds', 5, 20_000, 1);
+        $over = $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 20_000, 1);
         assertSame(true, in_array('edge_limit', $over->data['bounds']['truncation_reasons'], true));
         assertSame(true, $over->truncated, 'An edge cut must set the envelope flag, not only record a reason.');
         assertSame(1, $over->data['bounds']['edges_examined'], 'Only the edges within the limit are examined.');
@@ -58,7 +58,7 @@ final class SuggestionTruncationTest extends KnossosTestCase
     {
         [$queries, $project] = $this->queries();
 
-        $result = $queries->suggestLocation($project, 'checkout refunds', 5, 2, 2);
+        $result = $queries->services()->locationQueries->suggestLocation($project, 'checkout refunds', 5, 2, 2);
 
         assertSame([], $result->data['bounds']['truncation_reasons']);
         assertSame(false, $result->truncated);

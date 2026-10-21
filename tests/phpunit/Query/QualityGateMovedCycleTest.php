@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -29,20 +30,20 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             $scanner = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
-            $baseline = $scanner->scan($root, mode: 'full');
+            $baseline = $scanner->scan($root, new ScanOptions(mode: 'full'));
             $project = $baseline->projectId;
             mkdir($root . '/src/New');
             unlink($root . '/src/Old/Walk.php');
             unlink($root . '/src/Old/Visit.php');
             file_put_contents($root . '/src/New/Walk.php', self::walker('App\\New'));
             file_put_contents($root . '/src/New/Visit.php', self::visitor('App\\New'));
-            $scanner->scan($root, mode: 'full');
+            $scanner->scan($root, new ScanOptions(mode: 'full'));
             $queries = ArchitectureQueryService::forDatabase($pdo);
 
-            $gate = $queries->qualityGate($project, $baseline->snapshotId, ['new_cycles' => 0]);
+            $gate = $queries->services()->gateQueries->qualityGate($project, $baseline->snapshotId, ['new_cycles' => 0]);
 
             self::assertSame(0, $gate->data['metrics']['new_cycles'], 'Walk::walk and Visit::visit only moved.');
-            self::assertSame(0, $queries->branchComparison($project, $baseline->snapshotId, [])['cycles']['count']);
+            self::assertSame(0, $queries->services()->gateQueries->branchComparison($project, $baseline->snapshotId, [])['cycles']['count']);
 
             file_put_contents($root . '/src/New/Ping.php', <<<'PHP'
                 <?php
@@ -65,12 +66,12 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
                     }
                 }
                 PHP);
-            $scanner->scan($root, mode: 'full');
+            $scanner->scan($root, new ScanOptions(mode: 'full'));
 
-            $gate = $queries->qualityGate($project, $baseline->snapshotId, ['new_cycles' => 0]);
+            $gate = $queries->services()->gateQueries->qualityGate($project, $baseline->snapshotId, ['new_cycles' => 0]);
 
             self::assertSame(1, $gate->data['metrics']['new_cycles'], 'Ping::ping and Pong::pong are a cycle the change made.');
-            self::assertSame(1, $queries->branchComparison($project, $baseline->snapshotId, [])['cycles']['count']);
+            self::assertSame(1, $queries->services()->gateQueries->branchComparison($project, $baseline->snapshotId, [])['cycles']['count']);
         } finally {
             $this->removeTempTree($root);
         }

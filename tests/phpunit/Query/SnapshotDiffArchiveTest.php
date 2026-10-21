@@ -34,7 +34,7 @@ final class SnapshotDiffArchiveTest extends KnossosTestCase
     {
         [$pdo, $ids] = $this->changedGraph();
 
-        $diff = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 100);
+        $diff = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 100);
         $answer = ['summary' => $diff->summary, 'truncated' => $diff->truncated, 'warnings' => $diff->warnings,
             'changes' => $diff->data['changes'], 'confidence_changes' => $diff->data['confidence_changes'], 'bounds' => $diff->data['bounds']];
 
@@ -95,7 +95,7 @@ final class SnapshotDiffArchiveTest extends KnossosTestCase
         gc_collect_cycles();
         memory_reset_peak_usage();
         $before = memory_get_usage();
-        $diff = $queries->snapshotDiff($ids['project'], $ids['scan']);
+        $diff = $queries->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan']);
         $used = memory_get_peak_usage() - $before;
 
         self::assertSame(0, $diff->data['bounds']['total_changes']);

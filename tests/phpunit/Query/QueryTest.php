@@ -9,6 +9,7 @@ use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\ToolService;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Store\StableId;
@@ -82,9 +83,9 @@ final class QueryTest extends KnossosTestCase
         // Exactly at the limit nothing is truncated: every `>` must reject the
         // equal case, so none of the four can be `>=`. With all four dimensions
         // on the boundary, flipping any single one flips this answer.
-        assertSame(false, $queries->architectureSummary($ids['project'], $width)->truncated);
+        assertSame(false, $queries->services()->summaryQueries->architectureSummary($ids['project'], $width)->truncated);
         // One below, every dimension overflows: no `>` can be `<=`.
-        assertSame(true, $queries->architectureSummary($ids['project'], $width - 1)->truncated);
+        assertSame(true, $queries->services()->summaryQueries->architectureSummary($ids['project'], $width - 1)->truncated);
 
         // A single dimension over the limit sets the flag on its own, which an
         // `&&` chain would not: the other three are still exactly on it.
@@ -92,7 +93,7 @@ final class QueryTest extends KnossosTestCase
         $repository->saveNode($widened, $ids['project'], 'php', 'property', 'App\\Widening', 'Widening', null, $ids['file'], 90, 91, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         assertSame($width + 1, $distinct('nodes', 'kind'));
 
-        assertSame(true, $queries->architectureSummary($ids['project'], $width)->truncated, 'One overflowing dimension must set truncated by itself.');
+        assertSame(true, $queries->services()->summaryQueries->architectureSummary($ids['project'], $width)->truncated, 'One overflowing dimension must set truncated by itself.');
     }
 
     #[Group('query')]
@@ -149,7 +150,7 @@ final class QueryTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $next);
 
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $diff = $queries->snapshotDiff($ids['project'], $ids['scan']);
+        $diff = $queries->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan']);
         assertSame($ids['scan'], $diff->data['from']['scan_id']);
         assertSame($next, $diff->data['to']['scan_id']);
         assertSame(1, $diff->data['changes']['components']['counts']['added']);
@@ -163,35 +164,35 @@ final class QueryTest extends KnossosTestCase
         assertSame(1, $diff->data['confidence_changes']['lowered']);
         assertSame(1, $diff->data['changes']['relationships']['counts']['removed']);
         assertSame(1, $diff->data['changes']['relationships']['counts']['added']);
-        assertSame(true, $queries->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 1)->truncated);
-        assertThrows(fn() => $queries->snapshotDiff($ids['project'], 'active'), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->snapshotDiff($ids['project'], 'missing'), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 0), InvalidArgumentException::class);
+        assertSame(true, $queries->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 1)->truncated);
+        assertThrows(fn() => $queries->services()->diffQueries->snapshotDiff($ids['project'], 'active'), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->diffQueries->snapshotDiff($ids['project'], 'missing'), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 0), InvalidArgumentException::class);
         $pdo->exec("UPDATE scan_snapshots SET complete = 0 WHERE scan_id = '" . $ids['scan'] . "'");
-        assertThrows(fn() => $queries->snapshotDiff($ids['project'], $ids['scan']), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan']), InvalidArgumentException::class);
         $pdo->exec("UPDATE scan_snapshots SET complete = 1 WHERE scan_id = '" . $ids['scan'] . "'");
 
         $budgets = ['new_cycles' => 0, 'error_diagnostics' => 0, 'hub_degree_growth' => 10,
             'unreferenced_candidates' => 10, 'public_surface_changes' => 0];
-        $gate = $queries->qualityGate($ids['project'], $ids['scan'], $budgets, sarif: true, proposeBaseline: true);
+        $gate = $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], $budgets, sarif: true, proposeBaseline: true);
         assertSame(true, $gate->data['passed']);
         assertSame(false, $gate->data['proposed_baseline']['applied']);
         assertSame('2.1.0', $gate->data['sarif']['version']);
-        assertSame(false, $queries->qualityGate($ids['project'], $ids['scan'], ['unreferenced_candidates' => 0])->data['passed']);
-        $policyGate = $queries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 0], [[
+        assertSame(false, $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['unreferenced_candidates' => 0])->data['passed']);
+        $policyGate = $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 0], [[
             'id' => 'backend-no-billing', 'from_boundary' => $backend, 'deny_targets' => [$billingBoundary],
         ]], sarif: true);
         assertSame(false, $policyGate->data['passed']);
         assertSame(1, $policyGate->data['metrics']['boundary_violations']);
         assertSame('knossos.boundary', $policyGate->data['sarif']['runs'][0]['results'][0]['ruleId']);
-        assertThrows(fn() => $queries->qualityGate($ids['project'], $ids['scan'], []), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 0]), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], []), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 0]), InvalidArgumentException::class);
 
-        $trends = $queries->architectureTrends($ids['project'], 2, $ids['scan']);
+        $trends = $queries->services()->gateQueries->architectureTrends($ids['project'], 2, $ids['scan']);
         assertSame([$ids['scan'], $next], array_column($trends->data['series'], 'scan_id'));
         assertContains('## Architecture changes', $trends->data['release_notes']['markdown']);
         assertContains('Components: +1 / -1', $trends->data['release_notes']['markdown']);
-        assertThrows(fn() => $queries->architectureTrends($ids['project'], 1), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->gateQueries->architectureTrends($ids['project'], 1), InvalidArgumentException::class);
 
         $tools = new ToolService(
             new ProjectScanService($pdo, self::repositoryRoot(), [self::repositoryRoot() . '/tests/Fixtures/mixed']),
@@ -221,7 +222,7 @@ final class QueryTest extends KnossosTestCase
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Mixed Fixture');
+            $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Mixed Fixture'));
             assertSame(3, $scan->data['files']);
             assertSame(true, $scan->data['nodes'] >= 4);
             assertSame(true, $scan->data['metrics']['elapsed_ms'] >= 0);
@@ -235,7 +236,7 @@ final class QueryTest extends KnossosTestCase
             assertSame('src/CheckoutService.php', $component->evidence[0]['path']);
             assertSame(false, str_starts_with($component->evidence[0]['path'], '/'));
 
-            $summary = $queries->architectureSummary($scan->projectId);
+            $summary = $queries->services()->summaryQueries->architectureSummary($scan->projectId);
             assertSame($scan->snapshotId, $summary->snapshotId);
             assertArrayContains(['kind' => 'php', 'count' => 1], $summary->data['languages']);
             assertArrayContains(['kind' => 'typescript', 'count' => 1], $summary->data['languages']);
@@ -255,7 +256,7 @@ final class QueryTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $catalogue = $queries->listProjects();
+        $catalogue = $queries->services()->catalogQueries->listProjects(50, 0, false);
         assertSame('catalog', $catalogue->projectId);
         assertSame(1, count($catalogue->data['projects']));
         $project = $catalogue->data['projects'][0];
@@ -265,7 +266,7 @@ final class QueryTest extends KnossosTestCase
         assertSame(['files' => 1, 'nodes' => 2, 'edges' => 1, 'diagnostics' => 0], $project['counts']);
 
         $repository->completeScan($ids['project'], $ids['scan']);
-        $active = $queries->listProjects(includeRoots: true)->data['projects'][0];
+        $active = $queries->services()->catalogQueries->listProjects(limit: 50, offset: 0, includeRoots: true)->data['projects'][0];
         assertSame('root_unavailable', $active['freshness']);
         assertSame('/workspace/fixture-shop', $active['root']);
         assertSame('complete', $active['active_scan']['status']);
@@ -273,16 +274,16 @@ final class QueryTest extends KnossosTestCase
         $nextScan = StableId::scan($ids['project'], 'scan-2');
         $repository->createScan($nextScan, $ids['project'], 'incremental', hash('sha256', 'scanner-set'));
         $pdo->exec("UPDATE scans SET started_at = '9999-12-31T23:59:59+00:00' WHERE id = '" . $nextScan . "'");
-        assertSame('scan_in_progress', $queries->listProjects()->data['projects'][0]['freshness']);
+        assertSame('scan_in_progress', $queries->services()->catalogQueries->listProjects(50, 0, false)->data['projects'][0]['freshness']);
 
         $second = StableId::project('second-project');
         $repository->saveProject($second, 'Second Project', self::repositoryRoot() . '/tests/Fixtures/mixed');
-        $page = $queries->listProjects(limit: 1);
+        $page = $queries->services()->catalogQueries->listProjects(limit: 1, offset: 0, includeRoots: false);
         assertSame(true, $page->truncated);
         assertSame(1, $page->data['pagination']['next_offset']);
-        assertSame(1, count($queries->listProjects(limit: 1, offset: 1)->data['projects']));
-        assertThrows(fn() => $queries->listProjects(offset: -1), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->listProjects(limit: 101), InvalidArgumentException::class);
+        assertSame(1, count($queries->services()->catalogQueries->listProjects(limit: 1, offset: 1, includeRoots: false)->data['projects']));
+        assertThrows(fn() => $queries->services()->catalogQueries->listProjects(limit: 50, offset: -1, includeRoots: false), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->catalogQueries->listProjects(limit: 101, offset: 0, includeRoots: false), InvalidArgumentException::class);
     }
 
     /**
@@ -299,8 +300,8 @@ final class QueryTest extends KnossosTestCase
         [$pdo] = $this->storeFixture();
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        assertSame([], $queries->listProjects(offset: 100_000)->data['projects']);
-        assertThrows(fn() => $queries->listProjects(offset: 100_001), InvalidArgumentException::class);
+        assertSame([], $queries->services()->catalogQueries->listProjects(limit: 50, offset: 100_000, includeRoots: false)->data['projects']);
+        assertThrows(fn() => $queries->services()->catalogQueries->listProjects(limit: 50, offset: 100_001, includeRoots: false), InvalidArgumentException::class);
     }
 
     /**
@@ -322,7 +323,7 @@ final class QueryTest extends KnossosTestCase
         }
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $defaulted = $queries->listProjects();
+        $defaulted = $queries->services()->catalogQueries->listProjects(50, 0, false);
 
         assertSame(50, count($defaulted->data['projects']), 'The default page size is 50.');
         assertSame(true, $defaulted->truncated);
@@ -405,12 +406,12 @@ final class QueryTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $first = $queries->architectureContext(
+        $first = $queries->services()->contextQueries->architectureContext(
             $ids['project'],
             'fix checkout billing behavior',
             ['src/Checkout.php'],
         );
-        $second = $queries->architectureContext(
+        $second = $queries->services()->contextQueries->architectureContext(
             $ids['project'],
             'fix checkout billing behavior',
             ['src/Checkout.php'],
@@ -422,11 +423,11 @@ final class QueryTest extends KnossosTestCase
         assertSame(true, $first->data['budget']['actual_chars'] <= 30_000);
         assertSame(true, $first->data['budget']['dossier_candidates'] >= 1);
 
-        $bounded = $queries->architectureContext($ids['project'], 'refactor checkout', maxChars: 4000);
+        $bounded = $queries->services()->contextQueries->architectureContext($ids['project'], 'refactor checkout', maxChars: 4000);
         assertSame(true, $bounded->data['budget']['actual_chars'] <= 4000);
         assertSame(true, $bounded->truncated);
-        assertThrows(fn() => $queries->architectureContext($ids['project']), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->architectureContext($ids['project'], 'task', maxChars: 3999), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->contextQueries->architectureContext($ids['project']), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->contextQueries->architectureContext($ids['project'], 'task', maxChars: 3999), InvalidArgumentException::class);
     }
 
     #[Group('query')]

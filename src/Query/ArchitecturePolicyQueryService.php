@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Closure;
 use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Result\ResultEnvelope;
@@ -61,34 +62,25 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
      * `knossos.json`, read live; a project that declares none, or whose file
      * cannot be read, is refused rather than reported as having no violations.
      *
+     * `$include` (internal, no tool exposes it) keeps an edge in the check
+     * only when it returns true for the edge's row (`source_id`, `target_id`,
+     * `kind`). An edge it drops still counts against the edge budget but is
+     * neither counted nor listed, so `violation_count` is exact for the edges
+     * kept however many the rest would have filled the listing with.
+     *
      * @param list<array<string, mixed>>|null $policies
      * @param list<string> $sourceFiles
      * @param list<string> $touchingIds
+     * @param (Closure(array<string, mixed>): bool)|null $include
      */
-    public function checkArchitecture(string $projectId, ?array $policies, string $minConfidence = 'possible', int $limit = 100, int $maxEdges = self::DEFAULT_MAX_EDGES, int $timeoutMs = 1000, array $sourceFiles = [], array $touchingIds = []): ResultEnvelope
+    public function checkArchitecture(string $projectId, ?array $policies, string $minConfidence = 'possible', int $limit = 100, int $maxEdges = self::DEFAULT_MAX_EDGES, int $timeoutMs = 1000, array $sourceFiles = [], array $touchingIds = [], ?Closure $include = null): ResultEnvelope
     {
         $project = $this->project($projectId);
         self::assertLimit($limit);
         $confidenceRank = $this->confidenceQueryBounds($maxEdges, $timeoutMs, $minConfidence);
         $policies ??= self::declaredPolicies((string) $project['root_realpath']);
-        $shapes = self::validatePolicies($policies);
-
-        $references = $this->boundaryReferences($projectId);
-        $compiled = [];
-        $allKinds = [];
-        foreach ($shapes as ['id' => $id, 'from' => $from, 'allow' => $allow, 'deny' => $deny, 'kinds' => $kinds]) {
-            $compiledAllow = array_map(static fn(string $value): string => in_array($value, self::RESERVED_TARGETS, true) ? $value : $references->resolve($value), $allow);
-            $compiledDeny = array_map(static fn(string $value): string => in_array($value, self::RESERVED_TARGETS, true) ? $value : $references->resolve($value), $deny);
-            $compiled[] = [
-                'id' => $id,
-                'from_id' => $references->resolve($from),
-                'allow' => array_values(array_unique($compiledAllow)),
-                'deny' => array_values(array_unique($compiledDeny)),
-                'edge_kinds' => $kinds,
-            ];
-            $allKinds = [...$allKinds, ...$kinds];
-        }
-        $allKinds = array_values(array_unique($allKinds));
+        $compiled = $this->compilePolicies($projectId, self::validatePolicies($policies));
+        $allKinds = array_values(array_unique(array_merge([], ...array_column($compiled, 'edge_kinds'))));
         sort($allKinds, SORT_STRING);
 
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
@@ -100,41 +92,30 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
         // edge count.
         $boundaries = $this->projectBoundaryNames($projectId);
 
-        $truncated = false;
-        $truncationReasons = [];
+        $truncation = new Truncation();
         $violations = [];
         $evidence = [];
         $violationCount = 0;
         $edgesExamined = 0;
         while (($edge = $statement->fetch()) !== false) {
             if ($edgesExamined >= $maxEdges) {
-                $truncated = true;
-                $truncationReasons[] = 'edge_limit';
+                $truncation->add('edge_limit');
                 break;
             }
             ++$edgesExamined;
             if ($this->now() > $deadline) {
-                $truncated = true;
-                $truncationReasons[] = 'time_limit';
+                $truncation->add('time_limit');
                 break;
+            }
+            if ($include !== null && !$include($edge)) {
+                continue;
             }
             $sourceBoundaryIds = array_column($boundaries[$edge['source_id']] ?? [], 'id');
             $targetBoundaryIds = array_column($boundaries[$edge['target_id']] ?? [], 'id');
             $effectiveTargets = $targetBoundaryIds !== [] ? $targetBoundaryIds
                 : [str_starts_with((string) $edge['target_kind'], SharedNodeKinds::EXTERNAL_PREFIX) || (int) $edge['target_external'] === 1 ? '@external' : '@unassigned'];
             foreach ($compiled as $policy) {
-                if (!in_array($policy['from_id'], $sourceBoundaryIds, true) || !in_array($edge['kind'], $policy['edge_kinds'], true)) {
-                    continue;
-                }
-                $reasons = [];
-                $denied = array_values(array_intersect($effectiveTargets, $policy['deny']));
-                if ($denied !== []) {
-                    $reasons[] = ['type' => 'denied_target', 'targets' => $denied];
-                }
-                $internal = in_array($policy['from_id'], $effectiveTargets, true);
-                if ($policy['allow'] !== [] && !$internal && array_intersect($effectiveTargets, $policy['allow']) === []) {
-                    $reasons[] = ['type' => 'target_not_allowed', 'targets' => $effectiveTargets];
-                }
+                $reasons = self::violationReasons($policy, (string) $edge['kind'], $sourceBoundaryIds, $effectiveTargets);
                 if ($reasons === []) {
                     continue;
                 }
@@ -142,48 +123,24 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
                 // quality_gate) can compare a budget against the true violation
                 // total rather than the capped, collected subset.
                 ++$violationCount;
-                if (count($violations) < $limit) {
-                    $violations[] = [
-                        'policy_id' => $policy['id'],
-                        'relationship' => [
-                            'id' => $edge['id'], 'kind' => $edge['kind'], 'confidence' => $edge['confidence'],
-                            'origin' => $edge['origin'], 'source_id' => $edge['source_id'], 'target_id' => $edge['target_id'],
-                        ],
-                        'source' => ['id' => $edge['source_id'], 'kind' => $edge['source_kind'], 'canonical_name' => $edge['source_name']],
-                        'target' => ['id' => $edge['target_id'], 'kind' => $edge['target_kind'], 'canonical_name' => $edge['target_name']],
-                        'source_boundaries' => $boundaries[$edge['source_id']] ?? [],
-                        'target_boundaries' => $boundaries[$edge['target_id']] ?? [],
-                        'reasons' => $reasons,
+                if (count($violations) >= $limit) {
+                    $truncation->add('result_limit');
+                    continue;
+                }
+                $violations[] = self::violationRecord($policy['id'], $edge, $boundaries, $reasons);
+                if ($edge['relative_path'] !== null && count($evidence) < $limit) {
+                    $evidence[] = [
+                        'policy_id' => $policy['id'], 'edge_id' => $edge['id'], 'path' => $edge['relative_path'],
+                        'start_line' => $edge['start_line'], 'end_line' => $edge['end_line'],
                     ];
-                    if ($edge['relative_path'] !== null && count($evidence) < $limit) {
-                        $evidence[] = [
-                            'policy_id' => $policy['id'], 'edge_id' => $edge['id'], 'path' => $edge['relative_path'],
-                            'start_line' => $edge['start_line'], 'end_line' => $edge['end_line'],
-                        ];
-                    }
-                } elseif (!in_array('result_limit', $truncationReasons, true)) {
-                    $truncated = true;
-                    $truncationReasons[] = 'result_limit';
                 }
             }
-        }
-        $truncationReasons = array_values(array_unique($truncationReasons));
-        // Report the total found, not the page returned. Announcing "Found 4
-        // declared architecture policy violations" over a listing capped at 4,
-        // while bounds.violation_count said 322, understated the finding by two
-        // orders of magnitude to anyone reading only the summary.
-        $summary = sprintf('Found %d declared architecture policy violation%s.', $violationCount, $violationCount === 1 ? '' : 's');
-        if ($violationCount > count($violations)) {
-            $summary .= sprintf(' Listing the first %d; raise limit to see more.', count($violations));
-        }
-        if ($truncationReasons !== [] && !in_array('result_limit', $truncationReasons, true)) {
-            $summary .= sprintf(' The search was truncated (%s), so violations beyond that bound are not counted.', implode(', ', $truncationReasons));
         }
 
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            $summary,
+            self::summaryText($violationCount, count($violations), $truncation->reasons()),
             [
                 'violations' => $violations,
                 'policies_evaluated' => array_map(static fn(array $policy): array => [
@@ -193,13 +150,115 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
                 'bounds' => [
                     'limit' => $limit, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs,
                     'edges_examined' => $edgesExamined, 'violation_count' => $violationCount,
-                    'truncation_reasons' => $truncationReasons,
+                    'truncation_reasons' => $truncation->reasons(),
                 ],
             ],
             $evidence,
             ['Policy violations are static graph findings; runtime behavior and dynamic dependencies may differ.'],
-            $truncated,
+            $truncation->any(),
         );
+    }
+
+    /**
+     * The validated policies with their boundary references resolved to ids;
+     * the reserved targets stay as they are.
+     *
+     * @param list<array{id: string, from: string, allow: list<string>, deny: list<string>, kinds: list<string>}> $shapes
+     * @return list<array{id: string, from_id: string, allow: list<string>, deny: list<string>, edge_kinds: list<string>}>
+     */
+    private function compilePolicies(string $projectId, array $shapes): array
+    {
+        $references = $this->boundaryReferences($projectId);
+        $resolve = static fn(string $value): string => in_array($value, self::RESERVED_TARGETS, true) ? $value : $references->resolve($value);
+        $compiled = [];
+        foreach ($shapes as ['id' => $id, 'from' => $from, 'allow' => $allow, 'deny' => $deny, 'kinds' => $kinds]) {
+            $compiled[] = [
+                'id' => $id,
+                'from_id' => $references->resolve($from),
+                'allow' => array_values(array_unique(array_map($resolve, $allow))),
+                'deny' => array_values(array_unique(array_map($resolve, $deny))),
+                'edge_kinds' => $kinds,
+            ];
+        }
+
+        return $compiled;
+    }
+
+    /**
+     * Why one edge breaks one policy: a denied target it reaches, or a target
+     * outside an allow list (an edge within the policy's own boundary is always
+     * allowed). Empty when the policy does not govern the edge or it complies.
+     *
+     * @param array{id: string, from_id: string, allow: list<string>, deny: list<string>, edge_kinds: list<string>} $policy
+     * @param list<string> $sourceBoundaryIds
+     * @param list<string> $effectiveTargets the target's boundary ids, else `@external` or `@unassigned`
+     * @return list<array{type: string, targets: list<string>}>
+     */
+    private static function violationReasons(array $policy, string $edgeKind, array $sourceBoundaryIds, array $effectiveTargets): array
+    {
+        if (!in_array($policy['from_id'], $sourceBoundaryIds, true) || !in_array($edgeKind, $policy['edge_kinds'], true)) {
+            return [];
+        }
+        $reasons = [];
+        $denied = array_values(array_intersect($effectiveTargets, $policy['deny']));
+        if ($denied !== []) {
+            $reasons[] = ['type' => 'denied_target', 'targets' => $denied];
+        }
+        $internal = in_array($policy['from_id'], $effectiveTargets, true);
+        if ($policy['allow'] !== [] && !$internal && array_intersect($effectiveTargets, $policy['allow']) === []) {
+            $reasons[] = ['type' => 'target_not_allowed', 'targets' => $effectiveTargets];
+        }
+
+        return $reasons;
+    }
+
+    /**
+     * One violation as the check lists it: the policy, the offending edge,
+     * both ends with their boundaries, and why.
+     *
+     * @param array<string, mixed> $edge a row of {@see self::policyEdges()}
+     * @param array<string, list<array{id: string, name: string, source: string}>> $boundaries each component's boundaries by id
+     * @param list<array{type: string, targets: list<string>}> $reasons
+     * @return array<string, mixed>
+     */
+    private static function violationRecord(string $policyId, array $edge, array $boundaries, array $reasons): array
+    {
+        return [
+            'policy_id' => $policyId,
+            'relationship' => [
+                'id' => $edge['id'], 'kind' => $edge['kind'], 'confidence' => $edge['confidence'],
+                'origin' => $edge['origin'], 'source_id' => $edge['source_id'], 'target_id' => $edge['target_id'],
+            ],
+            'source' => ['id' => $edge['source_id'], 'kind' => $edge['source_kind'], 'canonical_name' => $edge['source_name']],
+            'target' => ['id' => $edge['target_id'], 'kind' => $edge['target_kind'], 'canonical_name' => $edge['target_name']],
+            'source_boundaries' => $boundaries[$edge['source_id']] ?? [],
+            'target_boundaries' => $boundaries[$edge['target_id']] ?? [],
+            'reasons' => $reasons,
+        ];
+    }
+
+    /**
+     * The check's one-line summary: the total found, how many are listed when
+     * fewer, and whether a bound stopped the search.
+     *
+     * Reports the total found, not the page returned. Announcing "Found 4
+     * declared architecture policy violations" over a listing capped at 4,
+     * while bounds.violation_count said 322, understated the finding by two
+     * orders of magnitude to anyone reading only the summary.
+     *
+     * @param list<string> $truncationReasons
+     */
+    private static function summaryText(int $violationCount, int $listed, array $truncationReasons): string
+    {
+        $summary = sprintf('Found %d declared architecture policy violation%s.', $violationCount, $violationCount === 1 ? '' : 's');
+        if ($violationCount > $listed) {
+            $summary .= sprintf(' Listing the first %d; raise limit to see more.', $listed);
+        }
+        if ($truncationReasons !== [] && !in_array('result_limit', $truncationReasons, true)) {
+            $summary .= sprintf(' The search was truncated (%s), so violations beyond that bound are not counted.', implode(', ', $truncationReasons));
+        }
+
+        return $summary;
     }
 
     /**

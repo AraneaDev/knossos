@@ -60,16 +60,16 @@ describe('noteEdit without a dashboard root', () => {
         const { io, values } = fakePort()
         const note = await noteEdit(io, `${SESSION}/src/a.ts`, 'base-1')
         expect(note).toBeNull()
-        expect(mod.dirty).toBe(true)
-        expect([...mod.edited]).toEqual([`${SESSION}/src/a.ts`])
-        expect(mod.turnBase).toBe('base-1')
+        expect(mod.turn.dirty).toBe(true)
+        expect([...mod.turn.edited]).toEqual([`${SESSION}/src/a.ts`])
+        expect(mod.turn.base).toBe('base-1')
         expect(values.get('sessionEdits')).toEqual([`${SESSION}/src/a.ts`])
     })
 
     it('also treats a dashboard whose project root is null as having no root', async () => {
         const { io, values } = fakePort({ dashboard: dashboard(null) })
         expect(await noteEdit(io, `${SESSION}/src/hub.ts`, null)).toBeNull()
-        expect([...mod.edited]).toEqual([`${SESSION}/src/hub.ts`])
+        expect([...mod.turn.edited]).toEqual([`${SESSION}/src/hub.ts`])
         expect(values.get('sessionEdits')).toEqual([`${SESSION}/src/hub.ts`])
     })
 
@@ -77,17 +77,17 @@ describe('noteEdit without a dashboard root', () => {
         const { io, values } = fakePort()
         const note = await noteEdit(io, '/elsewhere/b.ts', 'base-1')
         expect(note).toBeNull()
-        expect(mod.dirty).toBe(false)
-        expect(mod.edited.size).toBe(0)
-        expect(mod.turnBase).toBeNull()
+        expect(mod.turn.dirty).toBe(false)
+        expect(mod.turn.edited.size).toBe(0)
+        expect(mod.turn.base).toBeNull()
         expect(values.get('sessionEdits')).toEqual([])
     })
 
     it('ignores a sibling directory that only shares the session root as a prefix', async () => {
         const { io } = fakePort()
         expect(await noteEdit(io, `${SESSION}-other/c.ts`, null)).toBeNull()
-        expect(mod.edited.size).toBe(0)
-        expect(mod.dirty).toBe(false)
+        expect(mod.turn.edited.size).toBe(0)
+        expect(mod.turn.dirty).toBe(false)
     })
 })
 
@@ -96,9 +96,9 @@ describe('noteEdit with a dashboard root', () => {
         const { io, values } = fakePort({ dashboard: dashboard(ROOT), sessionEdits: ['src/old.ts'] })
         const note = await noteEdit(io, '/other/repo/src/hub.ts', 'base-1')
         expect(note).toBeNull()
-        expect(mod.dirty).toBe(false)
-        expect(mod.edited.size).toBe(0)
-        expect(mod.turnBase).toBeNull()
+        expect(mod.turn.dirty).toBe(false)
+        expect(mod.turn.edited.size).toBe(0)
+        expect(mod.turn.base).toBeNull()
         expect(values.get('sessionEdits')).toEqual(['src/old.ts'])
     })
 
@@ -106,15 +106,15 @@ describe('noteEdit with a dashboard root', () => {
         const { io, values } = fakePort({ dashboard: dashboard(ROOT) })
         const note = await noteEdit(io, `${ROOT}/src/unlisted.ts`, 'base-1')
         expect(note).toBeNull()
-        expect(mod.dirty).toBe(true)
-        expect([...mod.edited]).toEqual(['src/unlisted.ts'])
+        expect(mod.turn.dirty).toBe(true)
+        expect([...mod.turn.edited]).toEqual(['src/unlisted.ts'])
         expect(values.get('sessionEdits')).toEqual(['src/unlisted.ts'])
     })
 
     it('says nothing when the file has fewer dependents than the threshold, but still records it', async () => {
         const { io, values } = fakePort({ dashboard: dashboard(ROOT) })
         expect(await noteEdit(io, `${ROOT}/src/leaf.ts`, null)).toBeNull()
-        expect([...mod.edited]).toEqual(['src/leaf.ts'])
+        expect([...mod.turn.edited]).toEqual(['src/leaf.ts'])
         expect(values.get('sessionEdits')).toEqual(['src/leaf.ts'])
     })
 
@@ -128,28 +128,28 @@ describe('noteEdit with a dashboard root', () => {
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
         const note = await noteEdit(io, `${ROOT}/src/hub.ts`, null)
         expect(note).toEqual({ text: editNote(hub), path: 'src/hub.ts' })
-        expect(mod.dirty).toBe(true)
+        expect(mod.turn.dirty).toBe(true)
     })
 
     it('follows the configured threshold: a higher one silences the same file', async () => {
         reset({ ...options, fanInThreshold: 8 })
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
         expect(await noteEdit(io, `${ROOT}/src/hub.ts`, null)).toBeNull()
-        expect([...mod.edited]).toEqual(['src/hub.ts'])
+        expect([...mod.turn.edited]).toEqual(['src/hub.ts'])
     })
 
     it('resolves a linked path to its real path before relativising it', async () => {
         const { io, values } = fakePort({ dashboard: dashboard(ROOT) }, { '/home/me/link': ROOT })
         const note = await noteEdit(io, '/home/me/link/src/hub.ts', null)
         expect(note).toEqual({ text: editNote(hub), path: 'src/hub.ts' })
-        expect([...mod.edited]).toEqual(['src/hub.ts'])
+        expect([...mod.turn.edited]).toEqual(['src/hub.ts'])
         expect(values.get('sessionEdits')).toEqual(['src/hub.ts'])
     })
 
     it('treats a link that points out of the project as outside it', async () => {
         const { io, values } = fakePort({ dashboard: dashboard(ROOT) }, { [`${ROOT}/vendored`]: '/opt/shared' })
         expect(await noteEdit(io, `${ROOT}/vendored/lib.ts`, null)).toBeNull()
-        expect(mod.edited.size).toBe(0)
+        expect(mod.turn.edited.size).toBe(0)
         expect(values.get('sessionEdits')).toEqual([])
     })
 
@@ -159,7 +159,7 @@ describe('noteEdit with a dashboard root', () => {
         await noteEdit(io, `${ROOT}/src/leaf.ts`, null)
         await noteEdit(io, `${ROOT}/src/unlisted.ts`, null)
         expect(values.get('sessionEdits')).toEqual(['src/leaf.ts', 'src/unlisted.ts'])
-        expect([...mod.edited]).toEqual(['src/leaf.ts', 'src/unlisted.ts'])
+        expect([...mod.turn.edited]).toEqual(['src/leaf.ts', 'src/unlisted.ts'])
     })
 })
 
@@ -167,34 +167,34 @@ describe('noteEdit and the turn base', () => {
     it('sets the turn base from the first edit of the turn', async () => {
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
         await noteEdit(io, `${ROOT}/src/leaf.ts`, 'snap-before')
-        expect(mod.turnBase).toBe('snap-before')
+        expect(mod.turn.base).toBe('snap-before')
     })
 
     it('never overwrites a turn base already set', async () => {
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
-        mod.turnBase = 'snap-first'
+        mod.turn.base = 'snap-first'
         await noteEdit(io, `${ROOT}/src/leaf.ts`, 'snap-later')
-        expect(mod.turnBase).toBe('snap-first')
+        expect(mod.turn.base).toBe('snap-first')
     })
 
     it('keeps the first base across later edits in the turn', async () => {
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
         await noteEdit(io, `${ROOT}/src/leaf.ts`, 'snap-1')
         await noteEdit(io, `${ROOT}/src/hub.ts`, 'snap-2')
-        expect(mod.turnBase).toBe('snap-1')
+        expect(mod.turn.base).toBe('snap-1')
     })
 
     it('leaves an unset base null when the edit brings no base, so a later edit can still set it', async () => {
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
         await noteEdit(io, `${ROOT}/src/leaf.ts`, null)
-        expect(mod.turnBase).toBeNull()
+        expect(mod.turn.base).toBeNull()
         await noteEdit(io, `${ROOT}/src/leaf.ts`, 'snap-2')
-        expect(mod.turnBase).toBe('snap-2')
+        expect(mod.turn.base).toBe('snap-2')
     })
 
     it('does not set the base for an edit outside the project', async () => {
         const { io } = fakePort({ dashboard: dashboard(ROOT) })
         await noteEdit(io, '/other/x.ts', 'snap-1')
-        expect(mod.turnBase).toBeNull()
+        expect(mod.turn.base).toBeNull()
     })
 })

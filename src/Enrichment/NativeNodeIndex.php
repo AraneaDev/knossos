@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Enrichment;
 
-use Knossos\Reconciliation\GraphReconciler;
+use Knossos\Reconciliation\NodeIdentity;
 use Knossos\Scanner\Protocol\ScanContribution;
 
 /**
@@ -35,7 +35,7 @@ final class NativeNodeIndex
         $edges = [];
         foreach ($native as $contribution) {
             foreach ($contribution->nodes as $node) {
-                $id = GraphReconciler::nodeIdentity($projectId, $node)[1];
+                $id = NodeIdentity::of($projectId, $node)[1];
                 $nodes[$id] ??= [
                     'local_id' => $node->localId,
                     'kind' => $node->kind,

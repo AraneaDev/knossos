@@ -8,6 +8,7 @@ use Knossos\Cancellation\CancellationToken;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Store\MigrationRunner;
@@ -44,7 +45,7 @@ final class ConcurrencyTest extends KnossosTestCase
 
             $readerPdo = SqliteConnection::open($path);
             $lease = (new ProjectWriterLock($writerPdo))->acquire($project);
-            assertSame($scan, ArchitectureQueryService::forDatabase($readerPdo)->architectureSummary($project)->snapshotId);
+            assertSame($scan, ArchitectureQueryService::forDatabase($readerPdo)->services()->summaryQueries->architectureSummary($project)->snapshotId);
             assertThrows(fn() => (new ProjectWriterLock($readerPdo))->acquire($project), ScanBusyException::class);
             $lease->release();
             $second = (new ProjectWriterLock($readerPdo))->acquire($project);
@@ -70,7 +71,7 @@ final class ConcurrencyTest extends KnossosTestCase
             $token = new CancellationToken();
             $token->cancel();
             assertThrows(
-                fn() => (new ProjectScanService($writerPdo, self::repositoryRoot(), [self::repositoryRoot() . '/tests/Fixtures/mixed']))->scan(self::repositoryRoot() . '/tests/Fixtures/mixed', cancellation: $token),
+                fn() => (new ProjectScanService($writerPdo, self::repositoryRoot(), [self::repositoryRoot() . '/tests/Fixtures/mixed']))->scan(self::repositoryRoot() . '/tests/Fixtures/mixed', new ScanOptions(cancellation: $token)),
                 \Knossos\Cancellation\ScanCancelledException::class,
             );
             assertSame($scan, (string) $writerPdo->query("SELECT active_scan_id FROM projects WHERE id = '$project'")->fetchColumn());

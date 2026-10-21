@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView } from '../../types'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
 import { runCommand } from './session'
@@ -161,13 +161,13 @@ describe('/knossos with no arguments', () => {
 
     it('closes an open pane and forgets what it drew and that it was wide', async () => {
         const port = fakePort({ dashboard: dashboard('s1') }, { open: true })
-        mod.paneText = 'as of 3s ago'
-        mod.paneWide = true
+        mod.pane.text = 'as of 3s ago'
+        mod.pane.wide = true
         expect(await runCommand(port.io, '')).toBe(CLOSED)
         expect(port.closed).toEqual([{ id: PANE }])
         expect(port.opened).toEqual([])
-        expect(mod.paneText).toBeNull()
-        expect(mod.paneWide).toBe(false)
+        expect(mod.pane.text).toBeNull()
+        expect(mod.pane.wide).toBe(false)
         // Closing asks for nothing.
         await port.advance()
         expect(port.runs).toEqual([])
@@ -175,12 +175,12 @@ describe('/knossos with no arguments', () => {
 
     it('still says the pane closed, and forgets it, when the close is refused', async () => {
         const port = fakePort({ dashboard: dashboard('s1') }, { open: true, closeFails: true })
-        mod.paneText = 'as of 3s ago'
-        mod.paneWide = true
+        mod.pane.text = 'as of 3s ago'
+        mod.pane.wide = true
         expect(await runCommand(port.io, '  ')).toBe(CLOSED)
         expect(port.closed).toEqual([{ id: PANE }])
-        expect(mod.paneText).toBeNull()
-        expect(mod.paneWide).toBe(false)
+        expect(mod.pane.text).toBeNull()
+        expect(mod.pane.wide).toBe(false)
     })
 
     it('toggles: a second call closes what the first opened', async () => {
@@ -255,11 +255,11 @@ describe('/knossos inspect', () => {
 describe('/knossos with anything else', () => {
     it.each(['foo', 'foo bar', 'INSPECT Foo', 'inspector Foo', 'close'])('answers the usage to %j and touches no pane', async args => {
         const port = fakePort({ dashboard: dashboard('s1') }, { open: true })
-        mod.paneText = 'as of 3s ago'
+        mod.pane.text = 'as of 3s ago'
         expect(await runCommand(port.io, args)).toBe(USAGE)
         expect(port.opened).toEqual([])
         expect(port.closed).toEqual([])
-        expect(mod.paneText).toBe('as of 3s ago')
+        expect(mod.pane.text).toBe('as of 3s ago')
         await port.advance()
         expect(port.runs).toEqual([])
     })

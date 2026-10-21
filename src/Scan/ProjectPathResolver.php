@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -55,13 +56,10 @@ final readonly class ProjectPathResolver
         // same: the ancestor walk below would otherwise climb to "." and stop,
         // never meeting a project root, which is always absolute.
         $current = realpath($path) ?: self::absolute($path);
-        $statement = $this->pdo->prepare(
-            'SELECT id, name, root_realpath, active_scan_id FROM projects WHERE root_realpath = :root',
-        );
+        $projects = new ProjectRepository($this->pdo);
         for ($depth = 0; $depth < self::MAX_ANCESTORS; $depth++) {
-            $statement->execute(['root' => $current]);
-            $row = $statement->fetch(PDO::FETCH_ASSOC);
-            if ($row !== false) {
+            $row = $projects->byRoot($current, ['id', 'name', 'root_realpath', 'active_scan_id']);
+            if ($row !== null) {
                 return $row;
             }
             $parent = dirname($current);

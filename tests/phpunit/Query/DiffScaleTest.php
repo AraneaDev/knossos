@@ -39,7 +39,7 @@ final class DiffScaleTest extends KnossosTestCase
         $pdo->exec('UPDATE edges SET start_line = 2, end_line = 2');
         $repository->completeScan($ids['project'], $next);
 
-        $diff = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 1000);
+        $diff = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($ids['project'], $ids['scan'], maxChanges: 1000);
 
         $counts = $diff->data['changes'];
         self::assertSame(intdiv(SnapshotBounds::MAX_ROWS_PER_TABLE, 2) + 1, $counts['components']['counts']['changed']);

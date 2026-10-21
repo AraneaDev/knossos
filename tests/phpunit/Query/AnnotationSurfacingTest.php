@@ -22,8 +22,8 @@ final class AnnotationSurfacingTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
         if ($withNotes) {
-            $queries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'totals are recomputed nightly', execute: true);
-            $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the only way an order is placed', execute: true, author: 'user');
+            $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'totals are recomputed nightly', execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the only way an order is placed', execute: true, author: 'user');
         }
         return [$queries, $ids['project']];
     }

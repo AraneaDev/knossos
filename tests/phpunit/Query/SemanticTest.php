@@ -27,8 +27,8 @@ final class SemanticTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $deterministicQuery = ArchitectureQueryService::forDatabase($pdo);
-        $deterministic = $deterministicQuery->suggestLocation($ids['project'], 'checkout service');
-        $unavailable = $deterministicQuery->suggestLocation($ids['project'], 'checkout service', rankingMode: 'semantic_if_available');
+        $deterministic = $deterministicQuery->services()->locationQueries->suggestLocation($ids['project'], 'checkout service');
+        $unavailable = $deterministicQuery->services()->locationQueries->suggestLocation($ids['project'], 'checkout service', rankingMode: 'semantic_if_available');
         assertSame($deterministic->data['candidates'], $unavailable->data['candidates']);
         assertSame('provider_unavailable', $unavailable->data['ranking']['fallback_reason']);
         assertContains('deterministic fallback', $unavailable->warnings[1]);
@@ -46,7 +46,7 @@ final class SemanticTest extends KnossosTestCase
                 return [$this->billing => 1.0, $this->backend => 0.0];
             }
         };
-        $semantic = ArchitectureQueryService::forDatabase($pdo, semanticRanker: $ranker)->suggestLocation(
+        $semantic = ArchitectureQueryService::forDatabase($pdo, semanticRanker: $ranker)->services()->locationQueries->suggestLocation(
             $ids['project'],
             'checkout service',
             rankingMode: 'semantic_if_available',
@@ -66,7 +66,7 @@ final class SemanticTest extends KnossosTestCase
                 return [$candidates[0]['id'] => 2.0];
             }
         };
-        $invalid = ArchitectureQueryService::forDatabase($pdo, semanticRanker: $invalidRanker)->suggestLocation(
+        $invalid = ArchitectureQueryService::forDatabase($pdo, semanticRanker: $invalidRanker)->services()->locationQueries->suggestLocation(
             $ids['project'],
             'checkout service',
             rankingMode: 'semantic_if_available',
@@ -84,13 +84,13 @@ final class SemanticTest extends KnossosTestCase
                 throw new RuntimeException('offline');
             }
         };
-        $failed = ArchitectureQueryService::forDatabase($pdo, semanticRanker: $failingRanker)->suggestLocation(
+        $failed = ArchitectureQueryService::forDatabase($pdo, semanticRanker: $failingRanker)->services()->locationQueries->suggestLocation(
             $ids['project'],
             'checkout service',
             rankingMode: 'semantic_if_available',
         );
         assertSame($deterministic->data['candidates'], $failed->data['candidates']);
         assertContains('offline', $failed->data['ranking']['fallback_reason']);
-        assertThrows(fn() => $deterministicQuery->suggestLocation($ids['project'], 'checkout', rankingMode: 'semantic'), InvalidArgumentException::class);
+        assertThrows(fn() => $deterministicQuery->services()->locationQueries->suggestLocation($ids['project'], 'checkout', rankingMode: 'semantic'), InvalidArgumentException::class);
     }
 }

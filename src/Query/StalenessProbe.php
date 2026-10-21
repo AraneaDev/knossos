@@ -9,6 +9,7 @@ use Knossos\Query\Drift\DriftOracle;
 use Knossos\Query\Drift\FirstAnsweringDriftOracle;
 use Knossos\Query\Drift\GitDriftOracle;
 use Knossos\Query\Drift\WalkDriftOracle;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -160,10 +161,7 @@ final readonly class StalenessProbe
      */
     private function fetchProject(string $projectId): ?array
     {
-        $statement = $this->pdo->prepare('SELECT active_scan_id, root_realpath FROM projects WHERE id = :id');
-        $statement->execute(['id' => $projectId]);
-        $row = $statement->fetch();
-        return $row === false ? null : $row;
+        return (new ProjectRepository($this->pdo))->find($projectId, ['active_scan_id', 'root_realpath']);
     }
 
     /** When the active scan finished, the reference point for every age calculation. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffFold, KnossosView } from '../../types'
-import { TABS } from '../lib/layout'
+import { TABS } from '../lib/chrome'
 import { PRESSES, pressOf } from './actions'
 import type { Port } from './port'
 import { fieldKey, PANE } from './state'
@@ -164,7 +164,10 @@ describe('a figure that counts a set', () => {
     let v: KnossosView = { inspect: null, isBandHidden: false, tab: 'overview', selected: 4, showKeys: false, filter: 'x', filtering: true, sort: 'in', degree: { from: 3, to: null } }
     const cell = <T>(value: T) => ({ read: async () => value, update: async (change: (w: T) => T) => void (value = change(value)) })
     // Two violations, then three diagnostics, then the dead code, in the walk on Issues.
-    const dashboard = cell<Record<string, unknown>>({ status: 'ok', policy: { status: 'evaluated', total: 2, items: [{}, {}] }, diagnostics: { items: [{}, {}, {}] }, dead_code: [{}] })
+    const violation = { policy_id: 'p', source: 'A\\B', source_boundary: null, target: 'C\\D', target_boundary: null, path: 'src/B.php', line: 1 }
+    const diagnostic = { severity: 'error', code: 'X1', message: 'broken', path: 'src/B.php', line: 2 }
+    const dead = { name: 'E', canonical_name: 'A\\E', kind: 'class', boundary: null, path: 'src/E.php', line: 3, confidence: 'possible' }
+    const dashboard = cell<Record<string, unknown>>({ status: 'ok', project_root: '/work', dead_code_candidates: 1, dead_code_truncated: false, policy: { status: 'evaluated', total: 2, truncated: false, items: [violation, violation] }, diagnostics: { errors: 3, warnings: 0, infos: 0, items: [diagnostic, diagnostic, diagnostic] }, dead_code: [dead] })
     const io = { state: { view: { read: async () => v, update: async (change: (w: KnossosView) => KnossosView) => void (v = change(v)) }, dashboard } } as unknown as Port
     const go = async (key: string) => PRESSES.get('stat:')!(io, key, undefined, `stat:${key}`)
     await go('cycles')

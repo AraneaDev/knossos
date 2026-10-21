@@ -44,31 +44,31 @@ final class DiagramTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $query = ArchitectureQueryService::forDatabase($pdo);
-        $mermaid = $query->exportDiagram($ids['project']);
+        $mermaid = $query->services()->diagramQueries->exportDiagram($ids['project']);
         assertContains("flowchart LR\n", $mermaid->data['diagram']);
         assertContains('Checkout &quot;API&quot; &lt;unsafe&gt;', $mermaid->data['diagram']);
         assertContains('n1 -->|calls| n2', $mermaid->data['diagram']);
-        assertSame($mermaid->data['diagram'], $query->exportDiagram($ids['project'])->data['diagram']);
+        assertSame($mermaid->data['diagram'], $query->services()->diagramQueries->exportDiagram($ids['project'])->data['diagram']);
         assertSame(2, $mermaid->data['bounds']['nodes_exported']);
         assertSame(1, $mermaid->data['bounds']['edges_exported']);
 
-        $plant = $query->exportDiagram($ids['project'], format: 'plantuml', direction: 'TB');
+        $plant = $query->services()->diagramQueries->exportDiagram($ids['project'], format: 'plantuml', direction: 'TB');
         assertContains("@startuml\n", $plant->data['diagram']);
         assertSame(false, str_contains($plant->data['diagram'], 'left to right direction'));
         assertContains('Checkout \\"API\\" <unsafe>', $plant->data['diagram']);
         assertContains("@enduml\n", $plant->data['diagram']);
-        $scoped = $query->exportDiagram($ids['project'], boundary: $backend);
+        $scoped = $query->services()->diagramQueries->exportDiagram($ids['project'], boundary: $backend);
         assertSame(1, $scoped->data['bounds']['nodes_exported']);
         assertSame(0, $scoped->data['bounds']['edges_exported']);
         assertSame($backend, $scoped->data['boundary_id']);
-        $filtered = $query->exportDiagram($ids['project'], edgeKinds: ['imports']);
+        $filtered = $query->services()->diagramQueries->exportDiagram($ids['project'], edgeKinds: ['imports']);
         assertSame(0, $filtered->data['bounds']['edges_exported']);
-        $limited = $query->exportDiagram($ids['project'], maxNodes: 1);
+        $limited = $query->services()->diagramQueries->exportDiagram($ids['project'], maxNodes: 1);
         assertSame(true, $limited->truncated);
         assertSame(['node_limit'], $limited->data['bounds']['truncation_reasons']);
-        assertThrows(fn() => $query->exportDiagram($ids['project'], boundary: 'Backend'), InvalidArgumentException::class);
-        assertThrows(fn() => $query->exportDiagram($ids['project'], format: 'dot'), InvalidArgumentException::class);
-        assertThrows(fn() => $query->exportDiagram($ids['project'], direction: 'RL'), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->diagramQueries->exportDiagram($ids['project'], boundary: 'Backend'), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->diagramQueries->exportDiagram($ids['project'], format: 'dot'), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->diagramQueries->exportDiagram($ids['project'], direction: 'RL'), InvalidArgumentException::class);
     }
 
     /**
@@ -114,7 +114,7 @@ final class DiagramTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $diagram = ArchitectureQueryService::forDatabase($pdo)->exportDiagram($ids['project'], maxNodes: 2);
+        $diagram = ArchitectureQueryService::forDatabase($pdo)->services()->diagramQueries->exportDiagram($ids['project'], maxNodes: 2);
 
         assertSame(2, $diagram->data['bounds']['nodes_exported']);
         assertContains('Hub', $diagram->data['diagram']);
@@ -171,7 +171,7 @@ final class DiagramTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $diagram = ArchitectureQueryService::forDatabase($pdo)->exportDiagram($ids['project'], maxNodes: 4);
+        $diagram = ArchitectureQueryService::forDatabase($pdo)->services()->diagramQueries->exportDiagram($ids['project'], maxNodes: 4);
 
         assertSame(4, $diagram->data['bounds']['nodes_exported']);
         // Four nodes drawn from one hub's neighbourhood: three arrows, not none.

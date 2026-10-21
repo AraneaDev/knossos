@@ -1,10 +1,10 @@
 /**
  * The exclusion rules that keep paths out of discovery.
  *
- * The core sends its rules with each request; until one arrives the built-in
- * defaults apply. The rules of the request in progress are held here and read
- * by every discovery walk, so `TypeScriptScanner.scan` sets them through
- * `setActiveExclusions` before it reads anything.
+ * The core sends its rules with each request, and a request without them
+ * gets the built-in defaults. `TypeScriptScanner.scan` builds one
+ * `Exclusions` for the request and hands it to every discovery walk and
+ * compiler host the request uses.
  */
 
 // What discovery leaves out, for a request that does not carry the core's own
@@ -49,63 +49,66 @@ export const BUILT_IN_EXCLUSIONS = Object.freeze({
     patterns: [],
 });
 
-/** The exclusion rules of the request in progress (see exclusionRules). */
-let activeExclusions = exclusionRules(BUILT_IN_EXCLUSIONS);
-
-/** Makes `rules` (from exclusionRules) the rules of the request in progress. */
-export function setActiveExclusions(rules) {
-    activeExclusions = rules;
-}
-
 /**
  * Exclusion rules ready to apply, from the core's `exclusions` object (see
  * IgnoreMatcher::workerRules in the core), each pattern compiled once.
  * `anchored_segments` and `anchor_roots` are optional: without them no
  * segment is anchored.
- *
- * @throws {Error} for anything but that object
  */
-export function exclusionRules(input) {
-    const strings = (value) =>
-        Array.isArray(value) && value.every((item) => typeof item === "string");
-    const valid =
-        input !== null &&
-        typeof input === "object" &&
-        ["segments", "prefixes", "suffixes", "path_prefixes"].every((field) =>
-            strings(input[field]),
-        ) &&
-        ["anchored_segments", "anchor_roots"].every(
-            (field) => input[field] === undefined || strings(input[field]),
-        ) &&
-        Array.isArray(input.sequences) &&
-        input.sequences.every((pair) => strings(pair) && pair.length === 2) &&
-        Array.isArray(input.patterns) &&
-        input.patterns.every(
-            (pattern) =>
-                typeof pattern?.regex === "string" &&
-                typeof pattern.anchored === "boolean" &&
-                typeof pattern.negated === "boolean",
-        );
-    if (!valid)
-        throw new Error(
-            "TypeScript exclusions must be an object of segments, anchored_segments, anchor_roots, prefixes, sequences, suffixes, path_prefixes and patterns.",
-        );
-    return {
-        segments: new Set(input.segments),
-        anchoredSegments: new Set(input.anchored_segments ?? []),
-        anchorRoots: new Set(input.anchor_roots ?? []),
-        prefixes: input.prefixes,
-        sequences: input.sequences,
-        suffixes: input.suffixes,
-        pathPrefixes: input.path_prefixes,
-        patterns: input.patterns.map(({ regex, anchored, negated }) => ({
-            expression: new RegExp(
-                anchored ? `^(?:${regex})(?:/.*)?$` : `^(?:${regex})$`,
-            ),
-            anchored,
-            negated,
-        })),
-    };
+export class Exclusions {
+    #rules;
+
+    /** @throws {Error} for anything but that object */
+    constructor(input) {
+        const strings = (value) =>
+            Array.isArray(value) &&
+            value.every((item) => typeof item === "string");
+        const valid =
+            input !== null &&
+            typeof input === "object" &&
+            ["segments", "prefixes", "suffixes", "path_prefixes"].every(
+                (field) => strings(input[field]),
+            ) &&
+            ["anchored_segments", "anchor_roots"].every(
+                (field) => input[field] === undefined || strings(input[field]),
+            ) &&
+            Array.isArray(input.sequences) &&
+            input.sequences.every(
+                (pair) => strings(pair) && pair.length === 2,
+            ) &&
+            Array.isArray(input.patterns) &&
+            input.patterns.every(
+                (pattern) =>
+                    typeof pattern?.regex === "string" &&
+                    typeof pattern.anchored === "boolean" &&
+                    typeof pattern.negated === "boolean",
+            );
+        if (!valid)
+            throw new Error(
+                "TypeScript exclusions must be an object of segments, anchored_segments, anchor_roots, prefixes, sequences, suffixes, path_prefixes and patterns.",
+            );
+        this.#rules = {
+            segments: new Set(input.segments),
+            anchoredSegments: new Set(input.anchored_segments ?? []),
+            anchorRoots: new Set(input.anchor_roots ?? []),
+            prefixes: input.prefixes,
+            sequences: input.sequences,
+            suffixes: input.suffixes,
+            pathPrefixes: input.path_prefixes,
+            patterns: input.patterns.map(({ regex, anchored, negated }) => ({
+                expression: new RegExp(
+                    anchored ? `^(?:${regex})(?:/.*)?$` : `^(?:${regex})$`,
+                ),
+                anchored,
+                negated,
+            })),
+        };
+    }
+
+    /** Whether discovery leaves a project-relative path out under these rules. */
+    excludes(relative) {
+        return excludedByRules(this.#rules, relative);
+    }
 }
 
 /**
@@ -117,12 +120,7 @@ export function exclusionRules(input) {
  * @throws {Error} when `exclusions` is not the rules object
  */
 export function excludedBy(exclusions, relative) {
-    return excludedByRules(exclusionRules(exclusions), relative);
-}
-
-/** Whether discovery leaves a project-relative path out, under the request's rules. */
-export function excludedFromDiscovery(relative) {
-    return excludedByRules(activeExclusions, relative);
+    return new Exclusions(exclusions).excludes(relative);
 }
 
 /**

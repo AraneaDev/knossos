@@ -35,29 +35,37 @@ final readonly class FileViolationQuery
     /**
      * @param int $timeoutMs the check's time budget, at most the checker's 5000 ms ceiling
      * @param int $maxEdges the check's edge budget
+     * @param QueryServices|null $services the query services to read through; null wires them against `$pdo` per call
      */
     public function __construct(
         private PDO $pdo,
         private int $timeoutMs = 5000,
         private int $maxEdges = ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES,
+        private ?QueryServices $services = null,
     ) {}
 
     /**
-     * The policies to check: those supplied, else the project's `knossos.json`.
-     * A configuration that cannot be read declares none.
+     * The policies to check: those supplied, else the project's `knossos.json`,
+     * with `error` the loader's message when that file cannot be read.
+     *
+     * The loader answers a project without the file with an empty
+     * configuration, so a failure here is a real one: an ambiguous, unsafe or
+     * malformed file. Read as no policies, a typo in the file turned the
+     * checks off without a word; the caller reports the policies as
+     * unreadable instead, and checks none.
      *
      * @param list<array<string, mixed>>|null $policies
-     * @return list<array<string, mixed>>
+     * @return array{policies: list<array<string, mixed>>, error: string|null}
      */
     public static function policies(string $root, ?array $policies): array
     {
         if ($policies !== null) {
-            return $policies;
+            return ['policies' => $policies, 'error' => null];
         }
         try {
-            return ProjectConfigurationLoader::load($root, [$root])->policies;
-        } catch (Throwable) {
-            return [];
+            return ['policies' => ProjectConfigurationLoader::load($root, [$root])->policies, 'error' => null];
+        } catch (Throwable $error) {
+            return ['policies' => [], 'error' => $error->getMessage()];
         }
     }
 
@@ -78,7 +86,7 @@ final readonly class FileViolationQuery
             return ['violations' => [], 'truncated' => false];
         }
         try {
-            $check = ArchitectureQueryService::forDatabase($this->pdo)->checkArchitecture(
+            $check = ($this->services ?? QueryServices::wire($this->pdo))->policyQueries->checkArchitecture(
                 $projectId,
                 $policies,
                 maxEdges: $this->maxEdges,

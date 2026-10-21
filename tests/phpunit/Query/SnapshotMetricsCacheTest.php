@@ -42,7 +42,7 @@ final class SnapshotMetricsCacheTest extends KnossosTestCase
     {
         return array_map(
             static fn(array $s): array => [$s['scan_id'], $s['active'], $s['counts'], $s['metrics']],
-            ArchitectureQueryService::forDatabase($pdo)->architectureTrends($project, 5)->data['series'],
+            ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->architectureTrends($project, 5)->data['series'],
         );
     }
 
@@ -130,31 +130,59 @@ final class SnapshotMetricsCacheTest extends KnossosTestCase
 
     /**
      * The fingerprint is the cache's only invalidation, so every class the
-     * metric computation names must be in it. SharedNodeKinds, which decides
+     * metric computation reaches must be in it. SharedNodeKinds, which decides
      * whether a node's path counts, was left out, and editing it kept serving
-     * trend figures the old code had computed.
+     * trend figures the old code had computed; EnrichedFacts, which
+     * SnapshotGraphReader filters through, was missed the same way one hop
+     * further out. This walks every class in the fingerprint independently of
+     * the cache's own walk and fails on any Query or Store class one of them
+     * names that the fingerprint leaves out.
      */
     #[Group('query')]
-    public function testTheFingerprintCoversEveryClassTheMetricsUse(): void
+    public function testTheFingerprintCoversEveryClassTheMetricsReach(): void
     {
-        $file = self::repositoryRoot() . '/src/Query/SnapshotMetrics.php';
-        $source = (string) file_get_contents($file);
-        preg_match_all('/^use (Knossos\\\\[A-Za-z\\\\]+);/m', $source, $imports);
-        $imported = [];
-        foreach ($imports[1] as $class) {
-            $imported[substr((string) strrchr('\\' . $class, '\\'), 1)] = $class;
-        }
-        preg_match_all('/(?<![\\\\\w$])([A-Z][A-Za-z]+)::/', (string) preg_replace('#/\*.*?\*/|//[^\n]*#s', '', $source), $references);
-        $used = [];
-        foreach (array_unique($references[1]) as $short) {
-            $class = $imported[$short] ?? 'Knossos\\Query\\' . $short;
-            if ($short !== 'self' && $short !== 'static' && class_exists($class)) {
-                $used[] = $class;
+        $sources = SnapshotMetricsCache::sources();
+        $missing = [];
+        foreach ($sources as $class) {
+            $namespace = substr($class, 0, (int) strrpos($class, '\\'));
+            $source = (string) preg_replace('#/\*.*?\*/|//[^\n]*#s', '', (string) file_get_contents((string) (new \ReflectionClass($class))->getFileName()));
+            preg_match_all('/^use (Knossos\\\\(?:Query|Store)\\\\[A-Za-z]+);/m', $source, $imports);
+            preg_match_all('/^use (Knossos\\\\(?:Query|Store))\\\\\{([^}]*)\}/m', $source, $groups, PREG_SET_ORDER);
+            $named = $imports[1];
+            foreach ($groups as [, $prefix, $members]) {
+                foreach (array_map('trim', explode(',', $members)) as $member) {
+                    $named[] = $prefix . '\\' . $member;
+                }
+            }
+            preg_match_all('/(?:\bnew |\bextends |\bimplements |\binstanceof |[(,|?] *)([A-Z][A-Za-z]+)\b|(?<![\\\\\w$])([A-Z][A-Za-z]+)::/', $source, $bare);
+            foreach (array_filter([...$bare[1], ...$bare[2]]) as $short) {
+                $named[] = $namespace . '\\' . $short;
+            }
+            foreach (array_unique($named) as $name) {
+                if (str_starts_with($name, 'Knossos\\Query\\') || str_starts_with($name, 'Knossos\\Store\\')) {
+                    if ((class_exists($name) || interface_exists($name) || enum_exists($name)) && !in_array($name, $sources, true)) {
+                        $missing[] = $class . ' -> ' . $name;
+                    }
+                }
             }
         }
-        $sources = (new \ReflectionClass(SnapshotMetricsCache::class))->getConstant('SOURCES');
 
-        self::assertNotSame([], $used);
-        self::assertSame([], array_values(array_diff($used, (array) $sources)), 'SnapshotMetricsCache::SOURCES misses classes SnapshotMetrics computes with.');
+        foreach (['Knossos\\Store\\EnrichedFacts', 'Knossos\\Store\\SnapshotBounds', 'Knossos\\Query\\BoundaryLabels', 'Knossos\\Store\\CountedSnapshotFigures', 'Knossos\\Query\\ArchitecturePolicyQueryService', 'Knossos\\Store\\SharedNodeKinds'] as $reached) {
+            self::assertContains($reached, $sources);
+        }
+        self::assertSame([], $missing, 'SnapshotMetricsCache::sources() misses classes the metrics computation reaches.');
+    }
+
+    /** The fingerprint is a hash over exactly the walked sources, stable within a process. */
+    #[Group('query')]
+    public function testTheFingerprintHashesTheWalkedSources(): void
+    {
+        $hashes = '';
+        foreach (SnapshotMetricsCache::sources() as $class) {
+            $hashes .= hash_file('sha256', (string) (new \ReflectionClass($class))->getFileName());
+        }
+
+        self::assertSame(hash('sha256', $hashes), SnapshotMetricsCache::fingerprint());
+        self::assertSame(SnapshotMetricsCache::sources(), SnapshotMetricsCache::sources());
     }
 }

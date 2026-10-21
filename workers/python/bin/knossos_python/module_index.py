@@ -20,15 +20,13 @@ from .ast_helpers import (
 )
 from .exclusions import RESOLUTION_ALLOWED_EXCLUDED, Exclusions
 from .fixtures import path_loading_fixtures
+from .reads import ReadRecorder
 from .safe_io import (
     S_IFMT,
     S_IFREG,
-    PathWalk,
     UnreadableInput,
-    _inside,
     names_python_in_shebang,
     read_bounded,
-    walk_keys,
     walk_path,
 )
 
@@ -73,7 +71,7 @@ def _project_directory(value: Any) -> tuple[str, ...] | None:
     return parts
 
 
-class ProjectModuleIndex:
+class ProjectModuleIndex(ReadRecorder):
     """Filesystem-backed, batch-independent module resolution.
 
     Import and reference targets must be identical no matter how a scan request
@@ -82,17 +80,7 @@ class ProjectModuleIndex:
     plus non-package top-level directories such as ``src/``) are detected once,
     and each referenced module's top-level declarations are parsed lazily and
     memoized. Only files that live under the validated root and stay within the
-    byte cap are read.
-
-    ``read_hashes`` records every file a request read, keyed by its
-    project-relative path, for the result's ``input_hashes``: the SHA-256 of
-    the bytes read, or ``None`` when the read was attempted and failed. One
-    path can be read more than once in a request: by an importer's resolution
-    and by its own scan, or under two module ids. Two reads that disagree, in
-    hash or in whether they succeeded, record ``None``, because at least one
-    of them differs from what discovery hashed or failed, and either may have
-    fed facts. Keeping either value alone would leave the other read
-    unverified.
+    byte cap are read, and every read is recorded (:class:`ReadRecorder`).
     """
 
     def __init__(
@@ -102,19 +90,13 @@ class ProjectModuleIndex:
         exclusions: Exclusions | None = None,
         source_files: frozenset[str] | None = None,
     ) -> None:
-        self.root = root
-        self.max_bytes = max_bytes
+        super().__init__(root, max_bytes)
         self.exclusions = exclusions or Exclusions()
-        self.read_hashes: dict[str, str | None] = {}
         # Every discovered Python file, when the request lists them: a module
         # among them has a contribution of its own that names what it read.
         self.source_files = source_files
-        # Reads the request shares: the probes that decide the source roots.
-        self.shared_reads: set[str] = set()
         # Reads made for a discovered module, which its own contribution names.
         self.unattributed_reads: set[str] = set()
-        # The keys each open file or module computation has read, innermost last.
-        self._scopes: list[set[str]] = []
         # What a module's declarations cost an importer that uses them.
         self._exposed: dict[str, set[str]] = {}
         # Whether a probe that finds a module file hashes it (:meth:`_record_probe`).
@@ -131,6 +113,28 @@ class ProjectModuleIndex:
         self._conftests: dict[str, tuple[dict[str, str], set[str]]] = {}
         # The project classes that declare their own ``__init__``, by ref (:meth:`initialiser`).
         self._initialised: set[str] = set()
+        # The project class each class-body annotation names, and the project
+        # classes each class derives from, by the class's canonical name
+        # (:meth:`class_attributes`).
+        self._class_attributes: dict[str, dict[str, str]] = {}
+        self._class_bases: dict[str, list[str]] = {}
+        # Each module's classes as written, until one is asked about, and
+        # then what resolving them read (:meth:`_class_attribute_reads`).
+        self._class_sources: dict[
+            str,
+            tuple[
+                list[tuple[str, list[tuple[str, str | None]], list[str | None]]],
+                dict[str, str],
+                dict[str, str],
+                list[ast.Import | ast.ImportFrom],
+                str,
+                bool,
+            ],
+        ] = {}
+        self._class_reads: dict[str, set[str]] = {}
+        # The modules a discovered file's own scan declares, which names what
+        # resolving their classes reads.
+        self._self_scanned: set[str] = set()
 
     @property
     def prefixes(self) -> list[tuple[str, ...]]:
@@ -159,82 +163,6 @@ class ProjectModuleIndex:
         """
         listed = "\n".join("/".join(prefix) for prefix in self.prefixes)
         return hashlib.sha256(listed.encode("utf-8")).hexdigest()
-
-    def record_read(self, relative: str, content_hash: str | None, attributed: bool = True) -> None:
-        """Record one read for ``input_hashes``; a disagreeing repeat read records ``None``.
-
-        An attributed read is also named by whatever is being resolved: a
-        requested file's read of its own bytes is not, since its
-        contribution's ``content_hash`` covers it.
-        """
-        if relative in self.read_hashes and self.read_hashes[relative] != content_hash:
-            content_hash = None
-        self.read_hashes[relative] = content_hash
-        if attributed:
-            self._note({relative})
-
-    def _note(self, keys: set[str]) -> None:
-        """Name ``keys`` as read by the innermost open scope, or by the whole request outside any."""
-        (self._scopes[-1] if self._scopes else self.shared_reads).update(keys)
-
-    def open_scope(self) -> None:
-        """Start collecting the keys one file or module computation reads."""
-        self._scopes.append(set())
-
-    def close_scope(self) -> set[str]:
-        """Stop collecting for the innermost scope and return what it read."""
-        return self._scopes.pop()
-
-    def _in_root_file(self, walked: PathWalk) -> Path | None:
-        """The file a walked path opens, when that file lies inside the root.
-
-        Discovery never follows a symlink, so a module reached through a linked
-        file or directory is read where its bytes actually live, and keyed
-        there by :func:`walk_key`; that is the path whose recorded hash
-        describes them. ``None`` for a walk that did not end at a file inside
-        the root: nothing outside the root is read.
-        """
-        if walked.kind != "file" or walked.location is None or not _inside(self.root, walked.location):
-            return None
-        return Path(walked.location)
-
-    def _record_walk(self, walked: PathWalk, content_hash: str | None) -> None:
-        """Record a read, hashed or failed, under every key its walk gives."""
-        final, linked = walk_keys(self.root, walked)
-        for relative in ([final] if final is not None else []) + linked:
-            self.record_read(relative, content_hash)
-
-    def _record_probe(self, walked: PathWalk, present: bool, hashed: bool = True) -> None:
-        """Record an existence probe whose answer feeds facts.
-
-        A probe answering absent, or not a file, records ``None`` under every key
-        its walk gives: resolution goes on as if the file were not there, so a
-        discovered file missing for that moment must fail verification. A probe
-        answering present records ``None`` under the linked keys, so a
-        discovered path that had become a link is still caught, and the hash
-        of the in-root file it found under the location it reached: the file
-        being there is a fact, and only a read's key lets its deletion reach
-        the reader. ``hashed`` false leaves that location out, for a probe
-        that only its absence makes matter. Discovery never reports an absent
-        path or a link, so a stable tree is unaffected.
-        """
-        final, linked = walk_keys(self.root, walked)
-        if not present and final is not None:
-            self.record_read(final, None)
-        for relative in linked:
-            self.record_read(relative, None)
-        location = self._in_root_file(walked) if present and hashed else None
-        if location is None or final is None:
-            return
-        if final in self.read_hashes:
-            self._note({final})
-            return
-        try:
-            source = read_bounded(location, self.max_bytes)
-            content_hash = hashlib.sha256(source).hexdigest() if len(source) <= self.max_bytes else None
-        except OSError:
-            content_hash = None
-        self.record_read(final, content_hash)
 
     def _source_root_prefixes(self) -> list[tuple[str, ...]]:
         """The source roots: the bare root first, then ``src/`` and the pyproject's package directories, sorted.
@@ -559,7 +487,8 @@ class ProjectModuleIndex:
                 raise
             located = self.close_scope()
             self._exposed[module] = located
-            cached = {}
+            placeholder: dict[str, str] = {}
+            cached = placeholder
             self._cache[module] = cached
             if path is not None and tree is not None:
                 self.open_scope()
@@ -568,11 +497,16 @@ class ProjectModuleIndex:
                 except BaseException:
                     located |= self.close_scope()
                     self._note(located)
+                    # Left in place, the empty placeholder would answer every
+                    # later importer in the request with no declarations at all.
+                    if self._cache.get(module) is placeholder:
+                        del self._cache[module]
                     raise
                 declared = self.close_scope()
                 derived = owner is not None
                 if derived and self._owns(path):
                     self.unattributed_reads |= declared
+                    self._self_scanned.add(name)
                 else:
                     located |= declared
                 if derived and name != module:
@@ -657,6 +591,7 @@ class ProjectModuleIndex:
         self._add_reexports(tree, location, is_package, declarations)
         imported = self._add_instances(tree, location, is_package, declarations, name)
         self._add_returns(tree, name, declarations, imported)
+        self._add_class_attributes(tree, name, declarations, imported, location, is_package)
         return declarations
 
     def is_protocol(self, owner: str) -> bool:
@@ -722,6 +657,144 @@ class ProjectModuleIndex:
                         held = returned(member)
                         if held is not None:
                             self._returns[ref("method", f"{name}.{child.name}::{member.name}")] = held
+
+    def _add_class_attributes(
+        self,
+        tree: ast.Module,
+        name: str,
+        declarations: dict[str, str],
+        imported: dict[str, str],
+        location: str,
+        is_package: bool,
+    ) -> None:
+        """Keep what each top-level class annotates its attributes as, and the classes it derives from, as written.
+
+        They are resolved when the module's own scan adopts it, or when a
+        class of the module is first asked about (:meth:`_class_attribute_reads`), not here: a dotted name reads the
+        module it goes through, and reading modules while this one is being
+        declared would make declaring a module recurse through every module
+        its classes name.
+        """
+        classes = [
+            (
+                f"{name}.{child.name}",
+                [
+                    (item.target.id, dotted(inner) if (inner := optional_inner(item.annotation)) is not None else None)
+                    for item in child.body
+                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+                ],
+                [dotted(base) for base in child.bases],
+            )
+            for child in module_statements(tree)
+            if isinstance(child, ast.ClassDef)
+        ]
+        if not classes:
+            return
+        imports = [child for child in module_statements(tree) if isinstance(child, (ast.Import, ast.ImportFrom))]
+        self._class_sources[name] = (classes, declarations, imported, imports, location, is_package)
+
+    def _class_attribute_reads(self, module: str) -> set[str]:
+        """Resolve the classes :meth:`_add_class_attributes` kept for ``module``, once, and return what that read.
+
+        Only an annotation or a base naming a class the module declares or
+        imports counts, as for :meth:`_add_returns`, or one named through a
+        module it imports (``models.Base``, ``m.Base``). The reads are the
+        module's own, so the caller decides who they are named by.
+        """
+        if module in self._class_reads:
+            return self._class_reads[module]
+        source = self._class_sources.get(module)
+        if source is None:
+            return set()
+        classes, declarations, imported, imports, location, is_package = source
+        self.open_scope()
+        try:
+            # Only the names a dotted base or annotation starts with are looked
+            # up as modules, so a module naming none reads nothing more.
+            heads = {
+                named.split(".")[0]
+                for _, attributes, bases in classes
+                for named in [*(named for _, named in attributes), *bases]
+                if named is not None and "." in named
+            }
+            modules = self._module_aliases(imports, location, is_package, heads) if heads else {}
+
+            def named_class(named: str | None) -> str | None:
+                target = None if named is None else declarations.get(named) or imported.get(named)
+                if target is None and named is not None and "." in named:
+                    target = self._module_qualified(named, modules)
+                return (
+                    target.removeprefix("py:class:") if target is not None and target.startswith("py:class:") else None
+                )
+
+            for canonical, attributes, bases in classes:
+                held_by = {attribute: named_class(named) for attribute, named in attributes}
+                self._class_attributes[canonical] = {
+                    attribute: held for attribute, held in held_by.items() if held is not None
+                }
+                self._class_bases[canonical] = [base for base in map(named_class, bases) if base is not None]
+        except BaseException:
+            self._note(self.close_scope())
+            raise
+        reads = self.close_scope()
+        self._class_reads[module] = reads
+        del self._class_sources[module]
+        return reads
+
+    def _module_aliases(
+        self, imports: list[ast.Import | ast.ImportFrom], location: str, is_package: bool, heads: set[str]
+    ) -> dict[str, str]:
+        """The modules a module's top-level ``imports`` bind to the names in ``heads``.
+
+        ``import pkg.models as m`` binds ``m`` to ``pkg.models``, ``import
+        pkg.models`` binds ``pkg``, and ``from pkg import models`` binds
+        ``models`` when ``pkg`` declares no ``models`` of its own and the
+        submodule exists.
+        """
+        modules: dict[str, str] = {}
+        for child in imports:
+            if isinstance(child, ast.Import):
+                for alias in child.names:
+                    top = alias.name.split(".")[0]
+                    if (alias.asname or top) in heads:
+                        modules[alias.asname or top] = alias.name if alias.asname else top
+            elif isinstance(child, ast.ImportFrom):
+                source = absolute_import(location, child.level, child.module, is_package)
+                if not source:
+                    continue
+                for alias in child.names:
+                    if (alias.asname or alias.name) not in heads:
+                        continue
+                    if alias.name == "*" or alias.name in self.module_declarations(source):
+                        continue
+                    if self.module_file(f"{source}.{alias.name}") is not None:
+                        modules[alias.asname or alias.name] = f"{source}.{alias.name}"
+        return modules
+
+    def _module_qualified(self, named: str, modules: dict[str, str]) -> str | None:
+        """What ``<alias>.<path>.<Name>`` names: ``Name`` as the module the alias and path reach declares it."""
+        first, _, rest = named.partition(".")
+        module = modules.get(first)
+        if module is None:
+            return None
+        owner, _, member = f"{module}.{rest}".rpartition(".")
+        return self.module_declarations(owner).get(member)
+
+    def class_attributes(self, held: str) -> tuple[dict[str, str], list[str]]:
+        """The attributes the project class ``held`` annotates in its body, and the project classes it derives from.
+
+        Reads the class's module first, through :meth:`module_declarations`,
+        so what that cost is named as read by whoever asked.
+        """
+        module = held.rpartition(".")[0]
+        self.module_declarations(module)
+        reads = self._class_attribute_reads(module)
+        # A discovered module's own scan names them, as it does its re-exports.
+        if module in self._self_scanned:
+            self.unattributed_reads |= reads
+        else:
+            self._note(reads)
+        return self._class_attributes.get(held, {}), self._class_bases.get(held, [])
 
     def initialiser(self, target: str) -> str | None:
         """The ``__init__`` a call of the class ``target`` runs, when its module was read and the class declares one."""
@@ -806,6 +879,10 @@ class ProjectModuleIndex:
         # An importer later in the batch names this file, as a read would.
         self._exposed[name] = located
         self._declare(tree, name, PurePosixPath(relative).stem == "__init__", location)
+        # Resolved again from this tree, and named as this file's reads.
+        self._class_reads.pop(name, None)
+        self._self_scanned.add(name)
+        self._note(self._class_attribute_reads(name))
         return name, None if name == location else owner.relative_to(self.root).as_posix()
 
     def collides(self, absolute: Path, is_package: bool) -> bool:

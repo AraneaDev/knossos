@@ -37,7 +37,7 @@ final class GateScaleTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $next);
 
         $complete = (int) $pdo->query('SELECT complete FROM scan_snapshots')->fetchColumn();
-        $gate = ArchitectureQueryService::forDatabase($pdo)->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
+        $gate = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
 
         self::assertSame(1, $complete, 'The archive at the limit holds its facts.');
         self::assertTrue($gate->data['passed']);

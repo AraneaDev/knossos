@@ -703,7 +703,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     {
         // M21 / QueryCommand::run() -- listProjects() happy path against
         // a pre-populated SQLite file. Exercises the full dispatch through
-        // ArchitectureQueryService::listProjects(), including the text
+        // ProjectCatalogQueryService::listProjects(), including the text
         // formatting loop in QueryCommand.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {

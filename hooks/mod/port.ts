@@ -4,54 +4,20 @@
  * followed, the footer's word, the session's own edits and scans, and
  * turning the mod off.
  */
-import type { EngineInterface, PluginState } from 'claude-code'
+import type { Port } from './port-type'
 
 import type { Feedback, SessionChanges } from '../../types'
-import { ledgerChanges, ownTimeline } from '../lib/changes'
+import { ledgerChanges, ownTimeline } from '../lib/session-changes'
 import { wrapperRefusal } from '../lib/envelopes'
 import { FLASH_MS } from '../lib/flash'
 import type { Flash } from '../lib/flash'
-import { FEEDBACK_MS } from '../lib/layout'
+import { FEEDBACK_MS } from '../lib/chrome'
 import { isWatching, LIVE_OFF } from '../lib/live'
 import { relativise } from '../lib/paths'
+import { stopClocks } from './motion'
 import { mod, stopWatcher } from './state'
 
-/**
- * One value of the session state as the mod's modules reach it: read, or
- * changed by a function of what it holds. The engine's `read` and `update`
- * take only an atom declared in the hooks module itself, so `register.tsx`
- * declares every atom and hands each one over as a cell.
- */
-export type Cell<T> = { read(): Promise<T>; update(change: (value: T) => T): Promise<T> }
-
-/** Every value the mod keeps in the session state, by its key in the contract (`types/index.d.ts`). */
-type Cells = { [K in keyof PluginState['knossos']]-?: Cell<PluginState['knossos'][K]> }
-
-type Engine = EngineInterface
-
-/**
- * The engine as the mod's modules reach it: the calls the mod makes, each
- * passed straight through to `$`, and the session state as {@link Cells}.
- *
- * The engine follows `$` only into functions declared in the hooks module
- * itself, never across an import, and refuses `$.<noun>` used as a value:
- * `register.tsx` builds one of these from the hook's own `$` on every
- * dispatch (`portOf`), spelling each call out, and the modules take it
- * instead of `$`.
- */
-export type Port = {
-  clock: Pick<Engine['clock'], 'now' | 'after' | 'every'>
-  ui: Pick<Engine['ui'], 'log' | 'toast' | 'copy' | 'focus' | 'scroll' | 'panes' | 'invalidate' | 'open' | 'close'>
-  session: Pick<Engine['session'], 'root' | 'id' | 'append'>
-  process: Pick<Engine['process'], 'run' | 'spawn'>
-  fs: Pick<Engine['fs'], 'stat'>
-  store: Pick<Engine['store'], 'get' | 'set'>
-  config: Pick<Engine['config'], 'list'>
-  command: Pick<Engine['command'], 'register'>
-  prompt: Pick<Engine['prompt'], 'submit'>
-  plugin: { root: string }
-  state: Cells
-}
+export type { Cell, Port } from './port-type'
 
 /** How long the signal to a stopped watcher may take. */
 const KILL_TIMEOUT_MS = 5_000
@@ -80,21 +46,18 @@ export async function placed(io: Port, path: string): Promise<string> {
 
 /** Turns the mod off for the session: the wrapper found no knossos binary to run. */
 export async function disable(io: Port): Promise<void> {
-  if (mod.disabled) return
-  mod.disabled = true
-  mod.ticker?.cancel()
-  mod.ticker = null
-  mod.motionTimer?.cancel()
-  mod.motionTimer = null
+  if (mod.session.disabled) return
+  mod.session.disabled = true
+  stopClocks()
   // Nor a debounced search or lookup: a loader that would run after this finds the mod off and reads nothing.
-  mod.searchTimer?.cancel()
-  mod.searchTimer = null
-  mod.loadTimers.forEach(timer => timer.cancel())
-  mod.loadTimers.clear()
+  mod.search.timer?.cancel()
+  mod.search.timer = null
+  mod.loads.timers.forEach(timer => timer.cancel())
+  mod.loads.timers.clear()
   // Nothing to register a command for: no timed retry runs on, and no turn end asks again.
-  mod.registerGen++
-  mod.registerTimer?.cancel()
-  mod.registerTimer = null
+  mod.generations.register++
+  mod.registration.timer?.cancel()
+  mod.registration.timer = null
   await endWatcher(io).catch(() => undefined)
   io.ui.log('knossos: no knossos binary found; the band and pane are off for this session.')
   io.ui.invalidate('ui.render')
@@ -139,12 +102,12 @@ export async function light(io: Port, keys: string[], now: number): Promise<void
 export async function shownChanges(io: Port, root: string | null): Promise<SessionChanges> {
   const turns = await io.state.changes.read()
   // On the web the list is a plain git read of what is not committed (no session, no watcher needed): it is shown as read.
-  if (mod.host === 'web') {
+  if (mod.session.host === 'web') {
     const read = await io.state.sessionLedger.read()
     return read === null ? turns : ledgerChanges(read, turns, new Set(), [], null, 'web')
   }
   // Without the ledger the timeline holds the scans the session's own turns and rescans made.
-  if (mod.watcher === null || !isWatching(await io.state.live.read())) return { ...turns, fallback: NO_WATCHER, timeline: ownTimeline(await io.state.sessionScans.read()) }
+  if (mod.watcher.stream === null || !isWatching(await io.state.live.read())) return { ...turns, fallback: NO_WATCHER, timeline: ownTimeline(await io.state.sessionScans.read()) }
   const ledger = await io.state.sessionLedger.read()
   if (ledger === null || ledger.since !== (await io.state.sessionStart.read())) return turns
   const edits = (await io.state.sessionEdits.read()).map(p => (p.startsWith('/') && root !== null ? (relativise(root, p) ?? p) : p))

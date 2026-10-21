@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Reconciliation;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -40,7 +41,7 @@ final class IncrementalWriteTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
-            $service->scan($root, mode: 'full');
+            $service->scan($root, new ScanOptions(mode: 'full'));
             $rows = (int) $pdo->query('SELECT (SELECT COUNT(*) FROM nodes) + (SELECT COUNT(*) FROM edges) + (SELECT COUNT(*) FROM files)')->fetchColumn();
 
             // Count only the rows physically inserted or deleted. Re-stamping a
@@ -91,7 +92,7 @@ final class IncrementalWriteTest extends KnossosTestCase
             $pdo = SqliteConnection::open($root . '/graph.sqlite');
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
-            $service->scan($root, mode: 'full');
+            $service->scan($root, new ScanOptions(mode: 'full'));
 
             file_put_contents($root . '/src/B.php', "<?php\n\nnamespace Fixture;\n\nfinal class B { public function added(): void {} }\n");
             $result = $service->scan($root);

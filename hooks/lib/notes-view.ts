@@ -10,19 +10,21 @@
  * day it was written. The marker walks the rows in that order; a note on a
  * missing name has no detail to open.
  */
-import type { NoteCounts, NoteRow, Notes, NotesAsk, NotesFilter, NotesState } from '../../types'
+import type { NoteCounts, Notes, NotesAsk, NotesFilter, NotesState } from '../../types'
 import { moreRows, noteOf, shownOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { CARD_ICON, NOTE, SEVERITY, mark } from './marks'
 import { ACCENT, boundaryLabel, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { button, cells, chip, clip, dimRow, fit, grouped, plural, segmentsWidth, wrapWords } from './rows'
-import type { Row, Segment } from './rows'
+import { button, clip, dimRow, segmentsWidth } from './rows'
+import { chip } from './chips'
+import { cells, fit, grouped, plural, wrapWords } from './text'
+import type { Row, Segment } from './types'
 import { entryRow, entrySpec } from './views'
 import type { Entry, Openable } from './views'
-import { labelOf, noteName, notesTree } from './notes-tree'
+import { itemOf, labelOf, noteName, notesTree } from './notes-tree'
 export { labelOf } from './notes-tree'
-import type { TreeLine } from './notes-tree'
+import type { NoteItem, TreeLine } from './notes-tree'
 import { busy } from './motion'
 
 /** The filters `s` cycles through, in order. */
@@ -30,29 +32,6 @@ export const NOTES_FILTERS: NotesFilter[] = ['all', 'yours', 'model', 'stale', '
 
 /** The filter after `filter` in the cycle, back to every note after the last. */
 export const nextFilter = (filter: NotesFilter): NotesFilter => NOTES_FILTERS[(NOTES_FILTERS.indexOf(filter) + 1) % NOTES_FILTERS.length] ?? 'all'
-
-/** One note as the tab draws it. */
-export type NoteItem = {
-  component: string
-  /** The component's own name, the last part of its full one. */
-  label: string
-  author: 'user' | 'model'
-  kind: string
-  /** Its text whole, and the first line of it, which the row shows. */
-  value: string
-  line: string
-  date: string
-  /** When it was written, whole: what orders the tree's notes and picks the boundary opened first. */
-  updated: string
-  missing: boolean
-  stale: boolean
-  staleReason: string | null
-  checked: boolean
-  checkReason: string | null
-  /** The file its component is in (a file note's own path), and that component's boundary; null when knossos does not say. */
-  path: string | null
-  boundary: string | null
-}
 
 /** The Notes tab's view of the answer. */
 export type NotesInput = {
@@ -74,24 +53,6 @@ export type NotesInput = {
 }
 
 const NO_COUNTS: NoteCounts = { total: 0, missing: 0, stale: 0, flagged: 0 }
-
-const itemOf = (row: NoteRow): NoteItem => ({
-  component: row.component,
-  label: labelOf(row.component),
-  author: row.author,
-  kind: row.kind,
-  value: row.value,
-  line: row.value.split('\n')[0]?.trim() ?? '',
-  date: row.updated_at.slice(0, 10),
-  updated: row.updated_at,
-  missing: row.component_status === 'missing',
-  stale: row.stale,
-  staleReason: row.stale_reason,
-  checked: row.checked,
-  checkReason: row.check_reason,
-  path: row.path ?? null,
-  boundary: row.boundary ?? null,
-})
 
 /** The tab's view of the stored answer, with the filter and text the view holds and whether the field is open. */
 export function notesInput(state: NotesState | null, filter: NotesFilter, text: string, filtering: boolean, ask: NotesAsk | null = null, folds: string[] = []): NotesInput {

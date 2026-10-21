@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { BoundaryMatrix, Dashboard, KnossosView, TurnBrief } from '../../types'
-import { NO_CHANGES } from '../lib/layout'
+import { NO_CHANGES } from '../lib/session-changes'
 import { paneRows } from '../lib/__tests__/pane'
 import { BUSY, BUSY_SPIN_MS, NO_MOTION, spinGlyph } from '../lib/motion'
 import { LIVE_OFF } from '../lib/live'
@@ -179,7 +179,7 @@ describe('the host in the input', () => {
     it('currentInput carries the web host into the input, and Claude Code leaves it out', async () => {
         const { io } = fakePort()
         expect((await currentInput(io, true))!.host).toBeUndefined()
-        mod.host = 'web'
+        mod.session.host = 'web'
         const input = (await currentInput(io, true))!
         expect(input.host).toBe('web')
         expect(JSON.stringify(paneRows(input, 120))).not.toContain('"id":"ask"')
@@ -189,24 +189,24 @@ describe('the host in the input', () => {
 describe('drawPane: off and without a graph', () => {
     it('draws an empty keyed Box when the mod is off, and clears what the pane last drew', async () => {
         const { io, reads } = fakePort()
-        mod.disabled = true
-        mod.paneText = 'stale'
-        mod.emptyShown = true
+        mod.session.disabled = true
+        mod.pane.text = 'stale'
+        mod.pane.emptyShown = true
         const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
         expect(tree).toMatchObject({ type: 'Box', key: 'off' })
         expect(nodesOf(tree)).toHaveLength(1)
-        expect(mod.paneText).toBeNull()
-        expect(mod.emptyShown).toBe(false)
+        expect(mod.pane.text).toBeNull()
+        expect(mod.pane.emptyShown).toBe(false)
         expect(reads).toEqual([])
     })
 
     it('says the graph is loading when no dashboard came yet, and marks the empty state shown', async () => {
         const { io } = fakePort({ dashboard: null, refresh: { fetchedAt: null, failed: false } })
-        mod.paneText = 'stale'
+        mod.pane.text = 'stale'
         const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
         expect(tree.key).toBe('empty')
-        expect(mod.emptyShown).toBe(true)
-        expect(mod.paneText).toBeNull()
+        expect(mod.pane.emptyShown).toBe(true)
+        expect(mod.pane.text).toBeNull()
         expect(textOf(tree)).toContain('Reading the graph')
         expect(textOf(tree)).not.toContain('allow root')
     })
@@ -217,7 +217,7 @@ describe('drawPane: off and without a graph', () => {
         expect(textOf(tree)).toContain(`${spinGlyph(2)} Reading the graph…`)
         expect(textOf(tree)).toContain('asking again')
         expect(textOf(tree)).not.toContain(BUSY)
-        expect(mod.paneBusy).toBe(true)
+        expect(mod.pane.busy).toBe(true)
         expect(timers).toHaveLength(1)
         // Drawn again while the frames run: no second timer.
         await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)
@@ -226,10 +226,10 @@ describe('drawPane: off and without a graph', () => {
 
     it('starts no frames for a line that has spun past its minute', async () => {
         const { io, timers } = fakePort({ dashboard: null, refresh: { fetchedAt: null, failed: false, loading: true } })
-        mod.paneBusy = true
-        mod.busySince = -BUSY_SPIN_MS
+        mod.pane.busy = true
+        mod.pane.busySince = -BUSY_SPIN_MS
         await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)
-        expect(mod.paneBusy).toBe(true)
+        expect(mod.pane.busy).toBe(true)
         expect(timers).toEqual([])
     })
 
@@ -237,7 +237,7 @@ describe('drawPane: off and without a graph', () => {
         const { io, timers } = fakePort({ dashboard: null, refresh: { fetchedAt: null, failed: true } })
         const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
         expect(textOf(tree)).toContain('Could not read the graph')
-        expect(mod.paneBusy).toBe(false)
+        expect(mod.pane.busy).toBe(false)
         expect(timers).toEqual([])
     })
 
@@ -253,7 +253,7 @@ describe('drawPane: off and without a graph', () => {
         const brief = { status: 'not-allowed', refused_root: '/elsewhere', path: '/elsewhere/x', roots_file: null } as unknown as TurnBrief
         const { io } = fakePort({ dashboard: null, brief, refresh: { fetchedAt: null, failed: false } })
         const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
-        expect(mod.emptyShown).toBe(true)
+        expect(mod.pane.emptyShown).toBe(true)
         const text = textOf(tree)
         expect(text).toContain('Reading the graph')
         expect(text).toContain('/elsewhere is not an allowed root')
@@ -264,7 +264,7 @@ describe('drawPane: off and without a graph', () => {
         const { io } = fakePort({ dashboard: { status: 'error' } })
         const tree = (await drawPane(io, elements as never, 'terminal', { bodyColumns: 80 }, act)) as unknown as Node
         expect(tree.key).toBe('empty')
-        expect(mod.emptyShown).toBe(true)
+        expect(mod.pane.emptyShown).toBe(true)
         expect(textOf(tree)).toContain('Could not read the graph')
     })
 })
@@ -276,8 +276,8 @@ describe('drawPane: a graph', () => {
         expect(tree).toMatchObject({ type: 'Box', key: 'pane' })
         const status = (await currentInput(io, true))!.status.text
         expect(status.length).toBeGreaterThan(0)
-        expect(mod.paneText).toBe(status)
-        expect(mod.emptyShown).toBe(false)
+        expect(mod.pane.text).toBe(status)
+        expect(mod.pane.emptyShown).toBe(false)
         expect(nodesOf(tree).some(n => n.key === 'bar')).toBe(false)
         expect(textOf(tree)).toContain('Component0')
     })
@@ -301,12 +301,12 @@ describe('drawPane: a graph', () => {
     it('records whether the pane is wide enough for the detail beside the tab', async () => {
         const { io } = fakePort()
         await drawPane(io, elements as never, 'terminal', { bodyColumns: 160 }, act)
-        expect(mod.paneWide).toBe(true)
+        expect(mod.pane.wide).toBe(true)
         await drawPane(io, elements as never, 'terminal', { bodyColumns: 60 }, act)
-        expect(mod.paneWide).toBe(false)
+        expect(mod.pane.wide).toBe(false)
         // Set before the empty state too: the lookup it needs runs from the next press.
         await drawPane(fakePort({ dashboard: null }).io, elements as never, 'terminal', { bodyColumns: 200 }, act)
-        expect(mod.paneWide).toBe(true)
+        expect(mod.pane.wide).toBe(true)
     })
 
     it('pins the footer bar over a window shorter than the body, never above the top, however far back it is scrolled', async () => {
@@ -394,7 +394,7 @@ describe('drawPane: wide tabs fit', () => {
             for (const bodyRows of [40, 60]) {
                 it(`draws ${tab} at ${bodyColumns}x${bodyRows} whole, within the headroom`, async () => {
                     const { io, logs } = fakePort({ dashboard: dashboard({ hubs: hubs(300) }), view: view({ tab }) })
-                    mod.paneWide = true
+                    mod.pane.wide = true
                     const tree = await drawPane(io, elements as never, 'terminal', { bodyColumns, scroll: { offset: 0, bodyRows } }, act)
                     expect(drawnText(tree)).toBeLessThanOrEqual(WIDE_HEADROOM)
                     // Hubs hangs hover cards: they go first when a tree is over budget, so keeping them shows no step ran.
@@ -486,9 +486,9 @@ describe('drawPane: the tree budget', () => {
         expect(logs).toHaveLength(1)
         expect(logs[0]!.options).toEqual({ to: 'debug' })
         expect(logs[0]!.text).toContain('too large to draw')
-        expect(mod.tooLargeLogged).toBe(true)
+        expect(mod.pane.tooLargeLogged).toBe(true)
         // The header status is still what the age tick compares against.
-        expect(mod.paneText).toBe((await currentInput(io, true))!.status.text)
+        expect(mod.pane.text).toBe((await currentInput(io, true))!.status.text)
 
         await drawPane(io, elements as never, 'terminal', { bodyColumns: 9_000, scroll: { offset: 0, bodyRows: 40 } }, act)
         expect(logs).toHaveLength(1)

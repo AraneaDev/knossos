@@ -10,7 +10,7 @@ use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\ProjectReference;
 use Knossos\Configuration\ProjectConfigurationLoader;
-use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\QueryServices;
 use Throwable;
 
 /**
@@ -112,14 +112,14 @@ final class ProjectListCommand implements CliCommand
      */
     private function diagnostics(string $projectId, array $options, CliCommandContext $context): int
     {
-        $queries = ArchitectureQueryService::forDatabase($context->database());
+        $diagnostics = QueryServices::wire($context->database())->diagnosticsQueries;
         $severity = $context->options->single($options, 'severity');
         $prefix = $context->options->single($options, 'path');
         $items = [];
         $offset = 0;
         // Up to LISTED; past that the list stops and says how to narrow it.
         do {
-            $page = $queries->listDiagnostics($projectId, $severity, $prefix, 100, $offset);
+            $page = $diagnostics->listDiagnostics($projectId, $severity, $prefix, 100, $offset);
             array_push($items, ...$page->data['diagnostics']);
             $offset = $page->data['pagination']['next_offset'];
         } while ($offset !== null && $offset < self::LISTED);
@@ -150,7 +150,7 @@ final class ProjectListCommand implements CliCommand
             throw new InvalidArgumentException('--reachability must be unreferenced or test-only.');
         }
         $budget = $context->options->integer($options, 'candidate-timeout', self::CANDIDATE_TIMEOUT_MS, 1, 600_000);
-        $queries = ArchitectureQueryService::forDatabase($context->database(), $this->clock);
+        $health = QueryServices::wire($context->database(), $this->clock)->healthQueries;
         // One budget for the whole list: each page searches again, so a per-page limit would multiply.
         $deadline = $this->now() + $budget * 1_000_000;
         $candidates = [];
@@ -162,7 +162,7 @@ final class ProjectListCommand implements CliCommand
                 $incomplete = true;
                 break;
             }
-            $page = $queries->architectureHealth($projectId, limit: self::PAGE, candidateOffset: $offset, candidateTimeoutMs: min($left, 60_000));
+            $page = $health->architectureHealth($projectId, limit: self::PAGE, candidateOffset: $offset, candidateTimeoutMs: min($left, 60_000));
             $found = $page->data['dead_code_candidates'];
             array_push($candidates, ...$found);
             $offset += self::PAGE;

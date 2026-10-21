@@ -64,101 +64,155 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
         foreach ($change->data['impacted_components'] as $record) {
             $touched[$record['node']['id']] = true;
         }
-        $warnings = $change->warnings;
-        $truncated = $change->truncated;
-
         [$policies, $budgets, $configReason] = $this->withProjectConfig($project, $policies, $budgets);
+        $touchingIds = array_map('strval', array_keys($touched));
+        $policyCheck = $this->policySection($projectId, $policies, $touchingIds, $minConfidence, $timeoutMs, $configReason);
+        $qualityGate = $this->gateSection($projectId, $project, $budgets, $policies, $baselineSnapshot, $baseRef, $configReason);
+        $cycles = $this->cyclesSection($projectId, $touchingIds, $minConfidence, $timeoutMs);
+        $sections = [$policyCheck, $qualityGate, $cycles];
 
-        $checkEvidence = [];
-        $policyCheck = ['status' => 'not_evaluated', 'reason' => $configReason ?? 'No boundary policies declared in knossos.json or supplied.'];
-        if ($policies !== []) {
-            try {
-                // Two checks: the whole project's for the total, and one scoped
-                // to edges touching the change for those violations. Both
-                // counts are the checks' exact `violation_count`, never the
-                // length of a 100-violation page, and the touching ones are not
-                // filtered out of the whole project's first page.
-                $check = $this->policyQueries->checkArchitecture($projectId, $policies, $minConfidence, 100, ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, $timeoutMs);
-                $touching = $touched === [] ? null : $this->policyQueries->checkArchitecture(
-                    $projectId,
-                    $policies,
-                    $minConfidence,
-                    100,
-                    ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES,
-                    $timeoutMs,
-                    touchingIds: array_map('strval', array_keys($touched)),
-                );
-                $policyCheck = [
-                    'status' => 'evaluated',
-                    'policies_evaluated' => count($check->data['policies_evaluated']),
-                    'total_violations' => (int) ($check->data['bounds']['violation_count'] ?? count($check->data['violations'])),
-                    'touching_violation_count' => $touching === null ? 0 : (int) ($touching->data['bounds']['violation_count'] ?? count($touching->data['violations'])),
-                    'violations_touching_change' => $touching === null ? [] : $touching->data['violations'],
-                ];
-                $checkEvidence = $touching === null ? $check->evidence : $touching->evidence;
-                $warnings = [...$warnings, ...$check->warnings, ...($touching === null ? [] : $touching->warnings)];
-                $truncated = $truncated || $check->truncated || ($touching !== null && $touching->truncated);
-            } catch (InvalidArgumentException $error) {
-                $policyCheck = ['status' => 'not_evaluated', 'reason' => 'Policy check failed: ' . $error->getMessage()];
-            }
+        return new ResultEnvelope(
+            $projectId,
+            $project['active_scan_id'],
+            self::summaryLine($change, $policyCheck->data, $qualityGate->data),
+            [
+                'change' => ['status' => 'evaluated'] + array_intersect_key($change->data, array_flip(['changed_files', 'unresolved_files', 'direct_components', 'impacted_components', 'git'])),
+                'policy_check' => $policyCheck->data,
+                'quality_gate' => $qualityGate->data,
+                'cycles_touching_change' => $cycles->data,
+                'bounds' => $change->data['bounds'] + ['cycle_scan_limit' => 100],
+            ],
+            array_slice([...$change->evidence, ...array_merge(...array_map(static fn(ReviewSection $section): array => $section->evidence, $sections))], 0, 100),
+            array_values(array_unique([...$change->warnings, ...array_merge(...array_map(static fn(ReviewSection $section): array => $section->warnings, $sections))])),
+            $change->truncated || $policyCheck->truncated || $qualityGate->truncated || $cycles->truncated,
+        );
+    }
+
+    /**
+     * The boundary policy violations touching the change, against the
+     * whole project's count.
+     *
+     * @param list<array<string, mixed>> $policies
+     * @param list<string> $touchingIds
+     */
+    private function policySection(string $projectId, array $policies, array $touchingIds, string $minConfidence, int $timeoutMs, ?string $configReason): ReviewSection
+    {
+        if ($policies === []) {
+            return ReviewSection::notEvaluated($configReason ?? 'No boundary policies declared in knossos.json or supplied.');
         }
-
-        $gateEvidence = [];
-        $qualityGate = ['status' => 'not_evaluated', 'reason' => $configReason ?? 'No quality budgets declared in knossos.json or supplied.'];
-        if ($budgets !== []) {
-            $source = $baselineSnapshot === null ? 'previous_scan' : 'argument';
-            $baselineSnapshot ??= $this->latestNonActiveSnapshot($projectId, (string) $project['active_scan_id']);
-            if ($baselineSnapshot === null) {
-                $qualityGate = ['status' => 'not_evaluated', 'reason' => 'No retained snapshot other than the active scan; scan again after the next change to establish a baseline.'];
-            } else {
-                try {
-                    $gate = $this->gateQueries->qualityGate($projectId, $baselineSnapshot, $budgets, $policies);
-                    $baseline = $this->baseline($projectId, (string) $gate->data['baseline_snapshot'], $source);
-                    $qualityGate = [
-                        'status' => 'evaluated',
-                        'passed' => $gate->data['passed'],
-                        'checks' => $gate->data['checks'],
-                        'baseline_snapshot' => $gate->data['baseline_snapshot'],
-                        'baseline' => $baseline,
-                    ];
-                    $gateEvidence = $gate->evidence;
-                    $warnings = [...$warnings, ...$gate->warnings];
-                    if ($baseRef !== null && $source === 'previous_scan') {
-                        // The changed files come from base_ref; the gate's baseline does not.
-                        $warnings[] = sprintf(
-                            'The quality gate compared against the previous scan %s, not the graph of base_ref %s: it shows no regression since that scan. Pass baseline_snapshot with a scan of %s to gate against it.',
-                            $baseline['snapshot'],
-                            $baseRef,
-                            $baseRef,
-                        );
-                    }
-                } catch (InvalidArgumentException $error) {
-                    $qualityGate = ['status' => 'not_evaluated', 'reason' => 'Quality gate failed: ' . $error->getMessage()];
-                }
-            }
-        }
-
-        $cycleEvidence = [];
-        $touchingCycles = [];
         try {
-            // Filtered inside the search, before its limit of 100, so a touching
-            // cycle is found however many others sort ahead of it. An empty
-            // filter means every cycle, so a change touching nothing skips it.
-            if ($touched !== []) {
-                $cycleResult = $this->cycleQueries->dependencyCycles($projectId, [], $minConfidence, 100, QueryBounds::MAX_NODES, QueryBounds::MAX_EDGES, $timeoutMs, touchingIds: array_map('strval', array_keys($touched)));
-                $touchingCycles = $cycleResult->data['cycles'];
-                $cycleEvidence = $cycleResult->evidence;
-                $warnings = [...$warnings, ...$cycleResult->warnings];
-                $truncated = $truncated || $cycleResult->truncated;
-            }
-            $cyclesSection = ['status' => 'evaluated', 'cycles' => $touchingCycles];
+            // Two checks: the whole project's for the total, and one scoped
+            // to edges touching the change for those violations. Both
+            // counts are the checks' exact `violation_count`, never the
+            // length of a 100-violation page, and the touching ones are not
+            // filtered out of the whole project's first page.
+            $check = $this->policyQueries->checkArchitecture($projectId, $policies, $minConfidence, 100, ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES, $timeoutMs);
+            $touching = $touchingIds === [] ? null : $this->policyQueries->checkArchitecture(
+                $projectId,
+                $policies,
+                $minConfidence,
+                100,
+                ArchitecturePolicyQueryService::DEFAULT_MAX_EDGES,
+                $timeoutMs,
+                touchingIds: $touchingIds,
+            );
         } catch (InvalidArgumentException $error) {
-            $cyclesSection = ['status' => 'not_evaluated', 'reason' => 'Cycle scan failed: ' . $error->getMessage()];
+            return ReviewSection::notEvaluated('Policy check failed: ' . $error->getMessage());
         }
 
-        $evidence = array_slice([...$change->evidence, ...$checkEvidence, ...$gateEvidence, ...$cycleEvidence], 0, 100);
+        return new ReviewSection(
+            [
+                'status' => 'evaluated',
+                'policies_evaluated' => count($check->data['policies_evaluated']),
+                'total_violations' => (int) ($check->data['bounds']['violation_count'] ?? count($check->data['violations'])),
+                'touching_violation_count' => $touching === null ? 0 : (int) ($touching->data['bounds']['violation_count'] ?? count($touching->data['violations'])),
+                'violations_touching_change' => $touching === null ? [] : $touching->data['violations'],
+            ],
+            $touching === null ? $check->evidence : $touching->evidence,
+            [...$check->warnings, ...($touching === null ? [] : $touching->warnings)],
+            $check->truncated || ($touching !== null && $touching->truncated),
+        );
+    }
 
-        $summary = sprintf(
+    /**
+     * The quality gate against the given baseline snapshot, or the latest
+     * retained one other than the active scan.
+     *
+     * @param array<string, mixed> $project
+     * @param array<string, int> $budgets
+     * @param list<array<string, mixed>> $policies
+     */
+    private function gateSection(string $projectId, array $project, array $budgets, array $policies, ?string $baselineSnapshot, ?string $baseRef, ?string $configReason): ReviewSection
+    {
+        if ($budgets === []) {
+            return ReviewSection::notEvaluated($configReason ?? 'No quality budgets declared in knossos.json or supplied.');
+        }
+        $source = $baselineSnapshot === null ? 'previous_scan' : 'argument';
+        $baselineSnapshot ??= $this->latestNonActiveSnapshot($projectId, (string) $project['active_scan_id']);
+        if ($baselineSnapshot === null) {
+            return ReviewSection::notEvaluated('No retained snapshot other than the active scan; scan again after the next change to establish a baseline.');
+        }
+        try {
+            $gate = $this->gateQueries->qualityGate($projectId, $baselineSnapshot, $budgets, $policies);
+            $baseline = $this->baseline($projectId, (string) $gate->data['baseline_snapshot'], $source);
+        } catch (InvalidArgumentException $error) {
+            return ReviewSection::notEvaluated('Quality gate failed: ' . $error->getMessage());
+        }
+        $warnings = $gate->warnings;
+        if ($baseRef !== null && $source === 'previous_scan') {
+            // The changed files come from base_ref; the gate's baseline does not.
+            $warnings[] = sprintf(
+                'The quality gate compared against the previous scan %s, not the graph of base_ref %s: it shows no regression since that scan. Pass baseline_snapshot with a scan of %s to gate against it.',
+                $baseline['snapshot'],
+                $baseRef,
+                $baseRef,
+            );
+        }
+
+        return new ReviewSection(
+            [
+                'status' => 'evaluated',
+                'passed' => $gate->data['passed'],
+                'checks' => $gate->data['checks'],
+                'baseline_snapshot' => $gate->data['baseline_snapshot'],
+                'baseline' => $baseline,
+            ],
+            $gate->evidence,
+            $warnings,
+        );
+    }
+
+    /**
+     * The dependency cycles the change takes part in.
+     *
+     * @param list<string> $touchingIds
+     */
+    private function cyclesSection(string $projectId, array $touchingIds, string $minConfidence, int $timeoutMs): ReviewSection
+    {
+        // Filtered inside the search, before its limit of 100, so a touching
+        // cycle is found however many others sort ahead of it. An empty
+        // filter means every cycle, so a change touching nothing skips it.
+        if ($touchingIds === []) {
+            return new ReviewSection(['status' => 'evaluated', 'cycles' => []]);
+        }
+        try {
+            $cycleResult = $this->cycleQueries->dependencyCycles($projectId, [], $minConfidence, 100, QueryBounds::MAX_NODES, QueryBounds::MAX_EDGES, $timeoutMs, touchingIds: $touchingIds);
+        } catch (InvalidArgumentException $error) {
+            return ReviewSection::notEvaluated('Cycle scan failed: ' . $error->getMessage());
+        }
+
+        return new ReviewSection(['status' => 'evaluated', 'cycles' => $cycleResult->data['cycles']], $cycleResult->evidence, $cycleResult->warnings, $cycleResult->truncated);
+    }
+
+    /**
+     * The review's one-line summary.
+     *
+     * @param array<string, mixed> $policyCheck
+     * @param array<string, mixed> $qualityGate
+     */
+    private static function summaryLine(ResultEnvelope $change, array $policyCheck, array $qualityGate): string
+    {
+        return sprintf(
             '%d changed file%s, %d impacted component%s, %s, gate %s.',
             count($change->data['changed_files']),
             count($change->data['changed_files']) === 1 ? '' : 's',
@@ -168,22 +222,6 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
                 ? sprintf('%d policy violation%s touching the change', $policyCheck['touching_violation_count'], $policyCheck['touching_violation_count'] === 1 ? '' : 's')
                 : 'policies not evaluated',
             $qualityGate['status'] === 'evaluated' ? ($qualityGate['passed'] ? 'passed' : 'FAILED') : 'not evaluated',
-        );
-
-        return new ResultEnvelope(
-            $projectId,
-            $project['active_scan_id'],
-            $summary,
-            [
-                'change' => ['status' => 'evaluated'] + array_intersect_key($change->data, array_flip(['changed_files', 'unresolved_files', 'direct_components', 'impacted_components', 'git'])),
-                'policy_check' => $policyCheck,
-                'quality_gate' => $qualityGate,
-                'cycles_touching_change' => $cyclesSection,
-                'bounds' => $change->data['bounds'] + ['cycle_scan_limit' => 100],
-            ],
-            $evidence,
-            array_values(array_unique($warnings)),
-            $truncated,
         );
     }
 

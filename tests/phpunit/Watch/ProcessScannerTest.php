@@ -48,7 +48,11 @@ final class ProcessScannerTest extends KnossosTestCase
         return self::repositoryRoot() . '/tests/Fixtures/hung-scan';
     }
 
-    /** Whether the process the hung scan started is still there, after a moment for the kill to land. */
+    /**
+     * Whether the process the hung scan started is still there, after a moment for the kill to land.
+     *
+     * @phpstan-impure
+     */
     private function startedProcessAlive(): bool
     {
         $pid = (int) @file_get_contents($this->pidFile);

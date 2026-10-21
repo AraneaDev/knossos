@@ -63,11 +63,11 @@ final class QualityGateBoundaryScanTest extends KnossosTestCase
         // that bound would have traded an unpassable budget for a crash.
         memory_reset_peak_usage();
         $before = memory_get_usage();
-        $queries->checkArchitecture($ids['project'], $policies, maxEdges: 100_000);
+        $queries->services()->policyQueries->checkArchitecture($ids['project'], $policies, maxEdges: 100_000);
         $used = memory_get_peak_usage() - $before;
         $this->assertLessThan(8 * 1024 * 1024, $used, sprintf('Policy check retained %d bytes for 20001 edges.', $used));
 
-        $check = $queries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 0], $policies)->data['checks'][0];
+        $check = $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 0], $policies)->data['checks'][0];
         assertSame('boundary_violations', $check['metric']);
         assertSame(false, isset($check['indeterminate']));
         assertSame(true, $check['passed']);

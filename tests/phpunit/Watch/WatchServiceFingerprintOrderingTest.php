@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Watch;
 
-use Knossos\Cancellation\CancellationToken;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Watch\WatchService;
@@ -33,19 +32,8 @@ final class WatchServiceFingerprintOrderingTest extends TestCase
 
             public function __construct(private string $root) {}
 
-            public function scan(
-                string $root,
-                ?string $name = null,
-                ?int $maxFiles = null,
-                ?int $maxFileBytes = null,
-                ?array $explicitBoundaries = null,
-                ?string $mode = null,
-                ?CancellationToken $cancellation = null,
-                ?int $snapshotRetention = null,
-                ?int $workerTimeoutMs = null,
-                ?int $workerMemoryMb = null,
-                bool $runEnrichers = false,
-            ): ResultEnvelope {
+            public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+            {
                 ++$this->calls;
                 if ($this->calls === 1) {
                     file_put_contents($this->root . '/src/Injected.php', "<?php\nfinal class Injected {}\n");
@@ -113,19 +101,8 @@ final class WatchServiceFingerprintOrderingTest extends TestCase
 
             public function __construct(private string $root) {}
 
-            public function scan(
-                string $root,
-                ?string $name = null,
-                ?int $maxFiles = null,
-                ?int $maxFileBytes = null,
-                ?array $explicitBoundaries = null,
-                ?string $mode = null,
-                ?CancellationToken $cancellation = null,
-                ?int $snapshotRetention = null,
-                ?int $workerTimeoutMs = null,
-                ?int $workerMemoryMb = null,
-                bool $runEnrichers = false,
-            ): ResultEnvelope {
+            public function scan(string $root, \Knossos\Scan\ScanOptions $options = new \Knossos\Scan\ScanOptions()): ResultEnvelope
+            {
                 // Written during a scan, with an old mtime, so only the
                 // directory holding it shows the change.
                 $file = [1 => '/src/new/B.php', 2 => '/src/later/C.php'][++$this->calls] ?? null;

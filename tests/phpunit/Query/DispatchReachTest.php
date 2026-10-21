@@ -91,7 +91,7 @@ final class DispatchReachTest extends KnossosTestCase
                 array_push($listed, ...array_column($ring['items'], 'canonical_name'));
             }
             assertContains('App\\Base::read', $listed);
-            $tests = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Helper.php'])->data['test_files'];
+            $tests = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Helper.php'])->data['test_files'];
             assertContains('tests/BaseCase.php', array_column($tests, 'path'));
         } finally {
             $this->removeTempTree($root);
@@ -137,7 +137,7 @@ final class DispatchReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->dispatching();
         try {
-            $found = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Helper.php']);
+            $found = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Helper.php']);
             assertContains('tests/UsesTest.php', array_column($found->data['test_files'], 'path'));
         } finally {
             $this->removeTempTree($root);

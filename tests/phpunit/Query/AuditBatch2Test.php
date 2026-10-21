@@ -50,11 +50,11 @@ final class AuditBatch2Test extends KnossosTestCase
             ['id' => 'deny-billing', 'from_boundary' => $backend, 'deny_targets' => [$billing], 'edge_kinds' => ['calls']],
             ['id' => 'deny-unassigned', 'from_boundary' => $backend, 'deny_targets' => ['@unassigned'], 'edge_kinds' => ['calls']],
         ];
-        $full = $query->checkArchitecture($ids['project'], $policies);
+        $full = $query->services()->policyQueries->checkArchitecture($ids['project'], $policies);
         assertSame(2, count($full->data['violations']));
         assertSame(2, $full->data['bounds']['violation_count']);
 
-        $limited = $query->checkArchitecture($ids['project'], $policies, limit: 1);
+        $limited = $query->services()->policyQueries->checkArchitecture($ids['project'], $policies, limit: 1);
         assertSame(1, count($limited->data['violations']));
         assertSame(2, $limited->data['bounds']['violation_count']);
         assertSame(true, $limited->truncated);
@@ -87,7 +87,7 @@ final class AuditBatch2Test extends KnossosTestCase
 
         $query = ArchitectureQueryService::forDatabase($pdo);
         $policies = [['id' => 'no-billing', 'from_boundary' => $backend, 'deny_targets' => [$billing], 'edge_kinds' => ['calls']]];
-        $gate = $query->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 100], $policies);
+        $gate = $query->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['boundary_violations' => 100], $policies);
         assertSame(101, $gate->data['metrics']['boundary_violations']);
         assertSame(false, $gate->data['passed']);
     }
@@ -236,7 +236,7 @@ final class AuditBatch2Test extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'extends', $b, $a, 'ba'), $ids['project'], 'extends', $b, $a, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $candidateNames = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
         assertSame(false, in_array('App\\C::run', $candidateNames, true));
     }
@@ -288,7 +288,7 @@ final class AuditBatch2Test extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $query = ArchitectureQueryService::forDatabase($pdo);
-        $result = $query->architectureContext($ids['project'], files: ['src/Checkout.php']);
+        $result = $query->services()->contextQueries->architectureContext($ids['project'], files: ['src/Checkout.php']);
         assertSame(false, $result->truncated);
     }
 
@@ -309,7 +309,7 @@ final class AuditBatch2Test extends KnossosTestCase
         $query = ArchitectureQueryService::forDatabase($pdo);
 
         foreach ([4000, 12_000, 30_000] as $maxChars) {
-            $result = $query->architectureContext(
+            $result = $query->services()->contextQueries->architectureContext(
                 $ids['project'],
                 'checkout billing invoice',
                 ['src/Checkout.php'],
@@ -353,7 +353,7 @@ final class AuditBatch2Test extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureContext(
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->contextQueries->architectureContext(
             $ids['project'],
             'checkout billing invoice',
             maxChars: 4000,
@@ -373,7 +373,7 @@ final class AuditBatch2Test extends KnossosTestCase
 
         $message = null;
         try {
-            $query->changedFilesImpact($ids['project'], baseRef: 'main');
+            $query->services()->changeQueries->changedFilesImpact($ids['project'], baseRef: 'main');
         } catch (InvalidArgumentException $error) {
             $message = $error->getMessage();
         }

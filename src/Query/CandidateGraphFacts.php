@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /**
@@ -215,10 +216,8 @@ final class CandidateGraphFacts
     public function deadCodeSuppressions(): array
     {
         if ($this->suppressions === null) {
-            $statement = $this->pdo->prepare('SELECT config_json FROM projects WHERE id = :id');
-            $statement->execute(['id' => $this->projectId]);
-            $raw = $statement->fetchColumn();
-            $config = is_string($raw) ? json_decode($raw, true) : null;
+            $raw = (new ProjectRepository($this->pdo))->configOf($this->projectId);
+            $config = $raw !== null ? json_decode($raw, true) : null;
             $list = is_array($config) ? ($config['dead_code_suppressions'] ?? []) : [];
             $this->suppressions = is_array($list) && array_is_list($list) ? array_values(array_filter($list, 'is_string')) : [];
         }

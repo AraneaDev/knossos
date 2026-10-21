@@ -11,6 +11,7 @@ use Knossos\Scan\ContributionCacheService;
 use Knossos\Scan\LanguageDescriptor;
 use Knossos\Scan\LanguageScanRunner;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -173,7 +174,7 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
         });
 
         try {
-            $error = captureThrows(fn() => $this->service($pdo)->scan($this->root, cancellation: $token), ScanSnapshotChangedException::class);
+            $error = captureThrows(fn() => $this->service($pdo)->scan($this->root, new ScanOptions(cancellation: $token)), ScanSnapshotChangedException::class);
         } finally {
             file_put_contents($path, $original);
         }

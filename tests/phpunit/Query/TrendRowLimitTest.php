@@ -37,7 +37,7 @@ final class TrendRowLimitTest extends KnossosTestCase
             )->execute(['project' => $projectId, 'scan' => $scan]);
             $rows = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE project_id = '{$projectId}'")->fetchColumn();
 
-            $series = ArchitectureQueryService::forDatabase($pdo)->architectureTrends($projectId, 2)->data['series'];
+            $series = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->architectureTrends($projectId, 2)->data['series'];
             $active = array_values(array_filter($series, static fn(array $p): bool => ($p['active'] ?? false) === true))[0];
             assertSame([false, true], [$active['complete'], $active['partial']]);
             assertSame(['code' => 'row_limit', 'table' => 'nodes', 'rows' => $rows, 'limit' => SnapshotBounds::MAX_ROWS_PER_TABLE], $active['reason']);
@@ -79,7 +79,7 @@ final class TrendRowLimitTest extends KnossosTestCase
             self::retainStub($pdo, $projectId, 'scan_old', ['schema' => 1, 'reason' => 'fact_limit']);
             self::retainStub($pdo, $projectId, 'scan_big', ['schema' => 1, 'reason' => 'fact_limit', 'figures' => ['counts' => $counts, 'metrics' => ['error_diagnostics' => 2, 'warning_diagnostics' => 5]]]);
 
-            $series = ArchitectureQueryService::forDatabase($pdo)->architectureTrends($projectId, 5)->data['series'];
+            $series = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->architectureTrends($projectId, 5)->data['series'];
             $byId = array_column($series, null, 'scan_id');
             assertSame([false, true, 'fact_limit'], [$byId['scan_big']['complete'], $byId['scan_big']['partial'], $byId['scan_big']['reason']]);
             assertSame($counts, $byId['scan_big']['counts']);

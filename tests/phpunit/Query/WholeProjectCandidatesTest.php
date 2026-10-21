@@ -30,7 +30,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $repository->saveNode($loop, $project, 'ts', 'module', 'zzz/loop.js', 'loop.js', null, $ids['file'], 1, 9, 'ast', 'certain', ['executable' => true, 'unresolved_member_calls' => ['label']], 'ts:file:zzz/loop.js', $ids['scan']);
         $repository->completeScan($project, $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, limit: 100, maxNodes: 3)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 100, maxNodes: 3)->data;
 
         $confidence = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
@@ -47,7 +47,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $repository->saveNode($dead, $project, 'ts', 'function', 'zzz/late.ts#unused', 'unused', null, $ids['file'], 7, 9, 'ast', 'certain', [], 'ts:file:zzz/late.ts', $ids['scan']);
         $repository->completeScan($project, $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, limit: 100, maxNodes: 1);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 100, maxNodes: 1);
         // The node bound limits the hub ranking, not the candidates, and the
         // summary says which.
         self::assertStringContainsString('so hubs and hotspots beyond that bound are not reported', $result->summary);
@@ -75,7 +75,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $repository->completeScan($project, $ids['scan']);
 
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $data = $queries->architectureHealth($project, limit: 100, maxNodes: 1)->data;
+        $data = $queries->services()->healthQueries->architectureHealth($project, limit: 100, maxNodes: 1)->data;
 
         $reachability = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
@@ -88,7 +88,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         self::assertFalse($data['bounds']['candidates_truncated']);
 
         // With tests counted as architecture, the test caller makes it live.
-        $included = $queries->architectureHealth($project, limit: 100, maxNodes: 1, includeTests: true)->data;
+        $included = $queries->services()->healthQueries->architectureHealth($project, limit: 100, maxNodes: 1, includeTests: true)->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $included['dead_code_candidates']);
         self::assertNotContains('Zzz\\onlyTested', $names);
     }
@@ -102,7 +102,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($project, 'calls', $ids['invoice'], $ids['checkout'], 'back:1'), $project, 'calls', $ids['invoice'], $ids['checkout'], $ids['file'], 20, 20, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($project, $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, limit: 100)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 100)->data;
 
         self::assertSame([], $data['dead_code_candidates']);
         self::assertFalse($data['bounds']['candidates_truncated']);
@@ -138,7 +138,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $repository->completeScan($project, $ids['scan']);
 
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $all = $queries->architectureHealth($project, limit: 100)->data;
+        $all = $queries->services()->healthQueries->architectureHealth($project, limit: 100)->data;
         $entries = array_map(static fn(array $c): array => [$c['reachability'], $c['component']['canonical_name']], $all['dead_code_candidates']);
         self::assertSame([
             ['test_only', 'App\\A0'], ['test_only', 'App\\A1'], ['test_only', 'App\\A2'], ['test_only', 'App\\A3'],
@@ -151,7 +151,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         // One at a time, each page holds what the full list holds there, and
         // carries the whole component.
         foreach ($all['dead_code_candidates'] as $offset => $expected) {
-            $page = $queries->architectureHealth($project, limit: 1, candidateOffset: $offset)->data;
+            $page = $queries->services()->healthQueries->architectureHealth($project, limit: 1, candidateOffset: $offset)->data;
             self::assertSame([$expected], $page['dead_code_candidates'], (string) $offset);
             self::assertSame(6, $page['bounds']['candidates_total']);
         }
@@ -167,7 +167,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         }
         $repository->completeScan($project, $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, limit: 2);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 2);
 
         // The candidates report their own page: truncation_reasons describe
         // the hub ranking, which fits the limit.
@@ -197,7 +197,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
             return $time;
         });
 
-        $result = $queries->architectureHealth($ids['project'], limit: 100, candidateTimeoutMs: 1);
+        $result = $queries->services()->healthQueries->architectureHealth($ids['project'], limit: 100, candidateTimeoutMs: 1);
         $data = $result->data;
 
         // The summary an agent reads first says the list is partial.
@@ -234,7 +234,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
             return $time;
         });
 
-        $data = $queries->architectureHealth($project, limit: 100, candidateTimeoutMs: 7)->data;
+        $data = $queries->services()->healthQueries->architectureHealth($project, limit: 100, candidateTimeoutMs: 7)->data;
 
         self::assertTrue($data['bounds']['candidates_truncated']);
         self::assertGreaterThanOrEqual(400, $data['bounds']['candidates_total']);
@@ -249,7 +249,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
         foreach ([0, 60_001] as $timeout) {
-            $error = captureThrows(fn() => $queries->architectureHealth($ids['project'], candidateTimeoutMs: $timeout), \InvalidArgumentException::class);
+            $error = captureThrows(fn() => $queries->services()->healthQueries->architectureHealth($ids['project'], candidateTimeoutMs: $timeout), \InvalidArgumentException::class);
             self::assertSame('candidate_timeout_ms must be between 1 and 60000.', $error->getMessage());
         }
     }
@@ -290,7 +290,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $limit = ini_set('memory_limit', '128M');
         self::assertNotFalse($limit, 'The 128 MB limit could not be set.');
         try {
-            $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project, limit: 10)->data;
+            $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 10)->data;
         } finally {
             ini_set('memory_limit', (string) $limit);
         }

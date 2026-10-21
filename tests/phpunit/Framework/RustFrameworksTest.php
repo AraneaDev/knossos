@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Framework;
 
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
@@ -50,7 +51,7 @@ RUST);
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
-            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, 'Rust Frameworks');
+            $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Rust Frameworks'));
 
             assertSame(1, $result->data['parsed_files']);
             assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'package' AND canonical_name = 'route-demo'")->fetchColumn());
