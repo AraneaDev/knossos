@@ -68,7 +68,7 @@
     // one part in a million, a few nanoseconds on the hardening step it times,
     // which the `(int)` cast to whole milliseconds erases. No test can tell it
     // apart without restating the divisor. Measured on GitProcessRunner.php:169
-    // (now :199), a survivor of the 2026-09-10 run; it is the only site. Every
+    // (now :205), a survivor of the 2026-09-10 run; it is the only site. Every
     // other timing goes through Reconciliation\Milliseconds, whose divisor and
     // `round(…, 3)` precision are mutated, not excluded. MillisecondsTest kills
     // each of them when applied by hand, but a full run SKIPS them: every scan

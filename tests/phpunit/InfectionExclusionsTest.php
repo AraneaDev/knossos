@@ -57,7 +57,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Query/InheritanceGraph.php:176',
             ],
             '.*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);' => [
-                'src/Git/GitProcessRunner.php:199',
+                'src/Git/GitProcessRunner.php:205',
             ],
             '.*bindValue\\(\':limit\', \\$\\w+ \\+ 1, PDO::PARAM_INT\\).*' => [
                 'src/Query/ComponentQueryService.php:199',
@@ -136,7 +136,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
         ],
         'DecrementInteger' => [
             '.*\\(int\\) \\(\\(hrtime\\(true\\) - \\$\\w+\\) / 1_000_000\\);' => [
-                'src/Git/GitProcessRunner.php:199',
+                'src/Git/GitProcessRunner.php:205',
             ],
             '.*implode\\(\',\', array_fill\\(0, count\\(.*' => [
                 'src/Query/AnnotationNotes.php:83',
@@ -265,8 +265,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
 
             $violations = self::violations($root);
 
-            self::assertContains('IncrementInteger exclusion `.*\(int\) \(\(hrtime\(true\) - \$\w+\) / 1_000_000\);` no longer matches src/Git/GitProcessRunner.php:199', $violations);
-            self::assertContains('IncrementInteger exclusion `.*\(int\) \(\(hrtime\(true\) - \$\w+\) / 1_000_000\);` now also hides src/Git/GitProcessRunner.php:200', $violations);
+            self::assertContains('IncrementInteger exclusion `.*\(int\) \(\(hrtime\(true\) - \$\w+\) / 1_000_000\);` no longer matches src/Git/GitProcessRunner.php:205', $violations);
+            self::assertContains('IncrementInteger exclusion `.*\(int\) \(\(hrtime\(true\) - \$\w+\) / 1_000_000\);` now also hides src/Git/GitProcessRunner.php:206', $violations);
         } finally {
             $this->removeTempTree($root);
         }
