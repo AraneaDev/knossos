@@ -10,6 +10,7 @@ use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ScanOptions;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use Throwable;
 
@@ -36,13 +37,13 @@ final readonly class WatchScanAttempt
      * identically, so retrying it only floods diagnostics for the life of the
      * watch.
      *
-     * @var list<string>
+     * @var list<WorkerErrorCode>
      */
     private const TRANSIENT_WORKER_CODES = [
-        'WORKER_TIMEOUT',
-        'WORKER_PIPE_BROKEN',
-        'WORKER_IO_FAILED',
-        'WORKER_EXITED',
+        WorkerErrorCode::Timeout,
+        WorkerErrorCode::PipeBroken,
+        WorkerErrorCode::IoFailed,
+        WorkerErrorCode::Exited,
     ];
 
     /**
@@ -79,7 +80,7 @@ final readonly class WatchScanAttempt
             // Classify worker faults by diagnostic code: a small allowlist of
             // transient codes stays retryable, permanent misconfigurations
             // become terminal so the watch does not retry them forever.
-            $outcome = in_array($error->diagnosticCode, self::TRANSIENT_WORKER_CODES, true)
+            $outcome = in_array(WorkerErrorCode::of($error), self::TRANSIENT_WORKER_CODES, true)
                 ? self::RETRYABLE
                 : self::TERMINAL;
             return new self($outcome, null, $error->getMessage());

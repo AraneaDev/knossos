@@ -6,6 +6,7 @@ namespace Knossos\Configuration;
 
 use InvalidArgumentException;
 use JsonException;
+use Knossos\Filesystem\AtomicFile;
 use Knossos\Roots\AllowedRoots;
 
 /**
@@ -97,18 +98,7 @@ final readonly class EnrichersFile
             'env' => (object) $definition->environment,
             'input_node_kinds' => $definition->inputNodeKinds,
         ], $definitions);
-        $encoded = json_encode(['enrichers' => $entries], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        $temporary = $directory . '/.enrichers.json.' . bin2hex(random_bytes(8)) . '.tmp';
-        // Created owner-only, before the first byte of an env value is in it;
-        // the chmod after only matters on a filesystem that ignores the umask.
-        $umask = umask(0o077);
-        try {
-            $written = @file_put_contents($temporary, $encoded . PHP_EOL);
-        } finally {
-            umask($umask);
-        }
-        if ($written === false || !@chmod($temporary, 0o600) || !@rename($temporary, $this->path)) {
-            @unlink($temporary);
+        if (!AtomicFile::writeJson($this->path, ['enrichers' => $entries], 0o600)) {
             throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
         }
     }

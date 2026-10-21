@@ -6,6 +6,7 @@ namespace Knossos\Boundary;
 
 use InvalidArgumentException;
 use Knossos\Discovery\ProjectUnit;
+use Knossos\Discovery\UnitKind;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 
@@ -69,10 +70,9 @@ final class BoundaryInference
     private function manifestRules(array $units): array
     {
         $rules = [];
-        $manifestKinds = ['cargo', 'composer', 'node', 'python', 'typescript'];
         $legacyIdentityCounts = [];
         foreach ($units as $unit) {
-            if (!in_array($unit->kind, $manifestKinds, true)) {
+            if (UnitKind::tryFrom($unit->kind)?->infersBoundary() !== true) {
                 continue;
             }
             $directory = dirname(str_replace('\\', '/', $unit->configPath));

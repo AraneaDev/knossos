@@ -19,8 +19,8 @@ use PHPUnit\Framework\Attributes\Group;
  * A rescan writes most rows again under the same id. Each upsert names the
  * columns it replaces, and until this test a column could be dropped from
  * that list with every test green: the rescan would then keep the old value
- * for good, a stale line number or confidence served as current. The batch
- * writers also skip a row nothing changed in, so a missing term in that
+ * for good, a stale line number or confidence served as current. Every
+ * writer also skips a row nothing changed in, so a missing term in that
  * comparison would silently skip a real change.
  *
  * Each case saves a row with one set of values, saves it again under the
@@ -42,14 +42,15 @@ final class SqliteGraphWriterUpsertTest extends KnossosTestCase
     }
 
     /**
-     * The writers that skip a row nothing changed in: the batch writers, and
-     * the single boundary save, which compares the same way.
+     * The writers that skip a row nothing changed in: all of them, since a
+     * single-row save is a one-row batch and test fixtures written through it
+     * must land exactly as a scan's rows do.
      *
      * @return iterable<string, array{string}>
      */
     public static function comparingWriters(): iterable
     {
-        foreach (['saveNodes', 'saveEdges', 'saveFiles', 'saveClassifications', 'saveBoundary'] as $writer) {
+        foreach (['saveNode', 'saveNodes', 'saveEdge', 'saveEdges', 'saveFile', 'saveFiles', 'saveClassifications', 'saveBoundary'] as $writer) {
             yield $writer => [$writer];
         }
     }
@@ -106,8 +107,9 @@ final class SqliteGraphWriterUpsertTest extends KnossosTestCase
 
     /**
      * The batch node writer owns parent_id like every other column, and the
-     * facts it writes carry none, so re-saving a node through it clears a
-     * parent a single-row save had set, even when nothing else changed.
+     * reconciler's node records carry none, so re-saving a node from such a
+     * record clears a parent a single-row save had set, even when nothing
+     * else changed.
      */
     #[Group('store')]
     public function testABatchNodeSaveReplacesTheParentToo(): void
@@ -116,7 +118,7 @@ final class SqliteGraphWriterUpsertTest extends KnossosTestCase
         $case['save']($case['first']);
 
         (new SqliteGraphWriter(new SqliteStatementCache($pdo)))->saveNodes(
-            [['id' => 'node-under-test', 'attributes' => ['a' => 1]] + $case['first']],
+            [['id' => 'node-under-test', 'attributes' => ['a' => 1]] + array_diff_key($case['first'], ['parent_id' => true])],
             (string) $pdo->query('SELECT project_id FROM nodes WHERE id = \'node-under-test\'')->fetchColumn(),
             $case['first']['last_scan_id'],
         );
@@ -143,8 +145,8 @@ final class SqliteGraphWriterUpsertTest extends KnossosTestCase
             'saveNode', 'saveNodes' => [
                 'table' => 'nodes',
                 'key' => ['id' => 'node-under-test'],
-                'first' => ['language' => 'php', 'kind' => 'class', 'canonical_name' => 'App\\A', 'display_name' => 'A', 'parent_id' => $writer === 'saveNode' ? $ids['checkout'] : null, 'file_id' => $ids['file'], 'start_line' => 1, 'end_line' => 4, 'origin' => 'ast', 'confidence' => 'certain', 'attributes_json' => '{"a":1}', 'owner_key' => 'owner-1', 'last_scan_id' => $ids['scan']],
-                'second' => ['language' => 'ts', 'kind' => 'function', 'canonical_name' => 'App\\B', 'display_name' => 'B', 'parent_id' => $writer === 'saveNode' ? $ids['invoice'] : null, 'file_id' => $otherFile, 'start_line' => 2, 'end_line' => 5, 'origin' => 'heuristic', 'confidence' => 'possible', 'attributes_json' => '{"b":2}', 'owner_key' => 'owner-2', 'last_scan_id' => 'scan-2'],
+                'first' => ['language' => 'php', 'kind' => 'class', 'canonical_name' => 'App\\A', 'display_name' => 'A', 'parent_id' => $ids['checkout'], 'file_id' => $ids['file'], 'start_line' => 1, 'end_line' => 4, 'origin' => 'ast', 'confidence' => 'certain', 'attributes_json' => '{"a":1}', 'owner_key' => 'owner-1', 'last_scan_id' => $ids['scan']],
+                'second' => ['language' => 'ts', 'kind' => 'function', 'canonical_name' => 'App\\B', 'display_name' => 'B', 'parent_id' => $ids['invoice'], 'file_id' => $otherFile, 'start_line' => 2, 'end_line' => 5, 'origin' => 'heuristic', 'confidence' => 'possible', 'attributes_json' => '{"b":2}', 'owner_key' => 'owner-2', 'last_scan_id' => 'scan-2'],
                 'save' => $writer === 'saveNode'
                     ? static fn(array $c) => $write->saveNode('node-under-test', $project, $c['language'], $c['kind'], $c['canonical_name'], $c['display_name'], $c['parent_id'], $c['file_id'], $c['start_line'], $c['end_line'], $c['origin'], $c['confidence'], json_decode($c['attributes_json'], true), $c['owner_key'], $c['last_scan_id'])
                     : static fn(array $c) => $write->saveNodes([['id' => 'node-under-test', 'attributes' => json_decode($c['attributes_json'], true)] + $c], $project, $c['last_scan_id']),
@@ -184,9 +186,8 @@ final class SqliteGraphWriterUpsertTest extends KnossosTestCase
             default => throw new \InvalidArgumentException('No upsert case for writer ' . $writer . '.'),
         };
         // The columns the skip-unchanged comparison must cover: every replaced
-        // column except the scan stamp, and parent_id, which the batch writer
-        // never sets (the reconciler links parents in a second pass).
-        $case['compared'] = array_fill_keys(array_diff(array_keys($case['first']), ['last_scan_id', 'parent_id']), true);
+        // column except the scan stamp.
+        $case['compared'] = array_fill_keys(array_diff(array_keys($case['first']), ['last_scan_id']), true);
 
         return [$pdo, $case];
     }

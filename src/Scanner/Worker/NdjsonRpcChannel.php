@@ -100,11 +100,11 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         try {
             $line = json_encode($message, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
         } catch (JsonException $error) {
-            throw new WorkerException('WORKER_REQUEST_INVALID', $error->getMessage(), $error);
+            throw new WorkerException(WorkerErrorCode::RequestInvalid->value, $error->getMessage(), $error);
         }
         $length = strlen($line);
         if ($length > $this->maxRequestLineBytes) {
-            throw new WorkerException('WORKER_REQUEST_TOO_LARGE', sprintf(
+            throw new WorkerException(WorkerErrorCode::RequestTooLarge->value, sprintf(
                 'Worker request exceeds the %d-byte request frame limit%s, so Knossos did not send it.',
                 $this->maxRequestLineBytes,
                 $this->requestLimitSource,
@@ -130,7 +130,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
 
             $remaining = $this->deadline - hrtime(true);
             if ($remaining <= 0) {
-                throw new WorkerException('WORKER_TIMEOUT', $this->withStderr('Scanner worker request timed out while sending.'));
+                throw new WorkerException(WorkerErrorCode::Timeout->value, $this->withStderr('Scanner worker request timed out while sending.'));
             }
 
             // Watch stdin for writability while simultaneously draining the
@@ -166,7 +166,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             foreach ($write as $writable) {
                 $bytes = @fwrite($writable, substr($line, $written));
                 if ($bytes === false) {
-                    throw new WorkerException('WORKER_PIPE_BROKEN', $this->withStderr('Unable to write to scanner worker.'));
+                    throw new WorkerException(WorkerErrorCode::PipeBroken->value, $this->withStderr('Unable to write to scanner worker.'));
                 }
                 $written += $bytes;
             }
@@ -196,7 +196,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             // writing faster than they are read would otherwise never let
             // the wait below, where the deadline is checked, come around.
             if ($deadline === $this->deadline && hrtime(true) >= $this->hardDeadline) {
-                throw new WorkerException('WORKER_TIMEOUT', $this->withStderr('Scanner worker request timed out.'));
+                throw new WorkerException(WorkerErrorCode::Timeout->value, $this->withStderr('Scanner worker request timed out.'));
             }
             $message = $this->extractMessage();
             if ($message !== null) {
@@ -222,7 +222,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             // one (draining an abandoned scan) stays as it was asked for.
             $remaining = ($deadline === $this->deadline ? max($deadline, $this->renewedDeadline) : $deadline) - hrtime(true);
             if ($remaining <= 0) {
-                throw new WorkerException('WORKER_TIMEOUT', $this->withStderr('Scanner worker request timed out.'));
+                throw new WorkerException(WorkerErrorCode::Timeout->value, $this->withStderr('Scanner worker request timed out.'));
             }
 
             $read = $stderrOpen ? [$stdout, $stderr] : [$stdout];
@@ -232,7 +232,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
                 continue;
             }
             if ($selected === 0) {
-                throw new WorkerException('WORKER_TIMEOUT', $this->withStderr('Scanner worker request timed out.'));
+                throw new WorkerException(WorkerErrorCode::Timeout->value, $this->withStderr('Scanner worker request timed out.'));
             }
 
             foreach ($read as $stream) {
@@ -258,7 +258,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
     private static function throwIfCancelled(?callable $cancelled): void
     {
         if ($cancelled !== null && $cancelled()) {
-            throw new WorkerException('WORKER_CANCELLED', 'Scanner worker request was cancelled.');
+            throw new WorkerException(WorkerErrorCode::Cancelled->value, 'Scanner worker request was cancelled.');
         }
     }
 
@@ -283,7 +283,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             intdiv($wait % 1_000_000_000, 1_000),
         );
         if ($selected === false) {
-            throw new WorkerException('WORKER_IO_FAILED', $this->withStderr($failure));
+            throw new WorkerException(WorkerErrorCode::IoFailed->value, $this->withStderr($failure));
         }
 
         return $selected;
@@ -313,7 +313,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         if (!$status['running'] && feof($stdout)) {
             $signalled = $status['signaled'] && $status['termsig'] > 0;
             throw new WorkerException(
-                'WORKER_EXITED',
+                WorkerErrorCode::Exited->value,
                 $this->withStderr(self::exitDescription($status)),
                 terminatingSignal: $signalled ? $status['termsig'] : null,
                 // The same status the message is built from: the supervisor
@@ -353,7 +353,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         }
 
         return new WorkerException(
-            'WORKER_FRAME_TOO_LARGE',
+            WorkerErrorCode::FrameTooLarge->value,
             sprintf(
                 'Worker frame exceeds the %d-byte line limit (worker_execution.max_line_bytes), so Knossos stopped the worker.',
                 $this->limits->maxLineBytes,
@@ -415,7 +415,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             // select set, and a descriptor that still reports ready spun here
             // until the deadline and mislabelled the I/O error as a TIMEOUT.
             // The receive loop already answers a false read this way.
-            throw new WorkerException('WORKER_IO_FAILED', $this->withStderr('Unable to read scanner worker output.'));
+            throw new WorkerException(WorkerErrorCode::IoFailed->value, $this->withStderr('Unable to read scanner worker output.'));
         }
         if ($chunk === '') {
             return self::isExhausted($stream, $chunk);
@@ -436,7 +436,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         // without bound.
         $this->sendBufferedBytes += strlen($chunk);
         if ($this->sendBufferedBytes > $this->limits->maxLineBytes + self::READ_CHUNK_BYTES) {
-            throw new WorkerException('WORKER_OUTPUT_LIMIT', sprintf(
+            throw new WorkerException(WorkerErrorCode::OutputLimit->value, sprintf(
                 'Worker wrote more than one %d-byte frame before reading its whole request, so Knossos stopped the worker.',
                 $this->limits->maxLineBytes,
             ));
@@ -489,7 +489,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         }
         if ($line === '') {
             $this->chargeOutput(1);
-            throw new WorkerException('WORKER_FRAME_INVALID', 'Worker emitted an empty frame.');
+            throw new WorkerException(WorkerErrorCode::FrameInvalid->value, 'Worker emitted an empty frame.');
         }
         if (strlen($line) > $this->limits->maxLineBytes) {
             // Over the limit by less than one read, a frame arrives with its
@@ -502,10 +502,10 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         try {
             $message = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException $error) {
-            throw new WorkerException('WORKER_JSON_INVALID', 'Worker emitted invalid JSON.', $error);
+            throw new WorkerException(WorkerErrorCode::JsonInvalid->value, 'Worker emitted invalid JSON.', $error);
         }
         if (!is_array($message) || array_is_list($message) || ($message['jsonrpc'] ?? null) !== '2.0') {
-            throw new WorkerException('WORKER_FRAME_INVALID', 'Worker emitted an invalid JSON-RPC object.');
+            throw new WorkerException(WorkerErrorCode::FrameInvalid->value, 'Worker emitted an invalid JSON-RPC object.');
         }
         if (!array_key_exists('id', $message) && ($message['method'] ?? null) === Protocol::NOTIFICATION_INPUT_HASHES) {
             $this->countInputHashesFrame(strlen($line) + 1);
@@ -534,7 +534,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
     {
         $this->inputHashesBytes += $bytes;
         if ($this->inputHashesBytes > $this->limits->maxInputHashesBytes) {
-            throw new WorkerException('WORKER_RESPONSE_INVALID', sprintf(
+            throw new WorkerException(WorkerErrorCode::ResponseInvalid->value, sprintf(
                 'Worker %s frames exceed the %d-byte limit for one scan request.',
                 Protocol::NOTIFICATION_INPUT_HASHES,
                 $this->limits->maxInputHashesBytes,
@@ -547,7 +547,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
     {
         $this->outputBytes += $bytes;
         if ($this->outputBytes > $this->limits->maxOutputBytes) {
-            throw new WorkerException('WORKER_OUTPUT_LIMIT', sprintf(
+            throw new WorkerException(WorkerErrorCode::OutputLimit->value, sprintf(
                 'Worker output exceeds the %d-byte request limit (worker_execution.max_output_bytes), so Knossos stopped the worker.',
                 $this->limits->maxOutputBytes,
             ));

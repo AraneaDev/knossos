@@ -95,6 +95,42 @@ final class RootsFileTest extends KnossosTestCase
         }
     }
 
+    /** A roots file created for the first time is owner-only, like the directory it lives in, whatever the umask. */
+    #[Group('discovery')]
+    public function testAFirstWriteIsOwnerOnly(): void
+    {
+        $directory = $this->directory();
+        $umask = umask(0o022);
+        try {
+            (new RootsFile($directory . '/roots.json'))->write(['/srv']);
+
+            clearstatcache();
+            self::assertSame(0o600, fileperms($directory . '/roots.json') & 0o777);
+        } finally {
+            umask($umask);
+            $this->removeTempTree($directory);
+        }
+    }
+
+    /** A rewrite keeps the mode the operator gave the file. */
+    #[Group('discovery')]
+    public function testARewriteKeepsTheFilesMode(): void
+    {
+        $directory = $this->directory();
+        try {
+            $file = new RootsFile($directory . '/roots.json');
+            $file->write(['/srv']);
+            chmod($directory . '/roots.json', 0o640);
+
+            $file->write(['/srv', '/home']);
+
+            clearstatcache();
+            self::assertSame(0o640, fileperms($directory . '/roots.json') & 0o777);
+        } finally {
+            $this->removeTempTree($directory);
+        }
+    }
+
     /** A directory the write cannot land in leaves no temporary file behind and the old file intact. */
     #[Group('discovery')]
     public function testAnUnwritableDirectoryLeavesTheFileIntact(): void

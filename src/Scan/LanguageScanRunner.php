@@ -10,6 +10,7 @@ use Knossos\Reconciliation\Milliseconds;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Scanner\Worker\ProcessScannerClient;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use PDO;
 use Throwable;
@@ -128,7 +129,7 @@ final readonly class LanguageScanRunner
             // than reported as a degraded scan. The token may also have
             // flipped between the RPC returning and this catch.
             $this->pool->shutdown();
-            if ($cancellation->isCancelled() || ($error instanceof WorkerException && $error->diagnosticCode === 'WORKER_CANCELLED')) {
+            if ($cancellation->isCancelled() || ($error instanceof WorkerException && $error->diagnosticCode === WorkerErrorCode::Cancelled->value)) {
                 throw new ScanCancelledException('Scan was cancelled.', previous: $error);
             }
             // A changed tree is a fault of the whole scan, not of this
@@ -141,7 +142,7 @@ final readonly class LanguageScanRunner
             // facts are already collected and are still worth a graph.
             $workerDiagnostics[] = [
                 'owner' => $descriptor->scannerId(),
-                'code' => $error instanceof WorkerException ? $error->diagnosticCode : 'WORKER_FAILED',
+                'code' => $error instanceof WorkerException ? $error->diagnosticCode : WorkerErrorCode::Failed->value,
                 'message' => self::withRemedy(
                     sprintf('%s scanner failed: %s', $descriptor->key, $error->getMessage()),
                     $descriptor,
@@ -509,7 +510,7 @@ final readonly class LanguageScanRunner
         $descriptor = $run->descriptor;
         $cancellation = $run->cancellation;
         $queue->failed($error);
-        if ($error->diagnosticCode === 'WORKER_FRAME_TOO_LARGE') {
+        if ($error->diagnosticCode === WorkerErrorCode::FrameTooLarge->value) {
             $file = $queue->searchFrame($item, $error, $received, $run->scannerId);
             if ($cancellation->isCancelled()) {
                 throw $error;
@@ -556,7 +557,7 @@ final readonly class LanguageScanRunner
             return;
         }
 
-        throw new WorkerException('WORKER_EVERY_FILE_LEFT_OUT', sprintf(
+        throw new WorkerException(WorkerErrorCode::EveryFileLeftOut->value, sprintf(
             'Every one of the %1$d files was left out because its own answer outgrew a size limit. That points to '
             . 'a limit set too low or a broken worker rather than %1$d oversized files, so the language is reported '
             . 'as failed.',

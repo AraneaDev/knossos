@@ -126,9 +126,7 @@ final class SqliteScanLifecycle
                 'updated' => SqliteValues::now(),
                 'project' => $projectId,
             ]);
-            $project = $this->findProject($projectId);
-            $config = is_array($project) ? json_decode((string) $project['config_json'], true, flags: JSON_THROW_ON_ERROR) : [];
-            $retention = $config['snapshot_retention'] ?? null;
+            $retention = (new ProjectRepository($this->statements->pdo()))->config($projectId)['snapshot_retention'] ?? null;
             $this->pruneSnapshotHistory($projectId, is_int($retention) ? $retention : GraphRepository::DEFAULT_SNAPSHOT_RETENTION);
         });
     }

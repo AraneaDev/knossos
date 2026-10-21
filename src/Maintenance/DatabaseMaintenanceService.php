@@ -322,10 +322,13 @@ final readonly class DatabaseMaintenanceService
             $copy = new PDO('sqlite:' . $temporary, options: [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
             $copy->exec('DELETE FROM scan_locks');
             $copy = null;
+            // Owner-only before it is published, so the backup is never in place readable by others.
+            if (!chmod($temporary, 0600)) {
+                throw new RuntimeException('Unable to restrict database backup permissions.');
+            }
             if (!rename($temporary, $target)) {
                 throw new RuntimeException('Unable to atomically publish database backup.');
             }
-            chmod($target, 0600);
             clearstatcache(true, $target);
 
             return ['target' => $target, 'bytes' => (int) filesize($target)];

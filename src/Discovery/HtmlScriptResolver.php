@@ -128,7 +128,7 @@ final class HtmlScriptResolver
         }
         $path = rawurldecode((string) preg_replace('/[?#].*$/s', '', $url));
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        if (str_ends_with($path, '/') || !in_array($extension, ManifestPaths::ENTRY_POINT_EXTENSIONS, true)) {
+        if (str_ends_with($path, '/') || !in_array($extension, ManifestPaths::entryPointExtensions(), true)) {
             return null;
         }
 

@@ -4,53 +4,54 @@ declare(strict_types=1);
 
 namespace Knossos\Discovery\Manifest;
 
+use Knossos\Discovery\UnitKind;
+
 /**
  * The reader for each unit kind: a text reader for the kinds that are not
  * JSON, a JSON reader for the ones discovery decodes first.
  *
- * A kind with neither is still a unit, with no metadata, once its JSON
- * decodes.
+ * The match names every kind, so a kind added to {@see UnitKind} without a
+ * reader fails static analysis rather than reading as an empty unit.
  */
 final class ManifestReaders
 {
-    /** @var array<string, class-string<ManifestReader>> */
-    private const TEXT = [
-        'python' => PyprojectManifest::class,
-        'cargo' => CargoManifest::class,
-        'gitignore' => GitIgnoreManifest::class,
-        'requirements' => RequirementsManifest::class,
-        'html' => HtmlManifest::class,
-        'yaml' => YamlManifest::class,
-        'dockerfile' => DockerfileManifest::class,
-        'readme' => ReadmeManifest::class,
-        'shell' => ShellManifest::class,
-        'agent_config' => AgentConfigManifest::class,
-        'tool_config' => ToolConfigManifest::class,
-    ];
-
-    /** @var array<string, class-string<JsonManifestReader>> */
-    private const JSON = [
-        'composer' => ComposerManifest::class,
-        'node' => NodeManifest::class,
-        'azure_function' => AzureFunctionManifest::class,
-        'typescript' => TsconfigManifest::class,
-        'knip' => KnipManifest::class,
-        'knossos' => KnossosManifest::class,
-    ];
-
     /** The reader for a kind that is not JSON, or null when the kind is JSON. */
-    public static function text(string $kind): ?ManifestReader
+    public static function text(UnitKind $kind): ?ManifestReader
     {
-        $class = self::TEXT[$kind] ?? null;
+        $reader = self::reader($kind);
 
-        return $class === null ? null : new $class();
+        return $reader instanceof ManifestReader ? $reader : null;
     }
 
-    /** The reader for a JSON kind, or null when the kind carries no metadata. */
-    public static function json(string $kind): ?JsonManifestReader
+    /** The reader for a JSON kind, or null when the kind is not JSON. */
+    public static function json(UnitKind $kind): ?JsonManifestReader
     {
-        $class = self::JSON[$kind] ?? null;
+        $reader = self::reader($kind);
 
-        return $class === null ? null : new $class();
+        return $reader instanceof JsonManifestReader ? $reader : null;
+    }
+
+    /** The one reader for $kind. */
+    private static function reader(UnitKind $kind): ManifestReader|JsonManifestReader
+    {
+        return match ($kind) {
+            UnitKind::Python => new PyprojectManifest(),
+            UnitKind::Cargo => new CargoManifest(),
+            UnitKind::Gitignore => new GitIgnoreManifest(),
+            UnitKind::Requirements => new RequirementsManifest(),
+            UnitKind::Html => new HtmlManifest(),
+            UnitKind::Yaml => new YamlManifest(),
+            UnitKind::Dockerfile => new DockerfileManifest(),
+            UnitKind::Readme => new ReadmeManifest(),
+            UnitKind::Shell => new ShellManifest(),
+            UnitKind::AgentConfig => new AgentConfigManifest(),
+            UnitKind::ToolConfig => new ToolConfigManifest(),
+            UnitKind::Composer => new ComposerManifest(),
+            UnitKind::Node => new NodeManifest(),
+            UnitKind::AzureFunction => new AzureFunctionManifest(),
+            UnitKind::Typescript => new TsconfigManifest(),
+            UnitKind::Knip => new KnipManifest(),
+            UnitKind::Knossos => new KnossosManifest(),
+        };
     }
 }

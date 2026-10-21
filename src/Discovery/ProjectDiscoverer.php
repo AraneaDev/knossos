@@ -18,9 +18,6 @@ use Knossos\Cancellation\CancellationToken;
  */
 final readonly class ProjectDiscoverer
 {
-    /** The unit kinds that make their directory a manifest root; see {@see SourceClassifier::MANIFEST_UNIT_KINDS}. */
-    public const MANIFEST_UNIT_KINDS = SourceClassifier::MANIFEST_UNIT_KINDS;
-
     private TreeWalker $walker;
 
     /** @var array<string, string> */

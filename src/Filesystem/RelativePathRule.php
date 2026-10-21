@@ -32,4 +32,10 @@ final class RelativePathRule
 
         return !in_array('..', explode('/', $normalised), true);
     }
+
+    /** `$path` without one leading `./`, the spelling a manifest often gives a relative path. */
+    public static function withoutDotSlash(string $path): string
+    {
+        return str_starts_with($path, './') ? substr($path, 2) : $path;
+    }
 }

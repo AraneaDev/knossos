@@ -6,6 +6,7 @@ namespace Knossos\Roots;
 
 use InvalidArgumentException;
 use JsonException;
+use Knossos\Filesystem\AtomicFile;
 
 /**
  * The roots.json allow-list as a file: read tolerantly, written atomically.
@@ -73,13 +74,9 @@ final readonly class RootsFile
      * file that read() tolerated on the way in is normalised the first
      * time a root is added through this command.
      *
-     * Written to a temporary file beside the target and renamed into place.
-     * rename() is atomic only within one filesystem, so the temporary file
-     * must sit in the same directory; a write that fails partway (disk full,
-     * for instance) then lands on the temporary name and never truncates the
-     * hand-edited file it would otherwise clobber. Every failure path here
-     * removes that temporary file before throwing, so a failed run leaves no
-     * litter beside the real one.
+     * Written through {@see AtomicFile}, so a write that fails partway (disk
+     * full, for instance) never truncates the hand-edited file it would
+     * otherwise clobber, and leaves no litter beside it.
      *
      * @param list<string> $roots
      */
@@ -90,38 +87,9 @@ final readonly class RootsFile
         if (!is_dir($directory) && !@mkdir($directory, 0o700, true)) {
             throw new InvalidArgumentException(sprintf('Unable to create %s.', $directory));
         }
-        // Captured before the temporary file is even written: rename() carries
-        // over the TEMPORARY file's mode, not the target's, so a file the
-        // operator deliberately chmod'd (0600, say) would otherwise silently
-        // widen to the umask default the moment it is replaced. A target that
-        // does not exist yet gets no mode forced onto it; the umask default is
-        // the ordinary behaviour for a file created for the first time. A
-        // target that exists but whose fileperms() call itself fails (a stat
-        // race, say) is treated the same way, with no mode forced: an unknown
-        // mode is not a reason to invent one, and `false & 0o777` would
-        // otherwise coerce to int 0, silently locking the file to mode 0000.
-        $existingMode = null;
-        if (is_file($this->path)) {
-            $stattedMode = fileperms($this->path);
-            if ($stattedMode !== false) {
-                $existingMode = $stattedMode & 0o777;
-            }
-        }
-
-        $encoded = json_encode(['roots' => $roots], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        $temporary = $directory . '/.roots.json.' . bin2hex(random_bytes(8)) . '.tmp';
-        if (file_put_contents($temporary, $encoded . PHP_EOL) === false) {
-            @unlink($temporary);
-            throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
-        }
-        // Set on the temporary file BEFORE the rename, not after, so the file
-        // is never in place, even briefly, with the wrong permissions.
-        if ($existingMode !== null && !@chmod($temporary, $existingMode)) {
-            @unlink($temporary);
-            throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
-        }
-        if (!@rename($temporary, $this->path)) {
-            @unlink($temporary);
+        // A rewrite keeps the mode of a file the operator deliberately chmod'd;
+        // a first write is owner-only, like the directory it lives in.
+        if (!AtomicFile::writeJson($this->path, ['roots' => $roots], 0o600, true)) {
             throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
         }
     }

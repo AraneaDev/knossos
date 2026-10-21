@@ -12,6 +12,7 @@ use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, Milliseconds, NamedFiles, ReconciliationResult, ScannerSetHash};
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ProjectRepository;
 use Knossos\Store\ScanBusyException;
@@ -319,11 +320,11 @@ final class ProjectScanService implements ProjectScanner
         )));
         if ($plan->effectiveMode !== 'full' || $this->graphHoldsFactsOf($projectId, $owners)) {
             $failed = array_map(
-                static fn(array $diagnostic): string => ($diagnostic['owner'] ?? 'unknown') . ': ' . ($diagnostic['code'] ?? 'WORKER_FAILED'),
+                static fn(array $diagnostic): string => ($diagnostic['owner'] ?? 'unknown') . ': ' . ($diagnostic['code'] ?? WorkerErrorCode::Failed->value),
                 $language->workerDiagnostics,
             );
             throw new WorkerException(
-                'WORKER_DEGRADED_INCREMENTAL',
+                WorkerErrorCode::DegradedIncremental->value,
                 'Scan aborted to preserve the last good graph. Failed workers: ' . implode(', ', $failed)
                     . '. Fix the worker (run `knossos doctor`) and rescan; the graph is unchanged.',
             );
@@ -524,8 +525,8 @@ final class ProjectScanService implements ProjectScanner
         if ($name !== null && $name !== (string) $row['name']) {
             return null;
         }
-        $stored = json_decode((string) $row['config_json'], true);
-        if (!is_array($stored)) {
+        $stored = ProjectRepository::decodedConfig($row['config_json']);
+        if ($stored === null) {
             return null;
         }
         ksort($stored, SORT_STRING);

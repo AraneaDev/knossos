@@ -148,6 +148,7 @@ php	src/Discovery/SourceClassifier.php
 php	src/Discovery/TreeWalkState.php
 php	src/Discovery/TreeWalker.php
 php	src/Discovery/UnitInputSet.php
+php	src/Discovery/UnitKind.php
 php	src/Discovery/UnitReader.php
 php	src/Enrichment/EnricherCarryOver.php
 php	src/Enrichment/EnricherOutcome.php
@@ -158,6 +159,7 @@ php	src/Enrichment/EnrichmentValidator.php
 php	src/Enrichment/NativeNodeIndex.php
 php	src/Enrichment/Profiles.php
 php	src/Enrichment/ValidatedEnrichment.php
+php	src/Filesystem/AtomicFile.php
 php	src/Filesystem/RegularFileOpener.php
 php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php
@@ -400,6 +402,7 @@ php	src/Scanner/ScannerClient.php
 php	src/Scanner/Sdk/ConformanceArgumentAnchor.php
 php	src/Scanner/Sdk/FixtureBuilder.php
 php	src/Scanner/Worker/ContributionDecoder.php
+php	src/Scanner/Worker/ContributionParams.php
 php	src/Scanner/Worker/InputHashesMap.php
 php	src/Scanner/Worker/NdjsonRpcChannel.php
 php	src/Scanner/Worker/ProcessScannerClient.php
@@ -407,6 +410,7 @@ php	src/Scanner/Worker/ProcessSupervisorInterface.php
 php	src/Scanner/Worker/ReadsMap.php
 php	src/Scanner/Worker/RpcChannelInterface.php
 php	src/Scanner/Worker/ScannerProtocolSession.php
+php	src/Scanner/Worker/WorkerErrorCode.php
 php	src/Scanner/Worker/WorkerException.php
 php	src/Scanner/Worker/WorkerExecutionPolicy.php
 php	src/Scanner/Worker/WorkerLimits.php
@@ -438,6 +442,7 @@ php	src/Store/SqliteStatementCache.php
 php	src/Store/SqliteTransactions.php
 php	src/Store/SqliteValues.php
 php	src/Store/StableId.php
+php	src/Store/Upsert.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
 php	src/Watch/ScanTimeoutException.php
@@ -568,6 +573,7 @@ php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
 php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php
 php	tests/phpunit/FailOnWarningTest.php
+php	tests/phpunit/Filesystem/AtomicFileTest.php
 php	tests/phpunit/Filesystem/RelativePathRuleTest.php
 php	tests/phpunit/Framework/ClassificationTest.php
 php	tests/phpunit/Framework/DjangoUrlconfTest.php
@@ -879,6 +885,7 @@ php	tests/phpunit/Scan/ScanInputHashesTest.php
 php	tests/phpunit/Scan/ScanLeafTest.php
 php	tests/phpunit/Scan/ScanLedgerTest.php
 php	tests/phpunit/Scan/ScanPlanTest.php
+php	tests/phpunit/Scan/ScanPlannerConfigurationKindsTest.php
 php	tests/phpunit/Scan/ScanPlannerDefaultsTest.php
 php	tests/phpunit/Scan/ScanPlannerTest.php
 php	tests/phpunit/Scan/ScanResultFactoryTest.php
@@ -897,6 +904,7 @@ php	tests/phpunit/Scanner/AnnotationReferenceTest.php
 php	tests/phpunit/Scanner/CommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/ComponentWorkerTest.php
 php	tests/phpunit/Scanner/ContributionDecoderGuardsTest.php
+php	tests/phpunit/Scanner/ContributionParamsTest.php
 php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
 php	tests/phpunit/Scanner/LaunchInterpretersAgreementTest.php
 php	tests/phpunit/Scanner/LimitsTest.php
@@ -966,6 +974,7 @@ php	tests/phpunit/Scanner/Worker/WorkerExceptionTest.php
 php	tests/phpunit/Scanner/Worker/WorkerExecutionPolicyTest.php
 php	tests/phpunit/Scanner/Worker/WorkerLimitsTest.php
 php	tests/phpunit/Scanner/Worker/WorkerProcessSupervisorTest.php
+php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
 php	tests/phpunit/Scanner/WorkerFallbackExclusionsTest.php
 php	tests/phpunit/Scanner/WorkerTest.php
 php	tests/phpunit/Store/BatchWriteTest.php

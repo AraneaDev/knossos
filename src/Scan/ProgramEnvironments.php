@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
+use Knossos\Scanner\Worker\WorkerErrorCode;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ContributionCacheEntry;
 
@@ -66,13 +67,13 @@ final class ProgramEnvironments
         }
         $value = $result[self::FIELD];
         if (!is_array($value) || ($value !== [] && array_is_list($value))) {
-            throw new WorkerException('WORKER_RESPONSE_INVALID', sprintf('%s sent %s that is not an object keyed by program.', $workerId, self::FIELD));
+            throw new WorkerException(WorkerErrorCode::ResponseInvalid->value, sprintf('%s sent %s that is not an object keyed by program.', $workerId, self::FIELD));
         }
         $environments = [];
         foreach ($value as $program => $environment) {
             $program = (string) $program;
             if ($program === '' || !is_string($environment) || preg_match('/\A[0-9a-f]{64}\z/', $environment) !== 1) {
-                throw new WorkerException('WORKER_RESPONSE_INVALID', sprintf('%s sent %s whose entry for program "%s" is not a lowercase SHA-256 hex digest.', $workerId, self::FIELD, $program));
+                throw new WorkerException(WorkerErrorCode::ResponseInvalid->value, sprintf('%s sent %s whose entry for program "%s" is not a lowercase SHA-256 hex digest.', $workerId, self::FIELD, $program));
             }
             $environments[$program] = $environment;
         }
