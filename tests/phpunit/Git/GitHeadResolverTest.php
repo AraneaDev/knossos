@@ -66,7 +66,7 @@ final class GitHeadResolverTest extends KnossosTestCase
         (new GitHeadResolver($runner))->resolve('/tmp/knossos-head-fixture');
 
         self::assertSame([
-            ['git', '--no-optional-locks', '--no-pager', '-C', '/tmp/knossos-head-fixture', 'rev-parse', '--verify', 'HEAD'],
+            ['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', '/tmp/knossos-head-fixture', 'rev-parse', '--verify', 'HEAD'],
         ], $runner->commands);
         self::assertSame([2000], $runner->timeouts);
         self::assertSame(['scan head'], $runner->operations);

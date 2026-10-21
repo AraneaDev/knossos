@@ -43,4 +43,25 @@ final class FileContextServiceTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /** A file is named by its own path: a name that reads as a glob does not take in the commits of the files it would match. */
+    #[Group('query')]
+    public function testAFileWhoseNameReadsAsAGlobHasOnlyItsOwnCommits(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-glob-path-' . bin2hex(random_bytes(6));
+        mkdir($root);
+        try {
+            $git = ['git', '-C', $root, '-c', 'user.name=Knossos Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false'];
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            foreach (['a.php' => 'plain', '[ab].php' => 'bracketed'] as $file => $subject) {
+                file_put_contents($root . '/' . $file, "<?php\n");
+                $this->runFixtureCommand([...$git, 'add', '--', $file]);
+                $this->runFixtureCommand([...$git, 'commit', '--quiet', '-m', $subject]);
+            }
+
+            assertSame(['bracketed'], array_column((new FileContextService($this->freshTestDatabase()))->commits($root, '[ab].php'), 'subject'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }

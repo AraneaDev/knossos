@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitCommand;
 use Knossos\Git\{GitLogRecords, GitProcessRunner, GitProcessRunnerInterface};
 use PDO;
 use Throwable;
@@ -126,7 +127,7 @@ final readonly class ChurnService
      */
     private function log(string $root): array|false|null
     {
-        $git = ['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '-C', $root];
+        $git = GitCommand::in($root);
         $runner = $this->runner ?? new GitProcessRunner();
         try {
             $head = trim($runner->run([...$git, 'rev-parse', '--verify', '-q', 'HEAD'], self::GIT_TIMEOUT_MS, 'churn'));

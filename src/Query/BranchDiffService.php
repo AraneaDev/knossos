@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitCommand;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Result\PaneStatus;
@@ -295,7 +296,7 @@ final readonly class BranchDiffService
     private function git(string $root, array $args): ?string
     {
         try {
-            $out = trim($this->git->run(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '-C', $root, ...$args], self::GIT_TIMEOUT_MS, 'branch diff'));
+            $out = trim($this->git->run([...GitCommand::in($root), ...$args], self::GIT_TIMEOUT_MS, 'branch diff'));
         } catch (Throwable) {
             return null;
         }

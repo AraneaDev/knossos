@@ -43,15 +43,8 @@ final readonly class ProcessGitHistoryProvider implements GitHistoryProvider
         if ($maxCommits < 1 || $maxCommits > 5000) {
             throw new RuntimeException('max_commits must be between 1 and 5000.');
         }
-        if ($timeoutMs < 1 || $timeoutMs > 5000) {
-            throw new RuntimeException('timeout_ms must be between 1 and 5000.');
-        }
-        $root = realpath($projectRoot);
-        if ($root === false || !is_dir($root)) {
-            throw new RuntimeException('Git project root is not a readable directory.');
-        }
         $output = $this->runner->run([
-            'git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '-C', $root, 'log',
+            ...GitCommand::checked($projectRoot, $timeoutMs), 'log',
             '--since=' . $sinceDays . ' days ago', '--max-count=' . ($maxCommits + 1),
             '--format=%x00KNOSSOS_COMMIT%x1f%H%x1f%aI%x1f%at%x1f%ae', '-z', '--name-only', '--no-renames', '--relative', '--', '.',
         ], $timeoutMs, 'history');

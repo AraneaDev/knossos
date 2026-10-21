@@ -107,7 +107,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         $mock = new class implements GitProcessRunnerInterface {
             public function run(array $command, int $timeoutMs, string $operation): string
             {
-                $subcommand = $command[5] ?? '';
+                $subcommand = $command[(int) array_search('-C', $command, true) + 2] ?? '';
                 // rev-parse: returns a 40-char hex hash
                 if ($subcommand === 'rev-parse') {
                     return 'abcdef1234567890abcdef1234567890abcdef12';
@@ -158,7 +158,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         $mock = new class implements GitProcessRunnerInterface {
             public function run(array $command, int $timeoutMs, string $operation): string
             {
-                $subcommand = $command[5] ?? '';
+                $subcommand = $command[(int) array_search('-C', $command, true) + 2] ?? '';
                 if ($subcommand === 'ls-files') {
                     return '';  // no untracked files
                 }
@@ -496,7 +496,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, null, 10, 100);
 
         $revParse = $runner->commandsWith('rev-parse');
-        assertSame(['git', '--no-optional-locks', '--no-pager', '-C', (string) realpath($this->existingDir), 'rev-parse', '--verify', '-q', 'HEAD'], $revParse[0]);
+        assertSame(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', (string) realpath($this->existingDir), 'rev-parse', '--verify', '-q', 'HEAD'], $revParse[0]);
         $diffs = $runner->commandsWith('diff');
         assertSame(1, count($diffs));
         assertSame(false, in_array('--cached', $diffs[0], true));

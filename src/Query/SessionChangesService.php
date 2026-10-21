@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Git\GitCommand;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Git\GitWorkingTreeProvider;
@@ -175,7 +176,7 @@ final readonly class SessionChangesService
     private function succeeds(string $dir, array $args): bool
     {
         try {
-            $this->runner->run(['git', '--no-optional-locks', '--no-pager', '-C', $dir, ...$args], 2000, 'session changes');
+            $this->runner->run([...GitCommand::in($dir), ...$args], 2000, 'session changes');
             return true;
         } catch (Throwable) {
             return false;

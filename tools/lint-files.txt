@@ -162,6 +162,7 @@ php	src/Filesystem/RegularFileOpener.php
 php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php
 php	src/Git/DirtyPathSet.php
+php	src/Git/GitCommand.php
 php	src/Git/GitHeadResolver.php
 php	src/Git/GitHistoryProvider.php
 php	src/Git/GitLogRecords.php
@@ -579,6 +580,7 @@ php	tests/phpunit/Framework/SymfonyTest.php
 php	tests/phpunit/Framework/TypescriptAppTest.php
 php	tests/phpunit/Framework/TypescriptEndpointsTest.php
 php	tests/phpunit/Git/DirtyPathCaptureTest.php
+php	tests/phpunit/Git/GitCommandTest.php
 php	tests/phpunit/Git/GitHeadResolverTest.php
 php	tests/phpunit/Git/GitLogRecordsTest.php
 php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
