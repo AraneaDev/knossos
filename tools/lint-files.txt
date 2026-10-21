@@ -335,6 +335,7 @@ php	src/Scan/ContributionCacheService.php
 php	src/Scan/ContributionPartition.php
 php	src/Scan/InvalidationWalk.php
 php	src/Scan/LanguageDescriptor.php
+php	src/Scan/LanguageRunAccumulator.php
 php	src/Scan/LanguageScanResult.php
 php	src/Scan/LanguageScanRunner.php
 php	src/Scan/LanguageWorkerPool.php
