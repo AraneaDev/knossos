@@ -144,12 +144,20 @@ export class InputReadRecorder {
  */
 export class ReadAttribution {
     /**
+     * @param {Exclusions} exclusions the request's exclusion rules
      * @param {InputReadRecorder} reads the request's recorder
      * @param {Set<string>} sourceFiles every project file of the language the
      *   core discovered, whose own contribution reports its reads
      */
-    constructor(root, reads, maxFileBytes, sourceFiles = new Set()) {
+    constructor(
+        root,
+        exclusions,
+        reads,
+        maxFileBytes,
+        sourceFiles = new Set(),
+    ) {
         this.root = root;
+        this.exclusions = exclusions;
         this.reads = reads;
         this.maxFileBytes = maxFileBytes;
         this.sourceFiles = sourceFiles;
@@ -218,7 +226,7 @@ export class ReadAttribution {
                 globals.add(key);
             }
             if (this.programOf.get(relative) === programKey) continue;
-            if (isProjectSource(relative)) {
+            if (isProjectSource(relative, this.exclusions)) {
                 // Its own contribution names its reads only as its owning
                 // program made them: under another program's paths, aliases
                 // and manifests the same import can land elsewhere, and that
@@ -417,7 +425,7 @@ export class ReadAttribution {
         }
         if (
             belowNodeModules(key) ||
-            excludedByProjectLayoutPath(this.root, absolute)
+            excludedByProjectLayoutPath(this.root, absolute, this.exclusions)
         )
             return;
         const walked = walkPath(absolute);
@@ -602,7 +610,7 @@ function linkedFileHash(root, relative, maxFileBytes) {
  * facts (recordProbe). A default-library file is the worker's own and is
  * answered without a record; anything else outside the root is absent.
  */
-export function probeRecorded(reads, root, file, maxFileBytes) {
+export function probeRecorded(reads, root, file, maxFileBytes, exclusions) {
     const absolute = normalize(path.resolve(file));
     if (contains(defaultLibDirectory(), absolute))
         return ts.sys.fileExists(absolute);
@@ -613,7 +621,7 @@ export function probeRecorded(reads, root, file, maxFileBytes) {
         root,
         absolute,
         maxFileBytes,
-        !excludedByProjectLayoutPath(root, absolute),
+        !excludedByProjectLayoutPath(root, absolute, exclusions),
     );
 }
 

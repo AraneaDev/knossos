@@ -13,7 +13,6 @@ import path from "node:path";
 import ts from "typescript";
 import { componentAliasSuffix, componentDialect } from "./component-source.js";
 import { rethrowStackOverflow } from "./errors.js";
-import { excludedFromDiscovery } from "./exclusions.js";
 
 export const SOURCE_EXTENSIONS = new Set([
     ".ts",
@@ -227,25 +226,27 @@ export function validatedInside(root, relative) {
 // the root that the kernel's lookup (walkPath) keeps inside it. A path that does
 // not resolve at all is let through, so its read fails and is recorded by
 // readHashedSourceFile under the same walk's key.
-export function allowedCompilerPath(root, candidate) {
+export function allowedCompilerPath(root, candidate, exclusions) {
     const normalized = realSourcePath(normalize(path.resolve(candidate)));
     if (contains(defaultLibDirectory(), normalized)) return true;
     if (!contains(root, normalized)) return false;
     const relative = normalize(path.relative(root, normalized));
-    if (relative !== "" && excludedByProjectLayout(relative)) return false;
+    if (relative !== "" && excludedByProjectLayout(relative, exclusions))
+        return false;
     const walked = walkPath(normalized);
     return walked.location === undefined || contains(root, walked.location);
 }
 
 /** Whether an in-root absolute path lies where the project's exclusions refuse it. */
-export function excludedByProjectLayoutPath(root, absolute) {
+export function excludedByProjectLayoutPath(root, absolute, exclusions) {
     if (!contains(root, absolute)) return false;
     const relative = normalize(path.relative(root, absolute));
-    return relative !== "" && excludedByProjectLayout(relative);
+    return relative !== "" && excludedByProjectLayout(relative, exclusions);
 }
 
 /**
- * Whether the exclusions discovery applies refuse a project-relative path.
+ * Whether the request's `exclusions`, the rules discovery applies, refuse a
+ * project-relative path.
  *
  * The exclusions name directories a project builds into or vendors under, and
  * whatever the project's own ignores add, so they describe the project's
@@ -263,14 +264,14 @@ export function excludedByProjectLayoutPath(root, absolute) {
  * So the check stops at the first resolution-allowed segment: above it the
  * project's layout governs, below it the dependency's does.
  */
-export function excludedByProjectLayout(relative) {
+export function excludedByProjectLayout(relative, exclusions) {
     const segments = relative.split("/");
     const dependencyRoot = segments.findIndex((segment) =>
         RESOLUTION_ALLOWED_EXCLUDED.has(segment),
     );
     const governed =
         dependencyRoot === -1 ? segments : segments.slice(0, dependencyRoot);
-    return governed.length > 0 && excludedFromDiscovery(governed.join("/"));
+    return governed.length > 0 && exclusions.excludes(governed.join("/"));
 }
 
 /**
@@ -280,8 +281,8 @@ export function excludedByProjectLayout(relative) {
  * report nothing of their own. A program holds an extensionless file only as a
  * requested shebang script.
  */
-export function isProjectSource(relative) {
-    if (excludedFromDiscovery(relative)) return false;
+export function isProjectSource(relative, exclusions) {
+    if (exclusions.excludes(relative)) return false;
     const extension = path.extname(relative);
     return (
         extension === "" ||
@@ -388,7 +389,7 @@ export function normalize(value) {
     return value.replaceAll("\\", "/");
 }
 
-export function walk(root, directory, onFile) {
+export function walk(root, directory, exclusions, onFile) {
     let entries;
     try {
         entries = fs.readdirSync(directory, { withFileTypes: true });
@@ -400,9 +401,9 @@ export function walk(root, directory, onFile) {
     for (const entry of entries) {
         const absolute = path.join(directory, entry.name);
         const relative = normalize(path.relative(root, absolute));
-        if (excludedFromDiscovery(relative)) continue;
+        if (exclusions.excludes(relative)) continue;
         if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) walk(root, absolute, onFile);
+        if (entry.isDirectory()) walk(root, absolute, exclusions, onFile);
         else if (entry.isFile()) onFile(absolute, relative);
     }
 }

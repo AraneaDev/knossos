@@ -393,6 +393,7 @@ export class DynamicImportCollector {
                     this.context.root,
                     base,
                     joined,
+                    this.context.project.exclusions,
                 );
                 if (relative !== null) this.speculativeImport(relative, node);
             }
@@ -415,6 +416,7 @@ export class DynamicImportCollector {
                     this.context.root,
                     this.context.root,
                     base === "" ? url : `${base}/${url}`,
+                    this.context.project.exclusions,
                 );
                 if (relative !== null) this.speculativeImport(relative, node);
             }
@@ -446,6 +448,7 @@ export class DynamicImportCollector {
                 this.context.root,
                 path.dirname(this.context.sourceFile.fileName),
                 value.text,
+                this.context.project.exclusions,
             );
             if (relative !== null) this.speculativeImport(relative, value);
         }

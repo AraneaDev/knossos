@@ -1299,14 +1299,17 @@ js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js
 js	workers/typescript/src/__tests__/wrapped-function-properties.test.js
+js	workers/typescript/src/bundler-aliases.js
 js	workers/typescript/src/byte-caps.js
 js	workers/typescript/src/component-framework-enricher.js
+js	workers/typescript/src/component-resolution.js
 js	workers/typescript/src/component-source.js
 js	workers/typescript/src/declaration-kinds.js
 js	workers/typescript/src/dynamic-import-collector.js
 js	workers/typescript/src/errors.js
 js	workers/typescript/src/exclusions.js
 js	workers/typescript/src/fact-accumulator.js
+js	workers/typescript/src/fallback-groups.js
 js	workers/typescript/src/input-hashes-parts.js
 js	workers/typescript/src/input-reads.js
 js	workers/typescript/src/language-fact-collector.js
