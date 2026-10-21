@@ -29,6 +29,19 @@ final class ProjectRepositoryTest extends KnossosTestCase
         assertSame(null, $resolver->resolvePath('/definitely/not/a/scanned/project'));
     }
 
+    /** The ancestor walk is bounded: a root 64 levels up is past it, one level less is found. */
+    #[Group('query')]
+    public function testTheAncestorWalkStopsAfterSixtyFourLevels(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $root = (string) $pdo->query('SELECT root_realpath FROM projects')->fetchColumn();
+        $resolver = new ProjectRepository($pdo);
+
+        assertSame($ids['project'], $resolver->resolvePath($root . str_repeat('/d', 63))['id'] ?? null);
+        assertSame(null, $resolver->resolvePath($root . str_repeat('/d', 64)));
+    }
+
     /**
      * A relative path that does not exist still belongs to the project the
      * caller is standing in. realpath() cannot resolve it, and the fallback
