@@ -365,6 +365,7 @@ final readonly class LanguageScanRunner
         // named by, and that read is checked all the same.
         $discoveredByPath = $plan->preparation->discovery->hashedPaths();
         $queue = new ScanBatchQueue($partition->filesToScan, $descriptor, $accumulator->sourceBytes, $this->maxRequestsPerLanguage);
+        $run = new LanguageBatchRun($descriptor, $plan->preparation->executionPolicy, $request, $cancellation, $manifest->id, $queue, $leftOut);
         while (($item = $queue->next()) !== null) {
             // Held aside rather than appended directly: an overflowing
             // request has already streamed some contributions, and the
@@ -379,7 +380,7 @@ final readonly class LanguageScanRunner
                     $received[] = $contribution;
                 }
             } catch (WorkerException $error) {
-                $client = $this->afterFailure($queue, $leftOut, $item, $error, $received, $descriptor, $plan, $request, $cancellation, $manifest->id);
+                $client = $this->afterFailure($run, $item, $error, $received);
                 continue;
             }
             $accumulator->absorb($client->lastScanResult(), $manifest, $discoveredByPath, $received, $requested);
@@ -500,23 +501,16 @@ final readonly class LanguageScanRunner
      *
      * @param array{files: list<object>, budget: int, halvings: int, retries: int} $item
      * @param list<ScanContribution> $received what the worker answered before failing
-     * @param array<string, mixed> $request
      */
-    private function afterFailure(
-        ScanBatchQueue $queue,
-        LeftOutFiles $leftOut,
-        array $item,
-        WorkerException $error,
-        array $received,
-        LanguageDescriptor $descriptor,
-        ScanPlan $plan,
-        array $request,
-        CancellationToken $cancellation,
-        string $scannerId,
-    ): ProcessScannerClient {
+    private function afterFailure(LanguageBatchRun $run, array $item, WorkerException $error, array $received): ProcessScannerClient
+    {
+        $queue = $run->queue;
+        $leftOut = $run->leftOut;
+        $descriptor = $run->descriptor;
+        $cancellation = $run->cancellation;
         $queue->failed($error);
         if ($error->diagnosticCode === 'WORKER_FRAME_TOO_LARGE') {
-            $file = $queue->searchFrame($item, $error, $received, $scannerId);
+            $file = $queue->searchFrame($item, $error, $received, $run->scannerId);
             if ($cancellation->isCancelled()) {
                 throw $error;
             }
@@ -524,13 +518,13 @@ final readonly class LanguageScanRunner
                 $leftOut->add($file, $error);
             }
 
-            return $this->pool->restart($descriptor, $plan->preparation->executionPolicy);
+            return $this->pool->restart($descriptor, $run->policy);
         }
-        $retryable = OversizedBatch::signalledBy($descriptor, $error, $request) && !$cancellation->isCancelled();
+        $retryable = OversizedBatch::signalledBy($descriptor, $error, $run->request) && !$cancellation->isCancelled();
         if ($retryable && count($item['files']) === 1 && OversizedBatch::leavesAFileOut($error)) {
             $leftOut->add($item['files'][0], $error);
 
-            return $this->pool->restart($descriptor, $plan->preparation->executionPolicy);
+            return $this->pool->restart($descriptor, $run->policy);
         }
         // A single file cannot be split any further, so retrying it would
         // only burn worker restarts on the same failure.
@@ -541,7 +535,7 @@ final readonly class LanguageScanRunner
 
         // The failed request closed its session, so this language needs a
         // fresh worker before the smaller batches can be sent.
-        return $this->pool->restart($descriptor, $plan->preparation->executionPolicy);
+        return $this->pool->restart($descriptor, $run->policy);
     }
 
     /**
