@@ -137,6 +137,8 @@ impl Calls<'_, '_> {
 
     /// The type a multi-segment value or pattern path sits under:
     /// `HookState::Absent` names `HookState`, `Self::helper` the impl's type.
+    /// A path under `crate`, `self` or `super` (`crate::helper()`) sits under
+    /// a module, which is no type to reference.
     fn owner_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
         if path.segments.len() < 2 {
             return;
@@ -144,6 +146,14 @@ impl Calls<'_, '_> {
         let mut owner = path.clone();
         owner.segments.pop();
         owner.segments.pop_punct();
+        if owner.segments.last().is_some_and(|segment| {
+            matches!(
+                ident_name(&segment.ident).as_str(),
+                "crate" | "self" | "super"
+            )
+        }) {
+            return;
+        }
         self.type_reference(&owner, span);
     }
 
