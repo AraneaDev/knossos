@@ -21,15 +21,24 @@ final class DataDirectory
     /** The named directory as an absolute path, or null when the variable is unset or empty. */
     public static function resolve(): ?string
     {
-        $directory = getenv(self::VARIABLE);
-        if (!is_string($directory) || $directory === '') {
-            return null;
-        }
-        if (str_starts_with($directory, '/')) {
+        $directory = self::named();
+        if ($directory === null || str_starts_with($directory, '/')) {
             return $directory;
         }
         $cwd = getcwd();
 
         return $cwd === false ? $directory : rtrim($cwd, '/') . '/' . $directory;
+    }
+
+    /**
+     * The variable's value exactly as set, or null when it is unset or empty.
+     *
+     * For a caller that must refuse a relative value rather than anchor it.
+     */
+    public static function named(): ?string
+    {
+        $directory = getenv(self::VARIABLE);
+
+        return is_string($directory) && $directory !== '' ? $directory : null;
     }
 }

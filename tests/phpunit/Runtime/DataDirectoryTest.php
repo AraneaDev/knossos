@@ -57,4 +57,16 @@ final class DataDirectoryTest extends KnossosTestCase
         self::assertSame(rtrim($cwd, '/') . '/graph-data', DataDirectory::resolve());
         self::assertSame(rtrim($cwd, '/') . '/graph-data/knossos.sqlite', (new RuntimeFactory(self::repositoryRoot()))->defaultDatabasePath());
     }
+
+    public function testNamedKeepsARelativeValueAsSet(): void
+    {
+        putenv('KNOSSOS_DATA_DIR=graph-data');
+        self::assertSame('graph-data', DataDirectory::named());
+
+        putenv('KNOSSOS_DATA_DIR=');
+        self::assertNull(DataDirectory::named());
+
+        putenv('KNOSSOS_DATA_DIR');
+        self::assertNull(DataDirectory::named());
+    }
 }

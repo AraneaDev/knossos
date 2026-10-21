@@ -7,6 +7,7 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
+use Knossos\Runtime\DataDirectory;
 use Throwable;
 
 /**
@@ -525,13 +526,14 @@ final class PluginCommand implements CliCommand
     {
         $value = $option;
         if ($value === null || $value === '') {
-            $fromEnvironment = getenv('KNOSSOS_DATA_DIR');
-            $value = is_string($fromEnvironment) ? $fromEnvironment : '';
+            $value = DataDirectory::named() ?? '';
         }
         if ($value !== '' && !str_starts_with($value, '/')) {
             // A relative path would be resolved against each project's
             // directory by the hooks, which is a different graph from the one
-            // the server reads.
+            // the server reads. The value is refused rather than anchored the
+            // way DataDirectory::resolve() anchors it, because the installer's
+            // working directory says nothing about where the person meant.
             throw new InvalidArgumentException(sprintf('data-dir must be an absolute path, got "%s".', $value));
         }
         $this->singleQuoted($value, 'data-dir');
