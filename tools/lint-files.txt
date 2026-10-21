@@ -893,6 +893,7 @@ php	tests/phpunit/Scanner/RustWorkerTest.php
 php	tests/phpunit/Scanner/ScannerClientTest.php
 php	tests/phpunit/Scanner/ScannerSdkTest.php
 php	tests/phpunit/Scanner/TypescriptClassicScriptTest.php
+php	tests/phpunit/Scanner/TypescriptCrossFileCallArgumentTest.php
 php	tests/phpunit/Scanner/TypescriptDeepImportChainTest.php
 php	tests/phpunit/Scanner/TypescriptDestructuredArgumentTest.php
 php	tests/phpunit/Scanner/TypescriptFallbackProgramTest.php
@@ -1331,6 +1332,7 @@ js	workers/typescript/src/__tests__/worker-startup.test.js
 js	workers/typescript/src/__tests__/wrapped-function-properties.test.js
 js	workers/typescript/src/bundler-aliases.js
 js	workers/typescript/src/byte-caps.js
+js	workers/typescript/src/call-argument-sites.js
 js	workers/typescript/src/component-framework-enricher.js
 js	workers/typescript/src/component-resolution.js
 js	workers/typescript/src/component-source.js

@@ -10,6 +10,11 @@ import {
     unwrapExpression,
 } from "./typescript-fact-utils.js";
 
+// The most distinct project members one method call on a destructured
+// binding is inferred to reach, across every call site that hands the
+// function a value. Past it the call says too little to name any of them.
+export const MAX_INFERRED_TARGETS = 8;
+
 /**
  * Calls that reach a function through a table or hand it an object literal.
  *
@@ -22,6 +27,9 @@ import {
 export class TableDispatch {
     constructor(context) {
         this.context = context;
+        // Each method call on a destructured binding, to its function's node
+        // reference and the members the call sites' values give it.
+        this.inferred = new Map();
     }
 
     /**
@@ -55,29 +63,10 @@ export class TableDispatch {
      */
     members(node) {
         const checker = this.context.checker;
-        const symbol = unalias(
-            checker,
-            checker.getSymbolAtLocation(node.expression),
-        );
-        const binding = symbol?.declarations?.find(
-            (item) => ts.isVariableDeclaration(item) && item.initializer,
-        );
-        const table =
-            binding === undefined
-                ? undefined
-                : unwrapExpression(binding.initializer);
-        if (table === undefined || !ts.isObjectLiteralExpression(table))
-            return null;
-        const key = unwrapExpression(node.argumentExpression);
-        const named =
-            ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)
-                ? key.text
-                : undefined;
+        const table = tableEntries(checker, node);
+        if (table === null) return null;
         const entries = [];
-        for (const property of table.properties) {
-            const fn = tableFunction(property);
-            if (fn === undefined) continue;
-            if (named !== undefined && property.name.text !== named) continue;
+        for (const { property, fn } of table.entries) {
             const target = this.context.symbolReference(
                 checker.getSymbolAtLocation(property.name),
                 "method",
@@ -85,7 +74,7 @@ export class TableDispatch {
             );
             if (target !== null) entries.push({ target, fn });
         }
-        return { computed: named === undefined, entries };
+        return { computed: table.computed, entries };
     }
 
     /**
@@ -96,24 +85,69 @@ export class TableDispatch {
      * call of the member the argument's value has.
      */
     objectArguments(node, signature, source) {
-        for (const { target, fn } of this.callees(node, signature, source)) {
-            if (
-                fn.getSourceFile() !== this.context.sourceFile ||
-                fn.body === undefined
-            )
-                continue;
-            fn.parameters.forEach((parameter, index) => {
-                const argument = unwrapExpression(node.arguments[index]);
-                if (
-                    !ts.isObjectBindingPattern(parameter.name) ||
-                    argument === undefined ||
-                    !ts.isObjectLiteralExpression(argument)
-                )
-                    return;
-                for (const element of parameter.name.elements)
-                    this.boundCalls(fn.body, element, argument, target);
-            });
+        for (const { target, fn } of this.callees(node, signature, source))
+            this.boundArguments(node, fn, target);
+    }
+
+    /**
+     * The calls of other files of the program that hand a function of this
+     * file an object literal to destructure, read as `objectArguments` reads
+     * a call of this file. This file's facts then follow those files, so
+     * each one is among its reads: an edit or a deletion there rebuilds it.
+     */
+    crossFileArguments() {
+        const project = this.context.project;
+        for (const call of project.callSitesInto?.() ?? []) {
+            project.readCaller?.(call.getSourceFile());
+            const signature = this.context.checker.getResolvedSignature(call);
+            for (const { target, fn } of this.callees(call, signature, null))
+                this.boundArguments(call, fn, target);
         }
+    }
+
+    /**
+     * Emit the inferred calls, once every call site of the file and of the
+     * other files has been read. A method call on a binding that more than
+     * MAX_INFERRED_TARGETS distinct project members could answer gets none:
+     * its name is among the module's unresolved member calls already, which
+     * leaves each such member only possibly dead.
+     */
+    finish() {
+        this.crossFileArguments();
+        for (const [call, { source, targets }] of this.inferred) {
+            if (targets.size > MAX_INFERRED_TARGETS) continue;
+            for (const target of targets)
+                this.context.addEdge(
+                    "calls",
+                    source,
+                    target,
+                    call,
+                    { inferred_from: "call_argument" },
+                    "ast",
+                    "probable",
+                );
+        }
+        this.inferred.clear();
+    }
+
+    /** Read the object literals `node` hands `fn` of this file into its bindings. */
+    boundArguments(node, fn, target) {
+        if (
+            fn.getSourceFile() !== this.context.sourceFile ||
+            fn.body === undefined
+        )
+            return;
+        fn.parameters.forEach((parameter, index) => {
+            const argument = unwrapExpression(node.arguments[index]);
+            if (
+                !ts.isObjectBindingPattern(parameter.name) ||
+                argument === undefined ||
+                !ts.isObjectLiteralExpression(argument)
+            )
+                return;
+            for (const element of parameter.name.elements)
+                this.boundCalls(fn.body, element, argument, target);
+        });
     }
 
     /** The functions a call runs, each with its node reference. */
@@ -154,7 +188,7 @@ export class TableDispatch {
     }
 
     /**
-     * The probable `calls` edge of `binding.method()` on a value of `type`,
+     * Note the probable call of `binding.method()` on a value of `type`,
      * when that member is declared in this project.
      */
     boundCall(call, type, source) {
@@ -171,19 +205,17 @@ export class TableDispatch {
         // Only a member of this project: what a library value's method runs
         // is no question of this graph.
         if (
-            target !== null &&
-            target !== source &&
-            !target.startsWith("ts:external_")
+            target === null ||
+            target === source ||
+            target.startsWith("ts:external_")
         )
-            this.context.addEdge(
-                "calls",
-                source,
-                target,
-                call,
-                { inferred_from: "call_argument" },
-                "ast",
-                "probable",
-            );
+            return;
+        const inferred = this.inferred.get(call) ?? {
+            source,
+            targets: new Set(),
+        };
+        inferred.targets.add(target);
+        this.inferred.set(call, inferred);
     }
 
     /**
@@ -209,6 +241,41 @@ export class TableDispatch {
             ? undefined
             : checker.getTypeOfSymbolAtLocation(value, property);
     }
+}
+
+/**
+ * The entries of the object literal a `const` binding (here or imported)
+ * holds that `table[key]` can pick, each property with its function; null
+ * when the receiver is no such literal. A literal key picks only the entry
+ * it names.
+ */
+export function tableEntries(checker, node) {
+    const symbol = unalias(
+        checker,
+        checker.getSymbolAtLocation(node.expression),
+    );
+    const binding = symbol?.declarations?.find(
+        (item) => ts.isVariableDeclaration(item) && item.initializer,
+    );
+    const table =
+        binding === undefined
+            ? undefined
+            : unwrapExpression(binding.initializer);
+    if (table === undefined || !ts.isObjectLiteralExpression(table))
+        return null;
+    const key = unwrapExpression(node.argumentExpression);
+    const named =
+        ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)
+            ? key.text
+            : undefined;
+    const entries = [];
+    for (const property of table.properties) {
+        const fn = tableFunction(property);
+        if (fn === undefined) continue;
+        if (named !== undefined && property.name.text !== named) continue;
+        entries.push({ property, fn });
+    }
+    return { computed: named === undefined, entries };
 }
 
 /**

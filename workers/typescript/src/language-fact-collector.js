@@ -119,12 +119,15 @@ export class TypeScriptLanguageFactCollector {
     }
 
     /**
-     * Records on the module node the member names called on a receiver the
+     * Emits the calls inferred from object literals handed to this file's
+     * functions, here and in other files of the program, and records on the
+     * module node the member names called on a receiver the
      * checker could not type (`any`, an untyped parameter in JavaScript).
      * Such a call has no edge, and a method by one of these names may be what
      * it reaches, so the core reports that method as only possibly dead.
      */
     finish() {
+        this.tables.finish();
         this.frameworks.finish();
         if (this.untypedCalls.size === 0) return;
         this.accumulator.nodesById.get(

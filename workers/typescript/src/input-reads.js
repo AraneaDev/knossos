@@ -174,6 +174,8 @@ export class ReadAttribution {
         this.globalsByProgram = new Map();
         // Program key to its digest, computed once the request has finished.
         this.environmentCache = new Map();
+        // Program key to its caller and callee pairs (see callArguments).
+        this.callArgumentsByProgram = new Map();
     }
 
     /**
@@ -247,20 +249,36 @@ export class ReadAttribution {
     }
 
     /**
+     * Note which files of a program hand which others an object literal to
+     * destructure, each pair `caller NUL callee` (see callArgumentPairs).
+     * The callee's facts follow the caller's call, which its reads name once
+     * it has one; a caller that starts calling was named by none of them.
+     */
+    callArguments(programKey, pairs) {
+        this.callArgumentsByProgram.set(programKey, pairs);
+    }
+
+    /**
      * A digest of the global declarations a program's files saw: one line,
      * `path`, NUL and the hash `input_hashes` carries (empty for null), per
-     * file of the program that declares globally, sorted. Two scans that agree
-     * on it agree on every name a file of the program can use without an
-     * import. Computed once per program, after the request's last read.
+     * file of the program that declares globally, and one line, NUL and the
+     * pair, per pair of files a call hands an object literal to destructure,
+     * sorted. Two scans that agree on it agree on every name a file of the
+     * program can use without an import, and on which files' calls type which
+     * files' parameters. Computed once per program, after the request's last
+     * read.
      */
     environmentOf(programKey) {
         let digest = this.environmentCache.get(programKey);
         if (digest === undefined) {
-            const lines = [...(this.globalsByProgram.get(programKey) ?? [])]
-                .map((key) => `${key}\0${this.reads.value(key) ?? ""}`)
-                .sort((left, right) =>
-                    left < right ? -1 : left > right ? 1 : 0,
-                );
+            const lines = [
+                ...[...(this.globalsByProgram.get(programKey) ?? [])].map(
+                    (key) => `${key}\0${this.reads.value(key) ?? ""}`,
+                ),
+                ...(this.callArgumentsByProgram.get(programKey) ?? []).map(
+                    (pair) => `\0${pair}`,
+                ),
+            ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
             digest = createHash("sha256")
                 .update(lines.join("\n"))
                 .digest("hex");

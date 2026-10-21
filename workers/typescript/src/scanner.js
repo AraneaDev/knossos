@@ -8,6 +8,11 @@
  */
 import path from "node:path";
 import ts from "typescript";
+import {
+    callArgumentPairs,
+    callSitesInto,
+    destructuresUntyped,
+} from "./call-argument-sites.js";
 import { isStackOverflow } from "./errors.js";
 import { BUILT_IN_EXCLUSIONS, Exclusions } from "./exclusions.js";
 import {
@@ -597,6 +602,10 @@ export class TypeScriptScanner {
             request.attribution.program(program, request.program, (relative) =>
                 request.ownedByProgram(relative, request.program),
             );
+            request.attribution.callArguments(
+                request.program,
+                callArgumentPairs(program, root, exclusions),
+            );
         } catch (error) {
             const overflowed = isStackOverflow(error);
             const covered = [
@@ -830,6 +839,18 @@ function collectFile(
                     specifier,
                     sourceFile,
                 )?.resolvedModule !== undefined,
+            // The calls of other files that hand this file's functions an
+            // object literal, and the read each such file becomes.
+            callSitesInto: () =>
+                destructuresUntyped(sourceFile)
+                    ? callSitesInto(
+                          program,
+                          root,
+                          exclusions,
+                          sourceFile.fileName,
+                      )
+                    : [],
+            readCaller: (callerFile) => tracker.files.add(callerFile),
         });
         collector.collect();
         return {

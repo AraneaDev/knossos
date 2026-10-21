@@ -133,14 +133,35 @@ Two call shapes reach project code that the compiler resolves to nothing.
   looking unused.
 - **Destructured parameters.** `async hold(step, { tape }) { await tape.hold() }`
   in plain JavaScript leaves `tape` untyped, so `tape.hold()` resolves to
-  nothing. When a call in the same file hands that function an object literal,
-  `{ tape }` or `{ tape: recorder() }`, the value's type stands in for the
-  binding's: each method call on the binding the checker could not resolve
-  becomes a `probable` `calls` edge (attribute `inferred_from: call_argument`)
-  to that member, when the member is declared in your project. This includes
-  functions reached through a lookup table. A parameter with a declared type,
-  a TypeScript annotation (`({ tape }: Context)`) or a JSDoc `@param`, already
-  types the binding, and its calls stay `certain`.
+  nothing. When a call hands that function an object literal, `{ tape }` or
+  `{ tape: recorder() }`, the value's type stands in for the binding's: each
+  method call on the binding the checker could not resolve becomes a
+  `probable` `calls` edge (attribute `inferred_from: call_argument`) to that
+  member, when the member is declared in your project. The call can be in the
+  same file or in any other file of the same program, and reach the function
+  directly, through a named or default export, through a re-export (an
+  `index.js` that does `export { hold } from './steps.js'`), or through a
+  lookup table, imported or not. A parameter with a declared type, a
+  TypeScript annotation (`({ tape }: Context)`) or a JSDoc `@param`, already
+  types the binding, and its calls stay `certain` with no inferred edge beside
+  them.
+
+    When several call sites hand the function different values, the method call
+    reaches the member of each one. One method call on a binding gets at most 8
+    such targets; past that it gets none, and its name stays among the module's
+    `unresolved_member_calls`, so every member by that name reads as only
+    possibly dead rather than as called by one arbitrary pick.
+
+    The edges belong to the function's own file, so that file's facts follow the
+    files whose calls typed the binding: its contribution lists each of them
+    among its reads. Editing such a caller rescans the function's file, and
+    deleting it rescans every TypeScript file, so the edge follows the new
+    argument or disappears. A file that starts handing a function of another
+    file a literal is named by none of those reads yet, so which file hands
+    which a literal is part of the program's environment: when that set changes,
+    every file of the program is rescanned, as when a global script changes.
+    A call from a file of another program, one a different `tsconfig.json`
+    owns, gives the function nothing.
 
 When the same edge is found more than once, the surer confidence wins:
 `handlers[key]` and `handlers['ping']` in one function make the reference to
