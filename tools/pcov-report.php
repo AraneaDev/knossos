@@ -79,21 +79,10 @@ function componentOf(string $relative): ?string
 }
 
 $root = dirname(__DIR__);
-$budgetPath = null;
 require_once __DIR__ . '/lib/cli-arguments.php';
-// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
-$argv = cliArguments();
-foreach (array_slice($argv, 1) as $argument) {
-    if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
-        $root = rtrim(substr($argument, strlen('--root=')), '/');
-    } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
-        $budgetPath = substr($argument, strlen('--budgets='));
-    } else {
-        fwrite(STDERR, "usage: php tools/pcov-report.php [--root=DIR] [--budgets=FILE]\n");
-        exit(2);
-    }
-}
-$budgetPath ??= $root . '/coverage-budgets.json';
+$options = cliOptions('usage: php tools/pcov-report.php [--root=DIR] [--budgets=FILE]', ['root', 'budgets']);
+$root = isset($options['root']) ? rtrim($options['root'], '/') : $root;
+$budgetPath = $options['budgets'] ?? $root . '/coverage-budgets.json';
 $coverageDirectory = $root . '/coverage/php';
 $merged = [];
 foreach (glob($coverageDirectory . '/pcov-*.json') ?: [] as $path) {

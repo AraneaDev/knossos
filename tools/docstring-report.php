@@ -36,21 +36,10 @@ require __DIR__ . '/lib/budget-numbers.php';
 
 // --root is the tree measured, this checkout when it is not given; --budgets the
 // floors, the root's maintainability-budgets.json when it is not given.
-$budgetPath = null;
 require_once __DIR__ . '/lib/cli-arguments.php';
-// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
-$argv = cliArguments();
-foreach (array_slice($argv, 1) as $argument) {
-    if (str_starts_with($argument, '--root=') && $argument !== '--root=') {
-        $root = rtrim(substr($argument, strlen('--root=')), '/');
-    } elseif (str_starts_with($argument, '--budgets=') && $argument !== '--budgets=') {
-        $budgetPath = substr($argument, strlen('--budgets='));
-    } else {
-        fwrite(STDERR, "usage: php tools/docstring-report.php [--root=DIR] [--budgets=FILE]\n");
-        exit(2);
-    }
-}
-$budgetPath ??= $root . '/maintainability-budgets.json';
+$options = cliOptions('usage: php tools/docstring-report.php [--root=DIR] [--budgets=FILE]', ['root', 'budgets']);
+$root = isset($options['root']) ? rtrim($options['root'], '/') : $root;
+$budgetPath = $options['budgets'] ?? $root . '/maintainability-budgets.json';
 $reportPath = $root . '/coverage/quality/docstring-coverage.json';
 
 /** Areas measured independently, so a well-documented one cannot mask a bare one. */
@@ -156,10 +145,7 @@ $report = [
     'undocumented' => $undocumented,
     'undocumented_types' => $undocumentedTypes,
 ];
-if (!is_dir(dirname($reportPath)) && !mkdir(dirname($reportPath), 0775, true) && !is_dir(dirname($reportPath))) {
-    throw new RuntimeException('Unable to create quality report directory.');
-}
-file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
+writeJsonReport($reportPath, $report, 'quality report');
 
 $failures = [];
 foreach ($areas as $label => $area) {

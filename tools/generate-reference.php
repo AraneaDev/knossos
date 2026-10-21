@@ -20,21 +20,11 @@ require dirname(__DIR__) . '/vendor/autoload.php';
  * given; the tests point it at a stale copy to see the check refuse.
  */
 $root = dirname(__DIR__);
-$check = false;
 $docs = $root . '/docs/reference';
 require_once __DIR__ . '/lib/cli-arguments.php';
-// $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
-$argv = cliArguments();
-foreach (array_slice($argv, 1) as $argument) {
-    if ($argument === '--check') {
-        $check = true;
-    } elseif (str_starts_with($argument, '--docs=') && strlen($argument) > 7) {
-        $docs = rtrim(substr($argument, 7), '/');
-    } else {
-        fwrite(STDERR, "usage: php tools/generate-reference.php [--check] [--docs=DIR]\n");
-        exit(64);
-    }
-}
+$options = cliOptions('usage: php tools/generate-reference.php [--check] [--docs=DIR]', ['docs'], ['check'], 64);
+$check = isset($options['check']);
+$docs = isset($options['docs']) ? rtrim($options['docs'], '/') : $docs;
 $runtime = new RuntimeFactory($root);
 $pdo = $runtime->database(':memory:');
 $tools = new ToolService(

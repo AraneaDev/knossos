@@ -484,6 +484,7 @@ php	tests/phpunit/Classification/ToolConfigModuleRuleTest.php
 php	tests/phpunit/Classification/TypeScriptFrameworkRoleRuleTest.php
 php	tests/phpunit/ClaudeCodeTypesTest.php
 php	tests/phpunit/Cli/BriefCommandTest.php
+php	tests/phpunit/Cli/CliArgumentsTest.php
 php	tests/phpunit/Cli/CliDocumentedOptionsTest.php
 php	tests/phpunit/Cli/CliHelpersTest.php
 php	tests/phpunit/Cli/CliOptionValueSplitTest.php
@@ -1091,6 +1092,7 @@ js	hooks/lib/cards.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
 js	hooks/lib/chips.ts
+js	hooks/lib/chrome.keys.spec.ts
 js	hooks/lib/chrome.ts
 js	hooks/lib/churn.spec.ts
 js	hooks/lib/churn.ts
@@ -1220,6 +1222,7 @@ js	hooks/mod/session.retry.spec.ts
 js	hooks/mod/session.spec.ts
 js	hooks/mod/session.tick.spec.ts
 js	hooks/mod/session.ts
+js	hooks/mod/settings.spec.ts
 js	hooks/mod/state.spec.ts
 js	hooks/mod/state.ts
 js	hooks/mod/watcher.rescan.spec.ts
