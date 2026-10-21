@@ -100,9 +100,30 @@ final readonly class SnapshotMetrics extends AbstractArchitectureQueryService
      */
     public function snapshotAnalysis(array $facts): array
     {
-        $nodes = array_fill_keys(array_column($facts['nodes'] ?? [], 'id'), true);
         $roles = $this->snapshotRoles($facts);
-        // Hub scope: vendor code and test code are not this architecture.
+        $reportable = self::reportable($facts, $roles);
+        $graph = self::graphIndex($facts, $reportable);
+        $errors = $warnings = 0;
+        foreach ($facts['diagnostics'] ?? [] as $diagnostic) {
+            $errors += $diagnostic['severity'] === 'error' ? 1 : 0;
+            $warnings += $diagnostic['severity'] === 'warning' ? 1 : 0;
+        }
+
+        return ['reportable' => $reportable, 'degree' => $graph['degree'], 'adjacency' => $graph['adjacency'], 'reverse' => $graph['reverse'],
+            'sccs' => $this->cycles($facts, $graph), 'errors' => $errors, 'warnings' => $warnings,
+            'unreferenced' => $this->unreferenced($facts, $roles, $reportable, $graph)];
+    }
+
+    /**
+     * The components the figures are about. Hub scope: vendor code and test
+     * code are not this architecture.
+     *
+     * @param array<string, list<array<string, mixed>>> $facts
+     * @param array<string, list<string>> $roles
+     * @return array<string, true>
+     */
+    private static function reportable(array $facts, array $roles): array
+    {
         $reportable = [];
         foreach ($facts['nodes'] ?? [] as $node) {
             if (!ReportableComponent::isExternal((string) $node['kind'], $node['origin'] ?? null)
@@ -110,6 +131,23 @@ final readonly class SnapshotMetrics extends AbstractArchitectureQueryService
                 $reportable[$node['id']] = true;
             }
         }
+
+        return $reportable;
+    }
+
+    /**
+     * The snapshot's edges indexed for the analysis: impact adjacency both
+     * ways, each component's degree among the reportable ones, which type
+     * holds each member and which contracts each type carries, and the
+     * erased type-only imports per pair.
+     *
+     * @param array<string, list<array<string, mixed>>> $facts
+     * @param array<string, true> $reportable
+     * @return array{adjacency: array<string, list<string>>, reverse: array<string, list<string>>, degree: array<string, int>, members: array<string, list<string>>, contracts: array<string, list<string>>, inheritance_in_degree: array<string, int>, erased: array<string, array<string, int>>, declaring_type: array<string, string>}
+     */
+    private static function graphIndex(array $facts, array $reportable): array
+    {
+        $nodes = array_fill_keys(array_column($facts['nodes'] ?? [], 'id'), true);
         $adjacency = $reverse = [];
         $degree = array_fill_keys(array_keys($nodes), 0);
         foreach (array_keys($nodes) as $id) {
@@ -165,68 +203,89 @@ final readonly class SnapshotMetrics extends AbstractArchitectureQueryService
                 $declaringType[$member] = $type;
             }
         }
+
+        return ['adjacency' => $adjacency, 'reverse' => $reverse, 'degree' => $degree, 'members' => $members, 'contracts' => $contracts,
+            'inheritance_in_degree' => $inheritanceInDegree, 'erased' => $erased, 'declaring_type' => $declaringType];
+    }
+
+    /**
+     * The strongly connected components the gate counts as cycles, found
+     * without the erased type-only edges.
+     *
+     * @param array<string, list<array<string, mixed>>> $facts
+     * @param array{adjacency: array<string, list<string>>, reverse: array<string, list<string>>, erased: array<string, array<string, int>>, declaring_type: array<string, string>} $graph
+     * @return list<list<string>>
+     */
+    private function cycles(array $facts, array $graph): array
+    {
+        // Self-loops are ordinary recursion, not architectural cycles;
+        // dependency_cycles excludes them by default, so mirror that here.
+        $sccs = $graph['erased'] === []
+            ? $this->stronglyConnectedComponents($graph['adjacency'], $graph['reverse'])['components']
+            : $this->stronglyConnectedComponents(...self::withoutErased($graph['adjacency'], $graph['erased']))['components'];
+        // Recursion inside one type is not an architectural cycle either; as in dependency_cycles.
+        $kinds = array_column($facts['nodes'] ?? [], 'kind', 'id');
+        $typeOf = array_filter($graph['declaring_type'], static fn(string $type): bool => in_array($kinds[$type] ?? null, OneTypeCycles::TYPE_KINDS, true));
+
+        return array_values(array_filter($sccs, static fn(array $component): bool => !OneTypeCycles::withinOneType(array_values($component), $typeOf)));
+    }
+
+    /**
+     * The unreferenced candidates the gate counts.
+     *
+     * Counts only the declaration kinds architecture_health treats as
+     * dead-code candidates, and only the components it reports on at all —
+     * see ReportableComponent for why counting the rest made this budget
+     * unusable rather than merely imprecise. Health layers further,
+     * database-backed exclusions on top (inherited and contract members,
+     * annotations, suppressions), so among components with NO inbound edge
+     * this count is the larger of the two by design; what it may not do is
+     * count a component health drops for a reason this loop can see for
+     * itself, which is why both ask
+     * {@see ReportableComponent::graphLocalExclusion()}.
+     *
+     * Health also reports a class this budget deliberately does not charge
+     * for: a component reached only from test code is `test_only` there and
+     * referenced here. It is worth deleting, but it is not a regression the
+     * way a newly orphaned component is, and a budget that moved when a
+     * caller was replaced by a test would punish the wrong change.
+     *
+     * @param array<string, list<array<string, mixed>>> $facts
+     * @param array<string, list<string>> $roles
+     * @param array<string, true> $reportable
+     * @param array{reverse: array<string, list<string>>, members: array<string, list<string>>, contracts: array<string, list<string>>, inheritance_in_degree: array<string, int>, declaring_type: array<string, string>} $graph
+     * @return list<string>
+     */
+    private function unreferenced(array $facts, array $roles, array $reportable, array $graph): array
+    {
         $displayNames = [];
         foreach ($facts['nodes'] ?? [] as $node) {
             $displayNames[$node['id']] = (string) $node['display_name'];
         }
-        // Self-loops are ordinary recursion, not architectural cycles;
-        // dependency_cycles excludes them by default, so mirror that here.
-        $sccs = $erased === []
-            ? $this->stronglyConnectedComponents($adjacency, $reverse)['components']
-            : $this->stronglyConnectedComponents(...self::withoutErased($adjacency, $erased))['components'];
-        // Recursion inside one type is not an architectural cycle either; as in dependency_cycles.
-        $kinds = array_column($facts['nodes'] ?? [], 'kind', 'id');
-        $typeOf = array_filter($declaringType, static fn(string $type): bool => in_array($kinds[$type] ?? null, OneTypeCycles::TYPE_KINDS, true));
-        $sccs = array_values(array_filter($sccs, static fn(array $component): bool => !OneTypeCycles::withinOneType(array_values($component), $typeOf)));
-        $errors = $warnings = 0;
-        foreach ($facts['diagnostics'] ?? [] as $diagnostic) {
-            $errors += $diagnostic['severity'] === 'error' ? 1 : 0;
-            $warnings += $diagnostic['severity'] === 'warning' ? 1 : 0;
-        }
-        // Count only the declaration kinds architecture_health treats as
-        // dead-code candidates, and only the components it reports on at all —
-        // see ReportableComponent for why counting the rest made this budget
-        // unusable rather than merely imprecise. Health layers further,
-        // database-backed exclusions on top (inherited and contract members,
-        // annotations, suppressions), so among components with NO inbound edge
-        // this count is the larger of the two by design; what it may not do is
-        // count a component health drops for a reason this loop can see for
-        // itself.
-        //
-        // Health also reports a class this budget deliberately does not charge
-        // for: a component reached only from test code is `test_only` there and
-        // referenced here. It is worth deleting, but it is not a regression the
-        // way a newly orphaned component is, and a budget that moved when a
-        // caller was replaced by a test would punish the wrong change.
         $candidateKinds = ['class', 'interface', 'trait', 'enum', 'function', 'method', 'module'];
         $unreferenced = [];
         foreach ($facts['nodes'] ?? [] as $node) {
-            if (($reverse[$node['id']] ?? []) !== [] || !isset($reportable[$node['id']])) {
+            if (($graph['reverse'][$node['id']] ?? []) !== [] || !isset($reportable[$node['id']])) {
                 continue;
             }
             if (!in_array($node['kind'], $candidateKinds, true)) {
                 continue;
             }
-            // A runtime-invoked lifecycle method, a method fulfilling a
-            // supertype's member, an executable script's module, a type
-            // declaration, or a convention-discovered component has no inbound edge by
-            // construction, so counting it would charge the budget for
-            // something no maintainer can act on.
+            // A runtime-invoked lifecycle method has no inbound edge by
+            // construction, and neither has anything the shared exclusions
+            // name, so counting it would charge the budget for something no
+            // maintainer can act on.
             if (ReportableComponent::isRuntimeLifecycleMethod((string) $node['kind'], (string) $node['display_name'])
-                || ReportableComponent::isRuntimeInvoked($node['attributes_json'] ?? null)
-                || ReportableComponent::isDeclaredOverride((string) $node['kind'], $node['attributes_json'] ?? null)
-                || ReportableComponent::isExecutableScript((string) $node['kind'], $node['attributes_json'] ?? null)
-                || ReportableComponent::isTypeDeclaration($node['attributes_json'] ?? null)
-                || ReportableComponent::isDiscoveredByConvention($roles[$node['id']] ?? [])) {
+                || ReportableComponent::graphLocalExclusion($node, $roles[$node['id']] ?? []) !== null) {
                 continue;
             }
-            if ($this->isContractMemberOfUsedType($node, $declaringType, $contracts, $members, $displayNames, $reverse, $inheritanceInDegree)) {
+            if ($this->isContractMemberOfUsedType($node, $graph['declaring_type'], $graph['contracts'], $graph['members'], $displayNames, $graph['reverse'], $graph['inheritance_in_degree'])) {
                 continue;
             }
             $unreferenced[] = (string) $node['id'];
         }
-        return ['reportable' => $reportable, 'degree' => $degree, 'adjacency' => $adjacency, 'reverse' => $reverse, 'sccs' => $sccs,
-            'errors' => $errors, 'warnings' => $warnings, 'unreferenced' => $unreferenced];
+
+        return $unreferenced;
     }
 
     /**

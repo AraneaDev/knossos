@@ -727,6 +727,7 @@ php	tests/phpunit/Query/QueryDefaultsAgreementTest.php
 php	tests/phpunit/Query/QueryFacadeDocblockTest.php
 php	tests/phpunit/Query/QueryTest.php
 php	tests/phpunit/Query/RefreshPolicyTest.php
+php	tests/phpunit/Query/ReportableComponentTest.php
 php	tests/phpunit/Query/RepresentsTraversalTest.php
 php	tests/phpunit/Query/RescanServiceTest.php
 php	tests/phpunit/Query/ReviewDiffReportTest.php
