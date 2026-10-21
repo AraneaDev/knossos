@@ -354,6 +354,13 @@ final class ReceiverTypeInference
      * a path held. Null when the root's type is unknown or a step is not a
      * plain property name.
      *
+     * A step may also be a call, written `name()`, which the reconciler reads
+     * through the method's declared return type: `Type::services()::$a` for
+     * `$this->typed->services()->a`, and `Type::wire()::brief()` for
+     * `Type::wire()->brief()`, whose declarations are usually in other files.
+     * A call {@see self::calleeReference()} names outright is no path: the
+     * caller names it as a `method_of_return` instead.
+     *
      * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
      */
     public function propertyPath(Expr $receiver, ?array $class): ?string
@@ -362,6 +369,14 @@ final class ReceiverTypeInference
             // `$request = $graph->request; $request->m()`: the variable stands
             // for the path it was read from.
             return $this->variables->propertySource($receiver->name);
+        }
+        if (($receiver instanceof Expr\MethodCall || $receiver instanceof Expr\NullsafeMethodCall)
+            && $receiver->name instanceof Identifier
+            && $this->calleeReference($receiver, $class) === null) {
+            // `Type::wire()->brief()`: a call on what another call returns.
+            $inner = $this->valuePath($receiver->var, $class);
+
+            return $inner === null ? null : $inner . '::' . $receiver->name->toString() . '()';
         }
         if ((!$receiver instanceof Expr\PropertyFetch && !$receiver instanceof Expr\NullsafePropertyFetch)
             || !$receiver->name instanceof Identifier) {
@@ -375,9 +390,32 @@ final class ReceiverTypeInference
                 return $type . '::' . $property;
             }
         }
-        $inner = $this->propertyPath($root, $class);
+        $inner = $this->valuePath($root, $class);
 
         return $inner === null ? null : $inner . '::' . $property;
+    }
+
+    /**
+     * The path of the value an expression evaluates to, for a step of
+     * {@see self::propertyPath()}: a call whose callee is named outright
+     * (`Type::m()`), or else a property path. `$this->services ?? Type::wire()`
+     * holds its left operand whenever that is set, the right being the
+     * fallback for when it is not, so it is read as the left one when that
+     * has a path.
+     *
+     * @param array{name: string, parent: ?string, properties: array<string, string>}|null $class
+     */
+    private function valuePath(Expr $expression, ?array $class): ?string
+    {
+        if ($expression instanceof Expr\BinaryOp\Coalesce) {
+            return $this->valuePath($expression->left, $class) ?? $this->valuePath($expression->right, $class);
+        }
+        $callee = $this->calleeReference($expression, $class);
+        if ($callee !== null) {
+            return $callee . '()';
+        }
+
+        return $this->propertyPath($expression, $class);
     }
 
     /**

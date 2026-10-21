@@ -495,12 +495,7 @@ final class EdgeTargetResolver
         if ($callee === '' || $member === '') {
             return null;
         }
-        // The callee is a method (`State::new().mode()`) or a free function
-        // (`make().mode()`); a canonical name says which only by its kind.
-        $returned = $this->returnTypes[$language . ':method:' . $callee]
-            ?? $this->returnTypes[$language . ':function:' . $callee]
-            ?? $this->inheritedReturnType($language, $callee)
-            ?? $this->modelFactoryType($language, $callee);
+        $returned = $this->calleeReturnType($language, $callee);
         if ($returned === null) {
             return null;
         }
@@ -511,6 +506,20 @@ final class EdgeTargetResolver
         return count($returnedParts) === 3 && $returnedParts[2] !== ''
             ? $language . ':method:' . $returnedParts[2] . '::' . $member
             : null;
+    }
+
+    /**
+     * The type reference a call to `$callee` is declared to return, or null.
+     *
+     * The callee is a method (`State::new().mode()`) or a free function
+     * (`make().mode()`); a canonical name says which only by its kind.
+     */
+    private function calleeReturnType(string $language, string $callee): ?string
+    {
+        return $this->returnTypes[$language . ':method:' . $callee]
+            ?? $this->returnTypes[$language . ':function:' . $callee]
+            ?? $this->inheritedReturnType($language, $callee)
+            ?? $this->modelFactoryType($language, $callee);
     }
 
     /**
@@ -607,9 +616,13 @@ final class EdgeTargetResolver
      * declared in another file, often as a promoted constructor parameter, so
      * a scanner reading one file cannot name it. It names the path instead
      * (`Type::$a::$b::m`), and each step is looked up here among every file's
-     * declared property types, through the type's traits and parents. Returns
-     * null when a step names a property no declaration types, which drops the
-     * edge.
+     * declared property types, through the type's traits and parents. A step
+     * written `name()` is a call instead, read through the method's declared
+     * return type the way a `method_of_return` callee is:
+     * `Type::services()::$queries::m` for `$typed->services()->queries->m()`,
+     * `Type::wire()::brief()::m` for `Type::wire()->brief()->m()`. Returns
+     * null when a step names a property or method no declaration types, which
+     * drops the edge.
      */
     private function propertyMemberReference(string $language, string $path): ?string
     {
@@ -621,6 +634,15 @@ final class EdgeTargetResolver
             return null;
         }
         foreach ($segments as $property) {
+            if (str_ends_with($property, '()') && $property !== '()' && !str_starts_with($property, '$')) {
+                $declared = $this->calleeReturnType($language, $type . '::' . substr($property, 0, -2));
+                $declaredParts = $declared === null ? [] : explode(':', $declared, 3);
+                if (count($declaredParts) !== 3 || $declaredParts[2] === '') {
+                    return null;
+                }
+                $type = $declaredParts[2];
+                continue;
+            }
             if (!str_starts_with($property, '$') || $property === '$') {
                 return null;
             }
