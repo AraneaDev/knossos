@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Reconciliation;
 
 use Knossos\Query\ErasedTypeEdge;
+use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Store\StableId;
 
@@ -25,9 +26,6 @@ use Knossos\Store\StableId;
  */
 final class EdgeCollapse
 {
-    /** How sure an edge is, for keeping the surer of two occurrences. */
-    private const CONFIDENCE_RANK = ['possible' => 1, 'probable' => 2, 'certain' => 3];
-
     /** @var array<string, list<array{edge: EdgeFact, source: string, target: string, owner: string}>> */
     private array $groups = [];
 
@@ -141,8 +139,8 @@ final class EdgeCollapse
     /** Positive when `$a` is the surer occurrence: confidence, then not speculative, then earlier evidence. */
     private static function compareStrength(EdgeFact $a, EdgeFact $b): int
     {
-        return [self::CONFIDENCE_RANK[$a->confidence->value], !self::speculative($a)]
-            <=> [self::CONFIDENCE_RANK[$b->confidence->value], !self::speculative($b)]
+        return [ConfidenceRank::NAMES[$a->confidence->value], !self::speculative($a)]
+            <=> [ConfidenceRank::NAMES[$b->confidence->value], !self::speculative($b)]
             ?: self::compareEvidence($b, $a);
     }
 
