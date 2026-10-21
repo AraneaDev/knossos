@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.37.0](https://github.com/AraneaDev/knossos/compare/v0.36.0...v0.37.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* repeated edges of one kind between the same source and target are now one edge, collapsed in the core for every language. PHP never collapsed before, so list_usages and review evidence show one site per source and target, the one with the highest confidence. The other scanners used their own rules, so their edge counts and some edge ids change once on the first rescan.
+* the CLI now reports a refused root, an unsafe path or an invalid project configuration as KNOSSOS_UNSAFE_PATH instead of KNOSSOS_DISCOVERY_ERROR, and a busy database as KNOSSOS_DATABASE_BUSY with a fixed message instead of KNOSSOS_STORAGE_ERROR, matching the MCP server.
+
+### Features
+
+* decompose pass with branch gate, config, CLI and scanner fixes ([#382](https://github.com/AraneaDev/knossos/issues/382)) ([2165641](https://github.com/AraneaDev/knossos/commit/2165641d04c8b4cd630adce618c5f3eb3607c080))
+* **typescript:** infer untyped destructured arguments from call sites in other files ([#385](https://github.com/AraneaDev/knossos/issues/385)) ([4b15d50](https://github.com/AraneaDev/knossos/commit/4b15d503abc9d2c96fa91278f2f5d79e0c342488))
+
+
+### Fixes
+
+* **deps:** pin the php 8.5.12 image for the security release ([#387](https://github.com/AraneaDev/knossos/issues/387)) ([77838ce](https://github.com/AraneaDev/knossos/commit/77838cea4fce918860a616868b4c6cab7bdf5b85))
+
+
+### Refactoring
+
+* deduplicate tool bindings, edge collapse and shared helpers ([#389](https://github.com/AraneaDev/knossos/issues/389)) ([3d7f88f](https://github.com/AraneaDev/knossos/commit/3d7f88f2fde97f389a4fbd1b73abef718497d12c))
+* second decompose pass with migration lock, CommonJS inference and one error-code table ([#388](https://github.com/AraneaDev/knossos/issues/388)) ([4bd4917](https://github.com/AraneaDev/knossos/commit/4bd491765d51185cd73d0316c539533e7c39d471))
+
 ## [0.36.0](https://github.com/AraneaDev/knossos/compare/v0.34.0...v0.36.0) (2026-10-21)
 
 0.35.0 was cut but never published: its release commit failed the release gate on a vite advisory published the same day. This release carries its changes together with the fix.
