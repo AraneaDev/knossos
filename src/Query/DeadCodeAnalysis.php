@@ -579,7 +579,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             'MAX(CASE WHEN NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = usage.source_id AND c.role = ' . $testRole . ') THEN 1 ELSE 0 END) AS production_reference ' .
             'FROM members CROSS JOIN edges usage INDEXED BY edges_project_target_idx ON usage.project_id = ? AND usage.target_id = members.member_id ' .
             'AND usage.kind IN (' . $kinds . ') AND ' . EnrichedFacts::excludeSql('usage') . ' ' .
-            "AND CASE usage.confidence WHEN 'certain' THEN 3 WHEN 'probable' THEN 2 ELSE 1 END >= CAST(? AS INTEGER) " .
+            'AND ' . ConfidenceRank::atLeast('usage.confidence') . ' ' .
             'WHERE usage.source_id <> members.container_id ' .
             'AND NOT EXISTS (SELECT 1 FROM members internal WHERE internal.container_id = members.container_id AND internal.member_id = usage.source_id) ' .
             'GROUP BY members.container_id';
