@@ -98,16 +98,15 @@ php	src/Cli/Command/WatchCommand.php
 php	src/Cli/Command/WebCommand.php
 php	src/Cli/ProjectDatabaseLocator.php
 php	src/Cli/ProjectReference.php
+php	src/Configuration/EnricherDefinition.php
+php	src/Configuration/EnrichersFile.php
 php	src/Configuration/ProjectConfiguration.php
 php	src/Configuration/ProjectConfigurationLoader.php
-php	src/Discovery/AllowedRoots.php
 php	src/Discovery/DiscoveredFile.php
 php	src/Discovery/DiscoveryConfig.php
 php	src/Discovery/DiscoveryDiagnostic.php
 php	src/Discovery/DiscoveryException.php
 php	src/Discovery/DiscoveryResult.php
-php	src/Discovery/EnricherDefinition.php
-php	src/Discovery/EnrichersFile.php
 php	src/Discovery/EntryPointResolver.php
 php	src/Discovery/FileContent.php
 php	src/Discovery/FileContentReader.php
@@ -147,7 +146,6 @@ php	src/Discovery/ProjectDiscoverer.php
 php	src/Discovery/ProjectUnit.php
 php	src/Discovery/RootGuard.php
 php	src/Discovery/RootNotFoundException.php
-php	src/Discovery/RootsFile.php
 php	src/Discovery/SourceClassifier.php
 php	src/Discovery/TreeWalkState.php
 php	src/Discovery/TreeWalker.php
@@ -285,6 +283,7 @@ php	src/Query/ReportableComponent.php
 php	src/Query/RescanService.php
 php	src/Query/ReviewDiffService.php
 php	src/Query/ReviewSection.php
+php	src/Query/ScannerFactory.php
 php	src/Query/SemanticRanker.php
 php	src/Query/SessionBrief.php
 php	src/Query/SessionBriefRenderer.php
@@ -326,13 +325,14 @@ php	src/Reconciliation/ScannerSetHash.php
 php	src/Reconciliation/UrlTemplate.php
 php	src/Result/PaneStatus.php
 php	src/Result/ResultEnvelope.php
+php	src/Roots/AllowedRoots.php
+php	src/Roots/RootsFile.php
 php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
 php	src/Runtime/ErrorCode.php
 php	src/Runtime/MemoryLimit.php
 php	src/Runtime/RuntimeFactory.php
 php	src/Runtime/RuntimeVersionRequirement.php
-php	src/Runtime/ScannerFactory.php
 php	src/Runtime/ServerEnvironment.php
 php	src/Runtime/Version.php
 php	src/Runtime/WorkerSourceHash.php
@@ -514,13 +514,13 @@ php	tests/phpunit/Cli/SessionCommandTest.php
 php	tests/phpunit/Cli/TestHomeIsolationTest.php
 php	tests/phpunit/Cli/WatchCommandTest.php
 php	tests/phpunit/Cli/WebCommandTest.php
+php	tests/phpunit/Configuration/EnrichersFileTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationBoundsTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationLoaderTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationSchemaAgreementTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationTest.php
 php	tests/phpunit/Configuration/RepositoryConfigurationTest.php
 php	tests/phpunit/CoverageBudgetsTest.php
-php	tests/phpunit/Discovery/AllowedRootsTest.php
 php	tests/phpunit/Discovery/BoundedContentReadTest.php
 php	tests/phpunit/Discovery/DiscoveredFileTest.php
 php	tests/phpunit/Discovery/DiscoveryConfigTest.php
@@ -531,7 +531,6 @@ php	tests/phpunit/Discovery/DiscoveryGuardsTest.php
 php	tests/phpunit/Discovery/DiscoveryLeafTest.php
 php	tests/phpunit/Discovery/DiscoveryResultTest.php
 php	tests/phpunit/Discovery/DiscoveryTest.php
-php	tests/phpunit/Discovery/EnrichersFileTest.php
 php	tests/phpunit/Discovery/EntryPointResolverTest.php
 php	tests/phpunit/Discovery/FileFingerprintTest.php
 php	tests/phpunit/Discovery/GitIgnoreRulesTest.php
@@ -551,7 +550,6 @@ php	tests/phpunit/Discovery/ProjectDiscovererTest.php
 php	tests/phpunit/Discovery/ProjectUnitTest.php
 php	tests/phpunit/Discovery/RegularFileOpenerHelperTest.php
 php	tests/phpunit/Discovery/RootGuardTest.php
-php	tests/phpunit/Discovery/RootsFileTest.php
 php	tests/phpunit/Discovery/ShebangDiscoveryTest.php
 php	tests/phpunit/Discovery/SourceClassifierTest.php
 php	tests/phpunit/Discovery/UnitReadConsistencyTest.php
@@ -742,6 +740,7 @@ php	tests/phpunit/Query/RescanServiceTest.php
 php	tests/phpunit/Query/ReviewDiffReportTest.php
 php	tests/phpunit/Query/ReviewDiffTest.php
 php	tests/phpunit/Query/ScanChronologyTest.php
+php	tests/phpunit/Query/ScannerFactoryTest.php
 php	tests/phpunit/Query/SearchAnyTermFallbackTest.php
 php	tests/phpunit/Query/SearchMatchingTest.php
 php	tests/phpunit/Query/SemanticTest.php
@@ -798,6 +797,8 @@ php	tests/phpunit/Reconciliation/WatchTest.php
 php	tests/phpunit/ReleaseChecksTest.php
 php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
+php	tests/phpunit/Roots/AllowedRootsTest.php
+php	tests/phpunit/Roots/RootsFileTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php
@@ -806,7 +807,6 @@ php	tests/phpunit/Runtime/ErrorCodeParityTest.php
 php	tests/phpunit/Runtime/MemoryLimitTest.php
 php	tests/phpunit/Runtime/RuntimeFactoryTest.php
 php	tests/phpunit/Runtime/RuntimeVersionRequirementTest.php
-php	tests/phpunit/Runtime/ScannerFactoryTest.php
 php	tests/phpunit/Runtime/WorkerSourceHashTest.php
 php	tests/phpunit/Scan/AnalysisHashTest.php
 php	tests/phpunit/Scan/AnchoredBuildOutputScanTest.php
