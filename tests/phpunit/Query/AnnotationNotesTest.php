@@ -23,7 +23,7 @@ final class AnnotationNotesTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
         $notes = new AnnotationNotes($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true);
 
         $fresh = $notes->forComponents($ids['project'], ['App\\Checkout']);
         assertSame([[
@@ -41,7 +41,7 @@ final class AnnotationNotesTest extends KnossosTestCase
         assertSame([true, 'written before src/Checkout.php changed'], [$stale['stale'], $stale['stale_reason']]);
 
         // Re-recording confirms it against the code as it is now.
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true);
         assertSame(false, $notes->forComponents($ids['project'], ['App\\Checkout'])[0]['stale']);
     }
 
@@ -51,8 +51,8 @@ final class AnnotationNotesTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
         $pdo->exec("UPDATE nodes SET file_id = NULL WHERE file_id IN (SELECT id FROM files WHERE relative_path = 'src/Checkout.php')");
         $pdo->exec("UPDATE edges SET file_id = NULL WHERE file_id IN (SELECT id FROM files WHERE relative_path = 'src/Checkout.php')");
         $pdo->exec("DELETE FROM files WHERE relative_path = 'src/Checkout.php'");
@@ -74,7 +74,7 @@ final class AnnotationNotesTest extends KnossosTestCase
         $names = [];
         for ($i = 1; $i <= 12; $i++) {
             $names[] = 'App\\Upcoming' . $i;
-            $queries->upsertAnnotation($ids['project'], 'App\\Upcoming' . $i, 'note', str_repeat('x', match ($i) {
+            $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Upcoming' . $i, 'note', str_repeat('x', match ($i) {
                 1 => 1200, 2 => 980, default => 10,
             }), execute: true);
         }
@@ -96,12 +96,12 @@ final class AnnotationNotesTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
         $names = ['Zz\\Target'];
-        $queries->upsertAnnotation($ids['project'], 'Zz\\Target', 'note', 'the one asked about', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'Zz\\Target', 'note', 'the one asked about', execute: true);
         for ($i = 1; $i <= 11; $i++) {
             $names[] = 'App\\Dependant' . $i;
-            $queries->upsertAnnotation($ids['project'], 'App\\Dependant' . $i, 'note', 'n' . $i, execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Dependant' . $i, 'note', 'n' . $i, execute: true);
         }
-        $queries->upsertAnnotation($ids['project'], 'App\\Dependant9', 'note', 'the team says so', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Dependant9', 'note', 'the team says so', execute: true, author: 'user');
 
         $notes = (new AnnotationNotes($pdo))->forComponents($ids['project'], $names);
 
@@ -114,7 +114,7 @@ final class AnnotationNotesTest extends KnossosTestCase
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
-        ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($ids['project'], 'App\\NotYetWritten', 'note', 'planned seam', execute: true);
+        ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\NotYetWritten', 'note', 'planned seam', execute: true);
 
         $note = (new AnnotationNotes($pdo))->forComponents($ids['project'], ['App\\NotYetWritten'])[0];
 
@@ -134,7 +134,7 @@ final class AnnotationNotesTest extends KnossosTestCase
             file_put_contents($root . '/tools/quality', "#!/bin/sh\necho gate\n");
             $pdo->prepare('UPDATE projects SET root_realpath = ? WHERE id = ?')->execute([realpath($root), $ids['project']]);
             $queries = ArchitectureQueryService::forDatabase($pdo);
-            $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the gate lane fails it', execute: true, evidencePaths: ['tools/quality']);
+            $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the gate lane fails it', execute: true, evidencePaths: ['tools/quality']);
             $notes = new AnnotationNotes($pdo);
 
             assertSame(false, $notes->forComponents($ids['project'], ['App\\Checkout'])[0]['stale']);
@@ -166,7 +166,7 @@ final class AnnotationNotesTest extends KnossosTestCase
             $queries = ArchitectureQueryService::forDatabase($pdo);
             foreach (['escape' => 'outside the project', 'missing.sh' => 'is not a file of this project', 'folder' => 'is not a file of this project'] as $path => $refusal) {
                 try {
-                    $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: [$path]);
+                    $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: [$path]);
                     self::fail($path . ' was taken as evidence');
                 } catch (\InvalidArgumentException $e) {
                     assertSame(true, str_contains($e->getMessage(), $refusal), $e->getMessage());
@@ -185,7 +185,7 @@ final class AnnotationNotesTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached through the reconciliation hook, which also drafts the invoice', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached through the reconciliation hook, which also drafts the invoice', execute: true);
 
         $found = $queries->searchArchitecture($ids['project'], 'reconciliation hook');
 
@@ -209,8 +209,8 @@ final class AnnotationNotesTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Plugins\\Loader::boot', 'note', 'Plugins are loaded by name from config/plugins.php at boot', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'Plugins hook in here', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Plugins\\Loader::boot', 'note', 'Plugins are loaded by name from config/plugins.php at boot', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'Plugins hook in here', execute: true);
 
         $found = $queries->searchArchitecture($ids['project'], 'plugins');
 

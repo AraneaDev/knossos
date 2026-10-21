@@ -54,7 +54,7 @@ final class ViteGlobImportTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
-            $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 100)->data;
+            $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100)->data;
         } finally {
             $this->removeTempTree($root);
         }

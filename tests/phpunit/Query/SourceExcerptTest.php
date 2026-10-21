@@ -16,7 +16,7 @@ final class SourceExcerptTest extends KnossosTestCase
         [$pdo, $projectId, $root] = $this->scanTempFixture('mixed');
         try {
             $queries = ArchitectureQueryService::forDatabase($pdo);
-            $result = $queries->architectureContext($projectId, files: ['src/CheckoutService.php'], includeSource: true);
+            $result = $queries->services()->contextQueries->architectureContext($projectId, files: ['src/CheckoutService.php'], includeSource: true);
             $dossiers = $result->data['context']['sections']['dossiers'];
             assertSame('included', $dossiers['status']);
             $first = $dossiers['content']['items'][0];
@@ -27,7 +27,7 @@ final class SourceExcerptTest extends KnossosTestCase
             assertSame(true, str_contains(implode(' ', $result->warnings), 'working tree'));
 
             // Default off: no snippet key at all.
-            $plain = $queries->architectureContext($projectId, files: ['src/CheckoutService.php']);
+            $plain = $queries->services()->contextQueries->architectureContext($projectId, files: ['src/CheckoutService.php']);
             assertSame(false, array_key_exists('snippet', $plain->data['context']['sections']['dossiers']['content']['items'][0]));
         } finally {
             $this->removeTempTree($root);

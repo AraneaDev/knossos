@@ -31,11 +31,11 @@ final class AgentBriefBoundsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        assertSame(1_000, $queries->exportAgentBrief($ids['project'], 1_000)->data['max_chars']);
-        assertSame(20_000, $queries->exportAgentBrief($ids['project'], 20_000)->data['max_chars']);
+        assertSame(1_000, $queries->services()->briefQueries->exportAgentBrief($ids['project'], 1_000)->data['max_chars']);
+        assertSame(20_000, $queries->services()->briefQueries->exportAgentBrief($ids['project'], 20_000)->data['max_chars']);
 
         foreach ([999, 20_001] as $outside) {
-            assertThrows(fn() => $queries->exportAgentBrief($ids['project'], $outside), InvalidArgumentException::class);
+            assertThrows(fn() => $queries->services()->briefQueries->exportAgentBrief($ids['project'], $outside), InvalidArgumentException::class);
         }
     }
 
@@ -47,13 +47,13 @@ final class AgentBriefBoundsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        assertSame(true, str_contains($queries->exportAgentBrief($ids['project'])->data['markdown'], 'php: '));
+        assertSame(true, str_contains($queries->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'], 'php: '));
 
         $pdo->exec("DELETE FROM files WHERE project_id = '" . $ids['project'] . "'");
 
         assertSame(
             true,
-            str_contains($queries->exportAgentBrief($ids['project'])->data['markdown'], 'language mix unknown'),
+            str_contains($queries->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'], 'language mix unknown'),
             'With no files to count, the mix is unknown rather than blank.',
         );
     }
@@ -71,7 +71,7 @@ final class AgentBriefBoundsTest extends KnossosTestCase
             self::addFile($pdo, $ids['project'], $scan, $language);
         }
 
-        $markdown = ArchitectureQueryService::forDatabase($pdo)->exportAgentBrief($ids['project'])->data['markdown'];
+        $markdown = ArchitectureQueryService::forDatabase($pdo)->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'];
 
         assertSame(true, str_contains($markdown, 'aaa: 1, bbb: 1, ccc: 1, ddd: 1, eee: 1, +3 more'), $markdown);
         assertSame(false, str_contains($markdown, 'fff: 1'), 'Only five languages are named.');
@@ -95,7 +95,7 @@ final class AgentBriefBoundsTest extends KnossosTestCase
             self::addFile($pdo, $ids['project'], $scan, $language);
         }
 
-        $markdown = ArchitectureQueryService::forDatabase($pdo)->exportAgentBrief($ids['project'])->data['markdown'];
+        $markdown = ArchitectureQueryService::forDatabase($pdo)->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'];
 
         assertSame(true, str_contains($markdown, 'aaa: 1, bbb: 1, ccc: 1, ddd: 1, php: 1'), $markdown);
         assertSame(false, str_contains($markdown, '+0 more'), 'Five languages are five, not five and a remainder of none.');
@@ -109,11 +109,11 @@ final class AgentBriefBoundsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        assertSame(false, str_contains($queries->exportAgentBrief($ids['project'])->data['markdown'], 'the active snapshot'));
+        assertSame(false, str_contains($queries->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'], 'the active snapshot'));
 
         $pdo->exec("UPDATE scans SET finished_at = NULL WHERE id = '" . $ids['scan'] . "'");
 
-        assertSame(true, str_contains($queries->exportAgentBrief($ids['project'])->data['markdown'], 'the scan of the active snapshot'));
+        assertSame(true, str_contains($queries->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'], 'the scan of the active snapshot'));
     }
 
     /**
@@ -146,7 +146,7 @@ final class AgentBriefBoundsTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $markdown = ArchitectureQueryService::forDatabase($pdo)->exportAgentBrief($ids['project'])->data['markdown'];
+        $markdown = ArchitectureQueryService::forDatabase($pdo)->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'];
 
         assertSame(true, str_contains($markdown, '- ShipCommand (class): src/Checkout.php'), $markdown);
         assertSame(true, str_contains($markdown, "- ZipCommand (class)\n"), $markdown);

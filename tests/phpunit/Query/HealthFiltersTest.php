@@ -27,7 +27,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $default = $queries->architectureHealth($ids['project'])->data;
+        $default = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $hub): string => $hub['component']['canonical_name'], $default['hubs']);
         assertSame(false, in_array('count', $names, true));
         assertSame(false, in_array('assertWidgets', $names, true));
@@ -37,7 +37,7 @@ final class HealthFiltersTest extends KnossosTestCase
         assertSame(false, in_array('count', $hotspotNames, true));
         assertSame(false, in_array('assertWidgets', $hotspotNames, true));
 
-        $included = $queries->architectureHealth($ids['project'], includeExternal: true, includeTests: true)->data;
+        $included = $queries->services()->healthQueries->architectureHealth($ids['project'], includeExternal: true, includeTests: true)->data;
         $allNames = array_map(static fn(array $hub): string => $hub['component']['canonical_name'], $included['hubs']);
         assertSame(true, in_array('count', $allNames, true));
         assertSame(true, in_array('assertWidgets', $allNames, true));
@@ -69,7 +69,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
         $candidates = [];
-        foreach ($queries->architectureHealth($ids['project'])->data['dead_code_candidates'] as $candidate) {
+        foreach ($queries->services()->healthQueries->architectureHealth($ids['project'])->data['dead_code_candidates'] as $candidate) {
             $candidates[$candidate['component']['canonical_name']] = $candidate['reachability'];
         }
         assertSame('test_only', $candidates['App\\PdfExport'] ?? null);
@@ -98,7 +98,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'constructs', $suite, $testOnly, 't:1'), $ids['project'], 'constructs', $suite, $testOnly, $ids['file'], 105, 105, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], limit: 1)->data;
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 1)->data;
 
         // One slot, and it goes to the stronger finding despite sorting later.
         assertSame(1, count($health['dead_code_candidates']));
@@ -134,7 +134,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], limit: 2);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 2);
 
         // The limit hides both test_only findings behind the two unreferenced
         // ones (App\Checkout, App\SecondOrphan) that alone fill it.
@@ -163,7 +163,7 @@ final class HealthFiltersTest extends KnossosTestCase
 
         $names = array_map(
             static fn(array $candidate): string => $candidate['component']['canonical_name'],
-            ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], includeTests: true)->data['dead_code_candidates'],
+            ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], includeTests: true)->data['dead_code_candidates'],
         );
         assertSame(false, in_array('App\\PdfExport', $names, true));
     }
@@ -180,7 +180,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveNode($declared, $ids['project'], 'typescript', 'function', 'scripts/color-debt.d.mts#measureTree', 'measureTree', null, $ids['file'], 1, 1, 'ast', 'certain', ['declaration_file' => true], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $health['dead_code_candidates']);
         assertSame(false, in_array('scripts/color-debt.d.mts#measureTree', $names, true));
         assertSame(1, $health['bounds']['excluded_type_declarations']);
@@ -205,7 +205,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], limit: 100)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
         $byName = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $byName[$candidate['component']['canonical_name']] = $candidate;
@@ -233,7 +233,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], limit: 100)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('shop', $names, true));
@@ -260,15 +260,15 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $service = ArchitectureQueryService::forDatabase($pdo);
 
-        $all = $service->architectureHealth($ids['project'], limit: 100)->data;
+        $all = $service->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
         $names = static fn(array $data): array => array_values(array_filter(
             array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']),
             static fn(string $n): bool => str_starts_with($n, 'src/x.ts#'),
         ));
         assertSame(true, in_array('src/x.ts#a_possible', $names($all), true));
 
-        $page = $service->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateOffset: 1)->data;
-        $probable = $service->architectureHealth($ids['project'], limit: 100, candidateConfidence: 'probable')->data;
+        $page = $service->services()->healthQueries->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateOffset: 1)->data;
+        $probable = $service->services()->healthQueries->architectureHealth($ids['project'], limit: 100, candidateConfidence: 'probable')->data;
 
         assertSame(false, in_array('src/x.ts#a_possible', $names($probable), true));
         $ordered = array_map(static fn(array $c): string => $c['component']['canonical_name'], $probable['dead_code_candidates']);
@@ -290,7 +290,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveNode($window, $ids['project'], 'typescript', 'interface', 'src/engines.ts#global.Window', 'Window', null, $ids['file'], 1, 1, 'ast', 'certain', ['ambient' => true], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $health = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $health['dead_code_candidates']);
         assertSame(false, in_array('src/engines.ts#global.Window', $names, true));
         assertSame(1, $health['bounds']['excluded_type_declarations']);
@@ -335,7 +335,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'implements', $stripe, $gateway, 'i1'), $ids['project'], 'implements', $stripe, $gateway, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $candidateNames = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
         assertSame(false, in_array('App\\StripeGateway::charge', $candidateNames, true));
         assertSame(1, $data['bounds']['excluded_inherited_methods']);
@@ -384,7 +384,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $candidateNames = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('src/policy.ts#buildCopyPolicy::shouldCopy', $candidateNames, true));
@@ -407,7 +407,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'implements', $collector, $visitor, 'i2'), $ids['project'], 'implements', $collector, $visitor, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $byName = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $byName[$candidate['component']['canonical_name']] = $candidate;
@@ -446,7 +446,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'implements', $typed, $handler, 'i1'), $ids['project'], 'implements', $typed, $handler, $file, 12, 12, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $byName = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $byName[$candidate['component']['canonical_name']] = $candidate;
@@ -487,7 +487,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'constructs', $ids['checkout'], $invoice, 'k3'), $ids['project'], 'constructs', $ids['checkout'], $invoice, $file, 7, 7, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('App\\Invoice::__construct', $names, true));
@@ -525,7 +525,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'constructs', $ids['checkout'], $invoice, 'm1'), $ids['project'], 'constructs', $ids['checkout'], $invoice, $file, 7, 7, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('App\\Invoice::__destruct', $names, true));
@@ -563,7 +563,7 @@ final class HealthFiltersTest extends KnossosTestCase
         );
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('vitest.config.ts', $names, true));
@@ -587,7 +587,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveNode($orphan, $ids['project'], 'typescript', 'module', 'src/orphan.ts', 'orphan.ts', null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('bin/console', $names, true));
@@ -614,7 +614,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveNode($plain, $ids['project'], 'rust', 'function', 'crate::unused', 'unused', null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('crate::alloc', $names, true));
@@ -649,7 +649,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('crate::Calls::visit_expr_call', $names, true));
@@ -692,7 +692,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'references', $ids['checkout'], $contract, 'q4'), $ids['project'], 'references', $ids['checkout'], $contract, $file, 5, 5, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('App\\Rule::classify', $names, true));
@@ -724,7 +724,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'calls', $caller, $method, 'live:calls'), $ids['project'], 'calls', $caller, $method, $file, 42, 42, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('App\\LiveService', $names, true));
@@ -752,7 +752,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'calls', $caller, $method, 'test:calls'), $ids['project'], 'calls', $caller, $method, $file, 52, 52, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $candidates = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $candidates[$candidate['component']['canonical_name']] = $candidate['reachability'];
@@ -761,7 +761,7 @@ final class HealthFiltersTest extends KnossosTestCase
         assertSame('test_only', $candidates['App\\TestedService'] ?? null);
         assertSame('test_only', $candidates['App\\TestedService::run'] ?? null);
 
-        $included = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], includeTests: true)->data;
+        $included = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], includeTests: true)->data;
         $includedNames = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $included['dead_code_candidates']);
         assertSame(false, in_array('App\\TestedService', $includedNames, true));
     }
@@ -788,7 +788,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'references', $ids['checkout'], $contract, 'r2'), $ids['project'], 'references', $ids['checkout'], $contract, $file, 5, 5, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertArrayContains('App\\Rule::classify', $names);
@@ -825,7 +825,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'implements', $implementation, $contract, 's3'), $ids['project'], 'implements', $implementation, $contract, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertArrayContains('App\\Rule::classify', $names);
@@ -840,7 +840,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveProject($ids['project'], 'Fixture Shop', '/workspace/fixture-shop', ['dead_code_suppressions' => ['App\\Legacy\\*']]);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
         assertSame(false, in_array('App\\Legacy\\Exporter', $names, true));
         assertSame(1, $data['bounds']['suppressed_candidates']);
@@ -871,7 +871,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveProject($ids['project'], 'Fixture Shop', '/workspace/fixture-shop', ['dead_code_suppressions' => ['App\\Legacy\\*']]);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
 
         assertSame(3, $data['bounds']['suppressed_candidates'], 'Every suppressed candidate must be counted, not just the first.');
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
@@ -896,7 +896,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'calls', $reporter, $ids['checkout'], 't1'), $ids['project'], 'calls', $reporter, $ids['checkout'], $ids['file'], 61, 61, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], maxEdges: 1);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], maxEdges: 1);
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $result->data['dead_code_candidates']);
 
         assertSame(true, in_array('edge_limit', $result->data['bounds']['truncation_reasons'], true));
@@ -946,7 +946,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveNode($orphan, $ids['project'], 'typescript', 'module', 'src/orphan.ts', 'orphan.ts', null, $ids['file'], 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('scripts/release.mjs', $names, true));
@@ -999,7 +999,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'references', $ids['checkout'], $suite, 't:2'), $ids['project'], 'references', $ids['checkout'], $suite, $ids['file'], 5, 5, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'])->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
         assertSame(false, in_array('scripts/release.mjs', $names, true));
@@ -1052,7 +1052,7 @@ final class HealthFiltersTest extends KnossosTestCase
 
         // Four nodes; a budget of three cuts `zzz-caller` and with it the only
         // edge that proves the entry point is reached.
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($ids['project'], maxNodes: 3);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], maxNodes: 3);
 
         assertSame(true, in_array('node_limit', $result->data['bounds']['truncation_reasons'], true));
         // Something DOES reference it, so nothing was excluded for its role. The
@@ -1066,8 +1066,8 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $confidence = captureThrows(fn() => $queries->architectureHealth($ids['project'], candidateConfidence: 'certain'), \InvalidArgumentException::class);
-        $offset = captureThrows(fn() => $queries->architectureHealth($ids['project'], candidateOffset: -1), \InvalidArgumentException::class);
+        $confidence = captureThrows(fn() => $queries->services()->healthQueries->architectureHealth($ids['project'], candidateConfidence: 'certain'), \InvalidArgumentException::class);
+        $offset = captureThrows(fn() => $queries->services()->healthQueries->architectureHealth($ids['project'], candidateOffset: -1), \InvalidArgumentException::class);
 
         assertSame('candidate_confidence must be probable or possible.', $confidence->getMessage());
         assertSame('candidate_offset must not be negative.', $offset->getMessage());

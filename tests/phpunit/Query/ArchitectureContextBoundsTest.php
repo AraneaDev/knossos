@@ -32,37 +32,37 @@ final class ArchitectureContextBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        assertSame(4_000, $queries->architectureContext($this->project, 'refunds', maxChars: 4_000)->data['budget']['max_chars']);
-        assertSame(100_000, $queries->architectureContext($this->project, 'refunds', maxChars: 100_000)->data['budget']['max_chars']);
+        assertSame(4_000, $queries->services()->contextQueries->architectureContext($this->project, 'refunds', maxChars: 4_000)->data['budget']['max_chars']);
+        assertSame(100_000, $queries->services()->contextQueries->architectureContext($this->project, 'refunds', maxChars: 100_000)->data['budget']['max_chars']);
         foreach ([3_999, 100_001] as $outside) {
-            assertThrows(fn() => $queries->architectureContext($this->project, 'refunds', maxChars: $outside), InvalidArgumentException::class);
+            assertThrows(fn() => $queries->services()->contextQueries->architectureContext($this->project, 'refunds', maxChars: $outside), InvalidArgumentException::class);
         }
 
         // The timeout range, at both ends and just outside each.
-        assertSame(30_000, $queries->architectureContext($this->project, 'refunds', timeoutMs: 1)->data['budget']['max_chars']);
-        assertSame(30_000, $queries->architectureContext($this->project, 'refunds', timeoutMs: 5_000)->data['budget']['max_chars']);
+        assertSame(30_000, $queries->services()->contextQueries->architectureContext($this->project, 'refunds', timeoutMs: 1)->data['budget']['max_chars']);
+        assertSame(30_000, $queries->services()->contextQueries->architectureContext($this->project, 'refunds', timeoutMs: 5_000)->data['budget']['max_chars']);
         foreach ([0, 5_001] as $outside) {
-            assertThrows(fn() => $queries->architectureContext($this->project, 'refunds', timeoutMs: $outside), InvalidArgumentException::class);
+            assertThrows(fn() => $queries->services()->contextQueries->architectureContext($this->project, 'refunds', timeoutMs: $outside), InvalidArgumentException::class);
         }
 
         // A task description of exactly the ceiling is accepted.
-        assertSame(30_000, $queries->architectureContext($this->project, str_repeat('a', 2_000))->data['budget']['max_chars']);
-        assertThrows(fn() => $queries->architectureContext($this->project, str_repeat('a', 2_001)), InvalidArgumentException::class);
+        assertSame(30_000, $queries->services()->contextQueries->architectureContext($this->project, str_repeat('a', 2_000))->data['budget']['max_chars']);
+        assertThrows(fn() => $queries->services()->contextQueries->architectureContext($this->project, str_repeat('a', 2_001)), InvalidArgumentException::class);
         // Counted in characters: 2,000 CJK characters are 6,000 bytes and still within it.
-        assertSame(30_000, $queries->architectureContext($this->project, str_repeat('界', 2_000))->data['budget']['max_chars']);
-        $refused = captureThrows(fn() => $queries->architectureContext($this->project, str_repeat('界', 2_001)), InvalidArgumentException::class);
+        assertSame(30_000, $queries->services()->contextQueries->architectureContext($this->project, str_repeat('界', 2_000))->data['budget']['max_chars']);
+        $refused = captureThrows(fn() => $queries->services()->contextQueries->architectureContext($this->project, str_repeat('界', 2_001)), InvalidArgumentException::class);
         assertSame('task_description must not exceed 2000 characters.', $refused->getMessage());
 
         // Neither a task nor files is nothing to build a context from.
-        assertThrows(fn() => $queries->architectureContext($this->project), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->architectureContext($this->project, '   '), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->contextQueries->architectureContext($this->project), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->contextQueries->architectureContext($this->project, '   '), InvalidArgumentException::class);
     }
 
     /** The budget is split into fifths and a remainder, rounded down. */
     #[Group('query')]
     public function testTheBudgetIsSplitIntoTheAdvertisedProportions(): void
     {
-        $result = $this->queries()->architectureContext($this->project, 'refunds', maxChars: 4_003);
+        $result = $this->queries()->services()->contextQueries->architectureContext($this->project, 'refunds', maxChars: 4_003);
 
         assertSame(
             ['summary' => 800, 'locations' => 800, 'change_impact' => 1_200, 'dossiers' => 1_201],
@@ -84,11 +84,11 @@ final class ArchitectureContextBoundsTest extends KnossosTestCase
     {
         $queries = $this->queries();
 
-        $byTask = $queries->architectureContext($this->project, 'checkout refunds');
+        $byTask = $queries->services()->contextQueries->architectureContext($this->project, 'checkout refunds');
         assertSame('checkout refunds', $byTask->data['context']['task_description']);
         assertSame('Built bounded architecture context for checkout refunds.', $byTask->summary);
 
-        $byFiles = $queries->architectureContext($this->project, '', ['src/Checkout.php']);
+        $byFiles = $queries->services()->contextQueries->architectureContext($this->project, '', ['src/Checkout.php']);
         assertSame(null, $byFiles->data['context']['task_description'], 'No task was given, so none is reported.');
         assertSame('Built bounded architecture context for src/Checkout.php.', $byFiles->summary);
         assertSame(['status' => 'not_requested'], $byFiles->data['context']['sections']['locations']);
@@ -101,10 +101,10 @@ final class ArchitectureContextBoundsTest extends KnossosTestCase
         $queries = $this->queries();
         $standing = 'Context sections are bounded static evidence and may omit dynamic runtime behavior.';
 
-        assertSame([$standing], $queries->architectureContext($this->project, 'refunds')->warnings);
+        assertSame([$standing], $queries->services()->contextQueries->architectureContext($this->project, 'refunds')->warnings);
         assertSame(
             [$standing, 'Source snippets are read from the working tree now and may differ from the scanned graph.'],
-            $queries->architectureContext($this->project, 'refunds', includeSource: true)->warnings,
+            $queries->services()->contextQueries->architectureContext($this->project, 'refunds', includeSource: true)->warnings,
         );
     }
 

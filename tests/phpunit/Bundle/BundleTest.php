@@ -168,7 +168,7 @@ final class BundleTest extends KnossosTestCase
             $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions('Metrics Source'));
             $queries = ArchitectureQueryService::forDatabase($pdo);
 
-            $ranked = $queries->fileMetrics($scan->projectId);
+            $ranked = $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId);
             $byPath = [];
             foreach ($ranked->data['files'] as $file) {
                 $byPath[$file['path']] = $file['line_count'];
@@ -184,27 +184,27 @@ final class BundleTest extends KnossosTestCase
             assertSame($scan->snapshotId, $ranked->snapshotId);
 
             // Path substring filter.
-            $filtered = $queries->fileMetrics($scan->projectId, pathContains: 'cee');
+            $filtered = $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, pathContains: 'cee');
             assertSame(1, $filtered->data['total']);
             assertSame('src/cee.php', $filtered->data['files'][0]['path']);
 
             // Language filter (present and absent).
-            assertSame(4, $queries->fileMetrics($scan->projectId, language: 'php')->data['total']);
-            $none = $queries->fileMetrics($scan->projectId, language: 'python');
+            assertSame(4, $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, language: 'php')->data['total']);
+            $none = $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, language: 'python');
             assertSame(0, $none->data['total']);
             assertSame([], $none->data['files']);
 
             // Pagination by path ascending.
-            $page1 = $queries->fileMetrics($scan->projectId, sortBy: 'path', order: 'asc', limit: 2, offset: 0);
+            $page1 = $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, sortBy: 'path', order: 'asc', limit: 2, offset: 0);
             assertSame(['src/a.php', 'src/bee.php'], array_map(fn(array $f): string => $f['path'], $page1->data['files']));
             assertSame(true, $page1->truncated);
-            $page2 = $queries->fileMetrics($scan->projectId, sortBy: 'path', order: 'asc', limit: 2, offset: 2);
+            $page2 = $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, sortBy: 'path', order: 'asc', limit: 2, offset: 2);
             assertSame(['src/cee.php', 'src/dee.php'], array_map(fn(array $f): string => $f['path'], $page2->data['files']));
             assertSame(false, $page2->truncated);
 
             // Invalid sort/order are rejected.
-            assertThrows(fn() => $queries->fileMetrics($scan->projectId, sortBy: 'mtime'), InvalidArgumentException::class);
-            assertThrows(fn() => $queries->fileMetrics($scan->projectId, order: 'sideways'), InvalidArgumentException::class);
+            assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, sortBy: 'mtime'), InvalidArgumentException::class);
+            assertThrows(fn() => $queries->services()->fileMetricsQueries->fileMetrics($scan->projectId, order: 'sideways'), InvalidArgumentException::class);
 
             // Bundle export carries line_count and import preserves it.
             $service = new GraphBundleService($pdo);
@@ -214,7 +214,7 @@ final class BundleTest extends KnossosTestCase
                 assertSame(true, array_key_exists('line_count', $file));
             }
             $imported = $service->import($bundle, 'Imported Metrics');
-            $importedMetrics = $queries->fileMetrics($imported->projectId);
+            $importedMetrics = $queries->services()->fileMetricsQueries->fileMetrics($imported->projectId);
             $importedByPath = [];
             foreach ($importedMetrics->data['files'] as $file) {
                 $importedByPath[$file['path']] = $file['line_count'];

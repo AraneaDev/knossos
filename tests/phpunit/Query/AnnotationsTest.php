@@ -20,33 +20,33 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $preview = $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'core flow');
+        $preview = $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'core flow');
         assertSame(false, $preview->data['executed']);
         assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
 
-        $written = $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'core flow', execute: true);
+        $written = $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'core flow', execute: true);
         assertSame(true, $written->data['executed']);
         assertSame('upsert', $written->data['action']);
         assertSame('App\\Checkout', $written->data['component']);
 
         // Upsert: same key, new value, replaced on purpose.
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'CORE flow', execute: true, replace: true);
-        $list = $queries->listAnnotations($ids['project']);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'CORE flow', execute: true, replace: true);
+        $list = $queries->services()->annotationQueries->listAnnotations($ids['project']);
         assertSame(1, count($list->data['annotations']));
         assertSame('CORE flow', $list->data['annotations'][0]['value']);
 
-        $removed = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true);
+        $removed = $queries->services()->annotationQueries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true);
         assertSame('remove', $removed->data['action']);
-        assertSame([], $queries->listAnnotations($ids['project'])->data['annotations']);
+        assertSame([], $queries->services()->annotationQueries->listAnnotations($ids['project'])->data['annotations']);
 
-        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'bogus_kind', execute: true), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'bogus_kind', execute: true), InvalidArgumentException::class);
         // A prefix both fixture classes share is not a match: annotations land
         // only on an exact one, so it previews as not found and names them.
-        $prefix = $queries->upsertAnnotation($ids['project'], 'App\\', 'note');
+        $prefix = $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\', 'note');
         assertSame('App\\', $prefix->data['component']);
         assertSame(true, str_contains($prefix->warnings[0], 'Did you mean: App\\Checkout, App\\InvoiceService?'));
         // Unknown symbol: allowed, but warned.
-        $unknown = $queries->upsertAnnotation($ids['project'], 'App\\Future', 'note', 'coming soon', execute: true);
+        $unknown = $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Future', 'note', 'coming soon', execute: true);
         assertSame(true, str_contains(implode(' ', $unknown->warnings), 'not found'));
     }
 
@@ -58,8 +58,8 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($ids['project'], './src/Checkout.php', 'note', 'first', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'src/./Checkout.php', 'note', 'second', execute: true, replace: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], './src/Checkout.php', 'note', 'first', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'src/./Checkout.php', 'note', 'second', execute: true, replace: true);
 
         $rows = $pdo->query('SELECT canonical_name, value FROM annotations')->fetchAll(\PDO::FETCH_ASSOC);
         assertSame([['canonical_name' => 'src/Checkout.php', 'value' => 'second']], $rows);
@@ -72,14 +72,14 @@ final class AnnotationsTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'src/Checkout.php', 'note', 'kept', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'src/Checkout.php', 'note', 'kept', execute: true);
         $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) VALUES(:p, './src/Old.php', 'note', 'old', 'model', '[]', 't', 't')")->execute(['p' => $ids['project']]);
 
-        assertSame(['src/Checkout.php'], array_column($queries->listAnnotations($ids['project'], component: './src/Checkout.php')->data['annotations'], 'canonical_name'));
-        $removed = $queries->removeAnnotation($ids['project'], './src/Old.php', 'note', execute: true);
+        assertSame(['src/Checkout.php'], array_column($queries->services()->annotationQueries->listAnnotations($ids['project'], component: './src/Checkout.php')->data['annotations'], 'canonical_name'));
+        $removed = $queries->services()->annotationQueries->removeAnnotation($ids['project'], './src/Old.php', 'note', execute: true);
         assertSame(true, $removed->data['executed']);
         assertSame(['src/Checkout.php'], $pdo->query('SELECT canonical_name FROM annotations')->fetchAll(\PDO::FETCH_COLUMN));
-        assertThrows(static fn() => $queries->upsertAnnotation($ids['project'], './', 'note', 'x', execute: true), \InvalidArgumentException::class);
+        assertThrows(static fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], './', 'note', 'x', execute: true), \InvalidArgumentException::class);
     }
 
     /** A note's limit is 2,000 characters: 2,000 CJK characters (6,000 bytes) fit, one more does not. */
@@ -90,11 +90,11 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', str_repeat('界', 2000), execute: true);
-        assertSame(str_repeat('界', 2000), $queries->listAnnotations($ids['project'])->data['annotations'][0]['value']);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', str_repeat('界', 2000), execute: true);
+        assertSame(str_repeat('界', 2000), $queries->services()->annotationQueries->listAnnotations($ids['project'])->data['annotations'][0]['value']);
 
         $refused = captureThrows(
-            fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', str_repeat('界', 2001), execute: true),
+            fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', str_repeat('界', 2001), execute: true),
             InvalidArgumentException::class,
         );
         assertSame('value must not exceed 2000 characters.', $refused->getMessage());
@@ -108,10 +108,10 @@ final class AnnotationsTest extends KnossosTestCase
             $queries = ArchitectureQueryService::forDatabase($pdo);
             // Confirmed against tests/Fixtures/mixed/src/CheckoutService.php,
             // which declares `namespace Fixture;`.
-            $queries->upsertAnnotation($projectId, 'Fixture\\CheckoutService', 'confirmed_dead', 'checked by hand', execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($projectId, 'Fixture\\CheckoutService', 'confirmed_dead', 'checked by hand', execute: true);
             // Full rescan clears and rebuilds the graph; the annotation must survive.
             (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'));
-            $list = $queries->listAnnotations($projectId);
+            $list = $queries->services()->annotationQueries->listAnnotations($projectId);
             assertSame(1, count($list->data['annotations']));
             assertSame('confirmed_dead', $list->data['annotations'][0]['kind']);
         } finally {
@@ -128,12 +128,12 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $before = $queries->architectureHealth($ids['project'])->data;
+        $before = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $before['dead_code_candidates']);
         assertSame(true, in_array('App\\Orphan', $names, true));
 
-        $queries->upsertAnnotation($ids['project'], 'App\\Orphan', 'false_positive', 'constructed via DI config', execute: true);
-        $after = $queries->architectureHealth($ids['project'])->data;
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Orphan', 'false_positive', 'constructed via DI config', execute: true);
+        $after = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
         $namesAfter = array_map(static fn(array $c): string => $c['component']['canonical_name'], $after['dead_code_candidates']);
         assertSame(false, in_array('App\\Orphan', $namesAfter, true));
         assertSame(1, $after['bounds']['annotated_false_positives']);
@@ -164,10 +164,10 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
         foreach ($orphans as $name) {
-            $queries->upsertAnnotation($ids['project'], $name, 'false_positive', 'constructed via DI config', execute: true);
+            $queries->services()->annotationQueries->upsertAnnotation($ids['project'], $name, 'false_positive', 'constructed via DI config', execute: true);
         }
 
-        $data = $queries->architectureHealth($ids['project'])->data;
+        $data = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
 
         assertSame(3, $data['bounds']['annotated_false_positives'], 'Every annotated candidate must be counted, not just the first.');
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
@@ -193,16 +193,16 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($ids['project'], 'App\\Parked', 'intentional', 'route parked until the MVP', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Parked', 'intentional', 'route parked until the MVP', execute: true);
         // On one component a false positive wins: the graph was wrong there.
-        $queries->upsertAnnotation($ids['project'], 'App\\Both', 'intentional', 'kept', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\Both', 'false_positive', 'built by the container', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Both', 'intentional', 'kept', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Both', 'false_positive', 'built by the container', execute: true);
 
-        $data = $queries->architectureHealth($ids['project'])->data;
+        $data = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
         assertSame([false, false], [in_array('App\\Parked', $names, true), in_array('App\\Both', $names, true)]);
         assertSame([1, 1], [$data['bounds']['annotated_intentional'], $data['bounds']['annotated_false_positives']]);
-        assertSame(['App\\Both', 'App\\Parked'], array_column($queries->listAnnotations($ids['project'], kind: 'intentional')->data['annotations'], 'canonical_name'));
+        assertSame(['App\\Both', 'App\\Parked'], array_column($queries->services()->annotationQueries->listAnnotations($ids['project'], kind: 'intentional')->data['annotations'], 'canonical_name'));
     }
 
     #[Group('query')]
@@ -216,10 +216,10 @@ final class AnnotationsTest extends KnossosTestCase
 
         // Both annotations land on the same canonical name; false_positive
         // must win regardless of write order.
-        $queries->upsertAnnotation($ids['project'], 'App\\Orphan', 'confirmed_dead', 'delete next sprint', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\Orphan', 'false_positive', 'constructed via DI config', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Orphan', 'confirmed_dead', 'delete next sprint', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Orphan', 'false_positive', 'constructed via DI config', execute: true);
 
-        $health = $queries->architectureHealth($ids['project'])->data;
+        $health = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
         $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $health['dead_code_candidates']);
         assertSame(false, in_array('App\\Orphan', $names, true));
         assertSame(1, $health['bounds']['annotated_false_positives']);
@@ -233,9 +233,9 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->saveNode($orphan, $ids['project'], 'php', 'class', 'App\\Orphan', 'Orphan', null, $ids['file'], 50, 60, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Orphan', 'confirmed_dead', 'delete next sprint', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Orphan', 'confirmed_dead', 'delete next sprint', execute: true);
 
-        $health = $queries->architectureHealth($ids['project'])->data;
+        $health = $queries->services()->healthQueries->architectureHealth($ids['project'])->data;
         $candidate = null;
         foreach ($health['dead_code_candidates'] as $entry) {
             if ($entry['component']['canonical_name'] === 'App\\Orphan') {
@@ -257,13 +257,13 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $result = $queries->upsertAnnotation($ids['project'], 'App\\Invoice', 'false_positive', execute: true);
+        $result = $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Invoice', 'false_positive', execute: true);
 
         self::assertSame('App\\Invoice', $result->data['component']);
         self::assertStringContainsString('not found', implode(' ', $result->warnings));
         self::assertStringContainsString('Did you mean: App\\InvoiceService', implode(' ', $result->warnings));
-        self::assertSame([], $queries->listAnnotations($ids['project'], 'App\\InvoiceService')->data['annotations']);
-        self::assertCount(1, $queries->listAnnotations($ids['project'], 'App\\Invoice')->data['annotations']);
+        self::assertSame([], $queries->services()->annotationQueries->listAnnotations($ids['project'], 'App\\InvoiceService')->data['annotations']);
+        self::assertCount(1, $queries->services()->annotationQueries->listAnnotations($ids['project'], 'App\\Invoice')->data['annotations']);
     }
 
     /** An exact display name is still an exact match. */
@@ -273,7 +273,7 @@ final class AnnotationsTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->upsertAnnotation($ids['project'], 'Checkout', 'note', 'entry', execute: true);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($ids['project'], 'Checkout', 'note', 'entry', execute: true);
 
         self::assertSame('App\\Checkout', $result->data['component']);
         self::assertSame([], $result->warnings);
@@ -318,33 +318,33 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true, author: 'model');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true, author: 'model');
         $rows = $pdo->query('SELECT author, value FROM annotations ORDER BY author')->fetchAll(\PDO::FETCH_NUM);
         assertSame([['model', 'an agent found this'], ['user', 'the team says so']], $rows);
 
         // Removing as the model takes only the model's note.
-        $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
+        $queries->services()->annotationQueries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
         assertSame([['user', 'the team says so']], $pdo->query('SELECT author, value FROM annotations')->fetchAll(\PDO::FETCH_NUM));
 
         // With only the person's note left, a model remove changes nothing and says so.
-        $nothing = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
+        $nothing = $queries->services()->annotationQueries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', execute: true, author: 'model');
         assertSame(null, $nothing->data['previous']);
         assertSame('Nothing removed: App\\Checkout has no note annotation by the model.', $nothing->summary);
         // It says the person's note is still there, and who may remove it.
         assertArrayContains('A note annotation by the user remains; only the pane removes it.', $nothing->warnings);
         // The preview says so too, rather than promising a removal.
-        $previewed = $queries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', author: 'model');
+        $previewed = $queries->services()->annotationQueries->removeAnnotation($ids['project'], 'App\\Checkout', 'note', author: 'model');
         assertSame('Preview: nothing to remove: App\\Checkout has no note annotation by the model.', $previewed->summary);
         assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
 
         // The preview a model sees is its own note, the one it would extend.
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact', execute: true);
-        $preview = $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact; second fact');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact', execute: true);
+        $preview = $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'first fact; second fact');
         assertSame('first fact', $preview->data['previous']['value']);
         assertSame('model', $preview->data['previous']['author']);
 
-        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, author: 'agent'), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, author: 'agent'), InvalidArgumentException::class);
     }
 
     #[Group('query')]
@@ -353,10 +353,10 @@ final class AnnotationsTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'an agent found this', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the team says so', execute: true, author: 'user');
 
-        $listed = $queries->listAnnotations($ids['project'])->data['annotations'];
+        $listed = $queries->services()->annotationQueries->listAnnotations($ids['project'])->data['annotations'];
         assertSame([['user', 'the team says so'], ['model', 'an agent found this']], array_map(static fn(array $a): array => [$a['author'], $a['value']], $listed));
         $inspected = $queries->inspectComponent($ids['project'], 'App\\Checkout')->data['component']['annotations'];
         assertSame(['user', 'model'], array_column($inspected, 'author'));
@@ -368,8 +368,8 @@ final class AnnotationsTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'confirmed_dead', 'nothing calls it', execute: true, author: 'user');
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'false_positive', 'reached by the container', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'confirmed_dead', 'nothing calls it', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'false_positive', 'reached by the container', execute: true);
 
         $facts = new \Knossos\Query\CandidateGraphFacts($pdo, $ids['project'], ['calls'], 0);
 
@@ -384,16 +384,16 @@ final class AnnotationsTest extends KnossosTestCase
         $queries = ArchitectureQueryService::forDatabase($pdo);
         $hash = (string) $pdo->query("SELECT content_hash FROM files WHERE relative_path = 'src/Checkout.php'")->fetchColumn();
 
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true, evidencePaths: ['src/Checkout.php']);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'reached via the invoice queue', execute: true, evidencePaths: ['src/Checkout.php']);
         $basis = json_decode((string) $pdo->query("SELECT basis_json FROM annotations WHERE author = 'model'")->fetchColumn(), true);
         // The component's own file first; an evidence path it already names is not repeated.
         assertSame([['path' => 'src/Checkout.php', 'hash' => $hash]], $basis);
 
-        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: ['src/Nowhere.php']), InvalidArgumentException::class);
-        assertThrows(fn() => $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: array_fill(0, 6, 'src/Checkout.php')), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: ['src/Nowhere.php']), InvalidArgumentException::class);
+        assertThrows(fn() => $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'x', execute: true, evidencePaths: array_fill(0, 6, 'src/Checkout.php')), InvalidArgumentException::class);
 
         // A person's note rests on nothing: it is never stale.
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'mine', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'mine', execute: true, author: 'user');
         assertSame('[]', (string) $pdo->query("SELECT basis_json FROM annotations WHERE author = 'user'")->fetchColumn());
     }
 
@@ -409,12 +409,12 @@ final class AnnotationsTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $queries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'x', execute: true, evidencePaths: ['/workspace/fixture-shop/src/Checkout.php']);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'x', execute: true, evidencePaths: ['/workspace/fixture-shop/src/Checkout.php']);
         assertSame(['src/Checkout.php'], array_column(json_decode((string) $pdo->query("SELECT basis_json FROM annotations WHERE canonical_name = 'App\\InvoiceService'")->fetchColumn(), true), 'path'));
 
         $pdo->exec('DELETE FROM annotations');
         // A name two nodes share is written by stable id; the basis still covers both declarations.
-        $queries->upsertAnnotation($ids['project'], $ids['checkout'], 'note', 'split across two files', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], $ids['checkout'], 'note', 'split across two files', execute: true);
         $paths = array_column(json_decode((string) $pdo->query('SELECT basis_json FROM annotations')->fetchColumn(), true), 'path');
         assertSame(['src/Checkout.php', 'src/CheckoutPartial.php'], $paths);
     }

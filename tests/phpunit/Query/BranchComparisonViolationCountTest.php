@@ -50,7 +50,7 @@ final class BranchComparisonViolationCountTest extends KnossosTestCase
         $this->imports($repository, $ids, $next, $new, $target);
         $repository->completeScan($project, $next);
 
-        $violations = ArchitectureQueryService::forDatabase($pdo)->branchComparison($project, $ids['scan'], self::POLICIES)['violations'];
+        $violations = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->branchComparison($project, $ids['scan'], self::POLICIES)['violations'];
 
         self::assertSame(1, $violations['count']);
         self::assertSame(['App\\Web\\New' . $index], array_column($violations['items'], 'source'));
@@ -76,7 +76,7 @@ final class BranchComparisonViolationCountTest extends KnossosTestCase
         }
         $repository->completeScan($project, $next);
 
-        $violations = ArchitectureQueryService::forDatabase($pdo)->branchComparison($project, $ids['scan'], self::POLICIES, 8)['violations'];
+        $violations = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->branchComparison($project, $ids['scan'], self::POLICIES, 8)['violations'];
 
         self::assertSame(120, $violations['count']);
         self::assertCount(8, $violations['items']);

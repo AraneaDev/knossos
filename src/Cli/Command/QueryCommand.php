@@ -546,7 +546,7 @@ final class QueryCommand implements CliCommand
         return ArchitectureQueryService::forDatabase($context->database());
     }
 
-    /** The query services for this invocation, for the queries the facade would only forward. */
+    /** The query services for this invocation, for every query the facade does not annotate with notes. */
     private function services(CliCommandContext $context): QueryServices
     {
         return QueryServices::wire($context->database());

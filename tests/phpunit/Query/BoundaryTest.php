@@ -39,12 +39,12 @@ final class BoundaryTest extends KnossosTestCase
                 ),
             );
             $query = ArchitectureQueryService::forDatabase($pdo);
-            $explicit = $query->listBoundaries($scan->projectId, 'explicit');
+            $explicit = $query->services()->summaryQueries->listBoundaries($scan->projectId, 'explicit');
             assertSame(2, count($explicit->data['boundaries']));
             assertSame(['Backend', 'Frontend'], array_column($explicit->data['boundaries'], 'name'));
             assertSame('explicit', $explicit->data['boundaries'][0]['source']);
             assertSame(false, str_starts_with($explicit->evidence[0]['path'], '/'));
-            $inferred = $query->listBoundaries($scan->projectId, 'inferred');
+            $inferred = $query->services()->summaryQueries->listBoundaries($scan->projectId, 'inferred');
             // Root-level composer/node units and the frontend node/typescript/module
             // units each share an identical path_prefix matcher, so BoundaryInference
             // merges them into one boundary apiece; 3 remain (merged root, merged
@@ -52,7 +52,7 @@ final class BoundaryTest extends KnossosTestCase
             assertSame(true, count($inferred->data['boundaries']) >= 3);
             assertArrayContains('namespace:Fixture', array_column($inferred->data['boundaries'], 'name'));
 
-            $page = $query->listBoundaries($scan->projectId, null, 1);
+            $page = $query->services()->summaryQueries->listBoundaries($scan->projectId, null, 1);
             assertSame(true, $page->truncated);
             assertSame(1, $page->data['pagination']['next_offset']);
             assertSame('result_limit', $page->data['pagination']['truncation_reason']);
@@ -81,7 +81,7 @@ final class BoundaryTest extends KnossosTestCase
             assertSame(true, $pagedSearch->truncated);
             assertSame(1, $pagedSearch->data['pagination']['next_offset']);
             assertThrows(fn() => $query->searchArchitecture($scan->projectId, 'x', confidences: ['unknown']), InvalidArgumentException::class);
-            assertThrows(fn() => $query->listBoundaries($scan->projectId, 'generated'), InvalidArgumentException::class);
+            assertThrows(fn() => $query->services()->summaryQueries->listBoundaries($scan->projectId, 'generated'), InvalidArgumentException::class);
         } finally {
             unset($pdo);
             foreach ([$path, $path . '-shm', $path . '-wal'] as $candidate) {

@@ -81,16 +81,16 @@ final class NamedFileComponentsTest extends KnossosTestCase
         $scanner->scan($this->root);
         $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($projectId, 'tools/check', 'note', 'Run by CI before the gate.', true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'tools/check', 'note', 'Run by CI before the gate.', true);
         // Excluded or missing paths name nothing.
-        $queries->upsertAnnotation($projectId, 'vendor/lib/tool.sh', 'note', 'vendored', true);
-        $queries->upsertAnnotation($projectId, 'tools/absent', 'note', 'not on disk', true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'vendor/lib/tool.sh', 'note', 'vendored', true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'tools/absent', 'note', 'not on disk', true);
 
         // Nothing on disk changed, and the scan still takes the new note into account.
         $scanner->scan($this->root);
         assertSame([['scripts/deploy.sh', 'scripts/deploy.sh'], ['tools/check', 'tools/check']], self::fileComponents($pdo));
 
-        $queries->removeAnnotation($projectId, 'tools/check', 'note', execute: true);
+        $queries->services()->annotationQueries->removeAnnotation($projectId, 'tools/check', 'note', execute: true);
         $scanner->scan($this->root);
         assertSame([['scripts/deploy.sh', 'scripts/deploy.sh']], self::fileComponents($pdo));
     }
@@ -103,7 +103,7 @@ final class NamedFileComponentsTest extends KnossosTestCase
         $scanner->scan($this->root);
         $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($projectId, 'tools/check', 'note', 'Run by CI before the gate.', true);
+        $queries->services()->annotationQueries->upsertAnnotation($projectId, 'tools/check', 'note', 'Run by CI before the gate.', true);
         $scanner->scan($this->root);
         $note = static fn(): array => $queries->findComponent($projectId, 'tools/check')->data['notes'][0] ?? [];
         assertSame(false, $note()['stale'] ?? null);

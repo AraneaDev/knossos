@@ -21,7 +21,7 @@ final class CandidateConfidenceSummaryTest extends KnossosTestCase
     /** How many of the whole list nothing references, tests included. */
     private function unreferencedCount(\PDO $pdo, string $projectId): int
     {
-        $all = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 100)->data['dead_code_candidates'];
+        $all = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100)->data['dead_code_candidates'];
 
         return count(array_filter($all, static fn(array $c): bool => $c['reachability'] === 'unreferenced'));
     }
@@ -36,14 +36,14 @@ final class CandidateConfidenceSummaryTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
-            $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 1);
+            $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 1);
         } finally {
             $this->removeTempTree($root);
         }
 
         $bounds = $result->data['bounds'];
         $confidences = array_count_values(array_column(
-            ArchitectureQueryService::forDatabase($pdo)->architectureHealth($projectId, limit: 100)->data['dead_code_candidates'],
+            ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100)->data['dead_code_candidates'],
             'confidence',
         ));
         // Counted over the whole list, not the page of one.

@@ -11,7 +11,6 @@ use function PHPUnit\Framework\assertSame;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
-use ReflectionMethod;
 
 /**
  * The query facade's methods carry one docblock each, so a static analyser
@@ -28,15 +27,5 @@ final class QueryFacadeDocblockTest extends TestCase
         preg_match_all('#\*/\s*/\*\*#', (string) file_get_contents($file), $stacked);
 
         assertSame([], $stacked[0]);
-    }
-
-    /** The policy check's source-file filter is typed where it is read. */
-    #[Group('query')]
-    public function testThePolicyCheckTypesItsSourceFiles(): void
-    {
-        $doc = (string) (new ReflectionMethod(ArchitectureQueryService::class, 'checkArchitecture'))->getDocComment();
-
-        assertSame(1, preg_match('/@param list<string> \$sourceFiles/', $doc));
-        assertSame(1, preg_match('/@param list<array<string, mixed>> \$policies/', $doc));
     }
 }

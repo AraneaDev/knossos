@@ -63,7 +63,7 @@ final class CyclesTest extends KnossosTestCase
         );
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'], minConfidence: 'certain')->data['cycles'];
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project'], minConfidence: 'certain')->data['cycles'];
         assertSame([], $cycles);
     }
 
@@ -111,7 +111,7 @@ final class CyclesTest extends KnossosTestCase
         );
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $cycles = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project'], minConfidence: 'certain')->data['cycles'];
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project'], minConfidence: 'certain')->data['cycles'];
         assertSame(1, count($cycles));
     }
 
@@ -171,7 +171,7 @@ final class CyclesTest extends KnossosTestCase
 
         $query = ArchitectureQueryService::forDatabase($pdo);
         // Self-recursion is not an architectural cycle, so self-loops are excluded by default.
-        $result = $query->dependencyCycles($ids['project']);
+        $result = $query->services()->cycleQueries->dependencyCycles($ids['project']);
         assertSame([2], array_column($result->data['cycles'], 'size'));
         assertSame('probable', $result->data['cycles'][0]['minimum_confidence']);
         assertSame(['App\\Checkout', 'App\\InvoiceService'], array_column($result->data['cycles'][0]['members'], 'canonical_name'));
@@ -179,36 +179,36 @@ final class CyclesTest extends KnossosTestCase
         assertSame(2, count($result->evidence));
         assertContains('selected static dependency', $result->warnings[0]);
 
-        $withSelfLoops = $query->dependencyCycles($ids['project'], includeSelfLoops: true);
+        $withSelfLoops = $query->services()->cycleQueries->dependencyCycles($ids['project'], includeSelfLoops: true);
         assertSame([2, 1], array_column($withSelfLoops->data['cycles'], 'size'));
         assertSame('certain', $withSelfLoops->data['cycles'][1]['minimum_confidence']);
 
-        $certain = $query->dependencyCycles($ids['project'], minConfidence: 'certain');
+        $certain = $query->services()->cycleQueries->dependencyCycles($ids['project'], minConfidence: 'certain');
         assertSame([], $certain->data['cycles']);
-        $certainSelf = $query->dependencyCycles($ids['project'], minConfidence: 'certain', includeSelfLoops: true);
+        $certainSelf = $query->services()->cycleQueries->dependencyCycles($ids['project'], minConfidence: 'certain', includeSelfLoops: true);
         assertSame([1], array_column($certainSelf->data['cycles'], 'size'));
-        $filtered = $query->dependencyCycles($ids['project'], edgeKinds: ['imports']);
+        $filtered = $query->services()->cycleQueries->dependencyCycles($ids['project'], edgeKinds: ['imports']);
         assertSame([], $filtered->data['cycles']);
-        $limited = $query->dependencyCycles($ids['project'], limit: 1, includeSelfLoops: true);
+        $limited = $query->services()->cycleQueries->dependencyCycles($ids['project'], limit: 1, includeSelfLoops: true);
         assertSame(true, $limited->truncated);
         assertSame(['result_limit'], $limited->data['bounds']['truncation_reasons']);
-        $edgeLimited = $query->dependencyCycles($ids['project'], maxEdges: 1);
+        $edgeLimited = $query->services()->cycleQueries->dependencyCycles($ids['project'], maxEdges: 1);
         assertSame(true, $edgeLimited->truncated);
         assertSame(true, in_array('edge_limit', $edgeLimited->data['bounds']['truncation_reasons'], true));
         // The node cap is the one stop condition the row stream cannot see, so
         // it reports itself — once, and without a row reason alongside it.
-        $nodeLimited = $query->dependencyCycles($ids['project'], maxNodes: 1);
+        $nodeLimited = $query->services()->cycleQueries->dependencyCycles($ids['project'], maxNodes: 1);
         assertSame(true, $nodeLimited->truncated);
         assertSame(['node_limit'], $nodeLimited->data['bounds']['truncation_reasons']);
-        assertThrows(fn() => $query->dependencyCycles($ids['project'], edgeKinds: ['contains']), InvalidArgumentException::class);
-        assertThrows(fn() => $query->dependencyCycles($ids['project'], maxNodes: 0), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->cycleQueries->dependencyCycles($ids['project'], edgeKinds: ['contains']), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->cycleQueries->dependencyCycles($ids['project'], maxNodes: 0), InvalidArgumentException::class);
 
         $time = 0;
         $timedQuery = ArchitectureQueryService::forDatabase($pdo, function () use (&$time): int {
             $time += 2_000_000;
             return $time;
         });
-        $timed = $timedQuery->dependencyCycles($ids['project'], timeoutMs: 1);
+        $timed = $timedQuery->services()->cycleQueries->dependencyCycles($ids['project'], timeoutMs: 1);
         assertSame(true, $timed->truncated);
         assertSame(true, in_array('time_limit', $timed->data['bounds']['truncation_reasons'], true));
     }
@@ -244,13 +244,13 @@ final class CyclesTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $query = ArchitectureQueryService::forDatabase($pdo);
 
-        $bounded = $query->dependencyCycles($ids['project'], maxEdges: 1);
+        $bounded = $query->services()->cycleQueries->dependencyCycles($ids['project'], maxEdges: 1);
         assertSame([], $bounded->data['cycles']);
         assertSame(true, str_contains($bounded->summary, 'search was truncated'));
         assertSame(true, str_contains($bounded->summary, 'edge_limit'));
 
         // An exhaustive search keeps the plain sentence.
-        $complete = $query->dependencyCycles($ids['project']);
+        $complete = $query->services()->cycleQueries->dependencyCycles($ids['project']);
         assertSame(1, count($complete->data['cycles']));
         assertSame(false, str_contains($complete->summary, 'truncated'));
     }
@@ -278,7 +278,7 @@ final class CyclesTest extends KnossosTestCase
         });
 
         RowCountingStatement::reset();
-        $envelope = $expired->dependencyCycles($projectId, timeoutMs: 1);
+        $envelope = $expired->services()->cycleQueries->dependencyCycles($projectId, timeoutMs: 1);
 
         assertSame(true, $envelope->truncated);
         assertSame(true, in_array('time_limit', $envelope->data['bounds']['truncation_reasons'], true));
@@ -288,7 +288,7 @@ final class CyclesTest extends KnossosTestCase
         // A live clock crosses the periodic gate rather than tripping on the
         // first row, which is the path a real timeout_ms takes.
         RowCountingStatement::reset();
-        $live = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($projectId, timeoutMs: 1);
+        $live = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($projectId, timeoutMs: 1);
         assertSame(true, $live->truncated);
         assertSame(true, in_array('time_limit', $live->data['bounds']['truncation_reasons'], true));
     }
@@ -313,7 +313,7 @@ final class CyclesTest extends KnossosTestCase
     {
         [$pdo, $project, $nodes, $node] = $this->largeGraph();
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($project);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($project);
 
         assertSame(false, $result->truncated);
         assertSame([], $result->data['bounds']['truncation_reasons']);
@@ -337,10 +337,10 @@ final class CyclesTest extends KnossosTestCase
         [$pdo, $project, , $node] = $this->largeGraph();
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $unfiltered = $queries->dependencyCycles($project, limit: 1)->data['cycles'];
+        $unfiltered = $queries->services()->cycleQueries->dependencyCycles($project, limit: 1)->data['cycles'];
         assertSame(array_map($node, range(100, 112)), $unfiltered[0]['member_ids']);
 
-        $filtered = $queries->dependencyCycles($project, limit: 1, touchingIds: [$node(5001)]);
+        $filtered = $queries->services()->cycleQueries->dependencyCycles($project, limit: 1, touchingIds: [$node(5001)]);
         assertSame([array_map($node, range(5000, 5002))], array_column($filtered->data['cycles'], 'member_ids'));
         assertSame([], $filtered->data['bounds']['truncation_reasons']);
     }
@@ -352,7 +352,7 @@ final class CyclesTest extends KnossosTestCase
     {
         [$pdo, $project, , $node] = $this->largeGraph();
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($project, limit: 1, touchingIds: [$node(100), $node(5001)]);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($project, limit: 1, touchingIds: [$node(100), $node(5001)]);
 
         assertSame([array_map($node, range(100, 112))], array_column($result->data['cycles'], 'member_ids'));
         assertSame(true, in_array('result_limit', $result->data['bounds']['truncation_reasons'], true));
@@ -369,7 +369,7 @@ final class CyclesTest extends KnossosTestCase
     {
         [$pdo, $project, , $node] = $this->largeGraph();
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->architectureHealth($project);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project);
 
         assertSame(false, $result->data['bounds']['cycle_scan_truncated']);
         assertSame([], array_values(array_diff($result->data['bounds']['truncation_reasons'], ['result_limit'])));
@@ -403,7 +403,7 @@ final class CyclesTest extends KnossosTestCase
         $pdo->exec('PRAGMA foreign_keys = ON');
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($ids['project']);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($ids['project']);
 
         assertSame([3], array_column($result->data['cycles'], 'size'));
         $cycle = $result->data['cycles'][0];

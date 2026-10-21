@@ -61,35 +61,35 @@ final class SuggestionTest extends KnossosTestCase
         $evaluation = json_decode($evaluationJson, true, 32, JSON_THROW_ON_ERROR);
         $query = ArchitectureQueryService::forDatabase($pdo);
         foreach ($evaluation as $case) {
-            $first = $query->suggestLocation($ids['project'], $case['feature_description']);
-            $second = $query->suggestLocation($ids['project'], $case['feature_description']);
+            $first = $query->services()->locationQueries->suggestLocation($ids['project'], $case['feature_description']);
+            $second = $query->services()->locationQueries->suggestLocation($ids['project'], $case['feature_description']);
             assertSame($case['expected_boundary'], $first->data['candidates'][0]['boundary']['name']);
             assertSame($first->data['candidates'], $second->data['candidates']);
             assertSame(true, $first->data['candidates'][0]['score'] > 0);
             assertSame(true, count($first->data['candidates'][0]['matched_tokens']) >= 1);
             assertSame(true, count($first->evidence) >= 1);
         }
-        $billingResult = $query->suggestLocation($ids['project'], 'build invoice billing workflow');
+        $billingResult = $query->services()->locationQueries->suggestLocation($ids['project'], 'build invoice billing workflow');
         assertSame(12, $billingResult->data['candidates'][0]['factors']['boundary_name_relevance']);
         assertSame('probable', $billingResult->data['candidates'][0]['confidence']);
         assertContains('uniquely correct', $billingResult->warnings[0]);
 
-        $limited = $query->suggestLocation($ids['project'], 'checkout service', limit: 1);
+        $limited = $query->services()->locationQueries->suggestLocation($ids['project'], 'checkout service', limit: 1);
         assertSame(true, $limited->truncated);
         assertSame(true, in_array('result_limit', $limited->data['bounds']['truncation_reasons'], true));
-        $memberLimited = $query->suggestLocation($ids['project'], 'checkout service', maxMembers: 1);
+        $memberLimited = $query->services()->locationQueries->suggestLocation($ids['project'], 'checkout service', maxMembers: 1);
         assertSame(true, $memberLimited->truncated);
         assertSame(true, in_array('member_limit', $memberLimited->data['bounds']['truncation_reasons'], true));
-        $edgeLimited = $query->suggestLocation($ids['project'], 'checkout service', maxEdges: 1);
+        $edgeLimited = $query->services()->locationQueries->suggestLocation($ids['project'], 'checkout service', maxEdges: 1);
         assertSame(true, in_array('edge_limit', $edgeLimited->data['bounds']['truncation_reasons'], true));
-        assertThrows(fn() => $query->suggestLocation($ids['project'], 'a i u'), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->locationQueries->suggestLocation($ids['project'], 'a i u'), InvalidArgumentException::class);
 
         $time = 0;
         $timedQuery = ArchitectureQueryService::forDatabase($pdo, function () use (&$time): int {
             $time += 2_000_000;
             return $time;
         });
-        $timed = $timedQuery->suggestLocation($ids['project'], 'checkout service', timeoutMs: 1);
+        $timed = $timedQuery->services()->locationQueries->suggestLocation($ids['project'], 'checkout service', timeoutMs: 1);
         assertSame(true, $timed->truncated);
         assertSame(true, in_array('time_limit', $timed->data['bounds']['truncation_reasons'], true));
     }
@@ -101,7 +101,7 @@ final class SuggestionTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $query = ArchitectureQueryService::forDatabase($pdo);
 
-        $result = $query->suggestLocation($ids['project'], 'A new exporter that renders the graph as DOT source');
+        $result = $query->services()->locationQueries->suggestLocation($ids['project'], 'A new exporter that renders the graph as DOT source');
 
         $tokens = $result->data['tokens'];
         assertSame(false, in_array('as', $tokens, true));
@@ -130,7 +130,7 @@ final class SuggestionTest extends KnossosTestCase
         ]);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->suggestLocation($ids['project'], 'ndjson channel');
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->locationQueries->suggestLocation($ids['project'], 'ndjson channel');
         $byName = [];
         foreach ($result->data['candidates'] as $candidate) {
             $byName[$candidate['boundary']['name']] = $candidate;
@@ -161,7 +161,7 @@ final class SuggestionTest extends KnossosTestCase
         ]);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->suggestLocation($ids['project'], 'Éclair service');
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->locationQueries->suggestLocation($ids['project'], 'Éclair service');
         $byName = [];
         foreach ($result->data['candidates'] as $candidate) {
             $byName[$candidate['boundary']['name']] = $candidate;
@@ -191,7 +191,7 @@ final class SuggestionTest extends KnossosTestCase
         $this->boundaryWithMembers($repository, $ids, 'omnibus', $wide);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->suggestLocation($ids['project'], 'worker process');
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->locationQueries->suggestLocation($ids['project'], 'worker process');
 
         assertSame('alpha', $result->data['candidates'][0]['boundary']['name']);
     }
@@ -238,7 +238,7 @@ final class SuggestionTest extends KnossosTestCase
 
         // Every word is either a stop word or shorter than three characters;
         // the fallback keeps the >= 2-char tokens instead of erroring.
-        $result = $query->suggestLocation($ids['project'], 'add new ui db');
+        $result = $query->services()->locationQueries->suggestLocation($ids['project'], 'add new ui db');
 
         assertSame(['add', 'new', 'ui', 'db'], $result->data['tokens']);
     }

@@ -45,7 +45,7 @@ final class ConcurrencyTest extends KnossosTestCase
 
             $readerPdo = SqliteConnection::open($path);
             $lease = (new ProjectWriterLock($writerPdo))->acquire($project);
-            assertSame($scan, ArchitectureQueryService::forDatabase($readerPdo)->architectureSummary($project)->snapshotId);
+            assertSame($scan, ArchitectureQueryService::forDatabase($readerPdo)->services()->summaryQueries->architectureSummary($project)->snapshotId);
             assertThrows(fn() => (new ProjectWriterLock($readerPdo))->acquire($project), ScanBusyException::class);
             $lease->release();
             $second = (new ProjectWriterLock($readerPdo))->acquire($project);

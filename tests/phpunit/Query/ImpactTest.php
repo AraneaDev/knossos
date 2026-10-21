@@ -136,8 +136,8 @@ final class ImpactTest extends KnossosTestCase
         assertArrayContains('Use a returned stable component ID to disambiguate the request.', $ambiguous->warnings);
 
         // change_impact reports the same distinction it inherits from impact.
-        $missingChange = $query->changeImpact($ids['project'], 'NoSuchService');
+        $missingChange = $query->services()->changeQueries->changeImpact($ids['project'], 'NoSuchService', 90, 500, 4, 100, [], 'possible', 1000);
         assertContains('No component matched "NoSuchService"', $missingChange->summary);
-        assertContains('ambiguous', $query->changeImpact($ids['project'], 'InvoiceService')->summary);
+        assertContains('ambiguous', $query->services()->changeQueries->changeImpact($ids['project'], 'InvoiceService', 90, 500, 4, 100, [], 'possible', 1000)->summary);
     }
 }

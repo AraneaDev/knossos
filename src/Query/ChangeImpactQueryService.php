@@ -45,8 +45,8 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
     /**
      * Static blast radius weighted by recent Git churn.
      *
-     * Every bound is required: ArchitectureQueryService::changeImpact() holds
-     * the defaults and is the only caller.
+     * Every bound is required: the `change_impact` tool and the CLI take the
+     * defaults from the tool catalogue and always pass them all.
      *
      * @param list<string> $edgeKinds
      */

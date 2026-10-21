@@ -26,7 +26,7 @@ final class ReviewDiffTest extends KnossosTestCase
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
         $policies = [['id' => 'no-billing', 'from_boundary' => $backend, 'deny_targets' => [$billing]]];
-        $result = $queries->reviewDiff($ids['project'], files: ['src/Checkout.php'], policies: $policies);
+        $result = $queries->services()->reviewQueries->reviewDiff($ids['project'], files: ['src/Checkout.php'], policies: $policies);
 
         assertSame('evaluated', $result->data['change']['status']);
         assertSame(['src/Checkout.php'], $result->data['change']['changed_files']);
@@ -70,7 +70,7 @@ final class ReviewDiffTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff($ids['project'], files: ['src/Checkout.php']);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff($ids['project'], files: ['src/Checkout.php']);
 
         $cycles = $result->data['cycles_touching_change']['cycles'];
         assertSame(1, count($cycles));
@@ -89,7 +89,7 @@ final class ReviewDiffTest extends KnossosTestCase
         self::copyRow($pdo, 'edges', $ids['edge'], ['id' => 'edge:back', 'source_id' => $ids['invoice'], 'target_id' => $ids['checkout']]);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff($ids['project'], files: ['docs/notes.md']);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff($ids['project'], files: ['docs/notes.md']);
 
         assertSame([], $result->data['change']['direct_components'] ?? []);
         assertSame('evaluated', $result->data['cycles_touching_change']['status']);
@@ -118,7 +118,7 @@ final class ReviewDiffTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         // root_realpath (/workspace/fixture-shop) does not exist on disk:
         // config loading fails soft, sections degrade, envelope still returns.
-        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff($ids['project'], files: ['src/Checkout.php']);
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff($ids['project'], files: ['src/Checkout.php']);
         assertSame('not_evaluated', $result->data['policy_check']['status']);
         assertSame('not_evaluated', $result->data['quality_gate']['status']);
         assertSame('evaluated', $result->data['change']['status']);
@@ -130,7 +130,7 @@ final class ReviewDiffTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         assertThrows(
-            fn() => ArchitectureQueryService::forDatabase($pdo)->reviewDiff($ids['project'], baseRef: 'main', files: ['src/Checkout.php']),
+            fn() => ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff($ids['project'], baseRef: 'main', files: ['src/Checkout.php']),
             InvalidArgumentException::class,
         );
     }
@@ -148,7 +148,7 @@ final class ReviewDiffTest extends KnossosTestCase
         $repository->createScan($scan2, $ids['project'], 'full', hash('sha256', 'scanner-set'));
         $repository->completeScan($ids['project'], $scan2);
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->reviewDiff(
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff(
             $ids['project'],
             files: ['src/Checkout.php'],
             budgets: ['new_cycles' => 0],
@@ -174,12 +174,12 @@ final class ReviewDiffTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $scan2);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $previous = $queries->reviewDiff($ids['project'], files: ['src/Checkout.php'], budgets: ['new_cycles' => 0])->data['quality_gate']['baseline'];
+        $previous = $queries->services()->reviewQueries->reviewDiff($ids['project'], files: ['src/Checkout.php'], budgets: ['new_cycles' => 0])->data['quality_gate']['baseline'];
         assertSame($ids['scan'], $previous['snapshot']);
         assertSame('previous_scan', $previous['source']);
         assertSame(true, is_int($previous['age_seconds']) && $previous['age_seconds'] >= 0);
 
-        $given = $queries->reviewDiff($ids['project'], files: ['src/Checkout.php'], budgets: ['new_cycles' => 0], baselineSnapshot: $ids['scan'])->data['quality_gate']['baseline'];
+        $given = $queries->services()->reviewQueries->reviewDiff($ids['project'], files: ['src/Checkout.php'], budgets: ['new_cycles' => 0], baselineSnapshot: $ids['scan'])->data['quality_gate']['baseline'];
         assertSame('argument', $given['source']);
 
         $tree = new class implements \Knossos\Git\GitWorkingTreeProvider {
@@ -189,9 +189,9 @@ final class ReviewDiffTest extends KnossosTestCase
             }
         };
         $fromGit = ArchitectureQueryService::forDatabase($pdo, gitWorkingTree: $tree);
-        $warnings = $fromGit->reviewDiff($ids['project'], baseRef: 'main', budgets: ['new_cycles' => 0])->warnings;
+        $warnings = $fromGit->services()->reviewQueries->reviewDiff($ids['project'], baseRef: 'main', budgets: ['new_cycles' => 0])->warnings;
         assertSame(1, count(array_filter($warnings, static fn(string $w): bool => str_contains($w, 'not the graph of base_ref main'))));
-        $named = $fromGit->reviewDiff($ids['project'], baseRef: 'main', budgets: ['new_cycles' => 0], baselineSnapshot: $ids['scan'])->warnings;
+        $named = $fromGit->services()->reviewQueries->reviewDiff($ids['project'], baseRef: 'main', budgets: ['new_cycles' => 0], baselineSnapshot: $ids['scan'])->warnings;
         assertSame(0, count(array_filter($named, static fn(string $w): bool => str_contains($w, 'not the graph of base_ref'))));
     }
 

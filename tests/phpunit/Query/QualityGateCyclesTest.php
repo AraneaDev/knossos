@@ -34,11 +34,11 @@ final class QualityGateCyclesTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $next);
         $queries = ArchitectureQueryService::forDatabase($pdo);
 
-        $gate = $queries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
+        $gate = $queries->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
 
         self::assertSame(1, $gate->data['metrics']['new_cycles'], 'Counts 2 then 1; the difference read 0.');
         self::assertFalse($gate->data['passed']);
-        $branch = $queries->branchComparison($ids['project'], $ids['scan'], []);
+        $branch = $queries->services()->gateQueries->branchComparison($ids['project'], $ids['scan'], []);
         self::assertSame(1, $branch['cycles']['count'], 'The branch comparison applies the same membership rule.');
         self::assertSame(4, $branch['cycles']['items'][0]['size']);
     }
@@ -56,7 +56,7 @@ final class QualityGateCyclesTest extends KnossosTestCase
         $this->edge($repository, $ids, $next, 'calls', $n['F'], $n['E']);
         $repository->completeScan($ids['project'], $next);
 
-        $gate = ArchitectureQueryService::forDatabase($pdo)->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
+        $gate = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->qualityGate($ids['project'], $ids['scan'], ['new_cycles' => 0]);
 
         self::assertSame(1, $gate->data['metrics']['new_cycles'], 'A swap kept the count and read 0.');
         self::assertFalse($gate->data['passed']);
@@ -77,7 +77,7 @@ final class QualityGateCyclesTest extends KnossosTestCase
         $this->edge($repository, $ids, $next, 'imports', $modules['F'], $modules['E'], ['type_only' => true]);
         $repository->completeScan($project, $next);
 
-        $gate = ArchitectureQueryService::forDatabase($pdo)->qualityGate($project, $ids['scan'], ['new_cycles' => 0]);
+        $gate = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->qualityGate($project, $ids['scan'], ['new_cycles' => 0]);
 
         self::assertSame(0, $gate->data['metrics']['new_cycles']);
         self::assertTrue($gate->data['passed']);

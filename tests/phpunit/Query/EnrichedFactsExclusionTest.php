@@ -61,8 +61,8 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         $this->scanBoth();
 
         assertSame(
-            $this->comparable($this->query($this->plain)->architectureSummary($this->projectId)),
-            $this->comparable($this->query($this->enriched)->architectureSummary($this->projectId)),
+            $this->comparable($this->query($this->plain)->services()->summaryQueries->architectureSummary($this->projectId)),
+            $this->comparable($this->query($this->enriched)->services()->summaryQueries->architectureSummary($this->projectId)),
         );
     }
 
@@ -71,12 +71,12 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         $this->scanBoth();
 
         assertSame(
-            $this->comparable($this->query($this->plain)->architectureHealth($this->projectId, includeExternal: true)),
-            $this->comparable($this->query($this->enriched)->architectureHealth($this->projectId, includeExternal: true)),
+            $this->comparable($this->query($this->plain)->services()->healthQueries->architectureHealth($this->projectId, includeExternal: true)),
+            $this->comparable($this->query($this->enriched)->services()->healthQueries->architectureHealth($this->projectId, includeExternal: true)),
         );
         assertSame(
-            $this->query($this->plain)->architectureHealth($this->projectId)->data,
-            $this->query($this->enriched)->architectureHealth($this->projectId)->data,
+            $this->query($this->plain)->services()->healthQueries->architectureHealth($this->projectId)->data,
+            $this->query($this->enriched)->services()->healthQueries->architectureHealth($this->projectId)->data,
         );
     }
 
@@ -84,8 +84,8 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
     {
         $this->scanBoth();
 
-        $plain = $this->query($this->plain)->architectureHealth($this->projectId)->data['dead_code_candidates'];
-        $enriched = $this->query($this->enriched)->architectureHealth($this->projectId)->data['dead_code_candidates'];
+        $plain = $this->query($this->plain)->services()->healthQueries->architectureHealth($this->projectId)->data['dead_code_candidates'];
+        $enriched = $this->query($this->enriched)->services()->healthQueries->architectureHealth($this->projectId)->data['dead_code_candidates'];
         assertSame($plain, $enriched);
     }
 
@@ -117,7 +117,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         $changed = $this->enriched->query("SELECT display_name FROM nodes WHERE kind = 'ext:endpoint'")->fetchColumn();
         assertSame('task search (changed)', $changed, 'Only the enricher output changed.');
 
-        $diff = $this->query($this->enriched)->snapshotDiff($first->projectId, $this->scanId($first));
+        $diff = $this->query($this->enriched)->services()->diffQueries->snapshotDiff($first->projectId, $this->scanId($first));
 
         assertSame(0, $diff->data['bounds']['total_changes']);
         assertSame(['raised' => 0, 'lowered' => 0], $diff->data['confidence_changes']);
@@ -133,7 +133,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
             $baseline = $this->scanEnricherFlow($pdo, $this->project);
             $this->request($name === 'enriched');
             $this->scanEnricherFlow($pdo, $this->project);
-            $gates[$name] = $this->comparable($this->query($pdo)->qualityGate($baseline->projectId, $this->scanId($baseline), $budgets, self::POLICIES));
+            $gates[$name] = $this->comparable($this->query($pdo)->services()->gateQueries->qualityGate($baseline->projectId, $this->scanId($baseline), $budgets, self::POLICIES));
         }
         assertGreaterThan(0, $this->enrichedRows($this->enriched));
 
@@ -149,7 +149,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         $unreached = (int) $this->enriched->query("SELECT COUNT(*) FROM nodes n WHERE n.kind = 'ext:echo' AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.target_id = n.id)")->fetchColumn();
         assertGreaterThan(0, $unreached);
 
-        $candidates = $this->query($this->enriched)->architectureHealth($result->projectId)->data['dead_code_candidates'];
+        $candidates = $this->query($this->enriched)->services()->healthQueries->architectureHealth($result->projectId)->data['dead_code_candidates'];
 
         $kinds = array_column(array_column($candidates, 'component'), 'kind');
         assertNotSame([], $kinds, 'Native candidates are still reported.');
@@ -163,8 +163,8 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         $this->scanBoth();
         assertSame(1, (int) $this->enriched->query("SELECT COUNT(*) FROM edges WHERE kind = 'extends' AND origin = 'enricher'")->fetchColumn());
 
-        $plain = $this->query($this->plain)->architectureHealth($this->projectId)->data['dead_code_candidates'];
-        $enriched = $this->query($this->enriched)->architectureHealth($this->projectId)->data['dead_code_candidates'];
+        $plain = $this->query($this->plain)->services()->healthQueries->architectureHealth($this->projectId)->data['dead_code_candidates'];
+        $enriched = $this->query($this->enriched)->services()->healthQueries->architectureHealth($this->projectId)->data['dead_code_candidates'];
 
         assertContains('backend.app.handlers.Orphan::handle', array_column(array_column($plain, 'component'), 'canonical_name'));
         assertSame($plain, $enriched);
@@ -218,13 +218,13 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
             file_put_contents($settings, $original);
             $query = $this->query($pdo);
             $results[$name] = [
-                'gate' => $this->comparable($query->qualityGate($baseline->projectId, $this->scanId($baseline), $budgets, sarif: true)),
-                'summary' => $this->comparable($query->architectureSummary($baseline->projectId)),
-                'trends' => $this->comparable($query->architectureTrends($baseline->projectId)),
+                'gate' => $this->comparable($query->services()->gateQueries->qualityGate($baseline->projectId, $this->scanId($baseline), $budgets, sarif: true)),
+                'summary' => $this->comparable($query->services()->summaryQueries->architectureSummary($baseline->projectId)),
+                'trends' => $this->comparable($query->services()->gateQueries->architectureTrends($baseline->projectId)),
             ];
             $this->projectId = $baseline->projectId;
         }
-        $codes = array_column($this->query($this->enriched)->listDiagnostics($this->projectId)->data['diagnostics'], 'code');
+        $codes = array_column($this->query($this->enriched)->services()->diagnosticsQueries->listDiagnostics($this->projectId)->data['diagnostics'], 'code');
 
         assertContains('ENRICHER_REPORTED:FIXTURE_NOISE', $codes, 'list_diagnostics still lists them.');
         assertContains('ENRICHER_REPORTED:FIXTURE_FAULT', $codes);
@@ -244,7 +244,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         $fanIn = new FileFanInQuery($pdo);
 
         return [
-            'brief' => $this->comparable($this->query($pdo)->exportAgentBrief($this->projectId)),
+            'brief' => $this->comparable($this->query($pdo)->services()->briefQueries->exportAgentBrief($this->projectId, 4000)),
             'kinds' => $findings->summary($this->projectId),
             'hotspots' => $findings->complexityHotspots($this->projectId),
             'fan_in' => $fanIn->forPaths($this->projectId, $paths, 5),

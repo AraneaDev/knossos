@@ -106,7 +106,7 @@ final class StronglyConnectedComponentsTest extends KnossosTestCase
      */
     private static function cyclesOf(PDO $pdo, string $projectId): array
     {
-        $data = ArchitectureQueryService::forDatabase($pdo)->dependencyCycles($projectId)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries->dependencyCycles($projectId)->data;
         $cycles = array_map(
             static fn(array $cycle): array => array_map(
                 static fn(mixed $member): string => is_array($member) ? (string) ($member['canonical_name'] ?? $member['id']) : (string) $member,

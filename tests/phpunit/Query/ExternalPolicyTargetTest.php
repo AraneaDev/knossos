@@ -22,7 +22,7 @@ final class ExternalPolicyTargetTest extends KnossosTestCase
     {
         [$queries, $ids, $backend] = $this->fixture();
 
-        $result = $queries->checkArchitecture($ids['project'], [
+        $result = $queries->services()->policyQueries->checkArchitecture($ids['project'], [
             ['id' => 'backend-allow', 'from_boundary' => $backend, 'allow_targets' => [$backend, '@external'], 'edge_kinds' => ['calls']],
         ]);
 
@@ -35,10 +35,10 @@ final class ExternalPolicyTargetTest extends KnossosTestCase
     {
         [$queries, $ids, $backend] = $this->fixture();
 
-        $external = $queries->checkArchitecture($ids['project'], [
+        $external = $queries->services()->policyQueries->checkArchitecture($ids['project'], [
             ['id' => 'no-vendor', 'from_boundary' => $backend, 'deny_targets' => ['@external'], 'edge_kinds' => ['calls']],
         ]);
-        $unassigned = $queries->checkArchitecture($ids['project'], [
+        $unassigned = $queries->services()->policyQueries->checkArchitecture($ids['project'], [
             ['id' => 'no-unplaced', 'from_boundary' => $backend, 'deny_targets' => ['@unassigned'], 'edge_kinds' => ['calls']],
         ]);
 
@@ -57,7 +57,7 @@ final class ExternalPolicyTargetTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'imports', $ids['checkout'], $react, 'react'), $ids['project'], 'imports', $ids['checkout'], $react, $ids['file'], 2, 2, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $result = $queries->checkArchitecture($ids['project'], [
+        $result = $queries->services()->policyQueries->checkArchitecture($ids['project'], [
             ['id' => 'backend-allow', 'from_boundary' => $backend, 'allow_targets' => [$backend, '@external'], 'edge_kinds' => ['calls', 'imports']],
         ]);
 

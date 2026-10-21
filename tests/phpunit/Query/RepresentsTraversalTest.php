@@ -124,7 +124,7 @@ final class RepresentsTraversalTest extends KnossosTestCase
         assertContains('represents', AbstractArchitectureQueryService::IMPACT_EDGE_KINDS);
 
         // A closed Backend boundary shows the check runs over the scanned graph at all.
-        $result = $this->query()->checkArchitecture($this->projectId, [
+        $result = $this->query()->services()->policyQueries->checkArchitecture($this->projectId, [
             ['id' => 'frontend-no-backend', 'from_boundary' => 'Frontend', 'deny_targets' => ['Backend']],
             ['id' => 'backend-closed', 'from_boundary' => 'Backend', 'deny_targets' => ['Backend']],
         ]);

@@ -22,11 +22,11 @@ final readonly class ProjectCatalogQueryService extends AbstractArchitectureQuer
     /**
      * Scanned projects with freshness and graph size, so a caller can pick the right project_id.
      *
-     * Every parameter is required. `ArchitectureQueryService::listProjects()` is
-     * the only caller and always passes all three, so defaults here were a
-     * second copy of values that already live on that facade: unreachable, and
-     * free to drift out of step with the ones callers actually get. The facade
-     * owns them.
+     * Every parameter is required. The `list_projects` tool and the CLI take
+     * their defaults from the tool catalogue and always pass all three, so
+     * defaults here would be a second copy of those values: unreachable, and
+     * free to drift out of step with the ones callers actually get. The
+     * catalogue owns them.
      */
     public function listProjects(int $limit, int $offset, bool $includeRoots): ResultEnvelope
     {

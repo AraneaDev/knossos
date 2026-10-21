@@ -77,7 +77,7 @@ final class GitTest extends KnossosTestCase
             }
         };
         $query = ArchitectureQueryService::forDatabase($pdo, gitHistory: $historyProvider);
-        $result = $query->changeImpact($ids['project'], $ids['invoice']);
+        $result = $query->services()->changeQueries->changeImpact($ids['project'], $ids['invoice'], 90, 500, 4, 100, [], 'possible', 1000);
         assertSame(true, $result->data['git']['available']);
         assertSame(6, $result->data['git']['commits_examined']);
         assertSame('App\\Checkout', $result->data['risk_ranking'][0]['component']['canonical_name']);
@@ -85,13 +85,13 @@ final class GitTest extends KnossosTestCase
         assertSame(5, $result->data['risk_ranking'][0]['change_signals']['commit_count']);
         assertContains('not proof of risk', $result->warnings[array_key_last($result->warnings)]);
 
-        $fallback = ArchitectureQueryService::forDatabase($pdo)->changeImpact($ids['project'], $ids['invoice']);
+        $fallback = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->changeImpact($ids['project'], $ids['invoice'], 90, 500, 4, 100, [], 'possible', 1000);
         assertSame(false, $fallback->data['git']['available']);
         assertSame(0, $fallback->data['risk_ranking'][0]['change_signals']['commit_count']);
         assertContains('provider_unavailable', implode(' ', $fallback->warnings));
-        assertThrows(fn() => $query->changeImpact($ids['project'], $ids['invoice'], sinceDays: 0), InvalidArgumentException::class);
-        assertThrows(fn() => $query->changeImpact($ids['project'], $ids['invoice'], maxCommits: 0), InvalidArgumentException::class);
-        assertThrows(fn() => $query->changeImpact($ids['project'], $ids['invoice'], maxCommits: 5001), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changeImpact($ids['project'], $ids['invoice'], sinceDays: 0, maxCommits: 500, maxDepth: 4, limit: 100, edgeKinds: [], minConfidence: 'possible', timeoutMs: 1000), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changeImpact($ids['project'], $ids['invoice'], sinceDays: 90, maxCommits: 0, maxDepth: 4, limit: 100, edgeKinds: [], minConfidence: 'possible', timeoutMs: 1000), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changeImpact($ids['project'], $ids['invoice'], sinceDays: 90, maxCommits: 5001, maxDepth: 4, limit: 100, edgeKinds: [], minConfidence: 'possible', timeoutMs: 1000), InvalidArgumentException::class);
 
     }
 
@@ -161,20 +161,20 @@ final class GitTest extends KnossosTestCase
             }
         };
         $query = ArchitectureQueryService::forDatabase($pdo, gitWorkingTree: $workingTree);
-        assertThrows(fn() => $query->changedFilesImpact($ids['project'], ['some.php'], baseRef: 'main'), InvalidArgumentException::class);
-        $explicit = $query->changedFilesImpact($ids['project'], ['src/Checkout.php', 'src/missing.php']);
+        assertThrows(fn() => $query->services()->changeQueries->changedFilesImpact($ids['project'], ['some.php'], baseRef: 'main'), InvalidArgumentException::class);
+        $explicit = $query->services()->changeQueries->changedFilesImpact($ids['project'], ['src/Checkout.php', 'src/missing.php']);
         assertSame(2, count($explicit->data['direct_components']));
         assertSame(['src/missing.php'], $explicit->data['unresolved_files']);
         assertSame(false, $explicit->data['git']['used']);
         assertSame('src/Checkout.php', $explicit->evidence[0]['path']);
 
-        $discovered = $query->changedFilesImpact($ids['project'], workingTree: true, baseRef: 'main');
+        $discovered = $query->services()->changeQueries->changedFilesImpact($ids['project'], workingTree: true, baseRef: 'main');
         assertSame(true, $discovered->data['git']['used']);
         assertSame('src/Old.php', $discovered->data['git']['renames'][0]['from']);
-        assertThrows(fn() => $query->changedFilesImpact($ids['project']), InvalidArgumentException::class);
-        assertThrows(fn() => $query->changedFilesImpact($ids['project'], ['../escape.php']), InvalidArgumentException::class);
-        assertThrows(fn() => $query->changedFilesImpact($ids['project'], ['src/Checkout.php'], workingTree: true), InvalidArgumentException::class);
-        assertThrows(fn() => $query->changedFilesImpact($ids['project'], array_fill(0, 51, 'x.php')), InvalidArgumentException::class);
-        assertThrows(fn() => ArchitectureQueryService::forDatabase($pdo)->changedFilesImpact($ids['project'], [], true), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changedFilesImpact($ids['project']), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changedFilesImpact($ids['project'], ['../escape.php']), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changedFilesImpact($ids['project'], ['src/Checkout.php'], workingTree: true), InvalidArgumentException::class);
+        assertThrows(fn() => $query->services()->changeQueries->changedFilesImpact($ids['project'], array_fill(0, 51, 'x.php')), InvalidArgumentException::class);
+        assertThrows(fn() => ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->changedFilesImpact($ids['project'], [], true), InvalidArgumentException::class);
     }
 }

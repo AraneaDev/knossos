@@ -32,7 +32,7 @@ final class SnapshotDiffTest extends KnossosTestCase
         $repository->saveNode($ids['invoice'], $project, 'php', 'class', 'App\\InvoiceService', 'InvoiceService', null, $file, 3, 17, 'ast', 'certain', [], 'php:file:src/InvoiceService.php', $next);
         $repository->completeScan($project, $next);
 
-        $diff = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($project, $ids['scan']);
+        $diff = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($project, $ids['scan']);
 
         $counts = $diff->data['changes']['components']['counts'];
         self::assertSame(0, $counts['changed']);
@@ -72,7 +72,7 @@ final class SnapshotDiffTest extends KnossosTestCase
             file_put_contents($root . '/src/Caller.php', $caller("        \$unused = 1;\n\n"));
             $scanner->scan($root);
 
-            $diff = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($first->projectId, $first->snapshotId);
+            $diff = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($first->projectId, $first->snapshotId);
 
             $calls = static fn(string $kind): array => array_values(array_filter(
                 $diff->data['changes']['relationships'][$kind],
@@ -90,7 +90,7 @@ final class SnapshotDiffTest extends KnossosTestCase
             // A second call to the same method is a new occurrence: one added, the first kept.
             file_put_contents($root . '/src/Caller.php', $caller("        \$unused = 1;\n\n        Helper::shine();\n"));
             $second = $scanner->scan($root);
-            $again = ArchitectureQueryService::forDatabase($pdo)->snapshotDiff($first->projectId, $first->snapshotId, $second->snapshotId);
+            $again = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($first->projectId, $first->snapshotId, $second->snapshotId);
             $added = array_values(array_filter($again->data['changes']['relationships']['added'], static fn(array $change): bool => $change['after']['kind'] === 'calls'));
             self::assertCount(1, $added);
             self::assertSame([], array_values(array_filter($again->data['changes']['relationships']['removed'], static fn(array $change): bool => $change['before']['kind'] === 'calls')));

@@ -59,7 +59,7 @@ final class ConstructorReachTest extends KnossosTestCase
     {
         [$pdo, $projectId, $root] = $this->constructing();
         try {
-            $found = ArchitectureQueryService::forDatabase($pdo)->testImpact($projectId, files: ['src/Core/Helper.php']);
+            $found = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries->testImpact($projectId, files: ['src/Core/Helper.php']);
             $paths = array_column($found->data['test_files'], 'path');
             assertContains('tests/RunnerTest.php', $paths);
             // A subclass without a constructor of its own runs its parent's.

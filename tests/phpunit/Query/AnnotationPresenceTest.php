@@ -21,10 +21,10 @@ final class AnnotationPresenceTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'present', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\RenamedAway', 'note', 'orphaned', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'present', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\RenamedAway', 'note', 'orphaned', execute: true);
 
-        $result = $queries->listAnnotations($ids['project']);
+        $result = $queries->services()->annotationQueries->listAnnotations($ids['project']);
 
         $presence = array_column($result->data['annotations'], 'component_status', 'canonical_name');
         self::assertSame(['App\\Checkout' => 'present', 'App\\RenamedAway' => 'missing'], $presence);
@@ -40,13 +40,13 @@ final class AnnotationPresenceTest extends KnossosTestCase
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the model saw this', execute: true);
-        $queries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the person wrote this', execute: true, author: 'user');
-        $queries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'declared in that file too', execute: true);
-        $before = array_column($queries->listAnnotations($ids['project'])->data['annotations'], 'stale');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the model saw this', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'the person wrote this', execute: true, author: 'user');
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'App\\InvoiceService', 'note', 'declared in that file too', execute: true);
+        $before = array_column($queries->services()->annotationQueries->listAnnotations($ids['project'])->data['annotations'], 'stale');
         $pdo->exec("UPDATE files SET content_hash = 'edited' WHERE relative_path = 'src/Checkout.php'");
 
-        $rows = $queries->listAnnotations($ids['project'])->data['annotations'];
+        $rows = $queries->services()->annotationQueries->listAnnotations($ids['project'])->data['annotations'];
 
         self::assertSame([false, false, false], $before);
         self::assertSame(
