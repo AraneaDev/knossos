@@ -1,6 +1,7 @@
 import ts from "typescript";
 import {
     callableKind,
+    containerDeclaration,
     isDeclaration,
     referenceableDeclaration,
     unalias,
@@ -103,7 +104,7 @@ export class TableDispatch {
                 call,
                 signature,
                 null,
-                (fn) => this.context.bodySource(fn),
+                (fn) => bodySource(this.context, fn),
             ))
                 this.boundArguments(call, fn, target);
         }
@@ -329,4 +330,18 @@ function tableFunction(property) {
     )
         return property;
     return undefined;
+}
+
+/**
+ * The node the calls in `node` are attributed to once the file's walk is
+ * done: its nearest enclosing container's, else the module's. A function
+ * with no node of its own, `module.exports = function ({ tape }) {}`,
+ * stands for that.
+ */
+function bodySource(context, node) {
+    for (let at = node.parent; at !== undefined; at = at.parent) {
+        const id = context.declaredIds.get(at);
+        if (id !== undefined && containerDeclaration(at)) return id;
+    }
+    return context.moduleId;
 }
