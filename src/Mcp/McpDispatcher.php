@@ -263,7 +263,7 @@ final class McpDispatcher
                     // waiting; send nothing back (handle() drops the entry).
                     return null;
                 }
-                $response = $this->toolError($id, 'KNOSSOS_SCAN_CANCELLED', $cancelled->getMessage());
+                $response = $this->toolError($id, ToolErrorMapper::code($cancelled), ToolErrorMapper::publicMessage($cancelled));
             } catch (Throwable $error) {
                 $response = $this->toolError($id, ToolErrorMapper::code($error), ToolErrorMapper::publicMessage($error));
             }

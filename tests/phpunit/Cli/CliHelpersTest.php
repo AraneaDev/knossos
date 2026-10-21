@@ -385,11 +385,23 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testErrorRendererDispatchesDiscoveryException(): void
     {
-        // M14 / render() match-arm: DiscoveryException -> KNOSSOS_DISCOVERY_ERROR.
+        // M14 / render() match-arm: DiscoveryException -> KNOSSOS_UNSAFE_PATH, as over MCP.
         [$exit, $written] = self::renderError(new DiscoveryException('d'));
 
         assertSame(2, $exit);
-        assertSame('KNOSSOS_DISCOVERY_ERROR: d' . PHP_EOL, $written);
+        assertSame('KNOSSOS_UNSAFE_PATH: d' . PHP_EOL, $written);
+    }
+
+    public function testErrorRendererSaysABusyDatabaseIsBusyWithoutTheDriverText(): void
+    {
+        // A contended write lock is not a storage fault: it gets the busy code
+        // and the fixed retry message, since the driver's text names files.
+        $busy = new \PDOException('SQLSTATE[HY000]: General error: 5 database is locked: /srv/x.sqlite');
+        (new \ReflectionProperty(\PDOException::class, 'code'))->setValue($busy, 'HY000');
+        [$exit, $written] = self::renderError(new RuntimeException('could not write', 0, $busy));
+
+        assertSame(2, $exit);
+        assertSame('KNOSSOS_DATABASE_BUSY: ' . \Knossos\Store\SqliteBusy::MESSAGE . PHP_EOL, $written);
     }
 
     public function testErrorRendererDispatchesScanBusyException(): void
