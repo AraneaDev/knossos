@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp\Protocol;
 
+use Knossos\Mcp\JsonRpc;
 use RuntimeException;
 
 /**
@@ -15,7 +16,7 @@ use RuntimeException;
  */
 final class UnsupportedProtocolVersionException extends RuntimeException
 {
-    public const CODE = -32022;
+    public const CODE = JsonRpc::UNSUPPORTED_PROTOCOL_VERSION;
 
     /** @param list<string> $supported */
     public function __construct(public readonly string $requested, public readonly array $supported)

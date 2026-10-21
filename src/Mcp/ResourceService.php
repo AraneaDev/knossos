@@ -140,6 +140,6 @@ final readonly class ResourceService
      */
     private function json(array $value): string
     {
-        return json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        return json_encode($value, JsonRpc::WIRE_FLAGS);
     }
 }

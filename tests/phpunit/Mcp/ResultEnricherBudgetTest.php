@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Mcp;
 
+use Knossos\Mcp\JsonRpc;
 use Knossos\Mcp\NextStepPlanner;
 use Knossos\Mcp\ResultEnricher;
 use Knossos\Query\StalenessProbe;
@@ -280,21 +281,25 @@ final class ResultEnricherBudgetTest extends KnossosTestCase
         $envelope = new ResultEnvelope('catalog', '', 'rows', ['components' => $rows]);
 
         $result = $enricher->enrich($envelope, 'search_architecture', 'compact', 4_000);
-        $wire = json_encode($result->jsonSerialize(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        $wire = json_encode($result->jsonSerialize(), JsonRpc::WIRE_FLAGS);
 
         assertSame(true, $result->truncated);
         assertSame(true, strlen($wire) <= 4_000, 'The result as the transport encodes it fits the budget.');
         assertSame(strlen($wire), $result->meta['result_bytes'], 'result_bytes is the size the transport sends.');
     }
 
-    /** The enricher measures with the flags the stdio transport encodes with; were they to differ, max_chars would measure something else. */
+    /**
+     * The enricher measures with the flags the transports encode with; were
+     * they to differ, max_chars would measure something else. Both stdio and
+     * HTTP encode through JsonRpc::encode(), which uses JsonRpc::WIRE_FLAGS.
+     */
     #[Group('mcp')]
     public function testTheMeasuringFlagsAreTheTransportFlags(): void
     {
-        $flags = 'JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE';
-
-        assertSame(JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE, ResultEnricher::WIRE_FLAGS);
-        assertSame(true, str_contains((string) file_get_contents(self::repositoryRoot() . '/src/Mcp/StdioServer.php'), 'json_encode($message, ' . $flags . ')'));
+        assertSame(JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE, JsonRpc::WIRE_FLAGS);
+        foreach (['ResultEnricher.php' => 'JsonRpc::WIRE_FLAGS', 'StdioServer.php' => 'JsonRpc::encode($message, ', 'HttpEndpoint.php' => 'JsonRpc::encode($payload, '] as $file => $needle) {
+            assertSame(true, str_contains((string) file_get_contents(self::repositoryRoot() . '/src/Mcp/' . $file), $needle), $file);
+        }
     }
 
     /**

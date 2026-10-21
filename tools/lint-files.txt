@@ -176,6 +176,7 @@ php	src/Mcp/BoundaryLegend.php
 php	src/Mcp/ComponentLegend.php
 php	src/Mcp/HttpEndpoint.php
 php	src/Mcp/HttpSessionStore.php
+php	src/Mcp/JsonRpc.php
 php	src/Mcp/JsonRpcId.php
 php	src/Mcp/LegendCompression.php
 php	src/Mcp/McpDispatcher.php
@@ -608,6 +609,7 @@ php	tests/phpunit/Mcp/HttpRouterTest.php
 php	tests/phpunit/Mcp/HttpSessionStoreDefaultsTest.php
 php	tests/phpunit/Mcp/HttpTest.php
 php	tests/phpunit/Mcp/JsonRpcConformanceTest.php
+php	tests/phpunit/Mcp/JsonRpcTest.php
 php	tests/phpunit/Mcp/MaxCharsTest.php
 php	tests/phpunit/Mcp/McpTest.php
 php	tests/phpunit/Mcp/MoveProjectToolTest.php
