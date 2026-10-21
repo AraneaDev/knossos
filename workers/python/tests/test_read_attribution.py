@@ -267,3 +267,24 @@ def test_a_discovered_base_module_names_its_annotation_probes_for_its_subclasses
     assert "y.py" in contributions["a.py"]["reads"]
     assert "pkg/models.py" not in contributions["a.py"]["reads"]
     _assert_protocol(result, contributions, files)
+
+
+def test_a_base_module_scanned_first_still_keeps_its_annotation_probes(worker: ModuleType, project: Any) -> None:
+    """The base module's probe stays its own when its scan comes before the subclass's.
+
+    ``b.py`` sorts before ``c.py``, so its classes are resolved by its own
+    scan and the subclass's lookup is answered from that.
+    """
+    tree = {
+        "b.py": "from pkg import models\n\n\nclass Mixin:\n    index: models.Index\n",
+        "c.py": "import b\n\n\nclass Svc(b.Mixin):\n    def go(self):\n        return self.index.search()\n",
+        "pkg/__init__.py": "",
+    }
+    root = project(tree)
+    files = sorted(tree)
+    result, contributions = _scan(worker, root, files, files)
+
+    assert contributions["b.py"]["reads"]["pkg/models.py"] is None
+    assert "b.py" in contributions["c.py"]["reads"]
+    assert "pkg/models.py" not in contributions["c.py"]["reads"]
+    _assert_protocol(result, contributions, files)

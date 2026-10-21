@@ -118,6 +118,23 @@ class ProjectModuleIndex(ReadRecorder):
         # (:meth:`class_attributes`).
         self._class_attributes: dict[str, dict[str, str]] = {}
         self._class_bases: dict[str, list[str]] = {}
+        # Each module's classes as written, until one is asked about, and
+        # then what resolving them read (:meth:`_class_attribute_reads`).
+        self._class_sources: dict[
+            str,
+            tuple[
+                list[tuple[str, list[tuple[str, str | None]], list[str | None]]],
+                dict[str, str],
+                dict[str, str],
+                list[ast.Import | ast.ImportFrom],
+                str,
+                bool,
+            ],
+        ] = {}
+        self._class_reads: dict[str, set[str]] = {}
+        # The modules a discovered file's own scan declares, which names what
+        # resolving their classes reads.
+        self._self_scanned: set[str] = set()
 
     @property
     def prefixes(self) -> list[tuple[str, ...]]:
@@ -489,6 +506,7 @@ class ProjectModuleIndex(ReadRecorder):
                 derived = owner is not None
                 if derived and self._owns(path):
                     self.unattributed_reads |= declared
+                    self._self_scanned.add(name)
                 else:
                     located |= declared
                 if derived and name != module:
@@ -649,48 +667,84 @@ class ProjectModuleIndex(ReadRecorder):
         location: str,
         is_package: bool,
     ) -> None:
-        """Record what each top-level class annotates its attributes as, and the classes it derives from.
+        """Keep what each top-level class annotates its attributes as, and the classes it derives from, as written.
 
-        ``index: Index`` in a class body types ``self.index`` in the class and
-        in every class deriving from it, in this module or another. Only an
-        annotation or a base naming a class this module declares or imports
-        counts, as for :meth:`_add_returns`, or one named through a module it
-        imports (``models.Base``, ``m.Base``).
+        They are resolved when the module's own scan adopts it, or when a
+        class of the module is first asked about (:meth:`_class_attribute_reads`), not here: a dotted name reads the
+        module it goes through, and reading modules while this one is being
+        declared would make declaring a module recurse through every module
+        its classes name.
         """
-        classes = [child for child in module_statements(tree) if isinstance(child, ast.ClassDef)]
-        # Only the names a dotted base or annotation starts with are looked up
-        # as modules, so a module naming none reads nothing more.
-        heads = {
-            named.split(".")[0]
-            for child in classes
-            for node in [
-                *child.bases,
-                *(optional_inner(item.annotation) for item in child.body if isinstance(item, ast.AnnAssign)),
-            ]
-            if (named := dotted(node) if node is not None else None) is not None and "." in named
-        }
-        modules = self._module_aliases(tree, location, is_package, heads) if heads else {}
+        classes = [
+            (
+                f"{name}.{child.name}",
+                [
+                    (item.target.id, dotted(inner) if (inner := optional_inner(item.annotation)) is not None else None)
+                    for item in child.body
+                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+                ],
+                [dotted(base) for base in child.bases],
+            )
+            for child in module_statements(tree)
+            if isinstance(child, ast.ClassDef)
+        ]
+        if not classes:
+            return
+        imports = [child for child in module_statements(tree) if isinstance(child, (ast.Import, ast.ImportFrom))]
+        self._class_sources[name] = (classes, declarations, imported, imports, location, is_package)
 
-        def named_class(node: ast.AST | None) -> str | None:
-            named = dotted(node) if node is not None else None
-            target = None if named is None else declarations.get(named) or imported.get(named)
-            if target is None and named is not None and "." in named:
-                target = self._module_qualified(named, modules)
-            return target.removeprefix("py:class:") if target is not None and target.startswith("py:class:") else None
+    def _class_attribute_reads(self, module: str) -> set[str]:
+        """Resolve the classes :meth:`_add_class_attributes` kept for ``module``, once, and return what that read.
 
-        for child in classes:
-            canonical = f"{name}.{child.name}"
-            attributes: dict[str, str] = {}
-            for item in child.body:
-                if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
-                    held = named_class(optional_inner(item.annotation))
-                    if held is not None:
-                        attributes[item.target.id] = held
-            self._class_attributes[canonical] = attributes
-            self._class_bases[canonical] = [base for base in map(named_class, child.bases) if base is not None]
+        Only an annotation or a base naming a class the module declares or
+        imports counts, as for :meth:`_add_returns`, or one named through a
+        module it imports (``models.Base``, ``m.Base``). The reads are the
+        module's own, so the caller decides who they are named by.
+        """
+        if module in self._class_reads:
+            return self._class_reads[module]
+        source = self._class_sources.get(module)
+        if source is None:
+            return set()
+        classes, declarations, imported, imports, location, is_package = source
+        self.open_scope()
+        try:
+            # Only the names a dotted base or annotation starts with are looked
+            # up as modules, so a module naming none reads nothing more.
+            heads = {
+                named.split(".")[0]
+                for _, attributes, bases in classes
+                for named in [*(named for _, named in attributes), *bases]
+                if named is not None and "." in named
+            }
+            modules = self._module_aliases(imports, location, is_package, heads) if heads else {}
 
-    def _module_aliases(self, tree: ast.Module, location: str, is_package: bool, heads: set[str]) -> dict[str, str]:
-        """The modules ``tree``'s top-level imports bind to the names in ``heads``.
+            def named_class(named: str | None) -> str | None:
+                target = None if named is None else declarations.get(named) or imported.get(named)
+                if target is None and named is not None and "." in named:
+                    target = self._module_qualified(named, modules)
+                return (
+                    target.removeprefix("py:class:") if target is not None and target.startswith("py:class:") else None
+                )
+
+            for canonical, attributes, bases in classes:
+                held_by = {attribute: named_class(named) for attribute, named in attributes}
+                self._class_attributes[canonical] = {
+                    attribute: held for attribute, held in held_by.items() if held is not None
+                }
+                self._class_bases[canonical] = [base for base in map(named_class, bases) if base is not None]
+        except BaseException:
+            self._note(self.close_scope())
+            raise
+        reads = self.close_scope()
+        self._class_reads[module] = reads
+        del self._class_sources[module]
+        return reads
+
+    def _module_aliases(
+        self, imports: list[ast.Import | ast.ImportFrom], location: str, is_package: bool, heads: set[str]
+    ) -> dict[str, str]:
+        """The modules a module's top-level ``imports`` bind to the names in ``heads``.
 
         ``import pkg.models as m`` binds ``m`` to ``pkg.models``, ``import
         pkg.models`` binds ``pkg``, and ``from pkg import models`` binds
@@ -698,7 +752,7 @@ class ProjectModuleIndex(ReadRecorder):
         submodule exists.
         """
         modules: dict[str, str] = {}
-        for child in module_statements(tree):
+        for child in imports:
             if isinstance(child, ast.Import):
                 for alias in child.names:
                     top = alias.name.split(".")[0]
@@ -732,7 +786,14 @@ class ProjectModuleIndex(ReadRecorder):
         Reads the class's module first, through :meth:`module_declarations`,
         so what that cost is named as read by whoever asked.
         """
-        self.module_declarations(held.rpartition(".")[0])
+        module = held.rpartition(".")[0]
+        self.module_declarations(module)
+        reads = self._class_attribute_reads(module)
+        # A discovered module's own scan names them, as it does its re-exports.
+        if module in self._self_scanned:
+            self.unattributed_reads |= reads
+        else:
+            self._note(reads)
         return self._class_attributes.get(held, {}), self._class_bases.get(held, [])
 
     def initialiser(self, target: str) -> str | None:
@@ -818,6 +879,10 @@ class ProjectModuleIndex(ReadRecorder):
         # An importer later in the batch names this file, as a read would.
         self._exposed[name] = located
         self._declare(tree, name, PurePosixPath(relative).stem == "__init__", location)
+        # Resolved again from this tree, and named as this file's reads.
+        self._class_reads.pop(name, None)
+        self._self_scanned.add(name)
+        self._note(self._class_attribute_reads(name))
         return name, None if name == location else owner.relative_to(self.root).as_posix()
 
     def collides(self, absolute: Path, is_package: bool) -> bool:
