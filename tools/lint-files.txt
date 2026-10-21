@@ -144,8 +144,6 @@ php	src/Discovery/Manifest/YamlManifest.php
 php	src/Discovery/Manifest/YamlPaths.php
 php	src/Discovery/ProjectDiscoverer.php
 php	src/Discovery/ProjectUnit.php
-php	src/Discovery/RootGuard.php
-php	src/Discovery/RootNotFoundException.php
 php	src/Discovery/SourceClassifier.php
 php	src/Discovery/TreeWalkState.php
 php	src/Discovery/TreeWalker.php
@@ -326,6 +324,9 @@ php	src/Reconciliation/UrlTemplate.php
 php	src/Result/PaneStatus.php
 php	src/Result/ResultEnvelope.php
 php	src/Roots/AllowedRoots.php
+php	src/Roots/RootException.php
+php	src/Roots/RootGuard.php
+php	src/Roots/RootNotFoundException.php
 php	src/Roots/RootsFile.php
 php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
@@ -549,7 +550,6 @@ php	tests/phpunit/Discovery/ManifestRootDocumentationTest.php
 php	tests/phpunit/Discovery/ProjectDiscovererTest.php
 php	tests/phpunit/Discovery/ProjectUnitTest.php
 php	tests/phpunit/Discovery/RegularFileOpenerHelperTest.php
-php	tests/phpunit/Discovery/RootGuardTest.php
 php	tests/phpunit/Discovery/ShebangDiscoveryTest.php
 php	tests/phpunit/Discovery/SourceClassifierTest.php
 php	tests/phpunit/Discovery/UnitReadConsistencyTest.php
@@ -798,6 +798,8 @@ php	tests/phpunit/ReleaseChecksTest.php
 php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
 php	tests/phpunit/Roots/AllowedRootsTest.php
+php	tests/phpunit/Roots/RootExceptionTest.php
+php	tests/phpunit/Roots/RootGuardTest.php
 php	tests/phpunit/Roots/RootsFileTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php

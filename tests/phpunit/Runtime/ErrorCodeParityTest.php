@@ -9,6 +9,8 @@ use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Cli\CliErrorRenderer;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Mcp\ToolErrorMapper;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootNotFoundException;
 use Knossos\Runtime\ErrorCode;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Worker\WorkerException;
@@ -51,7 +53,9 @@ final class ErrorCodeParityTest extends KnossosTestCase
             'database busy, wrapped' => [new RuntimeException('could not write the note', 0, self::busy()), 'KNOSSOS_DATABASE_BUSY'],
             'snapshot changed' => [ScanSnapshotChangedException::contentChanged('src/a.php'), 'KNOSSOS_SCAN_SNAPSHOT_CHANGED'],
             'worker' => [new WorkerException('WORKER_TIMEOUT', 'timed out'), 'WORKER_TIMEOUT'],
-            'discovery' => [new DiscoveryException('outside the roots'), 'KNOSSOS_UNSAFE_PATH'],
+            'discovery' => [new DiscoveryException('Invalid JSON configuration: Syntax error'), 'KNOSSOS_UNSAFE_PATH'],
+            'refused root' => [new RootException('outside the roots'), 'KNOSSOS_UNSAFE_PATH'],
+            'missing root' => [new RootNotFoundException('Project root does not exist or is not a directory: /gone'), 'KNOSSOS_UNSAFE_PATH'],
             'storage' => [new PDOException('disk I/O error: /srv/x.sqlite'), 'KNOSSOS_STORAGE_ERROR'],
             'invalid argument' => [new InvalidArgumentException('bad limit'), 'KNOSSOS_INVALID_ARGUMENT'],
         ];

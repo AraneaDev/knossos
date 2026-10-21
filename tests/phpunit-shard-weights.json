@@ -79,7 +79,7 @@
   "tests/phpunit/Discovery/ProjectDiscovererTest.php": 0.1,
   "tests/phpunit/Discovery/ProjectUnitTest.php": 0.1,
   "tests/phpunit/Discovery/RegularFileOpenerHelperTest.php": 0.3,
-  "tests/phpunit/Discovery/RootGuardTest.php": 0.1,
+  "tests/phpunit/Roots/RootGuardTest.php": 0.1,
   "tests/phpunit/Discovery/ShebangDiscoveryTest.php": 0.1,
   "tests/phpunit/Discovery/UnitReadConsistencyTest.php": 0.1,
   "tests/phpunit/ExceptionsTest.php": 0.1,

@@ -7,9 +7,9 @@ namespace Knossos\Configuration;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\IgnoreMatcher;
 use Knossos\Discovery\JsonConfig;
-use Knossos\Discovery\RootGuard;
 use Knossos\Filesystem\RelativePathRule;
 use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootGuard;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 
 /**

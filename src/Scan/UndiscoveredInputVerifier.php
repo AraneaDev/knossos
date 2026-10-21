@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Scan;
 
 use InvalidArgumentException;
-use Knossos\Discovery\RootGuard;
 use Knossos\Filesystem\RegularFileOpener;
+use Knossos\Roots\RootGuard;
 use Knossos\Scanner\Protocol\RelativePath;
 
 /**

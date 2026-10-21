@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Roots;
 
-use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\RootGuard;
 use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootGuard;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -174,7 +174,7 @@ final class AllowedRootsTest extends KnossosTestCase
         file_put_contents($file, json_encode(['roots' => [$granted]], JSON_THROW_ON_ERROR));
 
         $guard = new RootGuard(new AllowedRoots([], $file));
-        $error = captureThrows(static fn() => $guard->resolve($outside), DiscoveryException::class);
+        $error = captureThrows(static fn() => $guard->resolve($outside), RootException::class);
 
         // Everything a caller needs to fix it themselves: what was refused, what
         // is allowed, and where to record the new grant.
@@ -196,7 +196,7 @@ final class AllowedRootsTest extends KnossosTestCase
         try {
             // Env var set: containerised everywhere, so this half is deterministic.
             putenv('KNOSSOS_CONTAINER=1');
-            $contained = captureThrows(static fn() => $guard->resolve($outside), DiscoveryException::class);
+            $contained = captureThrows(static fn() => $guard->resolve($outside), RootException::class);
             $this->assertStringContainsString($hint, $contained->getMessage());
             // Appended, not substituted: a containerised caller needs the refused path
             // and the roots in force just as much as the host caveat.
@@ -208,7 +208,7 @@ final class AllowedRootsTest extends KnossosTestCase
             // answer here would pass locally and fail in CI — as the first version of
             // this test did — so it is asserted against the filesystem signal itself.
             putenv('KNOSSOS_CONTAINER');
-            $bare = captureThrows(static fn() => $guard->resolve($outside), DiscoveryException::class);
+            $bare = captureThrows(static fn() => $guard->resolve($outside), RootException::class);
             is_file('/.dockerenv')
                 ? $this->assertStringContainsString($hint, $bare->getMessage())
                 : $this->assertStringNotContainsString($hint, $bare->getMessage());
@@ -242,7 +242,7 @@ final class AllowedRootsTest extends KnossosTestCase
         file_put_contents($file, json_encode(['roots' => []], JSON_THROW_ON_ERROR));
         $guard = new RootGuard(new AllowedRoots([], $file));
 
-        captureThrows(static fn() => $guard->resolve($target), DiscoveryException::class);
+        captureThrows(static fn() => $guard->resolve($target), RootException::class);
 
         file_put_contents($file, json_encode(['roots' => [$target]], JSON_THROW_ON_ERROR));
         assertSame(realpath($target), $guard->resolve($target));

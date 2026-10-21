@@ -6,11 +6,11 @@ namespace Knossos\Mcp;
 
 use InvalidArgumentException;
 use Knossos\Cancellation\CancellationToken;
-use Knossos\Discovery\RootGuard;
 use Knossos\Maintenance\DatabaseMaintenanceService;
 use Knossos\Mcp\Protocol\ProtocolNegotiator;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Roots\RootGuard;
 use Knossos\Runtime\ServerEnvironment;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ScanOptions;

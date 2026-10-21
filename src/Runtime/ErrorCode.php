@@ -7,6 +7,7 @@ namespace Knossos\Runtime;
 use InvalidArgumentException;
 use Knossos\Cancellation\ScanCancelledException;
 use Knossos\Discovery\DiscoveryException;
+use Knossos\Roots\RootException;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\ScanBusyException;
@@ -52,7 +53,7 @@ final class ErrorCode
             // message survives too: the file it names is what the caller acts on.
             $error instanceof ScanSnapshotChangedException => 'KNOSSOS_SCAN_SNAPSHOT_CHANGED',
             $error instanceof WorkerException => $error->diagnosticCode,
-            $error instanceof DiscoveryException => 'KNOSSOS_UNSAFE_PATH',
+            $error instanceof DiscoveryException, $error instanceof RootException => 'KNOSSOS_UNSAFE_PATH',
             $error instanceof PDOException => self::STORAGE,
             $error instanceof InvalidArgumentException => 'KNOSSOS_INVALID_ARGUMENT',
             default => self::UNEXPECTED,

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Discovery;
 
-use Knossos\Discovery\DiscoveryException;
 use Knossos\Discovery\IgnoreMatcher;
-use Knossos\Discovery\RootGuard;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootGuard;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -19,7 +19,7 @@ use PHPUnit\Framework\Attributes\Group;
  *                                      fallback).
  *   - src/Discovery/RootGuard.php      (mut-active, realpath +
  *                                      canonical-prefix containment
- *                                      + DiscoveryException throws).
+ *                                      + RootException throws).
  *
  * Per the close-out doc § 9 plan: Batch 11c covers these 2 guards
  * before the ProjectDiscoverer anchor (Batch 11d) which depends on
@@ -180,25 +180,25 @@ final class DiscoveryGuardsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     public function testRootGuardResolveThrowsWhenRequestedRootDoesNotExist(): void
     {
         // Throw arm 1: realpath() on a missing path returns false ->
-        // throw DiscoveryException ('Project root does not exist...').
+        // throw RootException ('Project root does not exist...').
         $allowed = $this->tempDir('allowed');
         $guard = new RootGuard([$allowed]);
         assertThrows(
             fn() => $guard->resolve('/nonexistent-' . bin2hex(random_bytes(4))),
-            DiscoveryException::class,
+            RootException::class,
         );
     }
 
     public function testRootGuardResolveThrowsWhenAllowedRootDoesNotExist(): void
     {
         // Throw arm 2: realpath() on a configured allowedRoot
-        // returns false -> throw DiscoveryException ('Configured
+        // returns false -> throw RootException ('Configured
         // allowed root does not exist...').
         $project = $this->tempDir('project');
         $guard = new RootGuard(['/nonexistent-allowed-' . bin2hex(random_bytes(4))]);
         assertThrows(
             fn() => $guard->resolve($project),
-            DiscoveryException::class,
+            RootException::class,
         );
     }
 
@@ -213,7 +213,7 @@ final class DiscoveryGuardsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         $guard = new RootGuard([$allowed]);
         assertThrows(
             fn() => $guard->resolve($disallowed),
-            DiscoveryException::class,
+            RootException::class,
         );
     }
 

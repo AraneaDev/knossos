@@ -6,6 +6,7 @@ namespace Knossos\Discovery;
 
 use DirectoryIterator;
 use Knossos\Cancellation\CancellationToken;
+use Knossos\Roots\RootGuard;
 use RuntimeException;
 use SplFileInfo;
 

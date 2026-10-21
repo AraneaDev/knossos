@@ -7,13 +7,10 @@ namespace Knossos\Discovery;
 use RuntimeException;
 
 /**
- * Discovery cannot proceed: a missing root, or one outside the allow-list.
+ * Discovery cannot proceed: a configuration it cannot read, an ignore pattern
+ * it refuses, or a tree past its limits.
  *
- * Deliberately not final, and the only class in Discovery that is not. It is
- * the type every caller catches, so a narrower refusal has to be reachable
- * through it: {@see RootNotFoundException} says which of those two failures
- * happened without asking a single one of those catch sites to change.
- * Subclasses stay inside this namespace; nothing outside it may widen what
- * `catch (DiscoveryException)` means.
+ * A refused root is not one of these: {@see \Knossos\Roots\RootGuard}
+ * raises {@see \Knossos\Roots\RootException} for that.
  */
-class DiscoveryException extends RuntimeException {}
+final class DiscoveryException extends RuntimeException {}

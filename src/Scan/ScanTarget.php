@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
-use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\RootGuard;
-use Knossos\Discovery\RootNotFoundException;
 use Knossos\Roots\AllowedRoots;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootGuard;
+use Knossos\Roots\RootNotFoundException;
 use Knossos\Store\ProjectRepository;
 use PDO;
 
@@ -71,7 +71,7 @@ final readonly class ScanTarget
             (new RootGuard($allowed))->resolve($path);
         } catch (RootNotFoundException) {
             return ['status' => 'missing'];
-        } catch (DiscoveryException) {
+        } catch (RootException) {
             return ['status' => 'not-allowed', 'roots_file' => $this->rootsFile(), 'refused_root' => $path];
         }
         return null;

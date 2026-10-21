@@ -10,7 +10,8 @@ use Knossos\Cli\CliErrorRenderer;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Discovery\DiscoveryException;
-use Knossos\Discovery\RootGuard;
+use Knossos\Roots\RootException;
+use Knossos\Roots\RootGuard;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Store\MigrationRunner;
@@ -500,7 +501,7 @@ final class CliTest extends KnossosTestCase
         assertSame(str_replace('\\', '/', (string) realpath(self::repositoryRoot())), $resolved);
 
         $narrow = new RootGuard([self::repositoryRoot() . '/src']);
-        assertThrows(fn() => $narrow->resolve(self::repositoryRoot() . '/tests'), DiscoveryException::class);
+        assertThrows(fn() => $narrow->resolve(self::repositoryRoot() . '/tests'), RootException::class);
     }
 
     #[Group('cli')]
