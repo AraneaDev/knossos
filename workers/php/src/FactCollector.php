@@ -27,6 +27,10 @@ final class FactCollector extends NodeVisitorAbstract
     /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
     private const INTERPRETERS = ['php', 'node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'ruby', 'perl', 'bash', 'sh', 'zsh'];
 
+    /** The PhpParser traversers that call a visitor's hooks, and the hooks they call. */
+    private const TRAVERSERS = ['PhpParser\\NodeTraverser', 'PhpParser\\NodeTraverserInterface'];
+    private const VISITOR_HOOKS = ['beforeTraverse', 'enterNode', 'leaveNode', 'afterTraverse'];
+
     /** @var list<array<string, mixed>> */
     private array $nodes = [];
 
@@ -684,7 +688,13 @@ final class FactCollector extends NodeVisitorAbstract
     private function newExpression(Expr\New_ $node): void
     {
         if ($node->class instanceof Name) {
-            $this->addEdge('constructs', $this->currentSource(), self::reference('class', $this->resolvedClassName($node->class)), $node);
+            $class = $this->resolvedClassName($node->class);
+            $this->addEdge('constructs', $this->currentSource(), self::reference('class', $class), $node);
+            if (in_array($class, self::TRAVERSERS, true)) {
+                foreach ($node->args as $argument) {
+                    $this->traverserHooks($argument, $node);
+                }
+            }
 
             return;
         }
@@ -817,6 +827,33 @@ final class FactCollector extends NodeVisitorAbstract
         $this->addEdge('references', $source, self::reference('class', $resolved), $evidence);
     }
 
+    /**
+     * A traverser calls `beforeTraverse`, `enterNode`, `leaveNode` and `afterTraverse` on every
+     * visitor it is given, from vendor code that no scan sees. Where the visitor's class is known
+     * (built inline, or held in a typed variable) the call is implied at the place it is given:
+     * one probable, speculative `calls` edge per hook, so the core keeps the hooks the class or
+     * its ancestors declare and drops the rest.
+     */
+    private function traverserHooks(Node\Arg|Node\VariadicPlaceholder $argument, Node $evidence): void
+    {
+        if (!$argument instanceof Node\Arg || $argument->unpack) {
+            return;
+        }
+        $value = $argument->value;
+        $visitor = null;
+        if ($value instanceof Expr\New_ && $value->class instanceof Name) {
+            $visitor = $this->resolvedClassName($value->class);
+        } elseif ($value instanceof Expr\Variable && is_string($value->name) && $value->name !== 'this') {
+            $visitor = $this->variables->type($value->name);
+        }
+        if ($visitor === null) {
+            return;
+        }
+        foreach (self::VISITOR_HOOKS as $hook) {
+            $this->addEdge('calls', $this->currentSource(), self::reference('method', $visitor . '::' . $hook), $evidence, 'probable', ['speculative' => true, 'dispatch' => 'PhpParser\\NodeTraverser']);
+        }
+    }
+
     /** Emit a `calls` edge, using the tracked variable type to name the receiver where possible. */
     private function methodCall(Expr\MethodCall|Expr\NullsafeMethodCall $node): void
     {
@@ -858,6 +895,9 @@ final class FactCollector extends NodeVisitorAbstract
             $class = $this->receivers->returnedType($node->var, $this->currentClass());
         }
         $this->eagerLoads($node, $class ?? $this->eloquent->builderRoot($node->var));
+        if ($class !== null && $node->name->toString() === 'addVisitor' && in_array($class, self::TRAVERSERS, true) && isset($node->args[0])) {
+            $this->traverserHooks($node->args[0], $node);
+        }
 
         if ($class !== null) {
             $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node, $confidence);
