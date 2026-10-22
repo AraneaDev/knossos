@@ -136,7 +136,7 @@ final class PluginCommand implements CliCommand
     /** {@inheritDoc} */
     public function allowedOptions(string $command): array
     {
-        return ['db', 'json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir'];
+        return ['json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir'];
     }
 
     /** {@inheritDoc} */

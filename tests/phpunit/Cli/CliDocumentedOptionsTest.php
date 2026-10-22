@@ -48,6 +48,38 @@ final class CliDocumentedOptionsTest extends KnossosTestCase
         assertSame(true, $commandsChecked >= 40, sprintf('Expected to check at least 40 commands, checked %d.', $commandsChecked));
     }
 
+    /**
+     * Options a command accepts without its usage line naming them. Every
+     * query command reads a graph and renders JSON, so `--db` and `--json` go
+     * without saying there; anything else a command accepts is documented.
+     */
+    private const UNDOCUMENTED_QUERY_OPTIONS = ['db', 'json'];
+
+    /** The reverse of the check above: an option a command accepts that its usage line never names is one nobody finds. */
+    #[Group('cli')]
+    public function testEveryAllowedOptionIsDocumented(): void
+    {
+        $commands = CliCommandSet::all(new CliHelpRenderer(), 'test');
+        $queries = (new \ReflectionClassConstant(QueryCommand::class, 'COMMANDS'))->getValue();
+        self::assertIsArray($queries);
+        $undocumented = [];
+
+        foreach (self::documentedOptions() as $command => $options) {
+            $handler = self::handlerFor($commands, $command);
+            assertSame(true, $handler !== null, sprintf('No command handles the documented `%s`.', $command));
+            $allowed = $handler->allowedOptions($command);
+            if ($allowed === [CliOptionParser::ANY]) {
+                continue;
+            }
+            $silent = array_values(array_diff($allowed, $options, in_array($command, $queries, true) ? self::UNDOCUMENTED_QUERY_OPTIONS : []));
+            if ($silent !== []) {
+                $undocumented[$command] = $silent;
+            }
+        }
+
+        assertSame([], $undocumented, 'Accepted but undocumented: ' . json_encode($undocumented));
+    }
+
     /** A query command without an arm of its own borrowed another command's list; now it has to have one. */
     #[Group('cli')]
     public function testEveryQueryCommandHasItsOwnAllowlist(): void
