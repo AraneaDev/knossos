@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Scanner;
 
+use Knossos\Scanner\Protocol\Diagnostic;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
@@ -225,7 +226,9 @@ final class PhpLivewireBladeTest extends KnossosTestCase
     /**
      * @param list<string> $files
      * @param list<string> $frameworks
-     * @param list<array<string, mixed>>|null $diagnostics
+     * @param list<Diagnostic>|null $diagnostics
+     *
+     * @param-out list<Diagnostic> $diagnostics
      *
      * @return array<string, NodeFact>
      */
