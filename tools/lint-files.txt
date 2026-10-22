@@ -273,6 +273,7 @@ php	src/Query/InheritanceGraph.php
 php	src/Query/JsTestRunner.php
 php	src/Query/LedgeredScanner.php
 php	src/Query/LocationSuggestionService.php
+php	src/Query/NoteMoveSuggestions.php
 php	src/Query/NotesService.php
 php	src/Query/OneTypeCycles.php
 php	src/Query/Page.php
@@ -667,6 +668,7 @@ php	tests/phpunit/Query/AgentBriefBoundsTest.php
 php	tests/phpunit/Query/AgentBriefTest.php
 php	tests/phpunit/Query/AnnotationBoundsTest.php
 php	tests/phpunit/Query/AnnotationCheckTest.php
+php	tests/phpunit/Query/AnnotationMoveTest.php
 php	tests/phpunit/Query/AnnotationNotesTest.php
 php	tests/phpunit/Query/AnnotationOverwriteTest.php
 php	tests/phpunit/Query/AnnotationPresenceTest.php

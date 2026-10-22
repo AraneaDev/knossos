@@ -101,8 +101,9 @@ within the 1000 characters a result shows. No Mermaid or Markdown: nothing that
 shows a note renders them.
 
 `list_annotations` marks a note `component_status: missing` when no
-component carries its name any more, after a rename or a move: write it again
-on the new name and remove the old one. A note by a person (`author: user`) is
+component carries its name any more, after a rename or a move: move it to the
+new name (see Mechanics), or remove it when nothing carries what it says. A
+note by a person (`author: user`) is
 theirs: never rewrite or remove it, and never write through the pane's own
 command (`knossos annotate`).
 
@@ -128,4 +129,6 @@ surfaces behave, so use them only for their actual meaning:
 `intended_boundary` marks a deliberate placement, `false_positive` stops a
 component being re-flagged because the graph was wrong, `intentional` stops it
 because the finding is true and meant (a parked route, a test-only helper),
-`confirmed_dead` records verified unused code.
+`confirmed_dead` records verified unused code. A missing note with a
+`suggested_component` is moved there with `move_to: <that name>`, keeping its
+text and files; read the code, then confirm it.

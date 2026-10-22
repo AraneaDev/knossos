@@ -7,9 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Store\SqliteBusy;
-use Knossos\Store\SqliteTransactions;
 use PDO;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -117,49 +115,22 @@ final readonly class NotesService
     }
 
     /**
-     * `$author`'s `$kind` note on `$component` moved to `$to`: the stored row
-     * copied there, then removed here, together, both by their exact names.
-     * The note keeps what it was written against, so a model note reads stale
-     * where it lands until the model looks, and a check on `$to` stays: the
-     * move is the person's, not the model's look. Refused, before anything is
-     * written, when `$to` is a name the graph does not hold either, or
-     * already holds a note of that kind by that author.
+     * `$author`'s `$kind` note on `$component` moved to `$to`, through
+     * {@see AnnotationService::moveAnnotation()}: copied there and removed
+     * here in one transaction, keeping what it was written against, so a
+     * model note reads stale where it lands until the model looks. Refused
+     * when there is no such note, or `$to` is no component or already holds
+     * one.
      *
      * @return array<string, mixed>
      */
     public function move(string $path, string $component, string $to, string $kind = 'note', string $author = 'user', bool $execute = false): array
     {
-        return $this->write($path, fn(AnnotationService $annotations, string $projectId): array => (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $component, $to, $kind, $author, $execute): array {
-            $source = $this->pdo->prepare('SELECT value, basis_json, created_at FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
-            $source->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
-            $row = $source->fetch(PDO::FETCH_ASSOC);
-            if ($row === false) {
-                throw new InvalidArgumentException(sprintf('%s has no %s by the %s to move.', $component, $kind, $author));
-            }
-            $present = $this->pdo->prepare('SELECT 1 FROM nodes WHERE project_id = :project AND canonical_name = :name LIMIT 1');
-            $present->execute(['project' => $projectId, 'name' => $to]);
-            if ($present->fetchColumn() === false) {
-                throw new InvalidArgumentException(sprintf('%s is not in the graph either: pick a component it holds.', $to));
-            }
-            if ($this->stored($projectId, $to, $kind, $author) !== null) {
-                throw new InvalidArgumentException(sprintf('%s already holds a %s by the %s: edit or remove that one first.', $to, $kind, $author));
-            }
-            $answer = ['status' => 'ok', 'action' => 'move', 'executed' => $execute, 'component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'value' => (string) $row['value']];
-            if (!$execute) {
-                return $answer;
-            }
-            $this->pdo->prepare(
-                'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
-                'VALUES (:project, :to, :kind, :value, :author, :basis, :created, :now)',
-            )->execute(['project' => $projectId, 'to' => $to, 'kind' => $kind, 'value' => $row['value'], 'author' => $author, 'basis' => $row['basis_json'], 'created' => $row['created_at'], 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
-            $removed = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
-            $removed->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
-            if ($removed->rowCount() !== 1) {
-                throw new RuntimeException(sprintf('The note on %s changed while it was moved; nothing was moved.', $component));
-            }
+        return $this->write($path, static function (AnnotationService $annotations, string $projectId) use ($component, $to, $kind, $author, $execute): array {
+            $moved = $annotations->moveAnnotation($projectId, $component, $to, $kind, $execute, $author)->data;
 
-            return $answer;
-        }));
+            return ['status' => 'ok', 'action' => 'move', 'executed' => $moved['executed'], 'component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'value' => $moved['value']];
+        });
     }
 
     /**

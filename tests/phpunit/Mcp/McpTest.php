@@ -298,6 +298,40 @@ final class McpTest extends KnossosTestCase
         assertThrows(fn() => $tools->call('annotate_component', [...$note, 'component' => 'App\\Nowhere', 'confirm' => true]), InvalidArgumentException::class);
     }
 
+    /**
+     * An agent moves its own note off a name the graph lost with `move_to`.
+     * A move combined with anything that writes, removes or confirms is
+     * refused before the tool runs, as invalid params; a move to a name the
+     * graph does not hold runs and fails, as a tool error, and moves nothing.
+     */
+    #[Group('mcp')]
+    public function testAnnotateComponentMovesAModelNoteOverTheTransport(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $tools = new ToolService(
+            new ProjectScanService($pdo, self::repositoryRoot(), [self::repositoryRoot() . '/tests/Fixtures/mixed']),
+            ArchitectureQueryService::forDatabase($pdo),
+            new DatabaseMaintenanceService($pdo, ':memory:'),
+            new \Knossos\Mcp\ResultEnricher(new \Knossos\Query\StalenessProbe($pdo), new \Knossos\Mcp\NextStepPlanner()),
+        );
+        $definitions = array_column($tools->definitions(), null, 'name');
+        assertSame('string', $definitions['annotate_component']['inputSchema']['properties']['move_to']['type']);
+        $tools->call('annotate_component', ['project_id' => $ids['project'], 'component' => 'App\\Lost', 'kind' => 'note', 'value' => 'kept', 'execute' => true]);
+        $server = new McpDispatcher($tools);
+        $server->handle(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => McpDispatcher::PROTOCOL_VERSION]]);
+        $server->handle(['jsonrpc' => '2.0', 'method' => 'notifications/initialized']);
+        $call = static fn(int $id, array $arguments): array => $server->handle(['jsonrpc' => '2.0', 'id' => $id, 'method' => 'tools/call', 'params' => ['name' => 'annotate_component', 'arguments' => ['project_id' => $ids['project'], 'component' => 'App\\Lost', 'kind' => 'note', 'execute' => true, ...$arguments]]]);
+
+        assertSame(-32602, $call(2, ['move_to' => 'App\\Checkout', 'value' => 'new text'])['error']['code']);
+        assertSame(-32602, $call(3, ['move_to' => 'App\\Checkout', 'confirm' => true])['error']['code']);
+        assertSame(true, $call(4, ['move_to' => 'App\\Nowhere'])['result']['isError']);
+        assertSame(['App\\Lost'], $pdo->query('SELECT canonical_name FROM annotations')->fetchAll(\PDO::FETCH_COLUMN));
+
+        assertSame(false, $call(5, ['move_to' => 'App\\Checkout'])['result']['isError'] ?? false);
+        assertSame([['App\\Checkout', 'kept']], $pdo->query('SELECT canonical_name, value FROM annotations')->fetchAll(\PDO::FETCH_NUM));
+    }
+
     #[Group('mcp')]
     public function testStdioRunLoopContainsMalformedFramesNotificationsAndResponseCaps(): void
     {

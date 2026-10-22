@@ -362,7 +362,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'list_annotations',
                 'title' => 'List annotations',
-                'description' => 'List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved), optionally filtered by component or kind.',
+                'description' => 'List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved; a missing one names a suggested_component when exactly one added component matches it by kind and short name), optionally filtered by component or kind.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -718,7 +718,7 @@ final readonly class ToolCatalog
         return [
             [
                 'name' => 'annotate_component', 'title' => 'Annotate component',
-                'description' => 'Record, extend, confirm or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.',
+                'description' => 'Record, extend, confirm, move or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'project_id' => ['type' => 'string', 'minLength' => 1],
                     'component' => ['type' => 'string', 'minLength' => 1],
@@ -728,6 +728,7 @@ final readonly class ToolCatalog
                     'remove' => ['type' => 'boolean', 'default' => false],
                     'replace' => ['type' => 'boolean', 'default' => false, 'description' => 'Replace a different model note stored here; without it such a write is refused and the stored note returned, so you can extend it instead.'],
                     'confirm' => ['type' => 'boolean', 'default' => false, 'description' => 'You checked a stale note and it still holds: rest it on its files as they are now, keeping its text and cited files. Takes no value, evidence_paths, remove or replace.'],
+                    'move_to' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 1000, 'description' => 'Move your note from component, a name the graph lost (list_annotations says missing, often with a suggested_component), to this component, keeping its text and the files it rests on; confirm it there once checked. Takes no value, evidence_paths, remove, replace or confirm.'],
                     'execute' => ['type' => 'boolean', 'default' => false],
                 ], 'required' => ['project_id', 'component', 'kind'], 'additionalProperties' => false],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],

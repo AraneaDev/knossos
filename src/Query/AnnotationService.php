@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\SqliteTransactions;
+use RuntimeException;
 
 /**
  * Agent write-backs: durable annotations keyed by canonical name so they
@@ -217,6 +218,63 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         return $this->executed($projectId, $target, $kind, 'remove', 'Removed', null, $nothing === null ? null : 'Nothing removed: ' . $nothing);
     }
 
+    /**
+     * `$author`'s `$kind` note on `$component` moved to `$to`, previewing
+     * unless executing: the stored row copied there, then removed here,
+     * together, both by their exact names. The note keeps its text, what it
+     * was written against and its date, so a model note reads stale where it
+     * lands until it is confirmed, and a person's check on `$to` stays: a move
+     * is no look. Refused, before anything is written, when `$component` holds
+     * no such note, when `$to` is a name the graph does not hold either, or
+     * already holds a note of that kind by that author. An agent moves only
+     * its own (`model`) notes; the pane moves either author's.
+     */
+    public function moveAnnotation(string $projectId, string $component, string $to, string $kind = 'note', bool $execute = false, string $author = 'model'): ResultEnvelope
+    {
+        $project = $this->project($projectId);
+        $value = (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $component, $to, $kind, $author, $execute): string {
+            $source = $this->pdo->prepare('SELECT value, basis_json, created_at FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+            $source->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
+            $row = $source->fetch(\PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                throw new InvalidArgumentException(sprintf('%s has no %s by the %s to move.', $component, $kind, $author));
+            }
+            $present = $this->pdo->prepare('SELECT 1 FROM nodes WHERE project_id = :project AND canonical_name = :name LIMIT 1');
+            $present->execute(['project' => $projectId, 'name' => $to]);
+            if ($present->fetchColumn() === false) {
+                throw new InvalidArgumentException(sprintf('%s is not in the graph either: pick a component it holds.', $to));
+            }
+            if ($this->fetch($projectId, $to, $kind, $author) !== null) {
+                throw new InvalidArgumentException(sprintf('%s already holds a %s by the %s: edit or remove that one first.', $to, $kind, $author));
+            }
+            if (!$execute) {
+                return (string) $row['value'];
+            }
+            $this->pdo->prepare(
+                'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
+                'VALUES (:project, :to, :kind, :value, :author, :basis, :created, :now)',
+            )->execute(['project' => $projectId, 'to' => $to, 'kind' => $kind, 'value' => $row['value'], 'author' => $author, 'basis' => $row['basis_json'], 'created' => $row['created_at'], 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
+            $removed = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+            $removed->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
+            if ($removed->rowCount() !== 1) {
+                throw new RuntimeException(sprintf('The note on %s changed while it was moved; nothing was moved.', $component));
+            }
+
+            return (string) $row['value'];
+        });
+
+        return new ResultEnvelope(
+            $projectId,
+            $project['active_scan_id'],
+            $execute
+                ? sprintf('Moved %s annotation by the %s from %s to %s; confirm it once you checked it still holds there.', $kind, $author, $component, $to)
+                : sprintf('Preview only, nothing written: would move %s annotation by the %s from %s to %s; pass execute to move it.', $kind, $author, $component, $to),
+            ['component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'action' => 'move', 'executed' => $execute, 'value' => $value, 'annotation' => $execute ? $this->fetch($projectId, $to, $kind, $author) : null],
+            [],
+            $execute ? [] : ['Set execute=true to apply the change.'],
+        );
+    }
+
     /** How many files a model note may cite besides its component's own. */
     public const MAX_EVIDENCE_PATHS = 5;
 
@@ -403,7 +461,10 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      *
      * Each row's `component_status` says whether its component is `present` in
      * the active graph or `missing`: notes are keyed by name, so a rename or a move leaves a note
-     * on a name nothing carries any more, and only its author can move it.
+     * on a name nothing carries any more, and only its author can move it. A
+     * missing row's `suggested_component` names where its component went, when
+     * exactly one component added since matches it ({@see NoteMoveSuggestions}),
+     * else null; an agent moves its own note there with {@see self::moveAnnotation()}.
      * `stale` and `stale_reason` say whether a model annotation's files changed
      * since it was written ({@see AnnotationNotes}); a person's never is.
      */
@@ -443,9 +504,12 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $rows = $statement->fetchAll();
         [$rows, $truncated] = Page::cut($rows, $limit);
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
+        $missingNames = array_values(array_map(static fn(array $row): string => (string) $row['canonical_name'], array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing')));
+        $suggested = (new NoteMoveSuggestions($this->pdo))->forMissing($projectId, $missingNames);
         foreach ($rows as $index => $row) {
             unset($row['basis_json']);
-            $rows[$index] = $row + ['stale' => $reasons[$index] !== null, 'stale_reason' => $reasons[$index]];
+            $rows[$index] = $row + ['stale' => $reasons[$index] !== null, 'stale_reason' => $reasons[$index]]
+                + ($row['component_status'] === 'missing' ? ['suggested_component' => $suggested[(string) $row['canonical_name']] ?? null] : []);
         }
 
         $missing = count(array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing'));

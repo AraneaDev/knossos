@@ -244,7 +244,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `list_annotations`
 
-List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved), optionally filtered by component or kind.
+List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved; a missing one names a suggested_component when exactly one added component matches it by kind and short name), optionally filtered by component or kind.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -544,7 +544,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `annotate_component`
 
-Record, extend, confirm or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.
+Record, extend, confirm, move or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -556,6 +556,7 @@ Record, extend, confirm or remove your own (model) annotation on a component; it
 | `remove` | boolean | no | default=false |
 | `replace` | boolean | no | default=false |
 | `confirm` | boolean | no | default=false |
+| `move_to` | string | no | minLength=1; maxLength=1000 |
 | `execute` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
