@@ -74,6 +74,17 @@ final class AnnotationSpanStalenessTest extends KnossosTestCase
         self::assertSame([true, 'written before src/A.php changed'], $this->staleness());
     }
 
+    public function testTwoNotedComponentsInOneChangedFileAreEachJudgedByTheirOwnLines(): void
+    {
+        ArchitectureQueryService::forDatabase($this->pdo)->services()->annotationQueries
+            ->upsertAnnotation($this->projectId, 'App\\A::other', 'note', 'returns the two', execute: true);
+        $this->edit(str_replace('return 1;', 'return 7;', self::SOURCE));
+
+        $notes = (new AnnotationNotes($this->pdo))->forComponents($this->projectId, ['App\\A::m', 'App\\A::other']);
+
+        self::assertSame([['App\\A::m', true], ['App\\A::other', false]], array_map(static fn(array $note): array => [$note['component'], $note['stale']], $notes));
+    }
+
     public function testABasisWithoutASpanGoesStaleOnAnyChangeToTheFile(): void
     {
         $basis = json_decode((string) $this->pdo->query("SELECT basis_json FROM annotations WHERE canonical_name = 'App\\A::m'")->fetchColumn(), true);

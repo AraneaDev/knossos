@@ -223,7 +223,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * unless executing: the stored row copied there, then removed here,
      * together, both by their exact names. The note keeps its text, what it
      * was written against and its date, so a model note reads stale where it
-     * lands until it is confirmed. A model note takes the person's
+     * lands when its component's code there differs from what it was written
+     * against, and fresh when it does not. A model note takes the person's
      * {@see self::CHECK} on `$component` with it, in the same transaction:
      * the request is about that note, and a move is no look. A check already
      * on `$to` is kept and the moved one dropped. Refused, before anything is written, when `$component` holds
@@ -292,8 +293,9 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * the component's own file first, then each cited path, once each. A
      * cited path the project's scan does not hold is refused, so a note never
      * rests on a file no reader can check. A component's own file also
-     * records the lines it spans there and their hash, when the disk holds
-     * the file the scan read.
+     * records the lines it spans there and their hash, when it is declared
+     * there ({@see ComponentSpan::DECLARATION_KINDS}) and the disk holds the
+     * file the scan read.
      *
      * @param list<string> $evidencePaths
      * @return list<array{path: string, hash: string, span?: array{start: int, end: int, hash: string}}>
@@ -307,7 +309,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         // same name can live apart), so a change to any of them is seen.
         // Each with the lines the name spans there, so an edit elsewhere in the file leaves the note standing.
         $own = $this->pdo->prepare(
-            'SELECT f.relative_path, f.content_hash, MIN(n.start_line) AS start_line, MAX(n.end_line) AS end_line FROM nodes n JOIN files f ON f.id = n.file_id ' .
+            'SELECT f.relative_path, f.content_hash, MIN(n.start_line) AS start_line, MAX(n.end_line) AS end_line, ' . ComponentSpan::declaredOnly('n') . ' AS declared ' .
+            'FROM nodes n JOIN files f ON f.id = n.file_id ' .
             'WHERE n.project_id = :project AND n.canonical_name = :name GROUP BY f.relative_path, f.content_hash ORDER BY f.relative_path LIMIT ' . self::MAX_EVIDENCE_PATHS,
         );
         $own->execute(['project' => $projectId, 'name' => $canonical]);
@@ -317,7 +320,8 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         foreach ($own->fetchAll() as $row) {
             $path = (string) $row['relative_path'];
             $basis[$path] = (string) $row['content_hash'];
-            $span = self::span($root, $path, $basis[$path], $row['start_line'], $row['end_line']);
+            // A module or package stands for its whole file, so it records no span.
+            $span = (int) $row['declared'] === 1 ? self::span($root, $path, $basis[$path], $row['start_line'], $row['end_line']) : null;
             if ($span !== null) {
                 $spans[$path] = $span;
             }

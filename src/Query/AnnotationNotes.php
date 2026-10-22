@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
-use Closure;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\ProjectRepository;
 use PDO;
@@ -95,10 +94,10 @@ final readonly class AnnotationNotes
         usort($rows, static fn(array $a, array $b): int => [$a['author'] === 'user' ? 0 : 1, $order[$a['canonical_name']], $a['kind']] <=> [$b['author'] === 'user' ? 0 : 1, $order[$b['canonical_name']], $b['kind']]);
         $rows = array_slice($rows, 0, self::MAX_NOTES);
         $current = $this->currentHashes($projectId, $rows);
-        $spanHolds = $this->spanCheck($projectId);
+        $spans = $this->spanHashes($projectId, $rows, $current);
 
-        return array_map(function (array $row) use ($current, $spanHolds): array {
-            $reason = $row['author'] === 'model' ? self::staleReason((string) $row['canonical_name'], (string) $row['basis_json'], $current, $spanHolds) : null;
+        return array_map(function (array $row) use ($current, $spans): array {
+            $reason = $row['author'] === 'model' ? self::staleReason((string) $row['canonical_name'], (string) $row['basis_json'], $current, $spans) : null;
             return [
                 'component' => (string) $row['canonical_name'],
                 'kind' => (string) $row['kind'],
@@ -123,9 +122,9 @@ final readonly class AnnotationNotes
     {
         $models = array_values(array_filter($rows, static fn(array $row): bool => $row['author'] === 'model'));
         $current = $this->currentHashes($projectId, $models);
-        $spanHolds = $this->spanCheck($projectId);
+        $spans = $this->spanHashes($projectId, $models, $current);
 
-        return array_map(static fn(array $row): ?string => $row['author'] === 'model' ? self::staleReason((string) $row['canonical_name'], (string) $row['basis_json'], $current, $spanHolds) : null, $rows);
+        return array_map(static fn(array $row): ?string => $row['author'] === 'model' ? self::staleReason((string) $row['canonical_name'], (string) $row['basis_json'], $current, $spans) : null, $rows);
     }
 
     /**
@@ -182,51 +181,61 @@ final readonly class AnnotationNotes
     }
 
     /**
-     * Whether a component's lines in a file still hash as a note recorded
-     * them: the component looked up by name in the active graph, its lines
-     * read from the file on disk only when the disk holds the file the scan
-     * read, so the scan's line numbers describe it. A component the graph no
-     * longer places in that file, or a disk that differs from the scan, does
-     * not hold, and the note falls back to the whole file. Within one call a
-     * span is hashed once, and a file found changed on disk is not read again.
+     * The hash each model note's component has now over its own lines, by
+     * canonical name and path, for every changed own file whose basis entry
+     * records a span: the component looked up by name in the active graph,
+     * its lines read from the file on disk only when the disk holds the file
+     * the scan read, so the scan's line numbers describe it. Each such file is
+     * read and hashed once, for every noted span in it, and its text is not
+     * kept. A component the graph no longer places in that file, one that
+     * stands for its whole file ({@see ComponentSpan::DECLARATION_KINDS}), or
+     * a disk that differs from the scan has no entry, and its note falls back
+     * to the whole file.
      *
-     * @return Closure(string, string, string, string): bool canonical name, path, scanned hash, recorded span hash
+     * @param list<array<string, mixed>> $rows
+     * @param array<string, string> $current
+     * @return array<string, string> keyed by canonical name, "\0" and path
      */
-    private function spanCheck(string $projectId): Closure
+    private function spanHashes(string $projectId, array $rows, array $current): array
     {
-        $lines = $this->pdo->prepare(
-            'SELECT MIN(n.start_line) AS start_line, MAX(n.end_line) AS end_line FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            'WHERE n.project_id = :project AND n.canonical_name = :name AND f.relative_path = :path',
-        );
-        $root = false;
-        // Span hashes by path, scanned hash and lines, null for a file the disk no longer holds as scanned: never the files' text.
-        $hashes = [];
-
-        return function (string $canonical, string $path, string $scannedHash, string $recorded) use ($lines, $projectId, &$root, &$hashes): bool {
-            $lines->execute(['project' => $projectId, 'name' => $canonical, 'path' => $path]);
-            $span = $lines->fetch(PDO::FETCH_ASSOC);
-            $lines->closeCursor();
-            if (!is_array($span) || !is_numeric($span['start_line']) || !is_numeric($span['end_line'])) {
-                return false;
+        $wanted = [];
+        foreach ($rows as $row) {
+            if ($row['author'] !== 'model') {
+                continue;
             }
-            if ($root === false) {
-                $root = $this->root($projectId);
-            }
-            if ($root === null) {
-                return false;
-            }
-            $file = $path . "\0" . $scannedHash;
-            $key = $file . "\0" . (int) $span['start_line'] . "\0" . (int) $span['end_line'];
-            if (!array_key_exists($key, $hashes)) {
-                $contents = array_key_exists($file, $hashes) ? null : ComponentSpan::scannedContents($root, $path, $scannedHash);
-                if ($contents === null) {
-                    $hashes[$file] = null;
+            foreach (self::basis((string) $row['basis_json']) as $entry) {
+                $path = $entry['path'];
+                if ($entry['span'] !== null && self::currentKey($entry) === $path && isset($current[$path]) && $current[$path] !== $entry['hash']) {
+                    $wanted[$path][(string) $row['canonical_name']] = true;
                 }
-                $hashes[$key] = $contents === null ? null : ComponentSpan::hash($contents, (int) $span['start_line'], (int) $span['end_line']);
             }
+        }
+        $root = $wanted === [] ? null : $this->root($projectId);
+        if ($root === null) {
+            return [];
+        }
+        $lines = $this->pdo->prepare(
+            'SELECT MIN(n.start_line) AS start_line, MAX(n.end_line) AS end_line, ' . ComponentSpan::declaredOnly('n') . ' AS declared ' .
+            'FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = :project AND n.canonical_name = :name AND f.relative_path = :path',
+        );
+        $hashes = [];
+        foreach ($wanted as $path => $names) {
+            $spans = [];
+            foreach (array_keys($names) as $canonical) {
+                $lines->execute(['project' => $projectId, 'name' => (string) $canonical, 'path' => $path]);
+                $span = $lines->fetch(PDO::FETCH_ASSOC);
+                $lines->closeCursor();
+                if (is_array($span) && is_numeric($span['start_line']) && is_numeric($span['end_line']) && (int) $span['declared'] === 1) {
+                    $spans[$canonical . "\0" . $path] = [(int) $span['start_line'], (int) $span['end_line']];
+                }
+            }
+            $contents = $spans === [] ? null : ComponentSpan::scannedContents($root, $path, $current[$path]);
+            if ($contents !== null) {
+                $hashes += ComponentSpan::hashes($contents, $spans);
+            }
+        }
 
-            return $hashes[$key] !== null && hash_equals($recorded, $hashes[$key]);
-        };
+        return $hashes;
     }
 
     /** The project's root on disk, or null when it is unknown. */
@@ -239,12 +248,12 @@ final readonly class AnnotationNotes
      * Why a model note is stale, naming the first file in its basis that
      * changed or is gone, or null when every one is as it was. A changed own
      * file whose entry records the component's span is as it was when the
-     * component's lines there are ({@see self::spanCheck()}).
+     * component's lines there are ({@see self::spanHashes()}).
      *
      * @param array<string, string> $current
-     * @param Closure(string, string, string, string): bool $spanHolds
+     * @param array<string, string> $spans
      */
-    private static function staleReason(string $canonical, string $basisJson, array $current, Closure $spanHolds): ?string
+    private static function staleReason(string $canonical, string $basisJson, array $current, array $spans): ?string
     {
         $basis = self::basis($basisJson);
         // Written about a component no scanned file declares, citing none:
@@ -257,7 +266,7 @@ final readonly class AnnotationNotes
             if (!isset($current[$key])) {
                 return sprintf('written before %s was removed', $entry['path']);
             }
-            if ($current[$key] !== $entry['hash'] && ($entry['span'] === null || $key !== $entry['path'] || !$spanHolds($canonical, $entry['path'], $current[$key], $entry['span']))) {
+            if ($current[$key] !== $entry['hash'] && ($entry['span'] === null || $key !== $entry['path'] || !isset($spans[$canonical . "\0" . $entry['path']]) || !hash_equals($entry['span'], $spans[$canonical . "\0" . $entry['path']]))) {
                 return sprintf('written before %s changed', $entry['path']);
             }
         }

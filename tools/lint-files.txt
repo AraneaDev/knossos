@@ -668,6 +668,7 @@ php	tests/phpunit/Query/AgentBriefBoundsTest.php
 php	tests/phpunit/Query/AgentBriefTest.php
 php	tests/phpunit/Query/AnnotationBoundsTest.php
 php	tests/phpunit/Query/AnnotationCheckTest.php
+php	tests/phpunit/Query/AnnotationModuleStalenessTest.php
 php	tests/phpunit/Query/AnnotationMoveTest.php
 php	tests/phpunit/Query/AnnotationNotesTest.php
 php	tests/phpunit/Query/AnnotationOverwriteTest.php
