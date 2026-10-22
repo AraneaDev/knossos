@@ -11,8 +11,10 @@ use PDO;
  *
  * Some dependencies are recorded against another node than the one they
  * reach. A call through an interface or a parent goes to the supertype's
- * method, so what calls that may run this one. Nothing points at a property:
- * its class's methods read it, so what uses the class may use it. Constructing
+ * method, so what calls that may run this one. A property read or write on a
+ * receiver the scan can type is an edge to the property, but an untyped
+ * receiver, a chained fetch and the other languages record none: the class's
+ * methods may read it, so what uses the class may use it. Constructing
  * a class runs its constructor, and the graph records that against the class.
  * Impact analysis and the test reach search both read dependants through these
  * stand-ins.

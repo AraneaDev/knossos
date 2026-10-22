@@ -102,9 +102,15 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $walk['tests'] !== []); ++$level) {
             [$frontier, $reason] = $this->readLevel($projectId, $frontier, $level, $starts, $edgeKinds, $minimumRank, $deadline, $walk);
         }
+        // The last level's launches spend no depth either: what launches one of its nodes is at the same distance.
+        if ($reason === null && $frontier !== [] && $level >= $maxDepth && in_array(self::LAUNCH, $edgeKinds, true)) {
+            $before = $walk['seen'];
+            [, $reason] = $this->readLevel($projectId, $frontier, $maxDepth, $starts, [self::LAUNCH], $minimumRank, $deadline, $walk, launchesOnly: true);
+            $frontier = [...$frontier, ...array_map('strval', array_keys(array_diff_key($walk['seen'], $before)))];
+        }
         // The walk stopped at max_depth with dependants of its last level still unread: tests may lie beyond it.
         $horizon = $reason === null && $frontier !== [] && $level >= $maxDepth
-            && $this->hasUnreadDependant($projectId, $frontier, $edgeKinds, $minimumRank, $walk['seen']);
+            && $this->hasUnreadDependant($projectId, $frontier, $edgeKinds, $minimumRank, $walk['seen'], $deadline);
 
         $wiredTests = [];
         foreach (array_keys($walk['tests']) as $id) {
@@ -126,9 +132,10 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      * @param array<string, true> $starts
      * @param list<string> $edgeKinds
      * @param array{seen: array<string, true>, passed: array<string, true>, wired: array<string, bool>, tests: array<string, int>, examined: int} $walk
+     * @param bool $launchesOnly read only the launches into the frontier, no stand-ins: the last level's launch hop
      * @return array{0: list<string>, 1: ?string} the next level's frontier, and the bound that stopped the walk
      */
-    private function readLevel(string $projectId, array $frontier, int $level, array $starts, array $edgeKinds, int $minimumRank, int $deadline, array &$walk): array
+    private function readLevel(string $projectId, array $frontier, int $level, array $starts, array $edgeKinds, int $minimumRank, int $deadline, array &$walk, bool $launchesOnly = false): array
     {
         $reason = null;
         // Next level's node id => true, so a launch met later on this level can take it back.
@@ -136,11 +143,12 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         $found = [];
         for ($reading = $frontier; $reading !== [] && $reason === null;) {
             $launched = [];
-            // A call through an interface or a parent goes to the supertype's method, and nothing points at a
-            // property: what calls the supertype method or uses the property's class may reach the frontier's own,
+            // A call through an interface or a parent goes to the supertype's method, and a property use the scan
+            // could not attribute to the property is recorded against its class: what calls the supertype method
+            // or uses the property's class may reach the frontier's own,
             // so their dependants are read too, the stand-in passed through ({@see StandInExpansion}).
             // A node read through stands in for the frontier node it was read for, wired as that one is.
-            $standIns = StandInExpansion::of($this->pdo, $projectId, $reading, $edgeKinds);
+            $standIns = $launchesOnly ? ['through' => [], 'constructed' => []] : StandInExpansion::of($this->pdo, $projectId, $reading, $edgeKinds);
             $through = self::passThrough($standIns['through'], $walk['seen'], $walk['passed'], $walk['wired']);
             $targets = [...$reading, ...$through];
             sort($targets, SORT_STRING);
@@ -213,13 +221,16 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      * Whether a node of the last level read, or a stand-in for one, has a dependant the walk has not visited.
      *
      * A level of leaves ends the walk as surely as an empty one, so reaching max_depth on it cuts
-     * nothing. Reads at most {@see self::HORIZON_ROWS} rows; past that it answers yes, the side that
-     * only costs a deeper search.
+     * nothing. Reads at most {@see self::HORIZON_ROWS} rows, and none once the deadline has passed; past
+     * either it answers yes, the side that only costs a deeper search.
      *
      * @param list<string> $frontier @param list<string> $edgeKinds @param array<string, true> $seen
      */
-    private function hasUnreadDependant(string $projectId, array $frontier, array $edgeKinds, int $minimumRank, array $seen): bool
+    private function hasUnreadDependant(string $projectId, array $frontier, array $edgeKinds, int $minimumRank, array $seen, int $deadline): bool
     {
+        if ($this->now() > $deadline) {
+            return true;
+        }
         $standIns = StandInExpansion::of($this->pdo, $projectId, $frontier, $edgeKinds);
         $budget = self::HORIZON_ROWS;
         $reads = [

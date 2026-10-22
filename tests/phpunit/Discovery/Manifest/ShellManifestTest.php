@@ -29,6 +29,10 @@ final class ShellManifestTest extends KnossosTestCase
             'echo bin/not-run',
             'bash "$ROOT/bin/variable"',
             'php bin/tool again',
+            'if php bin/guarded; then',
+            'while php bin/looped; do',
+            '! php bin/negated',
+            'sudo php bin/privileged',
             '',
         ]);
 
@@ -41,6 +45,10 @@ final class ShellManifestTest extends KnossosTestCase
         self::assertSame(6, $byPath['tools/check'] ?? null);
         self::assertSame(7, $byPath['bin/serve'] ?? null);
         self::assertSame(8, $byPath['scripts/report.py'] ?? null);
+        self::assertSame(12, $byPath['bin/guarded'] ?? null, 'A command after `if` is read.');
+        self::assertSame(13, $byPath['bin/looped'] ?? null, 'A command after `while` is read.');
+        self::assertSame(14, $byPath['bin/negated'] ?? null, 'A negated command is read.');
+        self::assertSame(15, $byPath['bin/privileged'] ?? null, 'A command run through `sudo` is read.');
         self::assertArrayNotHasKey('bin/commented', $byPath);
         self::assertArrayNotHasKey('bin/not-run', $byPath);
         self::assertArrayNotHasKey('out.log', $byPath);

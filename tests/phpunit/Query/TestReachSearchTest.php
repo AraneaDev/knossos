@@ -135,6 +135,47 @@ final class TestReachSearchTest extends KnossosTestCase
         self::assertSame([], $found['truncation_reasons']);
     }
 
+    /** A launch from the last level is as far from the change as the level itself. */
+    #[Group('query')]
+    public function testALaunchesHopOnTheLastLevelIsReadToo(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $b = $this->component($repository, $ids, 'App\\Script');
+        $a = $this->component($repository, $ids, 'App\\Launcher');
+        $test = $this->component($repository, $ids, 'Tests\\LauncherTest', test: true);
+        $this->edge($repository, $ids, 'calls', $b, $ids['checkout']);
+        $this->edge($repository, $ids, 'launches', $a, $b);
+        $this->edge($repository, $ids, 'launches', $test, $a);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $found = (new TestReachSearch($pdo))->search($ids['project'], [$ids['checkout']], 1, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+
+        self::assertSame([$test => 1], $found['tests']);
+        self::assertSame([], $found['truncation_reasons']);
+        self::assertFalse($found['depth_horizon']);
+    }
+
+    /** Once the deadline has passed the horizon is answered without reading: an unread level may hold tests. */
+    #[Group('query')]
+    public function testAPassedDeadlineReportsTheDepthHorizonWithoutReading(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $a = $this->component($repository, $ids, 'App\\A');
+        $this->edge($repository, $ids, 'calls', $a, $ids['checkout']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        // The last level is a leaf, so reading it would show no horizon. The clock stands at 10 while the
+        // level is read and past the deadline of 20 afterwards.
+        $ticks = 0;
+        $clock = static function () use (&$ticks): int {
+            return ++$ticks < 2 ? 10 : 30;
+        };
+
+        $found = (new TestReachSearch($pdo, $clock))->search($ids['project'], [$ids['checkout']], 1, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, 20);
+
+        self::assertTrue($found['depth_horizon']);
+        self::assertSame([], $found['truncation_reasons']);
+    }
+
     #[Group('query')]
     public function testReachingTheDepthHorizonIsReported(): void
     {

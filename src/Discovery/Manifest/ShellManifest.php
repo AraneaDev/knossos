@@ -14,7 +14,7 @@ final class ShellManifest implements ManifestReader
     /** The programs a command runs through before the one it names: `php bin/tool`, `exec bin/serve`. */
     private const RUNNERS = [
         'bash', 'sh', 'zsh', 'dash', 'ksh', 'php', 'python', 'python3', 'node', 'ruby', 'perl', 'tsx', 'ts-node',
-        'exec', 'nohup', 'env', 'time', 'command', 'then', 'do', 'else',
+        'exec', 'nohup', 'env', 'time', 'command', 'then', 'do', 'else', 'if', 'while', '!', 'sudo',
     ];
 
     /**
