@@ -103,6 +103,31 @@ final class NotesServiceTest extends KnossosTestCase
         assertSame(['Replaced by the zebrafish adapter.'], self::stored($pdo, $projectId, 'App\\Adapter', 'model'));
     }
 
+    /** A model note moved in the pane takes the person's check on it along; one already on the target is kept instead. */
+    public function testMovingAModelNoteCarriesThePersonsCheck(): void
+    {
+        $check = static function (PDO $pdo, string $projectId, string $name, string $reason): void {
+            $pdo->prepare("INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) VALUES (?, ?, 'check', ?, 'user', '2026-10-16T10:00:00Z', '2026-10-16T10:00:00Z')")->execute([$projectId, $name, $reason]);
+        };
+        $checks = static function (PDO $pdo, string $projectId): array {
+            $statement = $pdo->prepare("SELECT canonical_name, value FROM annotations WHERE project_id = ? AND kind = 'check' AND canonical_name IN ('App\\Gone', 'App\\Adapter') ORDER BY canonical_name");
+            $statement->execute([$projectId]);
+
+            return $statement->fetchAll(PDO::FETCH_NUM);
+        };
+
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $check($pdo, $projectId, 'App\\Gone', 'still so?');
+        (new NotesService($pdo))->move($root, 'App\\Gone', 'App\\Adapter', author: 'model', execute: true);
+        assertSame([['App\\Adapter', 'still so?']], $checks($pdo, $projectId));
+
+        [$pdo, $root, $projectId] = $this->notesGraph();
+        $check($pdo, $projectId, 'App\\Gone', 'still so?');
+        $check($pdo, $projectId, 'App\\Adapter', 'and this?');
+        (new NotesService($pdo))->move($root, 'App\\Gone', 'App\\Adapter', author: 'model', execute: true);
+        assertSame([['App\\Adapter', 'and this?']], $checks($pdo, $projectId));
+    }
+
     public function testAMoveToAMissingNameOrOntoANoteByTheSameAuthorIsRefusedAndWritesNothing(): void
     {
         [$pdo, $root, $projectId] = $this->notesGraph();

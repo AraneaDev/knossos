@@ -4,23 +4,29 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Closure;
 use InvalidArgumentException;
 use PDO;
 
 /**
  * Where the component of a note on a lost name went, when the graph says so
- * without a guess: a move between namespaces or files keeps the kind and the
- * short name ({@see RenameMatching::moveSignature()}), so the one component
- * added since the name was last present that shares them is where its note
- * belongs.
+ * without a guess: a move between namespaces or files keeps the language, the
+ * kind and the short name ({@see RenameMatching::moveSignature()}), so the one
+ * component added since the name was last present that shares them is where
+ * its note belongs.
  *
- * "Added since" is read against the newest retained snapshot that still held
- * the name, which also gives the name's language and kind. A name no
- * retained snapshot holds is matched by its short name alone, against what
- * the newest snapshot lacks, or against the whole active graph when no
- * snapshot is retained. Only a pair that is the one on both sides is
- * suggested: two lost names, or two components, sharing a signature leave
- * every one of them without a suggestion. A different short name (a real
+ * The newest retained snapshot that still held the name gives its language,
+ * kind and display name, and "added since" means absent from that snapshot.
+ * A name no retained snapshot holds is suggested nothing. Only the active
+ * components of that kind and display name are read as candidates, and each
+ * snapshot is read a row at a time, keeping only the rows of the names asked
+ * about and of the candidates.
+ *
+ * A pair is suggested only when it is the one on both sides: exactly one
+ * added component shares the lost name's signature, and no other lost name
+ * asked about in the same call, placed by the same snapshot, shares it. Lost
+ * names without a note are not counted, so a removed component nobody noted
+ * does not make a noted one ambiguous. A different short name (a real
  * rename) is never matched.
  */
 final readonly class NoteMoveSuggestions
@@ -29,7 +35,7 @@ final readonly class NoteMoveSuggestions
 
     /**
      * The suggested component for each of the lost names, null for one with
-     * none.
+     * none. No name, no read.
      *
      * @param list<string> $missing canonical names the active graph does not hold
      * @return array<string, ?string> by lost name
@@ -41,58 +47,86 @@ final readonly class NoteMoveSuggestions
             return [];
         }
         $suggestions = array_fill_keys($missing, null);
-        $active = $this->pdo->prepare('SELECT DISTINCT language, kind, canonical_name FROM nodes WHERE project_id = :project');
-        $active->execute(['project' => $projectId]);
-        $present = $active->fetchAll(PDO::FETCH_ASSOC);
-
-        // Each lost name with the snapshot that last held it and its identity there.
         $unplaced = array_fill_keys($missing, true);
-        $groups = [];
-        $newest = null;
+        $reader = new SnapshotGraphReader($this->pdo);
         foreach ($this->snapshots($projectId) as $scanId) {
-            $names = [];
-            $identities = [];
-            try {
-                (new SnapshotGraphReader($this->pdo))->eachArchivedRow($scanId, 'nodes', static function (array $row) use (&$names, &$identities, $unplaced): void {
-                    $name = (string) ($row['canonical_name'] ?? '');
-                    $names[$name] = true;
-                    if (isset($unplaced[$name])) {
-                        $identities[$name] = (string) ($row['language'] ?? '') . "\0" . (string) ($row['kind'] ?? '') . "\0" . $name;
-                    }
-                });
-            } catch (InvalidArgumentException) {
-                // A payload that cannot be read holds nothing to compare against.
+            // The lost names this snapshot still held, newest first: the first that holds a name places it.
+            $placed = [];
+            if (!$this->each($reader, $scanId, static function (array $row) use (&$placed, $unplaced): void {
+                $name = (string) ($row['canonical_name'] ?? '');
+                if (isset($unplaced[$name]) && !isset($placed[$name])) {
+                    $placed[$name] = ['language' => (string) ($row['language'] ?? ''), 'kind' => (string) ($row['kind'] ?? ''), 'display_name' => (string) ($row['display_name'] ?? '')];
+                }
+            })) {
                 continue;
             }
-            $newest ??= $names;
-            if ($identities !== []) {
-                $groups[] = ['names' => $names, 'removed' => array_map(RenameMatching::moveSignature(...), $identities), 'typed' => true];
-                $unplaced = array_diff_key($unplaced, $identities);
+            if ($placed === []) {
+                continue;
+            }
+            $unplaced = array_diff_key($unplaced, $placed);
+            foreach ($this->pairs($projectId, $reader, $scanId, $placed) as $lost => $found) {
+                $suggestions[$lost] = $found;
             }
             if ($unplaced === []) {
                 break;
             }
         }
-        if ($unplaced !== []) {
-            $groups[] = ['names' => $newest ?? [], 'removed' => array_map(static fn(string $name): string => self::shortName($name), array_combine(array_keys($unplaced), array_keys($unplaced))), 'typed' => false];
-        }
-
-        foreach ($groups as $group) {
-            $added = [];
-            foreach ($present as $node) {
-                $name = (string) $node['canonical_name'];
-                if (!isset($group['names'][$name])) {
-                    $added[$name] = $group['typed']
-                        ? RenameMatching::moveSignature((string) $node['language'] . "\0" . (string) $node['kind'] . "\0" . $name)
-                        : self::shortName($name);
-                }
-            }
-            foreach (RenameMatching::uniquePairs($group['removed'], $added, true) as $lost => $found) {
-                $suggestions[$lost] = $found;
-            }
-        }
 
         return $suggestions;
+    }
+
+    /**
+     * Each placed name paired with the one active component of its signature
+     * that `$scanId`'s snapshot did not hold.
+     *
+     * @param array<string, array{language: string, kind: string, display_name: string}> $placed
+     * @return array<string, string>
+     */
+    private function pairs(string $projectId, SnapshotGraphReader $reader, string $scanId, array $placed): array
+    {
+        $removed = [];
+        $candidates = [];
+        $lookup = $this->pdo->prepare('SELECT DISTINCT language, canonical_name FROM nodes WHERE project_id = :project AND kind = :kind AND display_name = :display');
+        foreach ($placed as $name => $identity) {
+            $removed[$name] = RenameMatching::moveSignature($identity['language'] . "\0" . $identity['kind'] . "\0" . $name);
+            $lookup->execute(['project' => $projectId, 'kind' => $identity['kind'], 'display' => $identity['display_name']]);
+            foreach ($lookup->fetchAll(PDO::FETCH_ASSOC) as $node) {
+                $candidate = (string) $node['canonical_name'];
+                $candidates[$candidate] = RenameMatching::moveSignature((string) $node['language'] . "\0" . $identity['kind'] . "\0" . $candidate);
+            }
+        }
+        if ($candidates === []) {
+            return [];
+        }
+        // A candidate the snapshot already held was not added since.
+        $held = [];
+        if (!$this->each($reader, $scanId, static function (array $row) use (&$held, $candidates): void {
+            $name = (string) ($row['canonical_name'] ?? '');
+            if (isset($candidates[$name])) {
+                $held[$name] = true;
+            }
+        })) {
+            return [];
+        }
+
+        return RenameMatching::uniquePairs($removed, array_diff_key($candidates, $held), true);
+    }
+
+    /**
+     * Hand each node row of a snapshot to `$sink`; false when its payload
+     * cannot be read, which holds nothing to compare against.
+     *
+     * @param Closure(array<string, mixed>): void $sink
+     */
+    private function each(SnapshotGraphReader $reader, string $scanId, Closure $sink): bool
+    {
+        try {
+            $reader->eachArchivedRow($scanId, 'nodes', $sink);
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -106,13 +140,5 @@ final readonly class NoteMoveSuggestions
         $statement->execute(['project' => $projectId]);
 
         return array_map(strval(...), $statement->fetchAll(PDO::FETCH_COLUMN));
-    }
-
-    /** A name's signature with its language and kind unknown: its short name alone. */
-    private static function shortName(string $name): string
-    {
-        $parts = explode("\0", RenameMatching::moveSignature("\0\0" . $name), 3);
-
-        return $parts[2] ?? $name;
     }
 }

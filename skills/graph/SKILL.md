@@ -103,9 +103,8 @@ shows a note renders them.
 `list_annotations` marks a note `component_status: missing` when no
 component carries its name any more, after a rename or a move: move it to the
 new name (see Mechanics), or remove it when nothing carries what it says. A
-note by a person (`author: user`) is
-theirs: never rewrite or remove it, and never write through the pane's own
-command (`knossos annotate`).
+note by a person (`author: user`) is theirs: never rewrite or remove it, and
+never write through the pane's own command (`knossos annotate`).
 
 Worth writing:
 

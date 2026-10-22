@@ -223,8 +223,10 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * unless executing: the stored row copied there, then removed here,
      * together, both by their exact names. The note keeps its text, what it
      * was written against and its date, so a model note reads stale where it
-     * lands until it is confirmed, and a person's check on `$to` stays: a move
-     * is no look. Refused, before anything is written, when `$component` holds
+     * lands until it is confirmed. A model note takes the person's
+     * {@see self::CHECK} on `$component` with it, in the same transaction:
+     * the request is about that note, and a move is no look. A check already
+     * on `$to` is kept and the moved one dropped. Refused, before anything is written, when `$component` holds
      * no such note, when `$to` is a name the graph does not hold either, or
      * already holds a note of that kind by that author. An agent moves only
      * its own (`model`) notes; the pane moves either author's.
@@ -258,6 +260,13 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             $removed->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
             if ($removed->rowCount() !== 1) {
                 throw new RuntimeException(sprintf('The note on %s changed while it was moved; nothing was moved.', $component));
+            }
+            if ($author === 'model') {
+                // The person's request to look at the model's note again goes with it; one already on `$to` is kept, and this one goes.
+                $this->pdo->prepare("UPDATE OR IGNORE annotations SET canonical_name = :to WHERE project_id = :project AND canonical_name = :name AND kind = :check AND author = 'user'")
+                    ->execute(['to' => $to, 'project' => $projectId, 'name' => $component, 'check' => self::CHECK]);
+                $this->pdo->prepare("DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :check AND author = 'user'")
+                    ->execute(['project' => $projectId, 'name' => $component, 'check' => self::CHECK]);
             }
 
             return (string) $row['value'];

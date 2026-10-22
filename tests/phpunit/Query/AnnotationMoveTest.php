@@ -63,21 +63,36 @@ final class AnnotationMoveTest extends KnossosTestCase
         }
     }
 
-    public function testWithoutASnapshotTheSuggestionReadsTheActiveGraph(): void
+    public function testANameNoRetainedSnapshotHoldsIsSuggestedNothing(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
         $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
         $annotations->upsertAnnotation($ids['project'], 'App\\Moved\\Checkout', 'note', 'moved away', execute: true);
-        $annotations->upsertAnnotation($ids['project'], 'App\\Moved\\Nothing', 'note', 'nothing like it', execute: true);
         $annotations->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'here', execute: true);
 
         $rows = array_column($annotations->listAnnotations($ids['project'])->data['annotations'], null, 'canonical_name');
 
-        self::assertSame('App\\Checkout', $rows['App\\Moved\\Checkout']['suggested_component']);
-        self::assertSame(null, $rows['App\\Moved\\Nothing']['suggested_component']);
+        // An `App\Checkout` is in the graph, but nothing says it was added since the lost name was last seen.
+        self::assertSame(null, $rows['App\\Moved\\Checkout']['suggested_component']);
         // A present note is suggested nothing.
         self::assertArrayNotHasKey('suggested_component', $rows['App\\Checkout']);
+    }
+
+    public function testOnlyAPageWithAMissingNoteReadsTheSnapshots(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
+        $annotations->upsertAnnotation($ids['project'], 'App\\Checkout', 'note', 'here', execute: true);
+        $annotations->upsertAnnotation($ids['project'], 'App\\Moved\\Checkout', 'note', 'moved away', execute: true);
+        // Any read of the snapshots now fails loudly.
+        $pdo->exec('ALTER TABLE scan_snapshots RENAME TO scan_snapshots_away');
+
+        $present = $annotations->listAnnotations($ids['project'], limit: 1);
+
+        self::assertSame(['present'], array_column($present->data['annotations'], 'component_status'));
+        self::assertInstanceOf(\PDOException::class, self::captureThrown(fn() => $annotations->listAnnotations($ids['project'], limit: 1, offset: 1), \PDOException::class));
     }
 
     public function testMoveToCarriesAModelNote(): void
@@ -100,6 +115,26 @@ final class AnnotationMoveTest extends KnossosTestCase
         self::assertSame(['value' => 'the checkout flow', 'author' => 'model', 'basis_json' => $basis, 'created_at' => '2026-01-02T03:04:05Z'], $row);
         // It reads stale where it lands, until the model looks.
         self::assertSame(true, $tools->call('list_annotations', ['project_id' => $projectId])->data['annotations'][0]['stale']);
+    }
+
+    public function testAMovedModelNoteTakesThePersonsCheckWithIt(): void
+    {
+        [$pdo, $tools, $projectId] = $this->tools();
+        $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
+        $annotations->upsertAnnotation($projectId, 'App\\Old\\Checkout', 'note', 'the model saw this', execute: true);
+        $annotations->upsertAnnotation($projectId, 'App\\Old\\Checkout', 'check', 'still true?', execute: true, author: 'user');
+        $annotations->upsertAnnotation($projectId, 'App\\Old\\Invoice', 'note', 'the model saw that', execute: true);
+        $annotations->upsertAnnotation($projectId, 'App\\Old\\Invoice', 'check', 'old question', execute: true, author: 'user');
+        $annotations->upsertAnnotation($projectId, 'App\\InvoiceService', 'check', 'the question here', execute: true, author: 'user');
+
+        $tools->call('annotate_component', ['project_id' => $projectId, 'component' => 'App\\Old\\Checkout', 'kind' => 'note', 'move_to' => 'App\\Checkout', 'execute' => true]);
+        $tools->call('annotate_component', ['project_id' => $projectId, 'component' => 'App\\Old\\Invoice', 'kind' => 'note', 'move_to' => 'App\\InvoiceService', 'execute' => true]);
+
+        // The check went with its note; where one was already, that one stays and the moved one is gone.
+        self::assertSame(
+            [['App\\Checkout', 'check', 'still true?'], ['App\\Checkout', 'note', 'the model saw this'], ['App\\InvoiceService', 'check', 'the question here'], ['App\\InvoiceService', 'note', 'the model saw that']],
+            $pdo->query('SELECT canonical_name, kind, value FROM annotations ORDER BY canonical_name, kind')->fetchAll(PDO::FETCH_NUM),
+        );
     }
 
     public function testMoveToRefusesWhatItCannotMove(): void
