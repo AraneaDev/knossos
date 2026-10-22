@@ -20,11 +20,11 @@ use function PHPUnit\Framework\assertSame;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * A property is read by its class's methods (`$this->helper->shine()`), but
- * the graph records the call into what the property holds, never a read of
- * the property: nothing points at it. A walk over dependants that met a
- * property stopped there, so a property typed with a much-used class read
- * as untested however much its class is tested.
+ * A property read or write on a receiver the scan can type is an edge to the
+ * property. An untyped receiver, a chained fetch and the other languages
+ * record no edge: the class's methods may read the property, and a walk over
+ * dependants that met the property stopped there, so a property typed with a
+ * much-used class read as untested however much its class is tested.
  *
  * Here `Holder::$helper` holds a `Helper`; `HolderTest` constructs a
  * `Holder` and runs it.
