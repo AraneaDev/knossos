@@ -94,6 +94,22 @@ final class AnnotationSpanStalenessTest extends KnossosTestCase
         self::assertSame([true, 'written before src/A.php changed'], $this->staleness());
     }
 
+    public function testAComponentThatLeftTheGraphFallsBackToTheWholeFile(): void
+    {
+        $this->edit(str_replace("    public function m(): int\n    {\n        return 1;\n    }\n\n", '', self::SOURCE));
+
+        self::assertSame([true, 'written before src/A.php changed'], $this->staleness());
+    }
+
+    public function testAComponentThatMovedToAnotherFileFallsBackToTheWholeFile(): void
+    {
+        // The same lines, now in another file: the file the note rests on changed, and its span there is gone.
+        file_put_contents($this->root . '/src/Other.php', self::SOURCE);
+        $this->edit("<?php\nnamespace App;\nfinal class Left {}\n");
+
+        self::assertSame([true, 'written before src/A.php changed'], $this->staleness());
+    }
+
     public function testListingAndConfirmingReadTheSpanToo(): void
     {
         $this->edit(str_replace('return 1;', 'return 7;', self::SOURCE));

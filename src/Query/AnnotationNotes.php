@@ -187,8 +187,8 @@ final readonly class AnnotationNotes
      * read from the file on disk only when the disk holds the file the scan
      * read, so the scan's line numbers describe it. A component the graph no
      * longer places in that file, or a disk that differs from the scan, does
-     * not hold, and the note falls back to the whole file. Files are read once
-     * per call.
+     * not hold, and the note falls back to the whole file. Within one call a
+     * span is hashed once, and a file found changed on disk is not read again.
      *
      * @return Closure(string, string, string, string): bool canonical name, path, scanned hash, recorded span hash
      */
@@ -199,9 +199,10 @@ final readonly class AnnotationNotes
             'WHERE n.project_id = :project AND n.canonical_name = :name AND f.relative_path = :path',
         );
         $root = false;
-        $contents = [];
+        // Span hashes by path, scanned hash and lines, null for a file the disk no longer holds as scanned: never the files' text.
+        $hashes = [];
 
-        return function (string $canonical, string $path, string $scannedHash, string $recorded) use ($lines, $projectId, &$root, &$contents): bool {
+        return function (string $canonical, string $path, string $scannedHash, string $recorded) use ($lines, $projectId, &$root, &$hashes): bool {
             $lines->execute(['project' => $projectId, 'name' => $canonical, 'path' => $path]);
             $span = $lines->fetch(PDO::FETCH_ASSOC);
             $lines->closeCursor();
@@ -214,11 +215,17 @@ final readonly class AnnotationNotes
             if ($root === null) {
                 return false;
             }
-            if (!array_key_exists($path, $contents)) {
-                $contents[$path] = ComponentSpan::scannedContents($root, $path, $scannedHash);
+            $file = $path . "\0" . $scannedHash;
+            $key = $file . "\0" . (int) $span['start_line'] . "\0" . (int) $span['end_line'];
+            if (!array_key_exists($key, $hashes)) {
+                $contents = array_key_exists($file, $hashes) ? null : ComponentSpan::scannedContents($root, $path, $scannedHash);
+                if ($contents === null) {
+                    $hashes[$file] = null;
+                }
+                $hashes[$key] = $contents === null ? null : ComponentSpan::hash($contents, (int) $span['start_line'], (int) $span['end_line']);
             }
 
-            return $contents[$path] !== null && hash_equals($recorded, ComponentSpan::hash($contents[$path], (int) $span['start_line'], (int) $span['end_line']));
+            return $hashes[$key] !== null && hash_equals($recorded, $hashes[$key]);
         };
     }
 
