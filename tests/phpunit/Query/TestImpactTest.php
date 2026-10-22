@@ -228,14 +228,17 @@ final class TestImpactTest extends KnossosTestCase
 
         $deep = $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 12);
         $cut = $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 1);
+        // At depth 2 the last level is the test alone, which nothing depends on.
+        $leaf = $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 2);
 
         self::assertSame([], $deep->data['bounds']['truncation_reasons']);
         self::assertSame(12, $deep->data['bounds']['max_depth']);
         self::assertSame(['depth_horizon'], $cut->data['bounds']['truncation_reasons']);
         self::assertTrue($cut->truncated);
         self::assertStringContainsString('max_depth', $cut->summary);
-        $this->expectException(\InvalidArgumentException::class);
-        $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 13);
+        self::assertSame([], $leaf->data['bounds']['truncation_reasons']);
+        self::assertFalse($leaf->truncated);
+        self::assertStringNotContainsString('max_depth', $leaf->summary);
     }
 
     /**

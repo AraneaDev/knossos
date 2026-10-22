@@ -53,6 +53,9 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
     /** The edge kind whose source is read on the level of its target. */
     private const LAUNCH = 'launches';
 
+    /** Most dependant rows the depth-horizon check reads before taking the horizon as reached. */
+    private const HORIZON_ROWS = 10_000;
+
     /** Rows read between two clock reads, after the first row of every chunk. */
     private const CLOCK_EVERY = 64;
 
@@ -69,7 +72,7 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      * @param bool $first stop after the level the first test is met at: enough to say whether any test reaches
      * @return array{tests: array<string, int>, wired: array<string, true>, visited: int, edges_examined: int, truncation_reasons: list<string>, depth_horizon: bool}
      *         tests: test-role node id => shortest distance; wired: the tests among them reached only through wiring;
-     *         depth_horizon: the walk stopped at max_depth with dependants still unread
+     *         depth_horizon: the walk stopped at max_depth with a dependant of its last level still unread
      */
     public function search(string $projectId, array $startIds, int $maxDepth, array $edgeKinds, int $minimumRank, int $deadline, bool $first = false): array
     {
@@ -93,98 +96,153 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         }
         $starts = array_fill_keys($frontier, true);
         $this->markTests($projectId, $frontier, 0, $tests);
-        $examined = 0;
-        // Supertype methods and constructed classes already read through: apart from $seen, so one found later as a dependant in its own right still counts.
-        $passed = [];
-        for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $tests !== []); ++$level) {
-            // Next level's node id => its place in $next, so a launch met later on this level can take it back.
-            $next = [];
-            $found = [];
-            // A process launch hands the work to what it launches: the launching side is as far from the
-            // change as the launched one, so it is read on this level, as often as launches lead on.
-            for ($reading = $frontier; $reading !== [] && $reason === null;) {
-                $launched = [];
-                // A call through an interface or a parent goes to the supertype's method, and nothing points at a
-                // property: what calls the supertype method or uses the property's class may reach the frontier's own,
-                // so their dependants are read too, the stand-in passed through ({@see StandInExpansion}).
-                // A node read through stands in for the frontier node it was read for, wired as that one is.
-                $standIns = StandInExpansion::of($this->pdo, $projectId, $reading, $edgeKinds);
-                $through = self::passThrough($standIns['through'], $seen, $passed, $wired);
-                $targets = [...$reading, ...$through];
-                sort($targets, SORT_STRING);
-                // A constructor runs whenever its class is constructed, which the graph records against the class:
-                // what constructs the class reaches the constructor, and nothing else that names the class does.
-                $constructed = self::passThrough($standIns['constructed'], $seen, $passed, $wired);
-                sort($constructed, SORT_STRING);
-                $roots = array_diff_key(CompositionRoots::of($this->pdo, $projectId, [...$targets, ...$constructed]), $starts);
-                $reads = [...array_map(static fn(array $chunk): array => [$chunk, $edgeKinds], array_chunk($targets, self::CHUNK)), ...array_map(static fn(array $chunk): array => [$chunk, [ConstructedClasses::EDGE_KIND]], array_chunk($constructed, self::CHUNK))];
-                foreach ($reads as [$chunk, $kinds]) {
-                    $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
-                    $row = 0;
-                    while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
-                        [$targetId, $sourceId, $kind] = $edge;
-                        if ($row++ % self::CLOCK_EVERY === 0 && $this->now() > $deadline) {
-                            $reason = 'time_limit';
-                            break;
-                        }
-                        if ($examined >= $this->maxEdges) {
-                            $reason = 'edge_limit';
-                            break;
-                        }
-                        ++$examined;
-                        $sourceId = (string) $sourceId;
-                        $launch = $kind === self::LAUNCH;
-                        $viaWiring = isset($roots[(string) $targetId]) || ($wired[(string) $targetId] ?? false);
-                        if (isset($seen[$sourceId])) {
-                            // Met again on the level it was found at: any edge that is not wiring makes it direct.
-                            if (isset($found[$sourceId]) && !$viaWiring) {
-                                $wired[$sourceId] = false;
-                            }
-                            // Found for the next level, then met over a launch: it belongs to this one.
-                            if ($launch && isset($next[$sourceId])) {
-                                unset($next[$sourceId]);
-                                $launched[] = $sourceId;
-                            }
-                            continue;
-                        }
-                        if (count($seen) >= $this->maxVisited) {
-                            $reason = 'visit_limit';
-                            break;
-                        }
-                        $seen[$sourceId] = true;
-                        $found[$sourceId] = true;
-                        $wired[$sourceId] = $viaWiring;
-                        if ($launch) {
-                            $launched[] = $sourceId;
-                        } else {
-                            $next[$sourceId] = true;
-                        }
-                    }
-                    // Abandoned mid-result when a bound stops the walk; SQLite holds
-                    // its read lock until the cursor is closed.
-                    $rows->closeCursor();
-                    if ($reason !== null) {
-                        break;
-                    }
-                }
-                $this->markTests($projectId, $launched, $level, $tests);
-                $reading = $launched;
-            }
-            // Also when a bound cut the level: what it did visit is reported.
-            $frontier = array_map('strval', array_keys($next));
-            $this->markTests($projectId, $frontier, $level + 1, $tests);
+        // `passed`: supertype methods and constructed classes already read through, apart from `seen`,
+        // so one found later as a dependant in its own right still counts.
+        $walk = ['seen' => $seen, 'passed' => [], 'wired' => $wired, 'tests' => $tests, 'examined' => 0];
+        for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $walk['tests'] !== []); ++$level) {
+            [$frontier, $reason] = $this->readLevel($projectId, $frontier, $level, $starts, $edgeKinds, $minimumRank, $deadline, $walk);
         }
-        // The walk stopped at max_depth with nodes still to read: tests may lie beyond it.
-        $horizon = $reason === null && $frontier !== [] && $level >= $maxDepth;
+        // The walk stopped at max_depth with dependants of its last level still unread: tests may lie beyond it.
+        $horizon = $reason === null && $frontier !== [] && $level >= $maxDepth
+            && $this->hasUnreadDependant($projectId, $frontier, $edgeKinds, $minimumRank, $walk['seen']);
 
         $wiredTests = [];
-        foreach (array_keys($tests) as $id) {
-            if ($wired[(string) $id] ?? false) {
+        foreach (array_keys($walk['tests']) as $id) {
+            if ($walk['wired'][(string) $id] ?? false) {
                 $wiredTests[(string) $id] = true;
             }
         }
 
-        return ['tests' => $tests, 'wired' => $wiredTests, 'visited' => count($seen), 'edges_examined' => $examined, 'truncation_reasons' => $reason === null ? [] : [$reason], 'depth_horizon' => $horizon];
+        return ['tests' => $walk['tests'], 'wired' => $wiredTests, 'visited' => count($walk['seen']), 'edges_examined' => $walk['examined'], 'truncation_reasons' => $reason === null ? [] : [$reason], 'depth_horizon' => $horizon];
+    }
+
+    /**
+     * Read the dependants of one level's frontier, and the next level it makes, with the bound that cut it if one did.
+     *
+     * A process launch hands the work to what it launches: the launching side is as far from the
+     * change as the launched one, so it is read on this level, as often as launches lead on.
+     *
+     * @param list<string> $frontier the nodes at distance `$level`
+     * @param array<string, true> $starts
+     * @param list<string> $edgeKinds
+     * @param array{seen: array<string, true>, passed: array<string, true>, wired: array<string, bool>, tests: array<string, int>, examined: int} $walk
+     * @return array{0: list<string>, 1: ?string} the next level's frontier, and the bound that stopped the walk
+     */
+    private function readLevel(string $projectId, array $frontier, int $level, array $starts, array $edgeKinds, int $minimumRank, int $deadline, array &$walk): array
+    {
+        $reason = null;
+        // Next level's node id => true, so a launch met later on this level can take it back.
+        $next = [];
+        $found = [];
+        for ($reading = $frontier; $reading !== [] && $reason === null;) {
+            $launched = [];
+            // A call through an interface or a parent goes to the supertype's method, and nothing points at a
+            // property: what calls the supertype method or uses the property's class may reach the frontier's own,
+            // so their dependants are read too, the stand-in passed through ({@see StandInExpansion}).
+            // A node read through stands in for the frontier node it was read for, wired as that one is.
+            $standIns = StandInExpansion::of($this->pdo, $projectId, $reading, $edgeKinds);
+            $through = self::passThrough($standIns['through'], $walk['seen'], $walk['passed'], $walk['wired']);
+            $targets = [...$reading, ...$through];
+            sort($targets, SORT_STRING);
+            // A constructor runs whenever its class is constructed, which the graph records against the class:
+            // what constructs the class reaches the constructor, and nothing else that names the class does.
+            $constructed = self::passThrough($standIns['constructed'], $walk['seen'], $walk['passed'], $walk['wired']);
+            sort($constructed, SORT_STRING);
+            $roots = array_diff_key(CompositionRoots::of($this->pdo, $projectId, [...$targets, ...$constructed]), $starts);
+            $reads = [...array_map(static fn(array $chunk): array => [$chunk, $edgeKinds], array_chunk($targets, self::CHUNK)), ...array_map(static fn(array $chunk): array => [$chunk, [ConstructedClasses::EDGE_KIND]], array_chunk($constructed, self::CHUNK))];
+            foreach ($reads as [$chunk, $kinds]) {
+                $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
+                $row = 0;
+                while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
+                    [$targetId, $sourceId, $kind] = $edge;
+                    if ($row++ % self::CLOCK_EVERY === 0 && $this->now() > $deadline) {
+                        $reason = 'time_limit';
+                        break;
+                    }
+                    if ($walk['examined'] >= $this->maxEdges) {
+                        $reason = 'edge_limit';
+                        break;
+                    }
+                    ++$walk['examined'];
+                    $sourceId = (string) $sourceId;
+                    $launch = $kind === self::LAUNCH;
+                    $viaWiring = isset($roots[(string) $targetId]) || ($walk['wired'][(string) $targetId] ?? false);
+                    if (isset($walk['seen'][$sourceId])) {
+                        // Met again on the level it was found at: any edge that is not wiring makes it direct.
+                        if (isset($found[$sourceId]) && !$viaWiring) {
+                            $walk['wired'][$sourceId] = false;
+                        }
+                        // Found for the next level, then met over a launch: it belongs to this one.
+                        if ($launch && isset($next[$sourceId])) {
+                            unset($next[$sourceId]);
+                            $launched[] = $sourceId;
+                        }
+                        continue;
+                    }
+                    if (count($walk['seen']) >= $this->maxVisited) {
+                        $reason = 'visit_limit';
+                        break;
+                    }
+                    $walk['seen'][$sourceId] = true;
+                    $found[$sourceId] = true;
+                    $walk['wired'][$sourceId] = $viaWiring;
+                    if ($launch) {
+                        $launched[] = $sourceId;
+                    } else {
+                        $next[$sourceId] = true;
+                    }
+                }
+                // Abandoned mid-result when a bound stops the walk; SQLite holds
+                // its read lock until the cursor is closed.
+                $rows->closeCursor();
+                if ($reason !== null) {
+                    break;
+                }
+            }
+            $this->markTests($projectId, $launched, $level, $walk['tests']);
+            $reading = $launched;
+        }
+        // Also when a bound cut the level: what it did visit is reported.
+        $next = array_map('strval', array_keys($next));
+        $this->markTests($projectId, $next, $level + 1, $walk['tests']);
+
+        return [$next, $reason];
+    }
+
+    /**
+     * Whether a node of the last level read, or a stand-in for one, has a dependant the walk has not visited.
+     *
+     * A level of leaves ends the walk as surely as an empty one, so reaching max_depth on it cuts
+     * nothing. Reads at most {@see self::HORIZON_ROWS} rows; past that it answers yes, the side that
+     * only costs a deeper search.
+     *
+     * @param list<string> $frontier @param list<string> $edgeKinds @param array<string, true> $seen
+     */
+    private function hasUnreadDependant(string $projectId, array $frontier, array $edgeKinds, int $minimumRank, array $seen): bool
+    {
+        $standIns = StandInExpansion::of($this->pdo, $projectId, $frontier, $edgeKinds);
+        $budget = self::HORIZON_ROWS;
+        $reads = [
+            [[...$frontier, ...array_column($standIns['through'], 0)], $edgeKinds],
+            [array_column($standIns['constructed'], 0), [ConstructedClasses::EDGE_KIND]],
+        ];
+        foreach ($reads as [$ids, $kinds]) {
+            $ids = array_values(array_unique(array_map('strval', $ids)));
+            sort($ids, SORT_STRING);
+            foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+                $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
+                while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
+                    if (!isset($seen[(string) $edge[1]]) || --$budget <= 0) {
+                        $rows->closeCursor();
+
+                        return true;
+                    }
+                }
+                $rows->closeCursor();
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -152,11 +152,15 @@ final class TestReachSearchTest extends KnossosTestCase
 
         $cut = $search->search($ids['project'], [$ids['checkout']], 3, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
         $whole = $search->search($ids['project'], [$ids['checkout']], 6, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+        // The last level holds only the test, which nothing depends on: stopping there cuts nothing.
+        $exact = $search->search($ids['project'], [$ids['checkout']], 5, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
 
         self::assertTrue($cut['depth_horizon']);
         self::assertSame([], $cut['tests']);
         self::assertFalse($whole['depth_horizon']);
         self::assertSame([$test => 5], $whole['tests']);
+        self::assertFalse($exact['depth_horizon']);
+        self::assertSame([$test => 5], $exact['tests']);
     }
 
     #[Group('query')]
