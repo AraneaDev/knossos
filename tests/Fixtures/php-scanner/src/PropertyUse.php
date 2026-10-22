@@ -24,3 +24,18 @@ final class User
         };
     }
 }
+
+final class Counter
+{
+    public int $n = 0;
+
+    public array $list = [];
+
+    public function bump(): void
+    {
+        $this->n = $this->n + 1;
+        $this->n += 1;
+        [$this->list, $y] = [[], 1];
+        list($this->n) = [3];
+    }
+}

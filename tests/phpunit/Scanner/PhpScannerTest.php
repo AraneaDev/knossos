@@ -1890,7 +1890,7 @@ final class PhpScannerTest extends KnossosTestCase
         foreach ($contributions[0]->edges as $edge) {
             if ($edge->kind === 'references' && str_starts_with($edge->targetReference, 'php:property:')) {
                 $sites[$edge->sourceReference . ' -> ' . $edge->targetReference][] = $edge->evidence->startLine;
-                $access[$edge->targetReference . ':' . $edge->evidence->startLine] = $edge->attributes['access'] ?? null;
+                $access[$edge->targetReference . ':' . $edge->evidence->startLine][] = $edge->attributes['access'] ?? null;
             }
         }
         $f = 'php:method:Fixture\\User::f';
@@ -1898,9 +1898,16 @@ final class PhpScannerTest extends KnossosTestCase
         // The read and the write are one site each.
         self::assertSame([18, 19], $sites[$f . ' -> php:property:Fixture\\Box::$items'] ?? []);
         self::assertSame([20], $sites[$f . ' -> php:property:Fixture\\Box::$count'] ?? []);
-        self::assertSame('read', $access['php:property:Fixture\\Box::$items:18'] ?? null);
-        self::assertSame('write', $access['php:property:Fixture\\Box::$items:19'] ?? null);
-        self::assertSame('write', $access['php:property:Fixture\\Box::$count:20'] ?? null);
+        self::assertSame(['read'], $access['php:property:Fixture\\Box::$items:18'] ?? null);
+        self::assertSame(['write'], $access['php:property:Fixture\\Box::$items:19'] ?? null);
+        // `++` reads the property and writes it back.
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Box::$count:20'] ?? null);
+        // `$this->n = $this->n + 1` reads and writes on one line; `+=` does both at one site.
+        self::assertSame(['write', 'read'], $access['php:property:Fixture\\Counter::$n:36'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$n:37'] ?? null);
+        // A destructuring target is written, in either spelling.
+        self::assertSame(['write'], $access['php:property:Fixture\\Counter::$list:38'] ?? null);
+        self::assertSame(['write'], $access['php:property:Fixture\\Counter::$n:39'] ?? null);
         // The closure's `$this` is the enclosing class, so it names no property of the box.
         self::assertCount(1, array_filter(array_keys($sites), static fn(string $key): bool => str_ends_with($key, 'Box::$items')));
         self::assertContains('php:property:Fixture\\User::$items', array_map(static fn(string $key): string => explode(' -> ', $key)[1], array_keys($sites)));

@@ -25,7 +25,9 @@ final class PropertyUsagesTest extends KnossosTestCase
         try {
             $pdo = $this->freshTestDatabase();
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
-            $result = ArchitectureQueryService::forDatabase($pdo)->listUsages($projectId, 'Fixture\\Box::$items');
+            $queries = ArchitectureQueryService::forDatabase($pdo);
+            $result = $queries->listUsages($projectId, 'Fixture\\Box::$items');
+            $counter = $queries->listUsages($projectId, 'Fixture\\Counter::$n');
         } finally {
             $this->removeTempTree($root);
         }
@@ -37,5 +39,24 @@ final class PropertyUsagesTest extends KnossosTestCase
         self::assertSame([18, 19], array_column($usages, 'start_line'));
         // A read and a write are separate usages, each saying which it is.
         self::assertSame(['read', 'write'], array_column(array_column($usages, 'attributes'), 'access'));
+        // A read and a write on one line are both kept; the later write collapses into the first.
+        self::assertSame(
+            [[36, 'read'], [36, 'write'], [37, 'read_write']],
+            self::sites($counter->data['usages']),
+        );
+    }
+
+    /**
+     * Each usage's line and access, in line then access order.
+     *
+     * @param list<array<string, mixed>> $usages
+     * @return list<array{0: mixed, 1: mixed}>
+     */
+    private static function sites(array $usages): array
+    {
+        $sites = array_map(static fn(array $usage): array => [$usage['start_line'], $usage['attributes']['access'] ?? null], $usages);
+        sort($sites);
+
+        return $sites;
     }
 }

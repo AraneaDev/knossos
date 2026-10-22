@@ -56,9 +56,11 @@ final class FactCollector extends NodeVisitorAbstract
     private array $untypedCalls = [];
 
     /**
-     * Property fetches the code assigns to, keyed by node id, so the property edge says it writes.
+     * How the code accesses the property fetches it assigns to, keyed by node id: `write` for a
+     * plain or destructuring assignment, `read_write` for a compound assignment, `++` or `--`.
+     * A fetch not listed is a read.
      *
-     * @var array<int, true>
+     * @var array<int, 'write'|'read_write'>
      */
     private array $propertyWrites = [];
 
@@ -136,9 +138,11 @@ final class FactCollector extends NodeVisitorAbstract
             $this->namespaceScope = spl_object_id($node);
             $this->namespaceName = $node->name?->toString() ?? '';
         }
-        if ($node instanceof Expr\Assign || $node instanceof Expr\AssignOp || $node instanceof Expr\AssignRef
+        if ($node instanceof Expr\Assign || $node instanceof Expr\AssignRef) {
+            $this->markPropertyWrite($node->var, 'write');
+        } elseif ($node instanceof Expr\AssignOp
             || $node instanceof Expr\PreInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
-            $this->markPropertyWrite($node->var);
+            $this->markPropertyWrite($node->var, 'read_write');
         }
         if ($node instanceof Stmt\ClassLike) {
             $this->enterClassLike($node);
@@ -829,14 +833,28 @@ final class FactCollector extends NodeVisitorAbstract
         $this->untypedCalls[$this->currentSource()][$node->name->toString()] = true;
     }
 
-    /** Remember the property an assignment writes, through any `[...]` it appends or indexes. */
-    private function markPropertyWrite(Expr $target): void
+    /**
+     * Remember the property an assignment writes, through any `[...]` it appends or indexes and
+     * into every target of a `[$a->x, $b] = ...` or `list(...)` destructuring.
+     *
+     * @param 'write'|'read_write' $access
+     */
+    private function markPropertyWrite(Expr $target, string $access): void
     {
+        if ($target instanceof Expr\List_) {
+            foreach ($target->items as $item) {
+                if ($item !== null) {
+                    $this->markPropertyWrite($item->value, $access);
+                }
+            }
+
+            return;
+        }
         while ($target instanceof Expr\ArrayDimFetch) {
             $target = $target->var;
         }
         if ($target instanceof Expr\PropertyFetch || $target instanceof Expr\NullsafePropertyFetch || $target instanceof Expr\StaticPropertyFetch) {
-            $this->propertyWrites[spl_object_id($target)] = true;
+            $this->propertyWrites[spl_object_id($target)] = $access;
         }
     }
 
@@ -851,11 +869,12 @@ final class FactCollector extends NodeVisitorAbstract
 
     /**
      * A speculative `references` edge to `$class::$name`, in the form property nodes are declared
-     * under. `access` says whether the site reads or writes it; the core keeps one edge of each.
+     * under. `access` says whether the site reads, writes, or (`+=`, `++`) reads and writes it; the
+     * core keeps one edge of each.
      */
     private function propertyReference(string $class, string $name, Expr $evidence): void
     {
-        $access = isset($this->propertyWrites[spl_object_id($evidence)]) ? 'write' : 'read';
+        $access = $this->propertyWrites[spl_object_id($evidence)] ?? 'read';
         $this->addEdge('references', $this->currentSource(), self::reference('property', $class . '::$' . $name), $evidence, 'probable', ['speculative' => true, 'access' => $access]);
     }
 
