@@ -52,7 +52,11 @@ final class ComponentSpan
         return array_map(static fn(array $span): string => self::hashLines($lines, $span[0], $span[1]), $spans);
     }
 
-    /** The lines of `$fileContents` as a list, without its final newline; an empty list for an empty file. */
+    /**
+     * The lines of `$fileContents` without its final newline; an empty list for an empty file.
+     *
+     * @return list<string>
+     */
     private static function lines(string $fileContents): array
     {
         $text = str_ends_with($fileContents, "\n") ? substr($fileContents, 0, -1) : $fileContents;
@@ -60,7 +64,11 @@ final class ComponentSpan
         return $text === '' ? [] : explode("\n", $text);
     }
 
-    /** The sha256 of lines `$startLine` to `$endLine` (1-based, inclusive) of `$lines`, joined by "\n". */
+    /**
+     * The sha256 of lines `$startLine` to `$endLine` (1-based, inclusive) of `$lines`, joined by "\n".
+     *
+     * @param list<string> $lines
+     */
     private static function hashLines(array $lines, int $startLine, int $endLine): string
     {
         $start = max(1, $startLine);
