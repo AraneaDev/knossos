@@ -62,8 +62,9 @@ about, so do it before you give your answer. Write nothing only when the answer 
 merely confirmed it.
 
 **The second rule:** when a result you used carries a note marked `stale`, settle
-it before you give your answer, the same way. `stale` means a file the note rests
-on changed after it was written, so the note may no longer be true, and nobody
+it before you give your answer, the same way. `stale` means the component's own
+code, or a file the note cites, changed after the note was written, so the note
+may no longer be true, and nobody
 else will look: a stale note left alone stays stale, and once most notes read
 stale none of them is trusted. You are already looking at that component, which
 makes you the cheapest one to check it. Read the code the note describes, then:
@@ -101,10 +102,10 @@ within the 1000 characters a result shows. No Mermaid or Markdown: nothing that
 shows a note renders them.
 
 `list_annotations` marks a note `component_status: missing` when no
-component carries its name any more, after a rename or a move: write it again
-on the new name and remove the old one. A note by a person (`author: user`) is
-theirs: never rewrite or remove it, and never write through the pane's own
-command (`knossos annotate`).
+component carries its name any more, after a rename or a move: move it to the
+new name (see Mechanics), or remove it when nothing carries what it says. A
+note by a person (`author: user`) is theirs: never rewrite or remove it, and
+never write through the pane's own command (`knossos annotate`).
 
 Worth writing:
 
@@ -128,4 +129,9 @@ surfaces behave, so use them only for their actual meaning:
 `intended_boundary` marks a deliberate placement, `false_positive` stops a
 component being re-flagged because the graph was wrong, `intentional` stops it
 because the finding is true and meant (a parked route, a test-only helper),
-`confirmed_dead` records verified unused code.
+`confirmed_dead` records verified unused code. A missing note with a
+`suggested_component` is moved there with `move_to: <that name>`. When
+`suggested_component` is null, find the new name with `find_component` on the
+short name, then pass it as `move_to`. A moved note keeps the basis it was
+written against, so it reads stale when its component's code changed; check it
+and confirm it.

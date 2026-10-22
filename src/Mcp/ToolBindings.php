@@ -307,14 +307,15 @@ final class ToolBindings
                 ],
             ],
             'annotate_component' => [
-                // `remove` or `confirm` picks the method; a note written here is the model's.
+                // `remove`, `confirm` or `move_to` picks the method; a note written or moved here is the model's.
                 'call' => static fn(ArchitectureQueryService $q, array $v, array $a): ResultEnvelope => match (true) {
+                    $a['move_to'] !== null => $q->services()->annotationQueries->moveAnnotation($a['project_id'], $a['component'], $a['move_to'], $a['kind'], $a['execute']),
                     $a['confirm'] => $q->services()->annotationQueries->confirmAnnotation($a['project_id'], $a['component'], $a['kind'], $a['execute']),
                     $a['remove'] => $q->services()->annotationQueries->removeAnnotation($a['project_id'], $a['component'], $a['kind'], $a['value'], $a['execute']),
                     default => $q->services()->annotationQueries->upsertAnnotation($a['project_id'], $a['component'], $a['kind'], $a['value'], $a['execute'], 'model', $a['evidence_paths'], $a['replace']),
                 },
                 'arguments' => [
-                    'project_id' => self::at('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--replace] [--confirm] [--execute] [--json]'),
+                    'project_id' => self::at('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--replace] [--confirm] [--move-to=NAME] [--execute] [--json]'),
                     'component' => self::at('A component is required.'),
                     'kind' => self::at('A kind is required.'),
                     // Stored as given: a note's whitespace is content.
@@ -328,6 +329,21 @@ final class ToolBindings
                         }
 
                         return $confirm;
+                    }],
+                    // Moving keeps the note as it is too, and takes nothing else that acts on it.
+                    'move_to' => ['read' => static function (array $a): ?string {
+                        if (!array_key_exists('move_to', $a)) {
+                            return null;
+                        }
+                        $to = ToolArguments::text($a, 'move_to', 1000);
+                        if (($a['value'] ?? '') !== '' || ($a['remove'] ?? false) === true || ($a['replace'] ?? false) === true || ($a['confirm'] ?? false) === true || ($a['evidence_paths'] ?? []) !== []) {
+                            throw new ToolInputException('move_to moves the note as it is: pass no value, evidence_paths, remove, replace or confirm with it.');
+                        }
+                        if ($to === ToolArguments::normalized($a['component'] ?? null)) {
+                            throw new ToolInputException('move_to names the component the note is already on.');
+                        }
+
+                        return $to;
                     }],
                     'evidence_paths' => self::as('evidence'),
                 ],

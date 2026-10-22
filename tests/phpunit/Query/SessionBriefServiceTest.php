@@ -159,7 +159,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
         $service = new SessionBriefService($pdo);
 
         assertSame(1, $service->gather($root)->missingNotes);
-        assertContains('1 note sits on a component the graph no longer has', $service->brief($root));
+        assertContains('1 note sits on a component the graph lost; list_annotations suggests a new name, move_to moves it.', $service->brief($root));
     }
 
     #[Group('query')]

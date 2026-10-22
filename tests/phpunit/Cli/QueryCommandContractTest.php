@@ -421,7 +421,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     public function testAnnotateComponentAllowsMutationFlags(): void
     {
         assertSame(
-            ['db', 'json', 'remove', 'replace', 'execute', 'confirm', 'evidence'],
+            ['db', 'json', 'remove', 'replace', 'execute', 'confirm', 'move-to', 'evidence'],
             (new QueryCommand())->allowedOptions('annotate-component'),
         );
     }

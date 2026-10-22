@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\SqliteTransactions;
+use RuntimeException;
 
 /**
  * Agent write-backs: durable annotations keyed by canonical name so they
@@ -66,7 +67,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * holds, up to {@see self::MAX_EVIDENCE_PATHS} of those. A cited file gone
      * from both was looked past by the person who confirmed it.
      *
-     * @return list<array{path: string, hash: string}>
+     * @return list<array{path: string, hash: string, span?: array{start: int, end: int, hash: string}}>
      */
     private function confirmedBasis(string $projectId, string $component, string $stored): array
     {
@@ -217,6 +218,73 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         return $this->executed($projectId, $target, $kind, 'remove', 'Removed', null, $nothing === null ? null : 'Nothing removed: ' . $nothing);
     }
 
+    /**
+     * `$author`'s `$kind` note on `$component` moved to `$to`, previewing
+     * unless executing: the stored row copied there, then removed here,
+     * together, both by their exact names. The note keeps its text, what it
+     * was written against and its date, so a model note reads stale where it
+     * lands when its component's code there differs from what it was written
+     * against, and fresh when it does not. A model note takes the person's
+     * {@see self::CHECK} on `$component` with it, in the same transaction:
+     * the request is about that note, and a move is no look. A check already
+     * on `$to` is kept and the moved one dropped. Refused, before anything is written, when `$component` holds
+     * no such note, when `$to` is a name the graph does not hold either, or
+     * already holds a note of that kind by that author. An agent moves only
+     * its own (`model`) notes; the pane moves either author's.
+     */
+    public function moveAnnotation(string $projectId, string $component, string $to, string $kind = 'note', bool $execute = false, string $author = 'model'): ResultEnvelope
+    {
+        $project = $this->project($projectId);
+        $value = (new SqliteTransactions($this->pdo))->run(function () use ($projectId, $component, $to, $kind, $author, $execute): string {
+            $source = $this->pdo->prepare('SELECT value, basis_json, created_at FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+            $source->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
+            $row = $source->fetch(\PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                throw new InvalidArgumentException(sprintf('%s has no %s by the %s to move.', $component, $kind, $author));
+            }
+            $present = $this->pdo->prepare('SELECT 1 FROM nodes WHERE project_id = :project AND canonical_name = :name LIMIT 1');
+            $present->execute(['project' => $projectId, 'name' => $to]);
+            if ($present->fetchColumn() === false) {
+                throw new InvalidArgumentException(sprintf('%s is not in the graph either: pick a component it holds.', $to));
+            }
+            if ($this->fetch($projectId, $to, $kind, $author) !== null) {
+                throw new InvalidArgumentException(sprintf('%s already holds a %s by the %s: edit or remove that one first.', $to, $kind, $author));
+            }
+            if (!$execute) {
+                return (string) $row['value'];
+            }
+            $this->pdo->prepare(
+                'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
+                'VALUES (:project, :to, :kind, :value, :author, :basis, :created, :now)',
+            )->execute(['project' => $projectId, 'to' => $to, 'kind' => $kind, 'value' => $row['value'], 'author' => $author, 'basis' => $row['basis_json'], 'created' => $row['created_at'], 'now' => gmdate('Y-m-d\TH:i:s\Z')]);
+            $removed = $this->pdo->prepare('DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :kind AND author = :author');
+            $removed->execute(['project' => $projectId, 'name' => $component, 'kind' => $kind, 'author' => $author]);
+            if ($removed->rowCount() !== 1) {
+                throw new RuntimeException(sprintf('The note on %s changed while it was moved; nothing was moved.', $component));
+            }
+            if ($author === 'model') {
+                // The person's request to look at the model's note again goes with it; one already on `$to` is kept, and this one goes.
+                $this->pdo->prepare("UPDATE OR IGNORE annotations SET canonical_name = :to WHERE project_id = :project AND canonical_name = :name AND kind = :check AND author = 'user'")
+                    ->execute(['to' => $to, 'project' => $projectId, 'name' => $component, 'check' => self::CHECK]);
+                $this->pdo->prepare("DELETE FROM annotations WHERE project_id = :project AND canonical_name = :name AND kind = :check AND author = 'user'")
+                    ->execute(['project' => $projectId, 'name' => $component, 'check' => self::CHECK]);
+            }
+
+            return (string) $row['value'];
+        });
+
+        return new ResultEnvelope(
+            $projectId,
+            $project['active_scan_id'],
+            $execute
+                ? sprintf('Moved %s annotation by the %s from %s to %s; confirm it once you checked it still holds there.', $kind, $author, $component, $to)
+                : sprintf('Preview only, nothing written: would move %s annotation by the %s from %s to %s; pass execute to move it.', $kind, $author, $component, $to),
+            ['component' => $component, 'to' => $to, 'kind' => $kind, 'author' => $author, 'action' => 'move', 'executed' => $execute, 'value' => $value, 'annotation' => $execute ? $this->fetch($projectId, $to, $kind, $author) : null],
+            [],
+            $execute ? [] : ['Set execute=true to apply the change.'],
+        );
+    }
+
     /** How many files a model note may cite besides its component's own. */
     public const MAX_EVIDENCE_PATHS = 5;
 
@@ -224,10 +292,13 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * The files a model note rests on, with the content hash each has now:
      * the component's own file first, then each cited path, once each. A
      * cited path the project's scan does not hold is refused, so a note never
-     * rests on a file no reader can check.
+     * rests on a file no reader can check. A component's own file also
+     * records the lines it spans there and their hash, when it is declared
+     * there ({@see ComponentSpan::DECLARATION_KINDS}) and the disk holds the
+     * file the scan read.
      *
      * @param list<string> $evidencePaths
-     * @return list<array{path: string, hash: string}>
+     * @return list<array{path: string, hash: string, span?: array{start: int, end: int, hash: string}}>
      */
     private function basis(string $projectId, string $canonical, array $evidencePaths): array
     {
@@ -236,16 +307,25 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         // Every file the name is declared in (a class and an interface of the
         // same name can live apart), so a change to any of them is seen.
+        // Each with the lines the name spans there, so an edit elsewhere in the file leaves the note standing.
         $own = $this->pdo->prepare(
-            'SELECT DISTINCT f.relative_path, f.content_hash FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            'WHERE n.project_id = :project AND n.canonical_name = :name ORDER BY f.relative_path LIMIT ' . self::MAX_EVIDENCE_PATHS,
+            'SELECT f.relative_path, f.content_hash, MIN(n.start_line) AS start_line, MAX(n.end_line) AS end_line, ' . ComponentSpan::declaredOnly('n') . ' AS declared ' .
+            'FROM nodes n JOIN files f ON f.id = n.file_id ' .
+            'WHERE n.project_id = :project AND n.canonical_name = :name GROUP BY f.relative_path, f.content_hash ORDER BY f.relative_path LIMIT ' . self::MAX_EVIDENCE_PATHS,
         );
         $own->execute(['project' => $projectId, 'name' => $canonical]);
-        $basis = [];
-        foreach ($own->fetchAll() as $row) {
-            $basis[(string) $row['relative_path']] = (string) $row['content_hash'];
-        }
         $root = (string) $this->project($projectId)['root_realpath'];
+        $basis = [];
+        $spans = [];
+        foreach ($own->fetchAll() as $row) {
+            $path = (string) $row['relative_path'];
+            $basis[$path] = (string) $row['content_hash'];
+            // A module or package stands for its whole file, so it records no span.
+            $span = (int) $row['declared'] === 1 ? self::span($root, $path, $basis[$path], $row['start_line'], $row['end_line']) : null;
+            if ($span !== null) {
+                $spans[$path] = $span;
+            }
+        }
         if ($basis === []) {
             // A file component (NamedFiles): the note rests on the file it names, hashed from disk.
             try {
@@ -274,7 +354,23 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             $basis[$path] = is_string($hash) ? $hash : ProjectFileHash::of($root, $path);
         }
 
-        return array_map(static fn(string $path, string $hash): array => ['path' => $path, 'hash' => $hash], array_keys($basis), array_values($basis));
+        return array_map(static fn(string $path, string $hash): array => ['path' => $path, 'hash' => $hash] + (isset($spans[$path]) ? ['span' => $spans[$path]] : []), array_keys($basis), array_values($basis));
+    }
+
+    /**
+     * The lines a component spans in its file and their hash, or null when
+     * the scan gave it no lines or the disk no longer holds what the scan read.
+     *
+     * @return array{start: int, end: int, hash: string}|null
+     */
+    private static function span(string $root, string $path, string $scannedHash, mixed $start, mixed $end): ?array
+    {
+        if (!is_numeric($start) || !is_numeric($end) || (int) $start < 1 || (int) $end < (int) $start) {
+            return null;
+        }
+        $contents = ComponentSpan::scannedContents($root, $path, $scannedHash);
+
+        return $contents === null ? null : ['start' => (int) $start, 'end' => (int) $end, 'hash' => ComponentSpan::hash($contents, (int) $start, (int) $end)];
     }
 
     /**
@@ -378,7 +474,10 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      *
      * Each row's `component_status` says whether its component is `present` in
      * the active graph or `missing`: notes are keyed by name, so a rename or a move leaves a note
-     * on a name nothing carries any more, and only its author can move it.
+     * on a name nothing carries any more, and only its author can move it. A
+     * missing row's `suggested_component` names where its component went, when
+     * exactly one component added since matches it ({@see NoteMoveSuggestions}),
+     * else null; an agent moves its own note there with {@see self::moveAnnotation()}.
      * `stale` and `stale_reason` say whether a model annotation's files changed
      * since it was written ({@see AnnotationNotes}); a person's never is.
      */
@@ -418,9 +517,12 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         $rows = $statement->fetchAll();
         [$rows, $truncated] = Page::cut($rows, $limit);
         $reasons = (new AnnotationNotes($this->pdo))->staleness($projectId, $rows);
+        $missingNames = array_values(array_map(static fn(array $row): string => (string) $row['canonical_name'], array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing')));
+        $suggested = (new NoteMoveSuggestions($this->pdo))->forMissing($projectId, $missingNames);
         foreach ($rows as $index => $row) {
             unset($row['basis_json']);
-            $rows[$index] = $row + ['stale' => $reasons[$index] !== null, 'stale_reason' => $reasons[$index]];
+            $rows[$index] = $row + ['stale' => $reasons[$index] !== null, 'stale_reason' => $reasons[$index]]
+                + ($row['component_status'] === 'missing' ? ['suggested_component' => $suggested[(string) $row['canonical_name']] ?? null] : []);
         }
 
         $missing = count(array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing'));

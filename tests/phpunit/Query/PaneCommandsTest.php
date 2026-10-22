@@ -327,7 +327,7 @@ final class PaneCommandsTest extends KnossosTestCase
 
             assertSame(['ok', 'ok', 'ok', 'ok'], [$check['status'], $adopt['status'], $move['status'], $confirm['status']]);
             assertSame(['confirm', false], [$confirm['action'], $confirm['executed']]);
-            // The moved model note keeps what it was written against, so it reads stale until the model looks.
+            // The moved model note keeps what it was written against, which its new component's code does not match, so it reads stale.
             assertSame(['total' => 3, 'missing' => 0, 'stale' => 1, 'flagged' => 1], $notes['counts']);
             assertSame(['App\\Caller'], array_column($notes['groups']['stale'], 'component'));
             assertSame(['App\\Greeter', 'App\\Greeter'], array_column($notes['groups']['rest'], 'component'));

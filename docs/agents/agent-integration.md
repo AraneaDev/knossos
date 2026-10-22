@@ -210,6 +210,35 @@ rests it on the files as they are now and keeps its text and its
 `evidence_paths`; `confirm` cannot be combined with `value`, `evidence_paths`,
 `remove` or `replace`. Re-recording the note with new text confirms it too, and
 removing it is the other way out. A person's note is never stale.
+A note goes stale when its own component's lines change, and not when
+another part of the same file does. The note records the component's line span
+and a hash of the span text beside the hash of the whole file, and confirming a
+note records the spans too. When the file has changed, Knossos finds the
+component again by name in the active graph and compares its current span. That
+reads the file from disk, and only when the disk matches the last scan. The
+whole-file rule still applies to a file over 2 MB, a component no longer in the
+graph, a disk file that differs from the scan, a note written before spans were
+recorded, and every file cited in `evidence_paths`.
+
+A note whose component is gone from the graph is `missing`. When exactly one
+component of the same kind and short name was added since a retained snapshot
+last held the note's component, `list_annotations` gives that row a
+`suggested_component`. With no such snapshot it is `null`. Suggestions are
+computed over the rows on the returned page, so a filtered listing can suggest
+a component that the unfiltered one leaves out as ambiguous. To carry the note
+over, pass `move_to` (CLI `--move-to`) with the component's name:
+
+```sh
+knossos annotate-component project_... App\\Gone --move-to=App\\Adapter --execute --json
+```
+
+The model's own note moves to that component and keeps its text, evidence and
+created time. It keeps the basis it was written against, so it reads stale when
+its component's code changed; check it and confirm it. A person's note is
+never moved this way, and a person's check on the moved note moves with it.
+`move_to` is refused when combined with `value`, `evidence_paths`, `remove`,
+`replace` or `confirm`, and for a target that is not in the graph or is the
+note's own component. The pane's `note-move` does the same.
 `evidence_paths` reads a path as `file_context` does: project-relative,
 `./`-led, or absolute under the project root. A file no scan reads, such as a
 CI script or a shell tool, counts too: its hash is read from disk when the note
