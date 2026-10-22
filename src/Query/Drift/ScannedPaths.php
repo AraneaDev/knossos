@@ -36,6 +36,12 @@ final readonly class ScannedPaths implements TrackedPathPredicate
     /** Bytes of one `.gitignore` read, matching discovery's default per-file cap. */
     private const GITIGNORE_MAX_BYTES = 2_000_000;
 
+    /** How many entries, in all, a look inside a directory reads before it answers yes unread. */
+    private const MAX_DIRECTORY_ENTRIES = 256;
+
+    /** How many levels a look inside a directory descends before it answers yes unread. */
+    private const MAX_DIRECTORY_DEPTH = 8;
+
     /**
      * @param ?GitIgnoreRules $gitIgnore the tree's `.gitignore` files, which the walk
      *        applies as well; null for a caller that has no tree to read them from
@@ -102,10 +108,16 @@ final readonly class ScannedPaths implements TrackedPathPredicate
     /**
      * Whether discovery would have tracked this path.
      *
-     * A directory answers yes on its own account rather than by extension:
-     * nothing inside a directory the scan never saw is in the graph, and the
-     * walk oracle only ever sees the new directory rather than the source
-     * files under it.
+     * A directory answers by what it holds: yes when anything below it would
+     * be tracked, since nothing inside a directory the scan never saw is in
+     * the graph and the walk oracle only ever sees the new directory rather
+     * than the source files under it. One holding nothing discovery reads
+     * (only an ignored `vendor/`, only images) changes nothing a rescan
+     * would produce. Answering yes for it on its own account counted it as
+     * an addition whenever it was made in the second a scan finished, and a
+     * rescan in that same second could never clear it. The look inside is
+     * bounded, and answers yes once the bound runs out: an unverified
+     * directory must not be passed over as an empty one.
      *
      * A manifest answers yes for the reason given in the class docblock: the
      * scan read it, and what it says changes what a rescan would produce.
@@ -115,6 +127,14 @@ final readonly class ScannedPaths implements TrackedPathPredicate
      * predicate rather than restated, so the two cannot come apart.
      */
     public function tracks(string $relativePath, string $absolutePath): bool
+    {
+        $budget = self::MAX_DIRECTORY_ENTRIES;
+
+        return $this->tracksWithin($relativePath, $absolutePath, self::MAX_DIRECTORY_DEPTH, $budget);
+    }
+
+    /** {@see self::tracks()}, with what is left of the look inside a directory. */
+    private function tracksWithin(string $relativePath, string $absolutePath, int $depth, int &$budget): bool
     {
         if (!ProjectDiscoverer::isSupportedPath($relativePath)) {
             return false;
@@ -129,7 +149,7 @@ final readonly class ScannedPaths implements TrackedPathPredicate
         }
 
         if (is_dir($absolutePath)) {
-            return true;
+            return $this->holdsTracked($relativePath, $absolutePath, $depth, $budget);
         }
         // Skipped by discovery as build output, so a rescan would skip it again.
         $root = substr($absolutePath, 0, strlen($absolutePath) - strlen($relativePath));
@@ -139,5 +159,38 @@ final readonly class ScannedPaths implements TrackedPathPredicate
 
         return ProjectDiscoverer::languageFor($relativePath, $absolutePath) !== null
             || ProjectDiscoverer::unitKindFor($relativePath) !== null;
+    }
+
+    /**
+     * Whether anything below a directory would be tracked; yes once the
+     * depth or the entry budget runs out, or when the directory cannot be
+     * read, since none of those verified it holds nothing.
+     */
+    private function holdsTracked(string $relativePath, string $absolutePath, int $depth, int &$budget): bool
+    {
+        if ($depth === 0) {
+            return true;
+        }
+        $handle = @opendir($absolutePath);
+        if ($handle === false) {
+            return true;
+        }
+        try {
+            while (($entry = readdir($handle)) !== false) {
+                if ($entry === '.' || $entry === '..') {
+                    continue;
+                }
+                if (--$budget < 0) {
+                    return true;
+                }
+                if ($this->tracksWithin($relativePath . '/' . $entry, $absolutePath . '/' . $entry, $depth - 1, $budget)) {
+                    return true;
+                }
+            }
+        } finally {
+            closedir($handle);
+        }
+
+        return false;
     }
 }
