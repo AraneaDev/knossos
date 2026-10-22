@@ -156,7 +156,7 @@ final class ProjectScanService implements ProjectScanner
                     : null;
                 if ($fastPath !== null) {
                     $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
-                    return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $clock->stages(), 'no_change');
+                    return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $clock->stages(), 'no_change', $analysis->warnings);
                 }
                 $result = $this->reconcileFull($preparation, $plan, $language, $analysis, $projectConfig, $named, $options, $cancellation, $lease, $repository, $clock);
                 $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
@@ -171,7 +171,7 @@ final class ProjectScanService implements ProjectScanner
                     (int) round(Milliseconds::since($startedAt)),
                 );
 
-                return $this->resultFactory->create($plan, $language, $result, $startedAt, $clock->stages());
+                return $this->resultFactory->create($plan, $language, $result, $startedAt, $clock->stages(), analysisWarnings: $analysis->warnings);
             } catch (\Throwable $error) {
                 self::recordFailedScan($repository, $projectId, $effectiveMode, $error);
                 throw $error;

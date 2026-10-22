@@ -41,6 +41,8 @@ final readonly class ReportableComponent
         'application.controller', 'application.command', 'application.entry_point',
         'laravel.controller', 'laravel.command', 'laravel.job', 'laravel.listener',
         'laravel.migration', 'laravel.seeder', 'laravel.factory', 'laravel.entry_method',
+        // Livewire calls a component's hooks and attributed methods, and its view calls the rest by name.
+        'livewire.component', 'livewire.entry_method',
         'symfony.controller', 'symfony.command', 'symfony.event_subscriber', 'symfony.event_listener',
         'symfony.message_handler', 'symfony.route_handler', 'symfony.fixture', 'symfony.voter',
         'symfony.form_type', 'symfony.twig_extension',

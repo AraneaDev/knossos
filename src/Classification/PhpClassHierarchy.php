@@ -171,6 +171,16 @@ final readonly class PhpClassHierarchy
         return $this->classesByPath[$relativePath] ?? [];
     }
 
+    /**
+     * Every class the scan declares, anonymous ones included; traits are not classes.
+     *
+     * @return list<string> class references
+     */
+    public function classes(): array
+    {
+        return array_keys(array_filter($this->nodes, static fn(NodeFact $node): bool => $node->kind === 'class'));
+    }
+
     /** The node behind a local id, or null when the scan has none. */
     public function node(string $reference): ?NodeFact
     {
