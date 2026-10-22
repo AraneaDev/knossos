@@ -61,6 +61,7 @@ final readonly class PhpScanner
         $ast = $this->parser->parse($source, $errors) ?? [];
         $collector = new FactCollector($relativePath);
         $laravelCollector = $laravel ? new LaravelFactCollector($relativePath) : null;
+        $livewireCollector = $livewire ? new LivewireBladeFactCollector($relativePath) : null;
         $symfonyCollector = $symfony ? new SymfonyFactCollector(new FrameworkFactStore($relativePath)) : null;
 
         if ($ast !== [] && self::exceedsDepth($ast, self::MAX_AST_DEPTH)) {
@@ -98,6 +99,9 @@ final readonly class PhpScanner
             if ($symfonyCollector !== null) {
                 $traverser->addVisitor($symfonyCollector);
             }
+            if ($livewireCollector !== null) {
+                $traverser->addVisitor($livewireCollector);
+            }
             $traverser->traverse($ast);
         }
 
@@ -117,13 +121,57 @@ final readonly class PhpScanner
             ];
         }
 
+        $nodes = [...$collector->nodes(), ...($laravelCollector?->nodes() ?? []), ...($symfonyCollector?->nodes() ?? [])];
+        if ($livewireCollector !== null) {
+            $nodes = self::withLivewireFacts($nodes, $livewireCollector, $relativePath);
+        }
+
         return [
             'owner_key' => 'knossos.php:file:' . $relativePath,
-            'nodes' => [...$collector->nodes(), ...($laravelCollector?->nodes() ?? []), ...($symfonyCollector?->nodes() ?? [])],
+            'nodes' => $nodes,
             'edges' => [...$collector->edges(), ...($laravelCollector?->edges() ?? []), ...($symfonyCollector?->edges() ?? [])],
             'content_hash' => $contentHash,
             'diagnostics' => [...$diagnostics, ...($laravelCollector?->diagnostics() ?? []), ...($symfonyCollector?->diagnostics() ?? [])],
         ];
+    }
+
+    /**
+     * Merge the Livewire collector's attributes into the file's module node and
+     * class nodes, declaring the module as the fact collector would when the
+     * file's own collector did not need one.
+     *
+     * @param list<array<string, mixed>> $nodes
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function withLivewireFacts(array $nodes, LivewireBladeFactCollector $livewire, string $relativePath): array
+    {
+        $moduleId = 'php:module:' . $relativePath;
+        $moduleAttributes = $livewire->moduleAttributes();
+        $classAttributes = $livewire->classAttributes();
+
+        $hasModule = false;
+        foreach ($nodes as $index => $node) {
+            $extra = $node['local_id'] === $moduleId ? $moduleAttributes : ($classAttributes[$node['local_id']] ?? []);
+            $hasModule = $hasModule || $node['local_id'] === $moduleId;
+            if ($extra !== []) {
+                $nodes[$index]['attributes'] = (object) [...(array) $node['attributes'], ...$extra];
+            }
+        }
+        if (!$hasModule && $moduleAttributes !== []) {
+            $nodes[] = [
+                'local_id' => $moduleId,
+                'kind' => 'module',
+                'canonical_name' => $relativePath,
+                'display_name' => basename($relativePath),
+                'origin' => 'ast',
+                'confidence' => 'certain',
+                'evidence' => ['path' => $relativePath, 'start_line' => 1, 'end_line' => 1],
+                'attributes' => (object) ['executable' => true, ...$moduleAttributes],
+            ];
+        }
+
+        return $nodes;
     }
 
     /**

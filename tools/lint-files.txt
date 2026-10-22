@@ -914,6 +914,7 @@ php	tests/phpunit/Scanner/LimitsTest.php
 php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
+php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
 php	tests/phpunit/Scanner/PhpWorkerScopeAndRouteFactsTest.php
@@ -1090,6 +1091,7 @@ php	workers/php/src/LaravelRouteFactCollector.php
 php	workers/php/src/LaravelRouteNameFactCollector.php
 php	workers/php/src/LaravelTestRequestFactCollector.php
 php	workers/php/src/LaravelTraversalContext.php
+php	workers/php/src/LivewireBladeFactCollector.php
 php	workers/php/src/PhpScanner.php
 php	workers/php/src/ReceiverTypeInference.php
 php	workers/php/src/RefusedAfterReadException.php
