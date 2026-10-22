@@ -123,14 +123,13 @@ final class EntryPointResolver
     {
         [$directory, $kind] = $site;
         if (str_starts_with($specifier, './') || str_starts_with($specifier, '../')) {
-            $base = dirname($page);
-            $joined = ($base === '.' ? '' : $base . '/') . $specifier;
+            $joined = ManifestPaths::joinPath(ManifestPaths::manifestDirectory($page), $specifier);
         } elseif ($kind === 'vitepress' && str_starts_with($specifier, '@theme/')) {
-            $joined = ($directory === '' ? '' : $directory . '/') . '.vitepress/theme/' . substr($specifier, strlen('@theme/'));
+            $joined = ManifestPaths::joinPath($directory, '.vitepress/theme/' . substr($specifier, strlen('@theme/')));
         } else {
             return null;
         }
-        $path = self::normalizedPath($joined);
+        $path = ManifestPaths::withinProject($joined);
         if ($path === null) {
             return null;
         }
@@ -141,27 +140,6 @@ final class EntryPointResolver
         }
 
         return null;
-    }
-
-    /** A project-relative path with `.` and `..` folded away, or null for one that leaves the project. */
-    private static function normalizedPath(string $path): ?string
-    {
-        $segments = [];
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || $segment === '.') {
-                continue;
-            }
-            if ($segment === '..') {
-                if ($segments === []) {
-                    return null;
-                }
-                array_pop($segments);
-                continue;
-            }
-            $segments[] = $segment;
-        }
-
-        return $segments === [] ? null : implode('/', $segments);
     }
 
     /**
