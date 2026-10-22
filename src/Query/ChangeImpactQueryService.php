@@ -29,6 +29,9 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
     /** Most changed files one request may name, and most a working tree may contribute. */
     public const MAX_FILES = 50;
 
+    /** The deepest test reach test_impact walks; a launch hop costs no depth. */
+    public const MAX_TEST_DEPTH = 12;
+
     /** Most components the changed files map to directly, each of which fans out into its own impact search. */
     private const MAX_DIRECT_COMPONENTS = 1000;
 
@@ -211,8 +214,8 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
      */
     public function testImpact(string $projectId, array $files = [], bool $workingTree = false, ?string $baseRef = null, int $maxDepth = 4, int $limit = 100, array $edgeKinds = [], string $minConfidence = 'possible', int $timeoutMs = 1000): ResultEnvelope
     {
-        if ($maxDepth < 1 || $maxDepth > 8) {
-            throw new InvalidArgumentException('max_depth must be between 1 and 8.');
+        if ($maxDepth < 1 || $maxDepth > self::MAX_TEST_DEPTH) {
+            throw new InvalidArgumentException(sprintf('max_depth must be between 1 and %d.', self::MAX_TEST_DEPTH));
         }
         self::assertLimit($limit);
         $minimumRank = $this->confidenceThreshold($timeoutMs, $minConfidence)[$minConfidence];
@@ -239,6 +242,14 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
         }
         if ($reasons !== []) {
             $summary .= sprintf(' The search was truncated (%s), so test files beyond that bound are not listed.', implode(', ', $reasons));
+        }
+        if ($search['depth_horizon']) {
+            $reasons[] = 'depth_horizon';
+            $summary .= sprintf(
+                ' The search stopped at max_depth %d with dependants still unread, so tests further away are not listed; raise max_depth (up to %d) to look further.',
+                $maxDepth,
+                self::MAX_TEST_DEPTH,
+            );
         }
         // One limit for both lists, the direct files first.
         if ($found + $foundWired > $limit) {

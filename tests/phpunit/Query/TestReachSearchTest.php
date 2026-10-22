@@ -113,6 +113,52 @@ final class TestReachSearchTest extends KnossosTestCase
         self::assertSame([$test => 3], $deep['tests']);
     }
 
+    /**
+     * A launch hands work to another process, so the launching side is as far
+     * from the change as the script it launches: the hop spends no depth.
+     */
+    #[Group('query')]
+    public function testALaunchesHopDoesNotSpendDepth(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $b = $this->component($repository, $ids, 'App\\Script');
+        $a = $this->component($repository, $ids, 'App\\Launcher');
+        $test = $this->component($repository, $ids, 'Tests\\LauncherTest', test: true);
+        $this->edge($repository, $ids, 'calls', $b, $ids['checkout']);
+        $this->edge($repository, $ids, 'launches', $a, $b);
+        $this->edge($repository, $ids, 'calls', $test, $a);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $found = (new TestReachSearch($pdo))->search($ids['project'], [$ids['checkout']], 2, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+
+        self::assertSame([$test => 2], $found['tests']);
+        self::assertSame([], $found['truncation_reasons']);
+    }
+
+    #[Group('query')]
+    public function testReachingTheDepthHorizonIsReported(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $previous = $ids['checkout'];
+        foreach (range(1, 4) as $index) {
+            $hop = $this->component($repository, $ids, sprintf('App\\Hop%d', $index));
+            $this->edge($repository, $ids, 'calls', $hop, $previous);
+            $previous = $hop;
+        }
+        $test = $this->component($repository, $ids, 'Tests\\ChainTest', test: true);
+        $this->edge($repository, $ids, 'calls', $test, $previous);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $search = new TestReachSearch($pdo);
+
+        $cut = $search->search($ids['project'], [$ids['checkout']], 3, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+        $whole = $search->search($ids['project'], [$ids['checkout']], 6, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+
+        self::assertTrue($cut['depth_horizon']);
+        self::assertSame([], $cut['tests']);
+        self::assertFalse($whole['depth_horizon']);
+        self::assertSame([$test => 5], $whole['tests']);
+    }
+
     #[Group('query')]
     public function testAChangedTestIsDistanceZeroAndTheSearchContinuesThroughTestHelpers(): void
     {
