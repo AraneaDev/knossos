@@ -1823,6 +1823,8 @@ final class PhpScannerTest extends KnossosTestCase
             $enter = $callers('Fixture\\NameCollector::enterNode');
             $leave = $callers('Fixture\\NameCollector::leaveNode');
             $only = $callers('Fixture\\OnlyEnter::enterNode');
+            $leaveOfOnly = $callers('Fixture\\OnlyEnter::leaveNode');
+            $leaveNodes = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE canonical_name = 'Fixture\\OnlyEnter::leaveNode'")->fetchColumn();
         } finally {
             $this->removeTempTree($root);
         }
@@ -1831,6 +1833,8 @@ final class PhpScannerTest extends KnossosTestCase
         self::assertContains('Fixture\\Walk::inherited', $enter);
         self::assertContains('Fixture\\Walk::inherited', $leave);
         self::assertContains('Fixture\\Walk::run', $only);
+        self::assertSame([], $leaveOfOnly);
+        self::assertSame(0, $leaveNodes);
     }
 
     /**
@@ -1852,9 +1856,22 @@ final class PhpScannerTest extends KnossosTestCase
             fn(EdgeFact $edge): bool => $edge->kind === 'launches',
         ));
 
-        assertSame(1, count($launches));
-        assertSame('php:method:Fixture\\SpreadLaunch::withOptions', $launches[0]->sourceReference);
-        self::assertStringStartsWith('php:launched_file:', $launches[0]->targetReference);
-        self::assertStringEndsWith('bin/tool', $launches[0]->targetReference);
+        $bySource = [];
+        foreach ($launches as $launch) {
+            $bySource[$launch->sourceReference][] = $launch->targetReference;
+        }
+        $method = static fn(string $name): string => 'php:method:Fixture\\SpreadLaunch::' . $name;
+
+        self::assertStringEndsWith('bin/tool', $bySource[$method('withOptions')][0] ?? '');
+        self::assertStringEndsWith('bin/lead', $bySource[$method('leadingSpread')][0] ?? '');
+        self::assertArrayNotHasKey($method('allSpread'), $bySource);
+
+        $commands = array_map(
+            fn(EdgeFact $edge): string => $edge->sourceReference . ' -> ' . $edge->targetReference,
+            array_values(array_filter($contributions[0]->edges, fn(EdgeFact $edge): bool => $edge->kind === 'calls' && str_starts_with($edge->targetReference, 'php:artisan_command:'))),
+        );
+        self::assertContains($method('commandAfterLeadingSpread') . ' -> php:artisan_command:orders:poll', $commands);
+        // What follows a spread is not the argument right after the script.
+        self::assertCount(1, $commands);
     }
 }

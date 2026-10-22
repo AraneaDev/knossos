@@ -27,8 +27,10 @@ final class FactCollector extends NodeVisitorAbstract
     /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
     private const INTERPRETERS = ['php', 'node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'ruby', 'perl', 'bash', 'sh', 'zsh'];
 
-    /** The PhpParser traversers that call a visitor's hooks, and the hooks they call. */
+    /** The PhpParser traversers that call a visitor's hooks. */
     private const TRAVERSERS = ['PhpParser\\NodeTraverser', 'PhpParser\\NodeTraverserInterface'];
+
+    /** What a traverser calls on every visitor it is given. */
     private const VISITOR_HOOKS = ['beforeTraverse', 'enterNode', 'leaveNode', 'afterTraverse'];
 
     /** @var list<array<string, mixed>> */
@@ -222,18 +224,20 @@ final class FactCollector extends NodeVisitorAbstract
     private function launchedFile(Expr\Array_ $array): void
     {
         $values = [];
+        // Values that follow a spread: what comes right after the spread is unknown.
+        $afterSpread = [];
+        $spread = false;
         foreach ($array->items as $item) {
             if ($item === null || $item->key !== null) {
                 return;
             }
             if ($item->unpack) {
-                // A spread in first place hides the program, so nothing after it is a script.
-                if ($values === []) {
-                    return;
-                }
+                $spread = true;
 
                 continue;
             }
+            $afterSpread[count($values)] = $spread;
+            $spread = false;
             $values[] = $item->value;
         }
         if ($values === []) {
@@ -242,12 +246,15 @@ final class FactCollector extends NodeVisitorAbstract
         $first = $values[0];
         $interpreter = ($first instanceof Expr\ConstFetch && $first->name->toString() === 'PHP_BINARY')
             || ($first instanceof Node\Scalar\String_ && in_array(basename($first->value), self::INTERPRETERS, true));
+        $offset = $interpreter ? 1 : 0;
         $candidates = $interpreter ? array_slice($values, 1) : [$first];
         foreach ($candidates as $index => $value) {
             $path = self::argvPath($value, !$interpreter);
             if ($path !== null) {
                 $this->addEdge('launches', $this->currentSource(), self::reference('launched_file', $path), $array, 'probable', ['speculative' => true]);
-                $this->launchedCommand($path, $candidates[$index + 1] ?? null, $array);
+                $next = $index + 1;
+                $named = ($afterSpread[$next + $offset] ?? true) ? null : $candidates[$next] ?? null;
+                $this->launchedCommand($path, $named, $array);
 
                 return;
             }
@@ -698,7 +705,7 @@ final class FactCollector extends NodeVisitorAbstract
         if ($node->class instanceof Name) {
             $class = $this->resolvedClassName($node->class);
             $this->addEdge('constructs', $this->currentSource(), self::reference('class', $class), $node);
-            if (in_array($class, self::TRAVERSERS, true)) {
+            if (self::isTraverser($class)) {
                 foreach ($node->args as $argument) {
                     $this->traverserHooks($argument, $node);
                 }
@@ -835,6 +842,17 @@ final class FactCollector extends NodeVisitorAbstract
         $this->addEdge('references', $source, self::reference('class', $resolved), $evidence);
     }
 
+    private static function isTraverser(string $class): bool
+    {
+        foreach (self::TRAVERSERS as $traverser) {
+            if (strcasecmp($class, $traverser) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * A traverser calls `beforeTraverse`, `enterNode`, `leaveNode` and `afterTraverse` on every
      * visitor it is given, from vendor code that no scan sees. Where the visitor's class is known
@@ -903,7 +921,7 @@ final class FactCollector extends NodeVisitorAbstract
             $class = $this->receivers->returnedType($node->var, $this->currentClass());
         }
         $this->eagerLoads($node, $class ?? $this->eloquent->builderRoot($node->var));
-        if ($class !== null && $node->name->toString() === 'addVisitor' && in_array($class, self::TRAVERSERS, true) && isset($node->args[0])) {
+        if ($class !== null && $node->name->toString() === 'addVisitor' && self::isTraverser($class) && isset($node->args[0])) {
             $this->traverserHooks($node->args[0], $node);
         }
 

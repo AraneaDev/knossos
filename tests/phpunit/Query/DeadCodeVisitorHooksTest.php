@@ -22,6 +22,7 @@ final class DeadCodeVisitorHooksTest extends KnossosTestCase
         $root = sys_get_temp_dir() . '/knossos-stale-visitor-hooks-' . bin2hex(random_bytes(6));
         mkdir($root . '/app', 0o777, true);
         file_put_contents($root . '/app/NameCollector.php', "<?php\nnamespace App;\nfinal class NameCollector extends \\PhpParser\\NodeVisitorAbstract\n{\n    public function enterNode(\\PhpParser\\Node \$n)\n    {\n        return null;\n    }\n\n    public function helper(): void {}\n}\n");
+        file_put_contents($root . '/app/Direct.php', "<?php\nnamespace App;\nfinal class Direct implements \\PhpParser\\NodeVisitor\n{\n    public function beforeTraverse(array \$nodes) { return null; }\n\n    public function enterNode(\\PhpParser\\Node \$n) { return null; }\n\n    public function leaveNode(\\PhpParser\\Node \$n) { return null; }\n\n    public function afterTraverse(array \$nodes) { return null; }\n\n    public function direct_helper(): void {}\n}\n");
         file_put_contents($root . '/app/Walk.php', "<?php\nnamespace App;\nfinal class Walk\n{\n    public function run(): NameCollector\n    {\n        return new NameCollector();\n    }\n}\n");
 
         try {
@@ -38,5 +39,10 @@ final class DeadCodeVisitorHooksTest extends KnossosTestCase
         );
         self::assertContains('helper', $reported);
         self::assertNotContains('enterNode', $reported);
+        // A class implementing the interface directly has no abstract base to inherit from.
+        self::assertContains('direct_helper', $reported);
+        self::assertNotContains('beforeTraverse', $reported);
+        self::assertNotContains('leaveNode', $reported);
+        self::assertNotContains('afterTraverse', $reported);
     }
 }
