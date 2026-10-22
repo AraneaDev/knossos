@@ -43,13 +43,16 @@ a plain reference graph would call them dead. Knossos marks these as
   `Model::observe()` or `#[ObservedBy]`, gets `laravel.observer`. Its event
   methods (`retrieved`, `creating`, `created`, `updating`, `updated`, `saving`,
   `saved`, `deleting`, `deleted`, `trashed`, `forceDeleting`, `forceDeleted`,
-  `restoring`, `restored`, `replicating`) are entry methods. Other methods of the
-  observer stay reportable.
+  `restoring`, `restored`, `replicating`) are entry methods, also when the observer inherits them from a
+  project base observer or a trait. Other methods of the observer stay
+  reportable. An observer under a directory another convention claims first, such
+  as `Models/Observers/`, still gets its role when a model registers it.
 - **Accessors and mutators.** A method returning `Illuminate\Database\Eloquent\Casts\Attribute`
   (`protected function excerpt(): Attribute`), and the legacy `get<Name>Attribute`
   and `set<Name>Attribute` pair on a model. The legacy names are recognised only
   on a class whose inheritance, through any number of project base classes,
-  reaches `Model`, the auth `User`, `Pivot` or `MorphPivot`. The same name on
+  reaches `Model`, the auth `User`, `Pivot` or `MorphPivot`, and also when a trait
+  the model uses declares them. The same name on
   another class is still reported.
 - **Scopes.** A method marked `#[Scope]`, next to the `scopeX` naming that
   already worked.
@@ -63,8 +66,11 @@ that, no Livewire fact or role is produced, even if the project has an
 
 ### What is recognised
 
-- **Components.** A class whose inheritance, through project base classes and
-  traits, ends at `Livewire\Component` gets `livewire.component`. That covers
+- **Components.** A class whose chain of project base classes ends at
+  `Livewire\Component` gets `livewire.component`; traits do not take part in
+  that chain. The same goes for the base classes of two common component
+  packages, `LivewireUI\Modal\ModalComponent` (wire-elements/modal) and
+  `PowerComponents\LivewirePowerGrid\PowerGridComponent` (PowerGrid). That covers
   class-based components, abstract bases, and the anonymous classes of
   single-file components (`⚡name.blade.php`) and multi-file components
   (`⚡name/name.php` beside `name.blade.php`).
@@ -74,16 +80,18 @@ that, no Livewire fact or role is produced, even if the project has an
 - **Hooks.** `mount`, `boot`, `booted`, `hydrate`, `dehydrate`, `updating`,
   `updated`, `rendering`, `rendered`, `render`, `exception`, `placeholder`,
   `rules`, `messages` and `validationAttributes`, the property hooks
-  (`updatedTitle`), and the trait hooks (`mountHasSorting` in a used trait
+  (`updatedTitle`, only when the component, its traits or its base classes have
+  a `$title`; a nested `updatedPostTitle` needs `$post`), and the trait hooks (`mountHasSorting` in a used trait
   `HasSorting`). They get `livewire.entry_method` with reason `hook`.
 - **Attributes.** A method with `#[On]`, `#[Computed]` or `#[Js]` is an entry
   method with reason `attribute`.
 - **Blade actions and expressions.** In a component's view, `wire:click`,
   `wire:submit` and the other `wire:` directives that call a method (not
-  `wire:model`, `wire:key`, `wire:loading` and the like), `$wire.method()` calls
+  `wire:model`, `wire:key`, `wire:loading`, `wire:confirm` and the like), `$wire.method()` calls
   and `{{ $this->name }}` expressions mark the method as an entry method with
   reason `view_action` or `view_expression`, plus the view and line. Modifiers
-  and arguments are fine, so `wire:click.prevent="save({{ $post->id }})"` names
+  and arguments are fine, as are directives with several arguments
+  (`@can('update', $this->post)`) and `@php ... @endphp` blocks, so `wire:click.prevent="save({{ $post->id }})"` names
   `save`. Livewire magics such as `$refresh`, `$set`, `$toggle` and `$dispatch`
   name nothing. A directive inside a Blade comment, an `@verbatim` block or an
   escaped `@{{ }}` is ignored. A directive on a component tag

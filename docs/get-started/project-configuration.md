@@ -153,12 +153,13 @@ relative) or `namespace_prefix`. Policies refer to boundaries by name.
 
 A hint matters only where a framework is otherwise detected from a manifest:
 
-| Hint                               | Effect                                                                                                     |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `laravel`, `symfony`               | Turns on the PHP worker's Laravel or Symfony facts when `composer.json` does not require the framework.    |
-| `axum`, `actix`, `rocket`          | Turns on the Rust worker's routes for that framework when `Cargo.toml` does not depend on it.              |
-| `django`, `fastapi`, `flask`       | None today: the Python worker recognises these per file, from what each file imports.                      |
-| `nextjs`, `nestjs`, `react`, `vue` | None today: the TypeScript worker recognises these per file, from imports, decorators and the file layout. |
+| Hint                               | Effect                                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `laravel`, `symfony`               | Turns on the PHP worker's Laravel or Symfony facts when `composer.json` does not require the framework.       |
+| `livewire`                         | Turns on the PHP worker's Livewire facts and rules when `composer.json` does not require `livewire/livewire`. |
+| `axum`, `actix`, `rocket`          | Turns on the Rust worker's routes for that framework when `Cargo.toml` does not depend on it.                 |
+| `django`, `fastapi`, `flask`       | None today: the Python worker recognises these per file, from what each file imports.                         |
+| `nextjs`, `nestjs`, `react`, `vue` | None today: the TypeScript worker recognises these per file, from imports, decorators and the file layout.    |
 
 Changing any hint still counts as a change to the scan settings, so cached
 results are rebuilt.
