@@ -223,7 +223,9 @@ recorded, and every file cited in `evidence_paths`.
 A note whose component is gone from the graph is `missing`. When exactly one
 component of the same kind and short name was added since a retained snapshot
 last held the note's component, `list_annotations` gives that row a
-`suggested_component`. With no such snapshot it is `null`. To carry the note
+`suggested_component`. With no such snapshot it is `null`. Suggestions are
+computed over the rows on the returned page, so a filtered listing can suggest
+a component that the unfiltered one leaves out as ambiguous. To carry the note
 over, pass `move_to` (CLI `--move-to`) with the component's name:
 
 ```sh
@@ -231,7 +233,8 @@ knossos annotate-component project_... App\\Gone --move-to=App\\Adapter --execut
 ```
 
 The model's own note moves to that component and keeps its text, evidence and
-created time. It reads stale until it is confirmed there. A person's note is
+created time. It keeps the basis it was written against, so it reads stale when
+its component's code changed; check it and confirm it. A person's note is
 never moved this way, and a person's check on the moved note moves with it.
 `move_to` is refused when combined with `value`, `evidence_paths`, `remove`,
 `replace` or `confirm`, and for a target that is not in the graph or is the

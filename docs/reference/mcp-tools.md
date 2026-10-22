@@ -244,7 +244,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `list_annotations`
 
-List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved; a missing one has a suggested_component when exactly one component added since a retained snapshot last held its name matches it by kind and short name, else null), optionally filtered by component or kind.
+List durable annotations recorded on components, each with its author (user or model) and a component_status saying whether its component is present in the active graph or missing (renamed or moved; a missing one has a suggested_component when exactly one component added since a retained snapshot last held its name matches it by kind and short name, else null; suggestions are computed over the rows on the returned page), optionally filtered by component or kind.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |

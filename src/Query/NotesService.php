@@ -118,7 +118,8 @@ final readonly class NotesService
      * `$author`'s `$kind` note on `$component` moved to `$to`, through
      * {@see AnnotationService::moveAnnotation()}: copied there and removed
      * here in one transaction, keeping what it was written against, so a
-     * model note reads stale where it lands until the model looks. Refused
+     * model note reads stale where it lands when its component's code
+     * changed. Refused
      * when there is no such note, or `$to` is no component or already holds
      * one.
      *

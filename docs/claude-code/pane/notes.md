@@ -49,8 +49,9 @@ While either narrows the tree, every group is open so every match shows. On the 
 A note you adopt is yours: it wins over the model's and never goes stale, and
 the model's stays beside it. Picking a component in the finder for a note on a
 missing name asks `Move the note on App\Gone to App\Adapter?`; `y` moves it.
-The note keeps its text, evidence and date, and what it was written against, so
-a moved model note reads stale until the model looks again. A check you set on
+The note keeps its text, evidence and date, and the basis it was written
+against, so a moved model note reads stale when its component's code changed;
+the model checks it and confirms it. A check you set on
 it moves with it. The model can move its own note the same way with
 `move_to`, and the lost note's row in `list_annotations` suggests a target
 when one component fits. A move to a component that already holds a note by

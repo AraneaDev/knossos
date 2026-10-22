@@ -365,7 +365,7 @@ final class NotesServiceTest extends KnossosTestCase
 
     /**
      * A moved model note keeps what it was written against, so it reads stale
-     * where it lands until the model looks; and moving it is the person's
+     * where its new component's code differs from that; and moving it is the person's
      * doing, not the model's look, so a check on the target stays.
      */
     public function testAMovedModelNoteKeepsItsBasisAndTheTargetsCheck(): void
