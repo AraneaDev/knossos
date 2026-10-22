@@ -52,4 +52,44 @@ final class TypescriptSupertypeMemberTest extends KnossosTestCase
             'src/walker.ts#{object}@36:10::resolve' => true,
         ], $overrides);
     }
+
+    /**
+     * A union names a member only when every part has it, so the contract of
+     * an optional parameter (`Options | undefined`) or of a loader-or-options
+     * one (`Loader | AsyncOptions`) went unseen and the library's callbacks
+     * were reported as possibly dead.
+     */
+    public function testALiteralHandedToAUnionTypedParameterFulfilsThePartNamingTheMember(): void
+    {
+        $client = $this->typescriptWorkerClient();
+        try {
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+                'root' => self::repositoryRoot() . '/tests/Fixtures/typescript-supertypes',
+                'files' => ['src/options.ts'],
+                'config_files' => ['tsconfig.json'],
+            ]), false);
+        } finally {
+            $client->shutdown();
+        }
+
+        $overrides = [];
+        foreach ($contributions[0]->nodes as $node) {
+            if ($node->kind === 'method') {
+                $overrides[$node->canonicalName] = $node->attributes['overrides'] ?? false;
+            }
+        }
+        ksort($overrides);
+
+        self::assertSame([
+            'src/options.ts#AsyncOptions::loader' => false,
+            'src/options.ts#Options::handler' => false,
+            'src/options.ts#Options::setHeaders' => false,
+            'src/options.ts#{object}@10:30::loader' => true,
+            // Inferred from the literal itself, beside `undefined`: no contract.
+            'src/options.ts#{object}@11:7::run' => false,
+            'src/options.ts#{object}@8:30::handler' => true,
+            'src/options.ts#{object}@9:12::handler' => true,
+            'src/options.ts#{object}@9:12::setHeaders' => true,
+        ], $overrides);
+    }
 }

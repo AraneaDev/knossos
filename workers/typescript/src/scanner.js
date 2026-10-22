@@ -213,6 +213,7 @@ function noteDeclarationFiles(answer, files) {
  * @property {(relative: string, program: string) => boolean} ownedByProgram
  * @property {Map<string, string>} [fallbackGroupOf]
  * @property {string} [fallbackDirectory]
+ * @property {boolean} [fallbackConfigured] whether a config sits beside the fallback group, which leaves its files out
  * @property {string} [owner] the config whose program is being built
  * @property {string} [program] the key of the program being built
  */
@@ -542,6 +543,7 @@ export class TypeScriptScanner {
             ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
             request.program = fallbackProgramKey(root, directory);
             request.fallbackDirectory = directory;
+            request.fallbackConfigured = group.parsed !== undefined;
             tally(
                 this.#scanProgram(
                     `${directory}${FALLBACK_KEY}`,
@@ -659,7 +661,13 @@ export class TypeScriptScanner {
         const skipped = emissionSkipped(request, owners, fallback);
         const belongs = programMembers(request, fallback);
         const { byFile: diagnosticsByFile, programLevel: compilerLevel } =
-            programDiagnostics(program, root, maxFileBytes, fallback);
+            programDiagnostics(
+                program,
+                root,
+                maxFileBytes,
+                fallback,
+                fallback && request.fallbackConfigured === true,
+            );
         // A bundler config the program's options were read from counts as
         // its configuration: what could not be read of it applies to all.
         const programLevel = [...compilerLevel, ...configDiagnostics];

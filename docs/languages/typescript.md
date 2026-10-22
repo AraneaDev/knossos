@@ -41,6 +41,18 @@ No framework module is imported and no bundler or application is started.
 - NestJS, described below.
 - A leading shebang marks the module `executable`, which keeps a script a shell
   runs (and that nothing therefore imports) off the dead-code report.
+- So does a main guard at file scope: `import.meta.main`, `require.main ===
+  module`, or `import.meta.url` compared with `process.argv[1]`. The guard may
+  stand behind a conjunct (`process.argv[1] && ...`) or in a `const` the `if`
+  names (`const isMain = ...; if (isMain)`). A `let`, a negated guard and an
+  `||` do not count.
+- A method or arrow property of an object literal handed to a typed parameter
+  is marked `overrides` when that parameter's type declares a member of the
+  same name, as a library's options type does (`express.static(root, {
+  setHeaders })`). The library calls it, so nothing in the project does. Each
+  part of a union counts on its own, so an optional parameter (`Options |
+  undefined`) and a loader-or-options one (`defineAsyncComponent`) are read
+  too.
 - A `.js` or `.cjs` file with no import, export, `require` or `module.exports`
   is a classic script, loaded by a `<script>` tag or run by Node, and is
   `executable` too: nothing can import anything from it.
@@ -66,7 +78,11 @@ types>` that is not installed) is left out. A missing module, a type error
   not reported for these files: the fallback options are partly made up by the
   scanner, so the error would not be about your config. The config's
   `ignoreDeprecations` comes along with its resolution options, so a deprecation
-  you silenced stays silent here too.
+  you silenced stays silent here too. When the file's own package has a
+  tsconfig that leaves it out, a file with errors also gets an `info`
+  diagnostic, `TS_OUTSIDE_EVERY_PROGRAM`: the project's own typecheck (`tsc
+  -p`, `vue-tsc`) never sees those errors. An `include` of `**/*.mts` skips
+  dot-directories such as `.vitepress/`, which is the usual cause.
 - A module importing `k6` or `k6/*` is a k6 load-test script: it is
   `executable`, and its default export, `setup`, `teardown`, `handleSummary` and
   every function a scenario names as its `exec` are marked `runtime_invoked`,

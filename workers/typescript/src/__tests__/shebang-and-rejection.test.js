@@ -302,6 +302,16 @@ const GUARDED = {
         'import { createRequire } from "node:module";\nconst require = createRequire(import.meta.url);\nconst { fileURLToPath } = require("url");\nexport function run() {}\nif (fileURLToPath(import.meta.url) === process.argv[1]) run();\n',
     "src/required-whole.js":
         'import { createRequire } from "node:module";\nconst require = createRequire(import.meta.url);\nconst url = require("url");\nexport function run() {}\nif (url.fileURLToPath(import.meta.url) === process.argv[1]) run();\n',
+    // A guard behind a conjunct holds whenever the whole condition does,
+    // and a file-scope `const` holding one is the same guard by name.
+    "src/conjunct.mjs":
+        'import { pathToFileURL } from "node:url";\nexport function run() {}\nif (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) run();\n',
+    "src/const-guard.mjs":
+        'import { pathToFileURL } from "node:url";\nexport function run() {}\nconst isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;\nif (isMain) run();\n',
+    "src/const-chain.mjs":
+        'import { pathToFileURL } from "node:url";\nexport function run() {}\nconst entered = (import.meta.url === pathToFileURL(process.argv[1]).href);\nconst isMain = entered;\nif (process.argv.length > 1 && isMain) {\n    run();\n}\n',
+    "src/const-meta-main.mjs":
+        "export function run() {}\nconst isMain = import.meta.main;\nif (isMain) run();\n",
 };
 const UNGUARDED = {
     // A URL is never equal to a path, so this guard never fires.
@@ -341,6 +351,17 @@ const UNGUARDED = {
     // A module other than url, through `require`.
     "src/required-other.js":
         'import { createRequire } from "node:module";\nconst require = createRequire(import.meta.url);\nconst { fileURLToPath } = require("./helpers.mjs");\nexport function run() {}\nif (fileURLToPath(import.meta.url) === process.argv[1]) run();\n',
+    // Either side of `||` may hold alone, so neither is a guard.
+    "src/disjunct.mjs":
+        'import { pathToFileURL } from "node:url";\nexport function run() {}\nif (process.argv[1] || import.meta.url === pathToFileURL(process.argv[1]).href) run();\n',
+    // A `let` can be reassigned before the `if` reads it.
+    "src/let-guard.mjs":
+        'import { pathToFileURL } from "node:url";\nexport function run() {}\nlet isMain = import.meta.url === pathToFileURL(process.argv[1]).href;\nisMain = true;\nif (isMain) run();\n',
+    "src/negated-const.mjs":
+        'import { pathToFileURL } from "node:url";\nexport function run() {}\nconst isMain = import.meta.url === pathToFileURL(process.argv[1]).href;\nif (!isMain) run();\n',
+    // A const that holds anything else.
+    "src/const-other.mjs":
+        "export function run() {}\nconst isMain = process.argv.length > 1;\nif (isMain) run();\n",
 };
 
 describe("the ES-module main guard", () => {

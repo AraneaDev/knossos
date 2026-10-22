@@ -90,10 +90,13 @@ final class TypescriptFallbackProgramTest extends KnossosTestCase
         }
         ksort($codes);
 
+        // The tsconfig beside `visual/` leaves it out, so each file there with
+        // errors also says the project's own typecheck never sees them; the
+        // clean `vite.visual.config.ts` says nothing.
         self::assertSame([
             'src/app.ts' => ['TS2322'],
-            'visual/broken.ts' => ['TS2307', 'TS2322'],
-            'visual/fixtures.ts' => ['TS1117'],
+            'visual/broken.ts' => ['TS2307', 'TS2322', 'TS_OUTSIDE_EVERY_PROGRAM'],
+            'visual/fixtures.ts' => ['TS1117', 'TS_OUTSIDE_EVERY_PROGRAM'],
         ], $codes);
     }
 

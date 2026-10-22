@@ -153,18 +153,25 @@ export class TypeScriptLanguageFactCollector {
             const name = this.checker.getSymbolAtLocation(
                 node.name,
             )?.escapedName;
+            if (name === undefined) return false;
             const contract = this.checker.getContextualType(node.parent);
-            const member =
-                name === undefined
-                    ? undefined
-                    : contract?.getProperty(
-                          ts.unescapeLeadingUnderscores(name),
-                      );
+            // A union names a member only when every part has it, so an
+            // optional parameter (`Options | undefined`) or a loader-or-options
+            // one (`Loader | AsyncOptions`) hid the contract: each part is
+            // asked on its own, as `objectLiteralContracts` reads them.
+            const parts = contract?.isUnion()
+                ? contract.types
+                : contract
+                  ? [contract]
+                  : [];
             // A contextual type inferred from the literal itself
             // (`define<T>(options: T)`) holds this very method: that names
             // no contract, so only a member declared elsewhere counts.
-            return (member?.declarations ?? []).some(
-                (declaration) => declaration !== node,
+            return parts.some((part) =>
+                (
+                    part.getProperty(ts.unescapeLeadingUnderscores(name))
+                        ?.declarations ?? []
+                ).some((declaration) => declaration !== node),
             );
         }
         if (
