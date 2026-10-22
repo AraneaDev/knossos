@@ -1088,6 +1088,7 @@ php	tools/skipped-tests.php
 php	tools/supply-chain-report.php
 php	tools/trivy-allowlist.php
 php	workers/php/bin/worker
+php	workers/php/src/AstDepth.php
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
 php	workers/php/src/FrameworkFactStore.php

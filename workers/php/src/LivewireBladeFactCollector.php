@@ -222,7 +222,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
         } catch (Error) {
             return;
         }
-        if ($ast === null) {
+        if ($ast === null || AstDepth::exceeds($ast)) {
             return;
         }
 

@@ -113,6 +113,20 @@ final class PhpLivewireBladeTest extends KnossosTestCase
         assertSame([['name' => 'real', 'line' => 6, 'via' => 'action']], $view['used']);
     }
 
+    /**
+     * A Blade expression is inline HTML to the file's own parse, so its depth
+     * is measured again before anything recursive walks it: past the cap the
+     * expression is skipped, and the rest of the template is still read.
+     */
+    #[Group('php-scanner')]
+    public function testAnExpressionNestedPastTheSafeDepthIsSkipped(): void
+    {
+        $nesting = 700;
+        $view = $this->scanInline('{{ ' . str_repeat('[', $nesting) . '$this->deep' . str_repeat(']', $nesting) . " }}\n<i wire:click=\"real\">y</i>");
+
+        assertSame([['name' => 'real', 'line' => 2, 'via' => 'action']], $view['used']);
+    }
+
     #[Group('php-scanner')]
     public function testIncludesAreRecorded(): void
     {
