@@ -204,8 +204,12 @@ gone, the note is `stale`, with a `stale_reason` such as `written before
 documents/views.py changed`; a note no scanned file backs at all reads `rests
 on no scanned file`. A note on a project file no worker reads, by its path,
 rests on that file: it makes the file a `file` component at the next scan. A
-note on a file a worker does scan, by its path, stays on that file. Re-recording the note confirms it against the code as it
-is now; removing it is the other way out. A person's note is never stale.
+note on a file a worker does scan, by its path, stays on that file. A note
+that still holds is confirmed with `confirm: true` (CLI `--confirm`), which
+rests it on the files as they are now and keeps its text and its
+`evidence_paths`; `confirm` cannot be combined with `value`, `evidence_paths`,
+`remove` or `replace`. Re-recording the note with new text confirms it too, and
+removing it is the other way out. A person's note is never stale.
 `evidence_paths` reads a path as `file_context` does: project-relative,
 `./`-led, or absolute under the project root. A file no scan reads, such as a
 CI script or a shell tool, counts too: its hash is read from disk when the note

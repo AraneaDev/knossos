@@ -59,13 +59,22 @@ It names five cases and why each one belongs elsewhere:
 ## Writing a fact back
 
 `annotate_component` is the one way a session leaves something for the next one,
-and annotations are keyed by canonical name, so they survive a rescan. The skill sets three tests that all have to hold before a
-session writes one: the fact cost real effort to learn, it is not visible by
-reading the component itself, and it will still be true in a month.
+and annotations are keyed by canonical name, so they survive a rescan. The skill
+sets two standing rules, both to be followed before the session gives its
+answer:
 
-That bar exists to protect the notes worth keeping. A note restating what the
-graph already encodes, or describing the current branch, buries the one that
-records why a boundary is process-enforced rather than conventional.
+- When a Knossos answer left something out and the session found it by further
+  queries, grep or reading, it records what the answer missed, so the next
+  session starts from the note instead of digging again.
+- When a result it used carries a model note marked `stale`, it settles that
+  note: confirms it with `confirm: true` when it still holds, corrects and
+  re-records it when it partly holds, and removes it when it no longer holds. A
+  stale note by a person is theirs, so the session only says it may be out of
+  date.
+
+The skill also says what not to write. A note restating what the graph already
+encodes, or describing the current branch, buries the one that records why a
+boundary is process-enforced rather than conventional.
 
 The tool previews by default and needs `execute: true` to write. `kind` is
 `note` for a free-form fact; `intended_boundary`, `false_positive`,
@@ -75,7 +84,9 @@ covers the mechanics.
 
 ## Where it lives, and when a change to it takes effect
 
-The skill is `skills/graph/SKILL.md` in the repository.
-`install-agent-plugin --execute` copies it into `.plugin/`, so a change to
+The skill is `skills/graph/SKILL.md` in the repository. The Codex plugin's copy,
+`plugins/knossos/skills/knossos/SKILL.md`, is generated from it by
+`php tools/skill-copies.php`, and the quality gate refuses a stale copy, so edit
+the source and regenerate. `install-agent-plugin --execute` copies it into `.plugin/`, so a change to
 `SKILL.md` reaches a session only after that command runs again; see
 [updating the plugin](plugin.md#update).
