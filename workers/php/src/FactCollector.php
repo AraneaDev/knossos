@@ -223,8 +223,16 @@ final class FactCollector extends NodeVisitorAbstract
     {
         $values = [];
         foreach ($array->items as $item) {
-            if ($item === null || $item->key !== null || $item->unpack) {
+            if ($item === null || $item->key !== null) {
                 return;
+            }
+            if ($item->unpack) {
+                // A spread in first place hides the program, so nothing after it is a script.
+                if ($values === []) {
+                    return;
+                }
+
+                continue;
             }
             $values[] = $item->value;
         }

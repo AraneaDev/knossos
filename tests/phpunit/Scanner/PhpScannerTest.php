@@ -1832,4 +1832,29 @@ final class PhpScannerTest extends KnossosTestCase
         self::assertContains('Fixture\\Walk::inherited', $leave);
         self::assertContains('Fixture\\Walk::run', $only);
     }
+
+    /**
+     * An argv that spreads options into it still names the script it runs; one
+     * made only of spreads names nothing.
+     */
+    #[Group('php-scanner')]
+    public function testPhpWorkerLaunchesThroughAnArgvWithSpreads(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/SpreadLaunch.php'],
+        ]));
+        $client->shutdown();
+        $launches = array_values(array_filter(
+            $contributions[0]->edges,
+            fn(EdgeFact $edge): bool => $edge->kind === 'launches',
+        ));
+
+        assertSame(1, count($launches));
+        assertSame('php:method:Fixture\\SpreadLaunch::withOptions', $launches[0]->sourceReference);
+        self::assertStringStartsWith('php:launched_file:', $launches[0]->targetReference);
+        self::assertStringEndsWith('bin/tool', $launches[0]->targetReference);
+    }
 }
