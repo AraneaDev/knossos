@@ -261,15 +261,13 @@ def _unscannable_contribution(relative: str, message: str) -> dict[str, Any]:
     }
 
 
+# Serialized bytes one ``scan/input_hashes`` notification carries at most, well
+# under the core's line cap. A single entry longer than this still travels
+# alone, and the core's path rules bound an entry, so no frame this produces
+# approaches the cap.
 # BEGIN GENERATED worker-constants:input_hashes_part_bytes
 INPUT_HASHES_PART_BYTES = 256_000
 # END GENERATED worker-constants:input_hashes_part_bytes
-"""Serialized bytes one ``scan/input_hashes`` notification carries at most.
-
-Well under the core's line cap. A single entry longer than this
-still travels alone, and the core's path rules bound an entry, so no frame this
-produces approaches the cap.
-"""
 
 
 def input_hash_parts(input_hashes: dict[str, str | None], part_bytes: int | None = None) -> list[dict[str, str | None]]:

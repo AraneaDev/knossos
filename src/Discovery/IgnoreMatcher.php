@@ -267,11 +267,12 @@ final readonly class IgnoreMatcher
     }
 
     /**
-     * The built-in rules in $path, each list keeping only the entries of the
-     * right type.
+     * The built-in rules in $path. A missing rule or an entry of the wrong
+     * type refuses the file rather than reading as no rule: an empty list
+     * would scan `node_modules` and every other tree it is there to skip.
      *
      * @return array{segments: list<string>, anchored_segments: list<string>, prefixes: list<string>, sequences: list<array{0: string, 1: string}>, suffixes: list<string>, path_prefixes: list<string>}
-     * @throws \RuntimeException when the file is missing or holds no rules
+     * @throws \RuntimeException when the file is missing or a rule is absent or malformed
      */
     private static function readBuiltIn(string $path): array
     {
@@ -282,38 +283,59 @@ final readonly class IgnoreMatcher
             throw new \RuntimeException('The built-in ignore rules are missing from ' . $path . '.');
         }
         $sequences = [];
-        foreach (is_array($rules['sequences'] ?? null) ? $rules['sequences'] : [] as $pair) {
-            $pair = self::strings($pair);
-            if (count($pair) === 2) {
-                $sequences[] = [$pair[0], $pair[1]];
+        foreach (self::list($rules, 'sequences', $path) as $pair) {
+            $pair = is_array($pair) && array_is_list($pair) && count($pair) === 2 && is_string($pair[0]) && is_string($pair[1]) ? $pair : null;
+            if ($pair === null) {
+                throw new \RuntimeException(sprintf('The built-in ignore rule sequences in %s must hold pairs of names.', $path));
             }
+            $sequences[] = [$pair[0], $pair[1]];
         }
 
         return [
-            'segments' => self::strings($rules['segments'] ?? null),
-            'anchored_segments' => self::strings($rules['anchored_segments'] ?? null),
-            'prefixes' => self::strings($rules['prefixes'] ?? null),
+            'segments' => self::strings($rules, 'segments', $path),
+            'anchored_segments' => self::strings($rules, 'anchored_segments', $path),
+            'prefixes' => self::strings($rules, 'prefixes', $path),
             'sequences' => $sequences,
-            'suffixes' => self::strings($rules['suffixes'] ?? null),
-            'path_prefixes' => self::strings($rules['path_prefixes'] ?? null),
+            'suffixes' => self::strings($rules, 'suffixes', $path),
+            'path_prefixes' => self::strings($rules, 'path_prefixes', $path),
         ];
     }
 
     /**
-     * The strings of a decoded JSON list.
+     * The rule $key of $rules as a list of names.
      *
-     * @return list<string> nothing for anything but a list
+     * @param array<mixed> $rules
+     * @return list<string>
+     * @throws \RuntimeException when it is absent or holds anything but names
      */
-    private static function strings(mixed $value): array
+    private static function strings(array $rules, string $key, string $path): array
     {
         $strings = [];
-        foreach (is_array($value) ? $value : [] as $item) {
-            if (is_string($item)) {
-                $strings[] = $item;
+        foreach (self::list($rules, $key, $path) as $item) {
+            if (!is_string($item)) {
+                throw new \RuntimeException(sprintf('The built-in ignore rule %s in %s must hold only names.', $key, $path));
             }
+            $strings[] = $item;
         }
 
         return $strings;
+    }
+
+    /**
+     * The rule $key of $rules, which has to be a JSON list.
+     *
+     * @param array<mixed> $rules
+     * @return list<mixed>
+     * @throws \RuntimeException when it is absent or not a list
+     */
+    private static function list(array $rules, string $key, string $path): array
+    {
+        $list = $rules[$key] ?? null;
+        if (!is_array($list) || !array_is_list($list)) {
+            throw new \RuntimeException(sprintf('The built-in ignore rule %s is missing from %s or is not a list.', $key, $path));
+        }
+
+        return $list;
     }
 
     /**

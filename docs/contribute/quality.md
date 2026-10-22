@@ -264,8 +264,9 @@ built-in ignore rules, the symlink hop limit, the invalid-limits refusal and the
 `scan/input_hashes` part size) come from `schemas/worker-constants.json`. Edit
 that file and run `php tools/worker-constants.php`, which rewrites each copy
 between its `BEGIN GENERATED worker-constants:<key>` and `END GENERATED` comments.
-The core's `IgnoreMatcher` and the PHP worker's `FactCollector` read the JSON
-itself. `php tools/worker-constants.php --check` runs in the `static` lane and
+Only the core's `IgnoreMatcher` reads the JSON itself; every worker, the PHP one
+included, holds a literal, so a worker copied without the rest of the
+installation still runs. `php tools/worker-constants.php --check` runs in the `static` lane and
 fails on a copy edited by hand, naming the file.
 
 External links are fetched only by `php tools/documentation-check.php --external`,

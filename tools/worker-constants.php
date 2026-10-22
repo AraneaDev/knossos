@@ -15,7 +15,8 @@ declare(strict_types=1);
  * notices. Each copy sits between a `BEGIN GENERATED worker-constants:<key>`
  * and an `END GENERATED worker-constants:<key>` comment, written in the shape
  * that language's formatter leaves alone, so the formatter check and this one
- * never fight. The core and the PHP worker read the JSON itself. --root names
+ * never fight. Only the core's IgnoreMatcher reads the JSON itself: a worker
+ * can be copied without the rest of the installation. --root names
  * the checkout, this one unless given; the tests point it at a stale copy to
  * see the check refuse.
  */
@@ -132,6 +133,28 @@ function rustArray(string $head, array $items): string
 }
 
 /**
+ * Whether $value has the shape $key's copies are rendered from: a list of
+ * names, the rule lists of the built-in exclusions, a positive integer or a
+ * sentence.
+ */
+function wellFormed(string $key, mixed $value): bool
+{
+    $names = static fn(mixed $list): bool => is_array($list) && array_is_list($list) && array_filter($list, static fn(mixed $item): bool => !is_string($item)) === [];
+
+    return match ($key) {
+        'launch_interpreters' => $names($value) && $value !== [],
+        'built_in_exclusions' => is_array($value)
+            && array_keys($value) === ['segments', 'anchored_segments', 'anchor_roots', 'prefixes', 'sequences', 'suffixes', 'path_prefixes', 'patterns']
+            && array_filter($value, static fn(mixed $list, string $rule): bool => $rule === 'sequences'
+                ? !(is_array($list) && array_is_list($list) && array_filter($list, static fn(mixed $pair): bool => !$names($pair) || count($pair) !== 2) === [])
+                : !$names($list), ARRAY_FILTER_USE_BOTH) === [],
+        'max_symlink_hops', 'input_hashes_part_bytes' => is_int($value) && $value > 0,
+        'invalid_limits' => is_string($value) && $value !== '',
+        default => false,
+    };
+}
+
+/**
  * Per file, per key: the comment that opens a marker, and the statement the
  * markers hold.
  *
@@ -140,6 +163,9 @@ function rustArray(string $head, array $items): string
 function targets(): array
 {
     return [
+        'workers/php/src/FactCollector.php' => ['//', [
+            'launch_interpreters' => static fn(array $value): string => '    private const INTERPRETERS = [' . implode(', ', array_map(phpString(...), $value)) . '];',
+        ]],
         'workers/php/src/WorkerServer.php' => ['//', [
             'invalid_limits' => static fn(string $value): string => '    public const INVALID_LIMITS = ' . phpString($value) . ';',
             'input_hashes_part_bytes' => static fn(int $value): string => '    private const INPUT_HASHES_PART_BYTES = ' . integer($value) . ';',
@@ -207,6 +233,23 @@ if (!is_array($constants)) {
     fwrite(STDERR, CONSTANTS_SOURCE . " is missing or is not a JSON object.\n");
     exit(1);
 }
+// Every value is checked before any copy is touched, so a malformed source
+// is refused by name and never half written.
+foreach (array_unique(array_merge(...array_map(static fn(array $target): array => array_keys($target[1]), array_values(targets())))) as $key) {
+    if (!array_key_exists($key, $constants)) {
+        fwrite(STDERR, CONSTANTS_SOURCE . " has no {$key}.\n");
+        exit(1);
+    }
+    if (!wellFormed($key, $constants[$key])) {
+        fwrite(STDERR, sprintf("%s: %s must be %s.\n", CONSTANTS_SOURCE, $key, match ($key) {
+            'launch_interpreters' => 'a list of names, at least one',
+            'built_in_exclusions' => 'an object of the eight IgnoreMatcher::workerRules() lists, in their order',
+            'max_symlink_hops', 'input_hashes_part_bytes' => 'a positive integer',
+            default => 'a sentence',
+        }));
+        exit(1);
+    }
+}
 $stale = [];
 foreach (targets() as $path => [$comment, $keys]) {
     $target = $root . '/' . $path;
@@ -217,10 +260,6 @@ foreach (targets() as $path => [$comment, $keys]) {
     }
     $written = $contents;
     foreach ($keys as $key => $render) {
-        if (!array_key_exists($key, $constants)) {
-            fwrite(STDERR, CONSTANTS_SOURCE . " has no {$key}.\n");
-            exit(1);
-        }
         $marker = preg_quote($comment, '/') . ' (BEGIN|END) GENERATED worker-constants:' . preg_quote($key, '/');
         $pattern = '/^([ \t]*)' . str_replace('(BEGIN|END)', 'BEGIN', $marker) . '\n.*?^[ \t]*' . str_replace('(BEGIN|END)', 'END', $marker) . '$/ms';
         $count = 0;
