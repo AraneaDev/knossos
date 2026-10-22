@@ -66,7 +66,7 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * holds, up to {@see self::MAX_EVIDENCE_PATHS} of those. A cited file gone
      * from both was looked past by the person who confirmed it.
      *
-     * @return list<array{path: string, hash: string}>
+     * @return list<array{path: string, hash: string, span?: array{start: int, end: int, hash: string}}>
      */
     private function confirmedBasis(string $projectId, string $component, string $stored): array
     {
@@ -224,10 +224,12 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
      * The files a model note rests on, with the content hash each has now:
      * the component's own file first, then each cited path, once each. A
      * cited path the project's scan does not hold is refused, so a note never
-     * rests on a file no reader can check.
+     * rests on a file no reader can check. A component's own file also
+     * records the lines it spans there and their hash, when the disk holds
+     * the file the scan read.
      *
      * @param list<string> $evidencePaths
-     * @return list<array{path: string, hash: string}>
+     * @return list<array{path: string, hash: string, span?: array{start: int, end: int, hash: string}}>
      */
     private function basis(string $projectId, string $canonical, array $evidencePaths): array
     {
@@ -236,16 +238,23 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         }
         // Every file the name is declared in (a class and an interface of the
         // same name can live apart), so a change to any of them is seen.
+        // Each with the lines the name spans there, so an edit elsewhere in the file leaves the note standing.
         $own = $this->pdo->prepare(
-            'SELECT DISTINCT f.relative_path, f.content_hash FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            'WHERE n.project_id = :project AND n.canonical_name = :name ORDER BY f.relative_path LIMIT ' . self::MAX_EVIDENCE_PATHS,
+            'SELECT f.relative_path, f.content_hash, MIN(n.start_line) AS start_line, MAX(n.end_line) AS end_line FROM nodes n JOIN files f ON f.id = n.file_id ' .
+            'WHERE n.project_id = :project AND n.canonical_name = :name GROUP BY f.relative_path, f.content_hash ORDER BY f.relative_path LIMIT ' . self::MAX_EVIDENCE_PATHS,
         );
         $own->execute(['project' => $projectId, 'name' => $canonical]);
-        $basis = [];
-        foreach ($own->fetchAll() as $row) {
-            $basis[(string) $row['relative_path']] = (string) $row['content_hash'];
-        }
         $root = (string) $this->project($projectId)['root_realpath'];
+        $basis = [];
+        $spans = [];
+        foreach ($own->fetchAll() as $row) {
+            $path = (string) $row['relative_path'];
+            $basis[$path] = (string) $row['content_hash'];
+            $span = self::span($root, $path, $basis[$path], $row['start_line'], $row['end_line']);
+            if ($span !== null) {
+                $spans[$path] = $span;
+            }
+        }
         if ($basis === []) {
             // A file component (NamedFiles): the note rests on the file it names, hashed from disk.
             try {
@@ -274,7 +283,23 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
             $basis[$path] = is_string($hash) ? $hash : ProjectFileHash::of($root, $path);
         }
 
-        return array_map(static fn(string $path, string $hash): array => ['path' => $path, 'hash' => $hash], array_keys($basis), array_values($basis));
+        return array_map(static fn(string $path, string $hash): array => ['path' => $path, 'hash' => $hash] + (isset($spans[$path]) ? ['span' => $spans[$path]] : []), array_keys($basis), array_values($basis));
+    }
+
+    /**
+     * The lines a component spans in its file and their hash, or null when
+     * the scan gave it no lines or the disk no longer holds what the scan read.
+     *
+     * @return array{start: int, end: int, hash: string}|null
+     */
+    private static function span(string $root, string $path, string $scannedHash, mixed $start, mixed $end): ?array
+    {
+        if (!is_numeric($start) || !is_numeric($end) || (int) $start < 1 || (int) $end < (int) $start) {
+            return null;
+        }
+        $contents = ComponentSpan::scannedContents($root, $path, $scannedHash);
+
+        return $contents === null ? null : ['start' => (int) $start, 'end' => (int) $end, 'hash' => ComponentSpan::hash($contents, (int) $start, (int) $end)];
     }
 
     /**

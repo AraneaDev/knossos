@@ -71,8 +71,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Query/ChangeImpactQueryService.php:385',
             ],
             '.*implode\\(\',\', array_fill\\(0, count\\(.*' => [
-                'src/Query/AnnotationNotes.php:83',
-                'src/Query/AnnotationNotes.php:146',
+                'src/Query/AnnotationNotes.php:86',
+                'src/Query/AnnotationNotes.php:151',
                 'src/Query/ArchitectureHealthQuery.php:129',
                 'src/Query/ArchitectureHealthQuery.php:212',
                 'src/Query/ArchitecturePolicyQueryService.php:353',
@@ -114,7 +114,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Store/Upsert.php:28',
             ],
             '.*array_chunk\\(\\$\\w+, \\d+\\).*' => [
-                'src/Query/AnnotationNotes.php:80',
+                'src/Query/AnnotationNotes.php:83',
                 'src/Scan/ScanLedger.php:308',
                 'src/Store/SqliteGraphPruner.php:87',
                 'src/Store/SqliteGraphPruner.php:108',
@@ -127,8 +127,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Git/GitProcessRunner.php:205',
             ],
             '.*implode\\(\',\', array_fill\\(0, count\\(.*' => [
-                'src/Query/AnnotationNotes.php:83',
-                'src/Query/AnnotationNotes.php:146',
+                'src/Query/AnnotationNotes.php:86',
+                'src/Query/AnnotationNotes.php:151',
                 'src/Query/ArchitectureHealthQuery.php:129',
                 'src/Query/ArchitectureHealthQuery.php:212',
                 'src/Query/ArchitecturePolicyQueryService.php:353',
@@ -170,7 +170,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Store/Upsert.php:28',
             ],
             '.*array_chunk\\(\\$\\w+, \\d+\\).*' => [
-                'src/Query/AnnotationNotes.php:80',
+                'src/Query/AnnotationNotes.php:83',
                 'src/Scan/ScanLedger.php:308',
                 'src/Store/SqliteGraphPruner.php:87',
                 'src/Store/SqliteGraphPruner.php:108',

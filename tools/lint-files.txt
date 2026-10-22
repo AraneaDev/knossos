@@ -229,6 +229,7 @@ php	src/Query/ChangeImpactQueryService.php
 php	src/Query/ChurnService.php
 php	src/Query/ComponentDetailService.php
 php	src/Query/ComponentQueryService.php
+php	src/Query/ComponentSpan.php
 php	src/Query/CompositionRoots.php
 php	src/Query/ConstructedClasses.php
 php	src/Query/DashboardService.php
@@ -669,6 +670,7 @@ php	tests/phpunit/Query/AnnotationCheckTest.php
 php	tests/phpunit/Query/AnnotationNotesTest.php
 php	tests/phpunit/Query/AnnotationOverwriteTest.php
 php	tests/phpunit/Query/AnnotationPresenceTest.php
+php	tests/phpunit/Query/AnnotationSpanStalenessTest.php
 php	tests/phpunit/Query/AnnotationSurfacingTest.php
 php	tests/phpunit/Query/AnnotationsTest.php
 php	tests/phpunit/Query/ArchitectureContextBoundsTest.php
@@ -684,6 +686,7 @@ php	tests/phpunit/Query/CandidateGraphFactsTest.php
 php	tests/phpunit/Query/ChangeImpactRankingTest.php
 php	tests/phpunit/Query/ComponentBoundsTest.php
 php	tests/phpunit/Query/ComponentDetailServiceTest.php
+php	tests/phpunit/Query/ComponentSpanTest.php
 php	tests/phpunit/Query/ComponentUsageTest.php
 php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
