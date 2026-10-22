@@ -136,7 +136,9 @@ final class PluginCommand implements CliCommand
     /** {@inheritDoc} */
     public function allowedOptions(string $command): array
     {
-        return ['json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir'];
+        // `db` is accepted and has no effect: the installer opens no graph,
+        // and refusing it now would break a command line that passed it.
+        return ['db', 'json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir'];
     }
 
     /** {@inheritDoc} */

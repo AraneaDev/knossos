@@ -157,6 +157,7 @@ Usage:
   knossos session-diff [path] --rev=SHA --file=PATH [--json]
   knossos install-agent-plugin [--scope=user] [--data-dir=DIR] [--execute] [--json]
   knossos install-agent-plugin --out=DIR --data=HOSTPATH [--image=NAME] [--json]
+                (--db=PATH is accepted by both and has no effect)
   knossos list-boundaries <path|project-id> [--source=explicit|inferred] [--limit=N]
                           [--offset=N] [--json]
   knossos search-architecture <path|project-id> <query> [--kind=KIND] [--role=ROLE]

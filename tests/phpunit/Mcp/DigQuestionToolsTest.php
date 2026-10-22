@@ -12,9 +12,9 @@ use PHPUnit\Framework\Attributes\Group;
 final class DigQuestionToolsTest extends KnossosTestCase
 {
     /**
-     * Tools that change nothing and are still not a lookup an agent digs
-     * past, each with the reason. A tool that writes says so in its
-     * annotations or is listed here as `writes`.
+     * Tools that are not destructive and are still not a lookup an agent digs
+     * past, each with the reason. A non-destructive tool that writes, such as
+     * a scan or a note, is listed here as `writes`.
      */
     private const NOT_QUESTIONS = [
         'server_info' => 'runtime',
@@ -49,16 +49,18 @@ final class DigQuestionToolsTest extends KnossosTestCase
      * Every tool that is not destructive is a question or says why not.
      * Most question tools may refresh a stale graph, so they do not carry
      * readOnlyHint, and destructiveHint is the line between reading and
-     * changing what a project holds.
+     * removing what a project holds. A tool has to declare destructiveHint,
+     * so leaving its annotations out cannot skip the check.
      */
     #[Group('mcp')]
-    public function testEveryReadOnlyToolIsAQuestionOrSaysWhyNot(): void
+    public function testEveryNonDestructiveToolIsAQuestionOrSaysWhyNot(): void
     {
         $uncounted = [];
         foreach (ToolCatalog::definitions() as $definition) {
-            $annotations = $definition['annotations'] ?? [];
-            self::assertIsArray($annotations);
-            if (($annotations['destructiveHint'] ?? true) !== false) {
+            $annotations = $definition['annotations'] ?? null;
+            self::assertIsArray($annotations, $definition['name'] . ' declares no annotations.');
+            self::assertIsBool($annotations['destructiveHint'] ?? null, $definition['name'] . ' declares no destructiveHint.');
+            if ($annotations['destructiveHint']) {
                 continue;
             }
             $name = $definition['name'];

@@ -23,6 +23,13 @@ use PHPUnit\Framework\Attributes\Group;
  */
 final class CliDocumentedOptionsTest extends KnossosTestCase
 {
+    /**
+     * Options a command accepts without its usage line naming them. Every
+     * query command reads a graph and renders JSON, so `--db` and `--json` go
+     * without saying there; anything else a command accepts is documented.
+     */
+    private const UNDOCUMENTED_QUERY_OPTIONS = ['db', 'json'];
+
     #[Group('cli')]
     public function testEveryOptionInTheReferenceIsAcceptedByItsCommand(): void
     {
@@ -47,13 +54,6 @@ final class CliDocumentedOptionsTest extends KnossosTestCase
         assertSame([], $missing, 'Documented but rejected: ' . json_encode($missing));
         assertSame(true, $commandsChecked >= 40, sprintf('Expected to check at least 40 commands, checked %d.', $commandsChecked));
     }
-
-    /**
-     * Options a command accepts without its usage line naming them. Every
-     * query command reads a graph and renders JSON, so `--db` and `--json` go
-     * without saying there; anything else a command accepts is documented.
-     */
-    private const UNDOCUMENTED_QUERY_OPTIONS = ['db', 'json'];
 
     /** The reverse of the check above: an option a command accepts that its usage line never names is one nobody finds. */
     #[Group('cli')]
