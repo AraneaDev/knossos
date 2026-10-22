@@ -124,6 +124,7 @@ final class WorkerServer
             throw new WorkerInputException('Frameworks must be a list.');
         }
         $laravel = in_array('laravel', $frameworks, true);
+        $livewire = in_array('livewire', $frameworks, true);
         $symfony = in_array('symfony', $frameworks, true);
         if (count($files) > $maxFiles) {
             throw new WorkerInputException('PHP scan limits are invalid or exceeded.');
@@ -153,7 +154,7 @@ final class WorkerServer
                         sprintf('PHP scan file exceeds the size limit: %s', $relativePath),
                     );
                 }
-                $contribution = $this->scanner->scan($root, $absolutePath, $relativePath, $laravel, $symfony);
+                $contribution = $this->scanner->scan($root, $absolutePath, $relativePath, $laravel, $symfony, $livewire);
             } catch (UnreadableFileException $error) {
                 $contribution = self::rejection($relativePath, 'PHP_UNSCANNABLE_FILE', $error->getMessage());
                 // The file is not what discovery hashed right now, and the

@@ -117,6 +117,26 @@ final class AgentBriefTest extends KnossosTestCase
         assertSame(false, str_contains($markdown, '## Entry points'));
     }
 
+    /**
+     * The framework section names every framework a role rule can classify,
+     * so a Livewire or Flask project says so in its brief.
+     */
+    #[Group('query')]
+    public function testBriefNamesLivewireAndFlaskAmongTheFrameworkSignals(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $component = StableId::symbol($ids['project'], 'php', 'class', 'App\\Livewire\\Counter');
+        $repository->saveNode($component, $ids['project'], 'php', 'class', 'App\\Livewire\\Counter', 'Counter', null, $ids['file'], 40, 44, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        foreach (['livewire.component', 'flask.route_handler'] as $role) {
+            $repository->saveClassification(StableId::classification($ids['project'], $component, $role, 'rule.' . $role), $ids['project'], $component, $role, 'derived', 'probable', 'rule.' . $role, $ids['file'], 40, 44, [], $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $markdown = ArchitectureQueryService::forDatabase($pdo)->services()->briefQueries->exportAgentBrief($ids['project'], 4000)->data['markdown'];
+
+        assertSame(1, preg_match('/## Framework signals\n\n[^\n]*flask[^\n]*livewire/', $markdown), $markdown);
+    }
+
     #[Group('query')]
     public function testBriefDispatchesThroughToolService(): void
     {

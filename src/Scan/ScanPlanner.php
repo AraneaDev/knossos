@@ -155,6 +155,7 @@ final readonly class ScanPlanner
         $dirtyPaths = $gitHead === null ? null : $this->dirtyPaths->resolve($rootRealpath, $gitHead, $discovery->files);
         $started = hrtime(true);
         $laravel = in_array('laravel', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['laravel/framework']);
+        $livewire = in_array('livewire', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['livewire/livewire']);
         $symfony = in_array('symfony', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['symfony/framework-bundle', 'symfony/http-kernel', 'symfony/console', 'symfony/messenger']);
         $rustFrameworks = self::detectedFramework(
             $discovery->units,
@@ -190,6 +191,7 @@ final readonly class ScanPlanner
             rustFrameworks: $rustFrameworks,
             gitHead: $gitHead,
             dirtyPaths: $dirtyPaths,
+            livewire: $livewire,
         );
     }
     /**

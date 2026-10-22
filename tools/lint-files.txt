@@ -60,14 +60,18 @@ php	src/Classification/AbstractFrameworkRoleRule.php
 php	src/Classification/ClassificationEngine.php
 php	src/Classification/ClassificationFact.php
 php	src/Classification/ClassificationRule.php
+php	src/Classification/EloquentConventionRule.php
 php	src/Classification/FrameworkFileConventionRule.php
 php	src/Classification/LaravelPathRoleRule.php
 php	src/Classification/LaravelRoleRule.php
 php	src/Classification/LibraryPublicApiRule.php
+php	src/Classification/LivewireRoleRule.php
+php	src/Classification/LivewireViews.php
 php	src/Classification/ManifestEntryPointRule.php
 php	src/Classification/ManifestLibraryApiRule.php
 php	src/Classification/NameSuffixRule.php
 php	src/Classification/NestJsRoleRule.php
+php	src/Classification/PhpClassHierarchy.php
 php	src/Classification/PythonFrameworkRoleRule.php
 php	src/Classification/RustFrameworkRoleRule.php
 php	src/Classification/SymfonyRoleRule.php
@@ -479,13 +483,16 @@ php	tests/phpunit/Cancellation/CancellationTokenTest.php
 php	tests/phpunit/Classification/ClassificationEngineTest.php
 php	tests/phpunit/Classification/ClassificationFactTest.php
 php	tests/phpunit/Classification/ClassificationModuleTest.php
+php	tests/phpunit/Classification/EloquentConventionRuleTest.php
 php	tests/phpunit/Classification/FrameworkFileConventionRuleTest.php
 php	tests/phpunit/Classification/FrameworkInvokedRolesTest.php
 php	tests/phpunit/Classification/LaravelRoleRuleTest.php
+php	tests/phpunit/Classification/LivewireRoleRuleTest.php
 php	tests/phpunit/Classification/ManifestEntryPointRuleTest.php
 php	tests/phpunit/Classification/ManifestLibraryApiRuleTest.php
 php	tests/phpunit/Classification/NameSuffixRuleTest.php
 php	tests/phpunit/Classification/NestJsRoleRuleTest.php
+php	tests/phpunit/Classification/PhpClassHierarchyTest.php
 php	tests/phpunit/Classification/PythonFrameworkRoleRuleTest.php
 php	tests/phpunit/Classification/RustFrameworkRoleRuleTest.php
 php	tests/phpunit/Classification/SvelteKitConventionsTest.php
@@ -860,6 +867,7 @@ php	tests/phpunit/Scan/LanguageDescriptorMemoryTest.php
 php	tests/phpunit/Scan/LanguageScanResultTest.php
 php	tests/phpunit/Scan/LanguageScanRunnerTest.php
 php	tests/phpunit/Scan/LanguageWorkerPoolTest.php
+php	tests/phpunit/Scan/Laravel13LivewireFixtureTest.php
 php	tests/phpunit/Scan/LeftOutFilesTest.php
 php	tests/phpunit/Scan/MalformedFactScanTest.php
 php	tests/phpunit/Scan/MalformedTypescriptFileScanTest.php
@@ -914,6 +922,7 @@ php	tests/phpunit/Scanner/LimitsTest.php
 php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
+php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
 php	tests/phpunit/Scanner/PhpWorkerScopeAndRouteFactsTest.php
@@ -1024,6 +1033,7 @@ php	tests/phpunit/Support/EnricherFlowScans.php
 php	tests/phpunit/Support/FakeWorker.php
 php	tests/phpunit/Support/Fixtures.php
 php	tests/phpunit/Support/PaneAgreementGraph.php
+php	tests/phpunit/Support/PhpFacts.php
 php	tests/phpunit/Support/Processes.php
 php	tests/phpunit/Support/QueryCountingStatement.php
 php	tests/phpunit/Support/RowCountingStatement.php
@@ -1078,6 +1088,7 @@ php	tools/skipped-tests.php
 php	tools/supply-chain-report.php
 php	tools/trivy-allowlist.php
 php	workers/php/bin/worker
+php	workers/php/src/AstDepth.php
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
 php	workers/php/src/FrameworkFactStore.php
@@ -1090,6 +1101,7 @@ php	workers/php/src/LaravelRouteFactCollector.php
 php	workers/php/src/LaravelRouteNameFactCollector.php
 php	workers/php/src/LaravelTestRequestFactCollector.php
 php	workers/php/src/LaravelTraversalContext.php
+php	workers/php/src/LivewireBladeFactCollector.php
 php	workers/php/src/PhpScanner.php
 php	workers/php/src/ReceiverTypeInference.php
 php	workers/php/src/RefusedAfterReadException.php

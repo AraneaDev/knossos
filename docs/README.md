@@ -77,8 +77,8 @@ What to ask the graph for one kind of task, through the MCP tools or the CLI.
 
 - [PHP](languages/php.md): how does the PHP worker type a call, and how does it
   match names written in another case?
-- [PHP and Laravel](languages/php-laravel.md): what does the Laravel enricher
-  add to a PHP scan?
+- [PHP and Laravel](languages/php-laravel.md): what do the Laravel and Livewire
+  enrichers add to a PHP scan?
 - [PHP and Symfony](languages/php-symfony.md): what does the Symfony enricher
   add to a PHP scan?
 - [TypeScript and JavaScript](languages/typescript.md): what does the

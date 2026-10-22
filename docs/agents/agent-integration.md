@@ -75,8 +75,8 @@ Sections are appended in a fixed priority order:
    `architecture_health`'s filtered hub ranking. Test-role and external or
    unresolved components are left out, so the ranking can be trusted at a
    glance.
-5. **Framework signals**: the detected framework roles among Laravel, Symfony,
-   Django, FastAPI, Next.js, NestJS, React and Vue.
+5. **Framework signals**: the detected framework roles among Laravel, Livewire,
+   Symfony, Django, FastAPI, Flask, Next.js, NestJS, React and Vue.
 6. **Closing pointer**: a one-line reminder to rescan, and which live tools to
    call next (`scan_project`, then `architecture_summary`, `impact_analysis` or
    `explain_flow`). Always included.

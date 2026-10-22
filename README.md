@@ -65,7 +65,7 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
   Every tool except `server_info` has an equivalent CLI command
 - **Evidence on every fact**: each relationship points back to a file and a line, and a path is
   only as confident as its weakest edge
-- **4 languages**: PHP (with Laravel and Symfony), TypeScript and JavaScript, Python and Rust,
+- **4 languages**: PHP (with Laravel, Livewire and Symfony), TypeScript and JavaScript, Python and Rust,
   reconciled into one graph for a mixed repository
 - **Architecture rules and budgets**: boundary policies that say which part may depend on
   which, and quality budgets checked against a reviewed baseline, with SARIF for CI
@@ -245,12 +245,12 @@ and the [CLI reference](docs/reference/cli.md).
 
 ## Supported languages
 
-| Language                                         | Extraction                                                                                         | Framework enrichment                                                               |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| PHP 8.3 or newer                                 | Declarations, inheritance, calls, construction, types, injection                                   | [Laravel](docs/languages/php-laravel.md), [Symfony](docs/languages/php-symfony.md) |
-| TypeScript/JavaScript                            | Compiler symbol resolution, imports, calls, types, project references, Vue/Svelte/Astro components | [Next.js, NestJS, React, Vue, stores, endpoints](docs/languages/typescript.md)     |
-| Python 3.11 or newer                             | Standard-library AST in an isolated interpreter; manifests, packages, calls, routes                | [FastAPI, Django, Flask, Celery](docs/languages/python.md)                         |
-| Rust 1.82 or newer, optional on a native install | `syn` parsing; Cargo manifests, cross-file impls, routes; never invokes cargo/rustc                | [Details and limits](docs/languages/rust.md)                                       |
+| Language                                         | Extraction                                                                                         | Framework enrichment                                                                         |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| PHP 8.3 or newer                                 | Declarations, inheritance, calls, construction, types, injection                                   | [Laravel, Livewire](docs/languages/php-laravel.md), [Symfony](docs/languages/php-symfony.md) |
+| TypeScript/JavaScript                            | Compiler symbol resolution, imports, calls, types, project references, Vue/Svelte/Astro components | [Next.js, NestJS, React, Vue, stores, endpoints](docs/languages/typescript.md)               |
+| Python 3.11 or newer                             | Standard-library AST in an isolated interpreter; manifests, packages, calls, routes                | [FastAPI, Django, Flask, Celery](docs/languages/python.md)                                   |
+| Rust 1.82 or newer, optional on a native install | `syn` parsing; Cargo manifests, cross-file impls, routes; never invokes cargo/rustc                | [Details and limits](docs/languages/rust.md)                                                 |
 
 Mixed repositories reconcile into one graph. Other scanners plug in as isolated worker
 processes through the [scanner SDK](docs/reference/scanner-sdk.md).

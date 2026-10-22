@@ -18,7 +18,7 @@ use PhpParser\Node\Name;
  */
 final class LaravelRouteFactCollector
 {
-    private const ROUTE_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'any', 'match', 'view', 'redirect', 'permanentredirect', 'resource', 'apiresource'];
+    private const ROUTE_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'any', 'match', 'view', 'livewire', 'redirect', 'permanentredirect', 'resource', 'apiresource'];
 
     /**
      * The actions a resource route registers, in Laravel's order: the verbs,
@@ -108,8 +108,8 @@ final class LaravelRouteFactCollector
             : [strtoupper($method)];
         if ($method === 'any' || $method === 'redirect' || $method === 'permanentredirect') {
             $methods = ['ANY'];
-        } elseif ($method === 'view') {
-            // Laravel registers Route::view as GET|HEAD.
+        } elseif ($method === 'view' || $method === 'livewire') {
+            // Laravel registers Route::view, and Livewire's Route::livewire, as GET|HEAD.
             $methods = ['GET', 'HEAD'];
         }
         if ($methods === []) {
@@ -118,8 +118,39 @@ final class LaravelRouteFactCollector
         }
         // The second argument of view, redirect and permanentRedirect is a view name or a
         // URL, never a controller action, so a '@' in it must not read as Class@method.
+        if ($method === 'livewire') {
+            $this->livewireRoute($methods, $uri, $args[$actionIndex]->value ?? null, $modifiers, $evidence);
+            return;
+        }
         $shortcut = in_array($method, ['view', 'redirect', 'permanentredirect'], true);
         $this->addRoute($methods, $uri, $shortcut ? [] : $this->action($args[$actionIndex]->value ?? null), $modifiers, $evidence);
+    }
+
+    /**
+     * `Route::livewire('/dashboard', Dashboard::class)`: a full-page component.
+     *
+     * A class argument is the component itself and gets a `routes_to` edge to
+     * it. A string names a single-file or multi-file view component such as
+     * `pages::post.create`; the route keeps it as `livewire_component` and
+     * has no edge, because the file behind it is joined by name later.
+     *
+     * @param list<string> $methods
+     * @param array{middleware: list<string>, name: string, only: ?list<string>, except: list<string>, dynamic: bool} $modifiers
+     */
+    private function livewireRoute(array $methods, string $uri, ?Node $component, array $modifiers, Node $evidence): void
+    {
+        $class = FrameworkFactStore::classArgument($component);
+        if ($class !== null) {
+            $class = ltrim($class, '\\');
+            $this->addRoute($methods, $uri, ['reference' => FrameworkFactStore::classReference($class), 'label' => $class], $modifiers, $evidence, ['livewire_component' => $class]);
+            return;
+        }
+        $name = FrameworkFactStore::string($component);
+        if ($name === null || $name === '') {
+            $this->facts->addDiagnostic('LARAVEL_DYNAMIC_ROUTE', 'Dynamic Livewire route component was skipped.', $evidence);
+            return;
+        }
+        $this->addRoute($methods, $uri, ['label' => $name], $modifiers, $evidence, ['livewire_component' => $name]);
     }
 
     /**
@@ -197,8 +228,9 @@ final class LaravelRouteFactCollector
      * @param list<string> $methods
      * @param array{reference?: string, label?: string} $action
      * @param array{middleware: list<string>, name: string, only: ?list<string>, except: list<string>, dynamic: bool} $modifiers
+     * @param array<string, mixed> $extra attributes a route kind adds to the common set
      */
-    private function addRoute(array $methods, string $uri, array $action, array $modifiers, Node $evidence): void
+    private function addRoute(array $methods, string $uri, array $action, array $modifiers, Node $evidence, array $extra = []): void
     {
         $group = $this->combinedGroup();
         $uri = $this->joinUri($group['prefix'], $uri);
@@ -212,6 +244,7 @@ final class LaravelRouteFactCollector
             'name' => $group['name'] . $modifiers['name'],
             'middleware' => $middleware,
             'action' => $action['label'] ?? null,
+            ...$extra,
         ]);
         if (isset($action['reference'])) {
             $this->facts->addEdge('routes_to', $id, $action['reference'], $evidence);

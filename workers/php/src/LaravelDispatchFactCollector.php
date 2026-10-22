@@ -18,6 +18,8 @@ use PhpParser\Node\Name;
  */
 final readonly class LaravelDispatchFactCollector
 {
+    private const OBSERVED_BY = 'Illuminate\\Database\\Eloquent\\Attributes\\ObservedBy';
+
     public function __construct(
         private FrameworkFactStore $facts,
         private LaravelTraversalContext $context,
@@ -26,12 +28,36 @@ final readonly class LaravelDispatchFactCollector
     /** Route static calls and function calls to the matching dispatch detector. */
     public function enterNode(Node $node): void
     {
-        if ($node instanceof Expr\StaticCall) {
+        if ($node instanceof Node\Stmt\Class_) {
+            $this->observedBy($node);
+        } elseif ($node instanceof Expr\StaticCall) {
             $this->staticFrameworkCall($node);
         } elseif ($node instanceof Expr\FuncCall) {
             $this->functionDispatch($node);
         }
     }
+    /**
+     * `#[ObservedBy(PostObserver::class)]` on a model registers the observer
+     * the way `Post::observe(...)` does, so it records the same edge.
+     */
+    private function observedBy(Node\Stmt\Class_ $node): void
+    {
+        if ($node->namespacedName === null) {
+            return;
+        }
+        $model = $node->namespacedName->toString();
+        foreach ($node->attrGroups as $group) {
+            foreach ($group->attrs as $attribute) {
+                if (ltrim($attribute->name->toString(), '\\') !== self::OBSERVED_BY) {
+                    continue;
+                }
+                foreach (FrameworkFactStore::classArguments($attribute->args[0]->value ?? null) as $observer) {
+                    $this->facts->addEdge('observes', FrameworkFactStore::classReference($model), FrameworkFactStore::classReference($observer), $attribute, ['model' => $model, 'via' => 'ObservedBy']);
+                }
+            }
+        }
+    }
+
     /** Record a dispatch made through a framework facade's static call. */
 
     private function staticFrameworkCall(Expr\StaticCall $node): void

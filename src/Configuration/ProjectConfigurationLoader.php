@@ -29,7 +29,7 @@ final class ProjectConfigurationLoader
     public const RESERVED_BOUNDARY_NAMES = ['@unassigned', '@external'];
 
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
-    public const FRAMEWORKS = ['laravel', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
+    public const FRAMEWORKS = ['laravel', 'livewire', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
     public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'web_roots', 'enrichers'];
     public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];

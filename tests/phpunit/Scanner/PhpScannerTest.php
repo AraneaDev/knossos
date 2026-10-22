@@ -179,6 +179,11 @@ final class PhpScannerTest extends KnossosTestCase
                 && $tuple[1] === 'php:method:Fixture\\Dispatcher::anonymous',
         );
         assertSame([], array_values($anonymous));
+        // It still builds the class it declares, so that class is not unreferenced.
+        assertArrayContains(
+            ['constructs', 'php:method:Fixture\\Dispatcher::anonymous', 'php:class:{anonymous}@src/ImmediateCall.php:28'],
+            $edgeTuples,
+        );
         $client->shutdown();
     }
 
@@ -1628,5 +1633,133 @@ final class PhpScannerTest extends KnossosTestCase
         assertSame([], $modules);
 
         $client->shutdown();
+    }
+
+    /**
+     * Laravel 13 declares a full-page Livewire component with
+     * `Route::livewire()` and an observer with `#[ObservedBy]`; neither names
+     * a controller method, so without these facts the component and the
+     * observer look unreferenced.
+     */
+    #[Group('php-scanner')]
+    public function testLaravel13LivewireRoutesAndObservedBy(): void
+    {
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire',
+            'files' => ['routes/web.php', 'app/Models/Post.php'],
+            'frameworks' => ['laravel', 'livewire'],
+        ]));
+        $client->shutdown();
+        $nodes = [];
+        $edges = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                $nodes[$node->canonicalName] = $node;
+            }
+            foreach ($contribution->edges as $edge) {
+                $edges[] = $edge;
+            }
+        }
+
+        $dashboard = $nodes['GET|HEAD /dashboard => App\\Livewire\\Dashboard'] ?? null;
+        $this->assertNotNull($dashboard);
+        assertSame(['GET', 'HEAD'], $dashboard->attributes['methods']);
+        assertSame('App\\Livewire\\Dashboard', $dashboard->attributes['livewire_component']);
+        $create = $nodes['GET|HEAD /posts/create => pages::post.create'] ?? null;
+        $this->assertNotNull($create);
+        assertSame(['GET', 'HEAD'], $create->attributes['methods']);
+        assertSame('pages::post.create', $create->attributes['livewire_component']);
+        $this->assertNotNull($nodes['GET /counter => App\\Livewire\\Counter'] ?? null);
+
+        $tuples = array_map(fn(EdgeFact $edge): array => [$edge->kind, $edge->sourceReference, $edge->targetReference], $edges);
+        $this->assertContains(
+            ['routes_to', 'php:route:GET|HEAD /dashboard => App\\Livewire\\Dashboard', 'php:class:App\\Livewire\\Dashboard'],
+            $tuples,
+        );
+        assertSame([], array_values(array_filter(
+            $tuples,
+            fn(array $tuple): bool => $tuple[0] === 'routes_to' && $tuple[1] === 'php:route:GET|HEAD /posts/create => pages::post.create',
+        )));
+        $this->assertContains(
+            ['observes', 'php:class:App\\Models\\Post', 'php:class:App\\Observers\\PostObserver'],
+            $tuples,
+        );
+        $observes = array_values(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'observes'));
+        assertSame('App\\Models\\Post', $observes[0]->attributes['model']);
+        assertSame('ObservedBy', $observes[0]->attributes['via']);
+    }
+
+    /** `#[ObservedBy([A::class, B::class])]` registers every observer in the list. */
+    #[Group('php-scanner')]
+    public function testObservedByTakesAnArrayOfObservers(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-php-observed-' . bin2hex(random_bytes(6));
+        if (!mkdir($root, 0o700, true)) {
+            throw new \RuntimeException('Unable to create observer PHP fixture.');
+        }
+        file_put_contents($root . '/Person.php', <<<'PHP'
+        <?php
+
+        namespace App\Models;
+
+        use App\Observers\AuditObserver;
+        use App\Observers\PersonObserver;
+        use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+        use Illuminate\Database\Eloquent\Model;
+
+        #[ObservedBy([PersonObserver::class, AuditObserver::class])]
+        class Person extends Model {}
+        PHP);
+        try {
+            $client = $this->phpWorkerClient();
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['Person.php'], 'frameworks' => ['laravel']]));
+            $client->shutdown();
+        } finally {
+            unlink($root . '/Person.php');
+            rmdir($root);
+        }
+        $targets = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'observes') {
+                    $targets[] = $edge->targetReference;
+                }
+            }
+        }
+        sort($targets);
+
+        assertSame(['php:class:App\\Observers\\AuditObserver', 'php:class:App\\Observers\\PersonObserver'], $targets);
+    }
+
+    /**
+     * Eloquent calls an `Attribute`-returning accessor and a `#[Scope]` method
+     * by convention, so nothing in the code names them; the legacy
+     * `get...Attribute` and `scope...` spellings need the model chain and are
+     * not marked here.
+     */
+    #[Group('php-scanner')]
+    public function testEloquentAttributeAccessorsAndScopeAttributeAreRuntimeInvoked(): void
+    {
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire',
+            'files' => ['app/Models/Post.php'],
+            'frameworks' => ['laravel', 'livewire'],
+        ]));
+        $client->shutdown();
+        $nodes = [];
+        foreach ($contributions[0]->nodes as $node) {
+            $nodes[$node->canonicalName] = $node;
+        }
+
+        foreach (['App\\Models\\Post::excerpt', 'App\\Models\\Post::draft'] as $name) {
+            $this->assertNotNull($nodes[$name] ?? null, $name);
+            assertSame(true, $nodes[$name]->attributes['runtime_invoked'] ?? null, $name);
+        }
+        foreach (['App\\Models\\Post::getShoutedTitleAttribute', 'App\\Models\\Post::scopePublished'] as $name) {
+            $this->assertNotNull($nodes[$name] ?? null, $name);
+            $this->assertArrayNotHasKey('runtime_invoked', $nodes[$name]->attributes, $name);
+        }
     }
 }

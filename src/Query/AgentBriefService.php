@@ -17,7 +17,7 @@ use PDO;
  */
 final readonly class AgentBriefService extends AbstractArchitectureQueryService
 {
-    private const FRAMEWORK_PREFIXES = ['laravel', 'symfony', 'django', 'fastapi', 'nextjs', 'nestjs', 'react', 'vue'];
+    private const FRAMEWORK_PREFIXES = ['laravel', 'livewire', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue'];
 
     public function __construct(PDO $pdo, ?Closure $clock, private ArchitectureHealthQuery $health)
     {

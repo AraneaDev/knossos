@@ -7,14 +7,17 @@ namespace Knossos\Scan;
 use Knossos\Boundary\BoundaryInference;
 use Knossos\Classification\{
     ClassificationEngine,
+    EloquentConventionRule,
     FrameworkFileConventionRule,
     LaravelPathRoleRule,
     LaravelRoleRule,
     LibraryPublicApiRule,
+    LivewireRoleRule,
     ManifestEntryPointRule,
     ManifestLibraryApiRule,
     NameSuffixRule,
     NestJsRoleRule,
+    PhpClassHierarchy,
     PythonFrameworkRoleRule,
     RustFrameworkRoleRule,
     SymfonyRoleRule,
@@ -60,14 +63,22 @@ final readonly class ScanAnalysisPipeline
             FrameworkFileConventionRule::astro(self::appRoots($plan, '#(?:^|/)astro\\.config\\.[cm]?[jt]s$#', 0)),
             FrameworkFileConventionRule::vitePress(self::appRoots($plan, '#(?:^|/)\\.vitepress/config\\.[cm]?[jt]s$#', 1)),
         ];
-        if ($plan->preparation->laravel) {
+        // Both rules read the same chain of classes, traits and methods, so it is built once.
+        $hierarchy = $plan->preparation->laravel || $plan->preparation->livewire ? PhpClassHierarchy::fromContributions($contributions) : null;
+        $warnings = [];
+        if ($hierarchy !== null && $plan->preparation->laravel) {
             $rules[] = new LaravelRoleRule();
             $rules[] = new LaravelPathRoleRule();
+            $rules[] = new EloquentConventionRule($hierarchy);
             $rules[] = new NameSuffixRule('laravel.naming.roles.v1', [
                 'Controller' => 'laravel.controller', 'Command' => 'laravel.command', 'Job' => 'laravel.job',
                 'Event' => 'laravel.event', 'Listener' => 'laravel.listener', 'Middleware' => 'laravel.middleware',
                 'Provider' => 'laravel.provider', 'Policy' => 'laravel.policy', 'Repository' => 'laravel.repository',
             ], confidence: Confidence::Possible);
+        }
+        if ($hierarchy !== null && $plan->preparation->livewire) {
+            $rules[] = $livewire = new LivewireRoleRule($hierarchy);
+            $warnings = $livewire->warnings();
         }
         if ($plan->preparation->symfony) {
             $rules[] = new SymfonyRoleRule();
@@ -79,6 +90,7 @@ final readonly class ScanAnalysisPipeline
                 $contributions,
                 $plan->preparation->explicitBoundaries,
             ),
+            $warnings,
         );
     }
 

@@ -50,5 +50,11 @@ final readonly class ScanPreparation
          * the commit, so the drift oracle has to keep asking about it.
          */
         public ?DirtyPathSet $dirtyPaths = null,
+        /**
+         * Whether the project requires `livewire/livewire` or lists `livewire`
+         * under `frameworks`. Livewire facts are only emitted then, so a
+         * directory that merely happens to be called `Livewire` stays plain.
+         */
+        public bool $livewire = false,
     ) {}
 }

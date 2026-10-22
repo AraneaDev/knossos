@@ -40,7 +40,7 @@ final class ScanRequestBuilder
                 ->workerRules($plan->preparation->discovery->manifestRoots);
         }
         if ($descriptor->key === 'php') {
-            $request['frameworks'] = array_keys(array_filter(['laravel' => $plan->preparation->laravel, 'symfony' => $plan->preparation->symfony]));
+            $request['frameworks'] = array_keys(array_filter(['laravel' => $plan->preparation->laravel, 'livewire' => $plan->preparation->livewire, 'symfony' => $plan->preparation->symfony]));
         } elseif ($descriptor->key === 'typescript') {
             $request['config_files'] = array_values(array_map(
                 static fn($unit): string => $unit->configPath,

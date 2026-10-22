@@ -19,6 +19,7 @@ final readonly class ScanResultFactory
      * Build the scan's result envelope from its counts, timings, and diagnostics.
      *
      * @param array<string, float> $stageMilliseconds
+     * @param list<string> $analysisWarnings what role rules could not resolve; shown after the worker diagnostics
      */
     public function create(
         ScanPlan $plan,
@@ -27,6 +28,7 @@ final readonly class ScanResultFactory
         int $startedAt,
         array $stageMilliseconds,
         ?string $fastPath = null,
+        array $analysisWarnings = [],
     ): ResultEnvelope {
         $warnings = array_map(
             static fn($diagnostic): string => sprintf('%s: %s', $diagnostic->code, $diagnostic->message),
@@ -35,6 +37,7 @@ final readonly class ScanResultFactory
         foreach ($language->workerDiagnostics as $diagnostic) {
             $warnings[] = sprintf('%s: %s', $diagnostic['code'], $diagnostic['message']);
         }
+        array_push($warnings, ...$analysisWarnings);
         $leftOut = self::leftOutSentence($language);
         if ($leftOut !== '') {
             $warnings[] = sprintf("SCANNER_FILES_LEFT_OUT: %s Each file's diagnostic names the limit.", $leftOut);
