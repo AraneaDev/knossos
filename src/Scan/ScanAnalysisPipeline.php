@@ -7,6 +7,7 @@ namespace Knossos\Scan;
 use Knossos\Boundary\BoundaryInference;
 use Knossos\Classification\{
     ClassificationEngine,
+    EloquentConventionRule,
     FrameworkFileConventionRule,
     LaravelPathRoleRule,
     LaravelRoleRule,
@@ -15,6 +16,7 @@ use Knossos\Classification\{
     ManifestLibraryApiRule,
     NameSuffixRule,
     NestJsRoleRule,
+    PhpClassHierarchy,
     PythonFrameworkRoleRule,
     RustFrameworkRoleRule,
     SymfonyRoleRule,
@@ -60,9 +62,11 @@ final readonly class ScanAnalysisPipeline
             FrameworkFileConventionRule::astro(self::appRoots($plan, '#(?:^|/)astro\\.config\\.[cm]?[jt]s$#', 0)),
             FrameworkFileConventionRule::vitePress(self::appRoots($plan, '#(?:^|/)\\.vitepress/config\\.[cm]?[jt]s$#', 1)),
         ];
-        if ($plan->preparation->laravel) {
+        $hierarchy = $plan->preparation->laravel ? PhpClassHierarchy::fromContributions($contributions) : null;
+        if ($hierarchy !== null) {
             $rules[] = new LaravelRoleRule();
             $rules[] = new LaravelPathRoleRule();
+            $rules[] = new EloquentConventionRule($hierarchy);
             $rules[] = new NameSuffixRule('laravel.naming.roles.v1', [
                 'Controller' => 'laravel.controller', 'Command' => 'laravel.command', 'Job' => 'laravel.job',
                 'Event' => 'laravel.event', 'Listener' => 'laravel.listener', 'Middleware' => 'laravel.middleware',

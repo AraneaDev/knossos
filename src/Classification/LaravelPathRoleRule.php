@@ -11,6 +11,15 @@ use Knossos\Scanner\Protocol\Origin;
 /** Infers roles from Laravel's conventional directory layout — app/Http/Controllers and friends. */
 final readonly class LaravelPathRoleRule implements ClassificationRule
 {
+    /** The directory observers live in, which EloquentConventionRule defers to. */
+    public const OBSERVER_FRAGMENT = '/Observers/';
+
+    /** The model events Eloquent calls an observer's methods for. */
+    public const OBSERVER_METHODS = [
+        'retrieved', 'creating', 'created', 'updating', 'updated', 'saving', 'saved', 'deleting',
+        'deleted', 'trashed', 'forceDeleting', 'forceDeleted', 'restoring', 'restored', 'replicating',
+    ];
+
     private const PATH_ROLES = [
         '/Http/Controllers/' => 'laravel.controller',
         // A module keeps its own `Middleware` directory beside `Http/Middleware`.
@@ -22,6 +31,7 @@ final readonly class LaravelPathRoleRule implements ClassificationRule
         '/Providers/' => 'laravel.provider',
         '/Policies/' => 'laravel.policy',
         '/Models/' => 'laravel.model',
+        self::OBSERVER_FRAGMENT => 'laravel.observer',
         '/Repositories/' => 'laravel.repository',
         // Run by `artisan migrate`, `db:seed` and model factories, which find
         // them by directory; nothing references them by name.
@@ -44,6 +54,7 @@ final readonly class LaravelPathRoleRule implements ClassificationRule
         'laravel.listener' => ['handle', 'failed', 'shouldQueue', '__invoke'],
         'laravel.command' => ['handle', '__invoke'],
         // The Gate calls these by ability name: `authorize('view', $device)`.
+        'laravel.observer' => self::OBSERVER_METHODS,
         'laravel.policy' => ['before', 'after', 'viewAny', 'view', 'create', 'update', 'delete', 'restore', 'forceDelete'],
     ];
 
