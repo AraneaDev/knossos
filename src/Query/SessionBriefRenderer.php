@@ -265,7 +265,7 @@ final readonly class SessionBriefRenderer
         }
 
         return [sprintf(
-            '%d note%s on a component the graph no longer has; list_annotations marks %s missing.',
+            '%d note%s on a component the graph lost; list_annotations suggests a new name, move_to moves %s.',
             $count,
             $count === 1 ? ' sits' : 's sit',
             $count === 1 ? 'it' : 'them',
