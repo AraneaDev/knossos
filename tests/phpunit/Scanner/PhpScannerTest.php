@@ -179,6 +179,11 @@ final class PhpScannerTest extends KnossosTestCase
                 && $tuple[1] === 'php:method:Fixture\\Dispatcher::anonymous',
         );
         assertSame([], array_values($anonymous));
+        // It still builds the class it declares, so that class is not unreferenced.
+        assertArrayContains(
+            ['constructs', 'php:method:Fixture\\Dispatcher::anonymous', 'php:class:{anonymous}@src/ImmediateCall.php:28'],
+            $edgeTuples,
+        );
         $client->shutdown();
     }
 

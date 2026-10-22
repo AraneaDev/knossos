@@ -688,6 +688,13 @@ final class FactCollector extends NodeVisitorAbstract
 
             return;
         }
+        // `new class { ... }` builds the class it declares, under the same
+        // path:line name its declaration gets.
+        if ($node->class instanceof Stmt\Class_) {
+            $this->addEdge('constructs', $this->currentSource(), self::reference('class', $this->declarationName($node->class, $this->relativePath)), $node);
+
+            return;
+        }
         // `new ('App\\Cards\\' . $name)` or `new $card` after `$card = 'App\\Cards\\' . $name`:
         // any class in that namespace may be the one built.
         $prefix = match (true) {
