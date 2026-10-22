@@ -1685,6 +1685,48 @@ final class PhpScannerTest extends KnossosTestCase
         assertSame('ObservedBy', $observes[0]->attributes['via']);
     }
 
+    /** `#[ObservedBy([A::class, B::class])]` registers every observer in the list. */
+    #[Group('php-scanner')]
+    public function testObservedByTakesAnArrayOfObservers(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-php-observed-' . bin2hex(random_bytes(6));
+        if (!mkdir($root, 0o700, true)) {
+            throw new \RuntimeException('Unable to create observer PHP fixture.');
+        }
+        file_put_contents($root . '/Person.php', <<<'PHP'
+        <?php
+
+        namespace App\Models;
+
+        use App\Observers\AuditObserver;
+        use App\Observers\PersonObserver;
+        use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+        use Illuminate\Database\Eloquent\Model;
+
+        #[ObservedBy([PersonObserver::class, AuditObserver::class])]
+        class Person extends Model {}
+        PHP);
+        try {
+            $client = $this->phpWorkerClient();
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['Person.php'], 'frameworks' => ['laravel']]));
+            $client->shutdown();
+        } finally {
+            unlink($root . '/Person.php');
+            rmdir($root);
+        }
+        $targets = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'observes') {
+                    $targets[] = $edge->targetReference;
+                }
+            }
+        }
+        sort($targets);
+
+        assertSame(['php:class:App\\Observers\\AuditObserver', 'php:class:App\\Observers\\PersonObserver'], $targets);
+    }
+
     /**
      * Eloquent calls an `Attribute`-returning accessor and a `#[Scope]` method
      * by convention, so nothing in the code names them; the legacy
