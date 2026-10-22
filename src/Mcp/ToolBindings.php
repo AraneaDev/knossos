@@ -307,17 +307,28 @@ final class ToolBindings
                 ],
             ],
             'annotate_component' => [
-                // `remove` picks the method; a note written here is the model's.
-                'call' => static fn(ArchitectureQueryService $q, array $v, array $a): ResultEnvelope => $a['remove']
-                    ? $q->services()->annotationQueries->removeAnnotation($a['project_id'], $a['component'], $a['kind'], $a['value'], $a['execute'])
-                    : $q->services()->annotationQueries->upsertAnnotation($a['project_id'], $a['component'], $a['kind'], $a['value'], $a['execute'], 'model', $a['evidence_paths'], $a['replace']),
+                // `remove` or `confirm` picks the method; a note written here is the model's.
+                'call' => static fn(ArchitectureQueryService $q, array $v, array $a): ResultEnvelope => match (true) {
+                    $a['confirm'] => $q->services()->annotationQueries->confirmAnnotation($a['project_id'], $a['component'], $a['kind'], $a['execute']),
+                    $a['remove'] => $q->services()->annotationQueries->removeAnnotation($a['project_id'], $a['component'], $a['kind'], $a['value'], $a['execute']),
+                    default => $q->services()->annotationQueries->upsertAnnotation($a['project_id'], $a['component'], $a['kind'], $a['value'], $a['execute'], 'model', $a['evidence_paths'], $a['replace']),
+                },
                 'arguments' => [
-                    'project_id' => self::at('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--replace] [--execute] [--json]'),
+                    'project_id' => self::at('Usage: knossos annotate-component <path|project-id> <component> <kind> [value] [--evidence=path]... [--remove] [--replace] [--confirm] [--execute] [--json]'),
                     'component' => self::at('A component is required.'),
                     'kind' => self::at('A kind is required.'),
                     // Stored as given: a note's whitespace is content.
                     'value' => ['positional' => null, 'read' => static fn(array $a): string => ToolArguments::text($a, 'value', 2000, allowEmpty: true, default: '', trim: false)],
                     'remove' => [], 'replace' => [], 'execute' => [],
+                    // Confirming keeps the note as it is, so it takes nothing a write or a removal does.
+                    'confirm' => ['read' => static function (array $a): bool {
+                        $confirm = ToolArguments::boolean($a, 'confirm', false);
+                        if ($confirm && (($a['value'] ?? '') !== '' || ($a['remove'] ?? false) === true || ($a['replace'] ?? false) === true || ($a['evidence_paths'] ?? []) !== [])) {
+                            throw new ToolInputException('confirm keeps the note as it is: pass no value, evidence_paths, remove or replace with it.');
+                        }
+
+                        return $confirm;
+                    }],
                     'evidence_paths' => self::as('evidence'),
                 ],
             ],

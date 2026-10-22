@@ -260,6 +260,44 @@ final class McpTest extends KnossosTestCase
         assertThrows(fn() => $tools->call('list_annotations', ['project_id' => $ids['project'], 'extra' => true]), InvalidArgumentException::class);
     }
 
+    /**
+     * An agent that checked a stale note and found it still true confirms it:
+     * the note rests on its files as they are now and keeps its text and the
+     * files it cited, which a re-record without the same `evidence_paths`
+     * would drop. Confirming is a third action beside writing and removing,
+     * so it takes none of their arguments.
+     */
+    #[Group('mcp')]
+    public function testAnnotateComponentConfirmsAStaleNoteKeepingItsText(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $tools = new ToolService(
+            new ProjectScanService($pdo, self::repositoryRoot(), [self::repositoryRoot() . '/tests/Fixtures/mixed']),
+            ArchitectureQueryService::forDatabase($pdo),
+            new DatabaseMaintenanceService($pdo, ':memory:'),
+            new \Knossos\Mcp\ResultEnricher(new \Knossos\Query\StalenessProbe($pdo), new \Knossos\Mcp\NextStepPlanner()),
+        );
+        $note = ['project_id' => $ids['project'], 'component' => 'App\\Checkout', 'kind' => 'note'];
+        $tools->call('annotate_component', [...$note, 'value' => 'core flow', 'evidence_paths' => ['src/Checkout.php'], 'execute' => true]);
+        $fresh = (string) $pdo->query('SELECT basis_json FROM annotations')->fetchColumn();
+        // The file changed since the note was written.
+        $pdo->exec("UPDATE annotations SET basis_json = '" . str_replace('"hash":"', '"hash":"old', $fresh) . "'");
+
+        $preview = $tools->call('annotate_component', [...$note, 'confirm' => true]);
+        assertSame(false, $preview->data['executed']);
+        assertSame('confirm', $preview->data['action']);
+        $confirmed = $tools->call('annotate_component', [...$note, 'confirm' => true, 'execute' => true]);
+
+        assertSame(true, $confirmed->data['executed']);
+        assertSame($fresh, (string) $pdo->query('SELECT basis_json FROM annotations')->fetchColumn());
+        assertSame('core flow', (string) $pdo->query('SELECT value FROM annotations')->fetchColumn());
+        foreach ([['value' => 'new text'], ['remove' => true], ['replace' => true]] as $conflict) {
+            assertThrows(fn() => $tools->call('annotate_component', [...$note, 'confirm' => true, ...$conflict]), InvalidArgumentException::class);
+        }
+        assertThrows(fn() => $tools->call('annotate_component', [...$note, 'component' => 'App\\Nowhere', 'confirm' => true]), InvalidArgumentException::class);
+    }
+
     #[Group('mcp')]
     public function testStdioRunLoopContainsMalformedFramesNotificationsAndResponseCaps(): void
     {

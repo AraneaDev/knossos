@@ -3,6 +3,8 @@ name: knossos
 description: Use when you need to know what depends on something, what a change would break, where a new file belongs, how a request reaches a given component, or who calls a function, in a repository that Knossos has scanned. Answers come from a static graph with file and line evidence instead of from reading the source tree. Also covers recording durable architectural facts for later sessions.
 ---
 
+<!-- Generated from skills/graph/SKILL.md by tools/skill-copies.php; edit that file, not this one. -->
+
 # Asking the graph instead of reading the tree
 
 Knossos scans a repository once and answers structural questions from a graph
@@ -68,9 +70,9 @@ else will look: a stale note left alone stays stale, and once most notes read
 stale none of them is trusted. You are already looking at that component, which
 makes you the cheapest one to check it. Read the code the note describes, then:
 
-- still true: re-record it with `annotate_component`, the same text and the same
-  `evidence_paths`, which rests it on the files as they are now and clears
-  `stale`. Leaving out `evidence_paths` drops the files it cited.
+- still true: confirm it, `annotate_component` with `confirm: true` (and
+  `execute`), which rests it on the files as they are now and clears `stale`,
+  keeping its text and the files it cited.
 - partly true: correct the text and re-record it.
 - no longer true: remove it (`remove: true`).
 

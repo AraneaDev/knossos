@@ -68,9 +68,9 @@ else will look: a stale note left alone stays stale, and once most notes read
 stale none of them is trusted. You are already looking at that component, which
 makes you the cheapest one to check it. Read the code the note describes, then:
 
-- still true: re-record it with `annotate_component`, the same text and the same
-  `evidence_paths`, which rests it on the files as they are now and clears
-  `stale`. Leaving out `evidence_paths` drops the files it cited.
+- still true: confirm it, `annotate_component` with `confirm: true` (and
+  `execute`), which rests it on the files as they are now and clears `stale`,
+  keeping its text and the files it cited.
 - partly true: correct the text and re-record it.
 - no longer true: remove it (`remove: true`).
 

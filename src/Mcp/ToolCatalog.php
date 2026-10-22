@@ -718,7 +718,7 @@ final readonly class ToolCatalog
         return [
             [
                 'name' => 'annotate_component', 'title' => 'Annotate component',
-                'description' => 'Record, extend or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.',
+                'description' => 'Record, extend, confirm or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'project_id' => ['type' => 'string', 'minLength' => 1],
                     'component' => ['type' => 'string', 'minLength' => 1],
@@ -727,6 +727,7 @@ final readonly class ToolCatalog
                     'evidence_paths' => ['type' => 'array', 'maxItems' => 5, 'items' => ['type' => 'string', 'minLength' => 1], 'description' => 'Files your note rests on besides the component\'s own, scanned or not (a CI script counts); it is marked stale when one changes.'],
                     'remove' => ['type' => 'boolean', 'default' => false],
                     'replace' => ['type' => 'boolean', 'default' => false, 'description' => 'Replace a different model note stored here; without it such a write is refused and the stored note returned, so you can extend it instead.'],
+                    'confirm' => ['type' => 'boolean', 'default' => false, 'description' => 'You checked a stale note and it still holds: rest it on its files as they are now, keeping its text and cited files. Takes no value, evidence_paths, remove or replace.'],
                     'execute' => ['type' => 'boolean', 'default' => false],
                 ], 'required' => ['project_id', 'component', 'kind'], 'additionalProperties' => false],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],

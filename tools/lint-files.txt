@@ -1084,6 +1084,7 @@ php	tools/phpunit-shard
 php	tools/repository-check.php
 php	tools/reset-coverage.php
 php	tools/scanner-conformance
+php	tools/skill-copies.php
 php	tools/skipped-tests.php
 php	tools/supply-chain-report.php
 php	tools/trivy-allowlist.php
