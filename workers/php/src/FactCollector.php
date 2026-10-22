@@ -423,6 +423,7 @@ final class FactCollector extends NodeVisitorAbstract
             'abstract' => $node->isAbstract(),
             'php_attributes' => $attributes,
             ...(self::isVirtualProperty($node, $attributes) ? ['runtime_invoked' => true] : []),
+            ...(self::isEloquentConvention($this->typeNames($node->returnType), $attributes) ? ['runtime_invoked' => true] : []),
             ...(self::overridesSupertypeMember($node->name->toString(), $attributes, $class) ? ['overrides' => true] : []),
         ]);
         $this->addEdge('contains', $class['id'], $id, $node);
@@ -450,6 +451,24 @@ final class FactCollector extends NodeVisitorAbstract
         $comment = $node->getDocComment()?->getText() ?? '';
 
         return preg_match('/(?:^|[\s*])@(?:[A-Za-z_\\\\]+\\\\)?VirtualProperty\b/m', $comment) === 1;
+    }
+
+    /**
+     * Whether Eloquent calls this method by convention: an accessor or mutator
+     * declared as an `Attribute` return, or a scope marked `#[Scope]`. The
+     * model reads both by reflection and no code names them. The older
+     * `getXAttribute` and `scopeX` spellings are told apart by the model
+     * chain, which one file cannot see.
+     *
+     * @param list<string> $returnTypes
+     * @param list<string> $attributes
+     */
+    private static function isEloquentConvention(array $returnTypes, array $attributes): bool
+    {
+        $normalised = static fn(array $names): array => array_map(static fn(string $name): string => ltrim($name, '\\'), $names);
+
+        return in_array('Illuminate\\Database\\Eloquent\\Casts\\Attribute', $normalised($returnTypes), true)
+            || in_array('Illuminate\\Database\\Eloquent\\Attributes\\Scope', $normalised($attributes), true);
     }
 
     /**

@@ -1684,4 +1684,35 @@ final class PhpScannerTest extends KnossosTestCase
         assertSame('App\\Models\\Post', $observes[0]->attributes['model']);
         assertSame('ObservedBy', $observes[0]->attributes['via']);
     }
+
+    /**
+     * Eloquent calls an `Attribute`-returning accessor and a `#[Scope]` method
+     * by convention, so nothing in the code names them; the legacy
+     * `get...Attribute` and `scope...` spellings need the model chain and are
+     * not marked here.
+     */
+    #[Group('php-scanner')]
+    public function testEloquentAttributeAccessorsAndScopeAttributeAreRuntimeInvoked(): void
+    {
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire',
+            'files' => ['app/Models/Post.php'],
+            'frameworks' => ['laravel', 'livewire'],
+        ]));
+        $client->shutdown();
+        $nodes = [];
+        foreach ($contributions[0]->nodes as $node) {
+            $nodes[$node->canonicalName] = $node;
+        }
+
+        foreach (['App\\Models\\Post::excerpt', 'App\\Models\\Post::draft'] as $name) {
+            $this->assertNotNull($nodes[$name] ?? null, $name);
+            assertSame(true, $nodes[$name]->attributes['runtime_invoked'] ?? null, $name);
+        }
+        foreach (['App\\Models\\Post::getShoutedTitleAttribute', 'App\\Models\\Post::scopePublished'] as $name) {
+            $this->assertNotNull($nodes[$name] ?? null, $name);
+            $this->assertArrayNotHasKey('runtime_invoked', $nodes[$name]->attributes, $name);
+        }
+    }
 }
