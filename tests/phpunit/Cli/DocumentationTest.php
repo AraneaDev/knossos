@@ -293,17 +293,37 @@ final class DocumentationTest extends KnossosTestCase
         assertContains('missing link target img/none.png', $errors);
     }
 
-    /** Codex and Claude Code read the same guidance; only the skill's name differs. */
+    /**
+     * Codex and Claude Code read the same guidance under different names, and
+     * the Codex copy is generated from the Claude Code one. A copy edited by
+     * hand, or a source edited without regenerating, is refused by name.
+     */
     #[Group('documentation')]
-    public function testTheCodexSkillMatchesTheClaudeCodeSkill(): void
+    public function testTheSkillCopiesAreGeneratedFromTheirSource(): void
     {
-        $normalise = static fn(string $path): array => explode("\n", (string) preg_replace('/^name: .*$/m', 'name: <skill>', (string) file_get_contents(self::repositoryRoot() . '/' . $path)));
-        $claude = $normalise('skills/graph/SKILL.md');
-        $codex = $normalise('plugins/knossos/skills/knossos/SKILL.md');
-        foreach ($claude as $index => $line) {
-            self::assertSame($line, $codex[$index] ?? null, sprintf('plugins/knossos/skills/knossos/SKILL.md differs from skills/graph/SKILL.md at line %d.', $index + 1));
+        [$exit, $output, $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('skill-copies.php'), '--check']);
+        assertSame(0, $exit, $errors);
+        assertContains('Skill copies are current.', $output);
+
+        $root = sys_get_temp_dir() . '/knossos-stale-skill-copies-' . bin2hex(random_bytes(6));
+        mkdir($root . '/skills/graph', 0o700, true);
+        mkdir($root . '/plugins/knossos/skills/knossos', 0o700, true);
+        try {
+            file_put_contents($root . '/skills/graph/SKILL.md', "---\nname: graph\ndescription: d\n---\n\n# Body\n");
+            [$written] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('skill-copies.php'), '--root=' . $root]);
+            assertSame(0, $written);
+            $copy = (string) file_get_contents($root . '/plugins/knossos/skills/knossos/SKILL.md');
+            assertSame(true, str_starts_with($copy, "---\nname: knossos\ndescription: d\n---\n"));
+            assertContains('Generated from skills/graph/SKILL.md', $copy);
+            assertSame(true, str_ends_with($copy, "\n# Body\n"));
+
+            file_put_contents($root . '/plugins/knossos/skills/knossos/SKILL.md', $copy . "an edit by hand\n");
+            [$exit, , $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('skill-copies.php'), '--check', '--root=' . $root]);
+            assertSame(1, $exit);
+            assertContains('plugins/knossos/skills/knossos/SKILL.md', $errors);
+        } finally {
+            $this->removeTempTree($root);
         }
-        self::assertCount(count($claude), $codex);
     }
 
     #[Group('documentation')]

@@ -544,7 +544,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `annotate_component`
 
-Record, extend or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.
+Record, extend, confirm or remove your own (model) annotation on a component; it survives rescans and never changes a user note. false_positive and intentional remove the component from dead-code candidates. Preview by default; pass execute to apply.
 
 | Input | Type | Required | Constraints/default |
 | --- | --- | --- | --- |
@@ -555,6 +555,7 @@ Record, extend or remove your own (model) annotation on a component; it survives
 | `evidence_paths` | array | no | maxItems=5 |
 | `remove` | boolean | no | default=false |
 | `replace` | boolean | no | default=false |
+| `confirm` | boolean | no | default=false |
 | `execute` | boolean | no | default=false |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.

@@ -61,6 +61,23 @@ standing instruction: writing one is part of the task, not a side effect to ask
 about, so do it before you give your answer. Write nothing only when the answer was complete and your lookups
 merely confirmed it.
 
+**The second rule:** when a result you used carries a note marked `stale`, settle
+it before you give your answer, the same way. `stale` means a file the note rests
+on changed after it was written, so the note may no longer be true, and nobody
+else will look: a stale note left alone stays stale, and once most notes read
+stale none of them is trusted. You are already looking at that component, which
+makes you the cheapest one to check it. Read the code the note describes, then:
+
+- still true: confirm it, `annotate_component` with `confirm: true` (and
+  `execute`), which rests it on the files as they are now and clears `stale`,
+  keeping its text and the files it cited.
+- partly true: correct the text and re-record it.
+- no longer true: remove it (`remove: true`).
+
+This holds for every stale model note on a component you looked up, not only
+the ones you wrote. A stale note by a person (`author: user`) is theirs: say in
+one line that it may be out of date, and leave it.
+
 Write the fact on the component it is about, `kind: note`, and pass the files
 you relied on as `evidence_paths`, so the note is marked stale when one of them
 changes. A component Knossos did not resolve takes a note too, under its full
@@ -83,9 +100,7 @@ Use a short multi-line ASCII sketch only when the path branches, and keep it
 within the 1000 characters a result shows. No Mermaid or Markdown: nothing that
 shows a note renders them.
 
-A result marks one of your notes `stale` when a file it rests on changed. Check
-it against the code, then re-record it (that confirms it), correct it, or
-remove it. `list_annotations` marks a note `component_status: missing` when no
+`list_annotations` marks a note `component_status: missing` when no
 component carries its name any more, after a rename or a move: write it again
 on the new name and remove the old one. A note by a person (`author: user`) is
 theirs: never rewrite or remove it, and never write through the pane's own
