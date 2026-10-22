@@ -11,8 +11,9 @@ use Knossos\Store\StableId;
 
 /**
  * Collapses the resolved edges of a scan into one edge per kind, source,
- * target and owner (and per `prefix` for `mounts`), the rule workers rely on
- * when they report one fact per site.
+ * target and owner (and per `prefix` for `mounts`, per `access` for an edge that
+ * reads or writes a property), the rule workers rely on when they report one
+ * fact per site.
  *
  * The surest occurrence wins: the higher confidence, then a non-speculative
  * occurrence over a speculative one, then the earliest evidence. Attributes are
@@ -46,7 +47,8 @@ final class EdgeCollapse
             ));
         }
         $prefix = $edge->kind === 'mounts' ? json_encode($edge->attributes['prefix'] ?? null, JSON_THROW_ON_ERROR) : '';
-        $key = implode("\0", [$edge->kind, $sourceId, $targetId, $owner, $prefix]);
+        $access = is_string($edge->attributes['access'] ?? null) ? $edge->attributes['access'] : '';
+        $key = implode("\0", [$edge->kind, $sourceId, $targetId, $owner, $prefix, $access]);
         $this->groups[$key][] = ['edge' => $edge, 'source' => $sourceId, 'target' => $targetId, 'owner' => $owner];
     }
 

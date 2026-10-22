@@ -1874,4 +1874,41 @@ final class PhpScannerTest extends KnossosTestCase
         // What follows a spread is not the argument right after the script.
         self::assertCount(1, $commands);
     }
+
+    #[Group('php-scanner')]
+    public function testPhpWorkerReferencesThePropertiesItReadsAndWrites(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/PropertyUse.php'],
+        ]));
+        $client->shutdown();
+        $sites = [];
+        $access = [];
+        foreach ($contributions[0]->edges as $edge) {
+            if ($edge->kind === 'references' && str_starts_with($edge->targetReference, 'php:property:')) {
+                $sites[$edge->sourceReference . ' -> ' . $edge->targetReference][] = $edge->evidence->startLine;
+                $access[$edge->targetReference . ':' . $edge->evidence->startLine] = $edge->attributes['access'] ?? null;
+            }
+        }
+        $f = 'php:method:Fixture\\User::f';
+
+        // The read and the write are one site each.
+        self::assertSame([18, 19], $sites[$f . ' -> php:property:Fixture\\Box::$items'] ?? []);
+        self::assertSame([20], $sites[$f . ' -> php:property:Fixture\\Box::$count'] ?? []);
+        self::assertSame('read', $access['php:property:Fixture\\Box::$items:18'] ?? null);
+        self::assertSame('write', $access['php:property:Fixture\\Box::$items:19'] ?? null);
+        self::assertSame('write', $access['php:property:Fixture\\Box::$count:20'] ?? null);
+        // The closure's `$this` is the enclosing class, so it names no property of the box.
+        self::assertCount(1, array_filter(array_keys($sites), static fn(string $key): bool => str_ends_with($key, 'Box::$items')));
+        self::assertContains('php:property:Fixture\\User::$items', array_map(static fn(string $key): string => explode(' -> ', $key)[1], array_keys($sites)));
+        foreach ($contributions[0]->edges as $edge) {
+            if ($edge->kind === 'references' && str_starts_with($edge->targetReference, 'php:property:')) {
+                self::assertSame('probable', $edge->confidence->value);
+                self::assertSame(true, $edge->attributes['speculative'] ?? null);
+            }
+        }
+    }
 }

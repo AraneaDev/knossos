@@ -1,0 +1,41 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Knossos\Tests\Phpunit\Query;
+
+use Knossos\Query\ArchitectureQueryService;
+use Knossos\Scan\ProjectScanService;
+use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
+
+/**
+ * A property read or written through a typed receiver is a usage of that
+ * property, so the methods touching it show up as its readers.
+ */
+#[Group('query')]
+final class PropertyUsagesTest extends KnossosTestCase
+{
+    public function testListUsagesFindsAPropertysReaders(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-property-usages-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o777, true);
+        copy(self::repositoryRoot() . '/tests/Fixtures/php-scanner/src/PropertyUse.php', $root . '/src/PropertyUse.php');
+
+        try {
+            $pdo = $this->freshTestDatabase();
+            $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
+            $result = ArchitectureQueryService::forDatabase($pdo)->listUsages($projectId, 'Fixture\\Box::$items');
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        self::assertSame('Fixture\\Box::$items', $result->data['target']['canonical_name'] ?? null);
+        $usages = $result->data['usages'];
+        self::assertCount(2, $usages);
+        self::assertSame(['Fixture\\User::f', 'Fixture\\User::f'], array_column(array_column($usages, 'source'), 'canonical_name'));
+        self::assertSame([18, 19], array_column($usages, 'start_line'));
+        // A read and a write are separate usages, each saying which it is.
+        self::assertSame(['read', 'write'], array_column(array_column($usages, 'attributes'), 'access'));
+    }
+}

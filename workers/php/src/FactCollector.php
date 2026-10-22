@@ -55,6 +55,13 @@ final class FactCollector extends NodeVisitorAbstract
      */
     private array $untypedCalls = [];
 
+    /**
+     * Property fetches the code assigns to, keyed by node id, so the property edge says it writes.
+     *
+     * @var array<int, true>
+     */
+    private array $propertyWrites = [];
+
     /** The namespace block the traversal is in: its node id, 0 for a file without one. */
     private int $namespaceScope = 0;
 
@@ -129,6 +136,10 @@ final class FactCollector extends NodeVisitorAbstract
             $this->namespaceScope = spl_object_id($node);
             $this->namespaceName = $node->name?->toString() ?? '';
         }
+        if ($node instanceof Expr\Assign || $node instanceof Expr\AssignOp || $node instanceof Expr\AssignRef
+            || $node instanceof Expr\PreInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
+            $this->markPropertyWrite($node->var);
+        }
         if ($node instanceof Stmt\ClassLike) {
             $this->enterClassLike($node);
         } elseif ($node instanceof Stmt\ClassMethod) {
@@ -156,6 +167,7 @@ final class FactCollector extends NodeVisitorAbstract
             $this->classReference($node->class, $node);
         } elseif ($node instanceof Expr\StaticPropertyFetch) {
             $this->classReference($node->class, $node);
+            $this->staticPropertyReference($node);
         } elseif ($node instanceof Expr\Instanceof_) {
             $this->classReference($node->class, $node);
         } elseif ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) {
@@ -789,10 +801,11 @@ final class FactCollector extends NodeVisitorAbstract
     }
 
     /**
-     * A property read on a typed receiver, which may be an Eloquent relation:
-     * `$line->product` runs `Line::product()` through the model's magic
-     * accessor. Speculative, so a plain property, which declares no method of
-     * its name, leaves no edge once the reconciler finds none.
+     * A property read or write on a typed receiver. It references the
+     * property, and it may be an Eloquent relation: `$line->product` runs
+     * `Line::product()` through the model's magic accessor. Both edges are
+     * speculative, so the reconciler keeps only the one whose target the class
+     * (or a supertype or trait of it) declares.
      */
     private function propertyRead(Expr\PropertyFetch|Expr\NullsafePropertyFetch $node): void
     {
@@ -807,12 +820,43 @@ final class FactCollector extends NodeVisitorAbstract
         }
         if ($class !== null) {
             $this->addEdge('references', $this->currentSource(), self::reference('method', $class . '::' . $node->name->toString()), $node, 'probable', ['speculative' => true]);
+            $this->propertyReference($class, $node->name->toString(), $node);
 
             return;
         }
         // Nothing types the receiver, and a relation read this way runs a
         // method of the name, so it counts like an untyped call does.
         $this->untypedCalls[$this->currentSource()][$node->name->toString()] = true;
+    }
+
+    /** Remember the property an assignment writes, through any `[...]` it appends or indexes. */
+    private function markPropertyWrite(Expr $target): void
+    {
+        while ($target instanceof Expr\ArrayDimFetch) {
+            $target = $target->var;
+        }
+        if ($target instanceof Expr\PropertyFetch || $target instanceof Expr\NullsafePropertyFetch || $target instanceof Expr\StaticPropertyFetch) {
+            $this->propertyWrites[spl_object_id($target)] = true;
+        }
+    }
+
+    /** `Foo::$count` and `self::$count` reference the static property they name. */
+    private function staticPropertyReference(Expr\StaticPropertyFetch $node): void
+    {
+        if (!$node->class instanceof Name || !$node->name instanceof Node\VarLikeIdentifier) {
+            return;
+        }
+        $this->propertyReference($this->resolvedClassName($node->class), $node->name->toString(), $node);
+    }
+
+    /**
+     * A speculative `references` edge to `$class::$name`, in the form property nodes are declared
+     * under. `access` says whether the site reads or writes it; the core keeps one edge of each.
+     */
+    private function propertyReference(string $class, string $name, Expr $evidence): void
+    {
+        $access = isset($this->propertyWrites[spl_object_id($evidence)]) ? 'write' : 'read';
+        $this->addEdge('references', $this->currentSource(), self::reference('property', $class . '::$' . $name), $evidence, 'probable', ['speculative' => true, 'access' => $access]);
     }
 
     /**
@@ -842,6 +886,7 @@ final class FactCollector extends NodeVisitorAbstract
         $this->addEdge('references', $source, self::reference('class', $resolved), $evidence);
     }
 
+    /** Whether `$class` names one of the PhpParser traversers, in any case. */
     private static function isTraverser(string $class): bool
     {
         foreach (self::TRAVERSERS as $traverser) {

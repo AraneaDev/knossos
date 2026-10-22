@@ -757,6 +757,7 @@ php	tests/phpunit/Query/PolicyValidationBoundsTest.php
 php	tests/phpunit/Query/ProjectFileTest.php
 php	tests/phpunit/Query/ProjectRelativePathTest.php
 php	tests/phpunit/Query/PropertyReachTest.php
+php	tests/phpunit/Query/PropertyUsagesTest.php
 php	tests/phpunit/Query/QualityGateBoundaryScanTest.php
 php	tests/phpunit/Query/QualityGateCyclesTest.php
 php	tests/phpunit/Query/QualityGateMemoryTest.php
