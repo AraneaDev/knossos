@@ -71,6 +71,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     }
 
     /** Reads the top-level `return [...]` of `config/livewire.php`. */
+    #[\Override]
     public function beforeTraverse(array $nodes): ?array
     {
         if ($this->relativePath !== self::CONFIG_PATH) {
@@ -86,6 +87,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     }
 
     /** Reads a Blade file's template text, and notes each class and the view its `render()` returns. */
+    #[\Override]
     public function enterNode(Node $node): ?int
     {
         if ($node instanceof Stmt\InlineHTML && str_ends_with($this->relativePath, '.blade.php')) {
@@ -100,6 +102,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     }
 
     /** Leaves the class whose methods were being read. */
+    #[\Override]
     public function leaveNode(Node $node): null
     {
         if ($node instanceof Stmt\Class_) {
@@ -314,6 +317,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
             public array $returns = [];
 
             /** Gathers the method's own `return` statements, not those of closures or nested classes. */
+            #[\Override]
             public function enterNode(Node $node): ?int
             {
                 if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\Function_ || $node instanceof Stmt\Class_) {

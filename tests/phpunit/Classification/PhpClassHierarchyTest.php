@@ -28,7 +28,6 @@ final class PhpClassHierarchyTest extends TestCase
         sort($methods);
         self::assertSame(['mountHasSorting', 'notify', 'render', 'sortBy', 'unusedAction', 'updatedTitle'], $methods);
         self::assertSame(['php:trait:App\\Livewire\\Concerns\\HasSorting'], $hierarchy->traitsOf($table));
-        self::assertSame([$table], $hierarchy->classesIn('app/Livewire/PostTable.php'));
         self::assertSame('App\\Livewire\\PostTable', $hierarchy->node($table)?->canonicalName);
         self::assertNull($hierarchy->node('php:class:Missing'));
     }

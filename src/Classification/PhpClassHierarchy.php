@@ -24,7 +24,6 @@ final readonly class PhpClassHierarchy
      * @param array<string, list<string>> $traits class or trait reference => the trait references it uses
      * @param array<string, array<string, string>> $declared class or trait reference => method name => method local id
      * @param array<string, list<string>> $properties class or trait reference => the names of the properties it declares, without `$`
-     * @param array<string, list<string>> $classesByPath relative path => class references declared there
      * @param list<string> $observed observer class references, targets of `observes` edges
      */
     private function __construct(
@@ -33,7 +32,6 @@ final readonly class PhpClassHierarchy
         private array $traits,
         private array $declared,
         private array $properties,
-        private array $classesByPath,
         private array $observed,
     ) {}
 
@@ -46,16 +44,12 @@ final readonly class PhpClassHierarchy
     {
         $nodes = [];
         $parents = [];
-        $classesByPath = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (!str_starts_with($node->localId, 'php:')) {
                     continue;
                 }
                 $nodes[$node->localId] = $node;
-                if ($node->kind === 'class' || $node->kind === 'trait') {
-                    $classesByPath[$node->evidence->relativePath][] = $node->localId;
-                }
                 $parent = $node->attributes['extends'] ?? null;
                 if ($node->kind === 'class' && is_string($parent) && $parent !== '') {
                     $parents[$node->localId] = ltrim($parent, '\\');
@@ -83,7 +77,7 @@ final readonly class PhpClassHierarchy
             }
         }
 
-        return new self($nodes, $parents, $traits, $declared, $properties, $classesByPath, array_map(strval(...), array_keys($observed)));
+        return new self($nodes, $parents, $traits, $declared, $properties, array_map(strval(...), array_keys($observed)));
     }
 
     /**
@@ -181,16 +175,6 @@ final readonly class PhpClassHierarchy
         }
 
         return array_map(strval(...), array_keys($found));
-    }
-
-    /**
-     * Classes and traits declared in a file, anonymous classes included.
-     *
-     * @return list<string>
-     */
-    public function classesIn(string $relativePath): array
-    {
-        return $this->classesByPath[$relativePath] ?? [];
     }
 
     /**
