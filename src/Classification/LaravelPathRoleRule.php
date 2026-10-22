@@ -41,6 +41,18 @@ final readonly class LaravelPathRoleRule implements ClassificationRule
         '/database/factories/' => 'laravel.factory',
     ];
 
+    /**
+     * The role the directory convention gives a file, by the first fragment of its path that matches.
+     *
+     * Other rules ask this to see whether the directory already claims a node.
+     */
+    public static function roleForPath(string $relativePath): ?string
+    {
+        $fragment = self::fragmentFor($relativePath);
+
+        return $fragment === null ? null : self::PATH_ROLES[$fragment];
+    }
+
     /** {@inheritDoc} */
     public function id(): string
     {
@@ -67,21 +79,17 @@ final readonly class LaravelPathRoleRule implements ClassificationRule
         if ($node->kind !== 'class') {
             return [];
         }
-        $path = '/' . ltrim($node->evidence->relativePath, '/');
-        foreach (self::PATH_ROLES as $fragment => $role) {
-            if (str_contains($path, $fragment)) {
-                return [new ClassificationFact(
-                    $node->localId,
-                    $role,
-                    $this->id(),
-                    Origin::FrameworkConvention,
-                    Confidence::Probable,
-                    $node->evidence,
-                    ['matched_path' => $fragment],
-                )];
-            }
-        }
-        return [];
+        $fragment = self::fragmentFor($node->evidence->relativePath);
+
+        return $fragment === null ? [] : [new ClassificationFact(
+            $node->localId,
+            self::PATH_ROLES[$fragment],
+            $this->id(),
+            Origin::FrameworkConvention,
+            Confidence::Probable,
+            $node->evidence,
+            ['matched_path' => $fragment],
+        )];
     }
 
     /**
@@ -94,26 +102,36 @@ final readonly class LaravelPathRoleRule implements ClassificationRule
      */
     private function entryMethod(NodeFact $node): array
     {
-        $path = '/' . ltrim($node->evidence->relativePath, '/');
-        foreach (self::PATH_ROLES as $fragment => $role) {
-            if (!str_contains($path, $fragment)) {
-                continue;
-            }
-            if (!in_array($node->displayName, self::ENTRY_METHODS[$role] ?? [], true)) {
-                return [];
-            }
-
-            return [new ClassificationFact(
-                $node->localId,
-                'laravel.entry_method',
-                $this->id(),
-                Origin::FrameworkConvention,
-                Confidence::Probable,
-                $node->evidence,
-                ['matched_path' => $fragment, 'class_role' => $role],
-            )];
+        $fragment = self::fragmentFor($node->evidence->relativePath);
+        if ($fragment === null) {
+            return [];
+        }
+        $role = self::PATH_ROLES[$fragment];
+        if (!in_array($node->displayName, self::ENTRY_METHODS[$role] ?? [], true)) {
+            return [];
         }
 
-        return [];
+        return [new ClassificationFact(
+            $node->localId,
+            'laravel.entry_method',
+            $this->id(),
+            Origin::FrameworkConvention,
+            Confidence::Probable,
+            $node->evidence,
+            ['matched_path' => $fragment, 'class_role' => $role],
+        )];
+    }
+
+    /** The first directory fragment of {@see PATH_ROLES} found in the path; the order of that list decides. */
+    private static function fragmentFor(string $relativePath): ?string
+    {
+        $path = '/' . ltrim($relativePath, '/');
+        foreach (array_keys(self::PATH_ROLES) as $fragment) {
+            if (str_contains($path, $fragment)) {
+                return $fragment;
+            }
+        }
+
+        return null;
     }
 }

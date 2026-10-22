@@ -29,12 +29,37 @@ final readonly class EloquentConventionRule implements ClassificationRule
         'Illuminate\\Database\\Eloquent\\Relations\\MorphPivot',
     ];
 
-    /** @var array<string, true> */
+    private const ACCESSOR = '/^(?:get|set)[A-Z]\w*Attribute$/';
+
+    /** @var array<string, true> observer class references */
     private array $observers;
 
-    public function __construct(private PhpClassHierarchy $hierarchy)
+    /** @var array<string, string> method local id => the reason Eloquent calls it by name ('accessor' or 'event') */
+    private array $named;
+
+    public function __construct(PhpClassHierarchy $hierarchy)
     {
         $this->observers = array_fill_keys($hierarchy->observers(), true);
+        $named = [];
+        // The methods a class gets from a trait or a project base class are
+        // declared elsewhere, so they are found from the class that has them.
+        foreach ($hierarchy->classes() as $class) {
+            if ($hierarchy->extendsExternal($class, self::MODEL_BASES)) {
+                foreach ($hierarchy->methods($class) as $name => $id) {
+                    if (preg_match(self::ACCESSOR, $name) === 1) {
+                        $named[$id] ??= 'accessor';
+                    }
+                }
+            }
+        }
+        foreach (array_keys($this->observers) as $observer) {
+            foreach ($hierarchy->methods($observer) as $name => $id) {
+                if (in_array($name, LaravelPathRoleRule::OBSERVER_METHODS, true)) {
+                    $named[$id] = 'event';
+                }
+            }
+        }
+        $this->named = $named;
     }
 
     /** {@inheritDoc} */
@@ -49,24 +74,12 @@ final readonly class EloquentConventionRule implements ClassificationRule
         if ($node->kind === 'class') {
             return $this->observerClass($node);
         }
-        if ($node->kind !== 'method') {
-            return [];
-        }
-        $separator = strrpos($node->canonicalName, '::');
-        if ($separator === false) {
-            return [];
-        }
-        $owner = 'php:class:' . substr($node->canonicalName, 0, $separator);
-        $name = $node->displayName;
-        if (isset($this->observers[$owner]) && in_array($name, LaravelPathRoleRule::OBSERVER_METHODS, true)) {
-            return $this->observerClaimedByPath($node) ? [] : [$this->entryMethod($node, 'laravel.observer', 'event')];
-        }
-        if (preg_match('/^(?:get|set)[A-Z]\w*Attribute$/', $name) === 1
-            && $this->hierarchy->extendsExternal($owner, self::MODEL_BASES)) {
-            return [$this->entryMethod($node, 'laravel.model', 'accessor')];
+        $reason = $node->kind === 'method' ? ($this->named[$node->localId] ?? null) : null;
+        if ($reason === 'event') {
+            return $this->claimedByPath($node) ? [] : [$this->entryMethod($node, 'laravel.observer', 'event')];
         }
 
-        return [];
+        return $reason === 'accessor' ? [$this->entryMethod($node, 'laravel.model', 'accessor')] : [];
     }
 
     /**
@@ -76,7 +89,7 @@ final readonly class EloquentConventionRule implements ClassificationRule
      */
     private function observerClass(NodeFact $node): array
     {
-        if (!isset($this->observers[$node->localId]) || $this->observerClaimedByPath($node)) {
+        if (!isset($this->observers[$node->localId]) || $this->claimedByPath($node)) {
             return [];
         }
 
@@ -109,10 +122,12 @@ final readonly class EloquentConventionRule implements ClassificationRule
      * Whether the directory convention already gives this node its observer role.
      *
      * Two rules giving one node the same role would list it twice; the path
-     * rule keeps it, and this one answers only for observers elsewhere.
+     * rule keeps it, and this one answers only for observers elsewhere. The
+     * path rule takes the first fragment that matches, so an observer under
+     * `app/Models/Observers/` is a model to it and is still ours to classify.
      */
-    private function observerClaimedByPath(NodeFact $node): bool
+    private function claimedByPath(NodeFact $node): bool
     {
-        return str_contains('/' . ltrim($node->evidence->relativePath, '/'), LaravelPathRoleRule::OBSERVER_FRAGMENT);
+        return LaravelPathRoleRule::roleForPath($node->evidence->relativePath) === 'laravel.observer';
     }
 }

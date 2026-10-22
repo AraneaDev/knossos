@@ -63,6 +63,54 @@ final class EloquentConventionRuleTest extends TestCase
         ], array_values($observerRoles));
     }
 
+    public function testMethodsReachedThroughTraitsAndBaseObserversAreClassified(): void
+    {
+        $contributions = [
+            PhpFacts::contribution('App\\Concerns\\HasFullName', 'app/Concerns/HasFullName.php', null, ['getFullNameAttribute', 'helper'], [], 'trait'),
+            PhpFacts::contribution('App\\Models\\Person', 'app/Models/Person.php', 'Illuminate\\Database\\Eloquent\\Model', [], ['App\\Concerns\\HasFullName'], 'class', [], [
+                PhpFacts::edge('observes', 'php:class:App\\Models\\Person', 'php:class:App\\Watchers\\PersonObserver'),
+            ]),
+            PhpFacts::contribution('App\\Concerns\\Audits', 'app/Concerns/Audits.php', null, ['saved', 'audit'], [], 'trait'),
+            PhpFacts::contribution('App\\Watchers\\BaseObserver', 'app/Watchers/BaseObserver.php', null, ['created', 'basehelper'], ['App\\Concerns\\Audits']),
+            PhpFacts::contribution('App\\Watchers\\PersonObserver', 'app/Watchers/PersonObserver.php', 'App\\Watchers\\BaseObserver', ['deleted']),
+            PhpFacts::contribution('App\\Watchers\\Stranger', 'app/Watchers/Stranger.php', 'App\\Watchers\\BaseObserver', ['created']),
+        ];
+        $facts = (new ClassificationEngine([new EloquentConventionRule(PhpClassHierarchy::fromContributions($contributions))]))->classify($contributions);
+        $roles = [];
+        foreach ($facts as $fact) {
+            $roles[$fact->nodeReference][] = $fact->role;
+        }
+
+        self::assertSame(['laravel.entry_method'], $roles['php:method:App\\Concerns\\HasFullName::getFullNameAttribute'] ?? null);
+        self::assertArrayNotHasKey('php:method:App\\Concerns\\HasFullName::helper', $roles);
+        self::assertSame(['laravel.entry_method'], $roles['php:method:App\\Watchers\\BaseObserver::created'] ?? null);
+        self::assertSame(['laravel.entry_method'], $roles['php:method:App\\Concerns\\Audits::saved'] ?? null);
+        self::assertSame(['laravel.entry_method'], $roles['php:method:App\\Watchers\\PersonObserver::deleted'] ?? null);
+        self::assertArrayNotHasKey('php:method:App\\Watchers\\BaseObserver::basehelper', $roles);
+        self::assertArrayNotHasKey('php:method:App\\Concerns\\Audits::audit', $roles);
+        self::assertArrayNotHasKey('php:method:App\\Watchers\\Stranger::created', $roles);
+    }
+
+    public function testAnObserverUnderAnEarlierPathFragmentStillGetsItsRole(): void
+    {
+        $contributions = [
+            PhpFacts::contribution('App\\Models\\Person', 'app/Models/Person.php', 'Illuminate\\Database\\Eloquent\\Model', [], [], 'class', [], [
+                PhpFacts::edge('observes', 'php:class:App\\Models\\Person', 'php:class:App\\Models\\Observers\\PersonObserver'),
+            ]),
+            PhpFacts::contribution('App\\Models\\Observers\\PersonObserver', 'app/Models/Observers/PersonObserver.php', null, ['created']),
+        ];
+        $rules = [new LaravelPathRoleRule(), new EloquentConventionRule(PhpClassHierarchy::fromContributions($contributions))];
+
+        $facts = (new ClassificationEngine($rules))->classify($contributions);
+        $observer = array_map(static fn($fact): string => $fact->nodeReference . ' ' . $fact->role, array_filter($facts, static fn($fact): bool => str_contains($fact->nodeReference, 'PersonObserver')));
+
+        self::assertContains('php:class:App\\Models\\Observers\\PersonObserver laravel.observer', $observer);
+        self::assertContains('php:method:App\\Models\\Observers\\PersonObserver::created laravel.entry_method', $observer);
+        self::assertSame('laravel.model', LaravelPathRoleRule::roleForPath('app/Models/Observers/PersonObserver.php'));
+        self::assertSame('laravel.observer', LaravelPathRoleRule::roleForPath('app/Observers/PostObserver.php'));
+        self::assertNull(LaravelPathRoleRule::roleForPath('app/Support/Plain.php'));
+    }
+
     public function testTheDirectoryRuleKnowsObserverMethods(): void
     {
         $contributions = [PhpFacts::contribution('App\\Observers\\X', 'app/Observers/X.php', null, ['updated', 'helper'])];
