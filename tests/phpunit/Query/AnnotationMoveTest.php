@@ -95,6 +95,52 @@ final class AnnotationMoveTest extends KnossosTestCase
         self::assertInstanceOf(\PDOException::class, self::captureThrown(fn() => $annotations->listAnnotations($ids['project'], limit: 1, offset: 1), \PDOException::class));
     }
 
+    public function testANameNoSnapshotHoldsIsLookedForOnceUntilTheNextScan(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-note-unheld-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o777, true);
+        file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
+        file_put_contents($root . '/src/Keep.php', "<?php\nnamespace App;\nfinal class Keep {}\n");
+        try {
+            $pdo = $this->freshTestDatabase();
+            $scan = static fn(): string => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
+            $projectId = $scan();
+            file_put_contents($root . '/src/Other.php', "<?php\nnamespace App;\nfinal class Other {}\n");
+            $scan();
+            self::assertGreaterThan(0, (int) $pdo->query('SELECT COUNT(*) FROM scan_snapshots WHERE complete = 1')->fetchColumn());
+            $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
+            $annotations->upsertAnnotation($projectId, 'App\\Gone', 'note', 'never there', execute: true);
+            self::assertNull($this->suggestion($annotations->listAnnotations($projectId)->data['annotations'], 'App\\Gone'));
+
+            // The snapshots stay listed, but a read of any payload now fails loudly.
+            $pdo->exec('ALTER TABLE scan_snapshots RENAME TO scan_snapshots_away');
+            $pdo->exec('CREATE TABLE scan_snapshots AS SELECT scan_id, project_id, complete, captured_at FROM scan_snapshots_away');
+            self::assertNull($this->suggestion($annotations->listAnnotations($projectId)->data['annotations'], 'App\\Gone'));
+            $pdo->exec('DROP TABLE scan_snapshots');
+            $pdo->exec('ALTER TABLE scan_snapshots_away RENAME TO scan_snapshots');
+
+            // A scan that held the name and one that moved it: the next call looks again.
+            file_put_contents($root . '/src/Gone.php', "<?php\nnamespace App;\nfinal class Gone {}\n");
+            $scan();
+            unlink($root . '/src/Gone.php');
+            mkdir($root . '/src/Moved');
+            file_put_contents($root . '/src/Moved/Gone.php', "<?php\nnamespace App\\Moved;\nfinal class Gone {}\n");
+            $scan();
+            self::assertSame('App\\Moved\\Gone', $this->suggestion($annotations->listAnnotations($projectId)->data['annotations'], 'App\\Gone'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** @param list<array<string, mixed>> $rows */
+    private function suggestion(array $rows, string $name): ?string
+    {
+        $row = array_column($rows, null, 'canonical_name')[$name];
+        self::assertSame('missing', $row['component_status']);
+
+        return $row['suggested_component'];
+    }
+
     public function testMoveToCarriesAModelNote(): void
     {
         [$pdo, $tools, $projectId] = $this->tools();
@@ -113,7 +159,7 @@ final class AnnotationMoveTest extends KnossosTestCase
         self::assertSame(['App\\Checkout'], $this->names($pdo));
         $row = $pdo->query('SELECT value, author, basis_json, created_at FROM annotations')->fetch(PDO::FETCH_ASSOC);
         self::assertSame(['value' => 'the checkout flow', 'author' => 'model', 'basis_json' => $basis, 'created_at' => '2026-01-02T03:04:05Z'], $row);
-        // It reads stale where it lands, until the model looks.
+        // It keeps the basis it was written against, which its new component's code does not match.
         self::assertSame(true, $tools->call('list_annotations', ['project_id' => $projectId])->data['annotations'][0]['stale']);
     }
 
