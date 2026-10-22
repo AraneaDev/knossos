@@ -77,6 +77,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testMetaCommandVersionReturnsZero(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Knossos 1\.2\.3/');
         // M2 / MetaCommand::run() success: 'version' arm fwrite the
         // version tuple to `output()` (uncapturable fwrite — batch 10
         // pattern). 'help' arm calls help->render() (smoke test). Both
@@ -594,6 +596,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testMaintenanceCommandRemoveProjectAgainstMemoryDb(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Project and stored graph removed\./');
         // M45 / MaintenanceCommand::run() -- removeProject() arm. Uses a
         // pre-populated database with a project; --execute flag removes it.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
@@ -613,6 +617,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testMaintenanceCommandMaintainDatabaseIntegrity(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Database integrity check passed\./');
         // M46 / MaintenanceCommand::run() -- maintain() arm with 'integrity'
         // action. Exercises the match dispatch and maintain() method body.
         [$dbPath, , $cleanup] = $this->populatedTestDatabase();
@@ -632,6 +638,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testMaintenanceCommandCleanupStaleScansExecutes(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Removed 0 stale scans\./');
         // M47 / MaintenanceCommand::run() -- cleanup() arm with --execute.
         // Uses a populated database and runs cleanup with a project ID.
         // Kills IncrementInteger (0→1) on $positionals[0]/[1] and
@@ -701,6 +709,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandListProjectsWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Found 1 persisted project\./');
         // M21 / QueryCommand::run() -- listProjects() happy path against
         // a pre-populated SQLite file. Exercises the full dispatch through
         // ProjectCatalogQueryService::listProjects(), including the text
@@ -722,6 +732,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandArchitectureSummaryWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Mixed Fixture contains 3 nodes and 2 relationships\./');
         // M22 / QueryCommand::run() -- architectureSummary() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -740,6 +752,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandListSnapshotsWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Listed 1 active or retained snapshot\./');
         // M23 / QueryCommand::run() -- listSnapshots() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -758,6 +772,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandFileMetricsWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^3 of 3 files by line_count desc\./');
         // M24 / QueryCommand::run() -- fileMetrics() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -776,6 +792,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandBoundariesWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Listed 0 architecture boundaries\./');
         // M25 / QueryCommand::run() -- listBoundaries() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -794,6 +812,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandFindComponentWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Found 2 component candidates\./');
         // M26 / QueryCommand::run() -- findComponent() happy path.
         // The mixed fixture contains nodes matching "CheckoutService".
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
@@ -813,6 +833,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandExportDiagramWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^flowchart LR/');
         // M27 / QueryCommand::run() -- exportDiagram() happy path with 3 nodes.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -831,6 +853,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandSearchArchitectureWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Found 2 architecture search results\./');
         // M28 / QueryCommand::run() -- searchArchitecture() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -849,6 +873,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandInspectComponentWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Component "Checkout" is ambiguous\./');
         // M29 / QueryCommand::run() -- inspectComponent() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -867,6 +893,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandDependencyCyclesWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Found 0 dependency cycle components\./');
         // M30 / QueryCommand::run() -- dependencyCycles() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -885,6 +913,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandArchitectureHealthWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Ranked 2 hubs, 2 static hotspots, and 1 unreferenced-code candidates, 0 of them reached only by tests\. By confidence: 1 probable, 0 possible\./');
         // M31 / QueryCommand::run() -- architectureHealth() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -903,6 +933,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandArchitectureTrendsWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Reported architecture trends across 1 snapshot\./');
         // M32 / QueryCommand::run() -- architectureTrends() happy path.
         // The fixture has only 1 snapshot, so trends will be empty.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
@@ -922,6 +954,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandSuggestLocationWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^No architecture boundaries are available for location ranking\./');
         // M33 / QueryCommand::run() -- suggestLocation() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {
@@ -951,6 +985,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandExplainFlowWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^No component matched "Fixture\\Vendor\\Missing"\./');
         // M36 / QueryCommand::run() -- explainFlow() happy path.
         // The fixture has nodes connected via edges — trace flow between them.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
@@ -980,6 +1016,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $actualDbPath,
             );
             $cmd = new QueryCommand();
+            // The command prints its summary; capturing it keeps the test run's own output clean.
+            $this->expectOutputRegex('/^Found 1 potential static dependant within depth 6\./');
             assertSame(0, $cmd->run('impact-analysis', [$projectId, 'Fixture\\CheckoutService'], [], $context));
         } finally {
             $cleanup();
@@ -999,6 +1037,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $dbPath,
             );
             $cmd = new QueryCommand();
+            $this->expectOutputRegex('/^Ranked \d+ statically impacted components?/');
             assertSame(0, $cmd->run('change-impact', [$projectId, 'Fixture\\CheckoutService'], [], $context));
         } finally {
             $cleanup();
@@ -1007,6 +1046,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandArchitectureContextWithPopulatedDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Built bounded architecture context for understand payment flow\./');
         // M41 / QueryCommand::run() -- architectureContext() happy path.
         // Provide --task=TEXT since empty task with no files is rejected.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
@@ -1069,6 +1110,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
                 $dbPath,
             );
             $cmd = new QueryCommand();
+            $this->expectOutputRegex('/^Mapped 1 changed file to 1 direct and 1 impacted component\./');
             assertSame(0, $cmd->run('changed-files-impact', [$projectId, 'src/CheckoutService.php'], [], $context));
         } finally {
             $cleanup();
@@ -1228,6 +1270,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandSnapshotDiffWithRichDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Compared snapshots with 2 added, removed, changed, or moved facts\./');
         // M42 / QueryCommand::run() -- snapshotDiff() happy path with 2
         // different snapshots (archived scan1 ≠ active scan2).
         [$dbPath, $projectId, , $archivedScanId, $cleanup] = $this->richPopulatedTestDatabase();
@@ -1247,6 +1291,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandQualityGateWithRichDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Architecture quality budgets passed\./');
         // M43 / QueryCommand::run() -- qualityGate() happy path.
         // Uses the archived scan as baseline (which differs from active).
         [$dbPath, $projectId, , $archivedScanId, $cleanup] = $this->richPopulatedTestDatabase();
@@ -1351,6 +1397,8 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testQueryCommandCheckArchitectureWithRichDatabase(): void
     {
+        // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
+        $this->expectOutputRegex('/^Found 0 declared architecture policy violations\./');
         // M44 / QueryCommand::run() -- checkArchitecture() happy path.
         // The rich fixture has an explicit 'Checkout' boundary. The policy
         // references this boundary.

@@ -43,6 +43,8 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testRouterRoutesVersionCommandWithoutEagerDbInit(): void
     {
+        // The routed command prints to stdout; expecting it keeps the run's output clean.
+        $this->expectOutputRegex('/^Knossos 0\.0\.0-test/');
         // M1 / route() meta branch: 'version' is in the meta names list,
         // so databasePath is null + eager database init is skipped.
         // MetaCommand.version returns 0.
@@ -52,6 +54,8 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testRouterRoutesAllFiveMetaCommandVariants(): void
     {
+        // The routed command prints to stdout; expecting it keeps the run's output clean.
+        $this->expectOutputRegex('/^Knossos 0\.0\.0-test/');
         // M2 / route() meta branch coverage: every meta command name
         // routes to MetaCommand. 'help' / '--help' / '-h' arm calls
         // help->render() (smoke test, batch 10 fwrite limitation);
@@ -99,6 +103,8 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testRouterRoutesQueryCommandListProjects(): void
     {
+        // The routed command prints to stdout; expecting it keeps the run's output clean.
+        $this->expectOutputRegex('/^Found 0 persisted projects\./');
         // M6 / route() -> QueryCommand -> listProjects(). No explicit
         // positional required; with empty :memory: db, query returns
         // empty list and command returns 0.
@@ -161,6 +167,8 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testRouterAcceptsKnownOptionForKnownCommand(): void
     {
+        // The routed command prints to stdout; expecting it keeps the run's output clean.
+        $this->expectOutputRegex('/^Found 0 persisted projects\./');
         // A valid option passes validation and the command runs normally.
         $router = $this->newRouter();
         assertSame(0, $router->route('list-projects', [], ['limit' => ['5'], 'db' => [':memory:']]));
@@ -184,6 +192,8 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testRouterConstructsAllSevenDefaultCommands(): void
     {
+        // The routed command prints to stdout; expecting it keeps the run's output clean.
+        $this->expectOutputRegex('/Knossos 0\.0\.0-test\nFound 0 persisted projects\./');
         // M11 / route() foreach iteration: at least 7 commands in the
         // dispatch table. We verify by exercising each command name
         // through the router and confirming the dispatch reaches a
