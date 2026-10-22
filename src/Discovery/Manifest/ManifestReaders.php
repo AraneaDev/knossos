@@ -43,6 +43,7 @@ final class ManifestReaders
             UnitKind::Yaml => new YamlManifest(),
             UnitKind::Dockerfile => new DockerfileManifest(),
             UnitKind::Readme => new ReadmeManifest(),
+            UnitKind::Markdown => new MarkdownManifest(),
             UnitKind::Shell => new ShellManifest(),
             UnitKind::AgentConfig => new AgentConfigManifest(),
             UnitKind::ToolConfig => new ToolConfigManifest(),

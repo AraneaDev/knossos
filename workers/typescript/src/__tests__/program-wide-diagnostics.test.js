@@ -218,6 +218,40 @@ describe("the fallback program for files outside every tsconfig", () => {
 
         expect(programWide(byPath["test/a.test.ts"])).toEqual([]);
     });
+
+    it("notes on a file with errors that the project's own typecheck never sees it", () => {
+        // `**` skips dot-directories, so `.site/config.mts` is in no program.
+        const root = fixture({
+            "tsconfig.json": JSON.stringify({ include: ["**/*.mts"] }),
+            "src/inside.mts": "export const a: number = 'one';\n",
+            ".site/config.mts": "export const b: number = 'two';\n",
+            ".site/clean.mts": "export const c = 3;\n",
+        });
+
+        const byPath = scan(
+            new TypeScriptScanner(),
+            root,
+            ["src/inside.mts", ".site/config.mts", ".site/clean.mts"],
+            ["tsconfig.json"],
+        );
+        const codes = (relative) =>
+            byPath[relative].diagnostics.map((item) => item.code);
+
+        expect(codes("src/inside.mts")).toEqual(["TS2322"]);
+        expect(codes(".site/config.mts")).toEqual([
+            "TS2322",
+            "TS_OUTSIDE_EVERY_PROGRAM",
+        ]);
+        expect(codes(".site/clean.mts")).toEqual([]);
+        const note = byPath[".site/config.mts"].diagnostics[1];
+        expect(note.severity).toBe("info");
+        expect(note.message).toContain("1 error");
+        expect(note.evidence).toEqual({
+            path: ".site/config.mts",
+            start_line: 1,
+            end_line: 1,
+        });
+    });
 });
 
 describe("a request's compiler diagnostics", () => {

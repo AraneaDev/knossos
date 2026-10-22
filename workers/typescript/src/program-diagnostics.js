@@ -39,9 +39,17 @@ const UNKNOWN_GLOBAL_CODES = new Set(
  * no `types` or `lib`: a missing global or type library is its gap. Its
  * options are partly made up by the scanner rather than read from the user's
  * config, so an option error that names no file describes those made-up
- * options, not anything the user can fix, and is dropped.
+ * options, not anything the user can fix, and is dropped. When a config sits
+ * beside the files and leaves them out (`configured`), a file with errors
+ * says so: the project's own typecheck never saw them.
  */
-export function programDiagnostics(program, root, maxFileBytes, fallback) {
+export function programDiagnostics(
+    program,
+    root,
+    maxFileBytes,
+    fallback,
+    configured = false,
+) {
     let byFile = new Map();
     let programLevel = [];
     try {
@@ -55,12 +63,30 @@ export function programDiagnostics(program, root, maxFileBytes, fallback) {
     }
     if (!fallback) return { byFile, programLevel };
     for (const [relative, items] of byFile) {
-        byFile.set(
-            relative,
-            items.filter((item) => !UNKNOWN_GLOBAL_CODES.has(item.code)),
+        const kept = items.filter(
+            (item) => !UNKNOWN_GLOBAL_CODES.has(item.code),
         );
+        const note = configured ? outsideEveryProgram(relative, kept) : null;
+        byFile.set(relative, note === null ? kept : [...kept, note]);
     }
     return { byFile, programLevel: [] };
+}
+
+/**
+ * Why a fallback program's errors in a file went unseen: no tsconfig
+ * includes the file (an `include` of `**` skips dot-directories), so a
+ * typecheck run from the project's own configs never checks it. Null for a
+ * file with no errors, where there is nothing to explain.
+ */
+function outsideEveryProgram(relative, items) {
+    const errors = items.filter((item) => item.severity === "error").length;
+    if (errors === 0) return null;
+    return {
+        severity: "info",
+        code: "TS_OUTSIDE_EVERY_PROGRAM",
+        message: `No tsconfig or jsconfig includes this file, so a typecheck run from the project's own configs (tsc -p, vue-tsc) never checks it; the ${errors === 1 ? "1 error" : `${errors} errors`} reported here come from a fallback program built for it.`,
+        evidence: { path: relative, start_line: 1, end_line: 1 },
+    };
 }
 
 /** Program-wide diagnostics, each anchored at the first line of one file. */

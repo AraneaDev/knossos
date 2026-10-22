@@ -111,4 +111,43 @@ describe("a method fulfilling a supertype's member", () => {
         // The contextual type is inferred from the literal itself: it names no contract.
         expect(Object.values(overrides)).toEqual([false]);
     });
+
+    it("is marked when the contextual type is a union holding the contract", () => {
+        const overrides = scanned(
+            {
+                "tsconfig.json":
+                    '{"compilerOptions":{"strict":true,"lib":["ES2022"]},"include":["src/**/*.ts"]}',
+                "src/options.ts": [
+                    "interface Options { handler(code: number): void; setHeaders(path: string): void }",
+                    "interface AsyncOptions { loader(): Promise<unknown> }",
+                    "type Loader = () => Promise<unknown>",
+                    // An optional parameter is typed `Options | undefined`.
+                    "declare function limit(options?: Partial<Options>): void",
+                    "declare function serve(root: string, options?: Options): void",
+                    // A loader function or an options object.
+                    "declare function lazy(source: Loader | AsyncOptions): void",
+                    "declare function loose<T>(options: T | undefined): T",
+                    // An arrow property is a member when a module binding holds the literal.
+                    "export const limiter = limit({ handler: (code) => { void code } })",
+                    "serve('.', { handler() {}, setHeaders(path) { void path } })",
+                    "export const terminal = lazy({ loader: () => Promise.resolve(1) })",
+                    "loose({ run(): number { return 1 } })",
+                    "",
+                ].join("\n"),
+            },
+            ["src/options.ts"],
+        );
+
+        expect(overrides).toEqual({
+            "src/options.ts#Options::handler": false,
+            "src/options.ts#Options::setHeaders": false,
+            "src/options.ts#AsyncOptions::loader": false,
+            "src/options.ts#{object}@8:30::handler": true,
+            "src/options.ts#{object}@9:12::handler": true,
+            "src/options.ts#{object}@9:12::setHeaders": true,
+            "src/options.ts#{object}@10:30::loader": true,
+            // Inferred from the literal itself, beside `undefined`: still no contract.
+            "src/options.ts#{object}@11:7::run": false,
+        });
+    });
 });

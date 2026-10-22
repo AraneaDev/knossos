@@ -50,6 +50,37 @@ final class ScannedPathsTest extends KnossosTestCase
     }
 
     /**
+     * A directory is drift only when it holds something a rescan would read.
+     * One holding only ignored or unreadable-to-discovery entries changes
+     * nothing in the graph, yet it was counted as an addition whenever it
+     * was made in the second a scan finished, and the rescan that followed,
+     * in the same second, could never clear it.
+     */
+    #[Group('query')]
+    public function testADirectoryIsTrackedOnlyWhenItHoldsSomethingDiscoveryReads(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-directories-' . bin2hex(random_bytes(6));
+        mkdir($root . '/backend/vendor/pkg', 0o777, true);
+        mkdir($root . '/empty', 0o777, true);
+        mkdir($root . '/assets/img', 0o777, true);
+        mkdir($root . '/pkg/src/deep', 0o777, true);
+        try {
+            file_put_contents($root . '/backend/vendor/pkg/ignored.php', "<?php\n");
+            file_put_contents($root . '/assets/img/logo.png', 'png');
+            file_put_contents($root . '/pkg/src/deep/a.ts', "export const a = 1;\n");
+            $paths = new ScannedPaths(new IgnoreMatcher([]));
+
+            self::assertFalse($paths->tracks('backend', $root . '/backend'));
+            self::assertFalse($paths->tracks('empty', $root . '/empty'));
+            self::assertFalse($paths->tracks('assets', $root . '/assets'));
+            // A source file however deep below makes the directory an input.
+            self::assertTrue($paths->tracks('pkg', $root . '/pkg'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
      * The ignores a scan ran with are stored with it and used by the probe, so
      * a path discovery skipped is not counted as drift against the graph it
      * built.

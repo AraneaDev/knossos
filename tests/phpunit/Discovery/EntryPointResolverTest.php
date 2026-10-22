@@ -135,6 +135,47 @@ final class EntryPointResolverTest extends TestCase
         assertSame(['bin.js'], $units[1]->metadata['entry_points']);
     }
 
+    /**
+     * A markdown page inside a VitePress or VuePress site is compiled into a
+     * Vue component, so the modules its script imports are entered through
+     * it: a relative path from the page, `@theme/` under the site's theme, a
+     * path missing its extension as Vite completes it. A bare package and a
+     * path that names no scanned file add nothing, and a page outside every
+     * site is plain text.
+     */
+    public function testMarkdownPagesInASiteEnterTheModulesTheirScriptsImport(): void
+    {
+        $imports = static fn(array $specifiers): array => ['script_imports' => array_map(
+            static fn(string $specifier): array => ['specifier' => $specifier, 'line' => 1],
+            $specifiers,
+        )];
+        $units = EntryPointResolver::resolve([
+            new ProjectUnit('markdown', 'site/content/blog/post.md', 'h', $imports([
+                '../../.vitepress/theme/components/Card.vue',
+                '@theme/components/Chart',
+                'vue',
+                './gone.vue',
+                '../../../../above.vue',
+            ])),
+            new ProjectUnit('markdown', 'docs/guide/intro.md', 'h', $imports(['../.vuepress/components/Demo.vue'])),
+            new ProjectUnit('markdown', 'notes/todo.md', 'h', $imports(['../site/.vitepress/theme/components/Card.vue'])),
+        ], self::files([
+            'docs/.vuepress/config.ts',
+            'docs/.vuepress/components/Demo.vue',
+            'site/.vitepress/config.mts',
+            'site/.vitepress/theme/components/Card.vue',
+            'site/.vitepress/theme/components/Chart.vue',
+        ]));
+
+        assertSame([
+            'site/.vitepress/theme/components/Card.vue',
+            'site/.vitepress/theme/components/Chart.vue',
+        ], $units[0]->metadata['entry_points']);
+        assertSame(['docs/.vuepress/components/Demo.vue'], $units[1]->metadata['entry_points']);
+        // `notes/` is in no site, so its page is never compiled.
+        assertSame([], $units[2]->metadata['entry_points']);
+    }
+
     /** An ignored page is never read, so it adds no entry point and reports nothing. */
     public function testAnIgnoredPageAddsNothing(): void
     {

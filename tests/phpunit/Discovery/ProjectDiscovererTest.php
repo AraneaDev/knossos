@@ -1687,6 +1687,50 @@ TOML);
     }
 
     /**
+     * A VitePress page's `<script setup>` is the only thing reaching the
+     * component it imports, so the walk reads the page and the component
+     * becomes an entry point named by it. The same import in a page outside
+     * the site, or shown in a code fence, enters nothing.
+     */
+    public function testDiscoverEntersAComponentAVitePressPageImports(): void
+    {
+        mkdir($this->root . '/docs/.vitepress/theme/components', 0o755, true);
+        mkdir($this->root . '/docs/blog', 0o755, true);
+        mkdir($this->root . '/notes', 0o755, true);
+        file_put_contents($this->root . '/docs/.vitepress/config.mts', "export default {};\n");
+        file_put_contents($this->root . '/docs/.vitepress/theme/components/Card.vue', "<template><p>card</p></template>\n");
+        file_put_contents($this->root . '/docs/.vitepress/theme/components/Shown.vue', "<template><p>shown</p></template>\n");
+        file_put_contents($this->root . '/docs/blog/post.md', implode("\n", [
+            '<script setup>',
+            "import Card from '../.vitepress/theme/components/Card.vue'",
+            '</script>',
+            '',
+            '```vue',
+            '<script setup>',
+            "import Shown from '../.vitepress/theme/components/Shown.vue'",
+            '</script>',
+            '```',
+            '',
+        ]));
+        file_put_contents($this->root . '/notes/todo.md', "<script setup>\nimport Card from '../docs/.vitepress/theme/components/Card.vue'\n</script>\n");
+
+        $result = (new ProjectDiscoverer(new DiscoveryConfig([$this->root])))->discover($this->root);
+
+        $entries = [];
+        foreach ($result->units as $unit) {
+            if ($unit->kind === 'markdown') {
+                $entries[$unit->configPath] = $unit->metadata['entry_points'];
+            }
+        }
+        ksort($entries);
+        assertSame([
+            'docs/blog/post.md' => ['docs/.vitepress/theme/components/Card.vue'],
+            'notes/todo.md' => [],
+        ], $entries);
+        assertSame([], $result->diagnostics);
+    }
+
+    /**
      * Single quotes and an unquoted attribute are both legal HTML, and a shell
      * written by hand uses whichever. A reader that only understood double
      * quotes would silently drop the entry point.

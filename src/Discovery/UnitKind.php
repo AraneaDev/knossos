@@ -17,6 +17,7 @@ enum UnitKind: string
 {
     case Gitignore = 'gitignore';
     case Readme = 'readme';
+    case Markdown = 'markdown';
     case Shell = 'shell';
     case Dockerfile = 'dockerfile';
     case Composer = 'composer';

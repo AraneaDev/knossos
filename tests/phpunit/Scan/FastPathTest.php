@@ -151,12 +151,12 @@ final class FastPathTest extends KnossosTestCase
             // An entry, not a bare `touch` of the directory: the probe counts
             // the entries that appeared rather than the directories whose mtime
             // moved, because an mtime moves on unlink too and counting it as an
-            // addition reported every deletion twice. An empty directory
-            // directly under `src/` is neither ignored by default nor
-            // classifiable as source, and the probe cannot know it holds
-            // nothing without descending -- only the fast path's restamp
-            // retracts the staleness it causes.
-            mkdir($root . '/src/drafts');
+            // addition reported every deletion twice. The probe looks inside a
+            // new directory for anything a scan would read, within a bound,
+            // and answers yes once the bound runs out: an empty tree deeper
+            // than that bound is an addition it cannot verify away, and
+            // only the fast path's restamp retracts the staleness it causes.
+            mkdir($root . '/src/drafts/a/b/c/d/e/f/g/h', 0o777, true);
             self::waitForNextSecond();
 
             $probe = new StalenessProbe($pdo);

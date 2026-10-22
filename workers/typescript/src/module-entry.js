@@ -99,7 +99,9 @@ function isImportMetaUrl(expression) {
 // This is JavaScript's `__main__` guard, and it says the same thing a shebang
 // does: something outside the graph runs the file, so no inbound edge is owed.
 // A guard nested in a function, or a negated one, says nothing about that, and
-// neither does one whose names the file binds to something of its own.
+// neither does one whose names the file binds to something of its own. A guard
+// may stand behind a conjunct (`process.argv[1] && ...`), which holds only when
+// it does, or in a `const` the `if` names (`const isMain = ...; if (isMain)`).
 export function hasMainGuard(sourceFile, checker) {
     return sourceFile.statements.some(
         (statement) =>
@@ -111,10 +113,30 @@ export function hasMainGuard(sourceFile, checker) {
     );
 }
 
-function isMainGuardCondition(expression, checker) {
+// How many `const` names a guard is followed through: `const isMain = entered`
+// is two, and nothing real chains further.
+const MAX_GUARD_ALIASES = 8;
+
+function isMainGuardCondition(expression, checker, aliases = 0) {
     if (isImportMetaMain(expression)) return true;
+    if (ts.isIdentifier(expression)) {
+        const initializer = constInitializer(expression, checker);
+        return (
+            initializer !== null &&
+            aliases < MAX_GUARD_ALIASES &&
+            isMainGuardCondition(
+                unwrapParentheses(initializer),
+                checker,
+                aliases + 1,
+            )
+        );
+    }
     if (!ts.isBinaryExpression(expression)) return false;
     const operator = expression.operatorToken.kind;
+    if (operator === ts.SyntaxKind.AmpersandAmpersandToken)
+        return [expression.left, expression.right].some((side) =>
+            isMainGuardCondition(unwrapParentheses(side), checker, aliases),
+        );
     if (
         operator !== ts.SyntaxKind.EqualsEqualsEqualsToken &&
         operator !== ts.SyntaxKind.EqualsEqualsToken
@@ -208,6 +230,26 @@ function isModuleObject(identifier, modules, checker) {
         modules.includes(binding.module) &&
         (binding.imported === "default" || binding.imported === "*")
     );
+}
+
+/**
+ * The initializer of the one `const` of this file an identifier names, or
+ * null for any other binding: a `let` or `var` can be reassigned before it
+ * is read, and a destructured name holds only part of its initializer.
+ */
+function constInitializer(identifier, checker) {
+    const declarations =
+        checker.getSymbolAtLocation(identifier)?.declarations ?? [];
+    if (declarations.length !== 1) return null;
+    const [declaration] = declarations;
+    return ts.isVariableDeclaration(declaration) &&
+        ts.isIdentifier(declaration.name) &&
+        declaration.initializer !== undefined &&
+        ts.isVariableDeclarationList(declaration.parent) &&
+        (declaration.parent.flags & ts.NodeFlags.Const) !== 0 &&
+        declaration.getSourceFile() === identifier.getSourceFile()
+        ? declaration.initializer
+        : null;
 }
 
 /**

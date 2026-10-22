@@ -117,8 +117,11 @@ describe("a file outside every tsconfig importing an ambient module", () => {
             ["hooks/host.d.ts"],
         );
 
+        // The tsconfig beside it leaves it out, so the error comes with
+        // the note that the project's own typecheck never sees it.
         expect(contributions[0].diagnostics.map((d) => d.code)).toEqual([
             "TS2307",
+            "TS_OUTSIDE_EVERY_PROGRAM",
         ]);
     });
 

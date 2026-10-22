@@ -198,6 +198,30 @@ final class TypescriptScannerTest extends KnossosTestCase
     }
 
     /**
+     * A CLI usually names its guard: `const isMain = process.argv[1] &&
+     * import.meta.url === ...; if (isMain)`. A conjunct holds only when the
+     * guard does, and a `const` is the same guard by name; a `let` may be
+     * reassigned and an `||` holds without the guard.
+     */
+    #[Group('typescript-scanner')]
+    public function testTypescriptWorkerFollowsANamedOrConjoinedMainGuard(): void
+    {
+        $head = "import { pathToFileURL } from \"node:url\";\nexport function run() {}\n";
+        $compare = 'import.meta.url === pathToFileURL(process.argv[1]).href';
+        $executable = $this->executableModules('named-main-guard', [
+            'src/const.mjs' => $head . "const isMain = process.argv[1] && {$compare};\nif (isMain) run();\n",
+            'src/chain.mjs' => $head . "const entered = ({$compare});\nconst isMain = entered;\nif (process.argv.length > 1 && isMain) run();\n",
+            'src/let.mjs' => $head . "let isMain = {$compare};\nisMain = true;\nif (isMain) run();\n",
+            'src/or.mjs' => $head . "if (process.argv[1] || {$compare}) run();\n",
+        ]);
+
+        assertSame(true, $executable['src/const.mjs']);
+        assertSame(true, $executable['src/chain.mjs']);
+        assertSame(false, $executable['src/let.mjs']);
+        assertSame(false, $executable['src/or.mjs']);
+    }
+
+    /**
      * Scan `$files` with the TypeScript worker and report, per module, whether
      * it was marked executable.
      *
