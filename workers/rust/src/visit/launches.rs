@@ -11,10 +11,12 @@ use crate::facts::reference;
 
 /// Programs that run the script named after them, by basename: a command
 /// starting with one launches that script.
+// BEGIN GENERATED worker-constants:launch_interpreters
 const INTERPRETERS: [&str; 12] = [
     "php", "node", "nodejs", "bun", "deno", "python", "python3", "ruby", "perl", "bash", "sh",
     "zsh",
 ];
+// END GENERATED worker-constants:launch_interpreters
 
 /// A file name a script is run by, so a path without a directory still names
 /// a file.

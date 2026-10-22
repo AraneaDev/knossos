@@ -1,10 +1,12 @@
 /**
  * Serialized bytes one `scan/input_hashes` notification carries at most, well
- * under the core's 1,000,000-byte line cap. A single entry longer than this
+ * under the core's line cap. A single entry longer than this
  * still travels alone, and an entry is bounded by the core's path rules, so no
  * frame this produces approaches the cap.
  */
+// BEGIN GENERATED worker-constants:input_hashes_part_bytes
 export const INPUT_HASHES_PART_BYTES = 256_000;
+// END GENERATED worker-constants:input_hashes_part_bytes
 
 /**
  * Split a request's `input_hashes` map into parts that each fit one frame.

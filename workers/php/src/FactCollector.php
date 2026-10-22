@@ -24,8 +24,8 @@ final class FactCollector extends NodeVisitorAbstract
     use ResolvesClassName;
     use ResolvesDeclarationName;
 
-    /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
-    private const INTERPRETERS = ['php', 'node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'ruby', 'perl', 'bash', 'sh', 'zsh'];
+    /** Where the launch interpreters come from, relative to the installation root. */
+    private const INTERPRETERS_SOURCE = '/schemas/worker-constants.json';
 
     /** The PhpParser traversers that call a visitor's hooks. */
     private const TRAVERSERS = ['PhpParser\\NodeTraverser', 'PhpParser\\NodeTraverserInterface'];
@@ -267,7 +267,7 @@ final class FactCollector extends NodeVisitorAbstract
         }
         $first = $values[0];
         $interpreter = ($first instanceof Expr\ConstFetch && $first->name->toString() === 'PHP_BINARY')
-            || ($first instanceof Node\Scalar\String_ && in_array(basename($first->value), self::INTERPRETERS, true));
+            || ($first instanceof Node\Scalar\String_ && in_array(basename($first->value), self::interpreters(), true));
         $offset = $interpreter ? 1 : 0;
         $candidates = $interpreter ? array_slice($values, 1) : [$first];
         foreach ($candidates as $index => $value) {
@@ -1255,5 +1255,37 @@ final class FactCollector extends NodeVisitorAbstract
     private static function reference(string $kind, string $canonicalName): string
     {
         return 'php:' . $kind . ':' . ltrim($canonicalName, '\\');
+    }
+
+    /**
+     * Programs that run the script named after them, by basename: an argv
+     * starting with one launches that script. Read once from
+     * schemas/worker-constants.json, the source every other worker's copy is
+     * generated from, so a launches edge means the same in every language.
+     *
+     * @return list<string>
+     * @throws \RuntimeException when the installation lacks the file
+     */
+    private static function interpreters(): array
+    {
+        static $interpreters = null;
+        if ($interpreters !== null) {
+            return $interpreters;
+        }
+        $path = dirname(__DIR__, 3) . self::INTERPRETERS_SOURCE;
+        $contents = is_file($path) ? file_get_contents($path) : false;
+        $decoded = is_string($contents) ? json_decode($contents, true) : null;
+        $names = is_array($decoded) ? ($decoded['launch_interpreters'] ?? null) : null;
+        if (!is_array($names) || $names === []) {
+            throw new \RuntimeException('The launch interpreters are missing from ' . $path . '.');
+        }
+        $interpreters = [];
+        foreach ($names as $name) {
+            if (is_string($name)) {
+                $interpreters[] = $name;
+            }
+        }
+
+        return $interpreters;
     }
 }

@@ -17,17 +17,21 @@ final class WorkerServer
     public const VERSION = '0.7.0';
 
     /** The refusal of a request whose limits are missing or malformed, worded alike by every worker. */
+    // BEGIN GENERATED worker-constants:invalid_limits
     public const INVALID_LIMITS = 'Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.';
+    // END GENERATED worker-constants:invalid_limits
 
     /** Bytes read when probing an extensionless file's shebang; one short line is enough. */
     private const SHEBANG_PROBE_BYTES = 256;
 
     /**
      * Serialized bytes one `scan/input_hashes` notification carries at most,
-     * well under the core's 1,000,000-byte line cap, and the same as the
-     * packaged Python and TypeScript workers use.
+     * well under the core's line cap, and the same as every other worker uses:
+     * each copy comes from schemas/worker-constants.json.
      */
+    // BEGIN GENERATED worker-constants:input_hashes_part_bytes
     private const INPUT_HASHES_PART_BYTES = 256_000;
+    // END GENERATED worker-constants:input_hashes_part_bytes
 
     public function __construct(private readonly PhpScanner $scanner = new PhpScanner()) {}
     /** The protocol loop: read a request, dispatch it, write the reply. */

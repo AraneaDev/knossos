@@ -7,7 +7,9 @@ from .accumulator import PythonFactAccumulator
 from .ast_helpers import dotted, ref
 
 # Programs that run the script named after them, by basename: an argv starting with one launches that script.
+# BEGIN GENERATED worker-constants:launch_interpreters
 INTERPRETERS = {"php", "node", "nodejs", "bun", "deno", "python", "python3", "ruby", "perl", "bash", "sh", "zsh"}
+# END GENERATED worker-constants:launch_interpreters
 
 
 class LaunchRecorder:

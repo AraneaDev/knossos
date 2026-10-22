@@ -27,8 +27,10 @@ import {
 const SHEBANG_PROBE_BYTES = 256;
 
 /** The refusal of a request whose limits are missing or malformed, worded alike by every worker. */
+// BEGIN GENERATED worker-constants:invalid_limits
 export const INVALID_LIMITS =
     "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.";
+// END GENERATED worker-constants:invalid_limits
 
 /**
  * The request's `max_files` and `max_file_bytes`, which the core always

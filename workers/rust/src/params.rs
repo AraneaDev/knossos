@@ -10,8 +10,10 @@ use serde_json::Value;
 
 /// The refusal of a request whose limits are missing or malformed, worded
 /// alike by every worker.
+// BEGIN GENERATED worker-constants:invalid_limits
 pub(crate) const INVALID_LIMITS: &str =
     "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.";
+// END GENERATED worker-constants:invalid_limits
 
 /// A `scan` request whose parameters passed validation.
 pub(crate) struct ScanRequest {

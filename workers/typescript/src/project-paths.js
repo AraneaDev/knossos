@@ -54,7 +54,9 @@ const RESOLUTION_ALLOWED_EXCLUDED = new Set(["node_modules", "vendor"]);
 
 // Linux's MAXSYMLINKS: one lookup follows at most this many links, and the
 // next one fails it with ELOOP.
+// BEGIN GENERATED worker-constants:max_symlink_hops
 const MAX_SYMLINK_HOPS = 40;
+// END GENERATED worker-constants:max_symlink_hops
 
 /**
  * Resolve an absolute path the way the kernel's path lookup does, one

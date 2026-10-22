@@ -1001,9 +1001,8 @@ php	tests/phpunit/Scanner/Worker/WorkerExceptionTest.php
 php	tests/phpunit/Scanner/Worker/WorkerExecutionPolicyTest.php
 php	tests/phpunit/Scanner/Worker/WorkerLimitsTest.php
 php	tests/phpunit/Scanner/Worker/WorkerProcessSupervisorTest.php
-php	tests/phpunit/Scanner/WorkerConstantAgreementTest.php
+php	tests/phpunit/Scanner/WorkerConstantsTest.php
 php	tests/phpunit/Scanner/WorkerErrorCodeTest.php
-php	tests/phpunit/Scanner/WorkerFallbackExclusionsTest.php
 php	tests/phpunit/Scanner/WorkerTest.php
 php	tests/phpunit/Store/BatchWriteTest.php
 php	tests/phpunit/Store/BulkTransactionTest.php
@@ -1100,6 +1099,7 @@ php	tools/skill-copies.php
 php	tools/skipped-tests.php
 php	tools/supply-chain-report.php
 php	tools/trivy-allowlist.php
+php	tools/worker-constants.php
 php	workers/php/bin/worker
 php	workers/php/src/AstDepth.php
 php	workers/php/src/DocblockTypes.php

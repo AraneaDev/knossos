@@ -15,88 +15,8 @@ use Closure;
  */
 final readonly class IgnoreMatcher
 {
-    private const EXCLUDED_SEGMENTS = [
-        '.git',
-        '.idea',
-        '.knossos',
-        'vendor',
-        'node_modules',
-        '.next',
-        '.nuxt',
-        '.venv',
-        'venv',
-        '__pycache__',
-        '.tox',
-        '.mypy_cache',
-        '.pytest_cache',
-        // Git worktree checkouts are separate copies of a project, not source
-        // belonging to the checkout that contains the .worktrees directory.
-        // Walking them also creates duplicate manifest boundaries and can make
-        // a scan grow by several complete repositories.
-        '.worktrees',
-        // Generated build output and mutation-testing sandboxes are not source.
-        // '.stryker-tmp' in particular holds one full project copy per sandbox
-        // (each with its own tsconfig), which would otherwise multiply the
-        // TypeScript program count and make scans slow or time out.
-        '.stryker-tmp',
-        // Package-manager stores: dependency code, like node_modules.
-        '.pnpm-store',
-        '.yarn',
-    ];
-
-    /**
-     * Build output names, excluded only directly under the project root or
-     * under a manifest root (a directory holding a package or build manifest).
-     *
-     * Excluded at any depth they took real source with them: `src/build`,
-     * `apps/site`. Where a build tool writes is beside the manifest that
-     * configures it, so that is the only place they are taken as output, and a
-     * `!` pattern re-includes them there.
-     */
-    public const ANCHORED_SEGMENTS = ['build', 'coverage', 'dist', 'site'];
-
-    /**
-     * Segment prefixes, for directories this tool and its wrappers own the
-     * naming of. '.knossos' alone is an exact segment above; a CI job that needs
-     * somewhere to put a checkout of the analyzer or its snapshot database names
-     * it '.knossos-src' or '.knossos-ci' by the same convention, and those were
-     * scanned as if they were the project's own source.
-     */
-    private const EXCLUDED_SEGMENT_PREFIXES = [
-        '.knossos-',
-        // Laravel IDE Helper generated stubs have no architectural signal — they
-        // are enumerations of every class, method, and docblock in the project —
-        // and scanning them produces NDJSON frames large enough to overflow the
-        // worker's line limit on any non-trivial project.
-        '_ide_helper',
-    ];
-
-    /**
-     * Consecutive segments excluded wherever they appear: VitePress writes its
-     * prebundled dependencies and its build below the site's own directory,
-     * and `cache` or `dist` alone would say too little to exclude on.
-     */
-    private const EXCLUDED_SEGMENT_SEQUENCES = [
-        ['.vitepress', 'cache'],
-        ['.vitepress', 'dist'],
-    ];
-
-    /**
-     * File-name suffixes of minified bundles: vendored libraries and build
-     * output, with no architecture of their own to read.
-     */
-    private const EXCLUDED_FILE_SUFFIXES = ['.min.js', '.min.mjs', '.min.cjs'];
-
-    private const EXCLUDED_PREFIXES = [
-        'public/build',
-        'storage/framework',
-        // Laravel writable directories that hold uploaded assets, debug dumps,
-        // and logs — never source code. Including them in discovery wastes
-        // worker time on binary/multi-MB files and can overflow frame limits.
-        'storage/attachments',
-        'storage/debugbar',
-        'storage/logs',
-    ];
+    /** Where the built-in rules come from, relative to the installation root. */
+    private const BUILT_IN_SOURCE = '/schemas/worker-constants.json';
 
     /**
      * POSIX bracket classes as the ASCII ranges PCRE reads them as without the
@@ -193,13 +113,13 @@ final readonly class IgnoreMatcher
         sort($roots);
 
         return [
-            'segments' => self::EXCLUDED_SEGMENTS,
-            'anchored_segments' => self::ANCHORED_SEGMENTS,
+            'segments' => self::builtIn()['segments'],
+            'anchored_segments' => self::builtIn()['anchored_segments'],
             'anchor_roots' => $roots,
-            'prefixes' => self::EXCLUDED_SEGMENT_PREFIXES,
-            'sequences' => self::EXCLUDED_SEGMENT_SEQUENCES,
-            'suffixes' => self::EXCLUDED_FILE_SUFFIXES,
-            'path_prefixes' => self::EXCLUDED_PREFIXES,
+            'prefixes' => self::builtIn()['prefixes'],
+            'sequences' => self::builtIn()['sequences'],
+            'suffixes' => self::builtIn()['suffixes'],
+            'path_prefixes' => self::builtIn()['path_prefixes'],
             'patterns' => array_map(
                 static fn(array $pattern): array => [
                     'regex' => strtr($pattern[2], self::PORTABLE_POSIX_CLASSES),
@@ -275,30 +195,31 @@ final readonly class IgnoreMatcher
      */
     private static function absoluteBuiltIn(array $segments): bool
     {
+        $rules = self::builtIn();
         $path = implode('/', $segments);
         foreach ($segments as $segment) {
-            if (in_array($segment, self::EXCLUDED_SEGMENTS, true)) {
+            if (in_array($segment, $rules['segments'], true)) {
                 return true;
             }
-            foreach (self::EXCLUDED_SEGMENT_PREFIXES as $prefix) {
+            foreach ($rules['prefixes'] as $prefix) {
                 if (str_starts_with($segment, $prefix)) {
                     return true;
                 }
             }
         }
 
-        foreach (self::EXCLUDED_PREFIXES as $prefix) {
+        foreach ($rules['path_prefixes'] as $prefix) {
             if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
                 return true;
             }
         }
         $basename = $segments === [] ? '' : $segments[count($segments) - 1];
-        foreach (self::EXCLUDED_FILE_SUFFIXES as $suffix) {
+        foreach ($rules['suffixes'] as $suffix) {
             if (str_ends_with($basename, $suffix)) {
                 return true;
             }
         }
-        foreach (self::EXCLUDED_SEGMENT_SEQUENCES as [$first, $second]) {
+        foreach ($rules['sequences'] as [$first, $second]) {
             for ($i = 0, $last = count($segments) - 1; $i < $last; ++$i) {
                 if ($segments[$i] === $first && $segments[$i + 1] === $second) {
                     return true;
@@ -310,6 +231,92 @@ final readonly class IgnoreMatcher
     }
 
     /**
+     * The built-in rules, read once from schemas/worker-constants.json, the
+     * source the TypeScript and Python workers' fallback copies are generated
+     * from by tools/worker-constants.php.
+     *
+     * - `segments`, excluded at any depth: version control and editor state,
+     *   this tool's own `.knossos`, dependency trees and package-manager
+     *   stores, Python caches and virtualenvs, `.worktrees` (separate
+     *   checkouts, which would add duplicate manifest boundaries and whole
+     *   repositories to a scan) and `.stryker-tmp` (one project copy per
+     *   mutation sandbox, each with its own tsconfig).
+     * - `anchored_segments`, build output names excluded only directly under
+     *   the project root or a manifest root: where a build tool writes is
+     *   beside the manifest that configures it, and excluded at any depth they
+     *   took real source with them (`src/build`, `apps/site`). A `!` pattern
+     *   re-includes them.
+     * - `prefixes`, segment prefixes: `.knossos-` for the directories a CI job
+     *   names after this tool, and `_ide_helper` for Laravel IDE Helper stubs,
+     *   which enumerate every class and overflow a worker's line limit.
+     * - `sequences`, consecutive segments: VitePress's prebundled
+     *   dependencies and build below the site, where `cache` or `dist` alone
+     *   says too little.
+     * - `suffixes`, minified bundles, with no architecture of their own.
+     * - `path_prefixes`: Laravel's build output and writable directories,
+     *   which hold uploads, dumps and logs and never source.
+     *
+     * @return array{segments: list<string>, anchored_segments: list<string>, prefixes: list<string>, sequences: list<array{0: string, 1: string}>, suffixes: list<string>, path_prefixes: list<string>}
+     * @throws \RuntimeException when the installation lacks the file
+     */
+    private static function builtIn(): array
+    {
+        static $rules = null;
+
+        return $rules ??= self::readBuiltIn(dirname(__DIR__, 2) . self::BUILT_IN_SOURCE);
+    }
+
+    /**
+     * The built-in rules in $path, each list keeping only the entries of the
+     * right type.
+     *
+     * @return array{segments: list<string>, anchored_segments: list<string>, prefixes: list<string>, sequences: list<array{0: string, 1: string}>, suffixes: list<string>, path_prefixes: list<string>}
+     * @throws \RuntimeException when the file is missing or holds no rules
+     */
+    private static function readBuiltIn(string $path): array
+    {
+        $contents = is_file($path) ? file_get_contents($path) : false;
+        $decoded = is_string($contents) ? json_decode($contents, true) : null;
+        $rules = is_array($decoded) ? ($decoded['built_in_exclusions'] ?? null) : null;
+        if (!is_array($rules)) {
+            throw new \RuntimeException('The built-in ignore rules are missing from ' . $path . '.');
+        }
+        $sequences = [];
+        foreach (is_array($rules['sequences'] ?? null) ? $rules['sequences'] : [] as $pair) {
+            $pair = self::strings($pair);
+            if (count($pair) === 2) {
+                $sequences[] = [$pair[0], $pair[1]];
+            }
+        }
+
+        return [
+            'segments' => self::strings($rules['segments'] ?? null),
+            'anchored_segments' => self::strings($rules['anchored_segments'] ?? null),
+            'prefixes' => self::strings($rules['prefixes'] ?? null),
+            'sequences' => $sequences,
+            'suffixes' => self::strings($rules['suffixes'] ?? null),
+            'path_prefixes' => self::strings($rules['path_prefixes'] ?? null),
+        ];
+    }
+
+    /**
+     * The strings of a decoded JSON list.
+     *
+     * @return list<string> nothing for anything but a list
+     */
+    private static function strings(mixed $value): array
+    {
+        $strings = [];
+        foreach (is_array($value) ? $value : [] as $item) {
+            if (is_string($item)) {
+                $strings[] = $item;
+            }
+        }
+
+        return $strings;
+    }
+
+    /**
      * Whether a build-output segment sits directly under the project root or a
      * manifest root.
      *
@@ -318,7 +325,7 @@ final readonly class IgnoreMatcher
     private function anchored(array $segments): bool
     {
         foreach ($segments as $index => $segment) {
-            if (!in_array($segment, self::ANCHORED_SEGMENTS, true)) {
+            if (!in_array($segment, self::builtIn()['anchored_segments'], true)) {
                 continue;
             }
             if ($index === 0) {

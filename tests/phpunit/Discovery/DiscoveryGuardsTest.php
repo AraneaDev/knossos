@@ -31,7 +31,7 @@ final class DiscoveryGuardsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testIgnoreMatcherMatchesExcludedSegment(): void
     {
-        // EXCLUDED_SEGMENTS arm: any segment in the const list
+        // Built-in segments arm: any segment in the built-in list
         // triggers true (e.g., 'node_modules').
         $matcher = new IgnoreMatcher([]);
         assertSame(true, $matcher->matches('node_modules/lodash/index.js'));
@@ -55,7 +55,7 @@ final class DiscoveryGuardsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     {
         // Backslash separators are converted to forward slash before
         // segment-matching. Windows-style input paths go through the
-        // same EXCLUDED_SEGMENTS check after normalisation.
+        // same built-in segment check after normalisation.
         $matcher = new IgnoreMatcher([]);
         assertSame(true, $matcher->matches('src\node_modules\foo.js'));
         assertSame(true, $matcher->matches('a\b\.git\HEAD'));

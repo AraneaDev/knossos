@@ -204,6 +204,7 @@ if in_lane static; then
 php tools/repository-check.php
 php tools/generate-reference.php --check
 php tools/skill-copies.php --check
+php tools/worker-constants.php --check
 php tools/documentation-check.php
 php tools/maintainability-report.php
 php tools/docstring-report.php
