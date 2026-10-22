@@ -38,6 +38,10 @@ final readonly class ScanResultFactory
             $warnings[] = sprintf('%s: %s', $diagnostic['code'], $diagnostic['message']);
         }
         array_push($warnings, ...$analysisWarnings);
+        $idleHints = array_values(array_diff($plan->preparation->configuration->frameworks, array_keys(ScanPlanner::EFFECTIVE_HINTS)));
+        if ($idleHints !== []) {
+            $warnings[] = sprintf('FRAMEWORK_HINT_NO_EFFECT: Framework hints have no effect yet: %s. Knossos detects those frameworks from imports and manifests.', implode(', ', $idleHints));
+        }
         $leftOut = self::leftOutSentence($language);
         if ($leftOut !== '') {
             $warnings[] = sprintf("SCANNER_FILES_LEFT_OUT: %s Each file's diagnostic names the limit.", $leftOut);

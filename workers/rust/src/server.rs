@@ -16,9 +16,11 @@ use crate::reads::FileReads;
 use crate::visit::{Declarations, TestModules};
 
 /// Serialized bytes one `scan/input_hashes` notification carries at most, well
-/// under the core's 1,000,000-byte line cap, and the same as the packaged PHP,
-/// Python and TypeScript workers use.
+/// under the core's line cap, and the same as every other worker uses: each
+/// copy comes from schemas/worker-constants.json.
+// BEGIN GENERATED worker-constants:input_hashes_part_bytes
 const INPUT_HASHES_PART_BYTES: usize = 256_000;
+// END GENERATED worker-constants:input_hashes_part_bytes
 
 /// The result's path maps a `scan/input_hashes` part may carry a piece of.
 const READ_MAP_FIELDS: [&str; 3] = ["input_hashes", "reads", "unattributed_reads"];

@@ -10,7 +10,8 @@
 // What discovery leaves out, for a request that does not carry the core's own
 // rules: the built-in rules of the core's IgnoreMatcher, with build output
 // anchored at the project root. A request that carries `exclusions` uses those
-// instead for its duration. WorkerFallbackExclusionsTest holds the two equal.
+// instead for its duration. Both come from schemas/worker-constants.json.
+// BEGIN GENERATED worker-constants:built_in_exclusions
 export const BUILT_IN_EXCLUSIONS = Object.freeze({
     segments: [
         ".git",
@@ -48,6 +49,7 @@ export const BUILT_IN_EXCLUSIONS = Object.freeze({
     ],
     patterns: [],
 });
+// END GENERATED worker-constants:built_in_exclusions
 
 /**
  * Exclusion rules ready to apply, from the core's `exclusions` object (see

@@ -259,6 +259,16 @@ lint. Each of these checks takes another tree (`--docs=DIR` for the reference,
 `--root=DIR` for the other two), which is how the tests plant a stale or
 undocumented file without touching the repository.
 
+The constants every worker keeps its own copy of (the launch interpreters, the
+built-in ignore rules, the symlink hop limit, the invalid-limits refusal and the
+`scan/input_hashes` part size) come from `schemas/worker-constants.json`. Edit
+that file and run `php tools/worker-constants.php`, which rewrites each copy
+between its `BEGIN GENERATED worker-constants:<key>` and `END GENERATED` comments.
+Only the core's `IgnoreMatcher` reads the JSON itself; every worker, the PHP one
+included, holds a literal, so a worker copied without the rest of the
+installation still runs. `php tools/worker-constants.php --check` runs in the `static` lane and
+fails on a copy edited by hand, naming the file.
+
 External links are fetched only by `php tools/documentation-check.php --external`,
 in the `release` lane. A dead link there fails the lane. `tools/quality` runs the
 check whenever `KNOSSOS_EXTERNAL_LINKS` is unset, under `set -e`, so it also fails

@@ -1,30 +1,8 @@
 #!/bin/sh
 # Brief commands for the Claude Code mod, against a containerised Knossos installation.
 #
-# Usage: knossos-run-container.sh <turn-brief|dashboard> <project-dir> [options...]
-#        knossos-run-container.sh component-detail <project-dir> <name>
-#        knossos-run-container.sh file-detail <project-dir> <file>
-#        knossos-run-container.sh scan <project-dir>
-#        knossos-run-container.sh watch <project-dir> [--poll-ms=N]
-#        knossos-run-container.sh allow-root <root>
-#        knossos-run-container.sh session-changes <project-dir> --since=<snapshot>
-#        knossos-run-container.sh session-changes <project-dir> --working-tree
-#        knossos-run-container.sh session-head <project-dir>
-#        knossos-run-container.sh session-diff <project-dir> --rev=<commit> --file=<file>
-#        knossos-run-container.sh boundary-couplings <project-dir> --from=<boundary> --to=<boundary>
-#        knossos-run-container.sh graph-search <project-dir> --query=<text>
-#        knossos-run-container.sh file-context <project-dir> <file>
-#        knossos-run-container.sh branch-diff <project-dir>
-#        knossos-run-container.sh churn <project-dir>
-#        knossos-run-container.sh blast-radius <project-dir> --component=<name>
-#        knossos-run-container.sh path-between <project-dir> --from=<name> --to=<name>
-#        knossos-run-container.sh annotate <project-dir> --component=<name> --value=<note> [--execute]
-#        knossos-run-container.sh annotate <project-dir> --component=<name> --remove [--author=user|model] [--kind=<kind>] [--execute]
-#        knossos-run-container.sh notes <project-dir> [--filter=<filter>] [--text=<text>]
-#        knossos-run-container.sh note-adopt <project-dir> --component=<name> [--value=<note>] [--execute]
-#        knossos-run-container.sh note-move <project-dir> --component=<name> --to=<name> [--author=user|model] [--kind=<kind>] [--execute]
-#        knossos-run-container.sh note-check <project-dir> --component=<name> [--value=<reason> | --remove] [--execute]
-#        knossos-run-container.sh note-confirm <project-dir> --component=<name> [--execute]
+# Usage: the subcommands, timeouts and argument rules come from run-args.sh,
+# which both wrappers source. This wrapper runs them in a container.
 #
 # Emitted by `knossos install-agent-plugin --out`, with __KNOSSOS_IMAGE__ and
 # __KNOSSOS_DATA__ substituted at emit time. Not used in place.

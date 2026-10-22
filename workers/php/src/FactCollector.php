@@ -25,7 +25,9 @@ final class FactCollector extends NodeVisitorAbstract
     use ResolvesDeclarationName;
 
     /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
+    // BEGIN GENERATED worker-constants:launch_interpreters
     private const INTERPRETERS = ['php', 'node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'ruby', 'perl', 'bash', 'sh', 'zsh'];
+    // END GENERATED worker-constants:launch_interpreters
 
     /** The PhpParser traversers that call a visitor's hooks. */
     private const TRAVERSERS = ['PhpParser\\NodeTraverser', 'PhpParser\\NodeTraverserInterface'];

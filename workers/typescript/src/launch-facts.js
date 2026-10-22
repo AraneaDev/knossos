@@ -2,6 +2,7 @@ import ts from "typescript";
 import { reference } from "./typescript-fact-utils.js";
 
 /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
+// BEGIN GENERATED worker-constants:launch_interpreters
 const INTERPRETERS = new Set([
     "php",
     "node",
@@ -16,6 +17,7 @@ const INTERPRETERS = new Set([
     "sh",
     "zsh",
 ]);
+// END GENERATED worker-constants:launch_interpreters
 
 /** A file name a script is run by, so a path without a directory still names a file. */
 const SCRIPT = /\.(?:py|js|mjs|cjs|ts|php|rb|pl|sh)$/;

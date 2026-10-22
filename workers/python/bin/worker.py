@@ -52,7 +52,9 @@ def write(message: dict[str, Any]) -> None:
 Emit = Callable[[dict[str, Any]], None]
 
 
+# BEGIN GENERATED worker-constants:invalid_limits
 INVALID_LIMITS = "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1."
+# END GENERATED worker-constants:invalid_limits
 
 
 def scan_limits(limits: Any) -> tuple[int, int]:
@@ -259,13 +261,13 @@ def _unscannable_contribution(relative: str, message: str) -> dict[str, Any]:
     }
 
 
+# Serialized bytes one ``scan/input_hashes`` notification carries at most, well
+# under the core's line cap. A single entry longer than this still travels
+# alone, and the core's path rules bound an entry, so no frame this produces
+# approaches the cap.
+# BEGIN GENERATED worker-constants:input_hashes_part_bytes
 INPUT_HASHES_PART_BYTES = 256_000
-"""Serialized bytes one ``scan/input_hashes`` notification carries at most.
-
-Well under the core's 1,000,000-byte line cap. A single entry longer than this
-still travels alone, and the core's path rules bound an entry, so no frame this
-produces approaches the cap.
-"""
+# END GENERATED worker-constants:input_hashes_part_bytes
 
 
 def input_hash_parts(input_hashes: dict[str, str | None], part_bytes: int | None = None) -> list[dict[str, str | None]]:

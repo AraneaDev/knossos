@@ -6,7 +6,8 @@ from typing import Any
 # What discovery leaves out, for a request that does not carry the core's own
 # rules (``exclusions``, see :class:`Exclusions`), which replace these: the
 # built-in rules of the core's IgnoreMatcher, with build output anchored at the
-# project root. WorkerFallbackExclusionsTest holds the two equal.
+# project root. Both come from schemas/worker-constants.json.
+# BEGIN GENERATED worker-constants:built_in_exclusions
 BUILT_IN_RULES: dict[str, Any] = {
     "segments": [
         ".git",
@@ -35,6 +36,7 @@ BUILT_IN_RULES: dict[str, Any] = {
     "path_prefixes": ["public/build", "storage/framework", "storage/attachments", "storage/debugbar", "storage/logs"],
     "patterns": [],
 }
+# END GENERATED worker-constants:built_in_exclusions
 # Dependency trees may be read for import resolution even though discovery
 # does not scan them as project-owned source. Generated and tool-owned trees
 # remain blocked at this boundary.

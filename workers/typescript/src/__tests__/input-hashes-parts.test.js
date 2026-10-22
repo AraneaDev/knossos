@@ -71,7 +71,7 @@ describe("inputHashesParts", () => {
         ]);
     });
 
-    it("sizes the default part well under the core's 1,000,000-byte line cap", () => {
+    it("sizes the default part well under the core's line cap", () => {
         expect(INPUT_HASHES_PART_BYTES).toBeLessThanOrEqual(500_000);
     });
 });

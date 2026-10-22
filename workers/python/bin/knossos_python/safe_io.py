@@ -227,7 +227,9 @@ class PathWalk(NamedTuple):
 
 # Linux's MAXSYMLINKS: one lookup follows at most this many links, and the next
 # one fails it with ELOOP.
+# BEGIN GENERATED worker-constants:max_symlink_hops
 MAX_SYMLINK_HOPS = 40
+# END GENERATED worker-constants:max_symlink_hops
 # The file-type bits of ``st_mode``, spelled out rather than imported from
 # ``stat``: four constants do not earn a module dependency, and this file's
 # import count is a budgeted maintainability metric.

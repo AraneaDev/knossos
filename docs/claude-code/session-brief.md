@@ -66,7 +66,9 @@ server would refuse is advice nobody can follow:
   `{state}, and {path} is not an allowed root in {roots_file}. Add it: knossos allow-root {path} --execute`.
   `roots_file` names the file this brief read, since a machine can have more
   than one; compare it with `server_info` when a scan is refused anyway. The
-  clause is dropped when there was no roots file to read.
+  clause is dropped when there was no roots file to read. The MCP server
+  probes only allowed roots, so its tools read such a project as `unverified`,
+  while this brief and the pane run as you and can still call it `fresh`.
 - When the path does not exist:
   `{state}, and {path} does not exist. Neither scan_project nor allow-root will accept it.`
 

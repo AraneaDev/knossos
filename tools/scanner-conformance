@@ -17,7 +17,9 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 require_once __DIR__ . '/lib/cli-arguments.php';
 
 /** How every packaged worker words its refusal of missing or malformed limits. */
+// BEGIN GENERATED worker-constants:invalid_limits
 const SCAN_LIMITS_INVALID = 'Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.';
+// END GENERATED worker-constants:invalid_limits
 
 /** Per language, a file that calls one function twice on two lines. */
 const REPEATED_CALL_SOURCES = [

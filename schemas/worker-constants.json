@@ -1,0 +1,56 @@
+{
+  "launch_interpreters": [
+    "php",
+    "node",
+    "nodejs",
+    "bun",
+    "deno",
+    "python",
+    "python3",
+    "ruby",
+    "perl",
+    "bash",
+    "sh",
+    "zsh"
+  ],
+  "built_in_exclusions": {
+    "segments": [
+      ".git",
+      ".idea",
+      ".knossos",
+      "vendor",
+      "node_modules",
+      ".next",
+      ".nuxt",
+      ".venv",
+      "venv",
+      "__pycache__",
+      ".tox",
+      ".mypy_cache",
+      ".pytest_cache",
+      ".worktrees",
+      ".stryker-tmp",
+      ".pnpm-store",
+      ".yarn"
+    ],
+    "anchored_segments": ["build", "coverage", "dist", "site"],
+    "anchor_roots": [""],
+    "prefixes": [".knossos-", "_ide_helper"],
+    "sequences": [
+      [".vitepress", "cache"],
+      [".vitepress", "dist"]
+    ],
+    "suffixes": [".min.js", ".min.mjs", ".min.cjs"],
+    "path_prefixes": [
+      "public/build",
+      "storage/framework",
+      "storage/attachments",
+      "storage/debugbar",
+      "storage/logs"
+    ],
+    "patterns": []
+  },
+  "max_symlink_hops": 40,
+  "invalid_limits": "Scan limits are invalid: max_files and max_file_bytes must be integers of at least 1.",
+  "input_hashes_part_bytes": 256000
+}
