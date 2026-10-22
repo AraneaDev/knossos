@@ -59,7 +59,10 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     /** @var array<string, string> class node id => the literal view its render() returns */
     private array $renderViews = [];
 
-    /** @var list<string> ids of the classes being visited, innermost last */
+    /** @var array<string, true> class node id => its render() returns something other than one literal view */
+    private array $dynamicRenders = [];
+
+    /** @var list<?string> ids of the classes being visited, innermost last; null for an anonymous class */
     private array $classes = [];
 
     public function __construct(private readonly string $relativePath)
@@ -87,13 +90,10 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     {
         if ($node instanceof Stmt\InlineHTML && str_ends_with($this->relativePath, '.blade.php')) {
             $this->readTemplate($node->value, $node->getStartLine());
-        } elseif ($node instanceof Stmt\Class_ && $node->namespacedName !== null) {
-            $this->classes[] = 'php:class:' . ltrim($node->namespacedName->toString(), '\\');
+        } elseif ($node instanceof Stmt\Class_) {
+            $this->classes[] = $node->namespacedName !== null ? 'php:class:' . ltrim($node->namespacedName->toString(), '\\') : null;
         } elseif ($node instanceof Stmt\ClassMethod && strtolower($node->name->toString()) === 'render' && $this->classes !== []) {
-            $view = $this->renderedView($node);
-            if ($view !== null) {
-                $this->renderViews[$this->classes[array_key_last($this->classes)]] = $view;
-            }
+            $this->recordRender($node, $this->classes[array_key_last($this->classes)]);
         }
 
         return null;
@@ -102,7 +102,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     /** Leaves the class whose methods were being read. */
     public function leaveNode(Node $node): null
     {
-        if ($node instanceof Stmt\Class_ && $node->namespacedName !== null) {
+        if ($node instanceof Stmt\Class_) {
             array_pop($this->classes);
         }
 
@@ -132,11 +132,37 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     /**
      * The attributes this file adds to its class nodes, by node id.
      *
-     * @return array<string, array<string, string>>
+     * @return array<string, array<string, bool|string>>
      */
     public function classAttributes(): array
     {
-        return array_map(fn(string $view): array => ['livewire_render_view' => $view], $this->renderViews);
+        $attributes = array_map(static fn(string $view): array => ['livewire_render_view' => $view], $this->renderViews);
+        foreach (array_keys($this->dynamicRenders) as $id) {
+            $attributes[$id] = ['livewire_render_view_dynamic' => true];
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * Notes the view a class's `render()` returns, or that it returns no single literal one.
+     *
+     * A `render()` inside an anonymous class belongs to that class, which has
+     * no node of its own here, so it is not attributed to the class around it.
+     */
+    private function recordRender(Stmt\ClassMethod $method, ?string $class): void
+    {
+        if ($class === null) {
+            return;
+        }
+        $view = $this->renderedView($method);
+        if ($view !== null) {
+            $this->renderViews[$class] = $view;
+            unset($this->dynamicRenders[$class]);
+        } else {
+            $this->dynamicRenders[$class] = true;
+            unset($this->renderViews[$class]);
+        }
     }
 
     /** Collects the methods one template chunk calls and the views it includes. */

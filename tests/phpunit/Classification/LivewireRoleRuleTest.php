@@ -102,6 +102,38 @@ final class LivewireRoleRuleTest extends KnossosTestCase
         self::assertSame(['livewire.component'], $this->rolesOf($pdo)['App\\Livewire\\Lost'] ?? null);
     }
 
+    public function testANonLiteralRenderGetsNoDefaultViewAndNoWarning(): void
+    {
+        $component = static fn(string $name, string $render): string => "<?php\nnamespace App\\Livewire;\nuse Livewire\\Component;\nclass $name extends Component\n{\n    public function onlyInDefault(): void {}\n    public function go(): void {}\n    public function render() { $render }\n}\n";
+        [$pdo, $result] = $this->scanTree([
+            'app/Livewire/Dyn.php' => $component('Dyn', "return view('livewire.dyn-' . \$this->mode);"),
+            'app/Livewire/Inline.php' => $component('Inline', "return <<<'blade'\n<div wire:click=\"go\"></div>\nblade;"),
+            'resources/views/livewire/dyn.blade.php' => "<button wire:click=\"onlyInDefault\">x</button>\n",
+        ]);
+        $roles = $this->rolesOf($pdo);
+
+        self::assertArrayNotHasKey('App\\Livewire\\Dyn::onlyInDefault', $roles);
+        self::assertArrayNotHasKey('App\\Livewire\\Inline::go', $roles);
+        self::assertSame([], array_values(array_filter($result->warnings, static fn(string $warning): bool => str_contains($warning, 'LIVEWIRE_VIEW_UNRESOLVED'))));
+    }
+
+    public function testAComponentWithoutRenderJoinsTheViewItsProjectBaseRenders(): void
+    {
+        [$pdo] = $this->scanTree([
+            'app/Livewire/Base.php' => "<?php\nnamespace App\\Livewire;\nuse Livewire\\Component;\nabstract class Base extends Component\n{\n    public function render() { return view('livewire.shared'); }\n}\n",
+            'app/Livewire/Child.php' => "<?php\nnamespace App\\Livewire;\nclass Child extends Base\n{\n    public function shout(): void {}\n    public function idle(): void {}\n}\n",
+            'app/Livewire/DynBase.php' => "<?php\nnamespace App\\Livewire;\nuse Livewire\\Component;\nabstract class DynBase extends Component\n{\n    public function render() { return view(\$this->v); }\n}\n",
+            'app/Livewire/DynChild.php' => "<?php\nnamespace App\\Livewire;\nclass DynChild extends DynBase\n{\n    public function onlyInDefault(): void {}\n}\n",
+            'resources/views/livewire/shared.blade.php' => "<button wire:click=\"shout\">x</button>\n",
+            'resources/views/livewire/dyn-child.blade.php' => "<button wire:click=\"onlyInDefault\">x</button>\n",
+        ]);
+        $roles = $this->rolesOf($pdo);
+
+        self::assertSame(['livewire.entry_method:view_action'], $roles['App\\Livewire\\Child::shout'] ?? null);
+        self::assertArrayNotHasKey('App\\Livewire\\Child::idle', $roles);
+        self::assertArrayNotHasKey('App\\Livewire\\DynChild::onlyInDefault', $roles);
+    }
+
     public function testTheFixtureResolvesEveryView(): void
     {
         [, $result] = $this->scanCopyOfFixture();

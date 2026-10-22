@@ -28,7 +28,7 @@ final readonly class LivewireViews
     }
 
     /**
-     * Where a component's view should be: its literal `render()` view, or the file its name implies.
+     * Where a component's view should be: its literal `render()` view, or the file its name implies when it has no `render()` at all.
      *
      * @return ?array{path: string, name: string} the project-relative path and the view name; null when neither can be told
      */
@@ -46,11 +46,11 @@ final readonly class LivewireViews
 
             return ['path' => (string) $view, 'name' => (string) $view];
         }
-        $rendered = $node->attributes['livewire_render_view'] ?? null;
-        if (is_string($rendered) && $rendered !== '') {
-            $resolved = $this->resolve($rendered);
+        $render = $this->renderOf($classReference);
+        if ($render !== null) {
+            $resolved = $render === '' ? null : $this->resolve($render);
 
-            return $resolved === null ? null : ['path' => $resolved, 'name' => $rendered];
+            return $resolved === null ? null : ['path' => $resolved, 'name' => $render];
         }
         $relative = $this->relativeName($node->canonicalName);
         if ($relative === null) {
@@ -60,6 +60,35 @@ final readonly class LivewireViews
         $directory = is_string($this->config['view_path'] ?? null) ? $this->config['view_path'] : self::DEFAULT_VIEW_PATH;
 
         return ['path' => rtrim($directory, '/') . '/' . implode('/', $segments) . self::VIEW_EXTENSION, 'name' => 'livewire.' . implode('.', $segments)];
+    }
+
+    /**
+     * What the nearest `render()` of a component says about its view.
+     *
+     * The class and then its project ancestors are asked in turn, so a
+     * component without a `render()` of its own joins the view a project base
+     * class returns. A `render()` that returns no single literal view (a
+     * computed name, an inline template) leaves the component without a
+     * view to join: the file its name implies is not known to be the one it
+     * renders, so it is not guessed.
+     *
+     * @return ?string the literal view name; '' for a `render()` without one; null when no `render()` exists at all
+     */
+    private function renderOf(string $classReference): ?string
+    {
+        foreach ([$classReference, ...array_filter($this->hierarchy->ancestorsLeaving($classReference), static fn(string $entry): bool => str_starts_with($entry, 'php:'))] as $owner) {
+            $attributes = $this->hierarchy->node($owner)->attributes ?? [];
+            $rendered = $attributes['livewire_render_view'] ?? null;
+            if (is_string($rendered) && $rendered !== '') {
+                return $rendered;
+            }
+            if (($attributes['livewire_render_view_dynamic'] ?? false) === true) {
+                return '';
+            }
+        }
+
+        // A `render()` the worker did not record, such as one a trait supplies.
+        return isset($this->hierarchy->methods($classReference)['render']) ? '' : null;
     }
 
     /** Whether the scan holds the file as a module. */

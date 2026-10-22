@@ -161,6 +161,29 @@ final class PhpLivewireBladeTest extends KnossosTestCase
     }
 
     #[Group('php-scanner')]
+    public function testANonLiteralRenderIsFlaggedAndANestedAnonymousClassIsNotTheOuterOne(): void
+    {
+        $root = $this->tempRoot([
+            'app/Livewire/Dyn.php' => "<?php\nnamespace App\\Livewire;\nclass Dyn { public function render() { return view('livewire.dyn-' . \$this->mode); } }\n",
+            'app/Livewire/Inline.php' => "<?php\nnamespace App\\Livewire;\nclass Inline { public function render() { return <<<'blade'\n<div wire:click=\"go\"></div>\nblade; } }\n",
+            'app/Livewire/Outer.php' => "<?php\nnamespace App\\Livewire;\nclass Outer { public function render() { \$helper = new class { public function render() { return view('inner'); } }; return view('livewire.outer'); } }\n",
+            'app/Livewire/NoRender.php' => "<?php\nnamespace App\\Livewire;\nclass NoRender { public function save() {} }\n",
+        ]);
+        try {
+            $nodes = $this->scan($root, ['app/Livewire/Dyn.php', 'app/Livewire/Inline.php', 'app/Livewire/Outer.php', 'app/Livewire/NoRender.php']);
+        } finally {
+            $this->removeRoot($root);
+        }
+
+        assertSame(true, $nodes['App\\Livewire\\Dyn']->attributes['livewire_render_view_dynamic']);
+        assertSame(false, isset($nodes['App\\Livewire\\Dyn']->attributes['livewire_render_view']));
+        assertSame(true, $nodes['App\\Livewire\\Inline']->attributes['livewire_render_view_dynamic']);
+        assertSame('livewire.outer', $nodes['App\\Livewire\\Outer']->attributes['livewire_render_view']);
+        assertSame(false, isset($nodes['App\\Livewire\\Outer']->attributes['livewire_render_view_dynamic']));
+        assertSame(false, isset($nodes['App\\Livewire\\NoRender']->attributes['livewire_render_view_dynamic']));
+    }
+
+    #[Group('php-scanner')]
     public function testNothingIsRecordedWithoutTheLivewireFlag(): void
     {
         $nodes = $this->scan(
@@ -170,7 +193,7 @@ final class PhpLivewireBladeTest extends KnossosTestCase
         );
 
         foreach ($nodes as $node) {
-            foreach (['livewire_view', 'livewire_render_view', 'livewire_config'] as $key) {
+            foreach (['livewire_view', 'livewire_render_view', 'livewire_render_view_dynamic', 'livewire_config'] as $key) {
                 assertSame(false, isset($node->attributes[$key]), $node->canonicalName . ' carries ' . $key);
             }
         }

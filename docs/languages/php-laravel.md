@@ -95,9 +95,12 @@ that, no Livewire fact or role is produced, even if the project has an
   `resource_path()` value becomes a project-relative path.
 
 A component's view is the literal view of its `render()` method when every
-`return` names the same one, and otherwise the file its class name implies
+`return` names the same one. A component with no `render()` at all, in its class,
+its traits or its project base classes, gets the file its class name implies
 (`App\Livewire\Admin\UserTable` is `admin/user-table.blade.php` under the
-configured `view_path`, `resources/views/livewire` by default).
+configured `view_path`, `resources/views/livewire` by default). A component
+without a `render()` of its own that extends a project base class with a literal
+`render()` joins that base class's view.
 
 A name used in a view reaches only the components whose view graph holds that
 view. Two components that both have `save` do not share it: the one whose view
@@ -123,8 +126,10 @@ skipped, since they render nothing.
 - **`Livewire::addNamespace()` and `Livewire::addLocation()`** called from code
   are not evaluated. Only `config/livewire.php` is read, so a view in a
   directory registered at run time is not joined to its component.
-- **Views that are not literals.** `view($name)`, or a `render()` that returns
-  different views from different branches, gives no view join and no warning.
+- **Views that are not literals.** `view($name)`, an inline template returned
+  from `render()`, or a `render()` that returns different views from different
+  branches, gives no view join and no warning, and the file the class name
+  implies is not tried either.
   The component, its hooks and its attributed methods are still classified.
 
 ## Route names
