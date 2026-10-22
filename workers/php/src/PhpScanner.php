@@ -40,9 +40,12 @@ final readonly class PhpScanner
     /**
      * Parse the requested files and return their contributions and diagnostics.
      *
+     * `$livewire` says the project requires Livewire; the Livewire-specific
+     * collectors are gated on it.
+     *
      * @return array<string, mixed>
      */
-    public function scan(string $root, string $absolutePath, string $relativePath, bool $laravel = false, bool $symfony = false): array
+    public function scan(string $root, string $absolutePath, string $relativePath, bool $laravel = false, bool $symfony = false, bool $livewire = false): array
     {
         $source = file_get_contents($absolutePath);
         if ($source === false) {

@@ -148,7 +148,7 @@ relative) or `namespace_prefix`. Policies refer to boundaries by name.
 
 ### Frameworks
 
-`laravel`, `symfony`, `django`, `fastapi`, `flask`, `nextjs`, `nestjs`, `react`,
+`laravel`, `livewire`, `symfony`, `django`, `fastapi`, `flask`, `nextjs`, `nestjs`, `react`,
 `vue`, `axum`, `actix` and `rocket`. Any other value fails the scan.
 
 A hint matters only where a framework is otherwise detected from a manifest:
