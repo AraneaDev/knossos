@@ -138,17 +138,18 @@ final class LivewireRoleRuleTest extends KnossosTestCase
     {
         [$pdo] = $this->scanTree([
             'app/Livewire/Concerns/HasName.php' => "<?php\nnamespace App\\Livewire\\Concerns;\ntrait HasName\n{\n    public string \$name = '';\n}\n",
-            'app/Livewire/Form.php' => "<?php\nnamespace App\\Livewire;\nuse Livewire\\Component;\nclass Form extends Component\n{\n    use Concerns\\HasName;\n    public string \$title = '';\n    public array \$items = [];\n    public \$post;\n"
+            'app/Livewire/Form.php' => "<?php\nnamespace App\\Livewire;\nuse Livewire\\Component;\nclass Form extends Component\n{\n    use Concerns\\HasName;\n    public string \$title = '';\n    public array \$items = [];\n    public \$post;\n    public string \$first_name = '';\n"
                 . "    public function __construct(public int \$page = 1) {}\n"
-                . "    public function updatedTitle(): void {}\n    public function hydrateItems(): void {}\n    public function updatedPostTitle(): void {}\n    public function updatedName(): void {}\n    public function updatingPage(): void {}\n    public function updatedAt(): void {}\n    public function dehydrateTotals(): void {}\n}\n",
+                . "    public function updatedTitle(): void {}\n    public function hydrateItems(): void {}\n    public function updatedPostTitle(): void {}\n    public function updatedName(): void {}\n    public function updatingPage(): void {}\n    public function updatedAt(): void {}\n    public function updatedFirstName(): void {}\n    public function updatedFirst(): void {}\n    public function dehydrateTotals(): void {}\n}\n",
         ]);
         $roles = $this->rolesOf($pdo);
 
-        foreach (['updatedTitle', 'hydrateItems', 'updatedPostTitle', 'updatingPage'] as $hook) {
+        foreach (['updatedTitle', 'hydrateItems', 'updatedPostTitle', 'updatingPage', 'updatedFirstName'] as $hook) {
             self::assertSame(['livewire.entry_method:hook'], $roles['App\\Livewire\\Form::' . $hook] ?? null, $hook);
         }
         self::assertSame(['livewire.entry_method:hook'], $roles['App\\Livewire\\Concerns\\HasName::updatedName'] ?? $roles['App\\Livewire\\Form::updatedName'] ?? null, 'a trait property counts');
         self::assertArrayNotHasKey('App\\Livewire\\Form::updatedAt', $roles);
+        self::assertArrayNotHasKey('App\\Livewire\\Form::updatedFirst', $roles);
         self::assertArrayNotHasKey('App\\Livewire\\Form::dehydrateTotals', $roles);
     }
 

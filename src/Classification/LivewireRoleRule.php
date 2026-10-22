@@ -194,14 +194,23 @@ final class LivewireRoleRule implements ClassificationRule
         if ($properties === []) {
             return true;
         }
-        $suffix = lcfirst($match[1]);
+        $suffix = ucfirst($match[1]);
         foreach ($properties as $property) {
-            if ($suffix === $property || (str_starts_with($suffix, $property) && ctype_upper($suffix[strlen($property)]))) {
+            $property = $this->studly($property);
+            if ($property !== '' && ($suffix === $property || (str_starts_with($suffix, $property) && ctype_upper($suffix[strlen($property)])))) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * A property name as Livewire writes it into a hook name (`first_name` is `FirstName`).
+     */
+    private function studly(string $property): string
+    {
+        return implode('', array_map('ucfirst', preg_split('/[_-]+/', $property) ?: [$property]));
     }
 
     /**
