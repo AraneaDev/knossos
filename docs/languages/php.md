@@ -67,3 +67,31 @@ module of the project file at that path, or of the one file whose path ends
 with it, and drops the edge when there is none. Where the process is started
 does not matter: impact on a worker reaches the code that names it, in any
 language.
+
+Items spread into the array (`...$args`) are skipped, so the rest of the array
+is still read. A command name such as `'orders:poll'` is read only when it
+directly follows the script, so `[PHP_BINARY, 'artisan', ...$args, 'orders:hidden']`
+yields no command: anything after a spread may not be what it looks like.
+
+## Properties
+
+A read or a write of a property is a `references` edge to the property, so
+`list_usages` on a property lists its readers and writers. The edge carries an
+`access` attribute: `read`, `write` or `read_write` (`$this->count++`,
+`$this->total += 1`). A read and a write on one line stay two sites, and each
+reader or writer is listed once per access, not once per occurrence. Only a
+receiver the scan can type gets the edge: `$this`, a typed variable or
+parameter, or `self::`, `static::` and `parent::` for a static property. A
+chained access such as `$this->a->b` gets none.
+
+## Visitors and traversers
+
+The hooks of a class that extends `PhpParser\NodeVisitorAbstract` or implements
+`PhpParser\NodeVisitor` (`beforeTraverse`, `enterNode`, `leaveNode` and
+`afterTraverse`) are called by the traverser, so [dead-code
+candidates](../guides/dead-code-candidates.md) never lists them, with or
+without `#[\Override]`. A traverser that is handed a visitor
+(`$traverser->addVisitor($visitor)` or `new NodeTraverser($visitor)`) gets a
+probable `calls` edge to each of those hooks the visitor's class declares or
+inherits, so the visitor's hooks have the code that wires them as a caller.
+The visitor's class must be known: `new Visitor()` or a typed variable.

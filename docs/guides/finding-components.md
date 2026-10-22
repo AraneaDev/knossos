@@ -152,6 +152,9 @@ Each row carries the edge's stored `attributes`, so a qualification an enricher
 recorded on the relationship (a profile, a condition) stays attached to the
 usage instead of reading as unconditional.
 
+For a PHP property, the list holds its readers and writers, and each row's
+`attributes.access` says `read`, `write` or `read_write`.
+
 For a method, the list also holds the call sites of each interface or parent
 method it implements or overrides: a caller typed on the interface calls the
 interface's method in the graph. Those rows carry `via_supertype`, naming that
