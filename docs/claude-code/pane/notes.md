@@ -26,7 +26,8 @@ it when a newer note lands elsewhere. A note on no file sits under its boundary
 without a folder. A note's row names its component
 (a file note by its path), who wrote it (`you` or `model`), its kind when it is
 not a plain note, the first line of its text and the day it was written; a stale
-model note, one whose files changed since it was written, ends in `≈`. The
+model note, one whose component's own lines changed since it was written
+(an edit elsewhere in the same file does not count), ends in `≈`. The
 card's note counts them: `142 notes · 3 missing · 5 stale · 1 flagged`.
 
 **Under the tree**, the marked note whole: where it lives (its file and
@@ -48,8 +49,11 @@ While either narrows the tree, every group is open so every match shows. On the 
 A note you adopt is yours: it wins over the model's and never goes stale, and
 the model's stays beside it. Picking a component in the finder for a note on a
 missing name asks `Move the note on App\Gone to App\Adapter?`; `y` moves it.
-The note keeps what it was written against, so a moved model note reads stale
-until the model looks again. A move to a component that already holds a note by
+The note keeps its text, evidence and date, and what it was written against, so
+a moved model note reads stale until the model looks again. A check you set on
+it moves with it. The model can move its own note the same way with
+`move_to`, and the lost note's row in `list_annotations` suggests a target
+when one component fits. A move to a component that already holds a note by
 the same author is refused, and nothing is written.
 
 A flag reaches the next session: its brief says
