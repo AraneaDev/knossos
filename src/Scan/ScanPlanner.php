@@ -46,6 +46,14 @@ use PDO;
 final readonly class ScanPlanner
 {
     /**
+     * The `frameworks` hints this planner acts on: each one turns on a
+     * framework a manifest would otherwise have to show. Every other accepted
+     * hint is detected from imports and manifests alone, so the scan warns
+     * that it has no effect.
+     */
+    public const EFFECTIVE_HINTS = ['laravel', 'livewire', 'symfony', 'axum', 'actix', 'rocket'];
+
+    /**
      * The unit kinds whose content each language's contribution cache key
      * covers. The hash is over each unit's kind and path, so these lists are
      * cache keys: a change here invalidates every cached contribution.

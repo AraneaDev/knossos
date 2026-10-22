@@ -90,10 +90,16 @@ scans the one at the root, and `"!dist"` scans every anchored `dist`.
 The configuration file itself cannot be ignored. Its scan settings are part of
 the scanner configuration fingerprint: changing `ignores`, `frameworks`,
 `limits.max_files` or `limits.max_file_bytes` invalidates the cached
-contributions, so the next scan reads every file again. The other settings,
-such as `quality_budgets`, `policies`, `snapshot_retention` or the worker
-timeouts, are read when they are used, and changing one reuses every cached
-file.
+contributions, so the next scan reads every file again. The other settings
+reuse every cached file.
+
+Some settings are frozen at scan time: `ignores`, `snapshot_retention` and
+`dead_code_suppressions` take effect when the next scan runs, and until then
+the graph answers as the last scan left it. Others are read on every call:
+`policies`, `quality_budgets`, `limits.refresh_budget_ms` and
+`limits.watch_scan_timeout_ms` apply to the next query without a scan.
+Editing `knossos.json` in any way makes the graph stale, so a query that
+refreshes picks up the frozen settings too.
 
 ### Limits
 
@@ -161,8 +167,10 @@ A hint matters only where a framework is otherwise detected from a manifest:
 | `django`, `fastapi`, `flask`       | None today: the Python worker recognises these per file, from what each file imports.                         |
 | `nextjs`, `nestjs`, `react`, `vue` | None today: the TypeScript worker recognises these per file, from imports, decorators and the file layout.    |
 
-Changing any hint still counts as a change to the scan settings, so cached
-results are rebuilt.
+A scan that names a hint without effect warns `Framework hints have no effect
+yet: react. Knossos detects those frameworks from imports and manifests.`,
+listing each such hint. Changing any hint still counts as a change to the scan
+settings, so cached results are rebuilt.
 
 ### Policies
 

@@ -867,6 +867,7 @@ php	tests/phpunit/Scan/EndpointRouteScanTest.php
 php	tests/phpunit/Scan/EnrichmentScanTest.php
 php	tests/phpunit/Scan/FailedScanTest.php
 php	tests/phpunit/Scan/FastPathTest.php
+php	tests/phpunit/Scan/FrameworkHintWarningTest.php
 php	tests/phpunit/Scan/IncrementalReadsScanTest.php
 php	tests/phpunit/Scan/InputHashVerificationTest.php
 php	tests/phpunit/Scan/InputHashesPartsScanTest.php
