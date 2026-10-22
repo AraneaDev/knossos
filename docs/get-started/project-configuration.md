@@ -167,9 +167,10 @@ A hint matters only where a framework is otherwise detected from a manifest:
 | `django`, `fastapi`, `flask`       | None today: the Python worker recognises these per file, from what each file imports.                         |
 | `nextjs`, `nestjs`, `react`, `vue` | None today: the TypeScript worker recognises these per file, from imports, decorators and the file layout.    |
 
-A scan that names a hint without effect warns `Framework hints have no effect
-yet: react. Knossos detects those frameworks from imports and manifests.`,
-listing each such hint. Changing any hint still counts as a change to the scan
+A scan that names a hint without effect warns `FRAMEWORK_HINT_NO_EFFECT:
+Framework hints have no effect yet: react. Knossos detects those frameworks
+from imports and manifests.`, listing each such hint, and
+`configuration.framework_hints` still echoes every hint given. Changing any hint still counts as a change to the scan
 settings, so cached results are rebuilt.
 
 ### Policies

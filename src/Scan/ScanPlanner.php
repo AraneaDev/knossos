@@ -46,12 +46,23 @@ use PDO;
 final readonly class ScanPlanner
 {
     /**
-     * The `frameworks` hints this planner acts on: each one turns on a
-     * framework a manifest would otherwise have to show. Every other accepted
-     * hint is detected from imports and manifests alone, so the scan warns
-     * that it has no effect.
+     * The `frameworks` hints this planner acts on, each with the manifest
+     * kind and the dependencies that turn the same framework on without it.
+     * {@see prepare()} reads its frameworks from here, so a hint listed acts
+     * and a hint left out is one the scan warns has no effect: every other
+     * accepted hint is detected from imports and manifests alone.
+     *
+     * @var array<string, array{0: string, 1: list<string>}>
      */
-    public const EFFECTIVE_HINTS = ['laravel', 'livewire', 'symfony', 'axum', 'actix', 'rocket'];
+    public const EFFECTIVE_HINTS = [
+        'laravel' => ['composer', ['laravel/framework']],
+        'livewire' => ['composer', ['livewire/livewire']],
+        'symfony' => ['composer', ['symfony/framework-bundle', 'symfony/http-kernel', 'symfony/console', 'symfony/messenger']],
+        'axum' => ['cargo', ['axum']],
+        // actix-web is the crate name; the semantic framework is actix.
+        'actix' => ['cargo', ['actix-web']],
+        'rocket' => ['cargo', ['rocket']],
+    ];
 
     /**
      * The unit kinds whose content each language's contribution cache key
@@ -162,16 +173,16 @@ final readonly class ScanPlanner
         // against; a gitless project has no such question.
         $dirtyPaths = $gitHead === null ? null : $this->dirtyPaths->resolve($rootRealpath, $gitHead, $discovery->files);
         $started = hrtime(true);
-        $laravel = in_array('laravel', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['laravel/framework']);
-        $livewire = in_array('livewire', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['livewire/livewire']);
-        $symfony = in_array('symfony', $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, ['symfony/framework-bundle', 'symfony/http-kernel', 'symfony/console', 'symfony/messenger']);
-        $rustFrameworks = self::detectedFramework(
-            $discovery->units,
-            ['cargo'],
-            // actix-web is the crate name; the semantic framework is actix.
-            ['axum' => 'axum', 'actix-web' => 'actix', 'rocket' => 'rocket'],
-            $configuration->frameworks,
-        );
+        $php = [];
+        $crates = [];
+        foreach (self::EFFECTIVE_HINTS as $hint => [$kind, $dependencies]) {
+            if ($kind === 'composer') {
+                $php[$hint] = in_array($hint, $configuration->frameworks, true) || $this->hasComposerPackage($discovery->units, $dependencies);
+            } else {
+                $crates += array_fill_keys($dependencies, $hint);
+            }
+        }
+        $rustFrameworks = self::detectedFramework($discovery->units, ['cargo'], $crates, $configuration->frameworks);
         $configurationHashes = [];
         foreach (self::CONFIGURATION_KINDS as $language => $kinds) {
             $configurationHashes[$language] = $this->configurationHash(
@@ -190,8 +201,8 @@ final readonly class ScanPlanner
             $mode,
             $snapshotRetention,
             $executionPolicy,
-            $laravel,
-            $symfony,
+            $php['laravel'],
+            $php['symfony'],
             $configurationHashes,
             $configurationMilliseconds,
             $discoveryMilliseconds,
@@ -199,9 +210,10 @@ final readonly class ScanPlanner
             rustFrameworks: $rustFrameworks,
             gitHead: $gitHead,
             dirtyPaths: $dirtyPaths,
-            livewire: $livewire,
+            livewire: $php['livewire'],
         );
     }
+
     /**
      * Complete the plan once the analyzer set is known.
      *
