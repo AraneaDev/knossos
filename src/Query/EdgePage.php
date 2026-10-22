@@ -38,7 +38,7 @@ final class EdgePage
      */
     public static function fetch(PDO $pdo, string $projectId, Direction $direction, string $nodeId, array $kinds, int $minRank, Truncation $truncation, bool $withMembers = false): array
     {
-        $columns = 'e.*, f.relative_path, source.display_name AS source_name, target.display_name AS target_name';
+        $columns = 'e.*, ' . EdgeEvidencePath::sql() . ' AS relative_path, source.display_name AS source_name, target.display_name AS target_name';
         if ($direction === Direction::Outgoing) {
             $columns .= ', target.kind AS target_kind, target.canonical_name AS target_canonical_name, '
                 . 'target.display_name AS target_display_name, target.confidence AS target_confidence';

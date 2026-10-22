@@ -321,7 +321,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
             array_push($memberIds, ...array_slice($component, 0, 100));
         }
         $edgeRows = $this->rowsByIds(
-            'SELECT e.id, e.kind, e.source_id, e.target_id, e.origin, e.confidence, e.start_line, e.end_line, f.relative_path ' .
+            'SELECT e.id, e.kind, e.source_id, e.target_id, e.origin, e.confidence, e.start_line, e.end_line, ' . EdgeEvidencePath::sql() . ' AS relative_path ' .
             'FROM edges e LEFT JOIN files f ON f.id = e.file_id WHERE e.id IN (%s)',
             $sampledIds,
         );

@@ -211,7 +211,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             $statement = $this->pdo->prepare(
                 'SELECT e.id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, ' .
                 'other.id AS component_id, other.kind AS component_kind, other.canonical_name, other.display_name, ' .
-                'f.relative_path FROM edges e JOIN nodes other ON other.id = ' . $otherColumn . ' ' .
+                EdgeEvidencePath::sql() . ' AS relative_path FROM edges e JOIN nodes other ON other.id = ' . $otherColumn . ' ' .
                 'LEFT JOIN files f ON f.id = e.file_id WHERE e.project_id = ? AND ' . $nodeColumn . ' = ? ' .
                 'AND e.confidence IN (' . $placeholders . ') ORDER BY e.kind, other.canonical_name, e.id LIMIT ?',
             );
@@ -312,11 +312,11 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             . 'AND e.confidence IN (' . $confidencePlaceholders . ')' . ($excludeTests ? ' AND NOT ' . self::IN_TEST_SQL : '');
         $whereParameters = [$projectId, ...$targetIds, ...$edgeKinds, ...$allowedConfidence, ...($excludeTests ? [ReportableComponent::TEST_ROLE] : [])];
         $statement = $this->pdo->prepare(
-            'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, e.target_id, f.relative_path, ' .
+            'SELECT e.id AS edge_id, e.kind, e.confidence, e.origin, e.attributes_json, e.start_line, e.end_line, e.target_id, ' . EdgeEvidencePath::sql() . ' AS relative_path, ' .
             's.id AS source_id, s.kind AS source_kind, s.canonical_name AS source_canonical, s.display_name AS source_display, ' .
             self::IN_TEST_SQL . ' AS in_test ' .
             'FROM edges e JOIN nodes s ON s.id = e.source_id LEFT JOIN files f ON f.id = e.file_id ' .
-            $where . ' ORDER BY f.relative_path, e.start_line, e.id LIMIT ?',
+            $where . ' ORDER BY relative_path, e.start_line, e.id LIMIT ?',
         );
         $statement->execute([ReportableComponent::TEST_ROLE, ...$whereParameters, $limit + 1]);
         $rows = $statement->fetchAll();

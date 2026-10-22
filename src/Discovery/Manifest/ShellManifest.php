@@ -11,16 +11,41 @@ use Knossos\Filesystem\RelativePathRule;
  */
 final class ShellManifest implements ManifestReader
 {
-    /** The entry points a shell script runs. */
+    /** The programs a command runs through before the one it names: `php bin/tool`, `exec bin/serve`. */
+    private const RUNNERS = [
+        'bash', 'sh', 'zsh', 'dash', 'ksh', 'php', 'python', 'python3', 'node', 'ruby', 'perl', 'tsx', 'ts-node',
+        'exec', 'nohup', 'env', 'time', 'command', 'then', 'do', 'else',
+    ];
+
+    /**
+     * The entry points a shell script runs, and every path it launches with
+     * the first line naming it (`launches`), which become its `launches` edges.
+     */
     public function read(string $relative, string $absolute, string $contents): array
     {
+        $entryPoints = [];
+        $launches = [];
+        foreach (self::anchoredLines($contents, $relative) as $number => [$line, $anchors]) {
+            $named = YamlPaths::entryPoints($line, $relative, $anchors);
+            foreach ($named as $path) {
+                $entryPoints[$path] = true;
+            }
+            foreach ([...$named, ...self::commandPaths($line, $relative, $anchors)] as $path) {
+                $launches[$path] ??= $number;
+            }
+        }
+        ksort($launches, SORT_STRING);
+
         return [
-            'entry_points' => self::shellPathEntryPoints($contents, $relative),
+            'entry_points' => array_keys($entryPoints),
+            'launches' => array_map(static fn(string $path, int $line): array => ['path' => $path, 'line' => $line], array_keys($launches), $launches),
         ];
     }
 
     /**
-     * The files a shell script names by path, as a YAML file's are read.
+     * Each line of the script with its comment stripped, by line number, and
+     * the directories the `cd` commands reaching it change into, as a YAML
+     * file's paths are read.
      *
      * `cd server && npx tsx src/scripts/reset.ts` names a path relative to the
      * directory the line changed into, and a `cd` on a line of its own moves
@@ -29,24 +54,68 @@ final class ShellManifest implements ManifestReader
      * `cd` reaches it; a path no file answers to under any of them names
      * nothing.
      *
-     * @return list<string>
+     * @return array<int, array{0: string, 1: list<string>}>
      */
-    private static function shellPathEntryPoints(string $contents, string $configPath): array
+    private static function anchoredLines(string $contents, string $configPath): array
     {
         $directory = ManifestPaths::manifestDirectory($configPath);
-        $paths = [];
+        $lines = [];
         $current = [];
-        foreach (explode("\n", $contents) as $line) {
+        foreach (explode("\n", $contents) as $index => $line) {
             $line = preg_replace('/(?:^|\s)#.*$/', '', $line) ?? $line;
             $inline = self::shellCdTargets($line, $directory);
             $standalone = preg_match('/^\s*cd\s/', $line) === 1 && preg_match('/&&|;|\|/', $line) !== 1;
-            foreach (YamlPaths::entryPoints($line, $configPath, [...$current, ...$inline]) as $path) {
-                $paths[$path] = true;
-            }
+            $lines[$index + 1] = [$line, [...$current, ...$inline]];
             if ($standalone) {
                 $current = $inline;
             } elseif (preg_match('/;;|^\s*(?:(?:esac|fi|done)\b|\})/', $line) === 1) {
                 $current = [];
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The paths one line runs as a command, whatever their extension: the
+     * command word itself when it is a path (`./tools/check`), or the script
+     * an interpreter or `exec` is handed (`php bin/tool`). A word holding a
+     * variable, a glob or a home directory names nothing literal, so it is
+     * left out. Each path is read from the script's own directory, the
+     * project root and every `cd` anchor of the line.
+     *
+     * @param list<string> $anchors
+     * @return list<string>
+     */
+    private static function commandPaths(string $line, string $configPath, array $anchors): array
+    {
+        $paths = [];
+        foreach (preg_split('/&&|\|\||[;|()`]|\$\(/', $line) ?: [] as $command) {
+            $words = preg_split('/\s+/', trim($command), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $word = null;
+            $runner = false;
+            foreach ($words as $candidate) {
+                $candidate = trim($candidate, '\'"');
+                if (in_array($candidate, self::RUNNERS, true)) {
+                    $runner = true;
+                    continue;
+                }
+                // `FOO=1 bin/serve` sets a variable for the command; `python3 -u x.py` passes a flag to the runner.
+                if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*=/', $candidate) === 1 || ($runner && str_starts_with($candidate, '-'))) {
+                    continue;
+                }
+                $word = $candidate;
+                break;
+            }
+            if ($word === null || !str_contains($word, '/') || preg_match('/[$*?~\\\\]/', $word) === 1 || str_starts_with($word, '/')) {
+                continue;
+            }
+            $word = RelativePathRule::withoutDotSlash($word);
+            foreach (array_unique([ManifestPaths::manifestDirectory($configPath), '', ...$anchors]) as $anchor) {
+                $path = ManifestPaths::withinProject(ManifestPaths::joinPath($anchor, $word));
+                if ($path !== null && $path !== '' && !str_starts_with($path, 'node_modules/') && !str_starts_with($path, 'vendor/')) {
+                    $paths[$path] = true;
+                }
             }
         }
 

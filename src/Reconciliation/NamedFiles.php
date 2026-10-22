@@ -9,7 +9,10 @@ use Knossos\Discovery\DiscoveryResult;
 use Knossos\Discovery\FilesystemContentReader;
 use Knossos\Discovery\GitIgnoreRules;
 use Knossos\Discovery\IgnoreMatcher;
+use Knossos\Discovery\Manifest\ShellManifest;
+use Knossos\Discovery\UnitKind;
 use Knossos\Scanner\Protocol\Confidence;
+use Knossos\Scanner\Protocol\EdgeFact;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
@@ -21,7 +24,12 @@ use PDO;
  * The project files no worker scans that something names: a path a process
  * the code starts runs (a `launches` edge), or the component a note is on.
  * Each is a `file` component, so it can be found and annotated and a launch
- * reaches it, though its contents are never read.
+ * reaches it, though its contents are never read by a worker.
+ *
+ * Every shell script discovery found is one too, named or not, and what it
+ * runs by path ({@see ShellManifest}) becomes its own `launches` edges, each
+ * resolved like a worker's launch and dropped when no project file answers.
+ * A file the script launches that no worker scans is then named by it.
  *
  * The scan makes them itself, as one contribution, recomputed every scan: a
  * file that is gone, excluded, or no longer named leaves the graph with it.
@@ -58,14 +66,42 @@ final readonly class NamedFiles
 
             return is_file($path) && !is_link($path) ? (new FilesystemContentReader())->read($path, self::GITIGNORE_MAX_BYTES)->bytes : null;
         });
-        $nodes = [];
-        foreach ($this->namedPaths($projectId, $contributions) as $path) {
-            if (isset($scanned[$path]) || !self::isProjectFile($root, $path) || $matcher->matchesWithAncestors($path)
-                || $gitIgnore->ignoresWithAncestors($path, false)) {
+        $component = static fn(string $path): bool => !isset($scanned[$path]) && self::isProjectFile($root, $path)
+            && !$matcher->matchesWithAncestors($path) && !$gitIgnore->ignoresWithAncestors($path, false);
+        $edges = [];
+        $paths = [];
+        foreach ($discovery->units as $unit) {
+            if ($unit->kind !== UnitKind::Shell->value || !$component($unit->configPath)) {
                 continue;
             }
+            $paths[$unit->configPath] = true;
+            foreach (self::launches($unit->metadata) as [$path, $line]) {
+                // Only a file there is launched: the other readings of the path name nothing.
+                if ($path === $unit->configPath || !self::isProjectFile($root, $path)) {
+                    continue;
+                }
+                $edges[] = new EdgeFact(
+                    'launches',
+                    self::reference($unit->configPath),
+                    'shell' . self::LAUNCHED . $path,
+                    Origin::Derived,
+                    Confidence::Probable,
+                    new Evidence($unit->configPath, $line, $line),
+                    ['speculative' => true],
+                );
+            }
+        }
+        foreach ($this->namedPaths($projectId, [...$contributions, new ScanContribution(self::OWNER, edges: $edges)]) as $path) {
+            if ($component($path)) {
+                $paths[$path] = true;
+            }
+        }
+        ksort($paths, SORT_STRING);
+        $nodes = [];
+        foreach (array_keys($paths) as $path) {
+            $path = (string) $path;
             $nodes[] = new NodeFact(
-                'file:file:' . $path,
+                self::reference($path),
                 'file',
                 $path,
                 basename($path),
@@ -76,7 +112,31 @@ final readonly class NamedFiles
             );
         }
 
-        return new ScanContribution(self::OWNER, $nodes);
+        return new ScanContribution(self::OWNER, $nodes, $edges);
+    }
+
+    /** The reference a file component is declared and edged under. */
+    private static function reference(string $path): string
+    {
+        return 'file:file:' . $path;
+    }
+
+    /**
+     * What a shell unit's metadata says the script launches, as path and line.
+     *
+     * @param array<string, mixed> $metadata
+     * @return list<array{0: string, 1: int}>
+     */
+    private static function launches(array $metadata): array
+    {
+        $launches = [];
+        foreach (is_array($metadata['launches'] ?? null) ? $metadata['launches'] : [] as $launch) {
+            if (is_array($launch) && is_string($launch['path'] ?? null) && is_int($launch['line'] ?? null) && $launch['line'] > 0) {
+                $launches[] = [$launch['path'], $launch['line']];
+            }
+        }
+
+        return $launches;
     }
 
     /**

@@ -356,7 +356,7 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
         // width of a row and is never looked at here.
         $statement = $this->pdo->prepare(
             'SELECT e.id, e.kind, e.source_id, e.target_id, e.confidence, e.origin, e.start_line, e.end_line, ' .
-            'f.relative_path, source.kind AS source_kind, source.canonical_name AS source_name, ' .
+            EdgeEvidencePath::sql() . ' AS relative_path, source.kind AS source_kind, source.canonical_name AS source_name, ' .
             'target.kind AS target_kind, target.canonical_name AS target_name, ' .
             // An npm package the TypeScript worker imports is a `package` node marked external, vendor code all the same.
             "json_extract(target.attributes_json, '$.external') AS target_external FROM edges e " .

@@ -40,7 +40,8 @@ final class EdgeCollapse
     /** Record one resolved occurrence of an edge. */
     public function add(EdgeFact $edge, string $sourceId, string $targetId, string $owner): void
     {
-        if (!isset($this->fileIds[$edge->evidence->relativePath])) {
+        // A file component's edges point back into a file no worker scans, which has no file row.
+        if (!isset($this->fileIds[$edge->evidence->relativePath]) && $owner !== NamedFiles::OWNER) {
             throw new ReconciliationException(sprintf(
                 'Edge evidence file was not discovered: %s',
                 $edge->evidence->relativePath,
@@ -92,7 +93,7 @@ final class EdgeCollapse
             'kind' => $edge->kind,
             'source_id' => $winner['source'],
             'target_id' => $winner['target'],
-            'file_id' => $this->fileIds[$evidence->relativePath],
+            'file_id' => $this->fileIds[$evidence->relativePath] ?? null,
             'start_line' => $evidence->startLine,
             'end_line' => $evidence->endLine,
             'origin' => $edge->origin->value,
