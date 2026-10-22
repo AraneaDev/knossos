@@ -2,7 +2,7 @@
 
 Knossos reads a Laravel project's routes, events, jobs, container bindings,
 policies and observers from the source, without booting the application. It aims
-at the static idioms of Laravel 10, 11 and 12.
+at the static idioms of Laravel 10, 11, 12 and 13.
 
 A project counts as Laravel when any `composer.json` in the scan requires
 `laravel/framework`, or when you list `laravel` under `frameworks` in your
@@ -32,6 +32,100 @@ The same directory rule gives migrations, seeders and factories roles of their
 own, and marks the methods Laravel calls on a job, listener, middleware, command
 or policy (`handle`, `failed`, the Gate abilities and so on) as
 `laravel.entry_method`, since nothing in your code calls them by name.
+
+## Laravel 13 conventions
+
+Laravel calls some methods by name, so nothing in your code references them and
+a plain reference graph would call them dead. Knossos marks these as
+`laravel.entry_method`, with the reason in the classification attributes:
+
+- **Observers.** A class under `Observers/`, or any class a model registers with
+  `Model::observe()` or `#[ObservedBy]`, gets `laravel.observer`. Its event
+  methods (`retrieved`, `creating`, `created`, `updating`, `updated`, `saving`,
+  `saved`, `deleting`, `deleted`, `trashed`, `forceDeleting`, `forceDeleted`,
+  `restoring`, `restored`, `replicating`) are entry methods. Other methods of the
+  observer stay reportable.
+- **Accessors and mutators.** A method returning `Illuminate\Database\Eloquent\Casts\Attribute`
+  (`protected function excerpt(): Attribute`), and the legacy `get<Name>Attribute`
+  and `set<Name>Attribute` pair on a model. The legacy names are recognised only
+  on a class whose inheritance, through any number of project base classes,
+  reaches `Model`, the auth `User`, `Pivot` or `MorphPivot`. The same name on
+  another class is still reported.
+- **Scopes.** A method marked `#[Scope]`, next to the `scopeX` naming that
+  already worked.
+
+## Livewire
+
+A project counts as using Livewire when any `composer.json` in the scan requires
+`livewire/livewire`, or when you list `livewire` under `frameworks`. Without
+that, no Livewire fact or role is produced, even if the project has an
+`app/Livewire` directory.
+
+### What is recognised
+
+- **Components.** A class whose inheritance, through project base classes and
+  traits, ends at `Livewire\Component` gets `livewire.component`. That covers
+  class-based components, abstract bases, and the anonymous classes of
+  single-file components (`⚡name.blade.php`) and multi-file components
+  (`⚡name/name.php` beside `name.blade.php`).
+- **Routes.** `Route::livewire('/uri', Component::class)` is a route node like
+  `Route::get`, with `GET|HEAD`, and a `routes_to` edge to the class. A component
+  name such as `pages::post.create` stays the route's action label.
+- **Hooks.** `mount`, `boot`, `booted`, `hydrate`, `dehydrate`, `updating`,
+  `updated`, `rendering`, `rendered`, `render`, `exception`, `placeholder`,
+  `rules`, `messages` and `validationAttributes`, the property hooks
+  (`updatedTitle`), and the trait hooks (`mountHasSorting` in a used trait
+  `HasSorting`). They get `livewire.entry_method` with reason `hook`.
+- **Attributes.** A method with `#[On]`, `#[Computed]` or `#[Js]` is an entry
+  method with reason `attribute`.
+- **Blade actions and expressions.** In a component's view, `wire:click`,
+  `wire:submit` and the other `wire:` directives that call a method (not
+  `wire:model`, `wire:key`, `wire:loading` and the like), `$wire.method()` calls
+  and `{{ $this->name }}` expressions mark the method as an entry method with
+  reason `view_action` or `view_expression`, plus the view and line. Modifiers
+  and arguments are fine, so `wire:click.prevent="save({{ $post->id }})"` names
+  `save`. Livewire magics such as `$refresh`, `$set`, `$toggle` and `$dispatch`
+  name nothing. A directive inside a Blade comment, an `@verbatim` block or an
+  escaped `@{{ }}` is ignored. A directive on a component tag
+  (`<x-button wire:click="notify">`) counts as well.
+- **Includes.** `@include` chains are followed, cycles included, so a method
+  used in a partial reaches every component whose view includes it.
+- **Configuration.** `config/livewire.php` is read for `class_namespace`,
+  `view_path`, `component_locations` and `component_namespaces`; a
+  `resource_path()` value becomes a project-relative path.
+
+A component's view is the literal view of its `render()` method when every
+`return` names the same one, and otherwise the file its class name implies
+(`App\Livewire\Admin\UserTable` is `admin/user-table.blade.php` under the
+configured `view_path`, `resources/views/livewire` by default).
+
+A name used in a view reaches only the components whose view graph holds that
+view. Two components that both have `save` do not share it: the one whose view
+never calls it stays reportable, which is how an unused action shows up.
+
+### The warning
+
+When a class-based component renders a view that is not among the scanned
+files, the scan result carries
+
+```text
+LIVEWIRE_VIEW_UNRESOLVED: App\Livewire\X renders livewire.x, expected at resources/views/livewire/x.blade.php, which is not in the scan; its view actions are not counted.
+```
+
+The component and its hooks are still classified, but a method only its view
+calls will read as unused until the view is found. Abstract components are
+skipped, since they render nothing.
+
+### Not covered
+
+- **Volt** class and functional components written in the older
+  `Livewire\Volt` style are not read.
+- **`Livewire::addNamespace()` and `Livewire::addLocation()`** called from code
+  are not evaluated. Only `config/livewire.php` is read, so a view in a
+  directory registered at run time is not joined to its component.
+- **Views that are not literals.** `view($name)`, or a `render()` that returns
+  different views from different branches, gives no view join and no warning.
+  The component, its hooks and its attributed methods are still classified.
 
 ## Route names
 
