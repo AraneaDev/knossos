@@ -36,6 +36,8 @@ final class FrameworkHookMethods
         'Illuminate\\Console\\Command' => ['handle', '__invoke'],
         'PHPOpenSourceSaver\\JWTAuth\\Contracts\\JWTSubject' => ['getJWTIdentifier', 'getJWTCustomClaims'],
         'Tymon\\JWTAuth\\Contracts\\JWTSubject' => ['getJWTIdentifier', 'getJWTCustomClaims'],
+        'PhpParser\\NodeVisitorAbstract' => ['beforeTraverse', 'enterNode', 'leaveNode', 'afterTraverse'],
+        'PhpParser\\NodeVisitor' => ['beforeTraverse', 'enterNode', 'leaveNode', 'afterTraverse'],
         // Model traits: what each calls on the model that uses it.
         'Illuminate\\Database\\Eloquent\\Factories\\HasFactory' => ['newFactory'],
         'Illuminate\\Database\\Eloquent\\Concerns\\HasUuids' => ['newUniqueId', 'uniqueIds'],

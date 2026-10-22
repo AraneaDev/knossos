@@ -251,6 +251,7 @@ php	src/Query/Drift/RecordedWorkerInputs.php
 php	src/Query/Drift/ScannedPaths.php
 php	src/Query/Drift/TrackedPathPredicate.php
 php	src/Query/Drift/WalkDriftOracle.php
+php	src/Query/EdgeEvidencePath.php
 php	src/Query/EdgePage.php
 php	src/Query/EdgeWalk.php
 php	src/Query/EntryPointCriteria.php
@@ -570,6 +571,7 @@ php	tests/phpunit/Discovery/Manifest/ManifestPathsTest.php
 php	tests/phpunit/Discovery/Manifest/ManifestReadersTest.php
 php	tests/phpunit/Discovery/Manifest/MarkdownManifestTest.php
 php	tests/phpunit/Discovery/Manifest/NodeManifestTest.php
+php	tests/phpunit/Discovery/Manifest/ShellManifestTest.php
 php	tests/phpunit/Discovery/Manifest/TomlTest.php
 php	tests/phpunit/Discovery/ManifestRootDocumentationTest.php
 php	tests/phpunit/Discovery/ProjectDiscovererTest.php
@@ -687,6 +689,7 @@ php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CyclesTest.php
 php	tests/phpunit/Query/DashboardServiceTest.php
+php	tests/phpunit/Query/DeadCodeVisitorHooksTest.php
 php	tests/phpunit/Query/DeadlineBoundaryTest.php
 php	tests/phpunit/Query/DeclaredPolicyCheckTest.php
 php	tests/phpunit/Query/DiagnosticSourceTest.php
@@ -756,6 +759,7 @@ php	tests/phpunit/Query/PolicyValidationBoundsTest.php
 php	tests/phpunit/Query/ProjectFileTest.php
 php	tests/phpunit/Query/ProjectRelativePathTest.php
 php	tests/phpunit/Query/PropertyReachTest.php
+php	tests/phpunit/Query/PropertyUsagesTest.php
 php	tests/phpunit/Query/QualityGateBoundaryScanTest.php
 php	tests/phpunit/Query/QualityGateCyclesTest.php
 php	tests/phpunit/Query/QualityGateMemoryTest.php
@@ -903,6 +907,7 @@ php	tests/phpunit/Scan/ScanRequestSchemaTest.php
 php	tests/phpunit/Scan/ScanResultFactoryTest.php
 php	tests/phpunit/Scan/ScanSnapshotValidationTest.php
 php	tests/phpunit/Scan/ShebangScanTest.php
+php	tests/phpunit/Scan/ShellScriptNodesTest.php
 php	tests/phpunit/Scan/TreeFingerprintTest.php
 php	tests/phpunit/Scan/TypescriptInputHashesPartsCoverageTest.php
 php	tests/phpunit/Scan/TypescriptNodeModulesVerificationTest.php

@@ -219,6 +219,28 @@ final class TestImpactTest extends KnossosTestCase
         self::assertSame('2 test files statically exercise the change. The list was truncated to the first 2 of 3 test files.', $result->summary);
     }
 
+    #[Group('query')]
+    public function testTestImpactAcceptsDepthTwelveAndNamesTheHorizon(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->hubWithATestBehindIt($repository, $ids);
+        $queries = ArchitectureQueryService::forDatabase($pdo)->services()->changeQueries;
+
+        $deep = $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 12);
+        $cut = $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 1);
+        // At depth 2 the last level is the test alone, which nothing depends on.
+        $leaf = $queries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 2);
+
+        self::assertSame([], $deep->data['bounds']['truncation_reasons']);
+        self::assertSame(12, $deep->data['bounds']['max_depth']);
+        self::assertSame(['depth_horizon'], $cut->data['bounds']['truncation_reasons']);
+        self::assertTrue($cut->truncated);
+        self::assertStringContainsString('max_depth', $cut->summary);
+        self::assertSame([], $leaf->data['bounds']['truncation_reasons']);
+        self::assertFalse($leaf->truncated);
+        self::assertStringNotContainsString('max_depth', $leaf->summary);
+    }
+
     /**
      * Arguments are validated by test_impact itself now that it no longer
      * hands them to impact analysis.
@@ -230,7 +252,7 @@ final class TestImpactTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $queries = ArchitectureQueryService::forDatabase($pdo);
         $cases = [
-            'max_depth must be between 1 and 8.' => static fn() => $queries->services()->changeQueries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 9),
+            'max_depth must be between 1 and 12.' => static fn() => $queries->services()->changeQueries->testImpact($ids['project'], files: ['src/Checkout.php'], maxDepth: 13),
             'Limit must be between 1 and 100.' => static fn() => $queries->services()->changeQueries->testImpact($ids['project'], files: ['src/Checkout.php'], limit: 0),
             'timeout_ms must be between 1 and 5000.' => static fn() => $queries->services()->changeQueries->testImpact($ids['project'], files: ['src/Checkout.php'], timeoutMs: 0),
             'min_confidence must be possible, probable, or certain.' => static fn() => $queries->services()->changeQueries->testImpact($ids['project'], files: ['src/Checkout.php'], minConfidence: 'sure'),

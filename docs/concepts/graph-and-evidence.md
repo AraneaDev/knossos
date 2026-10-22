@@ -23,7 +23,12 @@ your project. You get these kinds of fact:
 | Diagnostic | A warning or error about the scan itself: a file too large, a symlink skipped, a syntax error.                                                  |
 | Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](../guides/history.md).                               |
 
-A project file no worker reads, such as a shell script or a CI tool, is a
+A shell script (`.sh` or `.bash`) is a `file` component as soon as the scan
+finds it, and the literal paths it runs, such as `./tools/check` or
+`php bin/tool "$@"`, become `launches` edges from the script. A path with a
+variable, a glob or `~` in it names nothing.
+
+A project file no worker reads, such as a CI tool, is a
 component of kind `file` once something names it: a `launches` edge from code
 that starts it, or a note on its path. Its name is the path from the project
 root, and it carries no file row because its contents are never read. A path

@@ -20,11 +20,11 @@ use function PHPUnit\Framework\assertSame;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * A property is read by its class's methods (`$this->helper->shine()`), but
- * the graph records the call into what the property holds, never a read of
- * the property: nothing points at it. A walk over dependants that met a
- * property stopped there, so a property typed with a much-used class read
- * as untested however much its class is tested.
+ * A property read or write on a receiver the scan can type is an edge to the
+ * property. An untyped receiver, a chained fetch and the other languages
+ * record no edge: the class's methods may read the property, and a walk over
+ * dependants that met the property stopped there, so a property typed with a
+ * much-used class read as untested however much its class is tested.
  *
  * Here `Holder::$helper` holds a `Helper`; `HolderTest` constructs a
  * `Holder` and runs it.
@@ -37,8 +37,8 @@ final class PropertyReachTest extends KnossosTestCase
         [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
         $php = static fn(string $body): string => "<?php\n\ndeclare(strict_types=1);\n\nnamespace App;\n\n{$body}\n";
         file_put_contents($root . '/src/Core/Helper.php', $php("final class Helper\n{\n    public function shine(string \$text): string\n    {\n        return '*' . \$text . '*';\n    }\n}"));
-        file_put_contents($root . '/src/Core/Holder.php', $php("final class Holder\n{\n    private Helper \$helper;\n\n    public function __construct()\n    {\n        \$this->helper = new Helper();\n    }\n\n    public function run(): string\n    {\n        return \$this->helper->shine('held');\n    }\n}"));
-        file_put_contents($root . '/tests/HolderTest.php', "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nuse App\\Holder;\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class HolderTest extends TestCase\n{\n    public function testRuns(): void\n    {\n        self::assertSame('*held*', (new Holder())->run());\n    }\n}\n");
+        file_put_contents($root . '/src/Core/Holder.php', $php("final class Holder\n{\n    private Helper \$helper;\n\n    public function run(\$holder): string\n    {\n        return \$holder->helper->shine('held');\n    }\n\n    public function typed(): string\n    {\n        return \$this->helper->shine('typed');\n    }\n}"));
+        file_put_contents($root . '/tests/HolderTest.php', "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nuse App\\Holder;\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class HolderTest extends TestCase\n{\n    public function testRuns(): void\n    {\n        \$holder = new Holder();\n        self::assertSame('*held*', \$holder->run(\$holder));\n    }\n}\n");
         (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
 
         return [$pdo, $projectId, $root];
@@ -75,6 +75,28 @@ final class PropertyReachTest extends KnossosTestCase
             assertSame('probable', $byName['App\\Tests\\HolderTest::testRuns']['path_confidence'] ?? null);
             // The class is passed through, never listed for its own property.
             assertNotContains('App\\Holder', array_keys($byName));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testATypedReadOfAPropertyIsADirectDependantAndAChainedOneIsNot(): void
+    {
+        [$pdo, $projectId, $root] = $this->holding();
+        try {
+            $property = self::id($pdo, $projectId, 'App\\Holder::$helper');
+            $dependants = ArchitectureQueryService::forDatabase($pdo)->impactAnalysis($projectId, 'App\\Holder::$helper')->data['dependants'];
+            $byName = [];
+            foreach ($dependants as $d) {
+                $byName[$d['node']['canonical_name']] = $d;
+            }
+            // The typed read is its own references edge to the property, not a stand-in hop through the class.
+            assertSame('references', $byName['App\\Holder::typed']['via']['kind'] ?? null);
+            assertSame($property, $byName['App\\Holder::typed']['via']['target_id'] ?? null);
+            assertSame('read', $byName['App\\Holder::typed']['via']['attributes']['access'] ?? null);
+            // The chained read records no edge, so the owner fallback is the only route to the class's users.
+            assertNotContains('App\\Holder::run', array_keys($byName));
         } finally {
             $this->removeTempTree($root);
         }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\FrameworkHookMethods;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -189,6 +190,14 @@ final class FrameworkHookMethodsTest extends KnossosTestCase
         self::assertSame('possible', $confidence['owner'] ?? null, 'owner, read on an untyped receiver');
         self::assertSame('possible', $confidence['keeper'] ?? null, 'keeper, read at the end of an untyped chain');
         self::assertSame('possible', $confidence['helper'] ?? null, 'helper, under an unknown vendor base');
+    }
+
+    public function testPhpParserVisitorHooksAreHooks(): void
+    {
+        self::assertTrue(FrameworkHookMethods::isHook(['PhpParser\\NodeVisitorAbstract'], 'enterNode'));
+        self::assertTrue(FrameworkHookMethods::isHook(['PhpParser\\NodeVisitor'], 'afterTraverse'));
+        self::assertFalse(FrameworkHookMethods::isHook(['PhpParser\\NodeVisitorAbstract'], 'helper'));
+        self::assertTrue(FrameworkHookMethods::isHookName('afterTraverse'));
     }
 
     /**

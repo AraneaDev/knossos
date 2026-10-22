@@ -24,9 +24,13 @@ use PDOStatement;
  * The search is level-synchronous: each level's frontier is sorted by id and
  * read in chunks with one ordered query per chunk, so a node's distance is its
  * shortest hop count, and which nodes a bound cuts is the same on every run.
+ * A `launches` hop costs no depth: a test that drives a script through another
+ * process is as near the change as the script's own code, so the launching side
+ * is read on the level of the script it launches.
  * Its bounds are its own: visited nodes, edge rows examined and one deadline,
- * each named in `truncation_reasons` when it cut the walk. The depth horizon is
- * the caller's question, not a cut, so reaching it is not a truncation.
+ * each named in `truncation_reasons` when it cut the walk. Stopping at the
+ * depth horizon with dependants still unread is reported apart, as
+ * `depth_horizon`, so a caller can say that tests further out were not looked for.
  *
  * A component reached only through a {@see CompositionRoots composition root}
  * is marked as reached through wiring, and so is everything reached only from
@@ -46,6 +50,12 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
     /** Frontier ids per query, well under SQLite's 999-variable floor with the edge kinds added. */
     private const CHUNK = 500;
 
+    /** The edge kind whose source is read on the level of its target. */
+    private const LAUNCH = 'launches';
+
+    /** Most dependant rows the depth-horizon check reads before taking the horizon as reached. */
+    private const HORIZON_ROWS = 10_000;
+
     /** Rows read between two clock reads, after the first row of every chunk. */
     private const CLOCK_EVERY = 64;
 
@@ -60,8 +70,9 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      * @param list<string> $startIds direct components, distance 0
      * @param list<string> $edgeKinds validated impact edge kinds
      * @param bool $first stop after the level the first test is met at: enough to say whether any test reaches
-     * @return array{tests: array<string, int>, wired: array<string, true>, visited: int, edges_examined: int, truncation_reasons: list<string>}
-     *         tests: test-role node id => shortest distance; wired: the tests among them reached only through wiring
+     * @return array{tests: array<string, int>, wired: array<string, true>, visited: int, edges_examined: int, truncation_reasons: list<string>, depth_horizon: bool}
+     *         tests: test-role node id => shortest distance; wired: the tests among them reached only through wiring;
+     *         depth_horizon: the walk stopped at max_depth with a dependant of its last level still unread
      */
     public function search(string $projectId, array $startIds, int $maxDepth, array $edgeKinds, int $minimumRank, int $deadline, bool $first = false): array
     {
@@ -85,57 +96,109 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
         }
         $starts = array_fill_keys($frontier, true);
         $this->markTests($projectId, $frontier, 0, $tests);
-        $examined = 0;
-        // Supertype methods and constructed classes already read through: apart from $seen, so one found later as a dependant in its own right still counts.
-        $passed = [];
-        for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $tests !== []); ++$level) {
-            // A call through an interface or a parent goes to the supertype's method, and nothing points at a
-            // property: what calls the supertype method or uses the property's class may reach the frontier's own,
+        // `passed`: supertype methods and constructed classes already read through, apart from `seen`,
+        // so one found later as a dependant in its own right still counts.
+        $walk = ['seen' => $seen, 'passed' => [], 'wired' => $wired, 'tests' => $tests, 'examined' => 0];
+        for ($level = 0; $reason === null && $level < $maxDepth && $frontier !== [] && !($first && $walk['tests'] !== []); ++$level) {
+            [$frontier, $reason] = $this->readLevel($projectId, $frontier, $level, $starts, $edgeKinds, $minimumRank, $deadline, $walk);
+        }
+        // The last level's launches spend no depth either: what launches one of its nodes is at the same distance.
+        if ($reason === null && $frontier !== [] && $level >= $maxDepth && in_array(self::LAUNCH, $edgeKinds, true)) {
+            $before = $walk['seen'];
+            [, $reason] = $this->readLevel($projectId, $frontier, $maxDepth, $starts, [self::LAUNCH], $minimumRank, $deadline, $walk, launchesOnly: true);
+            $frontier = [...$frontier, ...array_map('strval', array_keys(array_diff_key($walk['seen'], $before)))];
+        }
+        // The walk stopped at max_depth with dependants of its last level still unread: tests may lie beyond it.
+        $horizon = $reason === null && $frontier !== [] && $level >= $maxDepth
+            && $this->hasUnreadDependant($projectId, $frontier, $edgeKinds, $minimumRank, $walk['seen'], $deadline);
+
+        $wiredTests = [];
+        foreach (array_keys($walk['tests']) as $id) {
+            if ($walk['wired'][(string) $id] ?? false) {
+                $wiredTests[(string) $id] = true;
+            }
+        }
+
+        return ['tests' => $walk['tests'], 'wired' => $wiredTests, 'visited' => count($walk['seen']), 'edges_examined' => $walk['examined'], 'truncation_reasons' => $reason === null ? [] : [$reason], 'depth_horizon' => $horizon];
+    }
+
+    /**
+     * Read the dependants of one level's frontier, and the next level it makes, with the bound that cut it if one did.
+     *
+     * A process launch hands the work to what it launches: the launching side is as far from the
+     * change as the launched one, so it is read on this level, as often as launches lead on.
+     *
+     * @param list<string> $frontier the nodes at distance `$level`
+     * @param array<string, true> $starts
+     * @param list<string> $edgeKinds
+     * @param array{seen: array<string, true>, passed: array<string, true>, wired: array<string, bool>, tests: array<string, int>, examined: int} $walk
+     * @param bool $launchesOnly read only the launches into the frontier, no stand-ins: the last level's launch hop
+     * @return array{0: list<string>, 1: ?string} the next level's frontier, and the bound that stopped the walk
+     */
+    private function readLevel(string $projectId, array $frontier, int $level, array $starts, array $edgeKinds, int $minimumRank, int $deadline, array &$walk, bool $launchesOnly = false): array
+    {
+        $reason = null;
+        // Next level's node id => true, so a launch met later on this level can take it back.
+        $next = [];
+        $found = [];
+        for ($reading = $frontier; $reading !== [] && $reason === null;) {
+            $launched = [];
+            // A call through an interface or a parent goes to the supertype's method, and a property use the scan
+            // could not attribute to the property is recorded against its class: what calls the supertype method
+            // or uses the property's class may reach the frontier's own,
             // so their dependants are read too, the stand-in passed through ({@see StandInExpansion}).
             // A node read through stands in for the frontier node it was read for, wired as that one is.
-            $standIns = StandInExpansion::of($this->pdo, $projectId, $frontier, $edgeKinds);
-            $through = self::passThrough($standIns['through'], $seen, $passed, $wired);
-            $targets = [...$frontier, ...$through];
+            $standIns = $launchesOnly ? ['through' => [], 'constructed' => []] : StandInExpansion::of($this->pdo, $projectId, $reading, $edgeKinds);
+            $through = self::passThrough($standIns['through'], $walk['seen'], $walk['passed'], $walk['wired']);
+            $targets = [...$reading, ...$through];
             sort($targets, SORT_STRING);
             // A constructor runs whenever its class is constructed, which the graph records against the class:
             // what constructs the class reaches the constructor, and nothing else that names the class does.
-            $constructed = self::passThrough($standIns['constructed'], $seen, $passed, $wired);
+            $constructed = self::passThrough($standIns['constructed'], $walk['seen'], $walk['passed'], $walk['wired']);
             sort($constructed, SORT_STRING);
             $roots = array_diff_key(CompositionRoots::of($this->pdo, $projectId, [...$targets, ...$constructed]), $starts);
-            $next = [];
-            $found = [];
             $reads = [...array_map(static fn(array $chunk): array => [$chunk, $edgeKinds], array_chunk($targets, self::CHUNK)), ...array_map(static fn(array $chunk): array => [$chunk, [ConstructedClasses::EDGE_KIND]], array_chunk($constructed, self::CHUNK))];
             foreach ($reads as [$chunk, $kinds]) {
                 $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
                 $row = 0;
                 while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
-                    [$targetId, $sourceId] = $edge;
+                    [$targetId, $sourceId, $kind] = $edge;
                     if ($row++ % self::CLOCK_EVERY === 0 && $this->now() > $deadline) {
                         $reason = 'time_limit';
                         break;
                     }
-                    if ($examined >= $this->maxEdges) {
+                    if ($walk['examined'] >= $this->maxEdges) {
                         $reason = 'edge_limit';
                         break;
                     }
-                    ++$examined;
+                    ++$walk['examined'];
                     $sourceId = (string) $sourceId;
-                    $viaWiring = isset($roots[(string) $targetId]) || ($wired[(string) $targetId] ?? false);
-                    if (isset($seen[$sourceId])) {
+                    $launch = $kind === self::LAUNCH;
+                    $viaWiring = isset($roots[(string) $targetId]) || ($walk['wired'][(string) $targetId] ?? false);
+                    if (isset($walk['seen'][$sourceId])) {
                         // Met again on the level it was found at: any edge that is not wiring makes it direct.
                         if (isset($found[$sourceId]) && !$viaWiring) {
-                            $wired[$sourceId] = false;
+                            $walk['wired'][$sourceId] = false;
+                        }
+                        // Found for the next level, then met over a launch: it belongs to this one.
+                        if ($launch && isset($next[$sourceId])) {
+                            unset($next[$sourceId]);
+                            $launched[] = $sourceId;
                         }
                         continue;
                     }
-                    if (count($seen) >= $this->maxVisited) {
+                    if (count($walk['seen']) >= $this->maxVisited) {
                         $reason = 'visit_limit';
                         break;
                     }
-                    $seen[$sourceId] = true;
+                    $walk['seen'][$sourceId] = true;
                     $found[$sourceId] = true;
-                    $wired[$sourceId] = $viaWiring;
-                    $next[] = $sourceId;
+                    $walk['wired'][$sourceId] = $viaWiring;
+                    if ($launch) {
+                        $launched[] = $sourceId;
+                    } else {
+                        $next[$sourceId] = true;
+                    }
                 }
                 // Abandoned mid-result when a bound stops the walk; SQLite holds
                 // its read lock until the cursor is closed.
@@ -144,19 +207,53 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
                     break;
                 }
             }
-            // Also when a bound cut the level: what it did visit is reported.
-            $this->markTests($projectId, $next, $level + 1, $tests);
-            $frontier = $next;
+            $this->markTests($projectId, $launched, $level, $walk['tests']);
+            $reading = $launched;
         }
+        // Also when a bound cut the level: what it did visit is reported.
+        $next = array_map('strval', array_keys($next));
+        $this->markTests($projectId, $next, $level + 1, $walk['tests']);
 
-        $wiredTests = [];
-        foreach (array_keys($tests) as $id) {
-            if ($wired[(string) $id] ?? false) {
-                $wiredTests[(string) $id] = true;
+        return [$next, $reason];
+    }
+
+    /**
+     * Whether a node of the last level read, or a stand-in for one, has a dependant the walk has not visited.
+     *
+     * A level of leaves ends the walk as surely as an empty one, so reaching max_depth on it cuts
+     * nothing. Reads at most {@see self::HORIZON_ROWS} rows, and none once the deadline has passed; past
+     * either it answers yes, the side that only costs a deeper search.
+     *
+     * @param list<string> $frontier @param list<string> $edgeKinds @param array<string, true> $seen
+     */
+    private function hasUnreadDependant(string $projectId, array $frontier, array $edgeKinds, int $minimumRank, array $seen, int $deadline): bool
+    {
+        if ($this->now() > $deadline) {
+            return true;
+        }
+        $standIns = StandInExpansion::of($this->pdo, $projectId, $frontier, $edgeKinds);
+        $budget = self::HORIZON_ROWS;
+        $reads = [
+            [[...$frontier, ...array_column($standIns['through'], 0)], $edgeKinds],
+            [array_column($standIns['constructed'], 0), [ConstructedClasses::EDGE_KIND]],
+        ];
+        foreach ($reads as [$ids, $kinds]) {
+            $ids = array_values(array_unique(array_map('strval', $ids)));
+            sort($ids, SORT_STRING);
+            foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+                $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
+                while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
+                    if (!isset($seen[(string) $edge[1]]) || --$budget <= 0) {
+                        $rows->closeCursor();
+
+                        return true;
+                    }
+                }
+                $rows->closeCursor();
             }
         }
 
-        return ['tests' => $tests, 'wired' => $wiredTests, 'visited' => count($seen), 'edges_examined' => $examined, 'truncation_reasons' => $reason === null ? [] : [$reason]];
+        return false;
     }
 
     /**
@@ -214,15 +311,15 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
     /**
      * The dependants of one chunk of the frontier, streamed in target, source and edge order.
      *
-     * Only the target and source ids are selected: the walk needs nothing
-     * else, and the order alone fixes which nodes a bound cuts.
+     * Only the target and source ids and the edge kind are selected: the walk
+     * needs nothing else, and the order alone fixes which nodes a bound cuts.
      *
      * @param list<string> $targetIds @param list<string> $edgeKinds
      */
     private function dependantRows(string $projectId, array $targetIds, array $edgeKinds, int $minimumRank): PDOStatement
     {
         $statement = $this->pdo->prepare(sprintf(
-            'SELECT e.target_id, e.source_id FROM edges e WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
+            'SELECT e.target_id, e.source_id, e.kind FROM edges e WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
             'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.target_id, e.source_id, e.id',
             implode(',', array_fill(0, count($targetIds), '?')),

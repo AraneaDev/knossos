@@ -159,6 +159,10 @@ edit-test loop; it is a lower bound, so keep running the full suite:
 data-driven tests, fixtures, and glob-only discovery are invisible to the
 graph.
 
+The walk follows a `launches` edge, so a test that starts a script or a worker
+process is found through the code that names it. A launch hop does not count
+toward `max_depth`, which goes up to 12.
+
 ```sh
 knossos test-impact project_... src/Checkout.php --json
 knossos test-impact project_... --working-tree --base-ref=main --json
@@ -199,12 +203,14 @@ fields. `bounds` reports the limits and what the search did:
   covers both, the direct files first.
 - `truncation_reasons`: every bound that cut the answer, in the order met:
   `changed_file_limit`, `direct_component_limit`, `visit_limit`,
-  `edge_limit`, `time_limit` or `result_limit`.
+  `edge_limit`, `time_limit`, `result_limit` or `depth_horizon`.
 
 When the search was cut, the summary says so and names the reasons, because
 test files beyond that bound are not listed. When only `limit` cut the list,
 the summary says how many of how many test files you are seeing. Reaching
-`max_depth` is the horizon you asked for, not a cut. A warning is always
+`max_depth` is the horizon you asked for, not a cut, but when the walk stops
+there with dependants still unread, `depth_horizon` joins `truncation_reasons`
+and the summary suggests a larger `max_depth`. A warning is always
 attached reminding you this is a lower bound.
 
 ## Git change signals and time-aware impact

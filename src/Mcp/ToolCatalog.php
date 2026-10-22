@@ -590,7 +590,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'test_impact',
                 'title' => 'Test impact',
-                'description' => 'Map a change set to the test files that statically exercise it, ranked by distance. Use to run the relevant tests first in an edit-test loop; the list is a lower bound, so the full suite still has to run.',
+                'description' => 'Map a change set to the test files that statically exercise it, ranked by distance. Use to run the relevant tests first in an edit-test loop; the list is a lower bound, so the full suite still has to run. A `launches` hop (a test driving a script in another process) costs no depth; when the search stops at max_depth with dependants unread, bounds.truncation_reasons names depth_horizon.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -599,7 +599,7 @@ final readonly class ToolCatalog
                         'files' => ['type' => 'array', 'maxItems' => 50, 'items' => ['type' => 'string', 'minLength' => 1]],
                         'working_tree' => ['type' => 'boolean', 'default' => false],
                         'base_ref' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
-                        'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 4],
+                        'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 12, 'default' => 4],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
                         'edge_kinds' => self::edgeKindsSchema(),
                         'min_confidence' => ['type' => 'string', 'enum' => ConfidenceRank::enum(), 'default' => 'possible'],

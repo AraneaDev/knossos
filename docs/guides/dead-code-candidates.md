@@ -182,7 +182,10 @@ a Rust `impl Trait for T`; a PHP `#[\Override]` method, or a member of a PHP
 built-in class or interface the type extends or implements (`jsonSerialize`,
 `count`); a Python `@override` method (from `typing` or `typing_extensions`),
 or an `ast.NodeVisitor`/`NodeTransformer` subclass's `visit`, `generic_visit`
-and `visit_<Node>` hooks, which the visitor dispatches to by name; a TypeScript
+and `visit_<Node>` hooks, which the visitor dispatches to by name; a PHP
+class extending `PhpParser\NodeVisitorAbstract` or implementing
+`PhpParser\NodeVisitor`, whose `beforeTraverse`, `enterNode`, `leaveNode` and
+`afterTraverse` hooks the traverser calls, with or without `#[\Override]`; a TypeScript
 `override` method, an instance method the checker finds on a heritage type,
 and an object literal's method the type it is handed to declares. A marked
 method counts under `excluded_inherited_methods`. A dependency's PHP base class

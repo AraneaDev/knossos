@@ -27,6 +27,12 @@ final class FactCollector extends NodeVisitorAbstract
     /** Programs that run the script named after them, by basename: an argv starting with one launches that script. */
     private const INTERPRETERS = ['php', 'node', 'nodejs', 'bun', 'deno', 'python', 'python3', 'ruby', 'perl', 'bash', 'sh', 'zsh'];
 
+    /** The PhpParser traversers that call a visitor's hooks. */
+    private const TRAVERSERS = ['PhpParser\\NodeTraverser', 'PhpParser\\NodeTraverserInterface'];
+
+    /** What a traverser calls on every visitor it is given. */
+    private const VISITOR_HOOKS = ['beforeTraverse', 'enterNode', 'leaveNode', 'afterTraverse'];
+
     /** @var list<array<string, mixed>> */
     private array $nodes = [];
 
@@ -48,6 +54,16 @@ final class FactCollector extends NodeVisitorAbstract
      * @var array<string, array<string, true>>
      */
     private array $untypedCalls = [];
+
+    /**
+     * How the code accesses the property fetches it assigns to, keyed by node id: `write` for a
+     * plain or destructuring assignment or an `unset`, `read_write` for a compound assignment,
+     * `++` or `--`, or any write to an element of the array the property holds.
+     * A fetch not listed is a read.
+     *
+     * @var array<int, 'write'|'read_write'>
+     */
+    private array $propertyWrites = [];
 
     /** The namespace block the traversal is in: its node id, 0 for a file without one. */
     private int $namespaceScope = 0;
@@ -123,6 +139,17 @@ final class FactCollector extends NodeVisitorAbstract
             $this->namespaceScope = spl_object_id($node);
             $this->namespaceName = $node->name?->toString() ?? '';
         }
+        if ($node instanceof Expr\Assign || $node instanceof Expr\AssignRef) {
+            $this->markPropertyWrite($node->var, 'write');
+        } elseif ($node instanceof Expr\AssignOp
+            || $node instanceof Expr\PreInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
+            $this->markPropertyWrite($node->var, 'read_write');
+        }
+        if ($node instanceof Stmt\Unset_) {
+            foreach ($node->vars as $var) {
+                $this->markPropertyWrite($var, 'write');
+            }
+        }
         if ($node instanceof Stmt\ClassLike) {
             $this->enterClassLike($node);
         } elseif ($node instanceof Stmt\ClassMethod) {
@@ -150,6 +177,7 @@ final class FactCollector extends NodeVisitorAbstract
             $this->classReference($node->class, $node);
         } elseif ($node instanceof Expr\StaticPropertyFetch) {
             $this->classReference($node->class, $node);
+            $this->staticPropertyReference($node);
         } elseif ($node instanceof Expr\Instanceof_) {
             $this->classReference($node->class, $node);
         } elseif ($node instanceof Expr\MethodCall || $node instanceof Expr\NullsafeMethodCall) {
@@ -218,10 +246,20 @@ final class FactCollector extends NodeVisitorAbstract
     private function launchedFile(Expr\Array_ $array): void
     {
         $values = [];
+        // Values that follow a spread: what comes right after the spread is unknown.
+        $afterSpread = [];
+        $spread = false;
         foreach ($array->items as $item) {
-            if ($item === null || $item->key !== null || $item->unpack) {
+            if ($item === null || $item->key !== null) {
                 return;
             }
+            if ($item->unpack) {
+                $spread = true;
+
+                continue;
+            }
+            $afterSpread[count($values)] = $spread;
+            $spread = false;
             $values[] = $item->value;
         }
         if ($values === []) {
@@ -230,12 +268,15 @@ final class FactCollector extends NodeVisitorAbstract
         $first = $values[0];
         $interpreter = ($first instanceof Expr\ConstFetch && $first->name->toString() === 'PHP_BINARY')
             || ($first instanceof Node\Scalar\String_ && in_array(basename($first->value), self::INTERPRETERS, true));
+        $offset = $interpreter ? 1 : 0;
         $candidates = $interpreter ? array_slice($values, 1) : [$first];
         foreach ($candidates as $index => $value) {
             $path = self::argvPath($value, !$interpreter);
             if ($path !== null) {
                 $this->addEdge('launches', $this->currentSource(), self::reference('launched_file', $path), $array, 'probable', ['speculative' => true]);
-                $this->launchedCommand($path, $candidates[$index + 1] ?? null, $array);
+                $next = $index + 1;
+                $named = ($afterSpread[$next + $offset] ?? true) ? null : $candidates[$next] ?? null;
+                $this->launchedCommand($path, $named, $array);
 
                 return;
             }
@@ -684,7 +725,13 @@ final class FactCollector extends NodeVisitorAbstract
     private function newExpression(Expr\New_ $node): void
     {
         if ($node->class instanceof Name) {
-            $this->addEdge('constructs', $this->currentSource(), self::reference('class', $this->resolvedClassName($node->class)), $node);
+            $class = $this->resolvedClassName($node->class);
+            $this->addEdge('constructs', $this->currentSource(), self::reference('class', $class), $node);
+            if (self::isTraverser($class)) {
+                foreach ($node->args as $argument) {
+                    $this->traverserHooks($argument, $node);
+                }
+            }
 
             return;
         }
@@ -764,10 +811,11 @@ final class FactCollector extends NodeVisitorAbstract
     }
 
     /**
-     * A property read on a typed receiver, which may be an Eloquent relation:
-     * `$line->product` runs `Line::product()` through the model's magic
-     * accessor. Speculative, so a plain property, which declares no method of
-     * its name, leaves no edge once the reconciler finds none.
+     * A property read or write on a typed receiver. It references the
+     * property, and it may be an Eloquent relation: `$line->product` runs
+     * `Line::product()` through the model's magic accessor. Both edges are
+     * speculative, so the reconciler keeps only the one whose target the class
+     * (or a supertype or trait of it) declares.
      */
     private function propertyRead(Expr\PropertyFetch|Expr\NullsafePropertyFetch $node): void
     {
@@ -782,12 +830,59 @@ final class FactCollector extends NodeVisitorAbstract
         }
         if ($class !== null) {
             $this->addEdge('references', $this->currentSource(), self::reference('method', $class . '::' . $node->name->toString()), $node, 'probable', ['speculative' => true]);
+            $this->propertyReference($class, $node->name->toString(), $node);
 
             return;
         }
         // Nothing types the receiver, and a relation read this way runs a
         // method of the name, so it counts like an untyped call does.
         $this->untypedCalls[$this->currentSource()][$node->name->toString()] = true;
+    }
+
+    /**
+     * Remember the property an assignment writes. Going through a `[...]` it appends or indexes
+     * edits the array the property already holds, so that is a `read_write`. Every target of a `[$a->x, $b] = ...` or `list(...)` destructuring.
+     *
+     * @param 'write'|'read_write' $access
+     */
+    private function markPropertyWrite(Expr $target, string $access): void
+    {
+        if ($target instanceof Expr\List_) {
+            foreach ($target->items as $item) {
+                if ($item !== null) {
+                    $this->markPropertyWrite($item->value, $access);
+                }
+            }
+
+            return;
+        }
+        while ($target instanceof Expr\ArrayDimFetch) {
+            $target = $target->var;
+            $access = 'read_write';
+        }
+        if ($target instanceof Expr\PropertyFetch || $target instanceof Expr\NullsafePropertyFetch || $target instanceof Expr\StaticPropertyFetch) {
+            $this->propertyWrites[spl_object_id($target)] = $access;
+        }
+    }
+
+    /** `Foo::$count` and `self::$count` reference the static property they name. */
+    private function staticPropertyReference(Expr\StaticPropertyFetch $node): void
+    {
+        if (!$node->class instanceof Name || !$node->name instanceof Node\VarLikeIdentifier) {
+            return;
+        }
+        $this->propertyReference($this->resolvedClassName($node->class), $node->name->toString(), $node);
+    }
+
+    /**
+     * A speculative `references` edge to `$class::$name`, in the form property nodes are declared
+     * under. `access` says whether the site reads, writes, or (`+=`, `++`) reads and writes it; the
+     * core keeps one edge of each.
+     */
+    private function propertyReference(string $class, string $name, Expr $evidence): void
+    {
+        $access = $this->propertyWrites[spl_object_id($evidence)] ?? 'read';
+        $this->addEdge('references', $this->currentSource(), self::reference('property', $class . '::$' . $name), $evidence, 'probable', ['speculative' => true, 'access' => $access]);
     }
 
     /**
@@ -815,6 +910,45 @@ final class FactCollector extends NodeVisitorAbstract
             return;
         }
         $this->addEdge('references', $source, self::reference('class', $resolved), $evidence);
+    }
+
+    /** Whether `$class` names one of the PhpParser traversers, in any case. */
+    private static function isTraverser(string $class): bool
+    {
+        foreach (self::TRAVERSERS as $traverser) {
+            if (strcasecmp($class, $traverser) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A traverser calls `beforeTraverse`, `enterNode`, `leaveNode` and `afterTraverse` on every
+     * visitor it is given, from vendor code that no scan sees. Where the visitor's class is known
+     * (built inline, or held in a typed variable) the call is implied at the place it is given:
+     * one probable, speculative `calls` edge per hook, so the core keeps the hooks the class or
+     * its ancestors declare and drops the rest.
+     */
+    private function traverserHooks(Node\Arg|Node\VariadicPlaceholder $argument, Node $evidence): void
+    {
+        if (!$argument instanceof Node\Arg || $argument->unpack) {
+            return;
+        }
+        $value = $argument->value;
+        $visitor = null;
+        if ($value instanceof Expr\New_ && $value->class instanceof Name) {
+            $visitor = $this->resolvedClassName($value->class);
+        } elseif ($value instanceof Expr\Variable && is_string($value->name) && $value->name !== 'this') {
+            $visitor = $this->variables->type($value->name);
+        }
+        if ($visitor === null) {
+            return;
+        }
+        foreach (self::VISITOR_HOOKS as $hook) {
+            $this->addEdge('calls', $this->currentSource(), self::reference('method', $visitor . '::' . $hook), $evidence, 'probable', ['speculative' => true, 'dispatch' => 'PhpParser\\NodeTraverser']);
+        }
     }
 
     /** Emit a `calls` edge, using the tracked variable type to name the receiver where possible. */
@@ -858,6 +992,9 @@ final class FactCollector extends NodeVisitorAbstract
             $class = $this->receivers->returnedType($node->var, $this->currentClass());
         }
         $this->eagerLoads($node, $class ?? $this->eloquent->builderRoot($node->var));
+        if ($class !== null && $node->name->toString() === 'addVisitor' && self::isTraverser($class) && isset($node->args[0])) {
+            $this->traverserHooks($node->args[0], $node);
+        }
 
         if ($class !== null) {
             $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node, $confidence);

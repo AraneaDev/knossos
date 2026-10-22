@@ -247,7 +247,8 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
     {
         // A call through an interface or a parent goes to the supertype's method, so what calls that may
         // run this one: its edges count as this node's, the supertype method itself never listed for it.
-        // Nothing points at a property: its class's methods read it, so what uses the class may use it.
+        // A typed PHP property fetch is an edge to the property, but an untyped receiver, a chained fetch and
+        // the other languages record none: the class's methods may read it, so what uses the class may use it.
         // Which implementation runs, or which use touches the property, is a guess, so such an edge is
         // probable at best.
         $edges = $this->impactEdges($projectId, $current['id'], $edgeKinds, $minimumRank, $edgePageTruncation);

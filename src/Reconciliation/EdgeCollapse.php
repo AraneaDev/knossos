@@ -11,8 +11,9 @@ use Knossos\Store\StableId;
 
 /**
  * Collapses the resolved edges of a scan into one edge per kind, source,
- * target and owner (and per `prefix` for `mounts`), the rule workers rely on
- * when they report one fact per site.
+ * target and owner (and per `prefix` for `mounts`, per `access` for an edge that
+ * reads or writes a property), the rule workers rely on when they report one
+ * fact per site. The access is part of such an edge's stable id too.
  *
  * The surest occurrence wins: the higher confidence, then a non-speculative
  * occurrence over a speculative one, then the earliest evidence. Attributes are
@@ -39,14 +40,15 @@ final class EdgeCollapse
     /** Record one resolved occurrence of an edge. */
     public function add(EdgeFact $edge, string $sourceId, string $targetId, string $owner): void
     {
-        if (!isset($this->fileIds[$edge->evidence->relativePath])) {
+        // A file component's edges point back into a file no worker scans, which has no file row.
+        if (!isset($this->fileIds[$edge->evidence->relativePath]) && $owner !== NamedFiles::OWNER) {
             throw new ReconciliationException(sprintf(
                 'Edge evidence file was not discovered: %s',
                 $edge->evidence->relativePath,
             ));
         }
         $prefix = $edge->kind === 'mounts' ? json_encode($edge->attributes['prefix'] ?? null, JSON_THROW_ON_ERROR) : '';
-        $key = implode("\0", [$edge->kind, $sourceId, $targetId, $owner, $prefix]);
+        $key = implode("\0", [$edge->kind, $sourceId, $targetId, $owner, $prefix, self::access($edge)]);
         $this->groups[$key][] = ['edge' => $edge, 'source' => $sourceId, 'target' => $targetId, 'owner' => $owner];
     }
 
@@ -83,6 +85,12 @@ final class EdgeCollapse
         $edge = $winner['edge'];
         $evidence = $edge->evidence;
         $evidenceKey = sprintf('%s:%d:%d:%s', $evidence->relativePath, $evidence->startLine, $evidence->endLine, $winner['owner']);
+        // A read and a write of one property on one line are two edges with the same span: the access
+        // keeps their ids apart. Without one, the key, and so every other edge's id, is as it was.
+        $access = self::access($edge);
+        if ($access !== '') {
+            $evidenceKey .= ':' . $access;
+        }
         $id = StableId::edge($this->projectId, $edge->kind, $winner['source'], $winner['target'], $evidenceKey);
 
         return [
@@ -90,7 +98,7 @@ final class EdgeCollapse
             'kind' => $edge->kind,
             'source_id' => $winner['source'],
             'target_id' => $winner['target'],
-            'file_id' => $this->fileIds[$evidence->relativePath],
+            'file_id' => $this->fileIds[$evidence->relativePath] ?? null,
             'start_line' => $evidence->startLine,
             'end_line' => $evidence->endLine,
             'origin' => $edge->origin->value,
@@ -146,6 +154,12 @@ final class EdgeCollapse
     {
         return strcmp($a->evidence->relativePath, $b->evidence->relativePath)
             ?: [$a->evidence->startLine, $a->evidence->endLine] <=> [$b->evidence->startLine, $b->evidence->endLine];
+    }
+
+    /** How the edge accesses a property (`read`, `write`, `read_write`), empty for any other edge. */
+    private static function access(EdgeFact $edge): string
+    {
+        return is_string($edge->attributes['access'] ?? null) ? $edge->attributes['access'] : '';
     }
 
     /** Whether a worker marked the occurrence speculative. */

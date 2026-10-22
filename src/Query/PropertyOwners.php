@@ -10,12 +10,13 @@ use PDO;
 /**
  * The class that declares each property.
  *
- * A class's methods read its properties (`$this->helper->shine()`), but the
- * graph records the call into what a property holds, never the read of the
- * property, so nothing points at one. A walk over dependants that meets a
- * property passes through to its class: whatever uses the class may use the
- * property. That over-approximates the way {@see SupertypeMethods} does, so
- * such a hop is probable at best.
+ * A property read or write on a receiver the scan can type is an edge to the
+ * property, so nothing here applies to it. An untyped receiver, a chained
+ * fetch and the other languages record no edge: the class's methods may read
+ * the property, so a walk over dependants that meets a property passes through
+ * to its class, and whatever uses the class may use the property. That
+ * over-approximates the way {@see SupertypeMethods} does, so such a hop is
+ * probable at best.
  */
 final class PropertyOwners
 {

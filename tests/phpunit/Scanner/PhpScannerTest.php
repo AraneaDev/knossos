@@ -6,6 +6,8 @@ namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Discovery\DiscoveryConfig;
 use Knossos\Discovery\ProjectDiscoverer;
+use Knossos\Query\ArchitectureQueryService;
+use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanInputHashes;
 use Knossos\Scan\ScanSnapshotChangedException;
 use Knossos\Scanner\Protocol\EdgeFact;
@@ -1760,6 +1762,169 @@ final class PhpScannerTest extends KnossosTestCase
         foreach (['App\\Models\\Post::getShoutedTitleAttribute', 'App\\Models\\Post::scopePublished'] as $name) {
             $this->assertNotNull($nodes[$name] ?? null, $name);
             $this->assertArrayNotHasKey('runtime_invoked', $nodes[$name]->attributes, $name);
+        }
+    }
+
+    /**
+     * A traverser calls the hooks of the visitors it is handed, by name, from
+     * vendor code. The call is implied at the place the visitor is given, so a
+     * hook the visitor declares has a caller; a hook it does not declare is
+     * left for the core to resolve through the visitor's ancestors or drop.
+     */
+    #[Group('php-scanner')]
+    public function testPhpWorkerLinksATraverserToItsVisitorsHooks(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/VisitorWiring.php'],
+        ]));
+        $client->shutdown();
+        $edges = array_values(array_filter(
+            $contributions[0]->edges,
+            fn(EdgeFact $edge): bool => ($edge->attributes['dispatch'] ?? null) === 'PhpParser\\NodeTraverser',
+        ));
+        $tuples = array_map(
+            fn(EdgeFact $edge): array => [$edge->kind, $edge->sourceReference, $edge->targetReference],
+            $edges,
+        );
+
+        assertArrayContains(['calls', 'php:method:Fixture\\Walk::run', 'php:method:Fixture\\NameCollector::enterNode'], $tuples);
+        assertArrayContains(['calls', 'php:method:Fixture\\Walk::run', 'php:method:Fixture\\NameCollector::leaveNode'], $tuples);
+        assertArrayContains(['calls', 'php:method:Fixture\\Walk::run', 'php:method:Fixture\\OnlyEnter::enterNode'], $tuples);
+        assertArrayContains(['calls', 'php:method:Fixture\\Walk::inherited', 'php:method:Fixture\\SubCollector::enterNode'], $tuples);
+        foreach ($edges as $edge) {
+            assertSame('probable', $edge->confidence->value);
+            assertSame(true, $edge->attributes['speculative'] ?? null);
+        }
+    }
+
+    /**
+     * The hooks a subclass inherits from a project visitor are reached through
+     * the traverser too, once the core resolves the inherited member.
+     */
+    #[Group('php-scanner')]
+    public function testAVisitorsInheritedHooksHaveTheTraverserAsCaller(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-visitor-wiring-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o777, true);
+        copy(self::repositoryRoot() . '/tests/Fixtures/php-scanner/src/VisitorWiring.php', $root . '/src/VisitorWiring.php');
+
+        try {
+            $pdo = $this->freshTestDatabase();
+            $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
+            $service = ArchitectureQueryService::forDatabase($pdo);
+            $callers = static function (string $symbol) use ($service, $projectId): array {
+                $usages = $service->listUsages($projectId, $symbol)->data['usages'] ?? [];
+
+                return array_map(static fn(array $usage): string => (string) $usage['source']['canonical_name'], $usages);
+            };
+            $enter = $callers('Fixture\\NameCollector::enterNode');
+            $leave = $callers('Fixture\\NameCollector::leaveNode');
+            $only = $callers('Fixture\\OnlyEnter::enterNode');
+            $leaveOfOnly = $callers('Fixture\\OnlyEnter::leaveNode');
+            $leaveNodes = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE canonical_name = 'Fixture\\OnlyEnter::leaveNode'")->fetchColumn();
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        self::assertContains('Fixture\\Walk::run', $enter);
+        self::assertContains('Fixture\\Walk::inherited', $enter);
+        self::assertContains('Fixture\\Walk::inherited', $leave);
+        self::assertContains('Fixture\\Walk::run', $only);
+        self::assertSame([], $leaveOfOnly);
+        self::assertSame(0, $leaveNodes);
+    }
+
+    /**
+     * An argv that spreads options into it still names the script it runs; one
+     * made only of spreads names nothing.
+     */
+    #[Group('php-scanner')]
+    public function testPhpWorkerLaunchesThroughAnArgvWithSpreads(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/SpreadLaunch.php'],
+        ]));
+        $client->shutdown();
+        $launches = array_values(array_filter(
+            $contributions[0]->edges,
+            fn(EdgeFact $edge): bool => $edge->kind === 'launches',
+        ));
+
+        $bySource = [];
+        foreach ($launches as $launch) {
+            $bySource[$launch->sourceReference][] = $launch->targetReference;
+        }
+        $method = static fn(string $name): string => 'php:method:Fixture\\SpreadLaunch::' . $name;
+
+        self::assertStringEndsWith('bin/tool', $bySource[$method('withOptions')][0] ?? '');
+        self::assertStringEndsWith('bin/lead', $bySource[$method('leadingSpread')][0] ?? '');
+        self::assertArrayNotHasKey($method('allSpread'), $bySource);
+
+        $commands = array_map(
+            fn(EdgeFact $edge): string => $edge->sourceReference . ' -> ' . $edge->targetReference,
+            array_values(array_filter($contributions[0]->edges, fn(EdgeFact $edge): bool => $edge->kind === 'calls' && str_starts_with($edge->targetReference, 'php:artisan_command:'))),
+        );
+        self::assertContains($method('commandAfterLeadingSpread') . ' -> php:artisan_command:orders:poll', $commands);
+        // What follows a spread is not the argument right after the script.
+        self::assertCount(1, $commands);
+    }
+
+    #[Group('php-scanner')]
+    public function testPhpWorkerReferencesThePropertiesItReadsAndWrites(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/PropertyUse.php'],
+        ]));
+        $client->shutdown();
+        $sites = [];
+        $access = [];
+        foreach ($contributions[0]->edges as $edge) {
+            if ($edge->kind === 'references' && str_starts_with($edge->targetReference, 'php:property:')) {
+                $sites[$edge->sourceReference . ' -> ' . $edge->targetReference][] = $edge->evidence->startLine;
+                $access[$edge->targetReference . ':' . $edge->evidence->startLine][] = $edge->attributes['access'] ?? null;
+            }
+        }
+        $f = 'php:method:Fixture\\User::f';
+
+        // The read and the write are one site each.
+        self::assertSame([18, 19], $sites[$f . ' -> php:property:Fixture\\Box::$items'] ?? []);
+        self::assertSame([20], $sites[$f . ' -> php:property:Fixture\\Box::$count'] ?? []);
+        self::assertSame(['read'], $access['php:property:Fixture\\Box::$items:18'] ?? null);
+        self::assertSame(['write'], $access['php:property:Fixture\\Box::$items:19'] ?? null);
+        // `++` reads the property and writes it back.
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Box::$count:20'] ?? null);
+        // `$this->n = $this->n + 1` reads and writes on one line; `+=` does both at one site.
+        self::assertSame(['write', 'read'], $access['php:property:Fixture\\Counter::$n:36'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$n:37'] ?? null);
+        // A destructuring target is written, in either spelling.
+        self::assertSame(['write'], $access['php:property:Fixture\\Counter::$list:38'] ?? null);
+        self::assertSame(['write'], $access['php:property:Fixture\\Counter::$n:39'] ?? null);
+        // An element assignment changes the array the property holds, so it reads and writes.
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:40'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:41'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:42'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:43'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:44'] ?? null);
+        // `unset` of the property itself writes it; of one element, it edits the array.
+        self::assertSame(['write'], $access['php:property:Fixture\\Counter::$list:45'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:46'] ?? null);
+        // The closure's `$this` is the enclosing class, so it names no property of the box.
+        self::assertCount(1, array_filter(array_keys($sites), static fn(string $key): bool => str_ends_with($key, 'Box::$items')));
+        self::assertContains('php:property:Fixture\\User::$items', array_map(static fn(string $key): string => explode(' -> ', $key)[1], array_keys($sites)));
+        foreach ($contributions[0]->edges as $edge) {
+            if ($edge->kind === 'references' && str_starts_with($edge->targetReference, 'php:property:')) {
+                self::assertSame('probable', $edge->confidence->value);
+                self::assertSame(true, $edge->attributes['speculative'] ?? null);
+            }
         }
     }
 }
