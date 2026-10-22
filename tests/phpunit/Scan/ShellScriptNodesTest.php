@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scan;
 
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\DashboardService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -71,5 +72,18 @@ final class ShellScriptNodesTest extends KnossosTestCase
         file_put_contents($this->root . '/scripts/run.sh', "#!/bin/sh\nexec ./bin/other\n");
         $scanner->scan($this->root);
         self::assertSame([['scripts/run.sh', 'bin/other', 2]], self::launches($pdo));
+    }
+
+    /** The pane counts a script's launch as a dependent file, though the script has no file row. */
+    public function testThePaneCountsTheScriptsThatLaunchAFile(): void
+    {
+        file_put_contents($this->root . '/scripts/again.sh', "#!/bin/sh\nphp bin/tool\n");
+        $pdo = $this->freshTestDatabase();
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root);
+
+        $hubs = array_column((new DashboardService($pdo))->dashboard($this->root, 1)['hubs'], null, 'canonical_name');
+
+        self::assertSame(2, $hubs['bin/tool']['dependent_files'] ?? null);
+        self::assertSame(['scripts/again.sh', 'scripts/run.sh'], $hubs['bin/tool']['top_dependents'] ?? null);
     }
 }
