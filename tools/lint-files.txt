@@ -867,6 +867,7 @@ php	tests/phpunit/Scan/LanguageDescriptorMemoryTest.php
 php	tests/phpunit/Scan/LanguageScanResultTest.php
 php	tests/phpunit/Scan/LanguageScanRunnerTest.php
 php	tests/phpunit/Scan/LanguageWorkerPoolTest.php
+php	tests/phpunit/Scan/Laravel13LivewireFixtureTest.php
 php	tests/phpunit/Scan/LeftOutFilesTest.php
 php	tests/phpunit/Scan/MalformedFactScanTest.php
 php	tests/phpunit/Scan/MalformedTypescriptFileScanTest.php
