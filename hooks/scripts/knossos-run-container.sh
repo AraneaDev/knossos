@@ -1,8 +1,8 @@
 #!/bin/sh
 # Brief commands for the Claude Code mod, against a containerised Knossos installation.
 #
-# Usage: the same subcommands and arguments as knossos-run.sh, whose header
-# lists them; both wrappers read the one table in run-args.sh.
+# Usage: the subcommands, timeouts and argument rules come from run-args.sh,
+# which both wrappers source. This wrapper runs them in a container.
 #
 # Emitted by `knossos install-agent-plugin --out`, with __KNOSSOS_IMAGE__ and
 # __KNOSSOS_DATA__ substituted at emit time. Not used in place.

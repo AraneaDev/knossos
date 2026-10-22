@@ -52,7 +52,7 @@ final readonly class ScanPlanner
      * and a hint left out is one the scan warns has no effect: every other
      * accepted hint is detected from imports and manifests alone.
      *
-     * @var array<string, array{0: string, 1: list<string>}>
+     * @var array<string, array{0: 'composer'|'cargo', 1: list<string>}>
      */
     public const EFFECTIVE_HINTS = [
         'laravel' => ['composer', ['laravel/framework']],
