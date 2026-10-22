@@ -4,8 +4,8 @@ Knossos scans PHP with the bundled PHP worker, which parses each `.php` file
 with `nikic/php-parser` and never runs your code. It reads one file at a time:
 anything that depends on another file, such as which class a call reaches, is
 settled when the facts of every file are put together. The
-[Laravel](php-laravel.md) and [Symfony](php-symfony.md) pages describe what each
-framework adds on top.
+[Laravel](php-laravel.md) (with [Livewire](php-laravel.md#livewire)) and
+[Symfony](php-symfony.md) pages describe what each framework adds on top.
 
 ## Variables and closures
 
