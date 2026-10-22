@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.38.0](https://github.com/AraneaDev/knossos/compare/v0.37.0...v0.38.0) (2026-10-22)
+
+
+### Features
+
+* **annotations:** let an agent confirm a stale note ([#394](https://github.com/AraneaDev/knossos/issues/394)) ([4d0e4eb](https://github.com/AraneaDev/knossos/commit/4d0e4eb6e05ce0380b8c208cc20d74abf761fb1c))
+* support Laravel 13 and Livewire 4 ([#393](https://github.com/AraneaDev/knossos/issues/393)) ([e750fd3](https://github.com/AraneaDev/knossos/commit/e750fd32ccd9d84b6f4c7aefa94383d16bbd632d))
+
+
+### Fixes
+
+* dead-code false positives from main guards, union contracts and VitePress pages ([#391](https://github.com/AraneaDev/knossos/issues/391)) ([d661e8a](https://github.com/AraneaDev/knossos/commit/d661e8a329ef7890b4df02b8b9d9432e219dc502))
+
 ## [0.37.0](https://github.com/AraneaDev/knossos/compare/v0.36.0...v0.37.0) (2026-10-21)
 
 
