@@ -1629,4 +1629,59 @@ final class PhpScannerTest extends KnossosTestCase
 
         $client->shutdown();
     }
+
+    /**
+     * Laravel 13 declares a full-page Livewire component with
+     * `Route::livewire()` and an observer with `#[ObservedBy]`; neither names
+     * a controller method, so without these facts the component and the
+     * observer look unreferenced.
+     */
+    #[Group('php-scanner')]
+    public function testLaravel13LivewireRoutesAndObservedBy(): void
+    {
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire',
+            'files' => ['routes/web.php', 'app/Models/Post.php'],
+            'frameworks' => ['laravel', 'livewire'],
+        ]));
+        $client->shutdown();
+        $nodes = [];
+        $edges = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                $nodes[$node->canonicalName] = $node;
+            }
+            foreach ($contribution->edges as $edge) {
+                $edges[] = $edge;
+            }
+        }
+
+        $dashboard = $nodes['GET|HEAD /dashboard => App\\Livewire\\Dashboard'] ?? null;
+        $this->assertNotNull($dashboard);
+        assertSame(['GET', 'HEAD'], $dashboard->attributes['methods']);
+        assertSame('App\\Livewire\\Dashboard', $dashboard->attributes['livewire_component']);
+        $create = $nodes['GET|HEAD /posts/create => pages::post.create'] ?? null;
+        $this->assertNotNull($create);
+        assertSame(['GET', 'HEAD'], $create->attributes['methods']);
+        assertSame('pages::post.create', $create->attributes['livewire_component']);
+        $this->assertNotNull($nodes['GET /counter => App\\Livewire\\Counter'] ?? null);
+
+        $tuples = array_map(fn(EdgeFact $edge): array => [$edge->kind, $edge->sourceReference, $edge->targetReference], $edges);
+        $this->assertContains(
+            ['routes_to', 'php:route:GET|HEAD /dashboard => App\\Livewire\\Dashboard', 'php:class:App\\Livewire\\Dashboard'],
+            $tuples,
+        );
+        assertSame([], array_values(array_filter(
+            $tuples,
+            fn(array $tuple): bool => $tuple[0] === 'routes_to' && $tuple[1] === 'php:route:GET|HEAD /posts/create => pages::post.create',
+        )));
+        $this->assertContains(
+            ['observes', 'php:class:App\\Models\\Post', 'php:class:App\\Observers\\PostObserver'],
+            $tuples,
+        );
+        $observes = array_values(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'observes'));
+        assertSame('App\\Models\\Post', $observes[0]->attributes['model']);
+        assertSame('ObservedBy', $observes[0]->attributes['via']);
+    }
 }
