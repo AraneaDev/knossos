@@ -75,6 +75,29 @@ final class PhpLivewireBladeTest extends KnossosTestCase
     }
 
     #[Group('php-scanner')]
+    public function testMultiArgumentDirectivesAndPhpBlocksAreRead(): void
+    {
+        $view = $this->scanInline(<<<'BLADE'
+            @can('update', $this->post) a @endcan
+            @livewire('stats', ['p' => $this->filters])
+            <option @selected($this->a === 1, true)>x</option>
+            @php
+                $this->prepare();
+                $x = $this->total;
+            @endphp
+            @php($this->inline())
+            <button wire:confirm="delete this?" wire:click="remove">x</button>
+            BLADE);
+
+        $names = array_map(fn(array $use): string => $use['name'], $view['used']);
+        sort($names);
+        assertSame(['a', 'filters', 'inline', 'post', 'prepare', 'remove', 'total'], $names);
+        $lines = array_column($view['used'], 'line', 'name');
+        assertSame(5, $lines['prepare']);
+        assertSame(6, $lines['total']);
+    }
+
+    #[Group('php-scanner')]
     public function testCommentedVerbatimAndEscapedBladeIsIgnored(): void
     {
         $view = $this->scanInline(<<<'BLADE'

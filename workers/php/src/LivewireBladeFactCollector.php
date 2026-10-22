@@ -37,7 +37,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
      */
     private const NON_ACTIONS = [
         'model', 'key', 'loading', 'target', 'navigate', 'ignore', 'transition', 'dirty', 'offline',
-        'stream', 'replace', 'show', 'text', 'cloak', 'current', 'ref',
+        'stream', 'replace', 'show', 'text', 'cloak', 'current', 'ref', 'confirm',
     ];
 
     /** Directives that name a view, and the position of that argument. */
@@ -203,6 +203,12 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
             }
         }
 
+        if (preg_match_all('/@php(?!\s*\()\b(.*?)@endphp/s', $text, $matches, PREG_OFFSET_CAPTURE) > 0) {
+            foreach ($matches[1] as [$body, $offset]) {
+                $expressions[] = ['code' => '<?php ' . $body . "\n;", 'offset' => $offset, 'directive' => null];
+            }
+        }
+
         foreach ($expressions as $expression) {
             $this->readExpression($expression['code'], $line($expression['offset']), $expression['directive']);
         }
@@ -250,8 +256,8 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     {
         return match (true) {
             in_array($directive, ['foreach', 'forelse', 'for'], true) => '<?php ' . ($directive === 'for' ? 'for' : 'foreach') . ' (' . $arguments . ') {}',
-            isset(self::INCLUDES[$directive]) => '<?php __include(' . $arguments . ');',
-            default => '<?php (' . $arguments . ');',
+            // Any other directive takes arguments a call can hold, `@can('update', $post)` included.
+            default => '<?php __knossos(' . $arguments . ');',
         };
     }
 
