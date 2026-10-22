@@ -227,6 +227,14 @@ final class SourceClassifier
         if (preg_match('/^readme(?:\.[a-z]+)?\.md$/', $basename) === 1) {
             return UnitKind::Readme->value;
         }
+        // A VitePress or VuePress page compiles to a Vue component, and its
+        // `<script setup>` is the only thing that reaches the components it
+        // imports. Read as a unit for those imports, as an HTML page is;
+        // whether the page is in a site at all is decided once every file
+        // is known ({@see EntryPointResolver}).
+        if (str_ends_with($basename, '.md')) {
+            return UnitKind::Markdown->value;
+        }
         // A shell script starts the programs it runs, which nothing imports.
         if (str_ends_with($basename, '.sh') || str_ends_with($basename, '.bash')) {
             return UnitKind::Shell->value;

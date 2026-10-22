@@ -14,6 +14,7 @@ use Knossos\Discovery\Manifest\HtmlManifest;
 use Knossos\Discovery\Manifest\KnipManifest;
 use Knossos\Discovery\Manifest\KnossosManifest;
 use Knossos\Discovery\Manifest\ManifestReaders;
+use Knossos\Discovery\Manifest\MarkdownManifest;
 use Knossos\Discovery\Manifest\NodeManifest;
 use Knossos\Discovery\Manifest\PyprojectManifest;
 use Knossos\Discovery\Manifest\ReadmeManifest;
@@ -44,6 +45,7 @@ final class ManifestReadersTest extends TestCase
             'yaml' => YamlManifest::class,
             'dockerfile' => DockerfileManifest::class,
             'readme' => ReadmeManifest::class,
+            'markdown' => MarkdownManifest::class,
             'shell' => ShellManifest::class,
             'agent_config' => AgentConfigManifest::class,
             'tool_config' => ToolConfigManifest::class,

@@ -42,7 +42,8 @@ final class SourceClassifierTest extends TestCase
         yield 'gitignore' => ['sub/.gitignore', 'gitignore'];
         yield 'readme' => ['README.md', 'readme'];
         yield 'localised readme' => ['docs/readme.nl.md', 'readme'];
-        yield 'not a readme' => ['readme-notes.md', null];
+        yield 'not a readme' => ['readme-notes.md', 'markdown'];
+        yield 'markdown page' => ['content/blog/post.md', 'markdown'];
         yield 'shell' => ['bin/run.sh', 'shell'];
         yield 'bash' => ['bin/run.bash', 'shell'];
         yield 'dockerfile' => ['Dockerfile', 'dockerfile'];
@@ -69,12 +70,12 @@ final class SourceClassifierTest extends TestCase
         yield 'pyproject' => ['pyproject.toml', 'python'];
         yield 'requirements' => ['requirements.txt', 'requirements'];
         yield 'requirements variant' => ['requirements-dev.txt', 'requirements'];
-        yield 'not requirements' => ['requirements-dev.md', null];
+        yield 'not requirements' => ['requirements-dev.md', 'markdown'];
         yield 'tsconfig' => ['tsconfig.json', 'typescript'];
         yield 'tsconfig variant' => ['tsconfig.build.json', 'typescript'];
         yield 'jsconfig' => ['jsconfig.json', 'typescript'];
         yield 'jsconfig variant' => ['web/jsconfig.app.json', 'typescript'];
-        yield 'not a jsconfig' => ['jsconfig.md', null];
+        yield 'not a jsconfig' => ['jsconfig.md', 'markdown'];
         yield 'cargo' => ['crates/a/Cargo.toml', 'cargo'];
         yield 'tool config' => ['vite.config.ts', 'tool_config'];
         yield 'cypress' => ['cypress.json', 'tool_config'];

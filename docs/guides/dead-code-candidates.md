@@ -207,7 +207,9 @@ matches anything. Files that do match are classified `application.entry_point`
 (rule `core.manifest.entrypoints.v1`).
 
 Discovery also reads every `.html` file for the scripts it loads (see
-[below](#how-an-html-pages-scripts-are-resolved)), every `README` for the paths it hands to an interpreter (`node scripts/x.mjs`,
+[below](#how-an-html-pages-scripts-are-resolved)), every other `.md` file for
+what a VitePress or VuePress page's scripts import (see
+[below](#how-a-vitepress-or-vuepress-pages-scripts-are-resolved)), every `README` for the paths it hands to an interpreter (`node scripts/x.mjs`,
 `python3 tools/y.py`), every `.yml`/`.yaml` and `.neon` file, Dockerfile and shell script (`.sh`, `.bash`) for
 tokens shaped like a source path, and every tool config module for the keys
 naming files the tool loads. A shell script's path is also read from the
@@ -292,6 +294,33 @@ and the reason, with code `DISCOVERY_HTML_SCRIPT_UNRESOLVED` or
 `DISCOVERY_HTML_SCRIPT_AMBIGUOUS`. To settle an ambiguous one, map its URL
 prefix to a folder with `web_roots`. A warning never fails a scan, and a
 quality gate counts it under `warning_diagnostics`, not `error_diagnostics`.
+
+### How a VitePress or VuePress page's scripts are resolved
+
+VitePress and VuePress compile each markdown page into a Vue component, so a
+`<script setup>` in a page is that component's script, and the components it
+imports and renders are reached through the page alone. Discovery reads every
+`.md` file for the imports of its `<script>` blocks, read as an inline HTML
+script is. A block counts where markdown reads it as HTML: at the start of a
+line, indented by at most three spaces, outside a fenced code block and an
+HTML comment. A script shown in a fence, an indented code block or an inline
+code span loads nothing.
+
+Those imports become entry points only for a page inside a site: below the
+directory holding `.vitepress/config.*` or `.vuepress/config.*`. Elsewhere a
+markdown file is plain text and adds nothing. Within a site:
+
+- A relative path (`./Card.vue`, `../../.vitepress/theme/components/Card.vue`)
+  is read from the page's folder.
+- In VitePress, `@theme/x` is read from the site's `.vitepress/theme/`.
+- A path that names no file is completed as Vite completes it: with `.vue`,
+  `.ts`, `.mts`, `.tsx`, `.js`, `.mjs` or `.jsx`, or as a folder's
+  `index.ts` or `index.js`.
+- A package name (`vue`, `vitepress`) and a path that names no scanned file
+  add nothing, and no warning: Vite fails the build on a broken one.
+
+A file found this way is classified `application.entry_point` with the page as
+`named_by`.
 
 ### Why tool configuration is excluded
 

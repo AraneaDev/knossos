@@ -32,8 +32,136 @@ final class EntryPointResolver
         $units = self::withClassNameEntryPoints($units);
         $units = self::withLoadedDirectoryEntryPoints($units, $files);
         $units = self::withGlobEntryPoints($units, $files);
+        $units = self::withMarkdownScriptEntryPoints($units, $files);
 
         return self::withHtmlScriptEntryPoints($units, $files, $webRoots, $diagnostics, $compiled);
+    }
+
+    /** What Vite tries after a module path that names no file, in order. */
+    private const MARKDOWN_IMPORT_SUFFIXES = ['', '.vue', '.ts', '.mts', '.tsx', '.js', '.mjs', '.jsx', '/index.ts', '/index.js'];
+
+    /**
+     * Set, on each markdown unit, the scanned files its page scripts import,
+     * for a page inside a VitePress or VuePress site; a page outside every
+     * site is never compiled and gets none.
+     *
+     * A site is the directory holding `.vitepress/config.*` or
+     * `.vuepress/config.*`. A specifier counts when it is a path: relative
+     * to the page, or under the site's theme through VitePress's `@theme/`
+     * alias. A bare package is not this project's to enter, and a path that
+     * names no scanned file is passed over quietly, as Vite would fail the
+     * build on it anyway.
+     *
+     * @param list<ProjectUnit> $units
+     * @param list<DiscoveredFile> $files
+     * @return list<ProjectUnit>
+     */
+    private static function withMarkdownScriptEntryPoints(array $units, array $files): array
+    {
+        $scanned = [];
+        $sites = [];
+        foreach ($files as $file) {
+            $scanned[$file->relativePath] = true;
+            if (preg_match('#^(?:(.*)/)?\.(vitepress|vuepress)/config\.[cm]?[jt]s$#', $file->relativePath, $match) === 1) {
+                $sites[$match[1]] = $match[2];
+            }
+        }
+        // The deepest site holding a page is the one that compiles it.
+        krsort($sites, SORT_STRING);
+        $resolved = [];
+        foreach ($units as $unit) {
+            $imports = $unit->metadata['script_imports'] ?? null;
+            if ($unit->kind !== 'markdown' || !is_array($imports)) {
+                $resolved[] = $unit;
+                continue;
+            }
+            $site = self::siteOf($unit->configPath, $sites);
+            $paths = [];
+            foreach ($site === null ? [] : $imports as $import) {
+                $specifier = is_array($import) ? ($import['specifier'] ?? null) : null;
+                $path = is_string($specifier) ? self::markdownImportTarget($unit->configPath, $specifier, $site, $scanned) : null;
+                if ($path !== null) {
+                    $paths[$path] = true;
+                }
+            }
+            $paths = array_map(strval(...), array_keys($paths));
+            sort($paths, SORT_STRING);
+            $resolved[] = new ProjectUnit($unit->kind, $unit->configPath, $unit->contentHash, [
+                ...$unit->metadata,
+                'entry_points' => $paths,
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * The site a page belongs to, as its directory and kind, or null.
+     *
+     * @param array<string, string> $sites directory => `vitepress` or `vuepress`, deepest first
+     * @return ?array{0: string, 1: string}
+     */
+    private static function siteOf(string $page, array $sites): ?array
+    {
+        foreach ($sites as $directory => $kind) {
+            $directory = (string) $directory;
+            if ($directory === '' || str_starts_with($page, $directory . '/')) {
+                return [$directory, $kind];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The scanned file one page import names, or null.
+     *
+     * @param array{0: string, 1: string} $site
+     * @param array<string, true> $scanned
+     */
+    private static function markdownImportTarget(string $page, string $specifier, array $site, array $scanned): ?string
+    {
+        [$directory, $kind] = $site;
+        if (str_starts_with($specifier, './') || str_starts_with($specifier, '../')) {
+            $base = dirname($page);
+            $joined = ($base === '.' ? '' : $base . '/') . $specifier;
+        } elseif ($kind === 'vitepress' && str_starts_with($specifier, '@theme/')) {
+            $joined = ($directory === '' ? '' : $directory . '/') . '.vitepress/theme/' . substr($specifier, strlen('@theme/'));
+        } else {
+            return null;
+        }
+        $path = self::normalizedPath($joined);
+        if ($path === null) {
+            return null;
+        }
+        foreach (self::MARKDOWN_IMPORT_SUFFIXES as $suffix) {
+            if (isset($scanned[$path . $suffix])) {
+                return $path . $suffix;
+            }
+        }
+
+        return null;
+    }
+
+    /** A project-relative path with `.` and `..` folded away, or null for one that leaves the project. */
+    private static function normalizedPath(string $path): ?string
+    {
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                if ($segments === []) {
+                    return null;
+                }
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+
+        return $segments === [] ? null : implode('/', $segments);
     }
 
     /**
