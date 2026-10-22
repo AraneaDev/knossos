@@ -58,11 +58,14 @@ final class ScanRequestSchemaTest extends KnossosTestCase
      */
     public function testLivewireIsRequestedWhenComposerRequiresIt(): void
     {
-        $requestedFrameworks = function (array $require): array {
+        $requestedFrameworks = function (array $require, ?array $knossos = null): array {
             $root = sys_get_temp_dir() . '/knossos-stale-livewire-request-' . bin2hex(random_bytes(5));
             mkdir($root . '/app/Livewire', 0o777, true);
             file_put_contents($root . '/composer.json', json_encode(['require' => $require], JSON_THROW_ON_ERROR));
             file_put_contents($root . '/app/Livewire/Counter.php', "<?php\n");
+            if ($knossos !== null) {
+                file_put_contents($root . '/knossos.json', json_encode($knossos, JSON_THROW_ON_ERROR));
+            }
             try {
                 $planner = new ScanPlanner($this->freshTestDatabase(), [$root]);
                 $plan = $planner->finalize($planner->prepare($root, null, null, null, 'full', 0, null));
@@ -83,6 +86,8 @@ final class ScanRequestSchemaTest extends KnossosTestCase
 
         assertSame(['laravel', 'livewire'], $requestedFrameworks(['laravel/framework' => '^13.0', 'livewire/livewire' => '^4.0']));
         assertSame(['laravel'], $requestedFrameworks(['laravel/framework' => '^13.0']));
+        // The `knossos.json` hint turns Livewire on where composer.json does not require it.
+        assertSame(['laravel', 'livewire'], $requestedFrameworks(['laravel/framework' => '^13.0'], ['version' => 1, 'frameworks' => ['livewire']]));
     }
 
     public function testTheSchemaRefusesMissingAndNonPositiveLimits(): void

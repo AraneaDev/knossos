@@ -51,4 +51,49 @@ final class Laravel13LivewireFixtureTest extends KnossosTestCase
         self::assertContains('GET|HEAD /dashboard => App\\Livewire\\Dashboard', $routes);
         self::assertContains('GET|HEAD /posts/create => pages::post.create', $routes);
     }
+
+    /**
+     * A view edit alone must change what its component reports: the cached
+     * contribution of the untouched component class is joined to the new view.
+     */
+    public function testRemovingAViewActionOnARescanMakesItsMethodACandidate(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-lw-inc-' . bin2hex(random_bytes(6));
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire', $root);
+        try {
+            $pdo = $this->freshTestDatabase();
+            $scan = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            $tools = new ToolService(
+                $scan,
+                ArchitectureQueryService::forDatabase($pdo),
+                new DatabaseMaintenanceService($pdo, ':memory:'),
+                new ResultEnricher(new StalenessProbe($pdo), new NextStepPlanner()),
+            );
+            $first = $scan->scan($root);
+            $before = $this->candidates($tools, $first->projectId);
+
+            $view = $root . '/resources/views/livewire/dashboard.blade.php';
+            $edited = str_replace('<button wire:click="loadMore">More</button>', '<button>More</button>', (string) file_get_contents($view));
+            self::assertNotSame((string) file_get_contents($view), $edited);
+            file_put_contents($view, $edited);
+            $second = $scan->scan($root);
+            $after = $this->candidates($tools, $second->projectId);
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        self::assertSame('incremental', $second->data['mode']);
+        self::assertNotContains('App\\Livewire\\Dashboard::loadMore', $before);
+        self::assertContains('App\\Livewire\\Dashboard::loadMore', $after);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function candidates(ToolService $tools, string $projectId): array
+    {
+        $health = $tools->call('architecture_health', ['project_id' => $projectId])->jsonSerialize()['data'];
+
+        return array_column($health['dead_code_candidates'], 'component');
+    }
 }
