@@ -78,7 +78,9 @@ yields no command: anything after a spread may not be what it looks like.
 A read or a write of a property is a `references` edge to the property, so
 `list_usages` on a property lists its readers and writers. The edge carries an
 `access` attribute: `read`, `write` or `read_write` (`$this->count++`,
-`$this->total += 1`). A read and a write on one line stay two sites, and each
+`$this->total += 1`). `unset($this->cache)` and `$this->items = []` are writes;
+`$this->items[] = $x` and `$this->items['key'] = $x` change the array the
+property already holds, so they are `read_write`. A read and a write on one line stay two sites, and each
 reader or writer is listed once per access, not once per occurrence. Only a
 receiver the scan can type gets the edge: `$this`, a typed variable or
 parameter, or `self::`, `static::`, `parent::` or a named class (`Foo::$count`) for a

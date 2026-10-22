@@ -28,6 +28,7 @@ final class PropertyUsagesTest extends KnossosTestCase
             $queries = ArchitectureQueryService::forDatabase($pdo);
             $result = $queries->listUsages($projectId, 'Fixture\\Box::$items');
             $counter = $queries->listUsages($projectId, 'Fixture\\Counter::$n');
+            $list = $queries->listUsages($projectId, 'Fixture\\Counter::$list');
         } finally {
             $this->removeTempTree($root);
         }
@@ -44,6 +45,9 @@ final class PropertyUsagesTest extends KnossosTestCase
             [[36, 'read'], [36, 'write'], [37, 'read_write']],
             self::sites($counter->data['usages']),
         );
+        // Each reader or writer is listed once per access: the destructuring write comes first, and
+        // the element writes, an element `unset` among them, are the one `read_write` site.
+        self::assertSame([[38, 'write'], [40, 'read_write']], self::sites($list->data['usages']));
     }
 
     /**

@@ -1908,6 +1908,15 @@ final class PhpScannerTest extends KnossosTestCase
         // A destructuring target is written, in either spelling.
         self::assertSame(['write'], $access['php:property:Fixture\\Counter::$list:38'] ?? null);
         self::assertSame(['write'], $access['php:property:Fixture\\Counter::$n:39'] ?? null);
+        // An element assignment changes the array the property holds, so it reads and writes.
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:40'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:41'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:42'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:43'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:44'] ?? null);
+        // `unset` of the property itself writes it; of one element, it edits the array.
+        self::assertSame(['write'], $access['php:property:Fixture\\Counter::$list:45'] ?? null);
+        self::assertSame(['read_write'], $access['php:property:Fixture\\Counter::$list:46'] ?? null);
         // The closure's `$this` is the enclosing class, so it names no property of the box.
         self::assertCount(1, array_filter(array_keys($sites), static fn(string $key): bool => str_ends_with($key, 'Box::$items')));
         self::assertContains('php:property:Fixture\\User::$items', array_map(static fn(string $key): string => explode(' -> ', $key)[1], array_keys($sites)));

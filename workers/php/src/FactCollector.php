@@ -57,7 +57,8 @@ final class FactCollector extends NodeVisitorAbstract
 
     /**
      * How the code accesses the property fetches it assigns to, keyed by node id: `write` for a
-     * plain or destructuring assignment, `read_write` for a compound assignment, `++` or `--`.
+     * plain or destructuring assignment or an `unset`, `read_write` for a compound assignment,
+     * `++` or `--`, or any write to an element of the array the property holds.
      * A fetch not listed is a read.
      *
      * @var array<int, 'write'|'read_write'>
@@ -143,6 +144,11 @@ final class FactCollector extends NodeVisitorAbstract
         } elseif ($node instanceof Expr\AssignOp
             || $node instanceof Expr\PreInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
             $this->markPropertyWrite($node->var, 'read_write');
+        }
+        if ($node instanceof Stmt\Unset_) {
+            foreach ($node->vars as $var) {
+                $this->markPropertyWrite($var, 'write');
+            }
         }
         if ($node instanceof Stmt\ClassLike) {
             $this->enterClassLike($node);
@@ -834,8 +840,8 @@ final class FactCollector extends NodeVisitorAbstract
     }
 
     /**
-     * Remember the property an assignment writes, through any `[...]` it appends or indexes and
-     * into every target of a `[$a->x, $b] = ...` or `list(...)` destructuring.
+     * Remember the property an assignment writes. Going through a `[...]` it appends or indexes
+     * edits the array the property already holds, so that is a `read_write`. Every target of a `[$a->x, $b] = ...` or `list(...)` destructuring.
      *
      * @param 'write'|'read_write' $access
      */
@@ -852,6 +858,7 @@ final class FactCollector extends NodeVisitorAbstract
         }
         while ($target instanceof Expr\ArrayDimFetch) {
             $target = $target->var;
+            $access = 'read_write';
         }
         if ($target instanceof Expr\PropertyFetch || $target instanceof Expr\NullsafePropertyFetch || $target instanceof Expr\StaticPropertyFetch) {
             $this->propertyWrites[spl_object_id($target)] = $access;

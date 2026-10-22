@@ -37,5 +37,12 @@ final class Counter
         $this->n += 1;
         [$this->list, $y] = [[], 1];
         list($this->n) = [3];
+        $this->list['key'] = 1;
+        $this->list[] = 2;
+        $this->list['x']['y'] = 3;
+        $this->list['a']++;
+        $this->list['b'] .= 'x';
+        unset($this->list);
+        unset($this->list['k']);
     }
 }
