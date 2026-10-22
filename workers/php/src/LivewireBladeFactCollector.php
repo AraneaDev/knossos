@@ -82,6 +82,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
         return null;
     }
 
+    /** Reads a Blade file's template text, and notes each class and the view its `render()` returns. */
     public function enterNode(Node $node): ?int
     {
         if ($node instanceof Stmt\InlineHTML && str_ends_with($this->relativePath, '.blade.php')) {
@@ -98,6 +99,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
         return null;
     }
 
+    /** Leaves the class whose methods were being read. */
     public function leaveNode(Node $node): null
     {
         if ($node instanceof Stmt\Class_ && $node->namespacedName !== null) {
@@ -137,6 +139,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
         return array_map(fn(string $view): array => ['livewire_render_view' => $view], $this->renderViews);
     }
 
+    /** Collects the methods one template chunk calls and the views it includes. */
     private function readTemplate(string $text, int $firstLine): void
     {
         $text = self::blankInert($text);
@@ -278,6 +281,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
             /** @var list<Stmt\Return_> */
             public array $returns = [];
 
+            /** Gathers the method's own `return` statements, not those of closures or nested classes. */
             public function enterNode(Node $node): ?int
             {
                 if ($node instanceof Expr\Closure || $node instanceof Expr\ArrowFunction || $node instanceof Stmt\Function_ || $node instanceof Stmt\Class_) {
@@ -315,6 +319,8 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     }
 
     /**
+     * The literal values `config/livewire.php` gives for the keys that decide where components live.
+     *
      * @return array<string, mixed>
      */
     private function readConfig(Expr\Array_ $array): array
@@ -357,7 +363,11 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
         };
     }
 
-    /** @return list<string>|null */
+    /**
+     * An array of string literals; null when any entry is not one.
+     *
+     * @return list<string>|null
+     */
     private function literalList(Node $value): ?array
     {
         if (!$value instanceof Expr\Array_) {
@@ -374,7 +384,11 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
         return $list === [] && $value->items !== [] ? null : $list;
     }
 
-    /** @return array<string, string>|null */
+    /**
+     * An array of string keys to string literals; null when any entry is not one.
+     *
+     * @return array<string, string>|null
+     */
     private function literalMap(Node $value): ?array
     {
         if (!$value instanceof Expr\Array_) {

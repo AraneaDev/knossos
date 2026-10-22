@@ -97,7 +97,11 @@ final class LivewireRoleRule implements ClassificationRule
         return [];
     }
 
-    /** @param ?array{path: string, name: string} $root */
+    /**
+     * Records a warning for a class-based component whose view file the scan does not hold.
+     *
+     * @param ?array{path: string, name: string} $root the component's view, when it could be worked out
+     */
     private function warnUnresolved(string $component, ?array $root, LivewireViews $views): void
     {
         $node = $this->hierarchy->node($component);
@@ -113,7 +117,11 @@ final class LivewireRoleRule implements ClassificationRule
         );
     }
 
-    /** @param array<string, array{view: string, line: int, via: string}> $used */
+    /**
+     * Gives each method of a component its strongest reason to be called, keeping a better one found earlier.
+     *
+     * @param array<string, array{view: string, line: int, via: string}> $used what the component's view graph calls
+     */
     private function collectEntryMethods(string $component, array $used): void
     {
         $traits = [];
@@ -133,6 +141,8 @@ final class LivewireRoleRule implements ClassificationRule
     }
 
     /**
+     * A lifecycle hook: Livewire's own, a property hook, or a hook a used trait names after itself.
+     *
      * @param array<string, string> $traits trait reference => short name, for the traits the component uses
      * @return ?array<string, string>
      */
@@ -153,7 +163,11 @@ final class LivewireRoleRule implements ClassificationRule
         return null;
     }
 
-    /** @return ?array<string, string> */
+    /**
+     * An attribute that makes Livewire call the method by name.
+     *
+     * @return ?array<string, string>
+     */
     private function attributeReason(string $id): ?array
     {
         $attributes = $this->hierarchy->node($id)?->attributes['php_attributes'] ?? [];
@@ -167,6 +181,8 @@ final class LivewireRoleRule implements ClassificationRule
     }
 
     /**
+     * The view and line that call the method, when the component's view graph does.
+     *
      * @param array<string, array{view: string, line: int, via: string}> $used
      * @return ?array<string, mixed>
      */
@@ -183,7 +199,11 @@ final class LivewireRoleRule implements ClassificationRule
         ];
     }
 
-    /** @param array<string, mixed> $attributes */
+    /**
+     * One classification fact for a node, from this rule.
+     *
+     * @param array<string, mixed> $attributes
+     */
     private function fact(NodeFact $node, string $role, array $attributes): ClassificationFact
     {
         return new ClassificationFact(

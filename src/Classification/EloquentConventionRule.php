@@ -69,7 +69,11 @@ final readonly class EloquentConventionRule implements ClassificationRule
         return [];
     }
 
-    /** @return list<ClassificationFact> */
+    /**
+     * The observer role for a class some model registers, unless its directory already gives it.
+     *
+     * @return list<ClassificationFact>
+     */
     private function observerClass(NodeFact $node): array
     {
         if (!isset($this->observers[$node->localId]) || $this->observerClaimedByPath($node)) {
@@ -87,6 +91,7 @@ final readonly class EloquentConventionRule implements ClassificationRule
         )];
     }
 
+    /** The entry-method fact for a method Eloquent calls by name, saying which kind of class it belongs to. */
     private function entryMethod(NodeFact $node, string $classRole, string $reason): ClassificationFact
     {
         return new ClassificationFact(
