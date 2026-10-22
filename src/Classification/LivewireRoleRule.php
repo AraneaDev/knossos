@@ -12,7 +12,7 @@ use Knossos\Scanner\Protocol\Origin;
  * Livewire components, and the methods Livewire or a Blade view calls on them.
  *
  * A component is a class whose chain leaves the project through
- * `Livewire\Component`, however many project base classes and traits sit in
+ * `Livewire\Component` or a known vendor component base, however many project base classes and traits sit in
  * between. Its methods are reached by name from outside the graph: lifecycle
  * hooks by Livewire itself, attributed ones by events and computed
  * properties, the rest by the `wire:click` and `{{ $this->x }}` of the
@@ -24,6 +24,17 @@ final class LivewireRoleRule implements ClassificationRule
     public const COMPONENT_ROLE = 'livewire.component';
     public const ENTRY_METHOD_ROLE = 'livewire.entry_method';
 
+    /**
+     * The classes that make a class a Livewire component: Livewire's own, and the
+     * base classes of the two widely used component packages (wire-elements/modal
+     * and power-components/livewire-powergrid), which are components themselves.
+     */
+    public const COMPONENT_BASES = [
+        'Livewire\\Component',
+        'LivewireUI\\Modal\\ModalComponent',
+        'PowerComponents\\LivewirePowerGrid\\PowerGridComponent',
+    ];
+
     /** Methods Livewire calls on a component as it moves through a request. */
     private const HOOKS = [
         'mount', 'boot', 'booted', 'hydrate', 'dehydrate', 'updating', 'updated', 'rendering',
@@ -31,7 +42,7 @@ final class LivewireRoleRule implements ClassificationRule
     ];
 
     /** Hook families that also come with a property name: `updatedTitle`, `hydrateItems`. */
-    private const PROPERTY_HOOK = '/^(?:updated|updating|hydrate|dehydrate)[A-Z]/';
+    private const PROPERTY_HOOK = '/^(?:updated|updating|hydrate|dehydrate)([A-Z]\w*)$/';
 
     /** Attributes that make Livewire or the browser call a method by name. */
     private const CALLED_ATTRIBUTES = ['Livewire\\Attributes\\On', 'Livewire\\Attributes\\Computed', 'Livewire\\Attributes\\Js'];
@@ -53,7 +64,7 @@ final class LivewireRoleRule implements ClassificationRule
         $views = new LivewireViews($hierarchy);
         $components = array_values(array_filter(
             $hierarchy->classes(),
-            fn(string $class): bool => $hierarchy->extendsExternal($class, ['Livewire\\Component']),
+            fn(string $class): bool => $hierarchy->extendsExternal($class, self::COMPONENT_BASES),
         ));
         sort($components, SORT_STRING);
         foreach ($components as $component) {
@@ -128,8 +139,9 @@ final class LivewireRoleRule implements ClassificationRule
         foreach ($this->hierarchy->traitsOf($component) as $trait) {
             $traits[$trait] = substr($trait, (int) strrpos($trait, '\\') + 1);
         }
+        $properties = $this->hierarchy->propertyNames($component);
         foreach ($this->hierarchy->methods($component) as $name => $id) {
-            $reason = $this->hookReason($name, $id, $traits) ?? $this->attributeReason($id) ?? $this->viewReason($name, $used);
+            $reason = $this->hookReason($name, $id, $traits, $properties) ?? $this->attributeReason($id) ?? $this->viewReason($name, $used);
             if ($reason === null) {
                 continue;
             }
@@ -144,11 +156,12 @@ final class LivewireRoleRule implements ClassificationRule
      * A lifecycle hook: Livewire's own, a property hook, or a hook a used trait names after itself.
      *
      * @param array<string, string> $traits trait reference => short name, for the traits the component uses
+     * @param list<string> $properties the property names the component has
      * @return ?array<string, string>
      */
-    private function hookReason(string $name, string $id, array $traits): ?array
+    private function hookReason(string $name, string $id, array $traits, array $properties): ?array
     {
-        if (in_array($name, self::HOOKS, true) || preg_match(self::PROPERTY_HOOK, $name) === 1) {
+        if (in_array($name, self::HOOKS, true) || $this->isPropertyHook($name, $properties)) {
             return ['reason' => 'hook'];
         }
         foreach ($traits as $trait => $short) {
@@ -161,6 +174,34 @@ final class LivewireRoleRule implements ClassificationRule
         }
 
         return null;
+    }
+
+    /**
+     * Whether a method is `updatedTitle` or `hydrateItems` for a property the component has.
+     *
+     * A nested path hooks as `updatedPostTitle` for `post.title`, so the
+     * property may be the front of the name. A component whose properties are
+     * not known (none declared anywhere in its chain) is given the benefit of
+     * the doubt, since the name alone cannot be checked.
+     *
+     * @param list<string> $properties
+     */
+    private function isPropertyHook(string $name, array $properties): bool
+    {
+        if (preg_match(self::PROPERTY_HOOK, $name, $match) !== 1) {
+            return false;
+        }
+        if ($properties === []) {
+            return true;
+        }
+        $suffix = lcfirst($match[1]);
+        foreach ($properties as $property) {
+            if ($suffix === $property || (str_starts_with($suffix, $property) && ctype_upper($suffix[strlen($property)]))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

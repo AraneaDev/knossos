@@ -134,6 +134,39 @@ final class LivewireRoleRuleTest extends KnossosTestCase
         self::assertArrayNotHasKey('App\\Livewire\\DynChild::onlyInDefault', $roles);
     }
 
+    public function testAPropertyHookNeedsItsProperty(): void
+    {
+        [$pdo] = $this->scanTree([
+            'app/Livewire/Concerns/HasName.php' => "<?php\nnamespace App\\Livewire\\Concerns;\ntrait HasName\n{\n    public string \$name = '';\n}\n",
+            'app/Livewire/Form.php' => "<?php\nnamespace App\\Livewire;\nuse Livewire\\Component;\nclass Form extends Component\n{\n    use Concerns\\HasName;\n    public string \$title = '';\n    public array \$items = [];\n    public \$post;\n"
+                . "    public function __construct(public int \$page = 1) {}\n"
+                . "    public function updatedTitle(): void {}\n    public function hydrateItems(): void {}\n    public function updatedPostTitle(): void {}\n    public function updatedName(): void {}\n    public function updatingPage(): void {}\n    public function updatedAt(): void {}\n    public function dehydrateTotals(): void {}\n}\n",
+        ]);
+        $roles = $this->rolesOf($pdo);
+
+        foreach (['updatedTitle', 'hydrateItems', 'updatedPostTitle', 'updatingPage'] as $hook) {
+            self::assertSame(['livewire.entry_method:hook'], $roles['App\\Livewire\\Form::' . $hook] ?? null, $hook);
+        }
+        self::assertSame(['livewire.entry_method:hook'], $roles['App\\Livewire\\Concerns\\HasName::updatedName'] ?? $roles['App\\Livewire\\Form::updatedName'] ?? null, 'a trait property counts');
+        self::assertArrayNotHasKey('App\\Livewire\\Form::updatedAt', $roles);
+        self::assertArrayNotHasKey('App\\Livewire\\Form::dehydrateTotals', $roles);
+    }
+
+    public function testComponentsOfKnownVendorBasesAreComponents(): void
+    {
+        [$pdo] = $this->scanTree([
+            'app/Livewire/Confirm.php' => "<?php\nnamespace App\\Livewire;\nuse LivewireUI\\Modal\\ModalComponent;\nclass Confirm extends ModalComponent\n{\n    public function mount(): void {}\n}\n",
+            'app/Livewire/Grid.php' => "<?php\nnamespace App\\Livewire;\nuse PowerComponents\\LivewirePowerGrid\\PowerGridComponent;\nclass Grid extends PowerGridComponent\n{\n    public function datasource() {}\n}\n",
+            'app/Livewire/Other.php' => "<?php\nnamespace App\\Livewire;\nuse Vendor\\Unknown;\nclass Other extends Unknown\n{\n    public function mount(): void {}\n}\n",
+        ]);
+        $roles = $this->rolesOf($pdo);
+
+        self::assertSame(['livewire.component'], $roles['App\\Livewire\\Confirm'] ?? null);
+        self::assertSame(['livewire.entry_method:hook'], $roles['App\\Livewire\\Confirm::mount'] ?? null);
+        self::assertSame(['livewire.component'], $roles['App\\Livewire\\Grid'] ?? null);
+        self::assertArrayNotHasKey('App\\Livewire\\Other', $roles);
+    }
+
     public function testTheFixtureResolvesEveryView(): void
     {
         [, $result] = $this->scanCopyOfFixture();

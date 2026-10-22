@@ -23,6 +23,7 @@ final readonly class PhpClassHierarchy
      * @param array<string, string> $parents class reference => parent class name, as written in the `extends`
      * @param array<string, list<string>> $traits class or trait reference => the trait references it uses
      * @param array<string, array<string, string>> $declared class or trait reference => method name => method local id
+     * @param array<string, list<string>> $properties class or trait reference => the names of the properties it declares, without `$`
      * @param array<string, list<string>> $classesByPath relative path => class references declared there
      * @param list<string> $observed observer class references, targets of `observes` edges
      */
@@ -31,6 +32,7 @@ final readonly class PhpClassHierarchy
         private array $parents,
         private array $traits,
         private array $declared,
+        private array $properties,
         private array $classesByPath,
         private array $observed,
     ) {}
@@ -62,6 +64,7 @@ final readonly class PhpClassHierarchy
         }
         $traits = [];
         $declared = [];
+        $properties = [];
         $observed = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->edges as $edge) {
@@ -74,11 +77,13 @@ final readonly class PhpClassHierarchy
                     $observed[$edge->targetReference] = true;
                 } elseif ($edge->kind === 'contains' && ($nodes[$edge->targetReference]->kind ?? null) === 'method') {
                     $declared[$edge->sourceReference][$nodes[$edge->targetReference]->displayName] = $edge->targetReference;
+                } elseif ($edge->kind === 'contains' && ($nodes[$edge->targetReference]->kind ?? null) === 'property') {
+                    $properties[$edge->sourceReference][] = ltrim($nodes[$edge->targetReference]->displayName, '$');
                 }
             }
         }
 
-        return new self($nodes, $parents, $traits, $declared, $classesByPath, array_map(strval(...), array_keys($observed)));
+        return new self($nodes, $parents, $traits, $declared, $properties, $classesByPath, array_map(strval(...), array_keys($observed)));
     }
 
     /**
@@ -142,6 +147,23 @@ final readonly class PhpClassHierarchy
         }
 
         return $methods;
+    }
+
+    /**
+     * The names of the properties a class has: its own, its traits' and its project ancestors'.
+     *
+     * @return list<string> property names without the `$`
+     */
+    public function propertyNames(string $classReference): array
+    {
+        $names = [];
+        foreach ([$classReference, ...array_filter($this->ancestorsLeaving($classReference), $this->isProject(...))] as $owner) {
+            foreach ([$owner, ...$this->traitsUsedBy($owner)] as $source) {
+                array_push($names, ...($this->properties[$source] ?? []));
+            }
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**
