@@ -134,6 +134,7 @@ php	src/Discovery/Manifest/KnossosManifest.php
 php	src/Discovery/Manifest/ManifestPaths.php
 php	src/Discovery/Manifest/ManifestReader.php
 php	src/Discovery/Manifest/ManifestReaders.php
+php	src/Discovery/Manifest/MarkdownManifest.php
 php	src/Discovery/Manifest/NodeManifest.php
 php	src/Discovery/Manifest/PyprojectManifest.php
 php	src/Discovery/Manifest/ReadmeManifest.php
@@ -560,6 +561,7 @@ php	tests/phpunit/Discovery/Manifest/HtmlManifestTest.php
 php	tests/phpunit/Discovery/Manifest/InlineScriptImportsTest.php
 php	tests/phpunit/Discovery/Manifest/ManifestPathsTest.php
 php	tests/phpunit/Discovery/Manifest/ManifestReadersTest.php
+php	tests/phpunit/Discovery/Manifest/MarkdownManifestTest.php
 php	tests/phpunit/Discovery/Manifest/NodeManifestTest.php
 php	tests/phpunit/Discovery/Manifest/TomlTest.php
 php	tests/phpunit/Discovery/ManifestRootDocumentationTest.php
