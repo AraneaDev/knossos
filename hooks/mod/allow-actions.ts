@@ -1,15 +1,15 @@
 /**
  * Allowing a root knossos refused (`a`, then `y`): the question first, then
- * `knossos allow-root` through the wrapper, and the turn's scan once it is.
+ * `knossos allow-root` through the wrapper, the root's first scan once it is, and the turn's brief after it.
  */
 import type { AllowState, RescanState } from '../../types'
 import { parseAllowRoot } from '../lib/envelopes'
 import { refusedRoot } from '../lib/empty-state'
 import { SingleFlight } from '../lib/scheduler'
-import { disable, wrapper } from './port'
+import { disable, wrapperAnswer } from './port'
 import type { Port } from './port'
 import { mod } from './state'
-import { scanSafely } from './watcher'
+import { rescanRoot, scanSafely } from './watcher'
 
 /** Whether an allow-root run is under way, which only these presses keep. */
 const { allow } = mod
@@ -48,24 +48,38 @@ export async function confirmAllow(io: Port): Promise<void> {
 
 /**
  * Runs `knossos allow-root <root> --execute` through the wrapper, which
- * writes the roots file baked in at install. Allowed, the turn's scan runs
- * at once so the band and pane pick the project up.
+ * writes the roots file baked in at install. Allowed, the root's first scan
+ * runs at once so the band and pane pick the project up.
  */
 async function runAllow(io: Port, root: string): Promise<void> {
-  const parsed = parseAllowRoot(await wrapper(io, 'allow-root', [], ALLOW_TIMEOUT_MS, root))
+  const { stdout, refusal } = await wrapperAnswer(io, 'allow-root', [], ALLOW_TIMEOUT_MS, root)
+  const parsed = parseAllowRoot(stdout)
   if (parsed?.status === 'no-binary') {
     await io.state.allow.update((): AllowState => ({ phase: 'idle', root: null, reason: null }))
     await disable(io)
     return
   }
   if (parsed === null) {
-    await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason: 'knossos did not allow it' }))
+    // A refusal from the wrapper names its reason (no roots file baked in, say); an empty answer has none.
+    const reason = refusal ?? 'knossos did not allow it'
+    await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason }))
     return
   }
   await io.state.allow.update((): AllowState => ({ phase: 'done', root, reason: null }))
   await io.state.rescan.update((r): RescanState => ({ ...r, refusedRoot: null }))
   // A watcher refused for this root may watch it now, once the scan below lands a dashboard.
   mod.watch.refused = false
-  // The edits that were refused are still unscanned: the turn's scan picks them up now.
-  void (mod.scans.flight ??= new SingleFlight(() => scanSafely(io))).request()
+  // The turn brief would answer `unscanned` for a project nobody has scanned, so the pane's own rescan runs first:
+  // it creates the project at exactly this root, shows scanning, done or failed, and reloads the dashboard.
+  await rescanRoot(io, root)
+  const scanned = await io.state.rescan.read()
+  if (scanned.phase !== 'idle' && !mod.session.disabled) {
+    // A failure to retry with `a`; the next turn's brief still reports the edits that were refused.
+    await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason: 'the first scan did not finish' }))
+    return
+  }
+  // The project exists now: the turn brief reports the edits that were refused before the allow.
+  if (!mod.session.disabled) await (mod.scans.flight ??= new SingleFlight(() => scanSafely(io))).request()
+  // The "scanning it now" line has done its job once the scans are over.
+  await io.state.allow.update((): AllowState => ({ phase: 'idle', root: null, reason: null }))
 }

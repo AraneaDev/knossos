@@ -40,8 +40,12 @@ export const watchArgs = (pollMs: number): string[] => [`--poll-ms=${pollMs}`]
 /** The wrapper bounds a turn brief at 60 s, plus room for it to exit on its own. */
 const BRIEF_TIMEOUT_MS = 70_000
 
-/** The wrapper bounds a rescan at 60 s, as a turn brief. */
-const RESCAN_TIMEOUT_MS = 70_000
+/**
+ * The wrapper bounds a rescan at 5 minutes, the bound of a watch scan, plus room
+ * for it to exit on its own: the rescan after an allow is a project's first full
+ * scan, which can take far longer than an incremental one.
+ */
+const RESCAN_TIMEOUT_MS = 310_000
 
 /** The watcher's debounce (its default): how long it waits after a change before it scans. */
 const WATCH_DEBOUNCE_MS = 300
@@ -272,26 +276,35 @@ export function requestRescan(io: Port): void {
   })
 }
 
+/**
+ * The rescan of `root` right after the person allowed it: the first scan, which
+ * creates the project there. Shown like any rescan; never throws.
+ */
+export async function rescanRoot(io: Port, root: string): Promise<void> {
+  await rescanSafely(io, root)
+}
+
 /** One rescan; a run that throws leaves the header saying it failed rather than scanning forever. */
-async function rescanSafely(io: Port): Promise<void> {
+async function rescanSafely(io: Port, root?: string): Promise<void> {
   try {
-    await runRescan(io)
+    await runRescan(io, root)
   } catch {
     await io.state.rescan.update((): RescanState => ({ phase: 'failed', reason: null })).catch(() => undefined)
   }
 }
 
 /**
- * Rescans the project incrementally through the wrapper's `scan`, then
+ * Rescans the project through the wrapper's `scan` (incrementally, or the first
+ * full scan when `root` was only just allowed), then
  * reloads the dashboard so the pane draws the new snapshot. The header shows
  * `scanning…` meanwhile and the reason when it does not land.
  */
-async function runRescan(io: Port): Promise<void> {
+async function runRescan(io: Port, root?: string): Promise<void> {
   if (mod.session.disabled) return
   await io.state.rescan.update((): RescanState => ({ phase: 'scanning', reason: null }))
   await startMotion(io, null)
   const started = await io.clock.now()
-  const parsed = parseRescan(await exclusively(() => wrapper(io, 'scan', [], RESCAN_TIMEOUT_MS)))
+  const parsed = parseRescan(await exclusively(() => wrapper(io, 'scan', [], RESCAN_TIMEOUT_MS, root)))
   if (parsed?.status === 'ok' && typeof parsed.snapshot_id === 'string') await attributeScan(io, parsed.snapshot_id, started, await io.clock.now())
   if (parsed?.status === 'no-binary') {
     await io.state.rescan.update((): RescanState => ({ phase: 'idle', reason: null }))

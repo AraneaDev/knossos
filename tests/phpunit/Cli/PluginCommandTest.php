@@ -706,9 +706,36 @@ final class PluginCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testInstalledHooksFallBackToTheHomeGraphWhenItExists(): void
+    {
+        $home = sys_get_temp_dir() . '/knossos-home-' . bin2hex(random_bytes(4));
+        mkdir($home . '/.knossos', 0o777, true);
+        touch($home . '/.knossos/knossos.sqlite');
+        $previous = getenv('HOME');
+        putenv('HOME=' . $home);
+        try {
+            $line = $this->runInstalledScript('session-brief.sh', [], null);
+        } finally {
+            putenv($previous === false ? 'HOME' : 'HOME=' . $previous);
+            exec('rm -rf ' . escapeshellarg($home));
+        }
+
+        assertSame(true, str_starts_with($line, 'DATA=' . $home . '/.knossos ARGS=session-brief '));
+    }
+
+    #[Group('cli')]
     public function testInstalledSessionBriefLeavesTheDataDirectoryEmptyWithoutAnySource(): void
     {
-        $line = $this->runInstalledScript('session-brief.sh', [], null);
+        $home = sys_get_temp_dir() . '/knossos-home-' . bin2hex(random_bytes(4));
+        mkdir($home, 0o777, true);
+        $previous = getenv('HOME');
+        putenv('HOME=' . $home);
+        try {
+            $line = $this->runInstalledScript('session-brief.sh', [], null);
+        } finally {
+            putenv($previous === false ? 'HOME' : 'HOME=' . $previous);
+            exec('rm -rf ' . escapeshellarg($home));
+        }
 
         assertSame(true, str_starts_with($line, 'DATA= ARGS=session-brief '));
     }
@@ -1585,7 +1612,11 @@ final class PluginCommandTest extends KnossosTestCase
     public function testThePreviewNamesTheDataDirectory(): void
     {
         $previous = getenv('KNOSSOS_DATA_DIR');
+        $previousHome = getenv('HOME');
+        $home = sys_get_temp_dir() . '/knossos-home-' . bin2hex(random_bytes(4));
+        mkdir($home);
         putenv('KNOSSOS_DATA_DIR');
+        putenv('HOME=' . $home);
         try {
             ob_start();
             (new PluginCommand())->run('install-agent-plugin', [], ['json' => ['true'], 'data-dir' => ['/srv/graph']], $this->context());
@@ -1605,6 +1636,8 @@ final class PluginCommandTest extends KnossosTestCase
             assertSame(true, str_contains((string) ob_get_clean(), "\nData directory: not set, the hooks derive the graph from the project path.\n"));
         } finally {
             putenv($previous === false ? 'KNOSSOS_DATA_DIR' : 'KNOSSOS_DATA_DIR=' . $previous);
+            putenv($previousHome === false ? 'HOME' : 'HOME=' . $previousHome);
+            rmdir($home);
         }
     }
 }

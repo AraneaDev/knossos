@@ -22,7 +22,8 @@ use Throwable;
  * the caller is a hook that must never break a session, so failure is a
  * status in the JSON, not an exit code.
  * None creates a database; only `turn-brief` and `rescan` write, by
- * scanning a project that already exists in an allowed root, and
+ * scanning a project that already exists in an allowed root (`rescan` also
+ * makes the first scan of a path that is exactly an allowed root), and
  * `annotate`, a note on a component, only with `--execute`.
  */
 final class BriefCommand implements CliCommand

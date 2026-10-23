@@ -70,16 +70,25 @@ export async function disable(io: Port): Promise<void> {
  * mod asked for something the wrapper never runs, which silence would hide.
  */
 export async function wrapper(io: Port, sub: string, args: string[], timeoutMs: number, dir?: string): Promise<string> {
+  return (await wrapperAnswer(io, sub, args, timeoutMs, dir)).stdout
+}
+
+/**
+ * {@link wrapper} that also hands back the reason when the wrapper refused
+ * the call, for the one caller that shows it to the person. A refused call
+ * still reads as no data in `stdout`.
+ */
+export async function wrapperAnswer(io: Port, sub: string, args: string[], timeoutMs: number, dir?: string): Promise<{ stdout: string; refusal: string | null }> {
   try {
     const root = dir ?? (await io.session.root())
     const script = `${io.plugin.root}/hooks/scripts/knossos-run.sh`
     const { stdout } = await io.process.run(['sh', script, sub, root, ...args], { timeoutMs })
     const refused = wrapperRefusal(stdout)
-    if (refused === null) return stdout
+    if (refused === null) return { stdout, refusal: null }
     await io.ui.log(`knossos: the wrapper refused ${sub} (${refused}); read as no data`, { to: 'debug' })
-    return ''
+    return { stdout: '', refusal: refused }
   } catch {
-    return ''
+    return { stdout: '', refusal: null }
   }
 }
 

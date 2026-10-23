@@ -58,7 +58,9 @@ the install writes the data directory into the hooks, chosen in this order:
 
 1. `--data-dir=DIR`, when you pass it.
 2. The `KNOSSOS_DATA_DIR` of the shell you install from.
-3. Neither: the hooks fall back to the `.knossos/` directory nearest the
+3. The installation's own directory, `~/.knossos`, when `~/.knossos/knossos.sqlite`
+   exists. That is the graph `tools/install` creates and the server reads.
+4. None of these: the hooks fall back to the `.knossos/` directory nearest the
    project, which is right only when your server uses that too.
 
 The value must be an absolute path. The hooks then use `DIR/roots.json` as the
