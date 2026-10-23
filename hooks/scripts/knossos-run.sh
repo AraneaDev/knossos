@@ -68,9 +68,10 @@ run_target
 . "$KNOSSOS_HOOK_DIR/lib.sh" 2>/dev/null || exit 0
 # A grant goes only into the roots file the installation baked in (or one the
 # environment names): without it the binary would fall back to a file beside
-# the working directory, which no server reads.
+# the working directory, which no server reads. The refusal says so, because
+# the person pressing allow-root would otherwise see nothing happen.
 if [ "$SUBCOMMAND" = allow-root ] && [ -z "${KNOSSOS_ROOTS_FILE:-}" ]; then
-    exit 0
+    refuse 'no roots file is known to the hooks; reinstall the plugin with knossos install-agent-plugin --execute'
 fi
 
 # The one failure that is not silent: with no binary there is nothing to

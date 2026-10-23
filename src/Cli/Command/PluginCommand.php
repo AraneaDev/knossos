@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Runtime\DataDirectory;
+use Knossos\Runtime\RuntimeFactory;
 use Throwable;
 
 /**
@@ -545,8 +546,10 @@ final class PluginCommand implements CliCommand
      * The data directory the installed hooks will read, as a value to bake in.
      *
      * The option wins, then the installer's own `KNOSSOS_DATA_DIR`, then the
-     * empty string, which keeps the hooks deriving the graph from the project
-     * path. A newline, carriage return or NUL is rejected because the value ends up inside a
+     * directory of the installation's graph (`~/.knossos`) when that graph
+     * exists, which is the one the server reads. Only when none of them
+     * exists is it the empty string, which keeps the hooks deriving the graph
+     * from the project path. A newline, carriage return or NUL is rejected because the value ends up inside a
      * single-quoted shell assignment, where either would break the script.
      */
     private function dataDirectory(?string $option): string
@@ -554,6 +557,10 @@ final class PluginCommand implements CliCommand
         $value = $option;
         if ($value === null || $value === '') {
             $value = DataDirectory::named() ?? '';
+        }
+        if ($value === '') {
+            $home = RuntimeFactory::homeDatabasePath();
+            $value = $home === null ? '' : dirname($home);
         }
         if ($value !== '' && !str_starts_with($value, '/')) {
             // A relative path would be resolved against each project's

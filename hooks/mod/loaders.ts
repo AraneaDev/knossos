@@ -105,6 +105,10 @@ async function readDashboard(io: Port): Promise<void> {
   }
   await io.state.refresh.update((): RefreshState => ({ fetchedAt: now, failed: false }))
   mod.loads.dashboardStored = true
+  // A graph for the allowed root has landed, so an allow line left from before (a reloaded pane keeps it) has nothing more to say.
+  if (parsed.status === 'ok') {
+    await io.state.allow.update(allow => (allow.root === parsed.project_root && (allow.phase === 'done' || allow.phase === 'running') ? { phase: 'idle', root: null, reason: null } : allow))
+  }
   if (parsed.status === 'ok') mod.session.snapshot = parsed.snapshot_id ?? mod.session.snapshot
   // The session's changes are read since the first snapshot it saw, kept for when it is continued in another process.
   if (parsed.status === 'ok' && parsed.snapshot_id !== null && (await io.state.sessionStart.read()) === null) {

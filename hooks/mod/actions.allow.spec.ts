@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AllowState, RescanState } from '../../types'
+import { allowInput, allowRows } from '../lib/empty-state'
 import { PRESSES } from './actions'
 import type { Port } from './port'
 import { mod, reset } from './state'
@@ -18,7 +19,7 @@ const ALLOWED = JSON.stringify({ path: ROOT, added: true, roots_file: '/data/roo
  * `stdout` and records each command it was asked to run. `refuse` makes the
  * allow state's update throw for a phase, as a torn-down session would.
  */
-function allowPort(init: { allow?: AllowState; rescan?: RescanState; brief?: unknown; stdout?: string; refuse?: AllowState['phase'] } = {}) {
+function allowPort(init: { allow?: AllowState; rescan?: RescanState; brief?: unknown; stdout?: string; scan?: string; refuse?: AllowState['phase'] } = {}) {
     const values = new Map<string, unknown>(Object.entries({ allow: init.allow ?? IDLE, rescan: init.rescan ?? { phase: 'idle', reason: null }, brief: init.brief ?? null }))
     const runs: string[][] = []
     const timers: (() => void)[] = []
@@ -44,7 +45,7 @@ function allowPort(init: { allow?: AllowState; rescan?: RescanState; brief?: unk
         process: {
             run: async (argv: string[]) => {
                 runs.push(argv)
-                return { exitCode: 0, stdout: init.stdout ?? ALLOWED, stderr: '' }
+                return { exitCode: 0, stdout: argv[2] === 'allow-root' ? (init.stdout ?? ALLOWED) : (init.scan ?? ''), stderr: '' }
             },
         },
         state,
@@ -123,21 +124,103 @@ describe('allow-yes', () => {
         await press(port.io, 'allow-yes')
         expect(port.timers).toHaveLength(1)
         await port.runTimers()
-        expect(port.runs).toEqual([['sh', '/plugin/hooks/scripts/knossos-run.sh', 'allow-root', ROOT]])
+        expect(port.runs).toEqual([
+            ['sh', '/plugin/hooks/scripts/knossos-run.sh', 'allow-root', ROOT],
+            ['sh', '/plugin/hooks/scripts/knossos-run.sh', 'scan', ROOT],
+        ])
     })
 
-    it('allowed: done, the refusal forgotten, the watcher may watch, and the scan requested', async () => {
+    it('allowed: the refusal forgotten, the watcher may watch, and the root scanned for the first time', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, rescan: { phase: 'failed', reason: 'not an allowed root', refusedRoot: ROOT } })
         mod.watch.refused = true
         await press(port.io, 'allow-yes')
         await port.runTimers()
-        expect(port.allow()).toEqual({ phase: 'done', root: ROOT, reason: null })
-        expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: 'not an allowed root', refusedRoot: null })
+        expect(port.allow().phase).toBe('failed')
+        expect((port.values.get('rescan') as RescanState).refusedRoot ?? null).toBeNull()
         expect(mod.watch.refused).toBe(false)
-        expect(vi.mocked(scanSafely)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(scanSafely)).toHaveBeenCalledWith(port.io)
-        expect(mod.scans.flight).not.toBeNull()
+        // The pane's rescan creates the project at the allowed root; the turn brief would only answer unscanned.
+        expect(port.runs[0]).toEqual(['sh', '/plugin/hooks/scripts/knossos-run.sh', 'allow-root', ROOT])
+        expect(port.runs[1]).toEqual(['sh', '/plugin/hooks/scripts/knossos-run.sh', 'scan', ROOT])
+        expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
         expect(mod.allow.inFlight).toBe(false)
+    })
+
+    it('a first scan that lands leaves the pane idle, one that does not says it failed', async () => {
+        const landed = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'ok', snapshot_id: 'scan_1', project_root: ROOT }) })
+        await press(landed.io, 'allow-yes')
+        await landed.runTimers()
+        expect(landed.values.get('rescan')).toMatchObject({ phase: 'idle', reason: null })
+        const failed = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
+        await press(failed.io, 'allow-yes')
+        await failed.runTimers()
+        expect((failed.values.get('rescan') as RescanState).phase).toBe('failed')
+    })
+
+    it('shows the done line while the first scan runs, then clears it once the scan lands', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'ok', snapshot_id: 'scan_1', project_root: ROOT }) })
+        // While the scan runs, the allow state still says done.
+        const during: AllowState[] = []
+        const run = port.io.process.run
+        port.io.process.run = (async (...args: Parameters<typeof run>) => {
+            if (args[0][2] === 'scan') during.push(port.allow())
+            return run(...args)
+        }) as typeof run
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(during.map(a => a.phase)).toEqual(['done'])
+        expect(port.allow()).toEqual(IDLE)
+        const input = allowInput(null, { phase: 'idle', reason: null }, port.allow())
+        expect(input).toBeNull()
+        const rows = allowRows({ root: ROOT, rootsFile: null, phase: 'done', reason: null }, 80)
+        expect(rows.some(r => r.key.startsWith('allow-done'))).toBe(true)
+    })
+
+    it('runs the root scan first, then the turn brief that reports the refused edits, then clears the line', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'ok', snapshot_id: 'scan_1', project_root: ROOT }) })
+        const order: string[] = []
+        vi.mocked(scanSafely).mockImplementationOnce(async () => {
+            order.push(`brief:${(port.values.get('rescan') as RescanState).phase}:${port.allow().phase}`)
+        })
+        const run = port.io.process.run
+        port.io.process.run = (async (...args: Parameters<typeof run>) => {
+            order.push(args[0][2] ?? '')
+            return run(...args)
+        }) as typeof run
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(order).toEqual(['allow-root', 'scan', 'dashboard', 'brief:idle:done'])
+        expect(vi.mocked(scanSafely)).toHaveBeenCalledTimes(1)
+        expect(port.allow()).toEqual(IDLE)
+    })
+
+    it('a failed first scan runs no brief now, so the next turn reports the edits', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason: 'the first scan did not finish' })
+        // No brief flight was started or left stuck: the next turn creates its own and runs the brief.
+        expect(mod.scans.flight).toBeNull()
+    })
+
+    it('a first scan that does not land leaves the allow state failed with a reason, retryable with a', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason: 'the first scan did not finish' })
+        const input = allowInput(null, port.values.get('rescan') as RescanState, port.allow())!
+        expect(allowRows(input, 80).some(r => r.key.startsWith('allow-done'))).toBe(false)
+        await press(port.io, 'allow')
+        expect(port.allow()).toEqual({ phase: 'confirming', root: ROOT, reason: null })
+    })
+
+    it('a wrapper refusal: failed, with the reason the wrapper gave', async () => {
+        const reason = 'no roots file is known to the hooks; reinstall the plugin with knossos install-agent-plugin --execute'
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, stdout: JSON.stringify({ status: 'refused', by: 'wrapper', reason }) })
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason })
+        expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
     })
 
     it.each(['', 'not json', JSON.stringify({ path: ROOT, added: true, preview: true })])('an answer it cannot read (%j): failed, knossos did not allow it', async stdout => {

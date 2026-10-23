@@ -3309,6 +3309,7 @@ describe('knossos mod', () => {
       dashboard: [{ stdout: paneDashboard() }],
       brief: [{ stdout: refused }, { stdout: brief() }],
       allow: [{ stdout: '{"path":"/repo","roots_file":"/data/roots.json","added":true}', hold: 500 }],
+      scan: [{ stdout: '{"status":"ok"}', hold: 500 }],
     })
     await $.session.start(START)
     await w.clock.settle()
@@ -3345,10 +3346,17 @@ describe('knossos mod', () => {
     await w.clock.advance(500)
     await w.clock.settle()
     expect(w.allowRuns()).toEqual([['sh', expect.stringMatching(/\/hooks\/scripts\/knossos-run\.sh$/), 'allow-root', ROOT]])
+    // The root's first scan runs next and the line stays while it does; the turn brief waits for it.
     expect((await ui.find({ key: 'allow-done-0' }))?.text).toContain('✓ /repo allowed')
-    // The refused edit is scanned now, and the offer is gone.
+    expect(w.scanRuns()).toEqual([['sh', expect.stringMatching(/\/hooks\/scripts\/knossos-run\.sh$/), 'scan', ROOT]])
+    expect(w.briefRuns().length).toBe(briefs)
+    await w.clock.advance(500)
+    await w.clock.settle()
+    expect(w.scanRuns()).toHaveLength(1)
+    // The refused edit is reported by the turn brief once the project exists, and the line is gone.
     expect(w.briefRuns().length).toBe(briefs + 1)
     expect(w.briefRuns().at(-1)).toContain('--files=src/Router.php')
+    expect(await ui.find({ key: 'allow-done-0' })).toBeUndefined()
     expect(await ui.find({ key: 'allow' })).toBeUndefined()
     expect(w.prompts).toEqual([])
     await ui.unmount()

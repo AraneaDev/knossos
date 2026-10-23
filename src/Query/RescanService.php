@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanTarget;
 use PDO;
@@ -14,9 +15,12 @@ use Throwable;
  *
  * The pane offers it when the snapshot is stale or the tree has drifted, so
  * the figures it draws catch up without waiting for the next edit. It writes
- * under the same rules as `turn-brief`: only a project that is already
- * scanned, only inside a root the operator allowed, and only incrementally,
- * so it can never create a database or a project. Unlike a turn brief it
+ * under the same rules as `turn-brief`: only inside a root the operator
+ * allowed, and incrementally, so it never creates a database. It scans a
+ * project that is already known. The one exception is the first scan right
+ * after the person allowed a root in the pane: a path that is exactly one
+ * of the allowed roots and has no project yet gets its first full scan.
+ * A path merely inside an allowed root still answers `unscanned`. Unlike a turn brief it
  * reports nothing about the change itself: the pane reloads its dashboard
  * after it.
  */
@@ -49,14 +53,15 @@ final readonly class RescanService
             'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'roots_file' => null, 'refused_root' => null,
         ];
         [$allowed, $project, $refusal] = (new ScanTarget($this->pdo, $this->databasePath))->resolve($absolute);
-        if ($project === null) {
+        $first = $project === null && ($refusal['status'] ?? null) === 'unscanned' && $this->isAllowedRoot($allowed, $absolute);
+        if ($project === null && !$first) {
             return ($refusal ?? []) + $envelope;
         }
-        $root = (string) $project['root_realpath'];
+        $root = $first ? $absolute : (string) $project['root_realpath'];
         $started = hrtime(true);
         try {
             // Recorded in the ledger, so a turn brief whose edits this scan took in can still report them.
-            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: 'incremental'));
+            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: $first ? 'full' : 'incremental'));
         } catch (Throwable $failure) {
             return ['status' => 'scan-failed', 'reason' => $failure->getMessage(), 'project_root' => $root] + $envelope;
         }
@@ -69,5 +74,17 @@ final readonly class RescanService
             'scanned_at' => time(),
             'scan_ms' => intdiv(hrtime(true) - $started, 1_000_000),
         ] + $envelope;
+    }
+
+    /** Whether `$absolute` is, after realpath, exactly one of the roots allowed right now. */
+    private function isAllowedRoot(AllowedRoots $allowed, string $absolute): bool
+    {
+        foreach ($allowed->current() as $root) {
+            if ((realpath($root) ?: $root) === $absolute) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

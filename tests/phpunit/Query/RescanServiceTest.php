@@ -62,6 +62,68 @@ final class RescanServiceTest extends KnossosTestCase
         return $directory;
     }
 
+    /** A copy of the fixture nobody has scanned, and an empty graph database to scan it into. */
+    private function unscannedFixture(): array
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
+
+        return [$this->freshTestDatabase(), $root];
+    }
+
+    #[Group('query')]
+    public function testTheFirstRescanOfAnExactlyAllowedRootCreatesTheProject(): void
+    {
+        [$pdo, $root] = $this->unscannedFixture();
+        try {
+            $real = (string) realpath($root);
+            putenv('KNOSSOS_ALLOWED_ROOTS=' . $real . '/');
+            $result = $this->service($pdo)->rescan($root);
+
+            assertSame('ok', $result['status']);
+            assertSame($real, $result['project_root']);
+            assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn());
+            assertSame($result['snapshot_id'], (string) $pdo->query('SELECT active_scan_id FROM projects')->fetchColumn());
+            assertSame('full', (string) $pdo->query('SELECT mode FROM scans')->fetchColumn());
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testAPathInsideAnAllowedRootWithNoProjectStaysUnscanned(): void
+    {
+        [$pdo, $root] = $this->unscannedFixture();
+        try {
+            putenv('KNOSSOS_ALLOWED_ROOTS=' . realpath($root));
+            $result = $this->service($pdo)->rescan($root . '/src');
+
+            assertSame('unscanned', $result['status']);
+            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn());
+            assertSame(0, $this->scans($pdo));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testAnUnscannedPathOutsideTheAllowedRootsIsRefusedNotScanned(): void
+    {
+        [$pdo, $root] = $this->unscannedFixture();
+        $data = $this->temporaryDirectory();
+        try {
+            putenv('KNOSSOS_ALLOWED_ROOTS=/nonexistent-root');
+            $result = $this->service($pdo, $data . '/knossos.sqlite')->rescan($root);
+
+            assertSame('not-allowed', $result['status']);
+            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn());
+            assertSame(0, $this->scans($pdo));
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($data);
+        }
+    }
+
     #[Group('query')]
     public function testAnEditedProjectIsRescannedIntoANewSnapshot(): void
     {
