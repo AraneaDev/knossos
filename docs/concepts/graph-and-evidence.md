@@ -23,10 +23,14 @@ your project. You get these kinds of fact:
 | Diagnostic | A warning or error about the scan itself: a file too large, a symlink skipped, a syntax error.                                                  |
 | Snapshot   | One complete scan. The newest is the active graph. Earlier ones are archived for [history](../guides/history.md).                               |
 
-A shell script (`.sh` or `.bash`) is a `file` component as soon as the scan
-finds it, and the literal paths it runs, such as `./tools/check` or
-`php bin/tool "$@"`, become `launches` edges from the script. A path with a
-variable, a glob or `~` in it names nothing.
+A shell script (`.sh` or `.bash`, or a file with no extension whose shebang
+names `sh`, `bash`, `dash` or `zsh`, such as `bin/run` starting with
+`#!/bin/sh`) is a `file` component as soon as the scan finds it, and the literal
+paths it runs, such as `./tools/check`, `php bin/tool "$@"`,
+`source lib/env.sh`, `. lib/env.sh` or `xargs php bin/lint`, become `launches`
+edges from the script. A path with a variable, a glob or `~` in it names
+nothing, and neither does a line inside a heredoc (`<<EOF` to `EOF`), which is
+text handed to a command.
 
 A project file no worker reads, such as a CI tool, is a
 component of kind `file` once something names it: a `launches` edge from code
