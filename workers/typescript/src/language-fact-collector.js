@@ -186,14 +186,16 @@ export class TypeScriptLanguageFactCollector {
         if (flags & ts.ModifierFlags.Static) return false;
         const name = this.checker.getSymbolAtLocation(node.name)?.escapedName;
         if (name === undefined) return false;
-        return (node.parent.heritageClauses ?? []).some((clause) =>
-            clause.types.some(
-                (type) =>
-                    this.checker
-                        .getTypeAtLocation(type)
-                        .getProperty(ts.unescapeLeadingUnderscores(name)) !==
-                    undefined,
-            ),
+        const member = ts.unescapeLeadingUnderscores(name);
+        return (
+            (node.parent.heritageClauses ?? []).some((clause) =>
+                clause.types.some(
+                    (type) =>
+                        this.checker
+                            .getTypeAtLocation(type)
+                            .getProperty(member) !== undefined,
+                ),
+            ) || callsOwnSuperMember(node, member)
         );
     }
 
@@ -1132,6 +1134,31 @@ function externalPackageName(specifier) {
         ? parts.slice(0, 2).join("/")
         : parts[0];
     return NPM_PACKAGE_NAME.test(name) ? name : null;
+}
+
+/**
+ * Whether a method's own body calls `super.<member>()`, which fails unless the
+ * base has that member: the one sign of it when the base is a dependency
+ * that ships no types. A nested function or class is code of its own, which
+ * may never run, so its calls are not counted.
+ */
+function callsOwnSuperMember(node, member) {
+    const pending = node.body === undefined ? [] : [node.body];
+    while (pending.length > 0) {
+        const child = pending.pop();
+        if (
+            ts.isCallExpression(child) &&
+            ts.isPropertyAccessExpression(child.expression) &&
+            child.expression.expression.kind === ts.SyntaxKind.SuperKeyword &&
+            child.expression.name.text === member
+        )
+            return true;
+        if (ts.isFunctionLike(child) || ts.isClassLike(child)) continue;
+        ts.forEachChild(child, (grandchild) => {
+            pending.push(grandchild);
+        });
+    }
+    return false;
 }
 
 function evidence(sourceFile, relative, node) {
