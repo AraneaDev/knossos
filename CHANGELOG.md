@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.2](https://github.com/AraneaDev/knossos/compare/v0.39.1...v0.39.2) (2026-10-23)
+
+
+### Fixes
+
+* **workers:** treat a super call of a method's own name as an override ([#403](https://github.com/AraneaDev/knossos/issues/403)) ([8c225b8](https://github.com/AraneaDev/knossos/commit/8c225b8a2ad92c78d88025b550ea3f56d715047d))
+
 ## [0.39.1](https://github.com/AraneaDev/knossos/compare/v0.39.0...v0.39.1) (2026-10-23)
 
 
