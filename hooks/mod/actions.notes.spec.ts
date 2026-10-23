@@ -217,6 +217,16 @@ describe('o on a note on a missing name', () => {
     })
 })
 
+describe('o on a note whose component likely moved', () => {
+    it('opens the finder on the suggested component, so Enter on it moves the note there', async () => {
+        const moved = { ...NOTES, groups: { ...NOTES.groups, missing: [row('App\\Gone', { component_status: 'missing', suggested_component: 'App\\New\\Gone', updated_at: '2026-10-16T11:00:00Z' })] } }
+        const port = fakePort({ selected: 0 }, { notes: { ...STATE, answer: moved } })
+        await port.press('open')
+        expect(port.view()).toMatchObject({ finding: true, moving: { component: 'App\\Gone', author: 'model', kind: 'note' } })
+        expect((port.values.get('search') as { query: string }).query).toBe('App\\New\\Gone')
+    })
+})
+
 describe('leaving a question or a move', () => {
     it('drops the move when the finder closes, so a later find opens what it finds', async () => {
         const port = fakePort({ selected: 0 })

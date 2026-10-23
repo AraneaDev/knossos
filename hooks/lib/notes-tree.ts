@@ -29,6 +29,8 @@ export type NoteItem = {
   staleReason: string | null
   checked: boolean
   checkReason: string | null
+  /** On a missing name, the component it likely moved to; null when knossos suggests none. */
+  suggested: string | null
   /** The file its component is in (a file note's own path), and that component's boundary; null when knossos does not say. */
   path: string | null
   boundary: string | null
@@ -60,6 +62,7 @@ export const itemOf = (row: NoteRow): NoteItem => ({
   staleReason: row.stale_reason,
   checked: row.checked,
   checkReason: row.check_reason,
+  suggested: row.component_status === 'missing' ? (row.suggested_component ?? null) : null,
   path: row.path ?? null,
   boundary: row.boundary ?? null,
 })

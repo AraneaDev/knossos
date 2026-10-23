@@ -132,6 +132,7 @@ because the finding is true and meant (a parked route, a test-only helper),
 `confirmed_dead` records verified unused code. A missing note with a
 `suggested_component` is moved there with `move_to: <that name>`. When
 `suggested_component` is null, find the new name with `find_component` on the
-short name, then pass it as `move_to`. A moved note keeps the basis it was
-written against, so it reads stale when its component's code changed; check it
-and confirm it.
+short name, then pass it as `move_to`. `move_to` moves the note of the given
+`kind`, so pass the note's own kind from `list_annotations`. A moved note keeps
+the basis it was written against, so it reads stale when its component's code
+changed; check it and confirm it.

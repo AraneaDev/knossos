@@ -64,10 +64,10 @@ export async function askMove(io: Port, to: string): Promise<void> {
   await io.state.view.update((w): KnossosView => ({ ...w, finding: false, moving: null, tab: 'notes', notesAsk: { action: 'move', component: moving.component, author: moving.author, kind: moving.kind, to } }))
 }
 
-/** `o` on a note on a missing name: the finder opens on the name it had, to pick where the note moves. */
+/** `o` on a note on a missing name: the finder opens on where knossos suggests its component went, else on the name it had, to pick where the note moves. */
 export async function startMove(io: Port, n: NoteItem, openFinder: (io: Port, query: string) => Promise<void>): Promise<void> {
   await io.state.view.update((v): KnossosView => ({ ...v, moving: { component: n.component, author: n.author, kind: n.kind } }))
-  await openFinder(io, n.label)
+  await openFinder(io, n.suggested ?? n.label)
 }
 
 /** The marked note, when the tab's `o` should move it rather than open it: one on a missing name. */

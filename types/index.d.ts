@@ -576,7 +576,8 @@ export type NotesFilter = 'all' | 'yours' | 'model' | 'stale' | 'missing' | 'fla
  * One annotation as the Notes tab lists it: its component and whether the
  * graph still holds it, who wrote it, its kind and text, when, whether a
  * model note's files changed since (`stale`, with why) and whether the
- * person flagged it for the model (`checked`, with the reason).
+ * person flagged it for the model (`checked`, with the reason), and for a
+ * note on a missing name where its component likely went.
  */
 export type NoteRow = {
   component: string
@@ -589,6 +590,8 @@ export type NoteRow = {
   stale_reason: string | null
   checked: boolean
   check_reason: string | null
+  /** On a missing name, the component it likely moved to (the one added since that matches it); null when none does or the name is there, absent from an older knossos. */
+  suggested_component?: string | null
   /** The file its component is in and that component's boundary; absent from an older knossos, null for a missing name. */
   path?: string | null
   boundary?: string | null

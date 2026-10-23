@@ -249,9 +249,15 @@ export function parseBranchDiff(stdout: string): BranchDiff | null {
 
 const NOTES = new Set(['ok', 'refused', 'unscanned', 'error', 'no-binary'])
 
-/** Whether every row of a notes group carries what the tab draws. */
+/** Whether every row of a notes group carries what the tab draws, and a suggestion it has is a name or null (`NotesService::rows`). */
 const noteRows = (rows: unknown): boolean =>
-  Array.isArray(rows) && rows.every(r => isObject(r) && ['component', 'value', 'author', 'kind', 'updated_at'].every(k => typeof (r as Record<string, unknown>)[k] === 'string'))
+  Array.isArray(rows) &&
+  rows.every(r => {
+    if (!isObject(r)) return false
+    const row = r as Record<string, unknown>
+    const suggested = row['suggested_component']
+    return ['component', 'value', 'author', 'kind', 'updated_at'].every(k => typeof row[k] === 'string') && (suggested === undefined || suggested === null || typeof suggested === 'string')
+  })
 
 /** The Notes tab's notes from the wrapper's stdout; null for silence or anything unexpected (a group without its rows). */
 export function parseNotes(stdout: string): Notes | null {

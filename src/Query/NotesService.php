@@ -188,7 +188,10 @@ final readonly class NotesService
     /**
      * Every annotation but the person's check requests, each with its
      * component's presence, whether it is stale and why, and whether the
-     * person flagged its component; at most {@see self::MAX_ROWS}.
+     * person flagged its component; at most {@see self::MAX_ROWS}. A note on
+     * a missing name carries the component it likely moved to
+     * (`suggested_component`, {@see NoteMoveSuggestions}), null when no one
+     * component matches and on every present note.
      *
      * @return array{0: list<array<string, mixed>>, 1: bool}
      */
@@ -219,6 +222,9 @@ final readonly class NotesService
             $boundaries = BoundaryLabels::load($this->pdo, $projectId);
             [$labels, $unreadLabels] = [$paths === [] ? [] : $boundaries->forFiles($projectId, $paths), $unread === [] ? [] : $boundaries->forNodes($unread)];
         }
+        // Where a lost name's component went, as list_annotations suggests it.
+        $missing = array_values(array_map(static fn(array $row): string => (string) $row['canonical_name'], array_filter($rows, static fn(array $row): bool => $row['component_status'] === 'missing')));
+        $suggested = (new NoteMoveSuggestions($this->pdo))->forMissing($projectId, $missing);
 
         return [array_map(static fn(array $row, ?string $reason): array => [
             'component' => (string) $row['canonical_name'],
@@ -231,6 +237,7 @@ final readonly class NotesService
             'stale_reason' => $reason,
             'checked' => $row['check_reason'] !== null,
             'check_reason' => $row['check_reason'] === null ? null : (string) $row['check_reason'],
+            'suggested_component' => $row['component_status'] === 'missing' ? ($suggested[(string) $row['canonical_name']] ?? null) : null,
         ] + self::placed($row, $labels, $unreadLabels), $rows, $reasons), $truncated];
     }
 
