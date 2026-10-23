@@ -36,6 +36,7 @@ __pycache__
 *.pyc
 workers/rust/mutants.out
 chaos-infection-log.json
+.chaos-mcp
 infection.args.log
 infection.out.log
 .audit-patches
