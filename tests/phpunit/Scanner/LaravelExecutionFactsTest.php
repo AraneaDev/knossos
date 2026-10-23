@@ -114,6 +114,28 @@ final class LaravelExecutionFactsTest extends KnossosTestCase
         }
     }
 
+    /** `#[ObservedBy([A::class, B::class])]` registers every observer in the list. */
+    public function testObservedByTakesAnArrayOfObservers(): void
+    {
+        $facts = $this->scan(<<<'SOURCE'
+            <?php
+
+            namespace App\Models;
+
+            use App\Observers\AuditObserver;
+            use App\Observers\PersonObserver;
+            use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+            use Illuminate\Database\Eloquent\Model;
+
+            #[ObservedBy([PersonObserver::class, AuditObserver::class])]
+            class Person extends Model {}
+            SOURCE);
+        $targets = array_column(array_values(array_filter($facts['edges'], static fn(array $e): bool => $e['kind'] === 'observes')), 'target');
+        sort($targets);
+
+        self::assertSame(['php:class:App\\Observers\\AuditObserver', 'php:class:App\\Observers\\PersonObserver'], $targets);
+    }
+
     /** @return array<string, mixed> */
     private function scan(string $source): array
     {

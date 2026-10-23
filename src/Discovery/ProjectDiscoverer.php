@@ -139,6 +139,16 @@ final readonly class ProjectDiscoverer
         return SourceClassifier::unitKindFor($relativePath, $absolutePath);
     }
 
+    /**
+     * A path's language and unit kind at once; see {@see SourceClassifier::classify()}.
+     *
+     * @return array{language: ?string, unitKind: ?string}
+     */
+    public static function classify(string $relativePath, ?string $absolutePath = null): array
+    {
+        return SourceClassifier::classify($relativePath, $absolutePath);
+    }
+
     /** Whether a path's name can be carried by a stable id; see {@see SourceClassifier::isSupportedPath()}. */
     public static function isSupportedPath(string $relative): bool
     {

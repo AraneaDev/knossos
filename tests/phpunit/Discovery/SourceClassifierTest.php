@@ -184,6 +184,34 @@ final class SourceClassifierTest extends TestCase
         self::assertNull(SourceClassifier::unitKindFor('sh'));
     }
 
+    /** The shell in a shebang is matched without regard to case, as the languages are. */
+    public function testUnitKindForReadsAShellShebangInAnyCase(): void
+    {
+        file_put_contents($this->directory . '/upper-bash', "#!/bin/BASH\n");
+        file_put_contents($this->directory . '/upper-env', "#!/usr/bin/ENV Sh -e\n");
+
+        assertSame('shell', SourceClassifier::unitKindFor('upper-bash', $this->directory . '/upper-bash'));
+        assertSame('shell', SourceClassifier::unitKindFor('upper-env', $this->directory . '/upper-env'));
+    }
+
+    /** One call gives both answers, as the two calls give them, for a file and its shebang. */
+    public function testClassifyGivesTheLanguageAndTheUnitKindTogether(): void
+    {
+        file_put_contents($this->directory . '/run', "#!/bin/sh\n");
+        file_put_contents($this->directory . '/tool', "#!/usr/bin/env php\n");
+
+        foreach ([['run', 'run'], ['tool', 'tool'], ['composer.json', null], ['src/a.php', null], ['run', null]] as [$relative, $file]) {
+            $absolute = $file === null ? null : $this->directory . '/' . $file;
+            assertSame(
+                ['language' => SourceClassifier::languageFor($relative, $absolute), 'unitKind' => SourceClassifier::unitKindFor($relative, $absolute)],
+                SourceClassifier::classify($relative, $absolute),
+                $relative,
+            );
+        }
+        assertSame(['language' => null, 'unitKind' => 'shell'], SourceClassifier::classify('run', $this->directory . '/run'));
+        assertSame(['language' => 'php', 'unitKind' => null], SourceClassifier::classify('tool', $this->directory . '/tool'));
+    }
+
     /** The interpreter in a shebang is matched without regard to case. */
     public function testLanguageForReadsAShebangInAnyCase(): void
     {

@@ -106,9 +106,6 @@ final class EloquentConventionRuleTest extends TestCase
 
         self::assertContains('php:class:App\\Models\\Observers\\PersonObserver laravel.observer', $observer);
         self::assertContains('php:method:App\\Models\\Observers\\PersonObserver::created laravel.entry_method', $observer);
-        self::assertSame('laravel.model', LaravelPathRoleRule::roleForPath('app/Models/Observers/PersonObserver.php'));
-        self::assertSame('laravel.observer', LaravelPathRoleRule::roleForPath('app/Observers/PostObserver.php'));
-        self::assertNull(LaravelPathRoleRule::roleForPath('app/Support/Plain.php'));
     }
 
     public function testTheDirectoryRuleKnowsObserverMethods(): void

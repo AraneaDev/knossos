@@ -157,8 +157,7 @@ final readonly class TreeWalker
                 return null;
             }
 
-            $language = SourceClassifier::languageFor($relative, $absolute);
-            $unitKind = SourceClassifier::unitKindFor($relative, $absolute);
+            ['language' => $language, 'unitKind' => $unitKind] = SourceClassifier::classify($relative, $absolute);
             if ($language === null && $unitKind === null) {
                 return null;
             }

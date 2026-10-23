@@ -18,6 +18,9 @@ final class ShellManifest implements ManifestReader
         'source', '.', 'xargs',
     ];
 
+    /** The `xargs` options that take their value as the next word. */
+    private const XARGS_VALUE_OPTIONS = ['-n', '-P', '-I', '-L', '-s', '-d', '-E', '-a'];
+
     /**
      * The entry points a shell script runs, and every path it launches with
      * the first line naming it (`launches`), which become its `launches` edges.
@@ -55,30 +58,21 @@ final class ShellManifest implements ManifestReader
      * `cd` reaches it; a path no file answers to under any of them names
      * nothing.
      *
-     * The body of a heredoc (`<<EOF`, `<<-EOF`, a quoted delimiter) is text
-     * handed to the command on the line opening it, so its lines are left out
-     * until the delimiter closes it.
+     * The body of a heredoc (`<<EOF`, `<<-EOF`, a quoted or backslashed
+     * delimiter) is text handed to the command on the line opening it, so its
+     * lines are left out up to the line closing it. A heredoc that never
+     * closes is read as no heredoc, so a misread `<<` hides nothing.
      *
      * @return array<int, array{0: string, 1: list<string>}>
      */
     private static function anchoredLines(string $contents, string $configPath): array
     {
         $directory = ManifestPaths::manifestDirectory($configPath);
+        $raw = explode("\n", $contents);
         $lines = [];
         $current = [];
-        /** @var list<array{0: string, 1: bool}> $heredocs delimiters still open, each with whether leading tabs are stripped */
-        $heredocs = [];
-        foreach (explode("\n", $contents) as $index => $line) {
-            if ($heredocs !== []) {
-                [$delimiter, $tabs] = $heredocs[0];
-                $closing = rtrim($line, "\r");
-                if (($tabs ? ltrim($closing, "\t") : $closing) === $delimiter) {
-                    array_shift($heredocs);
-                }
-                continue;
-            }
-            $line = preg_replace('/(?:^|\s)#.*$/', '', $line) ?? $line;
-            $heredocs = self::heredocDelimiters($line);
+        for ($index = 0, $count = count($raw); $index < $count; ++$index) {
+            $line = preg_replace('/(?:^|\s)#.*$/', '', $raw[$index]) ?? $raw[$index];
             $inline = self::shellCdTargets($line, $directory);
             $standalone = preg_match('/^\s*cd\s/', $line) === 1 && preg_match('/&&|;|\|/', $line) !== 1;
             $lines[$index + 1] = [$line, [...$current, ...$inline]];
@@ -87,23 +81,77 @@ final class ShellManifest implements ManifestReader
             } elseif (preg_match('/;;|^\s*(?:(?:esac|fi|done)\b|\})/', $line) === 1) {
                 $current = [];
             }
+            $index = self::heredocEnd($raw, $index, self::heredocDelimiters($line)) ?? $index;
         }
 
         return $lines;
     }
 
     /**
+     * The index of the line closing the last of the heredocs opened on line
+     * `$opener`, each closed in turn; null when there are none or one never closes.
+     *
+     * @param list<string> $raw
+     * @param list<array{0: string, 1: bool}> $heredocs
+     */
+    private static function heredocEnd(array $raw, int $opener, array $heredocs): ?int
+    {
+        $at = $opener;
+        foreach ($heredocs as [$delimiter, $tabs]) {
+            do {
+                if (++$at >= count($raw)) {
+                    return null;
+                }
+                $closing = rtrim($raw[$at], "\r");
+            } while (($tabs ? ltrim($closing, "\t") : $closing) !== $delimiter);
+        }
+
+        return $heredocs === [] ? null : $at;
+    }
+
+    /**
      * The heredocs one line opens, in order: each delimiter, and whether its
-     * `<<-` form lets the closing line be indented with tabs. A here-string
-     * (`<<<`) opens none.
+     * `<<-` form lets the closing line be indented with tabs. The delimiter
+     * is the whole word after `<<`, unquoted. A here-string (`<<<`), a `<<`
+     * inside quotes and a shift inside `$(( ))` or `(( ))` open none.
      *
      * @return list<array{0: string, 1: bool}>
      */
     private static function heredocDelimiters(string $line): array
     {
-        preg_match_all('/(?<!<)<<(?!<)(-?)\s*([\'"]?)([A-Za-z_][A-Za-z0-9_]*)\2/', $line, $matches, PREG_SET_ORDER);
+        $heredocs = [];
+        $quote = null;
+        $arithmetic = 0;
+        for ($at = 0, $length = strlen($line); $at < $length; ++$at) {
+            $char = $line[$at];
+            if ($quote !== null) {
+                if ($char === '\\' && $quote === '"') {
+                    ++$at;
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+                continue;
+            }
+            if ($char === '\\') {
+                ++$at;
+            } elseif ($char === '\'' || $char === '"') {
+                $quote = $char;
+            } elseif ($char === '(' && ($line[$at + 1] ?? '') === '(') {
+                ++$arithmetic;
+                ++$at;
+            } elseif ($char === ')' && $arithmetic > 0 && ($line[$at + 1] ?? '') === ')') {
+                --$arithmetic;
+                ++$at;
+            } elseif ($char === '<' && $arithmetic === 0 && substr($line, $at, 3) === '<<<') {
+                $at += 2;
+            } elseif ($char === '<' && $arithmetic === 0 && ($line[$at + 1] ?? '') === '<'
+                && preg_match('/\G<<(-?)[ \t]*(?:\'([^\']+)\'|"([^"]+)"|\\\\?([^\s;&|<>()\'"\\\\]+))(?=[\s;&|<>)]|$)/', $line, $match, 0, $at) === 1) {
+                $heredocs[] = [$match[2] . ($match[3] ?? '') . ($match[4] ?? ''), $match[1] === '-'];
+                $at += strlen($match[0]) - 1;
+            }
+        }
 
-        return array_map(static fn(array $match): array => [$match[3], $match[1] === '-'], $matches);
+        return $heredocs;
     }
 
     /**
@@ -124,14 +172,24 @@ final class ShellManifest implements ManifestReader
             $words = preg_split('/\s+/', trim($command), -1, PREG_SPLIT_NO_EMPTY) ?: [];
             $word = null;
             $runner = false;
+            $value = false;
             foreach ($words as $candidate) {
                 $candidate = trim($candidate, '\'"');
+                if ($value) {
+                    $value = false;
+                    continue;
+                }
                 if (in_array($candidate, self::RUNNERS, true)) {
-                    $runner = true;
+                    $runner = $candidate;
+                    continue;
+                }
+                // `xargs -n 1 php bin/x`: the option's value is no command.
+                if ($runner === 'xargs' && in_array($candidate, self::XARGS_VALUE_OPTIONS, true)) {
+                    $value = true;
                     continue;
                 }
                 // `FOO=1 bin/serve` sets a variable for the command; `python3 -u x.py` passes a flag to the runner.
-                if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*=/', $candidate) === 1 || ($runner && str_starts_with($candidate, '-'))) {
+                if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*=/', $candidate) === 1 || ($runner !== false && str_starts_with($candidate, '-'))) {
                     continue;
                 }
                 $word = $candidate;

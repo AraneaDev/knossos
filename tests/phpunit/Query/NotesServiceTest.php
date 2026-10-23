@@ -78,6 +78,43 @@ final class NotesServiceTest extends KnossosTestCase
     }
 
     /**
+     * The suggestions have a time budget: past it, the rows not reached
+     * carry none and the list still answers, and a later list that has the
+     * time finds them again.
+     */
+    public function testSuggestionsPastTheirBudgetAreLeftOutAndFoundLater(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-notes-budget-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src/Old', 0o777, true);
+        mkdir($root . '/src/New', 0o777, true);
+        file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
+        file_put_contents($root . '/src/Old/Svc.php', "<?php\nnamespace App\\Old;\nfinal class Svc {}\n");
+        $ticks = 0;
+        // The first read sets the deadline; every read after it is a minute later.
+        $clock = static function () use (&$ticks): int {
+            return $ticks++ === 0 ? 0 : 60_000_000_000;
+        };
+        try {
+            $pdo = $this->freshTestDatabase();
+            $scan = static fn(): string => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
+            $projectId = $scan();
+            ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Old\\Svc', 'note', 'the service', execute: true);
+            unlink($root . '/src/Old/Svc.php');
+            file_put_contents($root . '/src/New/Svc.php', "<?php\nnamespace App\\New;\nfinal class Svc {}\n");
+            $scan();
+
+            $late = (new NotesService($pdo, clock: $clock))->notes($root);
+            $onTime = (new NotesService($pdo))->notes($root);
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        assertSame('ok', $late['status']);
+        assertSame([null], array_column($late['groups']['missing'], 'suggested_component'));
+        assertSame(['App\\New\\Svc'], array_column($onTime['groups']['missing'], 'suggested_component'));
+    }
+
+    /**
      * @param array<string, mixed> $rows
      * @return array<string, mixed>
      */

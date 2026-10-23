@@ -370,7 +370,8 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
                 'class_namespace' => self::literal($item->value, false),
                 'view_path' => self::literal($item->value, true),
                 'component_locations' => $this->literalList($item->value),
-                default => $this->literalMap($item->value),
+                // An object, so an empty map is encoded as `{}` like a filled one, never as a list.
+                default => ($map = $this->literalMap($item->value)) === null ? null : (object) $map,
             };
         }
 
@@ -420,10 +421,13 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     }
 
     /**
-     * An array of string keys to string literals; null when any entry is not one.
-     * An object, so an empty map is encoded as `{}` like a filled one, never as a list.
+     * The entries of an array whose key is a string and whose value a string
+     * literal, the others dropped; null when it is no array, or has entries
+     * and none of them is one.
+     *
+     * @return array<string, string>|null
      */
-    private function literalMap(Node $value): ?\stdClass
+    private function literalMap(Node $value): ?array
     {
         if (!$value instanceof Expr\Array_) {
             return null;
@@ -436,7 +440,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
             }
         }
 
-        return $map === [] && $value->items !== [] ? null : (object) $map;
+        return $map === [] && $value->items !== [] ? null : $map;
     }
 
     /**

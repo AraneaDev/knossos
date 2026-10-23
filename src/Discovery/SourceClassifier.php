@@ -166,29 +166,37 @@ final class SourceClassifier
      */
     public static function languageFor(string $relativePath, ?string $absolutePath = null): ?string
     {
-        $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
-        $byExtension = self::LANGUAGE_BY_EXTENSION[$extension] ?? null;
-        if ($byExtension !== null || $extension !== '' || $absolutePath === null) {
-            return $byExtension;
-        }
-
-        return self::languageFromShebang($absolutePath);
+        return self::classify($relativePath, $absolutePath)['language'];
     }
 
     /**
-     * The language named by a script's shebang, or null.
+     * {@see self::languageFor()} and {@see self::unitKindFor()} at once, with
+     * an extensionless file's shebang read once for both: what the walk and
+     * the drift probe ask of every path.
+     *
+     * @param string|null $absolutePath needed only to read a shebang
+     * @return array{language: ?string, unitKind: ?string}
+     */
+    public static function classify(string $relativePath, ?string $absolutePath = null): array
+    {
+        $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
+        $shebang = $extension === '' && $absolutePath !== null ? self::shebang($absolutePath) : null;
+
+        return [
+            'language' => $extension === '' ? ($shebang === null ? null : self::languageFromShebang($shebang)) : (self::LANGUAGE_BY_EXTENSION[$extension] ?? null),
+            'unitKind' => self::unitKindByName($relativePath) ?? ($shebang !== null && self::isShellShebang($shebang) ? UnitKind::Shell->value : null),
+        ];
+    }
+
+    /**
+     * The language a script's shebang line names, or null.
      *
      * Only the first line is read, and only for a file with no extension, so the
      * cost is one bounded read of the handful of extensionless files in a tree
      * (LICENSE, Dockerfile, Makefile) rather than of every file.
      */
-    private static function languageFromShebang(string $absolutePath): ?string
+    private static function languageFromShebang(string $first): ?string
     {
-        $first = self::shebang($absolutePath);
-        if ($first === null) {
-            return null;
-        }
-
         // Matches both `#!/usr/bin/php` and `#!/usr/bin/env php`, and tolerates a
         // version suffix such as `php8.3`. Anchored to a word boundary so a path
         // like /opt/phpstorm/bin/foo cannot be read as a PHP script.
@@ -220,14 +228,11 @@ final class SourceClassifier
      * Whether an extensionless file's shebang runs it with sh, bash, dash or
      * zsh (`#!/bin/sh`, `#!/usr/bin/env bash`), so it is a shell script like a
      * `.sh` file. The interpreter is the last path segment of the program or
-     * the first word after `env`.
+     * the first word after `env`, in any case.
      */
-    private static function isShellShebang(string $absolutePath): bool
+    private static function isShellShebang(string $first): bool
     {
-        $first = self::shebang($absolutePath);
-
-        return $first !== null
-            && preg_match('#^\#!\s*(?:\S*/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|dash|zsh)(?:\s|$)#', $first) === 1;
+        return preg_match('#^\#!\s*(?:\S*/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|dash|zsh)(?:\s|$)#i', $first) === 1;
     }
 
     /**
@@ -243,6 +248,12 @@ final class SourceClassifier
      *        extensionless shell script; omit and such a file is no unit
      */
     public static function unitKindFor(string $relativePath, ?string $absolutePath = null): ?string
+    {
+        return self::classify($relativePath, $absolutePath)['unitKind'];
+    }
+
+    /** The unit kind a path's name alone says, the shebang of an extensionless shell script aside. */
+    private static function unitKindByName(string $relativePath): ?string
     {
         $basename = strtolower(basename($relativePath));
         if ($basename === '.gitignore') {
@@ -340,10 +351,6 @@ final class SourceClassifier
         // file may be both — which is why this needs no scanner change.
         if (ToolConfigModuleRule::isToolConfigPath($relativePath) || $basename === 'cypress.json') {
             return UnitKind::ToolConfig->value;
-        }
-        // An executable script often has no extension (`bin/run`); its shebang says it is shell.
-        if ($absolutePath !== null && pathinfo($relativePath, PATHINFO_EXTENSION) === '' && self::isShellShebang($absolutePath)) {
-            return UnitKind::Shell->value;
         }
 
         return null;
