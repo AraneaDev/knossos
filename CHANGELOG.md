@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.39.0](https://github.com/AraneaDev/knossos/compare/v0.38.0...v0.39.0) (2026-10-23)
+
+
+### Features
+
+* **annotations:** span-level staleness and note moves ([#397](https://github.com/AraneaDev/knossos/issues/397)) ([172c6e2](https://github.com/AraneaDev/knossos/commit/172c6e25e78cbf5c8703898fb8b5dafb7c0d6b12))
+* close graph gaps the notes recorded ([#395](https://github.com/AraneaDev/knossos/issues/395)) ([f288686](https://github.com/AraneaDev/knossos/commit/f288686f7a357c204d84869680812bfd05e1bd2c))
+* **scan:** warn about framework hints with no effect and generate the worker constants ([#398](https://github.com/AraneaDev/knossos/issues/398)) ([8f493d6](https://github.com/AraneaDev/knossos/commit/8f493d60265770d87e802f3fd9a5081c24a0e8b6))
+
+
+### Fixes
+
+* close the open review findings ([#399](https://github.com/AraneaDev/knossos/issues/399)) ([21b01f6](https://github.com/AraneaDev/knossos/commit/21b01f68318263bd3d9b0a4929450d0465653390))
+
 ## [0.38.0](https://github.com/AraneaDev/knossos/compare/v0.37.0...v0.38.0) (2026-10-22)
 
 
