@@ -109,8 +109,10 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
             $frontier = [...$frontier, ...array_map('strval', array_keys(array_diff_key($walk['seen'], $before)))];
         }
         // The walk stopped at max_depth with dependants of its last level still unread: tests may lie beyond it.
-        $horizon = $reason === null && $frontier !== [] && $level >= $maxDepth
-            && $this->hasUnreadDependant($projectId, $frontier, $edgeKinds, $minimumRank, $walk['seen'], $deadline);
+        $horizon = false;
+        if ($reason === null && $frontier !== [] && $level >= $maxDepth) {
+            [$horizon, $reason] = $this->hasUnreadDependant($projectId, $frontier, $edgeKinds, $minimumRank, $walk['seen'], $deadline, $walk['examined']);
+        }
 
         $wiredTests = [];
         foreach (array_keys($walk['tests']) as $id) {
@@ -222,14 +224,18 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      *
      * A level of leaves ends the walk as surely as an empty one, so reaching max_depth on it cuts
      * nothing. Reads at most {@see self::HORIZON_ROWS} rows, and none once the deadline has passed; past
-     * either it answers yes, the side that only costs a deeper search.
+     * either it answers yes, the side that only costs a deeper search. Each row it reads is an edge
+     * examined, counted against the walk's edge bound like the rest; when that runs out first, the
+     * check stops with `edge_limit` and no answer.
      *
      * @param list<string> $frontier @param list<string> $edgeKinds @param array<string, true> $seen
+     * @param int $examined the walk's edges examined so far, advanced by the rows read here
+     * @return array{0: bool, 1: ?string} whether an unread dependant was met, and the bound that cut the check
      */
-    private function hasUnreadDependant(string $projectId, array $frontier, array $edgeKinds, int $minimumRank, array $seen, int $deadline): bool
+    private function hasUnreadDependant(string $projectId, array $frontier, array $edgeKinds, int $minimumRank, array $seen, int $deadline, int &$examined): array
     {
         if ($this->now() > $deadline) {
-            return true;
+            return [true, null];
         }
         $standIns = StandInExpansion::of($this->pdo, $projectId, $frontier, $edgeKinds);
         $budget = self::HORIZON_ROWS;
@@ -243,17 +249,23 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
             foreach (array_chunk($ids, self::CHUNK) as $chunk) {
                 $rows = $this->dependantRows($projectId, $chunk, $kinds, $minimumRank);
                 while (($edge = $rows->fetch(PDO::FETCH_NUM)) !== false) {
+                    if ($examined >= $this->maxEdges) {
+                        $rows->closeCursor();
+
+                        return [false, 'edge_limit'];
+                    }
+                    ++$examined;
                     if (!isset($seen[(string) $edge[1]]) || --$budget <= 0) {
                         $rows->closeCursor();
 
-                        return true;
+                        return [true, null];
                     }
                 }
                 $rows->closeCursor();
             }
         }
 
-        return false;
+        return [false, null];
     }
 
     /**

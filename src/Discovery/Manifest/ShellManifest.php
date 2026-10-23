@@ -15,6 +15,7 @@ final class ShellManifest implements ManifestReader
     private const RUNNERS = [
         'bash', 'sh', 'zsh', 'dash', 'ksh', 'php', 'python', 'python3', 'node', 'ruby', 'perl', 'tsx', 'ts-node',
         'exec', 'nohup', 'env', 'time', 'command', 'then', 'do', 'else', 'if', 'while', '!', 'sudo',
+        'source', '.', 'xargs',
     ];
 
     /**
@@ -54,6 +55,10 @@ final class ShellManifest implements ManifestReader
      * `cd` reaches it; a path no file answers to under any of them names
      * nothing.
      *
+     * The body of a heredoc (`<<EOF`, `<<-EOF`, a quoted delimiter) is text
+     * handed to the command on the line opening it, so its lines are left out
+     * until the delimiter closes it.
+     *
      * @return array<int, array{0: string, 1: list<string>}>
      */
     private static function anchoredLines(string $contents, string $configPath): array
@@ -61,8 +66,19 @@ final class ShellManifest implements ManifestReader
         $directory = ManifestPaths::manifestDirectory($configPath);
         $lines = [];
         $current = [];
+        /** @var list<array{0: string, 1: bool}> $heredocs delimiters still open, each with whether leading tabs are stripped */
+        $heredocs = [];
         foreach (explode("\n", $contents) as $index => $line) {
+            if ($heredocs !== []) {
+                [$delimiter, $tabs] = $heredocs[0];
+                $closing = rtrim($line, "\r");
+                if (($tabs ? ltrim($closing, "\t") : $closing) === $delimiter) {
+                    array_shift($heredocs);
+                }
+                continue;
+            }
             $line = preg_replace('/(?:^|\s)#.*$/', '', $line) ?? $line;
+            $heredocs = self::heredocDelimiters($line);
             $inline = self::shellCdTargets($line, $directory);
             $standalone = preg_match('/^\s*cd\s/', $line) === 1 && preg_match('/&&|;|\|/', $line) !== 1;
             $lines[$index + 1] = [$line, [...$current, ...$inline]];
@@ -74,6 +90,20 @@ final class ShellManifest implements ManifestReader
         }
 
         return $lines;
+    }
+
+    /**
+     * The heredocs one line opens, in order: each delimiter, and whether its
+     * `<<-` form lets the closing line be indented with tabs. A here-string
+     * (`<<<`) opens none.
+     *
+     * @return list<array{0: string, 1: bool}>
+     */
+    private static function heredocDelimiters(string $line): array
+    {
+        preg_match_all('/(?<!<)<<(?!<)(-?)\s*([\'"]?)([A-Za-z_][A-Za-z0-9_]*)\2/', $line, $matches, PREG_SET_ORDER);
+
+        return array_map(static fn(array $match): array => [$match[3], $match[1] === '-'], $matches);
     }
 
     /**

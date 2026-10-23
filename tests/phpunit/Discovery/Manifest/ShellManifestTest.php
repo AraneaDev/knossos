@@ -56,4 +56,53 @@ final class ShellManifestTest extends KnossosTestCase
             self::assertStringNotContainsString('$', $path);
         }
     }
+
+    /** `source` and `.` run the script they name in the current shell, and `xargs` runs the command after it. */
+    public function testItReadsSourcedScriptsAndXargsCommandsAsLaunches(): void
+    {
+        $contents = implode("\n", [
+            '#!/bin/sh',
+            'source lib/common.sh',
+            '. lib/env.sh',
+            'find src -name "*.php" | xargs php bin/lint',
+            'git ls-files | xargs -n1 -P4 bin/format',
+            'cd . && echo done',
+            '',
+        ]);
+
+        $byPath = array_column((new ShellManifest())->read('run.sh', '/unused', $contents)['launches'], 'line', 'path');
+
+        self::assertSame(2, $byPath['lib/common.sh'] ?? null);
+        self::assertSame(3, $byPath['lib/env.sh'] ?? null);
+        self::assertSame(4, $byPath['bin/lint'] ?? null);
+        self::assertSame(5, $byPath['bin/format'] ?? null);
+    }
+
+    /** A heredoc body is text handed to a command, so a path in it is not run by the script. */
+    public function testItDoesNotReadHeredocBodiesAsCommands(): void
+    {
+        $contents = implode("\n", [
+            '#!/usr/bin/env bash',
+            'cat <<EOF > out.txt',
+            'php bin/plain-body',
+            'EOF',
+            "cat <<-'END'",
+            "\tphp bin/quoted-body",
+            "\tEND",
+            'cat <<"DONE" | php bin/after-pipe',
+            './bin/double-quoted-body',
+            'DONE',
+            'read -r line <<< "bin/herestring"',
+            'php bin/after-heredocs',
+            '',
+        ]);
+
+        $byPath = array_column((new ShellManifest())->read('run.sh', '/unused', $contents)['launches'], 'line', 'path');
+
+        self::assertArrayNotHasKey('bin/plain-body', $byPath);
+        self::assertArrayNotHasKey('bin/quoted-body', $byPath);
+        self::assertArrayNotHasKey('bin/double-quoted-body', $byPath);
+        self::assertSame(8, $byPath['bin/after-pipe'] ?? null, 'The line opening a heredoc is still a command line.');
+        self::assertSame(12, $byPath['bin/after-heredocs'] ?? null, 'Reading resumes after the terminator.');
+    }
 }

@@ -157,6 +157,33 @@ final class SourceClassifierTest extends TestCase
         self::assertNull(SourceClassifier::languageFor('missing', $this->directory . '/missing'));
     }
 
+    /** An extensionless script whose shebang names sh, bash, dash or zsh is a shell unit. */
+    public function testUnitKindForReadsAShellShebangOnlyForExtensionlessFiles(): void
+    {
+        $scripts = [
+            'sh' => "#!/bin/sh\n",
+            'bash' => "#!/usr/bin/env bash\n",
+            'dash' => "#!/bin/dash -e\n",
+            'zsh' => "#!/usr/bin/zsh\n",
+            'php' => "#!/usr/bin/env php\n",
+            'shellcheck' => "#!/opt/shellcheck/bin/run\n",
+            'plain' => "no shebang\n",
+            'notes.txt' => "#!/bin/sh\n",
+        ];
+        foreach ($scripts as $name => $contents) {
+            file_put_contents($this->directory . '/' . $name, $contents);
+        }
+
+        foreach (['sh', 'bash', 'dash', 'zsh'] as $name) {
+            assertSame('shell', SourceClassifier::unitKindFor($name, $this->directory . '/' . $name), $name);
+            assertSame('shell', ProjectDiscoverer::unitKindFor($name, $this->directory . '/' . $name), $name);
+        }
+        foreach (['php', 'shellcheck', 'plain', 'notes.txt', 'missing'] as $name) {
+            self::assertNull(SourceClassifier::unitKindFor($name, $this->directory . '/' . $name), $name);
+        }
+        self::assertNull(SourceClassifier::unitKindFor('sh'));
+    }
+
     /** The interpreter in a shebang is matched without regard to case. */
     public function testLanguageForReadsAShebangInAnyCase(): void
     {

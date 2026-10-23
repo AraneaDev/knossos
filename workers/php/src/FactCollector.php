@@ -929,7 +929,8 @@ final class FactCollector extends NodeVisitorAbstract
     /**
      * A traverser calls `beforeTraverse`, `enterNode`, `leaveNode` and `afterTraverse` on every
      * visitor it is given, from vendor code that no scan sees. Where the visitor's class is known
-     * (built inline, or held in a typed variable) the call is implied at the place it is given:
+     * (built inline, the enclosing class itself as `$this`, or held in a typed variable or
+     * property) the call is implied at the place it is given:
      * one probable, speculative `calls` edge per hook, so the core keeps the hooks the class or
      * its ancestors declare and drops the rest.
      */
@@ -942,8 +943,17 @@ final class FactCollector extends NodeVisitorAbstract
         $visitor = null;
         if ($value instanceof Expr\New_ && $value->class instanceof Name) {
             $visitor = $this->resolvedClassName($value->class);
-        } elseif ($value instanceof Expr\Variable && is_string($value->name) && $value->name !== 'this') {
+        } elseif ($value instanceof Expr\Variable && $value->name === 'this') {
+            $visitor = $this->currentClass()['name'] ?? null;
+        } elseif ($value instanceof Expr\Variable && is_string($value->name)) {
             $visitor = $this->variables->type($value->name);
+        } elseif (
+            ($value instanceof Expr\PropertyFetch || $value instanceof Expr\NullsafePropertyFetch)
+            && $value->var instanceof Expr\Variable
+            && $value->var->name === 'this'
+            && $value->name instanceof Identifier
+        ) {
+            $visitor = $this->propertyType($value->name->toString());
         }
         if ($visitor === null) {
             return;

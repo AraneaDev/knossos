@@ -64,6 +64,9 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
         foreach ($change->data['impacted_components'] as $record) {
             $touched[$record['node']['id']] = true;
         }
+        foreach ($this->fileComponents($projectId, $change->data['changed_files']) as $id) {
+            $touched[$id] = true;
+        }
         [$policies, $budgets, $configReason] = $this->withProjectConfig($project, $policies, $budgets);
         $touchingIds = array_map('strval', array_keys($touched));
         $policyCheck = $this->policySection($projectId, $policies, $touchingIds, $minConfidence, $timeoutMs, $configReason);
@@ -86,6 +89,29 @@ final readonly class ReviewDiffService extends AbstractArchitectureQueryService
             array_values(array_unique([...$change->warnings, ...array_merge(...array_map(static fn(ReviewSection $section): array => $section->warnings, $sections))])),
             $change->truncated || $policyCheck->truncated || $qualityGate->truncated || $cycles->truncated,
         );
+    }
+
+    /**
+     * The file components among the changed paths: a shell script or another
+     * file no worker scans, which has no file row and so is no direct
+     * component of the change, though the edges it is the source of
+     * (`launches`) are the change's all the same.
+     *
+     * @param list<string> $paths
+     * @return list<string>
+     */
+    private function fileComponents(string $projectId, array $paths): array
+    {
+        if ($paths === []) {
+            return [];
+        }
+        $statement = $this->pdo->prepare(
+            "SELECT id FROM nodes WHERE project_id = ? AND kind = 'file' AND file_id IS NULL " .
+            'AND canonical_name IN (SELECT value FROM json_each(?)) ORDER BY id',
+        );
+        $statement->execute([$projectId, json_encode(array_values($paths), JSON_THROW_ON_ERROR)]);
+
+        return array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN));
     }
 
     /**

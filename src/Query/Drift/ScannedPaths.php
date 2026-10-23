@@ -158,7 +158,7 @@ final readonly class ScannedPaths implements TrackedPathPredicate
         }
 
         return ProjectDiscoverer::languageFor($relativePath, $absolutePath) !== null
-            || ProjectDiscoverer::unitKindFor($relativePath) !== null;
+            || ProjectDiscoverer::unitKindFor($relativePath, $absolutePath) !== null;
     }
 
     /**

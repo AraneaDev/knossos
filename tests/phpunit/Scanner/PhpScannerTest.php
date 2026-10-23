@@ -1801,6 +1801,38 @@ final class PhpScannerTest extends KnossosTestCase
     }
 
     /**
+     * A visitor that hands itself to a traverser, or one held in a typed
+     * property, is as known as one built inline, so its hooks get the same
+     * implied calls.
+     */
+    #[Group('php-scanner')]
+    public function testPhpWorkerLinksATraverserToASelfOrPropertyVisitorsHooks(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/VisitorSelfWiring.php'],
+        ]));
+        $client->shutdown();
+        $edges = array_values(array_filter(
+            $contributions[0]->edges,
+            fn(EdgeFact $edge): bool => ($edge->attributes['dispatch'] ?? null) === 'PhpParser\\NodeTraverser',
+        ));
+        $tuples = array_map(
+            fn(EdgeFact $edge): array => [$edge->kind, $edge->sourceReference, $edge->targetReference],
+            $edges,
+        );
+
+        assertArrayContains(['calls', 'php:method:Fixture\\SelfWiring\\SelfWalker::walk', 'php:method:Fixture\\SelfWiring\\SelfWalker::enterNode'], $tuples);
+        assertArrayContains(['calls', 'php:method:Fixture\\SelfWiring\\PropertyWalker::walk', 'php:method:Fixture\\SelfWiring\\HeldCollector::leaveNode'], $tuples);
+        foreach ($edges as $edge) {
+            assertSame('probable', $edge->confidence->value);
+            assertSame(true, $edge->attributes['speculative'] ?? null);
+        }
+    }
+
+    /**
      * The hooks a subclass inherits from a project visitor are reached through
      * the traverser too, once the core resolves the inherited member.
      */

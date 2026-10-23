@@ -184,16 +184,8 @@ final class SourceClassifier
      */
     private static function languageFromShebang(string $absolutePath): ?string
     {
-        $handle = @fopen($absolutePath, 'rb');
-        if (!is_resource($handle)) {
-            return null;
-        }
-        try {
-            $first = (string) fgets($handle, self::SHEBANG_PROBE_BYTES);
-        } finally {
-            fclose($handle);
-        }
-        if (!str_starts_with($first, '#!')) {
+        $first = self::shebang($absolutePath);
+        if ($first === null) {
             return null;
         }
 
@@ -208,6 +200,36 @@ final class SourceClassifier
         };
     }
 
+    /** The first line of a file when it is a shebang (`#!...`), or null. */
+    private static function shebang(string $absolutePath): ?string
+    {
+        $handle = @fopen($absolutePath, 'rb');
+        if (!is_resource($handle)) {
+            return null;
+        }
+        try {
+            $first = (string) fgets($handle, self::SHEBANG_PROBE_BYTES);
+        } finally {
+            fclose($handle);
+        }
+
+        return str_starts_with($first, '#!') ? $first : null;
+    }
+
+    /**
+     * Whether an extensionless file's shebang runs it with sh, bash, dash or
+     * zsh (`#!/bin/sh`, `#!/usr/bin/env bash`), so it is a shell script like a
+     * `.sh` file. The interpreter is the last path segment of the program or
+     * the first word after `env`.
+     */
+    private static function isShellShebang(string $absolutePath): bool
+    {
+        $first = self::shebang($absolutePath);
+
+        return $first !== null
+            && preg_match('#^\#!\s*(?:\S*/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|dash|zsh)(?:\s|$)#', $first) === 1;
+    }
+
     /**
      * Which manifest kind a filename is, or null when it is not one.
      *
@@ -216,8 +238,11 @@ final class SourceClassifier
      * not a language file has no `files` row, and a probe that asked only
      * {@see self::languageFor()} treated editing composer.json as nothing at
      * all. {@see \Knossos\Query\Drift\ScannedPaths} asks both.
+     *
+     * @param string|null $absolutePath needed only to read the shebang of an
+     *        extensionless shell script; omit and such a file is no unit
      */
-    public static function unitKindFor(string $relativePath): ?string
+    public static function unitKindFor(string $relativePath, ?string $absolutePath = null): ?string
     {
         $basename = strtolower(basename($relativePath));
         if ($basename === '.gitignore') {
@@ -315,6 +340,10 @@ final class SourceClassifier
         // file may be both — which is why this needs no scanner change.
         if (ToolConfigModuleRule::isToolConfigPath($relativePath) || $basename === 'cypress.json') {
             return UnitKind::ToolConfig->value;
+        }
+        // An executable script often has no extension (`bin/run`); its shebang says it is shell.
+        if ($absolutePath !== null && pathinfo($relativePath, PATHINFO_EXTENSION) === '' && self::isShellShebang($absolutePath)) {
+            return UnitKind::Shell->value;
         }
 
         return null;

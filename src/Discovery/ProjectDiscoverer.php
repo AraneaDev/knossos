@@ -134,9 +134,9 @@ final readonly class ProjectDiscoverer
     }
 
     /** The project unit kind a path configures, or null; see {@see SourceClassifier::unitKindFor()}. */
-    public static function unitKindFor(string $relativePath): ?string
+    public static function unitKindFor(string $relativePath, ?string $absolutePath = null): ?string
     {
-        return SourceClassifier::unitKindFor($relativePath);
+        return SourceClassifier::unitKindFor($relativePath, $absolutePath);
     }
 
     /** Whether a path's name can be carried by a stable id; see {@see SourceClassifier::isSupportedPath()}. */

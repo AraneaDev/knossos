@@ -74,6 +74,20 @@ final class ShellScriptNodesTest extends KnossosTestCase
         self::assertSame([['scripts/run.sh', 'bin/other', 2]], self::launches($pdo));
     }
 
+    /** A script with no extension is a shell script when its shebang names a shell. */
+    public function testAnExtensionlessScriptWithAShellShebangIsAFileComponent(): void
+    {
+        unlink($this->root . '/scripts/run.sh');
+        file_put_contents($this->root . '/bin/run', "#!/bin/sh\nphp bin/tool\n");
+        file_put_contents($this->root . '/bin/serve', "#!/usr/bin/env bash\nexec ./bin/other\n");
+        $pdo = $this->freshTestDatabase();
+        $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]))->scan($this->root)->projectId;
+
+        $found = ArchitectureQueryService::forDatabase($pdo)->findComponent($projectId, 'bin/run');
+        self::assertSame('file', $found->data['components'][0]['kind'] ?? null);
+        self::assertSame([['bin/run', 'bin/tool', 2], ['bin/serve', 'bin/other', 2]], self::launches($pdo));
+    }
+
     /** The pane counts a script's launch as a dependent file, though the script has no file row. */
     public function testThePaneCountsTheScriptsThatLaunchAFile(): void
     {
