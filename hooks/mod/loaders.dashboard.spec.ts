@@ -369,4 +369,19 @@ describe('refreshing the dashboard', () => {
         expect(flash.keys).toContain('hub:App\\Kernel')
         expect(flash.until).toBe(9_000 + FLASH_MS)
     })
+
+    it('drops a finished allow line for the root whose graph just landed, and leaves another root alone', async () => {
+        const idle = { phase: 'idle', root: null, reason: null }
+        for (const phase of ['done', 'running']) {
+            reset(options)
+            const same = fakePort({ allow: { phase, root: ROOT, reason: null } }, { dashboard: json(dashboard('s1')) })
+            await refreshDashboard(same.io)
+            expect(same.values.get('allow')).toEqual(idle)
+        }
+        reset(options)
+        const other = { phase: 'done', root: '/work/other', reason: null }
+        const kept = fakePort({ allow: other }, { dashboard: json(dashboard('s1')) })
+        await refreshDashboard(kept.io)
+        expect(kept.values.get('allow')).toEqual(other)
+    })
 })
