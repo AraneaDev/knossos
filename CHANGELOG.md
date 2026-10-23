@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/AraneaDev/knossos/compare/v0.39.0...v0.39.1) (2026-10-23)
+
+
+### Fixes
+
+* **pane:** allow and scan a new project from the pane ([#400](https://github.com/AraneaDev/knossos/issues/400)) ([be2b884](https://github.com/AraneaDev/knossos/commit/be2b8844681535dae1f2e75bda8a0bca0fa6e409))
+
 ## [0.39.0](https://github.com/AraneaDev/knossos/compare/v0.38.0...v0.39.0) (2026-10-23)
 
 
