@@ -29,14 +29,30 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('cli-router')]
 final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
+    /** @var resource|null where the router's help text goes, read back by {@see self::helpWritten()} */
+    private $help = null;
+
     private function newRouter(): CliCommandRouter
     {
+        $this->help = fopen('php://memory', 'w+') ?: null;
+
         return new CliCommandRouter(
             self::repositoryRoot(),
             new CliOptionParser(),
-            new CliHelpRenderer(),
+            new CliHelpRenderer($this->help),
             '0.0.0-test',
         );
+    }
+
+    /** The help text the router has written so far, kept off the terminal. */
+    private function helpWritten(): string
+    {
+        if ($this->help === null) {
+            return '';
+        }
+        rewind($this->help);
+
+        return (string) stream_get_contents($this->help);
     }
 
     // ===== Constructor + dispatch routes =================================
@@ -65,6 +81,7 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         assertSame(0, $router->route('help', [], []));
         assertSame(0, $router->route('--help', [], []));
         assertSame(0, $router->route('-h', [], []));
+        assertSame(3, substr_count($this->helpWritten(), 'knossos boundary-couplings [path]'));
     }
 
     public function testRouterRoutesScanCommandAndPropagatesHandlerThrow(): void

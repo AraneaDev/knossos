@@ -25,6 +25,9 @@ final class Application
     /** @var resource|null */
     private $errorStream;
 
+    /** @var resource|null */
+    private $helpStream;
+
     /**
      * @param resource|null $errorStream Destination for the failure diagnostic;
      *                                   null uses the process STDERR. Tests pass
@@ -32,10 +35,16 @@ final class Application
      *                                   writes to the real STDERR — see
      *                                   CliErrorRenderer for why that matters to
      *                                   mutation testing.
+     * @param resource|null $helpStream Destination for the help text; null
+     *                                  uses the process STDOUT. Tests pass an
+     *                                  in-memory stream, as for the errors,
+     *                                  since a write to STDOUT passes PHPUnit's
+     *                                  output capture.
      */
-    public function __construct($errorStream = null)
+    public function __construct($errorStream = null, $helpStream = null)
     {
         $this->errorStream = $errorStream;
+        $this->helpStream = $helpStream;
     }
 
     /**
@@ -49,7 +58,7 @@ final class Application
         $parser = new CliOptionParser();
         try {
             [$positionals, $options] = $parser->parse($arguments);
-            return (new CliCommandRouter(dirname(__DIR__), $parser, new CliHelpRenderer(), self::VERSION))
+            return (new CliCommandRouter(dirname(__DIR__), $parser, new CliHelpRenderer($this->helpStream), self::VERSION))
                 ->route($command, $positionals, $options);
         } catch (Throwable $error) {
             return (new CliErrorRenderer($this->errorStream))->render($error);
