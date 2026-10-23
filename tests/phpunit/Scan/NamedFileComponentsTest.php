@@ -35,7 +35,7 @@ final class NamedFileComponentsTest extends KnossosTestCase
             '.gitignore' => "/artifacts/\n",
             'artifacts/tool' => "binary\n",
             'scripts/deploy.sh' => "#!/bin/sh\necho deploy\n",
-            'tools/check' => "#!/bin/sh\necho check\n",
+            'tools/check' => "#!/usr/bin/env ruby\nputs 'check'\n",
             'vendor/lib/tool.sh' => "#!/bin/sh\n",
         ];
         foreach ($files as $path => $contents) {

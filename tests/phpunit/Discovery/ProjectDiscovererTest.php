@@ -78,7 +78,7 @@ final class ProjectDiscovererTest extends KnossosTestCase
     public function testComponentsAreScannedAsTypeScript(): void
     {
         foreach (['src/App.vue', 'src/lib/Counter.svelte', 'src/pages/index.astro', 'src/App.VUE'] as $path) {
-            self::assertSame('typescript', ProjectDiscoverer::languageFor($path), $path);
+            self::assertSame('typescript', ProjectDiscoverer::classify($path)['language'], $path);
         }
     }
 

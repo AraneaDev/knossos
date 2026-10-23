@@ -135,7 +135,7 @@ final class SourceClassifier
      *
      * The exception exists because a project that ignores its own settings
      * file would be configuring a scan that never reads the configuration. It
-     * is public for the same reason {@see self::languageFor()} is: the drift
+     * is public for the same reason {@see self::classify()} is: the drift
      * oracles decide the same question about a path they were handed, and a
      * second copy of this list would let a probe count a path discovery
      * exempts, reporting drift no rescan can clear.
@@ -146,7 +146,10 @@ final class SourceClassifier
     }
 
     /**
-     * The language a file belongs to, or null when it is not source.
+     * The language a file belongs to (null when it is not source) and the
+     * unit kind it configures ({@see self::unitKindFor()}), with an
+     * extensionless file's shebang read once for both: what the walk and the
+     * drift probe ask of every path.
      *
      * Extension first, then a shebang for extensionless files. Executable entry
      * points routinely have no extension — `artisan`, `bin/console`, this project's
@@ -163,40 +166,28 @@ final class SourceClassifier
      *
      * @param string|null $absolutePath needed only to read a shebang; omit and
      *        extensionless files are simply not classified
+     * @return array{language: ?string, unitKind: ?string}
      */
-    public static function languageFor(string $relativePath, ?string $absolutePath = null): ?string
+    public static function classify(string $relativePath, ?string $absolutePath = null): array
     {
         $extension = strtolower(pathinfo($relativePath, PATHINFO_EXTENSION));
-        $byExtension = self::LANGUAGE_BY_EXTENSION[$extension] ?? null;
-        if ($byExtension !== null || $extension !== '' || $absolutePath === null) {
-            return $byExtension;
-        }
+        $shebang = $extension === '' && $absolutePath !== null ? self::shebang($absolutePath) : null;
 
-        return self::languageFromShebang($absolutePath);
+        return [
+            'language' => $extension === '' ? ($shebang === null ? null : self::languageFromShebang($shebang)) : (self::LANGUAGE_BY_EXTENSION[$extension] ?? null),
+            'unitKind' => self::unitKindByName($relativePath) ?? ($shebang !== null && self::isShellShebang($shebang) ? UnitKind::Shell->value : null),
+        ];
     }
 
     /**
-     * The language named by a script's shebang, or null.
+     * The language a script's shebang line names, or null.
      *
      * Only the first line is read, and only for a file with no extension, so the
      * cost is one bounded read of the handful of extensionless files in a tree
      * (LICENSE, Dockerfile, Makefile) rather than of every file.
      */
-    private static function languageFromShebang(string $absolutePath): ?string
+    private static function languageFromShebang(string $first): ?string
     {
-        $handle = @fopen($absolutePath, 'rb');
-        if (!is_resource($handle)) {
-            return null;
-        }
-        try {
-            $first = (string) fgets($handle, self::SHEBANG_PROBE_BYTES);
-        } finally {
-            fclose($handle);
-        }
-        if (!str_starts_with($first, '#!')) {
-            return null;
-        }
-
         // Matches both `#!/usr/bin/php` and `#!/usr/bin/env php`, and tolerates a
         // version suffix such as `php8.3`. Anchored to a word boundary so a path
         // like /opt/phpstorm/bin/foo cannot be read as a PHP script.
@@ -208,16 +199,51 @@ final class SourceClassifier
         };
     }
 
+    /** The first line of a file when it is a shebang (`#!...`), or null. */
+    private static function shebang(string $absolutePath): ?string
+    {
+        $handle = @fopen($absolutePath, 'rb');
+        if (!is_resource($handle)) {
+            return null;
+        }
+        try {
+            $first = (string) fgets($handle, self::SHEBANG_PROBE_BYTES);
+        } finally {
+            fclose($handle);
+        }
+
+        return str_starts_with($first, '#!') ? $first : null;
+    }
+
+    /**
+     * Whether an extensionless file's shebang runs it with sh, bash, dash or
+     * zsh (`#!/bin/sh`, `#!/usr/bin/env bash`), so it is a shell script like a
+     * `.sh` file. The interpreter is the last path segment of the program or
+     * the first word after `env`, in any case.
+     */
+    private static function isShellShebang(string $first): bool
+    {
+        return preg_match('#^\#!\s*(?:\S*/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|dash|zsh)(?:\s|$)#i', $first) === 1;
+    }
+
     /**
      * Which manifest kind a filename is, or null when it is not one.
      *
      * Public because it is half of what "an input this scanner reads" means,
      * and the drift oracles need the same half: a path that is a unit here but
-     * not a language file has no `files` row, and a probe that asked only
-     * {@see self::languageFor()} treated editing composer.json as nothing at
-     * all. {@see \Knossos\Query\Drift\ScannedPaths} asks both.
+     * not a language file has no `files` row, and a probe that asked only for
+     * the language treated editing composer.json as nothing at all. {@see \Knossos\Query\Drift\ScannedPaths} asks both.
+     *
+     * @param string|null $absolutePath needed only to read the shebang of an
+     *        extensionless shell script; omit and such a file is no unit
      */
-    public static function unitKindFor(string $relativePath): ?string
+    public static function unitKindFor(string $relativePath, ?string $absolutePath = null): ?string
+    {
+        return self::classify($relativePath, $absolutePath)['unitKind'];
+    }
+
+    /** The unit kind a path's name alone says, the shebang of an extensionless shell script aside. */
+    private static function unitKindByName(string $relativePath): ?string
     {
         $basename = strtolower(basename($relativePath));
         if ($basename === '.gitignore') {

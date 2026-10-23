@@ -142,6 +142,7 @@ final readonly class LivewireViews
         $directory = 'resources/views';
         if (str_contains($name, '::')) {
             [$namespace, $name] = explode('::', $name, 2);
+            // An empty map is stored as an empty list: no namespaces.
             $namespaces = $this->config['component_namespaces'] ?? [];
             $directory = is_array($namespaces) && is_string($namespaces[$namespace] ?? null) ? $namespaces[$namespace] : null;
             if ($directory === null) {

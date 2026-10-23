@@ -157,9 +157,13 @@ function noteColumns(rows: { indent: number; name: string; item: NoteItem }[], c
   return { name: Math.min(name, Math.max(12, Math.floor(columns * 0.4))), author: Math.max(0, ...rows.map(r => cells(authorOf(r.item)))) }
 }
 
+/** What a missing note's line says before its text: where its component likely went, when knossos suggests a place. */
+const movedTo = (n: NoteItem): string => (n.missing && n.suggested !== null ? `moved? -> ${n.suggested}  ` : '')
+
 function noteEntry(n: NoteItem, at: number, selected: number, indent: number, text: string, name: string, cols: NoteColumns): Entry {
   const author = authorOf(n)
-  const lead = cols.name + 2 + cols.author + 2
+  const moved = movedTo(n)
+  const lead = cols.name + 2 + cols.author + 2 + cells(moved)
   const mark0 = n.missing ? mark(NOTE.missing) : n.checked ? mark(NOTE.flagged) : undefined
   return {
     selected: at === selected,
@@ -174,6 +178,7 @@ function noteEntry(n: NoteItem, at: number, selected: number, indent: number, te
         { text: ' '.repeat(indent) },
         button(`row:${at}`, shown),
         { text: `${' '.repeat(Math.max(0, room - cells(shown)))}  ${author.padEnd(cols.author)}  `, dim: true },
+        ...(moved === '' ? [] : [{ text: fit(moved, Math.max(0, width - (lead - cells(moved)))), color: STATUS_COLOURS.warn }]),
         ...withHit(fit(n.line, Math.max(0, width - lead)), text),
       ]
     },
@@ -194,7 +199,7 @@ function groupEntry(line: Extract<TreeLine, { kind: 'boundary' | 'folder' }>, at
 function detailSection(n: NoteItem, columns: number, hues: Hues): Section {
   const place: Row = { key: 'notes-detail-place', segments: clip([{ text: '   ' }, { text: n.path ?? 'on a name the graph no longer holds', dim: n.path === null }, ...(n.boundary === null ? [] : [{ text: '  ' }, ...chip(n.boundary, hues)])], columns) }
   const why: Row[] = [
-    ...(n.missing ? [{ text: 'Its component is gone: o finds where the note goes.', tone: STATUS_COLOURS.alert }] : []),
+    ...(n.missing ? [{ text: n.suggested === null ? 'Its component is gone: o finds where the note goes.' : `Its component is gone. It may have moved to ${n.suggested}: o finds it.`, tone: STATUS_COLOURS.alert }] : []),
     ...(n.stale && n.staleReason !== null ? [{ text: `Stale: ${n.staleReason}.${confirmable(n) ? ' v says it is still true.' : ''}`, tone: STATUS_COLOURS.warn }] : []),
     ...(n.checked ? [{ text: `Flagged for the model${n.checkReason !== null && n.checkReason !== '' ? `: ${n.checkReason}` : '.'}`, tone: STATUS_COLOURS.warn }] : []),
   ].flatMap((w, i) => wrapWords(w.text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `notes-detail-why-${i}-${j}`, segments: [{ text: `   ${part}`, color: w.tone }] })))

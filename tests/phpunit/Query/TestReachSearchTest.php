@@ -176,6 +176,31 @@ final class TestReachSearchTest extends KnossosTestCase
         self::assertSame([], $found['truncation_reasons']);
     }
 
+    /**
+     * The rows the depth-horizon check reads are edges examined like any
+     * other, so the edge bound cuts the check too and is reported.
+     */
+    #[Group('query')]
+    public function testTheDepthHorizonCheckSpendsTheEdgeBound(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $a = $this->component($repository, $ids, 'App\\A');
+        $b = $this->component($repository, $ids, 'App\\B');
+        $this->edge($repository, $ids, 'calls', $a, $ids['checkout']);
+        $this->edge($repository, $ids, 'calls', $b, $a);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $spent = (new TestReachSearch($pdo, maxEdges: 1))->search($ids['project'], [$ids['checkout']], 1, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+        $room = (new TestReachSearch($pdo, maxEdges: 2))->search($ids['project'], [$ids['checkout']], 1, AbstractArchitectureQueryService::IMPACT_EDGE_KINDS, 1, PHP_INT_MAX);
+
+        self::assertSame(['edge_limit'], $spent['truncation_reasons']);
+        self::assertFalse($spent['depth_horizon']);
+        self::assertSame(1, $spent['edges_examined']);
+        self::assertSame([], $room['truncation_reasons']);
+        self::assertTrue($room['depth_horizon']);
+        self::assertSame(2, $room['edges_examined']);
+    }
+
     #[Group('query')]
     public function testReachingTheDepthHorizonIsReported(): void
     {

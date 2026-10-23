@@ -16,6 +16,7 @@ const note = (component: string, over: Partial<NoteItem> = {}): NoteItem => ({
   staleReason: null,
   checked: false,
   checkReason: null,
+  suggested: null,
   path: `src/${component.split('\\').at(-1)}.php`,
   boundary: 'Query',
   ...over,

@@ -99,6 +99,32 @@ final class ReviewDiffTest extends KnossosTestCase
     }
 
     /**
+     * A changed shell script is a file component with no file row, and the
+     * process it launches is still an edge the change touches.
+     */
+    #[Group('query')]
+    public function testAChangedFileComponentsLaunchIsAViolationTouchingTheChange(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        self::copyRow($pdo, 'nodes', $ids['checkout'], ['id' => 'node:script', 'kind' => 'file', 'language' => 'file', 'canonical_name' => 'scripts/run.sh', 'display_name' => 'run.sh', 'file_id' => null, 'parent_id' => null]);
+        self::copyRow($pdo, 'edges', $ids['edge'], ['id' => 'edge:launch', 'kind' => 'launches', 'source_id' => 'node:script', 'target_id' => $ids['invoice'], 'file_id' => null]);
+        $scripts = StableId::boundary($ids['project'], 'Scripts', 'explicit');
+        $billing = StableId::boundary($ids['project'], 'Billing', 'explicit');
+        $repository->saveBoundary($scripts, $ids['project'], 'Scripts', ['path_prefix' => 'scripts'], 'explicit', $ids['scan']);
+        $repository->saveBoundary($billing, $ids['project'], 'Billing', ['path_prefix' => 'src/Invoice'], 'explicit', $ids['scan']);
+        $repository->saveBoundaryMembership($scripts, $ids['project'], 'node:script', $ids['scan']);
+        $repository->saveBoundaryMembership($billing, $ids['project'], $ids['invoice'], $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $policies = [['id' => 'scripts-stay-out', 'from_boundary' => $scripts, 'deny_targets' => [$billing], 'edge_kinds' => ['launches']]];
+        $result = ArchitectureQueryService::forDatabase($pdo)->services()->reviewQueries->reviewDiff($ids['project'], files: ['scripts/run.sh'], policies: $policies);
+
+        assertSame(1, $result->data['policy_check']['total_violations']);
+        assertSame(1, $result->data['policy_check']['touching_violation_count']);
+        assertSame('edge:launch', $result->data['policy_check']['violations_touching_change'][0]['relationship']['id'] ?? null);
+    }
+
+    /**
      * Inserts a copy of one row with some columns replaced.
      *
      * @param array<string, string|null> $replace

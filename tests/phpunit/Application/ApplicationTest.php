@@ -48,8 +48,7 @@ final class ApplicationTest extends TestCase
         $this->assertTrue($reflection->isPublic());
         $this->assertFalse($reflection->isStatic());
 
-        $app = new Application();
-        $return = $app->run(['help']);
+        [$return] = self::runHelp(['help']);
 
         $this->assertSame('int', (string) $reflection->getReturnType());
         $this->assertSame(0, $return);
@@ -65,41 +64,50 @@ final class ApplicationTest extends TestCase
     public function testRunWithNoArgumentsDefaultsToHelpCommandAndReturnsZero(): void
     {
         // Covers the `array_shift($arguments) ?? 'help'` branch.
-        assertSame(0, (new Application())->run([]));
+        [$exit, $help] = self::runHelp([]);
+        assertSame(0, $exit);
+        self::assertStringContainsString('knossos boundary-couplings [path]', $help);
     }
 
     public function testRunWithHelpCommandReturnsZero(): void
     {
-        assertSame(0, (new Application())->run(['help']));
+        [$exit, $help] = self::runHelp(['help']);
+        assertSame(0, $exit);
+        self::assertStringContainsString('knossos boundary-couplings [path]', $help);
     }
 
     public function testRunWithDoubleDashHelpReturnsZero(): void
     {
-        assertSame(0, (new Application())->run(['--help']));
+        [$exit, $help] = self::runHelp(['--help']);
+        assertSame(0, $exit);
+        self::assertStringContainsString('knossos boundary-couplings [path]', $help);
     }
 
     public function testRunWithShortDashHReturnsZero(): void
     {
-        assertSame(0, (new Application())->run(['-h']));
+        [$exit, $help] = self::runHelp(['-h']);
+        assertSame(0, $exit);
+        self::assertStringContainsString('knossos boundary-couplings [path]', $help);
     }
 
     // ----- meta-command: version -----
 
     public function testRunWithVersionCommandReturnsZero(): void
     {
+        $this->expectOutputString('Knossos ' . Application::VERSION . PHP_EOL);
         assertSame(0, (new Application())->run(['version']));
     }
 
     public function testRunWithDoubleDashVersionReturnsZero(): void
     {
+        $this->expectOutputString('Knossos ' . Application::VERSION . PHP_EOL);
         assertSame(0, (new Application())->run(['--version']));
     }
 
     public function testRunWithVersionAndJsonFlagReturnsZero(): void
     {
-        // The --json flag switches CliCommandContext::output to JSON;
-        // exercised here only as a return-code contract because PHPUnit
-        // 12's expectOutput* does not capture fwrite(STDOUT, …).
+        // The --json flag switches CliCommandContext::output to JSON.
+        $this->expectOutputString('{"name":"knossos","version":"' . Application::VERSION . '"}' . PHP_EOL);
         assertSame(0, (new Application())->run(['version', '--json']));
     }
 
@@ -111,6 +119,24 @@ final class ApplicationTest extends TestCase
     // redirectable and PHPUnit's output expectations do not capture it), and it
     // keeps the suite from writing to the real STDERR, which
     // `infection --filter` treats as a signal to SIGTERM the initial test run.
+
+    /**
+     * The exit code and the help text of a run, the help written to an
+     * in-memory stream so none of it reaches the terminal.
+     *
+     * @param list<string> $arguments
+     * @return array{0: int, 1: string}
+     */
+    private static function runHelp(array $arguments): array
+    {
+        $stream = fopen('php://memory', 'w+');
+        $exit = (new Application(null, $stream))->run($arguments);
+        rewind($stream);
+        $written = stream_get_contents($stream);
+        fclose($stream);
+
+        return [$exit, $written === false ? '' : $written];
+    }
 
     /** @param list<string> $arguments @return array{0: int, 1: string} */
     private static function runApplication(array $arguments): array

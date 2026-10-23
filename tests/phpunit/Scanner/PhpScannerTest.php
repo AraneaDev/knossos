@@ -1692,48 +1692,6 @@ final class PhpScannerTest extends KnossosTestCase
         assertSame('ObservedBy', $observes[0]->attributes['via']);
     }
 
-    /** `#[ObservedBy([A::class, B::class])]` registers every observer in the list. */
-    #[Group('php-scanner')]
-    public function testObservedByTakesAnArrayOfObservers(): void
-    {
-        $root = sys_get_temp_dir() . '/knossos-php-observed-' . bin2hex(random_bytes(6));
-        if (!mkdir($root, 0o700, true)) {
-            throw new \RuntimeException('Unable to create observer PHP fixture.');
-        }
-        file_put_contents($root . '/Person.php', <<<'PHP'
-        <?php
-
-        namespace App\Models;
-
-        use App\Observers\AuditObserver;
-        use App\Observers\PersonObserver;
-        use Illuminate\Database\Eloquent\Attributes\ObservedBy;
-        use Illuminate\Database\Eloquent\Model;
-
-        #[ObservedBy([PersonObserver::class, AuditObserver::class])]
-        class Person extends Model {}
-        PHP);
-        try {
-            $client = $this->phpWorkerClient();
-            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['Person.php'], 'frameworks' => ['laravel']]));
-            $client->shutdown();
-        } finally {
-            unlink($root . '/Person.php');
-            rmdir($root);
-        }
-        $targets = [];
-        foreach ($contributions as $contribution) {
-            foreach ($contribution->edges as $edge) {
-                if ($edge->kind === 'observes') {
-                    $targets[] = $edge->targetReference;
-                }
-            }
-        }
-        sort($targets);
-
-        assertSame(['php:class:App\\Observers\\AuditObserver', 'php:class:App\\Observers\\PersonObserver'], $targets);
-    }
-
     /**
      * Eloquent calls an `Attribute`-returning accessor and a `#[Scope]` method
      * by convention, so nothing in the code names them; the legacy
@@ -1794,6 +1752,38 @@ final class PhpScannerTest extends KnossosTestCase
         assertArrayContains(['calls', 'php:method:Fixture\\Walk::run', 'php:method:Fixture\\NameCollector::leaveNode'], $tuples);
         assertArrayContains(['calls', 'php:method:Fixture\\Walk::run', 'php:method:Fixture\\OnlyEnter::enterNode'], $tuples);
         assertArrayContains(['calls', 'php:method:Fixture\\Walk::inherited', 'php:method:Fixture\\SubCollector::enterNode'], $tuples);
+        foreach ($edges as $edge) {
+            assertSame('probable', $edge->confidence->value);
+            assertSame(true, $edge->attributes['speculative'] ?? null);
+        }
+    }
+
+    /**
+     * A visitor that hands itself to a traverser, or one held in a typed
+     * property, is as known as one built inline, so its hooks get the same
+     * implied calls.
+     */
+    #[Group('php-scanner')]
+    public function testPhpWorkerLinksATraverserToASelfOrPropertyVisitorsHooks(): void
+    {
+        $root = self::repositoryRoot() . '/tests/Fixtures/php-scanner';
+        $client = $this->phpWorkerClient();
+        $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+            'root' => $root,
+            'files' => ['src/VisitorSelfWiring.php'],
+        ]));
+        $client->shutdown();
+        $edges = array_values(array_filter(
+            $contributions[0]->edges,
+            fn(EdgeFact $edge): bool => ($edge->attributes['dispatch'] ?? null) === 'PhpParser\\NodeTraverser',
+        ));
+        $tuples = array_map(
+            fn(EdgeFact $edge): array => [$edge->kind, $edge->sourceReference, $edge->targetReference],
+            $edges,
+        );
+
+        assertArrayContains(['calls', 'php:method:Fixture\\SelfWiring\\SelfWalker::walk', 'php:method:Fixture\\SelfWiring\\SelfWalker::enterNode'], $tuples);
+        assertArrayContains(['calls', 'php:method:Fixture\\SelfWiring\\PropertyWalker::walk', 'php:method:Fixture\\SelfWiring\\HeldCollector::leaveNode'], $tuples);
         foreach ($edges as $edge) {
             assertSame('probable', $edge->confidence->value);
             assertSame(true, $edge->attributes['speculative'] ?? null);

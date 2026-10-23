@@ -47,6 +47,15 @@ describe('the Notes tab', () => {
     expect(text(state({ ...none, counts: { total: 4, missing: 1, stale: 1, flagged: 1 } }))).toContain('No note matches')
   })
 
+  it("shows where a missing note's component likely went on its line, and in its detail", () => {
+    const moved = answer({ groups: { ...answer().groups, missing: [row('App\\Gone', { component_status: 'missing', suggested_component: 'App\\New\\Gone', updated_at: '2026-10-16T10:00:00Z' })] } })
+    const t = text(state(moved), 120, 60, view({ selected: 0 }))
+    expect(t).toMatch(/▲ Gone .*model .*moved\? -> App\\New\\Gone/)
+    expect(t).toContain('It may have moved to App\\New\\Gone: o finds it.')
+    // Without a suggestion, the line is the note's own.
+    expect(text(state(answer()), 120, 60, view({ selected: 0 }))).not.toContain('moved?')
+  })
+
   it('puts what needs the person first, then the notes by where they live, each with its author and first line, stale marked quietly', () => {
     const t = text(state(answer()), 100, 60, view({ selected: 2 }))
     const needs = t.indexOf('Needs you')
@@ -215,5 +224,10 @@ describe('the Notes tab', () => {
     expect(parseNotes(JSON.stringify(answer()))?.counts.total).toBe(4)
     expect(parseNotes(JSON.stringify({ status: 'ok', counts: {} }))).toBeNull()
     expect(parseNotes(JSON.stringify({ status: 'refused', reason: 'no' }))?.status).toBe('refused')
+    // A suggestion is a name or null; anything else is an answer the tab does not know.
+    const suggesting = (suggested: unknown) => answer({ groups: { ...answer().groups, missing: [{ ...row('App\\Gone', { component_status: 'missing' }), suggested_component: suggested } as NoteRow] } })
+    expect(parseNotes(JSON.stringify(suggesting('App\\New\\Gone')))?.groups.missing[0]?.suggested_component).toBe('App\\New\\Gone')
+    expect(parseNotes(JSON.stringify(suggesting(null)))).not.toBeNull()
+    expect(parseNotes(JSON.stringify(suggesting(7)))).toBeNull()
   })
 })

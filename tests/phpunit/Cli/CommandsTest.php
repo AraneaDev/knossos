@@ -83,9 +83,13 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // version tuple to `output()` (uncapturable fwrite — batch 10
         // pattern). 'help' arm calls help->render() (smoke test). Both
         // return 0.
-        $cmd = new MetaCommand(new CliHelpRenderer(), '1.2.3');
+        $help = fopen('php://memory', 'w+');
+        $cmd = new MetaCommand(new CliHelpRenderer($help), '1.2.3');
         assertSame(0, $cmd->run('version', [], [], $this->newContext()));
         assertSame(0, $cmd->run('help', [], [], $this->newContext()));
+        rewind($help);
+        // The help goes to its own stream, kept off the terminal.
+        self::assertStringContainsString('knossos boundary-couplings [path]', (string) stream_get_contents($help));
     }
 
     // ===== ScanCommand ====================================================

@@ -97,4 +97,6 @@ without `#[\Override]`. A traverser that is handed a visitor
 (`$traverser->addVisitor($visitor)` or `new NodeTraverser($visitor)`) gets a
 probable `calls` edge to each of those hooks the visitor's class declares or
 inherits, so the visitor's hooks have the code that wires them as a caller.
-The visitor's class must be known: `new Visitor()` or a typed variable.
+The visitor's class must be known: `new Visitor()`, a typed variable, a
+property whose declared type is a class (`$traverser->addVisitor($this->collector)`),
+or the class itself handing over `$this`.

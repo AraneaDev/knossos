@@ -45,7 +45,8 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
 
     private const CONFIG_PATH = 'config/livewire.php';
 
-    private readonly Parser $parser;
+    /** Built on the first Blade expression read, so a file with none never builds one. */
+    private ?Parser $parser = null;
 
     /** @var list<array{name: string, line: int, via: string}> */
     private array $used = [];
@@ -65,10 +66,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     /** @var list<?string> ids of the classes being visited, innermost last; null for an anonymous class */
     private array $classes = [];
 
-    public function __construct(private readonly string $relativePath)
-    {
-        $this->parser = (new ParserFactory())->createForNewestSupportedVersion();
-    }
+    public function __construct(private readonly string $relativePath) {}
 
     /** Reads the top-level `return [...]` of `config/livewire.php`. */
     #[\Override]
@@ -221,6 +219,7 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     private function readExpression(string $code, int $line, ?string $directive): void
     {
         try {
+            $this->parser ??= (new ParserFactory())->createForNewestSupportedVersion();
             $ast = $this->parser->parse($code);
         } catch (Error) {
             return;
@@ -371,7 +370,8 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
                 'class_namespace' => self::literal($item->value, false),
                 'view_path' => self::literal($item->value, true),
                 'component_locations' => $this->literalList($item->value),
-                default => $this->literalMap($item->value),
+                // An object, so an empty map is encoded as `{}` like a filled one, never as a list.
+                default => ($map = $this->literalMap($item->value)) === null ? null : (object) $map,
             };
         }
 
@@ -421,7 +421,9 @@ final class LivewireBladeFactCollector extends NodeVisitorAbstract
     }
 
     /**
-     * An array of string keys to string literals; null when any entry is not one.
+     * The entries of an array whose key is a string and whose value a string
+     * literal, the others dropped; null when it is no array, or has entries
+     * and none of them is one.
      *
      * @return array<string, string>|null
      */

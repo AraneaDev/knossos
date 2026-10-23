@@ -6,6 +6,8 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\NotesService;
+use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\BusyWriteStatement;
 use Knossos\Tests\Phpunit\Support\PaneAgreementGraph;
@@ -38,6 +40,89 @@ final class NotesServiceTest extends KnossosTestCase
         assertSame(['total' => 5, 'missing' => 1, 'stale' => 1, 'flagged' => 1], $notes['counts']);
         $target = $notes['groups']['rest'][2];
         assertSame(['model', 'note', 'present', false, true, 'is the cache still per request?'], [$target['author'], $target['kind'], $target['component_status'], $target['stale'], $target['checked'], $target['check_reason']]);
+    }
+
+    /**
+     * A note on a lost name carries where its component went, when exactly
+     * one component added since matches it, as list_annotations says it;
+     * a note whose component is there carries none.
+     */
+    public function testANoteOnAMovedComponentCarriesTheSuggestedComponent(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-notes-suggest-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src/Old', 0o777, true);
+        mkdir($root . '/src/New', 0o777, true);
+        file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
+        file_put_contents($root . '/src/Old/Svc.php', "<?php\nnamespace App\\Old;\nfinal class Svc {}\n");
+        file_put_contents($root . '/src/Keep.php', "<?php\nnamespace App;\nfinal class Keep {}\n");
+        try {
+            $pdo = $this->freshTestDatabase();
+            $scan = static fn(): string => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
+            $projectId = $scan();
+            $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
+            $annotations->upsertAnnotation($projectId, 'App\\Old\\Svc', 'note', 'the service', execute: true);
+            $annotations->upsertAnnotation($projectId, 'App\\Gone', 'note', 'never there', execute: true);
+            $annotations->upsertAnnotation($projectId, 'App\\Keep', 'note', 'stays', execute: true);
+            unlink($root . '/src/Old/Svc.php');
+            file_put_contents($root . '/src/New/Svc.php', "<?php\nnamespace App\\New;\nfinal class Svc {}\n");
+            $scan();
+
+            $notes = (new NotesService($pdo))->notes($root);
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        $missing = array_column($notes['groups']['missing'], 'suggested_component', 'component');
+        assertSame(['App\\Gone' => null, 'App\\Old\\Svc' => 'App\\New\\Svc'], self::sortedByKey($missing));
+        assertSame([null], array_column($notes['groups']['rest'], 'suggested_component'));
+    }
+
+    /**
+     * The suggestions have a time budget: past it, the rows not reached
+     * carry none and the list still answers, and a later list that has the
+     * time finds them again.
+     */
+    public function testSuggestionsPastTheirBudgetAreLeftOutAndFoundLater(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-notes-budget-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src/Old', 0o777, true);
+        mkdir($root . '/src/New', 0o777, true);
+        file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
+        file_put_contents($root . '/src/Old/Svc.php', "<?php\nnamespace App\\Old;\nfinal class Svc {}\n");
+        $ticks = 0;
+        // The first read sets the deadline; every read after it is a minute later.
+        $clock = static function () use (&$ticks): int {
+            return $ticks++ === 0 ? 0 : 60_000_000_000;
+        };
+        try {
+            $pdo = $this->freshTestDatabase();
+            $scan = static fn(): string => (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
+            $projectId = $scan();
+            ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($projectId, 'App\\Old\\Svc', 'note', 'the service', execute: true);
+            unlink($root . '/src/Old/Svc.php');
+            file_put_contents($root . '/src/New/Svc.php', "<?php\nnamespace App\\New;\nfinal class Svc {}\n");
+            $scan();
+
+            $late = (new NotesService($pdo, clock: $clock))->notes($root);
+            $onTime = (new NotesService($pdo))->notes($root);
+        } finally {
+            $this->removeTempTree($root);
+        }
+
+        assertSame('ok', $late['status']);
+        assertSame([null], array_column($late['groups']['missing'], 'suggested_component'));
+        assertSame(['App\\New\\Svc'], array_column($onTime['groups']['missing'], 'suggested_component'));
+    }
+
+    /**
+     * @param array<string, mixed> $rows
+     * @return array<string, mixed>
+     */
+    private static function sortedByKey(array $rows): array
+    {
+        ksort($rows, SORT_STRING);
+
+        return $rows;
     }
 
     public function testEachFilterAndTheTextNarrowTheList(): void

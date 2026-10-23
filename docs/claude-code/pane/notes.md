@@ -16,7 +16,10 @@ where each lives, with the ones that need you first.
 
 **Needs you** lists a note on a name the graph no longer holds (`▲`: its
 component was renamed or moved, and the note sits on the old name) and a model
-note you flagged for the model (`?`). They stay in the tree as well.
+note you flagged for the model (`?`). They stay in the tree as well. When
+exactly one component added since matches the lost name, the note's line says
+where it likely went (`moved? -> App\New\Name`), as `list_annotations`
+suggests it.
 
 **The tree** below it has a row for each boundary (its swatch, its name and how
 many notes it holds), the folders inside it, and their notes. The boundary
@@ -40,7 +43,7 @@ While either narrows the tree, every group is open so every match shows. On the 
 
 | key | what it does                                                                                                                                                                                                          |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `o` | open its component's detail; on a note on a missing name, open the finder on the old name to pick where it belongs                                                                                                    |
+| `o` | open its component's detail; on a note on a missing name, open the finder on the suggested component (or the old name) to pick where it belongs                                                                       |
 | `m` | edit your note, or adopt the model's: the detail opens with its text in the editor, and saving writes it as yours                                                                                                     |
 | `w` | remove it, yours or the model's, after asking                                                                                                                                                                         |
 | `g` | flag the model's note for the model to check, with a reason if you give one; on a flagged note, take the flag back                                                                                                    |

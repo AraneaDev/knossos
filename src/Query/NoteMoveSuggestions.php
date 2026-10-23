@@ -43,16 +43,25 @@ final class NoteMoveSuggestions
      */
     private static ?WeakMap $unheld = null;
 
+    /** Snapshot rows read between two asks of the caller's clock. */
+    private const CLOCK_EVERY = 256;
+
     public function __construct(private readonly PDO $pdo) {}
 
     /**
      * The suggested component for each of the lost names, null for one with
      * none. No name, no read.
      *
+     * `$outOfTime`, asked before each snapshot and every
+     * {@see self::CLOCK_EVERY} rows of one, stops the search once it says
+     * so: the names not placed by then are suggested nothing, and are not
+     * remembered as held by no snapshot, so a later call looks again.
+     *
      * @param list<string> $missing canonical names the active graph does not hold
+     * @param (Closure(): bool)|null $outOfTime whether the caller's time is spent; null for no limit
      * @return array<string, ?string> by lost name
      */
-    public function forMissing(string $projectId, array $missing): array
+    public function forMissing(string $projectId, array $missing, ?Closure $outOfTime = null): array
     {
         $missing = array_values(array_unique($missing));
         if ($missing === []) {
@@ -66,7 +75,12 @@ final class NoteMoveSuggestions
         $unheld = $known !== null && $known['key'] === $key ? $known['names'] : [];
         $unplaced = array_diff_key(array_fill_keys($missing, true), $unheld);
         $reader = new SnapshotGraphReader($this->pdo);
+        $stopped = false;
         foreach ($unplaced === [] ? [] : $snapshots as $scanId) {
+            if ($outOfTime !== null && $outOfTime()) {
+                $stopped = true;
+                break;
+            }
             // The lost names this snapshot still held, newest first: the first
             // that holds a name places it. The names it held that share a
             // short name with one of them, so a candidate it held is known
@@ -77,7 +91,11 @@ final class NoteMoveSuggestions
             }
             $placed = [];
             $held = [];
-            if (!$this->each($reader, $scanId, static function (array $row) use (&$placed, &$held, $unplaced, $tails): void {
+            $rows = 0;
+            $read = $this->each($reader, $scanId, static function (array $row) use (&$placed, &$held, &$rows, $unplaced, $tails, $outOfTime): void {
+                if ($outOfTime !== null && ++$rows % self::CLOCK_EVERY === 0 && $outOfTime()) {
+                    throw new NoteMoveSearchStopped();
+                }
                 $name = (string) ($row['canonical_name'] ?? '');
                 if (isset($unplaced[$name]) && !isset($placed[$name])) {
                     $placed[$name] = ['language' => (string) ($row['language'] ?? ''), 'kind' => (string) ($row['kind'] ?? ''), 'display_name' => (string) ($row['display_name'] ?? '')];
@@ -85,7 +103,12 @@ final class NoteMoveSuggestions
                 if (isset($tails[self::tail($name)])) {
                     $held[$name] = true;
                 }
-            })) {
+            });
+            if ($read === null) {
+                $stopped = true;
+                break;
+            }
+            if (!$read) {
                 continue;
             }
             if ($placed === []) {
@@ -99,9 +122,11 @@ final class NoteMoveSuggestions
                 break;
             }
         }
-        $map = self::$unheld[$this->pdo] ?? [];
-        $map[$projectId] = ['key' => $key, 'names' => $unheld + $unplaced];
-        self::$unheld[$this->pdo] = $map;
+        if (!$stopped) {
+            $map = self::$unheld[$this->pdo] ?? [];
+            $map[$projectId] = ['key' => $key, 'names' => $unheld + $unplaced];
+            self::$unheld[$this->pdo] = $map;
+        }
 
         return $suggestions;
     }
@@ -136,14 +161,17 @@ final class NoteMoveSuggestions
 
     /**
      * Hand each node row of a snapshot to `$sink`; false when its payload
-     * cannot be read, which holds nothing to compare against.
+     * cannot be read, which holds nothing to compare against, and null when
+     * the sink stopped the read because the time ran out.
      *
      * @param Closure(array<string, mixed>): void $sink
      */
-    private function each(SnapshotGraphReader $reader, string $scanId, Closure $sink): bool
+    private function each(SnapshotGraphReader $reader, string $scanId, Closure $sink): ?bool
     {
         try {
             $reader->eachArchivedRow($scanId, 'nodes', $sink);
+        } catch (NoteMoveSearchStopped) {
+            return null;
         } catch (InvalidArgumentException) {
             return false;
         }
