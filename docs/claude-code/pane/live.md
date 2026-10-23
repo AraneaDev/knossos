@@ -67,7 +67,9 @@ When the project's root is not allowed, the pane offers `a: allow root`
 instead. That only asks: it shows the root it would allow, with `y: allow` and
 `n: cancel`. Only `y` runs `knossos allow-root <root> --execute`, against the
 roots file the installation names, and then scans the edits the refusal held
-back. A grant that fails says why and can be asked again.
+back. A grant that fails says why and can be asked again. When the plugin was
+installed with no roots file baked in, it says to reinstall with
+`knossos install-agent-plugin --execute`.
 
 ## The live watcher
 

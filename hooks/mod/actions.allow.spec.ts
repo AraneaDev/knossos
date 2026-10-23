@@ -140,6 +140,15 @@ describe('allow-yes', () => {
         expect(mod.allow.inFlight).toBe(false)
     })
 
+    it('a wrapper refusal: failed, with the reason the wrapper gave', async () => {
+        const reason = 'no roots file is known to the hooks; reinstall the plugin with knossos install-agent-plugin --execute'
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, stdout: JSON.stringify({ status: 'refused', by: 'wrapper', reason }) })
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason })
+        expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
+    })
+
     it.each(['', 'not json', JSON.stringify({ path: ROOT, added: true, preview: true })])('an answer it cannot read (%j): failed, knossos did not allow it', async stdout => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, rescan: { phase: 'failed', reason: null, refusedRoot: ROOT }, stdout })
         mod.watch.refused = true

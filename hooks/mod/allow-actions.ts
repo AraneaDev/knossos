@@ -6,7 +6,7 @@ import type { AllowState, RescanState } from '../../types'
 import { parseAllowRoot } from '../lib/envelopes'
 import { refusedRoot } from '../lib/empty-state'
 import { SingleFlight } from '../lib/scheduler'
-import { disable, wrapper } from './port'
+import { disable, wrapperAnswer } from './port'
 import type { Port } from './port'
 import { mod } from './state'
 import { scanSafely } from './watcher'
@@ -52,14 +52,17 @@ export async function confirmAllow(io: Port): Promise<void> {
  * at once so the band and pane pick the project up.
  */
 async function runAllow(io: Port, root: string): Promise<void> {
-  const parsed = parseAllowRoot(await wrapper(io, 'allow-root', [], ALLOW_TIMEOUT_MS, root))
+  const { stdout, refusal } = await wrapperAnswer(io, 'allow-root', [], ALLOW_TIMEOUT_MS, root)
+  const parsed = parseAllowRoot(stdout)
   if (parsed?.status === 'no-binary') {
     await io.state.allow.update((): AllowState => ({ phase: 'idle', root: null, reason: null }))
     await disable(io)
     return
   }
   if (parsed === null) {
-    await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason: 'knossos did not allow it' }))
+    // A refusal from the wrapper names its reason (no roots file baked in, say); an empty answer has none.
+    const reason = refusal ?? 'knossos did not allow it'
+    await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason }))
     return
   }
   await io.state.allow.update((): AllowState => ({ phase: 'done', root, reason: null }))

@@ -102,7 +102,7 @@ expect_silent_success 'failing binary on a scan' env KNOSSOS_BIN="$STUBS/failing
 # allow-root: the root alone, always with --execute, and only into a roots file the installation (or the environment) names.
 expect_output 'allow-root grants the root with --execute' "allow-root|$ABS_PROJ|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root "$STUBS/proj"
-expect_silent_success 'allow-root without a named roots file does nothing' \
+expect_refused 'allow-root without a named roots file says why' \
     env -u KNOSSOS_ROOTS_FILE KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" allow-root "$STUBS/proj"
 expect_refused 'allow-root refuses an option' \
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root "$STUBS/proj" --db=/tmp/other.sqlite
