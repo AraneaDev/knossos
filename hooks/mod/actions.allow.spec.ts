@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AllowState, RescanState } from '../../types'
+import { allowInput, allowRows } from '../lib/empty-state'
 import { PRESSES } from './actions'
 import type { Port } from './port'
 import { mod, reset } from './state'
@@ -129,12 +130,12 @@ describe('allow-yes', () => {
         ])
     })
 
-    it('allowed: done, the refusal forgotten, the watcher may watch, and the root scanned for the first time', async () => {
+    it('allowed: the refusal forgotten, the watcher may watch, and the root scanned for the first time', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, rescan: { phase: 'failed', reason: 'not an allowed root', refusedRoot: ROOT } })
         mod.watch.refused = true
         await press(port.io, 'allow-yes')
         await port.runTimers()
-        expect(port.allow()).toEqual({ phase: 'done', root: ROOT, reason: null })
+        expect(port.allow().phase).toBe('failed')
         expect((port.values.get('rescan') as RescanState).refusedRoot ?? null).toBeNull()
         expect(mod.watch.refused).toBe(false)
         // The pane's rescan creates the project at the allowed root; the turn brief would only answer unscanned.
@@ -153,6 +154,36 @@ describe('allow-yes', () => {
         await press(failed.io, 'allow-yes')
         await failed.runTimers()
         expect((failed.values.get('rescan') as RescanState).phase).toBe('failed')
+    })
+
+    it('shows the done line while the first scan runs, then clears it once the scan lands', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'ok', snapshot_id: 'scan_1', project_root: ROOT }) })
+        // While the scan runs, the allow state still says done.
+        const during: AllowState[] = []
+        const run = port.io.process.run
+        port.io.process.run = (async (...args: Parameters<typeof run>) => {
+            if (args[0][2] === 'scan') during.push(port.allow())
+            return run(...args)
+        }) as typeof run
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(during.map(a => a.phase)).toEqual(['done'])
+        expect(port.allow()).toEqual(IDLE)
+        const input = allowInput(null, { phase: 'idle', reason: null }, port.allow())
+        expect(input).toBeNull()
+        const rows = allowRows({ root: ROOT, rootsFile: null, phase: 'done', reason: null }, 80)
+        expect(rows.some(r => r.key.startsWith('allow-done'))).toBe(true)
+    })
+
+    it('a first scan that does not land leaves the allow state failed with a reason, retryable with a', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason: 'the first scan did not finish' })
+        const input = allowInput(null, port.values.get('rescan') as RescanState, port.allow())!
+        expect(allowRows(input, 80).some(r => r.key.startsWith('allow-done'))).toBe(false)
+        await press(port.io, 'allow')
+        expect(port.allow()).toEqual({ phase: 'confirming', root: ROOT, reason: null })
     })
 
     it('a wrapper refusal: failed, with the reason the wrapper gave', async () => {

@@ -72,4 +72,8 @@ async function runAllow(io: Port, root: string): Promise<void> {
   // it creates the project at exactly this root, shows scanning, done or failed, and reloads the dashboard.
   // Later turns go back to the turn brief.
   await rescanRoot(io, root)
+  // The "scanning it now" line has done its job once the scan is over: gone when it landed, a failure to retry with `a` when not.
+  const scanned = await io.state.rescan.read()
+  const landed = scanned.phase === 'idle' || mod.session.disabled
+  await io.state.allow.update((): AllowState => (landed ? { phase: 'idle', root: null, reason: null } : { phase: 'failed', root, reason: 'the first scan did not finish' }))
 }
