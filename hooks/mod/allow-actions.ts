@@ -1,14 +1,15 @@
 /**
  * Allowing a root knossos refused (`a`, then `y`): the question first, then
- * `knossos allow-root` through the wrapper, and the root's first scan once it is.
+ * `knossos allow-root` through the wrapper, the root's first scan once it is, and the turn's brief after it.
  */
 import type { AllowState, RescanState } from '../../types'
 import { parseAllowRoot } from '../lib/envelopes'
 import { refusedRoot } from '../lib/empty-state'
+import { SingleFlight } from '../lib/scheduler'
 import { disable, wrapperAnswer } from './port'
 import type { Port } from './port'
 import { mod } from './state'
-import { rescanRoot } from './watcher'
+import { rescanRoot, scanSafely } from './watcher'
 
 /** Whether an allow-root run is under way, which only these presses keep. */
 const { allow } = mod
@@ -70,10 +71,15 @@ async function runAllow(io: Port, root: string): Promise<void> {
   mod.watch.refused = false
   // The turn brief would answer `unscanned` for a project nobody has scanned, so the pane's own rescan runs first:
   // it creates the project at exactly this root, shows scanning, done or failed, and reloads the dashboard.
-  // Later turns go back to the turn brief.
   await rescanRoot(io, root)
-  // The "scanning it now" line has done its job once the scan is over: gone when it landed, a failure to retry with `a` when not.
   const scanned = await io.state.rescan.read()
-  const landed = scanned.phase === 'idle' || mod.session.disabled
-  await io.state.allow.update((): AllowState => (landed ? { phase: 'idle', root: null, reason: null } : { phase: 'failed', root, reason: 'the first scan did not finish' }))
+  if (scanned.phase !== 'idle' && !mod.session.disabled) {
+    // A failure to retry with `a`; the next turn's brief still reports the edits that were refused.
+    await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason: 'the first scan did not finish' }))
+    return
+  }
+  // The project exists now: the turn brief reports the edits that were refused before the allow.
+  if (!mod.session.disabled) await (mod.scans.flight ??= new SingleFlight(() => scanSafely(io))).request()
+  // The "scanning it now" line has done its job once the scans are over.
+  await io.state.allow.update((): AllowState => ({ phase: 'idle', root: null, reason: null }))
 }

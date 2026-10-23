@@ -175,6 +175,34 @@ describe('allow-yes', () => {
         expect(rows.some(r => r.key.startsWith('allow-done'))).toBe(true)
     })
 
+    it('runs the root scan first, then the turn brief that reports the refused edits, then clears the line', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'ok', snapshot_id: 'scan_1', project_root: ROOT }) })
+        const order: string[] = []
+        vi.mocked(scanSafely).mockImplementationOnce(async () => {
+            order.push(`brief:${(port.values.get('rescan') as RescanState).phase}:${port.allow().phase}`)
+        })
+        const run = port.io.process.run
+        port.io.process.run = (async (...args: Parameters<typeof run>) => {
+            order.push(args[0][2] ?? '')
+            return run(...args)
+        }) as typeof run
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(order).toEqual(['allow-root', 'scan', 'dashboard', 'brief:idle:done'])
+        expect(vi.mocked(scanSafely)).toHaveBeenCalledTimes(1)
+        expect(port.allow()).toEqual(IDLE)
+    })
+
+    it('a failed first scan runs no brief now, so the next turn reports the edits', async () => {
+        const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
+        await press(port.io, 'allow-yes')
+        await port.runTimers()
+        expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason: 'the first scan did not finish' })
+        // No brief flight was started or left stuck: the next turn creates its own and runs the brief.
+        expect(mod.scans.flight).toBeNull()
+    })
+
     it('a first scan that does not land leaves the allow state failed with a reason, retryable with a', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
         await press(port.io, 'allow-yes')
