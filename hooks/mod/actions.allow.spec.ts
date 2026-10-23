@@ -18,7 +18,7 @@ const ALLOWED = JSON.stringify({ path: ROOT, added: true, roots_file: '/data/roo
  * `stdout` and records each command it was asked to run. `refuse` makes the
  * allow state's update throw for a phase, as a torn-down session would.
  */
-function allowPort(init: { allow?: AllowState; rescan?: RescanState; brief?: unknown; stdout?: string; refuse?: AllowState['phase'] } = {}) {
+function allowPort(init: { allow?: AllowState; rescan?: RescanState; brief?: unknown; stdout?: string; scan?: string; refuse?: AllowState['phase'] } = {}) {
     const values = new Map<string, unknown>(Object.entries({ allow: init.allow ?? IDLE, rescan: init.rescan ?? { phase: 'idle', reason: null }, brief: init.brief ?? null }))
     const runs: string[][] = []
     const timers: (() => void)[] = []
@@ -44,7 +44,7 @@ function allowPort(init: { allow?: AllowState; rescan?: RescanState; brief?: unk
         process: {
             run: async (argv: string[]) => {
                 runs.push(argv)
-                return { exitCode: 0, stdout: init.stdout ?? ALLOWED, stderr: '' }
+                return { exitCode: 0, stdout: argv[2] === 'allow-root' ? (init.stdout ?? ALLOWED) : (init.scan ?? ''), stderr: '' }
             },
         },
         state,
@@ -123,21 +123,36 @@ describe('allow-yes', () => {
         await press(port.io, 'allow-yes')
         expect(port.timers).toHaveLength(1)
         await port.runTimers()
-        expect(port.runs).toEqual([['sh', '/plugin/hooks/scripts/knossos-run.sh', 'allow-root', ROOT]])
+        expect(port.runs).toEqual([
+            ['sh', '/plugin/hooks/scripts/knossos-run.sh', 'allow-root', ROOT],
+            ['sh', '/plugin/hooks/scripts/knossos-run.sh', 'scan', ROOT],
+        ])
     })
 
-    it('allowed: done, the refusal forgotten, the watcher may watch, and the scan requested', async () => {
+    it('allowed: done, the refusal forgotten, the watcher may watch, and the root scanned for the first time', async () => {
         const port = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, rescan: { phase: 'failed', reason: 'not an allowed root', refusedRoot: ROOT } })
         mod.watch.refused = true
         await press(port.io, 'allow-yes')
         await port.runTimers()
         expect(port.allow()).toEqual({ phase: 'done', root: ROOT, reason: null })
-        expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: 'not an allowed root', refusedRoot: null })
+        expect((port.values.get('rescan') as RescanState).refusedRoot ?? null).toBeNull()
         expect(mod.watch.refused).toBe(false)
-        expect(vi.mocked(scanSafely)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(scanSafely)).toHaveBeenCalledWith(port.io)
-        expect(mod.scans.flight).not.toBeNull()
+        // The pane's rescan creates the project at the allowed root; the turn brief would only answer unscanned.
+        expect(port.runs[0]).toEqual(['sh', '/plugin/hooks/scripts/knossos-run.sh', 'allow-root', ROOT])
+        expect(port.runs[1]).toEqual(['sh', '/plugin/hooks/scripts/knossos-run.sh', 'scan', ROOT])
+        expect(vi.mocked(scanSafely)).not.toHaveBeenCalled()
         expect(mod.allow.inFlight).toBe(false)
+    })
+
+    it('a first scan that lands leaves the pane idle, one that does not says it failed', async () => {
+        const landed = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'ok', snapshot_id: 'scan_1', project_root: ROOT }) })
+        await press(landed.io, 'allow-yes')
+        await landed.runTimers()
+        expect(landed.values.get('rescan')).toMatchObject({ phase: 'idle', reason: null })
+        const failed = allowPort({ allow: { phase: 'confirming', root: ROOT, reason: null }, scan: JSON.stringify({ status: 'unscanned' }) })
+        await press(failed.io, 'allow-yes')
+        await failed.runTimers()
+        expect((failed.values.get('rescan') as RescanState).phase).toBe('failed')
     })
 
     it('a wrapper refusal: failed, with the reason the wrapper gave', async () => {

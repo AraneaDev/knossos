@@ -37,12 +37,14 @@ shift 2
 # A stuck binary, or a stuck daemon, never stalls the mod: every run but the
 # watcher is bounded.
 # The binary's command is the subcommand's name, except `scan`: the pane's
-# rescan runs `knossos rescan`, never `knossos scan`, so it can only rescan an
-# existing project in an allowed root and never create one.
+# rescan runs `knossos rescan`, never `knossos scan`. It rescans an existing
+# project in an allowed root, and creates one only for a path that is exactly an
+# allowed root (the first scan right after the person allowed it in the pane).
+# It is bounded as a watch scan is, because that first scan is a full one.
 COMMAND=$SUBCOMMAND
 case "$SUBCOMMAND" in
     turn-brief) LIMIT=${KNOSSOS_RUN_TIMEOUT:-60} ;;
-    scan) LIMIT=${KNOSSOS_RUN_TIMEOUT:-60}; COMMAND=rescan ;;
+    scan) LIMIT=${KNOSSOS_RUN_TIMEOUT:-300}; COMMAND=rescan ;;
     # A cold first dashboard of a large project walks the whole graph.
     dashboard) LIMIT=${KNOSSOS_RUN_TIMEOUT:-30} ;;
     component-detail|file-detail|file-context|graph-search) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;

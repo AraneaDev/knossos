@@ -66,8 +66,11 @@ of every turn until it finds one.
 When the project's root is not allowed, the pane offers `a: allow root`
 instead. That only asks: it shows the root it would allow, with `y: allow` and
 `n: cancel`. Only `y` runs `knossos allow-root <root> --execute`, against the
-roots file the installation names, and then scans the edits the refusal held
-back. A grant that fails says why and can be asked again. When the plugin was
+roots file the installation names, and then scans that root at once. For a
+project nobody has scanned yet that scan is its first one and creates it; the
+header shows it scanning, then done or why it failed. It is the only time the
+pane's rescan creates a project, and only for a path that is exactly an allowed
+root. A grant that fails says why and can be asked again. When the plugin was
 installed with no roots file baked in, it says to reinstall with
 `knossos install-agent-plugin --execute`.
 

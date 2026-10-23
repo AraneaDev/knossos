@@ -1,15 +1,14 @@
 /**
  * Allowing a root knossos refused (`a`, then `y`): the question first, then
- * `knossos allow-root` through the wrapper, and the turn's scan once it is.
+ * `knossos allow-root` through the wrapper, and the root's first scan once it is.
  */
 import type { AllowState, RescanState } from '../../types'
 import { parseAllowRoot } from '../lib/envelopes'
 import { refusedRoot } from '../lib/empty-state'
-import { SingleFlight } from '../lib/scheduler'
 import { disable, wrapperAnswer } from './port'
 import type { Port } from './port'
 import { mod } from './state'
-import { scanSafely } from './watcher'
+import { rescanRoot } from './watcher'
 
 /** Whether an allow-root run is under way, which only these presses keep. */
 const { allow } = mod
@@ -48,8 +47,8 @@ export async function confirmAllow(io: Port): Promise<void> {
 
 /**
  * Runs `knossos allow-root <root> --execute` through the wrapper, which
- * writes the roots file baked in at install. Allowed, the turn's scan runs
- * at once so the band and pane pick the project up.
+ * writes the roots file baked in at install. Allowed, the root's first scan
+ * runs at once so the band and pane pick the project up.
  */
 async function runAllow(io: Port, root: string): Promise<void> {
   const { stdout, refusal } = await wrapperAnswer(io, 'allow-root', [], ALLOW_TIMEOUT_MS, root)
@@ -69,6 +68,8 @@ async function runAllow(io: Port, root: string): Promise<void> {
   await io.state.rescan.update((r): RescanState => ({ ...r, refusedRoot: null }))
   // A watcher refused for this root may watch it now, once the scan below lands a dashboard.
   mod.watch.refused = false
-  // The edits that were refused are still unscanned: the turn's scan picks them up now.
-  void (mod.scans.flight ??= new SingleFlight(() => scanSafely(io))).request()
+  // The turn brief would answer `unscanned` for a project nobody has scanned, so the pane's own rescan runs first:
+  // it creates the project at exactly this root, shows scanning, done or failed, and reloads the dashboard.
+  // Later turns go back to the turn brief.
+  await rescanRoot(io, root)
 }

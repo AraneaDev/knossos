@@ -32,7 +32,8 @@ use PDO;
  * already checked that the database exists. `annotate` writes only when
  * `execute` is given, which the pane passes only after the person confirmed
  * the preview in it; `turn-brief` and `rescan` write only by scanning a
- * project that already exists.
+ * project that already exists, except that `rescan` makes the first scan of a
+ * path that is exactly an allowed root.
  */
 final readonly class PaneCommands
 {
