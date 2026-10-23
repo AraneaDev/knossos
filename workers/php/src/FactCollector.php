@@ -465,8 +465,7 @@ final class FactCollector extends NodeVisitorAbstract
             'static' => $node->isStatic(),
             'abstract' => $node->isAbstract(),
             'php_attributes' => $attributes,
-            ...(self::isVirtualProperty($node, $attributes) ? ['runtime_invoked' => true] : []),
-            ...(self::isEloquentConvention($this->typeNames($node->returnType), $attributes) ? ['runtime_invoked' => true] : []),
+            ...(self::isVirtualProperty($node, $attributes) || self::isEloquentConvention($this->typeNames($node->returnType), $attributes) ? ['runtime_invoked' => true] : []),
             ...(self::overridesSupertypeMember($node->name->toString(), $attributes, $class) ? ['overrides' => true] : []),
         ]);
         $this->addEdge('contains', $class['id'], $id, $node);

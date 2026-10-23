@@ -8,6 +8,7 @@ use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Stmt;
 
 /**
  * Records dispatch edges: facade static calls and the global dispatch helpers.
@@ -28,7 +29,7 @@ final readonly class LaravelDispatchFactCollector
     /** Route static calls and function calls to the matching dispatch detector. */
     public function enterNode(Node $node): void
     {
-        if ($node instanceof Node\Stmt\Class_) {
+        if ($node instanceof Stmt\Class_) {
             $this->observedBy($node);
         } elseif ($node instanceof Expr\StaticCall) {
             $this->staticFrameworkCall($node);
@@ -36,11 +37,12 @@ final readonly class LaravelDispatchFactCollector
             $this->functionDispatch($node);
         }
     }
+
     /**
      * `#[ObservedBy(PostObserver::class)]` on a model registers the observer
      * the way `Post::observe(...)` does, so it records the same edge.
      */
-    private function observedBy(Node\Stmt\Class_ $node): void
+    private function observedBy(Stmt\Class_ $node): void
     {
         if ($node->namespacedName === null) {
             return;
@@ -59,7 +61,6 @@ final readonly class LaravelDispatchFactCollector
     }
 
     /** Record a dispatch made through a framework facade's static call. */
-
     private function staticFrameworkCall(Expr\StaticCall $node): void
     {
         $source = $this->context->currentSource();

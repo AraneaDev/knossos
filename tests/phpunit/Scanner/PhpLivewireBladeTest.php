@@ -75,6 +75,40 @@ final class PhpLivewireBladeTest extends KnossosTestCase
         ], $view['used']);
     }
 
+    /** A loop directive's header is read as the loop it opens: `@for` and `@forelse` like `@foreach`. */
+    #[Group('php-scanner')]
+    public function testForAndForelseHeadersAreRead(): void
+    {
+        $view = $this->scanInline(<<<'BLADE'
+            @for ($i = 0; $i < $this->count; $i++) x @endfor
+            @forelse ($this->items as $key => $item) y @empty z @endforelse
+            @for ($this->broken { @endfor
+            BLADE);
+
+        assertSame([
+            ['name' => 'count', 'line' => 1, 'via' => 'expression'],
+            ['name' => 'items', 'line' => 2, 'via' => 'expression'],
+        ], $view['used']);
+    }
+
+    /** The same member used the same way on one line is one use; on another line, or another way, it is its own. */
+    #[Group('php-scanner')]
+    public function testRepeatedUsesAreRecordedOnce(): void
+    {
+        $view = $this->scanInline(<<<'BLADE'
+            {{ $this->title }} {{ $this->title }} {!! $this->title !!}
+            <b wire:click="save">a</b> <b wire:click.prevent="save">b</b> {{ $this->save }}
+            {{ $this->title }}
+            BLADE);
+
+        assertSame([
+            ['name' => 'title', 'line' => 1, 'via' => 'expression'],
+            ['name' => 'save', 'line' => 2, 'via' => 'action'],
+            ['name' => 'save', 'line' => 2, 'via' => 'expression'],
+            ['name' => 'title', 'line' => 3, 'via' => 'expression'],
+        ], $view['used']);
+    }
+
     #[Group('php-scanner')]
     public function testMultiArgumentDirectivesAndPhpBlocksAreRead(): void
     {
@@ -196,6 +230,30 @@ final class PhpLivewireBladeTest extends KnossosTestCase
             'component_locations' => ['resources/views/components', 'modules/ui'],
             'component_namespaces' => null,
         ], $nodes['config/livewire.php']->attributes['livewire_config']);
+    }
+
+    /**
+     * `component_namespaces` is a map, so an empty one travels as a JSON
+     * object, the shape a filled one has, never as a list.
+     */
+    #[Group('php-scanner')]
+    public function testAnEmptyComponentNamespacesMapTravelsAsAnObject(): void
+    {
+        $root = $this->tempRoot(['config/livewire.php' => "<?php\nreturn ['component_namespaces' => []];\n"]);
+        try {
+            $request = ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'scan', 'params' => ['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['config/livewire.php'], 'frameworks' => ['livewire']]];
+            $process = proc_open([PHP_BINARY, self::repositoryRoot() . '/workers/php/bin/worker'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            self::assertIsResource($process);
+            fwrite($pipes[0], json_encode($request, JSON_THROW_ON_ERROR) . "\n" . '{"jsonrpc":"2.0","id":2,"method":"shutdown","params":{}}' . "\n");
+            fclose($pipes[0]);
+            $stdout = (string) stream_get_contents($pipes[1]);
+            stream_get_contents($pipes[2]);
+            proc_close($process);
+        } finally {
+            $this->removeRoot($root);
+        }
+
+        assertSame(1, substr_count($stdout, '"component_namespaces":{}'), $stdout);
     }
 
     #[Group('php-scanner')]

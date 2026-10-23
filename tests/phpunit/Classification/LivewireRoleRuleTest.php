@@ -34,27 +34,42 @@ final class LivewireRoleRuleTest extends KnossosTestCase
     {
         $roles = $this->rolesOf($this->scanCopyOfFixture()[0]);
 
-        foreach (['Dashboard', 'EditPost', 'PostTable', 'BaseComponent', 'Counter'] as $class) {
-            self::assertSame(['livewire.component'], $roles['App\\Livewire\\' . $class] ?? null, $class);
-        }
-        foreach (['⚡search.blade.php:6', '⚡create.blade.php:7', 'admin/⚡stats.blade.php:5', '⚡archive/archive.php'] as $anonymous) {
-            self::assertNotSame([], $this->matching($roles, $anonymous, 'livewire.component'), $anonymous);
-        }
-        self::assertArrayNotHasKey('App\\Livewire\\Forms\\PostForm', $roles);
-        self::assertArrayNotHasKey('App\\Livewire\\Concerns\\HasSorting', $roles);
-
-        $expected = [
-            'hook' => ['Dashboard::mount', 'Dashboard::render', 'PostTable::updatedTitle', 'HasSorting::mountHasSorting'],
-            'attribute' => ['Dashboard::reload', 'Dashboard::posts'],
-            'view_action' => ['Dashboard::loadMore', 'Counter::increment', 'EditPost::save', 'BaseComponent::notify', 'HasSorting::sortBy', '::restore', '::refresh'],
-            'view_expression' => ['::results'],
-        ];
-        foreach ($expected as $reason => $methods) {
-            foreach ($methods as $method) {
-                self::assertNotSame([], $this->matching($roles, $method, 'livewire.entry_method:' . $reason), "$method as $reason");
-            }
-        }
-        self::assertArrayNotHasKey('App\\Livewire\\PostTable::unusedAction', $roles);
+        $component = ['livewire.component'];
+        $hook = ['livewire.entry_method:hook'];
+        $attribute = ['livewire.entry_method:attribute'];
+        $action = ['livewire.entry_method:view_action'];
+        // Every Livewire role the fixture has, exactly: a form object and a trait are no components,
+        // and `PostTable::unusedAction` no view names.
+        self::assertSame([
+            'App\\Livewire\\BaseComponent' => $component,
+            'App\\Livewire\\BaseComponent::notify' => $action,
+            'App\\Livewire\\Concerns\\HasSorting::mountHasSorting' => $hook,
+            'App\\Livewire\\Concerns\\HasSorting::sortBy' => $action,
+            'App\\Livewire\\Counter' => $component,
+            'App\\Livewire\\Counter::increment' => $action,
+            'App\\Livewire\\Counter::render' => $hook,
+            'App\\Livewire\\Dashboard' => $component,
+            'App\\Livewire\\Dashboard::loadMore' => $action,
+            'App\\Livewire\\Dashboard::mount' => $hook,
+            'App\\Livewire\\Dashboard::posts' => $attribute,
+            'App\\Livewire\\Dashboard::reload' => $attribute,
+            'App\\Livewire\\Dashboard::render' => $hook,
+            'App\\Livewire\\EditPost' => $component,
+            'App\\Livewire\\EditPost::mount' => $hook,
+            'App\\Livewire\\EditPost::render' => $hook,
+            'App\\Livewire\\EditPost::save' => $action,
+            'App\\Livewire\\PostTable' => $component,
+            'App\\Livewire\\PostTable::render' => $hook,
+            'App\\Livewire\\PostTable::updatedTitle' => $hook,
+            '{anonymous}@resources/views/admin/⚡stats.blade.php:5' => $component,
+            '{anonymous}@resources/views/admin/⚡stats.blade.php:5::refresh' => $action,
+            '{anonymous}@resources/views/components/post/⚡archive/archive.php:5' => $component,
+            '{anonymous}@resources/views/components/post/⚡archive/archive.php:5::restore' => $action,
+            '{anonymous}@resources/views/components/⚡search.blade.php:6' => $component,
+            '{anonymous}@resources/views/components/⚡search.blade.php:6::results' => ['livewire.entry_method:view_expression'],
+            '{anonymous}@resources/views/pages/post/⚡create.blade.php:7' => $component,
+            '{anonymous}@resources/views/pages/post/⚡create.blade.php:7::save' => $action,
+        ], $roles);
     }
 
     public function testIncludeCyclesTerminate(): void
@@ -242,23 +257,5 @@ final class LivewireRoleRuleTest extends KnossosTestCase
         }
 
         return $roles;
-    }
-
-    /**
-     * The roles-by-name entries whose name ends with the fragment, narrowed to those holding a role.
-     *
-     * @param array<string, list<string>> $roles
-     * @return list<string>
-     */
-    private function matching(array $roles, string $fragment, string $role): array
-    {
-        $found = [];
-        foreach ($roles as $name => $held) {
-            if (str_contains($name, $fragment) && in_array($role, $held, true)) {
-                $found[] = $name;
-            }
-        }
-
-        return $found;
     }
 }
