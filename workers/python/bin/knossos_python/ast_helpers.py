@@ -241,6 +241,29 @@ def declared_global(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     return names
 
 
+def calls_own_super_member(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether ``node`` itself calls ``super().<its own name>``, in either ``super`` form.
+
+    The lookup fails unless a supertype has that member. A nested function or
+    lambda is code of its own, which may never run, so its calls are not counted.
+    """
+    pending: list[ast.AST] = list(node.body)
+    while pending:
+        child = pending.pop()
+        if (
+            isinstance(child, ast.Call)
+            and isinstance(child.func, ast.Attribute)
+            and child.func.attr == node.name
+            and isinstance(child.func.value, ast.Call)
+            and isinstance(child.func.value.func, ast.Name)
+            and child.func.value.func.id == "super"
+        ):
+            return True
+        if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            pending.extend(ast.iter_child_nodes(child))
+    return False
+
+
 def ref(kind: str, canonical: str) -> str:
     return f"py:{kind}:{canonical}"
 

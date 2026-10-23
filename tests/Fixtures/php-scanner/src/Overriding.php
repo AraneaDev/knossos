@@ -49,3 +49,22 @@ final class Lookalike extends NodeVisitorAbstract
     #[Override]
     public function enterNode(object $node): void {}
 }
+
+/** Defers to the dependency's member of its own name, which proves it has one. */
+final class Deferring extends NodeVisitorAbstract
+{
+    public function leaveNode(object $node): void
+    {
+        parent::leaveNode($node);
+    }
+
+    public function afterTraverse(array $nodes): void
+    {
+        parent::leaveNode($nodes[0]);
+    }
+
+    public function beforeTraverse(array $nodes): void
+    {
+        $later = static fn() => parent::beforeTraverse($nodes);
+    }
+}

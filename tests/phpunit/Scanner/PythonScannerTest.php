@@ -2183,8 +2183,10 @@ PYTHON);
 
     /**
      * A method fulfilling a supertype's member is marked `overrides` when the
-     * source says so (`@override`, from `typing` or `typing_extensions`), or
-     * when the standard library dispatches to it by name: `ast.NodeVisitor`
+     * source says so (`@override`, from `typing` or `typing_extensions`, or a
+     * `super()` call of the method's own name in its body, which only works
+     * when a supertype has that member), or when the standard library
+     * dispatches to it by name: `ast.NodeVisitor`
      * calls `visit_<Node>` and `generic_visit` through `getattr`, so no call
      * names them. A method that only shares the prefix on any other class, or
      * a decorator of the same name from elsewhere, says nothing.
@@ -2202,6 +2204,7 @@ PYTHON);
                 'from ast import NodeTransformer',
                 'from typing_extensions import override',
                 'from app.local import override as unrelated',
+                'import vendor',
                 '',
                 'class Collector(ast.NodeVisitor):',
                 '    def visit_Call(self, node):',
@@ -2227,6 +2230,18 @@ PYTHON);
                 '    @unrelated',
                 '    def pause(self):',
                 '        return 1',
+                '',
+                'class Dim(vendor.Screen):',
+                '    def draw(self, data):',
+                '        super().draw(data)',
+                '    def reset(self):',
+                '        return super(Dim, self).reset()',
+                '    def tidy(self):',
+                '        super().reset()',
+                '    def later(self):',
+                '        def inner():',
+                '            super().later()',
+                '        return inner',
                 '',
             ]),
         ];
@@ -2260,6 +2275,12 @@ PYTHON);
             'app.visitors.Collector::generic_visit' => true,
             'app.visitors.Collector::helper' => false,
             'app.visitors.Collector::visit_Call' => true,
+            'app.visitors.Dim::draw' => true,
+            // A nested function is code of its own, which may never run.
+            'app.visitors.Dim::later' => false,
+            'app.visitors.Dim::reset' => true,
+            // Calling a different supertype member proves nothing about this one.
+            'app.visitors.Dim::tidy' => false,
             'app.visitors.Plain::pause' => false,
             'app.visitors.Plain::run' => true,
             'app.visitors.Plain::stop' => true,

@@ -5,3 +5,6 @@ declare module 'host-visitors' {
     leave(node: object): void
   }
 }
+
+// A dependency that ships no types: everything it exports is `any`.
+declare module 'untyped-terminal'

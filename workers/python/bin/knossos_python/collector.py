@@ -8,6 +8,7 @@ from .accumulator import PythonFactAccumulator
 from .ast_helpers import (
     absolute_import,
     bound_names,
+    calls_own_super_member,
     declared_protocols,
     dotted,
     is_protocol_base,
@@ -404,7 +405,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.loaded_by_path and not self.containers and not node.name.startswith("_")
         ):
             attributes["runtime_invoked"] = True
-        if kind == "method" and self.overrides_supertype_member(node.name, parent_canonical, decorators):
+        if kind == "method" and self.overrides_supertype_member(node, parent_canonical, decorators):
             attributes["overrides"] = True
         self.facts.add_node(local_id, kind, canonical, node.name, node, attributes)
         self.facts.add_edge("contains", parent_id, local_id, node)
@@ -488,16 +489,24 @@ class PythonAstFactCollector(ast.NodeVisitor):
             return []
         return [ref("method", f"{owner}::{name}") for name in sorted(methods) if name.startswith("visit_")]
 
-    def overrides_supertype_member(self, name: str, owner: str, decorators: list[str]) -> bool:
+    def overrides_supertype_member(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, owner: str, decorators: list[str]
+    ) -> bool:
         """Whether a method fulfils a supertype's member, by the source's word or by dispatch.
 
         ``@override`` from ``typing`` or ``typing_extensions`` is the source
-        saying so. An AST visitor's ``visit``, ``generic_visit`` and
-        ``visit_<Node>`` hooks are called by ``NodeVisitor.visit`` through
-        ``getattr``, so no call names them. A same-named decorator from
-        anywhere else says nothing.
+        saying so, and so is a ``super()`` call of the method's own name,
+        which only works when a supertype has that member: a dependency's
+        base is not scanned, so this is the one sign of an override of it.
+        An AST visitor's ``visit``, ``generic_visit`` and ``visit_<Node>``
+        hooks are called by ``NodeVisitor.visit`` through ``getattr``, so no
+        call names them. A same-named decorator from anywhere else says
+        nothing.
         """
+        name = node.name
         if owner in self.ast_visitors and (name in {"visit", "generic_visit"} or name.startswith("visit_")):
+            return True
+        if calls_own_super_member(node):
             return True
         typing_modules = {"typing", "typing_extensions"}
         imported = {f"{module}.override" for module in typing_modules}

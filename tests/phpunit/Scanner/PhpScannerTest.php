@@ -305,9 +305,10 @@ final class PhpScannerTest extends KnossosTestCase
 
     /**
      * A method fulfilling a supertype's member is marked `overrides` when the
-     * source or the language says so: `#[\Override]`, or a member of a PHP
-     * built-in interface or class the type implements or extends, which the
-     * worker's own runtime describes. A dependency's members are not in the
+     * source or the language says so: `#[\Override]`, a `parent::` call of the
+     * method's own name in its body, or a member of a PHP built-in interface
+     * or class the type implements or extends, which the worker's own runtime
+     * describes. A dependency's members are not in the
      * graph, so without the mark the dispatch through them (a traverser
      * calling `enterNode`, `json_encode` calling `jsonSerialize`) reads as
      * no reference at all.
@@ -337,6 +338,11 @@ final class PhpScannerTest extends KnossosTestCase
             // A dependency's member the source does not mark: the worker
             // cannot see the dependency, so it says nothing.
             'Fixture\\Collector::leaveNode' => false,
+            // Calling a different parent member proves nothing about this one.
+            'Fixture\\Deferring::afterTraverse' => false,
+            // A closure is code of its own, which may never run.
+            'Fixture\\Deferring::beforeTraverse' => false,
+            'Fixture\\Deferring::leaveNode' => true,
             'Fixture\\Lookalike::enterNode' => false,
             'Fixture\\Size::jsonSerialize' => true,
             'Fixture\\Size::label' => false,
