@@ -135,7 +135,7 @@ final class SourceClassifier
      *
      * The exception exists because a project that ignores its own settings
      * file would be configuring a scan that never reads the configuration. It
-     * is public for the same reason {@see self::languageFor()} is: the drift
+     * is public for the same reason {@see self::classify()} is: the drift
      * oracles decide the same question about a path they were handed, and a
      * second copy of this list would let a probe count a path discovery
      * exempts, reporting drift no rescan can clear.
@@ -146,7 +146,10 @@ final class SourceClassifier
     }
 
     /**
-     * The language a file belongs to, or null when it is not source.
+     * The language a file belongs to (null when it is not source) and the
+     * unit kind it configures ({@see self::unitKindFor()}), with an
+     * extensionless file's shebang read once for both: what the walk and the
+     * drift probe ask of every path.
      *
      * Extension first, then a shebang for extensionless files. Executable entry
      * points routinely have no extension — `artisan`, `bin/console`, this project's
@@ -163,18 +166,6 @@ final class SourceClassifier
      *
      * @param string|null $absolutePath needed only to read a shebang; omit and
      *        extensionless files are simply not classified
-     */
-    public static function languageFor(string $relativePath, ?string $absolutePath = null): ?string
-    {
-        return self::classify($relativePath, $absolutePath)['language'];
-    }
-
-    /**
-     * {@see self::languageFor()} and {@see self::unitKindFor()} at once, with
-     * an extensionless file's shebang read once for both: what the walk and
-     * the drift probe ask of every path.
-     *
-     * @param string|null $absolutePath needed only to read a shebang
      * @return array{language: ?string, unitKind: ?string}
      */
     public static function classify(string $relativePath, ?string $absolutePath = null): array
@@ -240,9 +231,8 @@ final class SourceClassifier
      *
      * Public because it is half of what "an input this scanner reads" means,
      * and the drift oracles need the same half: a path that is a unit here but
-     * not a language file has no `files` row, and a probe that asked only
-     * {@see self::languageFor()} treated editing composer.json as nothing at
-     * all. {@see \Knossos\Query\Drift\ScannedPaths} asks both.
+     * not a language file has no `files` row, and a probe that asked only for
+     * the language treated editing composer.json as nothing at all. {@see \Knossos\Query\Drift\ScannedPaths} asks both.
      *
      * @param string|null $absolutePath needed only to read the shebang of an
      *        extensionless shell script; omit and such a file is no unit

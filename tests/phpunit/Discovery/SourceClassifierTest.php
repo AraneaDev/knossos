@@ -87,7 +87,7 @@ final class SourceClassifierTest extends TestCase
     public function testUnitKindForNamesEveryManifestKind(string $path, ?string $kind): void
     {
         assertSame($kind, SourceClassifier::unitKindFor($path));
-        assertSame($kind, ProjectDiscoverer::unitKindFor($path));
+        assertSame($kind, ProjectDiscoverer::classify($path)['unitKind']);
     }
 
     /** Only package and build manifests make their directory a manifest root. */
@@ -126,8 +126,8 @@ final class SourceClassifierTest extends TestCase
     #[DataProvider('extensions')]
     public function testLanguageForReadsTheExtension(string $path, ?string $language): void
     {
-        assertSame($language, SourceClassifier::languageFor($path));
-        assertSame($language, ProjectDiscoverer::languageFor($path));
+        assertSame($language, SourceClassifier::classify($path)['language']);
+        assertSame($language, ProjectDiscoverer::classify($path)['language']);
     }
 
     /** An extensionless file is classified by its shebang, and only when its path is given. */
@@ -146,15 +146,15 @@ final class SourceClassifierTest extends TestCase
         }
         file_put_contents($this->directory . '/script.txt', "#!/usr/bin/env php\n");
 
-        assertSame('php', SourceClassifier::languageFor('php', $this->directory . '/php'));
-        assertSame('javascript', SourceClassifier::languageFor('node', $this->directory . '/node'));
-        assertSame('python', SourceClassifier::languageFor('python', $this->directory . '/python'));
-        self::assertNull(SourceClassifier::languageFor('shell', $this->directory . '/shell'));
-        self::assertNull(SourceClassifier::languageFor('plain', $this->directory . '/plain'));
-        self::assertNull(SourceClassifier::languageFor('phpstorm', $this->directory . '/phpstorm'));
-        self::assertNull(SourceClassifier::languageFor('php'));
-        self::assertNull(SourceClassifier::languageFor('script.txt', $this->directory . '/script.txt'));
-        self::assertNull(SourceClassifier::languageFor('missing', $this->directory . '/missing'));
+        assertSame('php', SourceClassifier::classify('php', $this->directory . '/php')['language']);
+        assertSame('javascript', SourceClassifier::classify('node', $this->directory . '/node')['language']);
+        assertSame('python', SourceClassifier::classify('python', $this->directory . '/python')['language']);
+        self::assertNull(SourceClassifier::classify('shell', $this->directory . '/shell')['language']);
+        self::assertNull(SourceClassifier::classify('plain', $this->directory . '/plain')['language']);
+        self::assertNull(SourceClassifier::classify('phpstorm', $this->directory . '/phpstorm')['language']);
+        self::assertNull(SourceClassifier::classify('php')['language']);
+        self::assertNull(SourceClassifier::classify('script.txt', $this->directory . '/script.txt')['language']);
+        self::assertNull(SourceClassifier::classify('missing', $this->directory . '/missing')['language']);
     }
 
     /** An extensionless script whose shebang names sh, bash, dash or zsh is a shell unit. */
@@ -176,7 +176,7 @@ final class SourceClassifierTest extends TestCase
 
         foreach (['sh', 'bash', 'dash', 'zsh'] as $name) {
             assertSame('shell', SourceClassifier::unitKindFor($name, $this->directory . '/' . $name), $name);
-            assertSame('shell', ProjectDiscoverer::unitKindFor($name, $this->directory . '/' . $name), $name);
+            assertSame('shell', ProjectDiscoverer::classify($name, $this->directory . '/' . $name)['unitKind'], $name);
         }
         foreach (['php', 'shellcheck', 'plain', 'notes.txt', 'missing'] as $name) {
             self::assertNull(SourceClassifier::unitKindFor($name, $this->directory . '/' . $name), $name);
@@ -194,22 +194,24 @@ final class SourceClassifierTest extends TestCase
         assertSame('shell', SourceClassifier::unitKindFor('upper-env', $this->directory . '/upper-env'));
     }
 
-    /** One call gives both answers, as the two calls give them, for a file and its shebang. */
+    /** One call gives both answers for a file and its shebang, and its unit kind is the one unitKindFor gives. */
     public function testClassifyGivesTheLanguageAndTheUnitKindTogether(): void
     {
         file_put_contents($this->directory . '/run', "#!/bin/sh\n");
         file_put_contents($this->directory . '/tool', "#!/usr/bin/env php\n");
+        $cases = [
+            ['run', 'run', ['language' => null, 'unitKind' => 'shell']],
+            ['tool', 'tool', ['language' => 'php', 'unitKind' => null]],
+            ['composer.json', null, ['language' => null, 'unitKind' => 'composer']],
+            ['src/a.php', null, ['language' => 'php', 'unitKind' => null]],
+            ['run', null, ['language' => null, 'unitKind' => null]],
+        ];
 
-        foreach ([['run', 'run'], ['tool', 'tool'], ['composer.json', null], ['src/a.php', null], ['run', null]] as [$relative, $file]) {
+        foreach ($cases as [$relative, $file, $expected]) {
             $absolute = $file === null ? null : $this->directory . '/' . $file;
-            assertSame(
-                ['language' => SourceClassifier::languageFor($relative, $absolute), 'unitKind' => SourceClassifier::unitKindFor($relative, $absolute)],
-                SourceClassifier::classify($relative, $absolute),
-                $relative,
-            );
+            assertSame($expected, SourceClassifier::classify($relative, $absolute), $relative);
+            assertSame($expected['unitKind'], SourceClassifier::unitKindFor($relative, $absolute), $relative);
         }
-        assertSame(['language' => null, 'unitKind' => 'shell'], SourceClassifier::classify('run', $this->directory . '/run'));
-        assertSame(['language' => 'php', 'unitKind' => null], SourceClassifier::classify('tool', $this->directory . '/tool'));
     }
 
     /** The interpreter in a shebang is matched without regard to case. */
@@ -219,9 +221,9 @@ final class SourceClassifierTest extends TestCase
         file_put_contents($this->directory . '/upper-node', "#!/usr/bin/env NODE\n");
         file_put_contents($this->directory . '/upper-python', "#!/usr/bin/env Python3\n");
 
-        assertSame('php', SourceClassifier::languageFor('upper-php', $this->directory . '/upper-php'));
-        assertSame('javascript', SourceClassifier::languageFor('upper-node', $this->directory . '/upper-node'));
-        assertSame('python', SourceClassifier::languageFor('upper-python', $this->directory . '/upper-python'));
+        assertSame('php', SourceClassifier::classify('upper-php', $this->directory . '/upper-php')['language']);
+        assertSame('javascript', SourceClassifier::classify('upper-node', $this->directory . '/upper-node')['language']);
+        assertSame('python', SourceClassifier::classify('upper-python', $this->directory . '/upper-python')['language']);
     }
 
     /** A name a stable id cannot carry: invalid UTF-8 or a control character. */
@@ -279,7 +281,7 @@ final class SourceClassifierTest extends TestCase
             ManifestPaths::entryPointExtensions(),
         );
         foreach (ManifestPaths::entryPointExtensions() as $extension) {
-            self::assertNotNull(SourceClassifier::languageFor('src/a.' . strtoupper($extension)), $extension);
+            self::assertNotNull(SourceClassifier::classify('src/a.' . strtoupper($extension))['language'], $extension);
         }
     }
 }

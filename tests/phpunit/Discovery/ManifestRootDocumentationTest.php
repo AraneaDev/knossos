@@ -29,7 +29,7 @@ final class ManifestRootDocumentationTest extends KnossosTestCase
         $kinds = [];
         foreach ($names as $name) {
             assertSame(true, ProjectDiscoverer::isManifest($name), $name);
-            $kinds[] = (string) ProjectDiscoverer::unitKindFor($name);
+            $kinds[] = (string) ProjectDiscoverer::classify($name)['unitKind'];
         }
         $kinds = array_values(array_unique($kinds));
         sort($kinds);

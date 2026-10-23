@@ -127,18 +127,6 @@ final readonly class ProjectDiscoverer
         return SourceClassifier::isConfigurationFile($relativePath);
     }
 
-    /** The source language of a path, or null; see {@see SourceClassifier::languageFor()}. */
-    public static function languageFor(string $relativePath, ?string $absolutePath = null): ?string
-    {
-        return SourceClassifier::languageFor($relativePath, $absolutePath);
-    }
-
-    /** The project unit kind a path configures, or null; see {@see SourceClassifier::unitKindFor()}. */
-    public static function unitKindFor(string $relativePath, ?string $absolutePath = null): ?string
-    {
-        return SourceClassifier::unitKindFor($relativePath, $absolutePath);
-    }
-
     /**
      * A path's language and unit kind at once; see {@see SourceClassifier::classify()}.
      *
