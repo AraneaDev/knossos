@@ -207,25 +207,31 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
     {
         $dynamicRisk = $candidate['row']['origin'] !== 'ast' || $this->hasFrameworkRole($candidate['roles']);
         $confidence = $dynamicRisk ? 'possible' : 'probable';
+        // Every qualifier below builds on what was found, so a test-only
+        // candidate never reads as one nothing calls.
+        $found = $reachability === 'test_only'
+            ? 'The only inbound static references come from test code'
+            : 'No inbound static reference was found';
         $reason = $reachability === 'test_only'
-            ? 'The only inbound static references come from test code, so nothing the product runs reaches this.'
-            : 'No inbound static reference was found among the selected edge kinds.';
+            ? $found . ', so nothing the product runs reaches this.'
+            : $found . ' among the selected edge kinds.';
         // A call by this name on a receiver its scanner could not type may
         // be the one that reaches it, so the absence of an edge proves less.
         if ($confidence === 'probable'
             && in_array($candidate['row']['kind'], ['method', 'function'], true)
             && $facts->mayBeCalledUntyped((string) ($candidate['row']['language'] ?? ''), (string) $candidate['row']['display_name'])) {
             $confidence = 'possible';
-            $reason = 'No inbound static reference was found, but a member of this name is called on a receiver the scan could not type, which may be this one.';
+            $reason = $found . ', but a member of this name is called on a receiver the scan could not type, which may be this one.';
         }
         if ($context['uncontracted_literal'] && $confidence === 'probable') {
             $confidence = 'possible';
-            $reason = 'No inbound static reference was found, but this method belongs to an object literal handed to other code with no type naming its methods; whatever receives the literal may call it.';
+            $reason = $found . ', but this method belongs to an object literal handed to other code with no type naming its methods; whatever receives the literal may call it.';
         }
         if ($context['external_ancestor'] !== null) {
             $confidence = 'possible';
             $reason = sprintf(
-                'No inbound static reference was found, but the declaring type extends or implements %s, whose members are not statically visible; dispatch may reach this method.',
+                '%s, but the declaring type extends or implements %s, whose members are not statically visible; dispatch may reach this method.',
+                $found,
                 $context['external_ancestor'],
             );
         }

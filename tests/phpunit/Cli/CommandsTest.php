@@ -918,7 +918,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     public function testQueryCommandArchitectureHealthWithPopulatedDatabase(): void
     {
         // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
-        $this->expectOutputRegex('/^Ranked 2 hubs, 2 static hotspots, and 1 unreferenced-code candidates, 0 of them reached only by tests\. By confidence: 1 probable, 0 possible\./');
+        $this->expectOutputRegex('/^Ranked 2 hubs, 2 static hotspots, and 1 dead-code candidates: 1 with no inbound reference, 0 reached only by tests\. By confidence: 1 probable, 0 possible\./');
         // M31 / QueryCommand::run() -- architectureHealth() happy path.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
         try {

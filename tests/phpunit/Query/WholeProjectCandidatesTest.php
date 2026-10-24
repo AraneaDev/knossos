@@ -179,7 +179,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         // candidates, N of them test-only" beside a larger test-only tally.
         $total = $result->data['bounds']['candidates_total'];
         self::assertGreaterThan(2, $total);
-        self::assertStringContainsString(sprintf('and %d unreferenced-code candidates', $total), $result->summary);
+        self::assertStringContainsString(sprintf('and %d dead-code candidates', $total), $result->summary);
         self::assertStringContainsString('This page lists 2 of them', $result->summary);
         self::assertStringNotContainsString('The ranking was truncated', $result->summary);
     }

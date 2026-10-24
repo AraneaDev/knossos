@@ -188,10 +188,16 @@ final class ProjectListCommand implements CliCommand
         // code: a possible candidate may be reached in a way no scan sees.
         $probable = count(array_filter($candidates, static fn(array $c): bool => $c['confidence'] === 'probable'));
         $byConfidence = ['probable' => $probable, 'possible' => count($candidates) - $probable];
+        // And by reachability, so code only tests call never reads as code
+        // nothing calls.
+        $testOnly = count(array_filter($candidates, static fn(array $c): bool => $c['reachability'] === 'test_only'));
+        $byReachability = ['unreferenced' => count($candidates) - $testOnly, 'test_only' => $testOnly];
         $lines[] = sprintf(
-            '%d candidate%s (%d probable, %d possible); left out: %d annotated false positive%s, %d annotated intentional, %d suppressed, %d reached by convention.',
+            '%d candidate%s (%d with no inbound reference, %d reached only by tests; %d probable, %d possible); left out: %d annotated false positive%s, %d annotated intentional, %d suppressed, %d reached by convention.',
             count($candidates),
             count($candidates) === 1 ? '' : 's',
+            $byReachability['unreferenced'],
+            $byReachability['test_only'],
             $byConfidence['probable'],
             $byConfidence['possible'],
             $excluded['annotated_false_positives'],
@@ -204,7 +210,7 @@ final class ProjectListCommand implements CliCommand
             $lines[] = sprintf('Incomplete: the search ran out of its %d ms before it saw every component; raise --candidate-timeout.', $budget);
         }
         $context->output(
-            ['project_id' => $projectId, 'total' => count($candidates), 'by_confidence' => $byConfidence, 'truncated' => $incomplete, 'candidates' => $candidates, 'excluded' => $excluded],
+            ['project_id' => $projectId, 'total' => count($candidates), 'by_confidence' => $byConfidence, 'by_reachability' => $byReachability, 'truncated' => $incomplete, 'candidates' => $candidates, 'excluded' => $excluded],
             $context->options->flag($options, 'json'),
             implode("\n", $lines),
         );
