@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\FileContextService;
+use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertSame;
@@ -39,6 +40,36 @@ final class FileContextServiceTest extends KnossosTestCase
             // The class and its method; only the commits that touched the file, newest first.
             assertSame(['first'], array_column($file['commits'], 'subject'));
             assertSame('not-found', (new FileContextService($pdo))->context($root . '/src/Nope.php')['status']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A script only a workflow runs has no dependent file, and the answer
+     * says what enters it instead. "0 dependent files" alone read as dead
+     * code for a release script CI runs on every push.
+     */
+    #[Group('query')]
+    public function testAFileAManifestRunsSaysWhatEntersIt(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-entered-' . bin2hex(random_bytes(6));
+        foreach ([
+            '.forgejo/workflows/release.yml' => "jobs:\n  release:\n    steps:\n      - run: php tools/release.php\n",
+            'tools/release.php' => "<?php\nfunction release(): void {}\nrelease();\n",
+            'src/Plain.php' => "<?php\nfinal class Plain {}\n",
+        ] as $path => $contents) {
+            @mkdir(dirname($root . '/' . $path), 0o777, true);
+            file_put_contents($root . '/' . $path, $contents);
+        }
+        try {
+            $pdo = $this->freshTestDatabase();
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+
+            $entered = (new FileContextService($pdo))->context($root . '/tools/release.php')['file'];
+            assertSame(0, $entered['dependents']['count']);
+            assertSame(['.forgejo/workflows/release.yml'], $entered['entered_by']);
+            assertSame([], (new FileContextService($pdo))->context($root . '/src/Plain.php')['file']['entered_by']);
         } finally {
             $this->removeTempTree($root);
         }
