@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.40.0](https://github.com/AraneaDev/knossos/compare/v0.39.2...v0.40.0) (2026-10-24)
+
+
+### Features
+
+* list the files and components no test reaches ([#406](https://github.com/AraneaDev/knossos/issues/406)) ([bb27ec3](https://github.com/AraneaDev/knossos/commit/bb27ec3cd7b64d8518d92672d57461d4a772e510))
+
+
+### Fixes
+
+* four dead-code false positives found scanning a Rust + TypeScript project ([#405](https://github.com/AraneaDev/knossos/issues/405)) ([9d52aa3](https://github.com/AraneaDev/knossos/commit/9d52aa3a273475c4e9f0ab051fa189599a5d3993))
+* **workers:** type a Rust binding by the return type of a function the file declares ([#408](https://github.com/AraneaDev/knossos/issues/408)) ([eab5c8e](https://github.com/AraneaDev/knossos/commit/eab5c8e3886306e61248829c79c6fda36cc77c6c))
+
 ## [0.39.2](https://github.com/AraneaDev/knossos/compare/v0.39.1...v0.39.2) (2026-10-23)
 
 
