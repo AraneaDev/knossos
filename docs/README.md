@@ -61,8 +61,8 @@ What to ask the graph for one kind of task, through the MCP tools or the CLI.
 - [Finding components](guides/finding-components.md): how do I find a
   project, a component, its relations and every place a symbol is used?
 - [Structure analysis](guides/structure-analysis.md): what depends on this,
-  how does A reach B, where are the cycles and hubs, and where does new code
-  belong?
+  how does A reach B, where are the cycles and hubs, which code does no test
+  reach, and where does new code belong?
 - [Dead-code candidates](guides/dead-code-candidates.md): what does
   `architecture_health` report as unreferenced or reached only by tests, and
   what does it exclude first?
