@@ -324,6 +324,7 @@ final readonly class ToolCatalog
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
             ],
             self::fileMetricsDefinition(),
+            self::untestedCodeDefinition(),
             [
                 'name' => 'file_context',
                 'title' => 'File context',
@@ -871,6 +872,36 @@ final readonly class ToolCatalog
                 'public_surface_changes' => $limit,
             ],
             'additionalProperties' => false,
+        ];
+    }
+
+    /**
+     * The untested_code schema, kept separate like file_metrics: a list, not a walk from one component.
+     *
+     * @return array<string, mixed>
+     */
+    private static function untestedCodeDefinition(): array
+    {
+        return [
+            'name' => 'untested_code',
+            'title' => 'Untested code',
+            'description' => 'List the files, or the classes and functions, no test reaches through the graph: where a change goes out with nothing checking it. Static, so a test reaching code through a framework or a callback is not seen.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    ...self::commonReadProperties(),
+                    'project_id' => ['type' => 'string', 'minLength' => 1],
+                    'granularity' => ['type' => 'string', 'enum' => ['files', 'components'], 'default' => 'files', 'description' => 'files lists whole files no test reaches, largest first; components lists each class, function and method.'],
+                    'path_prefix' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 1000, 'description' => 'Only list what sits under this project-relative path.'],
+                    'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 50],
+                    'offset' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100000, 'default' => 0],
+                    'max_nodes' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200000, 'default' => 200000, 'description' => 'Most components the walk from the tests visits.'],
+                    'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 60000, 'default' => 5000],
+                ],
+                'required' => ['project_id'],
+                'additionalProperties' => false,
+            ],
+            'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
         ];
     }
 

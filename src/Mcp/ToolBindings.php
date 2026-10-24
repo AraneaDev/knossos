@@ -294,6 +294,13 @@ final class ToolBindings
                     'path_contains' => self::as('path'), 'language' => [], 'sort_by' => [], 'order' => [], 'limit' => [], 'offset' => [],
                 ],
             ],
+            'untested_code' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->untestedQueries->untested(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos untested-code <path|project-id> [--granularity=files|components] [--path=PREFIX] [--limit=N] [--offset=N] [--max-nodes=N] [--timeout-ms=N]'),
+                    'granularity' => [], 'path_prefix' => self::as('path'), 'limit' => [], 'offset' => [], 'max_nodes' => [], 'timeout_ms' => [],
+                ],
+            ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [
                 'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->fileContext(...$v),

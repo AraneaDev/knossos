@@ -29,7 +29,7 @@ const KNOSSOS = /^mcp__(?:plugin_knossos_)?knossos__(.+)$/
 export const QUESTIONS: ReadonlySet<string> = new Set([
   'list_usages', 'impact_analysis', 'explain_flow', 'find_component', 'inspect_component', 'search_architecture',
   'file_context', 'architecture_context', 'change_impact', 'changed_files_impact', 'test_impact', 'suggest_location',
-  'list_boundaries', 'dependency_cycles', 'list_annotations', 'file_metrics', 'review_diff', 'architecture_health',
+  'list_boundaries', 'dependency_cycles', 'list_annotations', 'file_metrics', 'untested_code', 'review_diff', 'architecture_health',
   'check_architecture',
 ])
 
