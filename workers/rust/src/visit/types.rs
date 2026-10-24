@@ -210,6 +210,70 @@ impl Walk<'_> {
         current
     }
 
+    /// Record the return type of every function and method a file declares,
+    /// inline modules included (see `function_returns`). A method returning
+    /// `Self` returns its impl's type. Collected before the walk, so a call
+    /// above the function's declaration still sees it.
+    pub(super) fn collect_function_returns(&mut self, module: &str, items: &[Item]) {
+        for item in items {
+            match item {
+                Item::Fn(node) => {
+                    let canonical = format!("{module}::{}", ident_name(&node.sig.ident));
+                    self.record_return(module, canonical, &node.sig, None);
+                }
+                Item::Impl(node) => {
+                    let Some(owner) = self.type_path(module, &node.self_ty) else {
+                        continue;
+                    };
+                    let outer = self.enter_type_params(&node.generics);
+                    for member in &node.items {
+                        if let syn::ImplItem::Fn(method) = member {
+                            let canonical = format!("{owner}::{}", ident_name(&method.sig.ident));
+                            self.record_return(module, canonical, &method.sig, Some(&owner));
+                        }
+                    }
+                    self.type_params = outer;
+                }
+                Item::Mod(inner) => {
+                    if let Some((_, nested)) = &inner.content {
+                        self.collect_function_returns(
+                            &format!("{module}::{}", ident_name(&inner.ident)),
+                            nested,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Record what one signature returns under `canonical`, `Self` read as
+    /// `owner` when the signature is a method's.
+    fn record_return(
+        &mut self,
+        container: &str,
+        canonical: String,
+        signature: &syn::Signature,
+        owner: Option<&str>,
+    ) {
+        let syn::ReturnType::Type(_, returned) = &signature.output else {
+            return;
+        };
+        let outer = self.enter_type_params(&signature.generics);
+        let stated = match (returned.as_ref(), owner) {
+            (Type::Path(path), Some(owner))
+                if path.qself.is_none() && path.path.is_ident("Self") =>
+            {
+                Some(owner.to_owned())
+            }
+            _ => self.receiver_type(container, returned),
+        };
+        self.type_params = outer;
+        if let Some(stated) = stated {
+            self.function_returns.insert(canonical, stated);
+        }
+    }
+
     /// Record the `type` aliases a file declares at module level, and in its
     /// inline modules, by canonical path (see `type_aliases`).
     pub(super) fn collect_type_aliases(&mut self, module: &str, items: &[Item]) {

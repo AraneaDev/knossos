@@ -262,9 +262,15 @@ impl Calls<'_, '_> {
     }
 
     /// The type a `let` initializer gives its binding, when the source
-    /// states it: a value it constructs (see [`constructed_type`]), or a
-    /// local, field or element of known type it copies.
+    /// states it: a value it constructs (see [`constructed_type`]), a local,
+    /// field or element of known type it copies, or what a call returns when
+    /// this file declares the function (`let trie = sample_trie();`).
     fn value_type(&self, expression: &syn::Expr) -> Option<String> {
+        if let Some(callee) = self.returning_call(expression) {
+            if let Some(returned) = self.walk.function_returns.get(&callee) {
+                return Some(returned.clone());
+            }
+        }
         match constructed_type(expression) {
             Some(path) => self.walk.stated_type(&self.container, &path),
             None if is_place(expression) => self.receiver_owner(expression),
