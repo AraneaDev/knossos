@@ -319,6 +319,7 @@ php	src/Query/SupertypeMethods.php
 php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
 php	src/Query/TurnBriefService.php
+php	src/Query/UntestedQueryService.php
 php	src/Reconciliation/CaseInsensitiveReferences.php
 php	src/Reconciliation/EdgeCollapse.php
 php	src/Reconciliation/EdgeTargetResolver.php
@@ -814,6 +815,7 @@ php	tests/phpunit/Query/TrendRowLimitTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php
 php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
+php	tests/phpunit/Query/UntestedQueryTest.php
 php	tests/phpunit/Query/UntypedReceiverTest.php
 php	tests/phpunit/Query/ViteGlobImportTest.php
 php	tests/phpunit/Query/WholeProjectCandidatesTest.php
