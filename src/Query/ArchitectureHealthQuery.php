@@ -701,8 +701,10 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * Extracted rather than inlined because architectureHealth is up against
      * the repository's own function-length budget.
      *
-     * The test-only tally is named separately because it is the half of the
-     * list worth acting on first: a symbol nothing references may be waiting on
+     * The two categories are named side by side, never one inside the other:
+     * "N unreferenced-code candidates, M of them reached only by tests" read
+     * as if a reset hook its tests call were code nothing calls. The test-only
+     * tally is the half of the list worth acting on first: a symbol nothing references may be waiting on
      * a caller nobody has written yet, but one its own test is the sole caller
      * of is finished work no product path reaches, and both it and the test
      * guarding it can go.
@@ -737,10 +739,11 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
     private static function healthSummary(int $hubs, int $hotspots, int $candidatesTotal, int $candidatesOnPage, int $testOnlyCandidates, int $probableCandidates, array $truncationReasons, array $candidateTruncationReasons): string
     {
         $summary = sprintf(
-            'Ranked %d hubs, %d static hotspots, and %d unreferenced-code candidates, %d of them reached only by tests.',
+            'Ranked %d hubs, %d static hotspots, and %d dead-code candidates: %d with no inbound reference, %d reached only by tests.',
             $hubs,
             $hotspots,
             $candidatesTotal,
+            $candidatesTotal - $testOnlyCandidates,
             $testOnlyCandidates,
         );
         if ($candidatesTotal > 0) {

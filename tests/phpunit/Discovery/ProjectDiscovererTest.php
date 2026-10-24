@@ -1972,6 +1972,51 @@ TOML);
     }
 
     /**
+     * Forgejo and Gitea keep their workflows under `.forgejo/workflows/` and
+     * `.gitea/workflows/`, and a step runs its script through whichever
+     * runtime the project uses. A script only a workflow runs is imported by
+     * nothing, so each of these has to reach it as an entry point.
+     */
+    public function testDiscoverReadsTheScriptsForgejoAndGiteaWorkflowsRun(): void
+    {
+        foreach (['.forgejo', '.gitea'] as $host) {
+            mkdir($this->root . '/' . $host . '/workflows', 0700, true);
+        }
+        file_put_contents($this->root . '/.forgejo/workflows/release.yml', implode("\n", [
+            'jobs:',
+            '  release:',
+            '    steps:',
+            '      - env:',
+            '          TOKEN: x',
+            '        run: node scripts/release/run.mjs',
+            '',
+        ]));
+        file_put_contents($this->root . '/.gitea/workflows/ci.yml', implode("\n", [
+            'jobs:',
+            '  check:',
+            '    steps:',
+            '      - run: |',
+            '          tsx tools/a.ts --fast',
+            '          ts-node tools/b.ts',
+            '          deno run --allow-read tools/c.ts',
+            '          bun tools/d.ts',
+            '',
+        ]));
+
+        $result = (new ProjectDiscoverer(new DiscoveryConfig([$this->root])))->discover($this->root);
+
+        $entryPoints = [];
+        foreach ($result->units as $unit) {
+            if ($unit->kind === 'yaml') {
+                array_push($entryPoints, ...$unit->metadata['entry_points']);
+            }
+        }
+        foreach (['scripts/release/run.mjs', 'tools/a.ts', 'tools/b.ts', 'tools/c.ts', 'tools/d.ts'] as $script) {
+            self::assertContains($script, $entryPoints);
+        }
+    }
+
+    /**
      * Vitest loads its setup file before every test and nothing imports it, so
      * it read as dead code while running on every single test invocation.
      *

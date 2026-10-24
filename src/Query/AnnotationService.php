@@ -403,12 +403,22 @@ final readonly class AnnotationService extends AbstractArchitectureQueryService
         // Exact matches only: a prefix match once turned `App\Invoice` into
         // `App\InvoiceService` and wrote the annotation on the wrong component.
         $matches = $this->resolveExact($projectId, $component);
+        $warnings = [];
+        // A short name ending exactly one component, from a segment boundary
+        // (`Tile::is_selectable`), is that component; one ending several is
+        // refused below with them. A suffix, unlike a prefix, cannot run past
+        // a segment into another name. A project file is never shortened.
+        if ($matches === [] && !$this->scannedFile($projectId, $component) && !ProjectFile::exists((string) $project['root_realpath'], $component)) {
+            $matches = $this->resolveSuffix($projectId, $component);
+            if (count($matches) === 1) {
+                $warnings[] = sprintf('%s resolved to %s, the one component whose name ends with it.', $component, $matches[0]['canonical_name']);
+            }
+        }
         if (count($matches) > 1) {
             $names = array_slice(array_column($matches, 'canonical_name'), 0, 5);
             throw new InvalidArgumentException('Component is ambiguous; use a canonical name. Candidates: ' . implode(', ', $names) . '.');
         }
         $canonical = $matches === [] ? $component : (string) $matches[0]['canonical_name'];
-        $warnings = [];
         // A file a worker scans: the note lives on the file itself, which is no component and needs none.
         $onScannedFile = $matches === [] && $this->scannedFile($projectId, $component);
         if ($matches === [] && !$onScannedFile && ProjectFile::exists((string) $project['root_realpath'], $component)) {

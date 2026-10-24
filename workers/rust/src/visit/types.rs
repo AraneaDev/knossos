@@ -24,20 +24,16 @@ impl Walk<'_> {
         match declared {
             FieldType::Resolved(target) if local => Some(target),
             FieldType::Resolved(declared) => {
-                let (mark, held) = match declared.strip_prefix(POINTER_MARK) {
-                    Some(held) => (POINTER_MARK, held.to_owned()),
-                    None => ("", declared),
-                };
-                self.renamed(held)
-                    .map(|target| format!("{mark}{}", self.exported(target)))
+                let (marks, held) = split_marks(&declared);
+                self.renamed(held.to_owned())
+                    .map(|target| format!("{marks}{}", self.exported(target)))
             }
             FieldType::Globbed {
                 name,
-                pointer,
+                marks,
                 sources,
             } => match self.through_globs(&sources, &name) {
-                Globbed::One(target) if pointer => Some(format!("{POINTER_MARK}{target}")),
-                Globbed::One(target) => Some(target),
+                Globbed::One(target) => Some(format!("{marks}{target}")),
                 Globbed::Absent | Globbed::Ambiguous => None,
             },
         }
@@ -51,28 +47,38 @@ impl Walk<'_> {
         if let Some(target) = self.receiver_type(container, ty) {
             return Some(FieldType::Resolved(target));
         }
-        let (name, pointer) = self.glob_named(container, ty)?;
+        let (name, marks) = self.glob_named(container, ty)?;
         let sources = self.glob_sources(container);
 
         (!sources.is_empty()).then_some(FieldType::Globbed {
             name,
-            pointer,
+            marks,
             sources,
         })
     }
 
     /// The bare name a receiver type holds, seen through what
-    /// [`Walk::receiver_type`] sees through, with whether a smart pointer
-    /// holds it, when only the enclosing-module guess places that name: it
-    /// is not a primitive, `Self`, imported, or declared in this file.
-    fn glob_named(&self, container: &str, ty: &Type) -> Option<(String, bool)> {
+    /// [`Walk::receiver_type`] sees through, with the marks it states for
+    /// the pointers and collections holding it, when only the
+    /// enclosing-module guess places that name: it is not a primitive,
+    /// `Self`, imported, or declared in this file.
+    fn glob_named(&self, container: &str, ty: &Type) -> Option<(String, String)> {
         match ty {
             Type::Reference(reference) => self.glob_named(container, &reference.elem),
             Type::Paren(inner) => self.glob_named(container, &inner.elem),
+            Type::Array(array) => self
+                .glob_named(container, &array.elem)
+                .map(|(name, marks)| (name, format!("{ELEMENT_MARK}{marks}"))),
+            Type::Slice(slice) => self
+                .glob_named(container, &slice.elem)
+                .map(|(name, marks)| (name, format!("{ELEMENT_MARK}{marks}"))),
             Type::Path(path) if path.qself.is_none() => match pointee(&path.path) {
                 Some(inner) => self
                     .glob_named(container, inner)
-                    .map(|(name, _)| (name, true)),
+                    .map(|(name, marks)| (name, pointed(&marks))),
+                None if element(&path.path).is_some() => self
+                    .glob_named(container, element(&path.path)?)
+                    .map(|(name, marks)| (name, format!("{ELEMENT_MARK}{marks}"))),
                 None => {
                     let path = &path.path;
                     if path.leading_colon.is_some() || path.segments.len() != 1 {
@@ -84,7 +90,7 @@ impl Walk<'_> {
                     }
                     match self.resolve_written(container, path)? {
                         (target, true) if !self.own_declarations.contains(&target) => {
-                            Some((name, false))
+                            Some((name, String::new()))
                         }
                         _ => None,
                     }
@@ -117,17 +123,30 @@ impl Walk<'_> {
     /// The canonical path of a type a receiver holds, seen through `&`,
     /// `&mut`, parentheses and the smart pointers that dereference to what
     /// they hold (`Box<T>`, `Rc<T>`, `Arc<T>`), or None for anything that is
-    /// not a plain path. Any other generic (`Option<T>`, `Vec<T>`) is the
-    /// type itself, whose methods are not `T`'s.
+    /// not a plain path. An array, a slice, a `Vec<T>` or a `VecDeque<T>` is
+    /// marked as a collection of its element (see [`ELEMENT_MARK`]): its own
+    /// methods are not `T`'s, but indexing it gives a `T`. Any other generic
+    /// (`Option<T>`, `HashMap<K, V>`) is the type itself.
     pub(super) fn receiver_type(&self, container: &str, ty: &Type) -> Option<String> {
         match ty {
             Type::Reference(reference) => self.receiver_type(container, &reference.elem),
             Type::Paren(inner) => self.receiver_type(container, &inner.elem),
+            Type::Array(array) => self
+                .receiver_type(container, &array.elem)
+                .map(|held| format!("{ELEMENT_MARK}{held}")),
+            Type::Slice(slice) => self
+                .receiver_type(container, &slice.elem)
+                .map(|held| format!("{ELEMENT_MARK}{held}")),
             Type::Path(path) if path.qself.is_none() => match pointee(&path.path) {
                 Some(inner) => self
                     .receiver_type(container, inner)
-                    .map(|held| format!("{POINTER_MARK}{}", pointee_of(&held))),
-                None => self.stated_type(container, &path.path),
+                    .map(|held| pointed(&held)),
+                None => match element(&path.path) {
+                    Some(inner) => self
+                        .receiver_type(container, inner)
+                        .map(|held| format!("{ELEMENT_MARK}{held}")),
+                    None => self.stated_type(container, &path.path),
+                },
             },
             _ => None,
         }
@@ -172,13 +191,13 @@ impl Walk<'_> {
     fn through_aliases(&self, target: String) -> String {
         let mut current = target;
         for _ in 0..MAX_ALIAS_HOPS {
-            if current.starts_with(POINTER_MARK) {
+            if !split_marks(&current).0.is_empty() {
                 break;
             }
             let next = match self.type_aliases.get(&current) {
                 Some(local) => local.clone(),
                 None => match self.declarations.alias_of(&current) {
-                    Some(indexed) if indexed.starts_with(POINTER_MARK) => indexed,
+                    Some(indexed) if !split_marks(&indexed).0.is_empty() => indexed,
                     Some(indexed) => match self.renamed(indexed) {
                         Some(placed) => self.exported(placed),
                         None => break,
@@ -225,15 +244,68 @@ pub(super) fn pointee_of(owner: &str) -> &str {
     owner.strip_prefix(POINTER_MARK).unwrap_or(owner)
 }
 
+/// The element a collection receiver (see [`Walk::receiver_type`]) holds,
+/// seen through a smart pointer holding the collection, or None for a
+/// receiver that is not a collection.
+pub(super) fn element_of(owner: &str) -> Option<&str> {
+    pointee_of(owner).strip_prefix(ELEMENT_MARK)
+}
+
+/// The class a receiver type names, seen through a smart pointer, or None
+/// for a collection, which names no class of this crate.
+pub(super) fn class_of(owner: &str) -> Option<&str> {
+    let class = pointee_of(owner);
+
+    (!class.starts_with(ELEMENT_MARK)).then_some(class)
+}
+
+/// A receiver type split into the marks leading it and the path they hold.
+pub(super) fn split_marks(owner: &str) -> (&str, &str) {
+    let mut held = owner;
+    loop {
+        if let Some(rest) = held.strip_prefix(POINTER_MARK) {
+            held = rest;
+        } else if let Some(rest) = held.strip_prefix(ELEMENT_MARK) {
+            held = rest;
+        } else {
+            break;
+        }
+    }
+
+    owner.split_at(owner.len() - held.len())
+}
+
+/// A receiver type held behind a smart pointer: a pointer to a pointer
+/// dereferences to the same type, so the mark is not repeated.
+fn pointed(held: &str) -> String {
+    format!("{POINTER_MARK}{}", pointee_of(held))
+}
+
 /// Marks a receiver type held behind `Box`, `Rc` or `Arc`: its own methods
 /// are the pointer's, and every other method derefs to the type.
 pub(super) const POINTER_MARK: &str = "*";
 
+/// Marks a receiver type that is an array, slice, `Vec` or `VecDeque` of
+/// the type after it: its own methods are the collection's, and indexing
+/// or iterating it gives the element.
+pub(super) const ELEMENT_MARK: &str = "[]";
+
 /// The type a `Box<T>`, `Rc<T>` or `Arc<T>` holds, however its path is
 /// qualified (`std::sync::Arc<T>`), or None for any other type.
 fn pointee(path: &syn::Path) -> Option<&Type> {
+    only_argument(path, &["Box", "Rc", "Arc"])
+}
+
+/// The element a `Vec<T>` or `VecDeque<T>` holds, however its path is
+/// qualified, or None for any other type.
+fn element(path: &syn::Path) -> Option<&Type> {
+    only_argument(path, &["Vec", "VecDeque"])
+}
+
+/// The single type argument of a path whose last segment is one of `names`.
+fn only_argument<'p>(path: &'p syn::Path, names: &[&str]) -> Option<&'p Type> {
     let last = path.segments.last()?;
-    if !matches!(ident_name(&last.ident).as_str(), "Box" | "Rc" | "Arc") {
+    if !names.contains(&ident_name(&last.ident).as_str()) {
         return None;
     }
     let syn::PathArguments::AngleBracketed(arguments) = &last.arguments else {

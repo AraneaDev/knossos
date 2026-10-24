@@ -142,7 +142,7 @@ final class HealthFiltersTest extends KnossosTestCase
         foreach ($result->data['dead_code_candidates'] as $candidate) {
             assertSame('unreferenced', $candidate['reachability']);
         }
-        assertSame(true, str_contains($result->summary, '2 of them reached only by tests'));
+        assertSame(true, str_contains($result->summary, '2 reached only by tests'));
     }
 
     /**
@@ -214,6 +214,38 @@ final class HealthFiltersTest extends KnossosTestCase
         assertSame('possible', $byName['src/mode.ts#label']['confidence']);
         assertSame(true, str_contains($byName['src/mode.ts#label']['reason'], 'could not type'));
         assertSame('probable', $byName['src/mode.ts#unrelated']['confidence']);
+    }
+
+    /**
+     * A symbol only tests call stays test-only in its reason, whatever lowers
+     * its confidence. The untyped-receiver reason opened with "No inbound
+     * static reference was found", so a reset hook its tests call after every
+     * case read as code nothing calls, the category it is kept apart from.
+     */
+    #[Group('query')]
+    public function testATestOnlyCandidateKeepsSayingSoWhenItsConfidenceIsLowered(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $module = StableId::symbol($ids['project'], 'typescript', 'module', 'src/loop.js');
+        $repository->saveNode($module, $ids['project'], 'typescript', 'module', 'src/loop.js', 'loop.js', null, $ids['file'], 1, 1, 'ast', 'certain', ['unresolved_member_calls' => ['reset']], 'php:file:src/Checkout.php', $ids['scan']);
+        $reset = StableId::symbol($ids['project'], 'typescript', 'function', 'src/settings.ts#reset');
+        $repository->saveNode($reset, $ids['project'], 'typescript', 'function', 'src/settings.ts#reset', 'reset', null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $suite = StableId::symbol($ids['project'], 'typescript', 'module', 'src/settings.test.ts');
+        $repository->saveNode($suite, $ids['project'], 'typescript', 'module', 'src/settings.test.ts', 'settings.test.ts', null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->saveClassification(StableId::classification($ids['project'], $suite, 'quality.test_module', 'core.test.modules.v1'), $ids['project'], $suite, 'quality.test_module', 'derived', 'probable', 'core.test.modules.v1', $ids['file'], 1, 1, [], $ids['scan']);
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $suite, $reset, 't:1'), $ids['project'], 'calls', $suite, $reset, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $byName = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $byName[$candidate['component']['canonical_name']] = $candidate;
+        }
+
+        assertSame('test_only', $byName['src/settings.ts#reset']['reachability']);
+        assertSame('possible', $byName['src/settings.ts#reset']['confidence']);
+        assertSame(true, str_starts_with($byName['src/settings.ts#reset']['reason'], 'The only inbound static references come from test code'), $byName['src/settings.ts#reset']['reason']);
+        assertSame(true, str_contains($byName['src/settings.ts#reset']['reason'], 'could not type'));
     }
 
     /**

@@ -267,11 +267,14 @@ impl Walk<'_> {
         // The declared return type, which a call on the result resolves
         // through in the core (`method_of_return`), as a method's does.
         if let syn::ReturnType::Type(_, returned) = &node.sig.output {
-            if let Some(returned) = self.receiver_type(container, returned) {
+            if let Some(returned) = self
+                .receiver_type(container, returned)
+                .and_then(|returned| types::class_of(&returned).map(str::to_owned))
+            {
                 self.facts.speculative_edge(
                     "returns",
                     &reference("function", &canonical),
-                    &reference("class", types::pointee_of(&returned)),
+                    &reference("class", &returned),
                     node.sig.output.span(),
                 );
             }
@@ -533,11 +536,14 @@ impl Walk<'_> {
                         // result resolves through in the core (`method_of_return`).
                         // Speculative: `String` or `Vec<T>` names nothing here.
                         if let syn::ReturnType::Type(_, returned) = &method.sig.output {
-                            if let Some(returned) = this.receiver_type(container, returned) {
+                            if let Some(returned) = this
+                                .receiver_type(container, returned)
+                                .and_then(|returned| types::class_of(&returned).map(str::to_owned))
+                            {
                                 this.facts.speculative_edge(
                                     "returns",
                                     &reference("method", method_canonical),
-                                    &reference("class", types::pointee_of(&returned)),
+                                    &reference("class", &returned),
                                     method.sig.output.span(),
                                 );
                             }

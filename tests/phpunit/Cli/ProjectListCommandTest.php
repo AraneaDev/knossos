@@ -61,7 +61,9 @@ final class ProjectListCommandTest extends KnossosTestCase
         $confidence = $out['by_confidence'];
         self::assertSame($out['total'], $confidence['probable'] + $confidence['possible']);
         self::assertMatchesRegularExpression('/^unreferenced +(probable|possible) +class +App\\\\Orphan129$/m', $text);
-        self::assertStringContainsString(sprintf('%d candidates (%d probable, %d possible);', $out['total'], $confidence['probable'], $confidence['possible']), $text);
+        $reachability = $out['by_reachability'];
+        self::assertSame($out['total'], $reachability['unreferenced'] + $reachability['test_only']);
+        self::assertStringContainsString(sprintf('%d candidates (%d with no inbound reference, %d reached only by tests; %d probable, %d possible);', $out['total'], $reachability['unreferenced'], $reachability['test_only'], $confidence['probable'], $confidence['possible']), $text);
     }
 
     /**

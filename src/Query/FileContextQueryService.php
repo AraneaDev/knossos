@@ -50,7 +50,9 @@ final readonly class FileContextQueryService extends AbstractArchitectureQuerySe
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            sprintf('%s%s: %d dependent file%s, %d declared rule%s.', $relative, $boundary === null ? '' : ' (' . $boundary . ')', $file['dependents']['count'], $file['dependents']['count'] === 1 ? '' : 's', count($policies), count($policies) === 1 ? '' : 's'),
+            sprintf('%s%s: %d dependent file%s, %d declared rule%s.', $relative, $boundary === null ? '' : ' (' . $boundary . ')', $file['dependents']['count'], $file['dependents']['count'] === 1 ? '' : 's', count($policies), count($policies) === 1 ? '' : 's')
+            // A file nothing imports may be one a workflow or a manifest runs.
+            . ($file['entered_by'] === [] ? '' : sprintf(' Run by %s.', implode(', ', $file['entered_by']))),
             ['status' => 'ok', 'path' => $relative, 'file' => $file, 'policies' => $policies],
             [],
             // No rules listed because none could be read is not no rules: the warning says which.

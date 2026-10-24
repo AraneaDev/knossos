@@ -1,7 +1,8 @@
 //! Reading the request's Cargo manifests into the project's [`Layout`].
 //!
-//! Only the `name` keys of `[package]` and `[lib]` are read, without a TOML
-//! parser. Each manifest is a read every file of the request depends on, so
+//! Only the `name` keys of `[package]` and `[lib]`, and the `path` keys of
+//! the `[[bin]]`, `[[example]]`, `[[bench]]` and `[[test]]` targets, are read,
+//! without a TOML parser. Each manifest is a read every file of the request depends on, so
 //! it is recorded in `input_hashes` like any other.
 
 use std::collections::BTreeMap;
@@ -76,6 +77,10 @@ pub(crate) fn cargo_crates(
             crate_name.clone()
         };
         cargo.libraries.insert(library, root);
+        for path in manifest_target_paths(&contents) {
+            let path = path.strip_prefix("./").unwrap_or(&path);
+            cargo.targets.insert(format!("{directory}{path}"));
+        }
         cargo.packages.push((directory, crate_name));
     }
 
@@ -87,6 +92,52 @@ pub(crate) fn cargo_crates(
 /// `[[bin]]` or `[dependencies.foo]` is never mistaken for the crate's own.
 fn manifest_crate_name(contents: &str) -> Option<String> {
     manifest_table_name(contents, "[package]")
+}
+
+/// The `path` of every `[[bin]]`, `[[example]]`, `[[bench]]` and `[[test]]`
+/// target a Cargo.toml declares, as written, relative to the manifest. A
+/// target without a `path` sits where Cargo looks by default, which
+/// [`Layout::is_target_root`] already knows.
+fn manifest_target_paths(contents: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut in_target = false;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_target = ["[[bin]]", "[[example]]", "[[bench]]", "[[test]]"]
+                .iter()
+                .any(|table| trimmed.starts_with(table));
+            continue;
+        }
+        if !in_target {
+            continue;
+        }
+        if let Some(path) = key_string(trimmed, "path") {
+            paths.push(path);
+        }
+    }
+
+    paths
+}
+
+/// The quoted string value of `key` on one Cargo.toml line (`key = "x"`),
+/// or `None` when the line sets another key or no string.
+fn key_string(line: &str, key: &str) -> Option<String> {
+    let value = line
+        .strip_prefix(key)?
+        .trim_start()
+        .strip_prefix('=')?
+        .trim();
+    let quoted = value
+        .strip_prefix('"')
+        .and_then(|rest| rest.split('"').next())
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|rest| rest.split('\'').next())
+        })?;
+
+    (!quoted.is_empty()).then(|| quoted.to_owned())
 }
 
 /// The `name` key of one Cargo.toml table (`[package]`, `[lib]`), read
@@ -102,24 +153,8 @@ fn manifest_table_name(contents: &str, table: &str) -> Option<String> {
         if !in_package {
             continue;
         }
-        let Some(after_name) = trimmed.strip_prefix("name") else {
-            continue;
-        };
-        let Some(value) = after_name.trim_start().strip_prefix('=') else {
-            continue;
-        };
-        let value = value.trim();
-        let name = value
-            .strip_prefix('"')
-            .and_then(|rest| rest.split('"').next())
-            .or_else(|| {
-                value
-                    .strip_prefix('\'')
-                    .and_then(|rest| rest.split('\'').next())
-            })
-            .unwrap_or("");
-        if !name.is_empty() {
-            return Some(name.to_owned());
+        if let Some(name) = key_string(trimmed, "name") {
+            return Some(name);
         }
     }
 

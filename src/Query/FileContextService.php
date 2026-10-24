@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Classification\ManifestEntryPointRule;
 use Knossos\Git\GitCommand;
 use Knossos\Git\{GitProcessRunner, GitProcessRunnerInterface};
 use PDO;
@@ -12,8 +13,8 @@ use Throwable;
 /**
  * One file's context in one answer, for the `file_context` MCP tool and the
  * `file-context` command: where the file sits (its boundary), what depends
- * on it (the count and the most connected few), the tests that reach it, and
- * its latest commits.
+ * on it (the count and the most connected few), the manifests that run it,
+ * the tests that reach it, and its latest commits.
  *
  * Built from {@see FileDetailService} (dependents and boundary) and
  * {@see ChangeImpactQueryService::testImpact()} (tests), each list cut to a
@@ -82,9 +83,38 @@ final readonly class FileContextService
                 'boundaries' => array_slice($file['dependents']['boundaries'], 0, self::NAMED),
                 'top' => array_slice(array_column($file['dependents']['items'], 'path'), 0, self::NAMED),
             ],
+            'entered_by' => $this->enteredBy($projectId, $relative),
             'tests' => ['items' => $listed, 'more' => $tests->truncated],
             'commits' => $this->commits($root, $relative),
         ]] + $base;
+    }
+
+    /**
+     * The manifests, workflows and configs that run the file by its path
+     * (`node scripts/release/run.mjs` in a CI workflow, a `package.json`
+     * script), as the entry-point role recorded them: what reaches a file
+     * that no other file depends on.
+     *
+     * @return list<string>
+     */
+    private function enteredBy(string $projectId, string $relative): array
+    {
+        $rows = $this->pdo->prepare(
+            'SELECT DISTINCT c.attributes_json FROM classifications c JOIN files f ON f.id = c.file_id'
+            . ' WHERE c.project_id = :project AND f.relative_path = :path AND c.role = :role',
+        );
+        $rows->execute(['project' => $projectId, 'path' => $relative, 'role' => ManifestEntryPointRule::ROLE]);
+        $named = [];
+        foreach ($rows->fetchAll(PDO::FETCH_COLUMN) as $json) {
+            $attributes = json_decode((string) $json, true);
+            if (is_array($attributes) && is_string($attributes['named_by'] ?? null)) {
+                $named[$attributes['named_by']] = true;
+            }
+        }
+        $named = array_keys($named);
+        sort($named, SORT_STRING);
+
+        return $named;
     }
 
     /**

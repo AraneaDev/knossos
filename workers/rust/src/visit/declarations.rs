@@ -84,8 +84,9 @@ pub enum FieldType {
     Globbed {
         /// The name as written.
         name: String,
-        /// Whether a `Box`, `Rc` or `Arc` holds the type.
-        pointer: bool,
+        /// The marks of the smart pointers and collections holding the
+        /// type, as `Walk::receiver_type` writes them.
+        marks: String,
         /// The modules the globs import from, in the order written.
         sources: Vec<String>,
     },
