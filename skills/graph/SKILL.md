@@ -21,6 +21,7 @@ the same structure by reading the same files.
 | work out what a class is and what it touches | `find_component`, then `inspect_component`                 |
 | read a file's callers before editing it      | `file_context`, boundary, rules, dependents, tests         |
 | grep for a term no symbol is named after     | `search_architecture`, which also searches note text       |
+| find what has no test before changing it     | `untested_code`, files or functions no test reaches        |
 
 A `certain` row from `list_usages` is a fact, not a lead: the list holds every
 static call the graph resolved, each marked `test` or not, and the summary says
