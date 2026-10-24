@@ -1,8 +1,8 @@
 # Structure analysis
 
-Five tools walk the graph instead of listing it: what depends on a symbol, how
+Six tools walk the graph instead of listing it: what depends on a symbol, how
 one component reaches another, which modules are tangled, where the structural
-hotspots are, and where new code belongs. What the graph holds, and how far to
+hotspots are, which code no test reaches, and where new code belongs. What the graph holds, and how far to
 trust each fact, is on [the graph and its evidence](../concepts/graph-and-evidence.md).
 Full input schemas are in the [MCP tool reference](../reference/mcp-tools.md).
 
@@ -12,6 +12,7 @@ Full input schemas are in the [MCP tool reference](../reference/mcp-tools.md).
 | `explain_flow`        | `explain-flow`        | How A reaches B, as ranked evidence-backed paths.           |
 | `dependency_cycles`   | `dependency-cycles`   | Circular dependencies as bounded strongly connected groups. |
 | `architecture_health` | `architecture-health` | Hubs, hotspots, and dead-code candidates.                   |
+| `untested_code`       | `untested-code`       | Files, or classes and functions, no test reaches.           |
 | `suggest_location`    | `suggest-location`    | Where new code for a feature belongs.                       |
 
 Each tool takes the bounds that make sense for it: `max_depth` or
@@ -212,6 +213,35 @@ splits what nothing references from what only tests reach. What it excludes
 before reporting, and why, is in [dead-code candidates](dead-code-candidates.md).
 
 ![The Hubs tab: the most depended-on components with ResultEnvelope marked, and its dependencies drawn beside the list](../images/claude-code/hubs-detail.png)
+
+## Untested code
+
+`untested_code` lists what no test reaches through the graph: whole files by
+default, largest first, or each class, function and method with
+`granularity: components`. One walk runs forward from every test component
+along the same edges impact analysis reads, so a helper three calls below a
+tested function counts as tested. An implementation a test reaches through its
+interface counts too, and so does a constructor whose class a test constructs.
+A composition root that builds the application is reached but never walked
+out of, or every service would read as tested by a test that only boots the
+app.
+
+Test files, tool configs (`vitest.config.ts`, `conftest.py`) and TypeScript
+declaration files are left out: none holds code a test would reach. A
+component with `no_inbound_edge` has no inbound edge at all; whether that makes
+it dead is for [the dead-code report](dead-code-candidates.md) to say, since it
+knows the entry points and framework conventions.
+
+```sh
+knossos untested-code /path/to/project --path=src/billing
+knossos untested-code /path/to/project --granularity=components --limit=100
+```
+
+The answer is static. A test that reaches code through a framework, a callback
+or an untyped receiver is not seen, so treat the list as where to look first,
+not as a coverage figure. A walk cut short by `max_nodes` or `timeout_ms` says
+so in `bounds.truncation_reasons`, since everything past the cut would read as
+untested.
 
 ## Suggest location
 

@@ -211,6 +211,25 @@ Find the largest or longest files. Use to spot refactor targets without shelling
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
+## `untested_code`
+
+List the files, or the classes and functions, no test reaches through the graph: where a change goes out with nothing checking it. Static, so a test reaching code through a framework or a callback is not seen.
+
+| Input | Type | Required | Constraints/default |
+| --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 |
+| `refresh_if_stale` | boolean | no | default=true |
+| `project_id` | string | yes | minLength=1 |
+| `granularity` | string | no | default="files"; enum=files, components |
+| `path_prefix` | string | no | minLength=1; maxLength=1000 |
+| `limit` | integer | no | minimum=1; maximum=100; default=50 |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 |
+| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |
+| `timeout_ms` | integer | no | minimum=1; maximum=60000; default=5000 |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
 ## `file_context`
 
 One file's architectural context in one short answer: its boundary and the declared rules that bind it, how many files depend on it (and the closest few), the tests that reach it, and its latest commits. Call it before editing a file you have not read about, instead of grepping for its callers.

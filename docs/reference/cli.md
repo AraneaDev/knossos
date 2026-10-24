@@ -44,6 +44,8 @@ Usage:
                       [--json]
   knossos architecture-summary <path|project-id> [--limit=N] [--db=PATH] [--json]
   knossos file-metrics <path|project-id> [--path=SUBSTR] [--language=LANG] [--sort-by=path|line_count] [--order=asc|desc] [--limit=N] [--offset=N] [--json]
+  knossos untested-code <path|project-id> [--granularity=files|components] [--path=PREFIX]
+                        [--limit=N] [--offset=N] [--max-nodes=N] [--timeout-ms=N] [--json]
   knossos explain-flow <path|project-id> <from> <to> [--max-depth=N] [--max-paths=N]
                        [--edge-kind=KIND] [--min-confidence=LEVEL] [--timeout-ms=N]
                        [--both-directions] [--profile=NAME] [--json]

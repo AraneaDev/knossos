@@ -35,7 +35,7 @@ final class QueryCommand implements CliCommand
 {
     private const COMMANDS = [
         'list-projects', 'list-snapshots', 'snapshot-diff', 'quality-gate', 'architecture-trends',
-        'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'explain-flow', 'impact-analysis',
+        'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'untested-code', 'explain-flow', 'impact-analysis',
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
         'search-architecture', 'annotate-component', 'list-annotations',
@@ -172,6 +172,7 @@ final class QueryCommand implements CliCommand
         $json = $context->options->flag($options, 'json');
         $text = match ($command) {
             'list-projects' => self::projectLines($result),
+            'untested-code' => self::untestedLines($result),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
             'export-agent-brief' => self::writeBrief($result, $context->options->single($options, 'out')),
@@ -187,6 +188,21 @@ final class QueryCommand implements CliCommand
             'check-architecture' => ($result->data['bounds']['violation_count'] ?? count($result->data['violations'])) > 0 ? CliCommand::EXIT_GATE_FAILED : CliCommand::EXIT_OK,
             default => CliCommand::EXIT_OK,
         };
+    }
+
+    /** untested-code's text: one line per file or component, then the summary. */
+    private static function untestedLines(ResultEnvelope $result): string
+    {
+        $lines = [];
+        foreach ($result->data['files'] ?? [] as $file) {
+            $lines[] = sprintf('%6d lines  %s', $file['line_count'], $file['path']);
+        }
+        foreach ($result->data['components'] ?? [] as $component) {
+            $lines[] = sprintf('%-9s %s  %s:%s%s', $component['kind'], $component['canonical_name'], $component['path'], $component['line'] ?? '?', $component['no_inbound_edge'] ? '  (no inbound edge)' : '');
+        }
+        $lines[] = $result->summary;
+
+        return implode("\n", $lines);
     }
 
     /** list-projects' text: the summary, then one line per project. */
