@@ -2837,6 +2837,76 @@ fn a_library_crate_root_is_entered_from_outside() {
 }
 
 #[test]
+fn a_manifest_bin_target_is_an_executable_crate_root_using_the_library() {
+    // `[[bin]] path = "src/build_dict.rs"` is a crate of its own that uses
+    // the library by its crate name. Read as a library module nothing
+    // declares, and with `from_bytes(..).expect(..)` losing the receiver's
+    // type, the library methods only the binary calls read as unreferenced.
+    let files = [
+        (
+            "Cargo.toml",
+            "[package]\nname = \"glyph-solver\"\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[[bin]]\nname = \"build-dict\"\npath = \"src/build_dict.rs\"\n\n[[bin]]\nname = \"bench\"\npath = \"src/tools/bench.rs\"\n",
+        ),
+        ("src/lib.rs", "pub mod trie;\n"),
+        (
+            "src/trie.rs",
+            "pub struct PackedTrie;\nimpl PackedTrie {\n    pub fn from_bytes(_: &[u8]) -> Result<Self, String> { Ok(PackedTrie) }\n    pub fn build() -> Option<Self> { Some(PackedTrie) }\n    pub fn contains(&self, _: &str) -> bool { true }\n    pub fn is_common(&self, _: &str) -> bool { true }\n}\n",
+        ),
+        (
+            "src/build_dict.rs",
+            "mod report;\nuse glyph_solver::trie::PackedTrie;\nfn verify(bytes: &[u8]) {\n    let loaded = PackedTrie::from_bytes(bytes).expect(\"valid\");\n    assert!(loaded.contains(\"a\"));\n    let built = PackedTrie::build().unwrap_or_else(|| panic!(\"none\"));\n    built.is_common(\"a\");\n    crate::report::done();\n}\nfn main() {\n    verify(&[]);\n}\n",
+        ),
+        ("src/report.rs", "pub fn done() {}\n"),
+        (
+            "src/tools/bench.rs",
+            "#![no_main]\nmod helper;\npub fn run() {\n    helper::go();\n}\n",
+        ),
+        ("src/tools/helper.rs", "pub fn go() {}\n"),
+    ];
+    let contributions = scan_fixture_with(
+        "manifest-bin-target",
+        &files,
+        &serde_json::json!({ "config_files": ["Cargo.toml"] }),
+    );
+    let calls = method_calls(&contributions, "rust:function:crate::build_dict::verify");
+
+    for target in [
+        "rust:method:crate::trie::PackedTrie::contains",
+        "rust:method:crate::trie::PackedTrie::is_common",
+    ] {
+        assert!(
+            calls.iter().any(|(called, _)| called == target),
+            "{target} in {calls:?}"
+        );
+    }
+    assert!(
+        calls
+            .iter()
+            .any(|(called, _)| called == "rust:function:crate::report::done"),
+        "{calls:?}"
+    );
+    // A binary root keeps the files its `mod` declarations load beside it.
+    let bench = method_calls(&contributions, "rust:function:crate::tools::bench::run");
+    assert!(
+        bench
+            .iter()
+            .any(|(called, _)| called == "rust:function:crate::tools::helper::go"),
+        "{bench:?}"
+    );
+    let executable: Vec<String> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().clone())
+        .filter(|node| node["kind"] == "module" && node["attributes"]["executable"] == true)
+        .map(|node| node["canonical_name"].as_str().unwrap().to_owned())
+        .collect();
+    // A declared binary is entered by Cargo, `fn main` or not.
+    assert!(
+        executable.contains(&"crate::tools::bench".to_owned()),
+        "{executable:?}"
+    );
+}
+
+#[test]
 fn a_method_called_on_an_untyped_receiver_is_listed_on_the_module() {
     let contributions = scan_fixture(
         "untyped-calls",
@@ -3064,6 +3134,41 @@ fn cfg_alternative_re_exports_in_one_file_resolve_to_nothing() {
         !calls
             .iter()
             .any(|(target, _)| target.ends_with("x::a::run") || target.ends_with("x::b::run")),
+        "{calls:?}"
+    );
+}
+
+#[test]
+fn an_indexed_array_slice_or_vec_receives_as_its_element() {
+    // `grid.tiles[x][y].is_selectable()` calls `Tile::is_selectable` through
+    // a nested array field. Indexing lost the receiver's type, so a method
+    // only ever reached through a collection read as unreferenced.
+    let files = [
+        ("src/lib.rs", "pub mod grid;\npub mod dfs;\n"),
+        (
+            "src/grid.rs",
+            "pub struct Tile;\nimpl Tile {\n    pub fn nested(&self) {}\n    pub fn listed(&self) {}\n    pub fn sliced(&self) {}\n    pub fn boxed(&self) {}\n    pub fn walked(&self) {}\n    pub fn iterated(&self) {}\n    pub fn bound(&self) {}\n}\npub struct Grid {\n    pub tiles: [[Tile; 4]; 4],\n    pub rows: Vec<Box<Tile>>,\n}\n",
+        ),
+        (
+            "src/dfs.rs",
+            "use crate::grid::{Grid, Tile};\npub struct Walk<'a> {\n    grid: &'a Grid,\n}\nimpl Walk<'_> {\n    pub fn go(&self, all: &[Tile]) {\n        let (grid, n) = (self.grid, 0);\n        grid.tiles[n][n].nested();\n        self.grid.rows[0].listed();\n        all[0].sliced();\n        grid.rows[1].boxed();\n        for tile in all {\n            tile.walked();\n        }\n        for tile in grid.rows.iter() {\n            tile.iterated();\n        }\n        let row = grid.tiles[n];\n        row[n].bound();\n        grid.tiles.len();\n    }\n}\n",
+        ),
+    ];
+    let contributions = scan_fixture("indexed-receiver", &files);
+    let calls = method_calls(&contributions, "rust:method:crate::dfs::Walk::go");
+
+    for method in [
+        "nested", "listed", "sliced", "boxed", "walked", "iterated", "bound",
+    ] {
+        let target = format!("rust:method:crate::grid::Tile::{method}");
+        assert!(
+            calls.contains(&(target.clone(), true)),
+            "{target} in {calls:?}"
+        );
+    }
+    // The collection's own methods are not its element's.
+    assert!(
+        !calls.iter().any(|(target, _)| target.contains("::len")),
         "{calls:?}"
     );
 }

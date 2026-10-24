@@ -276,6 +276,11 @@ fn walk_one(
         test_modules,
         layout,
     );
+    // A target a manifest declares is entered by Cargo, whether or not
+    // it has a `fn main` the walk saw (`#![no_main]`, a harness).
+    if layout.targets.contains(relative) {
+        facts.mark_executable();
+    }
     if let Some((root_file, crate_name)) = layout
         .crates
         .iter()

@@ -10,7 +10,7 @@
 //! whether it exists or not: an edit to one, its deletion, or a file added at
 //! one of those paths can change the answer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::resolve::module_path_in_crate;
 
@@ -49,6 +49,10 @@ pub struct Layout {
     /// modules have in the graph: `crate` for the package at the project
     /// root, the package's crate name for a workspace member.
     pub libraries: BTreeMap<String, String>,
+    /// The project-relative file of every target a manifest declares with
+    /// a `path` (`[[bin]]`, `[[example]]`, `[[bench]]`, `[[test]]`): a crate
+    /// root of its own wherever it sits, entered by Cargo.
+    pub targets: BTreeSet<String>,
 }
 
 impl Layout {
@@ -163,11 +167,15 @@ impl Layout {
     }
 
     /// Whether `relative` is the root of a crate other than the package's
-    /// library or main binary: `build.rs`, a binary in `src/bin/`, or a
-    /// target under `tests/`, `examples/` or `benches/`. Its `crate::x`
+    /// library or main binary: `build.rs`, a binary in `src/bin/`, a target
+    /// under `tests/`, `examples/` or `benches/`, or one a manifest declares
+    /// by its `path` (see [`Layout::targets`]). Its `crate::x`
     /// names the module its `mod x;` loads beside it.
     #[must_use]
     pub fn is_target_root(&self, relative: &str) -> bool {
+        if self.targets.contains(relative) {
+            return true;
+        }
         match self.package_inner(relative).as_slice() {
             ["build.rs"] | ["src", "bin", _, "main.rs"] => true,
             ["src", "bin", file] => file.ends_with(".rs"),
@@ -307,8 +315,8 @@ mod tests {
     use super::{module_files, modules_above, Layout};
     use crate::resolve::module_path_in_crate;
 
-    /// A project whose root package `demo` has a library and a binary, with
-    /// a workspace member `core-lib`.
+    /// A project whose root package `demo` has a library, a binary and a
+    /// `[[bin]]` declared by its path, with a workspace member `core-lib`.
     fn layout() -> Layout {
         Layout {
             crates: vec![
@@ -329,6 +337,7 @@ mod tests {
             ]
             .into_iter()
             .collect(),
+            targets: ["src/build_dict.rs".to_owned()].into_iter().collect(),
         }
     }
 
@@ -501,6 +510,7 @@ mod tests {
         let layout = layout();
         for target in [
             "src/bin/tool.rs",
+            "src/build_dict.rs",
             "src/bin/deep/main.rs",
             "tests/it.rs",
             "examples/ex.rs",
