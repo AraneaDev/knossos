@@ -169,7 +169,7 @@ abstract readonly class AbstractArchitectureQueryService
      *
      * @return list<array<string, mixed>>
      */
-    private function resolveSuffix(string $projectId, string $query): array
+    protected function resolveSuffix(string $projectId, string $query): array
     {
         $separators = self::SEGMENT_SEPARATORS;
         $patterns = [];

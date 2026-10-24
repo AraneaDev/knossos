@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanOptions;
+use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -264,6 +265,43 @@ final class AnnotationsTest extends KnossosTestCase
         self::assertStringContainsString('Did you mean: App\\InvoiceService', implode(' ', $result->warnings));
         self::assertSame([], $queries->services()->annotationQueries->listAnnotations($ids['project'], 'App\\InvoiceService')->data['annotations']);
         self::assertCount(1, $queries->services()->annotationQueries->listAnnotations($ids['project'], 'App\\Invoice')->data['annotations']);
+    }
+
+    /**
+     * A short name that ends exactly one component, from a segment boundary,
+     * is that component: `Tile::is_selectable` was stored under a name no
+     * component has, so the note was missing from the start and the dead-code
+     * report it meant to correct never saw it. A short name ending several
+     * is refused with them, and a prefix still never matches.
+     */
+    #[Group('query')]
+    public function testAShortNameEndingOneComponentIsStoredOnIt(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        foreach (['solver::grid::Tile::is_selectable', 'solver::trie::PackedTrie::contains', 'solver::set::Set::contains'] as $name) {
+            $node = StableId::symbol($ids['project'], 'rust', 'method', $name);
+            $repository->saveNode($node, $ids['project'], 'rust', 'method', $name, substr($name, strrpos($name, ':') + 1), null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $annotations = ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries;
+
+        $preview = $annotations->upsertAnnotation($ids['project'], 'Tile::is_selectable', 'note', 'called through grid.tiles[x][y]');
+        self::assertSame('solver::grid::Tile::is_selectable', $preview->data['component']);
+        $written = $annotations->upsertAnnotation($ids['project'], 'Tile::is_selectable', 'note', 'called through grid.tiles[x][y]', execute: true);
+        self::assertSame('solver::grid::Tile::is_selectable', $written->data['component']);
+        self::assertStringContainsString('Tile::is_selectable resolved to solver::grid::Tile::is_selectable', implode(' ', $written->warnings));
+        self::assertCount(1, $annotations->listAnnotations($ids['project'], 'solver::grid::Tile::is_selectable')->data['annotations']);
+
+        $ambiguous = null;
+        try {
+            $annotations->upsertAnnotation($ids['project'], 'contains', 'note', 'x', execute: true);
+        } catch (InvalidArgumentException $error) {
+            $ambiguous = $error->getMessage();
+        }
+        self::assertNotNull($ambiguous);
+        self::assertStringContainsString('solver::set::Set::contains', (string) $ambiguous);
+        self::assertStringContainsString('solver::trie::PackedTrie::contains', (string) $ambiguous);
+        self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
     }
 
     /** An exact display name is still an exact match. */
