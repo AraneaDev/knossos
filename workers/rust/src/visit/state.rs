@@ -57,6 +57,10 @@ pub(super) struct Walk<'a> {
     /// The field types of each struct this file declares, by struct then
     /// field name, so `self.walk.facts.edge()` resolves through the fields.
     pub(super) struct_fields: BTreeMap<String, BTreeMap<String, FieldType>>,
+    /// The type each function and method this file declares returns, as
+    /// [`Walk::receiver_type`] states it, by canonical path: what a binding
+    /// of a call's result holds (`let trie = sample_trie();`).
+    pub(super) function_returns: BTreeMap<String, String>,
     /// Where the project's crates are, which names each `mod` declaration's
     /// module (see [`mod_child`](super::placement::mod_child)).
     pub(super) layout: &'a Layout,

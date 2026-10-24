@@ -58,6 +58,7 @@ pub fn walk(
     walker.resolve_globs();
     walker.collect_type_aliases(module, &file.items);
     walker.collect_struct_fields(module, &file.items);
+    walker.collect_function_returns(module, &file.items);
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
@@ -137,6 +138,7 @@ impl<'a> Walk<'a> {
             routes: Vec::new(),
             role_marks: Vec::new(),
             struct_fields: BTreeMap::new(),
+            function_returns: BTreeMap::new(),
             layout,
             relative,
             renamed_children: BTreeMap::new(),
@@ -826,7 +828,7 @@ impl Walk<'_> {
 
     /// Bring the type parameters `generics` declares into scope, returning
     /// the ones in scope before, for the caller to restore.
-    fn enter_type_params(&mut self, generics: &syn::Generics) -> BTreeSet<String> {
+    pub(super) fn enter_type_params(&mut self, generics: &syn::Generics) -> BTreeSet<String> {
         let outer = self.type_params.clone();
         self.type_params
             .extend(generics.type_params().map(|param| ident_name(&param.ident)));

@@ -3174,6 +3174,60 @@ fn an_indexed_array_slice_or_vec_receives_as_its_element() {
 }
 
 #[test]
+fn a_binding_takes_the_return_type_of_a_function_the_file_declares() {
+    // `let trie = sample_trie();` in a test module: the helper declares
+    // `-> PackedTrie`, but only `Type::f(..)` typed a binding, so a method
+    // its tests alone call read as unreferenced instead of test-only.
+    let source = r#"
+pub struct Trie;
+impl Trie {
+    pub fn build() -> Self { Trie }
+    pub fn child_count(&self) -> usize { 0 }
+    pub fn root(&self) -> Node { Node }
+    pub fn twin(&self) -> Self { Trie }
+    pub fn mirrored(&self) {}
+}
+pub struct Node;
+impl Node {
+    pub fn depth(&self) {}
+}
+fn sample() -> Trie { Trie::build() }
+fn boxed() -> Box<Trie> { Box::new(Trie) }
+fn many() -> Vec<Trie> { Vec::new() }
+pub fn run() {
+    let trie = sample();
+    trie.child_count();
+    let node = trie.root();
+    node.depth();
+    let other = trie.twin();
+    other.mirrored();
+    let held = boxed();
+    held.child_count();
+    let all = many();
+    all.len();
+}
+"#;
+    let contributions = scan_fixture("let-from-return", &[("src/lib.rs", source)]);
+    let calls = method_calls(&contributions, "rust:function:crate::run");
+
+    for target in [
+        "rust:method:crate::Trie::child_count",
+        "rust:method:crate::Node::depth",
+        "rust:method:crate::Trie::mirrored",
+    ] {
+        assert!(
+            calls.iter().any(|(called, _)| called == target),
+            "{target} in {calls:?}"
+        );
+    }
+    // A collection's own methods are not its element's.
+    assert!(
+        !calls.iter().any(|(called, _)| called.contains("::len")),
+        "{calls:?}"
+    );
+}
+
+#[test]
 fn a_smart_pointer_field_or_parameter_receives_as_its_pointee() {
     // `Box<T>`, `Rc<T>` and `Arc<T>` dereference to `T`, so a method called
     // through one is `T`'s.
