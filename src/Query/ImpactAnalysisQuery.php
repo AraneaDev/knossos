@@ -346,8 +346,10 @@ final readonly class ImpactAnalysisQuery extends AbstractArchitectureQueryServic
         if (!in_array($target['kind'], ['class', 'interface', 'trait', 'enum', 'module', 'file'], true)) {
             return [];
         }
+        // Sought by parent: asked for in target order, SQLite read the
+        // project's whole target index to spare sorting a few children.
         $statement = $this->pdo->prepare(
-            "SELECT target_id FROM edges WHERE project_id = :project AND source_id = :source AND kind = 'contains' ORDER BY target_id",
+            "SELECT target_id FROM edges INDEXED BY edges_project_source_idx WHERE project_id = :project AND source_id = :source AND kind = 'contains' ORDER BY target_id",
         );
         $members = [];
         $frontier = [(string) $target['id']];
