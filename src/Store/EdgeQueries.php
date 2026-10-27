@@ -47,7 +47,7 @@ final class EdgeQueries
     /**
      * The index hint for reading a project's edges of `$kinds` in source order:
      * `INDEXED BY edges_project_source_idx` when those kinds are a fair share
-     * of the project's edges, else nothing.
+     * of the project's edges, else `INDEXED BY edges_project_kind_idx`.
      *
      * In source order the source index gives most of the order, and SQLite
      * sorts each source's few edges alone. Through the kind index it sorts
@@ -74,7 +74,9 @@ final class EdgeQueries
         $sample->execute([...$kinds, $projectId]);
         [$sampled, $selected] = array_map('intval', (array) $sample->fetch(PDO::FETCH_NUM));
 
+        // Named either way: left to itself, SQLite's choice for a narrow
+        // selection differs between releases (3.46 walks the source index).
         // A project too small to fill the sample is read quickly either way.
-        return $sampled >= self::SAMPLE && $selected * 10 >= $sampled ? 'INDEXED BY edges_project_source_idx' : '';
+        return $sampled >= self::SAMPLE && $selected * 10 >= $sampled ? 'INDEXED BY edges_project_source_idx' : 'INDEXED BY edges_project_kind_idx';
     }
 }
