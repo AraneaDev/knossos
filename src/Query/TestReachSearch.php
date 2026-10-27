@@ -325,13 +325,16 @@ final readonly class TestReachSearch extends AbstractArchitectureQueryService
      *
      * Only the target and source ids and the edge kind are selected: the walk
      * needs nothing else, and the order alone fixes which nodes a bound cuts.
+     * Read by target: with one target the rest of the order is the source
+     * index's own, and SQLite walked every edge of the project in it to spare
+     * a sort of the target's few, 100 ms a chunk on 100,000 edges.
      *
      * @param list<string> $targetIds @param list<string> $edgeKinds
      */
     private function dependantRows(string $projectId, array $targetIds, array $edgeKinds, int $minimumRank): PDOStatement
     {
         $statement = $this->pdo->prepare(sprintf(
-            'SELECT e.target_id, e.source_id, e.kind FROM edges e WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
+            'SELECT e.target_id, e.source_id, e.kind FROM edges e INDEXED BY edges_project_target_idx WHERE e.project_id = ? AND e.target_id IN (%s) AND e.kind IN (%s) ' .
             'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.target_id, e.source_id, e.id',
             implode(',', array_fill(0, count($targetIds), '?')),

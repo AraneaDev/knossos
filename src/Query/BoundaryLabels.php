@@ -41,8 +41,10 @@ final readonly class BoundaryLabels
     public static function load(PDO $pdo, string $projectId): self
     {
         $statement = $pdo->prepare(
-            'SELECT b.id, b.name, b.source, b.matcher_json, COUNT(bm.node_id) AS members FROM boundaries b '
-            . 'LEFT JOIN boundary_memberships bm ON bm.boundary_id = b.id WHERE b.project_id = :project GROUP BY b.id',
+            // Counted per boundary from the membership key, not by grouping a
+            // join, which sorted every membership of the project first.
+            'SELECT b.id, b.name, b.source, b.matcher_json, (SELECT COUNT(*) FROM boundary_memberships bm WHERE bm.boundary_id = b.id) AS members '
+            . 'FROM boundaries b WHERE b.project_id = :project ORDER BY b.id',
         );
         $statement->execute(['project' => $projectId]);
         $ranks = [];

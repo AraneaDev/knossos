@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 
@@ -112,15 +113,21 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
     private function select(string $projectId, ?array $paths, int $threshold, int $cap): array
     {
         $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
+        // Every file reads the project's edges once, through the kind index.
+        // A few files read their own: each file, its components, and the edges
+        // into each, in that order (CROSS JOIN keeps it), the kinds checked on
+        // the row. Left to the planner, a few files also read every edge of
+        // the project first: half a second a file on 100,000 edges.
+        $from = $paths === null
+            ? 'FROM edges e JOIN nodes tn ON tn.id = e.target_id JOIN files tf ON tf.id = tn.file_id JOIN nodes sn ON sn.id = e.source_id'
+            : 'FROM files tf CROSS JOIN nodes tn ON tn.file_id = tf.id CROSS JOIN edges e ON e.project_id = tf.project_id AND e.target_id = tn.id CROSS JOIN nodes sn ON sn.id = e.source_id';
+        $kindFilter = $paths === null ? "e.kind IN ($kinds)" : EdgeQueries::kindFilteredIn('e.kind', self::IMPACT_EDGE_KINDS);
         $pathFilter = $paths === null ? '' : ' AND tf.relative_path IN (' . implode(',', array_fill(0, count($paths), '?')) . ')';
         // Ranked and cut first: the boundaries are then read for the files kept alone, not for every candidate.
         $sql = <<<SQL
             SELECT tf.relative_path AS path, COUNT(DISTINCT sn.file_id) AS dependent_files
-              FROM edges e
-              JOIN nodes tn ON tn.id = e.target_id
-              JOIN files tf ON tf.id = tn.file_id
-              JOIN nodes sn ON sn.id = e.source_id
-             WHERE e.project_id = ? AND e.kind IN ($kinds) AND {$this->native('e')}
+              $from
+             WHERE e.project_id = ? AND $kindFilter AND {$this->native('e')}
                AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id
                AND {$this->owned('sn')}
                AND {$this->owned('tn')}
@@ -156,18 +163,19 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
         if ($paths === []) {
             return [];
         }
-        $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
+        // Read from the files out, in join order, as select() reads a few files.
+        $kinds = EdgeQueries::kindFilteredIn('e2.kind', self::IMPACT_EDGE_KINDS);
         $sql = <<<SQL
             SELECT tf.relative_path, b.name
               FROM files tf
-              JOIN nodes t2 ON t2.file_id = tf.id
-              JOIN edges e2 ON e2.target_id = t2.id
-              JOIN nodes s2 ON s2.id = e2.source_id
+              CROSS JOIN nodes t2 ON t2.file_id = tf.id
+              CROSS JOIN edges e2 ON e2.project_id = tf.project_id AND e2.target_id = t2.id
+              CROSS JOIN nodes s2 ON s2.id = e2.source_id
               JOIN boundary_memberships bm ON bm.node_id = s2.id
               JOIN boundaries b ON b.id = bm.boundary_id
              WHERE tf.project_id = ? AND tf.relative_path IN (%s)
-               AND e2.project_id = tf.project_id AND s2.file_id <> tf.id AND {$this->owned('s2')}
-               AND e2.kind IN ($kinds) AND {$this->native('e2')} AND {$this->owned('t2')}
+               AND s2.file_id <> tf.id AND {$this->owned('s2')}
+               AND $kinds AND {$this->native('e2')} AND {$this->owned('t2')}
              GROUP BY tf.relative_path, b.name
              ORDER BY tf.relative_path, b.name
             SQL;

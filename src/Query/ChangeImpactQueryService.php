@@ -377,10 +377,13 @@ final readonly class ChangeImpactQueryService extends AbstractArchitectureQueryS
             // An `external_*` node is a symbol from outside the project (`count`, a vendor
             // class) and an `endpoint` is a URL; each is filed under whichever file first
             // named it. Neither is part of that file: counting it would make every other
-            // caller of the built-in or URL depend on the file.
+            // caller of the built-in or URL depend on the file. Read from the
+            // files to their nodes (CROSS JOIN keeps that order): left to the
+            // planner, every node of the project was read to keep the files'
+            // (the unary + keeps the project out of the node lookup).
             $statement = $this->pdo->prepare(
                 'SELECT n.id, n.kind, n.canonical_name, n.display_name, n.confidence, f.relative_path, n.start_line, n.end_line ' .
-                'FROM nodes n JOIN files f ON f.id = n.file_id WHERE n.project_id = ? AND f.relative_path IN (' . $placeholders . ') ' .
+                'FROM files f CROSS JOIN nodes n ON n.file_id = f.id WHERE f.project_id = ? AND f.relative_path IN (' . $placeholders . ') AND +n.project_id = f.project_id ' .
                 'AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' ' .
                 sprintf('ORDER BY f.relative_path, n.canonical_name, n.id LIMIT %d', self::MAX_DIRECT_COMPONENTS + 1),
             );
