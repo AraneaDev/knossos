@@ -47,7 +47,8 @@ final class EdgeQueries
     /**
      * The index hint for reading a project's edges of `$kinds` in source order:
      * `INDEXED BY edges_project_source_idx` when those kinds are a fair share
-     * of the project's edges ({@see self::selectsAFairShare()}), else nothing.
+     * of the project's edges ({@see self::selectsAFairShare()}), else
+     * `INDEXED BY edges_project_kind_idx`.
      *
      * In source order the source index gives most of the order, and SQLite
      * sorts each source's few edges alone. Through the kind index it sorts
@@ -62,7 +63,9 @@ final class EdgeQueries
      */
     public static function sourceOrderHint(PDO $pdo, string $projectId, array $kinds): string
     {
-        return self::selectsAFairShare($pdo, $projectId, $kinds) ? 'INDEXED BY edges_project_source_idx' : '';
+        // Named either way: left to itself, SQLite's choice for a narrow
+        // selection differs between releases (3.46 walks the source index).
+        return self::selectsAFairShare($pdo, $projectId, $kinds) ? 'INDEXED BY edges_project_source_idx' : 'INDEXED BY edges_project_kind_idx';
     }
 
     /**
