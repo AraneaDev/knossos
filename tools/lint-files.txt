@@ -708,6 +708,7 @@ php	tests/phpunit/Query/DiagnosticSourceTest.php
 php	tests/phpunit/Query/DiagnosticsContextTest.php
 php	tests/phpunit/Query/DiagnosticsQueryServiceTest.php
 php	tests/phpunit/Query/DiagramBoundsTest.php
+php	tests/phpunit/Query/DiagramDegreePlanTest.php
 php	tests/phpunit/Query/DiagramTest.php
 php	tests/phpunit/Query/DiffScaleTest.php
 php	tests/phpunit/Query/DispatchReachTest.php

@@ -10,6 +10,7 @@ use Knossos\Query\Diagram\MermaidRenderer;
 use Knossos\Query\Diagram\PlantUmlRenderer;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Protocol\ConfidenceRank;
+use Knossos\Store\EdgeQueries;
 
 /**
  * Renders a slice of the graph as Mermaid or PlantUML source.
@@ -174,7 +175,13 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
     private function candidatePool(string $projectId, array $edgeKinds, int $minRank, ?string $boundaryId, int $maxNodes): array
     {
         $kindPlaceholders = implode(',', array_fill(0, count($edgeKinds), '?'));
-        $confidenceCase = ConfidenceRank::atLeast('confidence');
+        // Every edge passes the lowest rank, so the test is left out there
+        // when the selection is broad: checking it read each edge's row, where
+        // the endpoint indexes alone answer the counts, 540 ms against 390 ms
+        // on 100,000 edges. A sparse selection keeps it, and with it the kind
+        // index, which reaches its few edges without walking every one.
+        $everyConfidence = $minRank <= 1 && EdgeQueries::selectsAFairShare($this->pdo, $projectId, $edgeKinds);
+        $confidenceCase = $everyConfidence ? '1' : ConfidenceRank::atLeast('confidence');
         $degreeSql = sprintf(
             'SELECT node_id, COUNT(*) AS degree FROM (' .
             'SELECT source_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s ' .
@@ -191,9 +198,10 @@ final readonly class DiagramExportService extends AbstractArchitectureQueryServi
             'FROM nodes n LEFT JOIN files f ON f.id = n.file_id ' .
             'LEFT JOIN (' . $degreeSql . ') d ON d.node_id = n.id ' .
             'WHERE n.project_id = ?';
+        $rank = $everyConfidence ? [] : [$minRank];
         $nodeParams = [
-            $projectId, ...$edgeKinds, $minRank,
-            $projectId, ...$edgeKinds, $minRank,
+            $projectId, ...$edgeKinds, ...$rank,
+            $projectId, ...$edgeKinds, ...$rank,
             $projectId,
         ];
         if ($boundaryId !== null) {
