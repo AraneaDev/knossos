@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.40.9](https://github.com/AraneaDev/knossos/compare/v0.40.8...v0.40.9) (2026-10-27)
+
+
+### Performance
+
+* count a diagram's degrees from the endpoint indexes when every confidence is admitted ([#430](https://github.com/AraneaDev/knossos/issues/430)) ([ec5e90f](https://github.com/AraneaDev/knossos/commit/ec5e90f8942bc2cf966e0795e545c1e47aa155a0))
+* read file_context's edges and nodes from the file out, not from the whole project ([#426](https://github.com/AraneaDev/knossos/issues/426)) ([82530b3](https://github.com/AraneaDev/knossos/commit/82530b3b639e6f1ac61af8bc2f8923a04ac5d20d))
+* read whole-project edges in source order and seek the untested walk by source ([#429](https://github.com/AraneaDev/knossos/issues/429)) ([eb8de19](https://github.com/AraneaDev/knossos/commit/eb8de1917a5ec2081a1de663df09021c71e24a5c))
+* seek the members, top dependents and member-seeded edges changed_files_impact reads ([#427](https://github.com/AraneaDev/knossos/issues/427)) ([f3bff69](https://github.com/AraneaDev/knossos/commit/f3bff6971cf7328e019e501f5b4c7e02fb8582a6))
+
 ## [0.40.8](https://github.com/AraneaDev/knossos/compare/v0.40.7...v0.40.8) (2026-10-27)
 
 
