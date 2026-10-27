@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.1](https://github.com/AraneaDev/knossos/compare/v0.40.0...v0.40.1) (2026-10-27)
+
+
+### Fixes
+
+* three correctness bugs from an outside performance report ([#410](https://github.com/AraneaDev/knossos/issues/410)) ([e4d34ee](https://github.com/AraneaDev/knossos/commit/e4d34ee1aa8da06b711c17c3cf0997f6bfb7f806))
+
 ## [0.40.0](https://github.com/AraneaDev/knossos/compare/v0.39.2...v0.40.0) (2026-10-24)
 
 
