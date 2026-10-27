@@ -61,6 +61,7 @@ import {
     isFunctionBinding,
     isFunctionAssignment,
     isFunctionProperty,
+    isHookCallee,
     reference,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
@@ -599,7 +600,7 @@ export class TypeScriptLanguageFactCollector {
         this.tables.objectArguments(node, signature, source);
 
         const calledName = callName(node.expression);
-        if (source !== null && calledName?.startsWith("use") && target !== null)
+        if (source !== null && isHookCallee(node.expression) && target !== null)
             this.addEdge(
                 "uses_hook",
                 source,

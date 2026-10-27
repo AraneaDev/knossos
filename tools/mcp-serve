@@ -24,7 +24,7 @@ exec 3<&0
 php "${ROOT_DIR}/bin/knossos" serve "$@" 0<&3 2>> "${LOG}" &
 CHILD=$!
 
-# shellcheck disable=SC2317  # invoked indirectly via trap
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via trap
 forward() {
     note "signal $1 pid=$$"
     kill -s "$1" "${CHILD}" 2>/dev/null

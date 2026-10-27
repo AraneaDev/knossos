@@ -11,6 +11,23 @@ export function callName(expression) {
     return null;
 }
 
+const HOOK_NAME = /^use[A-Z0-9]/;
+
+/**
+ * Whether a callee is a React hook by React's own naming rule: `useThing()`,
+ * or `Namespace.useThing()` on a capitalized namespace such as `React`. The
+ * dotted chain is not the name, or `user.push()` would be a hook.
+ */
+export function isHookCallee(expression) {
+    if (ts.isIdentifier(expression)) return HOOK_NAME.test(expression.text);
+    return (
+        ts.isPropertyAccessExpression(expression) &&
+        ts.isIdentifier(expression.expression) &&
+        /^[A-Z]/.test(expression.expression.text) &&
+        HOOK_NAME.test(expression.name.text)
+    );
+}
+
 export function propertyNameText(name) {
     return ts.isIdentifier(name) ||
         ts.isStringLiteral(name) ||

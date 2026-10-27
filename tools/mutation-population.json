@@ -1,9 +1,9 @@
 {
-  "run": "https://github.com/AraneaDev/knossos/actions/runs/38278746512",
-  "commit": "854af842e8f5f1382cb46543e02e90fef5134ab3",
-  "tested": 23185,
-  "ignored": 310,
-  "skipped": 4621,
-  "timed_out": 181,
+  "run": "https://github.com/AraneaDev/knossos/actions/runs/40336057411",
+  "commit": "f5b062bd532f40210a8051899d8e60ba21a6a0fa",
+  "tested": 26718,
+  "ignored": 109,
+  "skipped": 6284,
+  "timed_out": 567,
   "tolerance_percent": 10
 }
