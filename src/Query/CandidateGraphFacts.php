@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Scanner\Protocol\ConfidenceRank;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\ProjectRepository;
 use PDO;
@@ -288,7 +289,7 @@ final class CandidateGraphFacts
     /** The kind and confidence conditions every degree counts under, as SQL, over native edges only. */
     private function edgeFilter(): string
     {
-        return 'AND ' . EnrichedFacts::excludeSql('edges') . ' ' . sprintf('AND kind IN (%s) ', self::placeholders($this->edgeKinds))
+        return 'AND ' . EnrichedFacts::excludeSql('edges') . ' AND ' . EdgeQueries::kindFilteredIn('kind', $this->edgeKinds) . ' '
             . 'AND ' . ConfidenceRank::atLeast('confidence');
     }
 

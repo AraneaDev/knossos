@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 
 /**
@@ -562,7 +563,6 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         }
 
         $reachability = [];
-        $kinds = implode(',', array_fill(0, count($edgeKinds), '?'));
         $testRole = $this->pdo->quote(ReportableComponent::TEST_ROLE);
         // The join order and the indexes are fixed (`CROSS JOIN` keeps
         // `members` outside): without planner statistics, which a freshly
@@ -578,7 +578,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             'SELECT members.container_id, COUNT(*) AS any_reference, ' .
             'MAX(CASE WHEN NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = usage.source_id AND c.role = ' . $testRole . ') THEN 1 ELSE 0 END) AS production_reference ' .
             'FROM members CROSS JOIN edges usage INDEXED BY edges_project_target_idx ON usage.project_id = ? AND usage.target_id = members.member_id ' .
-            'AND usage.kind IN (' . $kinds . ') AND ' . EnrichedFacts::excludeSql('usage') . ' ' .
+            'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . EnrichedFacts::excludeSql('usage') . ' ' .
             'AND ' . ConfidenceRank::atLeast('usage.confidence') . ' ' .
             'WHERE usage.source_id <> members.container_id ' .
             'AND NOT EXISTS (SELECT 1 FROM members internal WHERE internal.container_id = members.container_id AND internal.member_id = usage.source_id) ' .
