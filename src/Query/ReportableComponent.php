@@ -126,7 +126,15 @@ final readonly class ReportableComponent
      */
     public static function isDiscoveredByConvention(array $roles): bool
     {
-        return array_intersect($roles, self::CONVENTION_DISCOVERED_ROLES) !== [];
+        // Asked of every node of a project; array_intersect sorted both lists each time.
+        static $conventional = array_flip(self::CONVENTION_DISCOVERED_ROLES);
+        foreach ($roles as $role) {
+            if (isset($conventional[$role])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -141,11 +149,11 @@ final readonly class ReportableComponent
      */
     public static function isExecutableScript(string $kind, mixed $attributesJson): bool
     {
-        if ($kind !== 'module' || !is_string($attributesJson)) {
+        if ($kind !== 'module') {
             return false;
         }
-        $decoded = json_decode($attributesJson, true);
-        return is_array($decoded) && ($decoded['executable'] ?? false) === true;
+        $decoded = self::attributes($attributesJson);
+        return $decoded !== null && ($decoded['executable'] ?? false) === true;
     }
 
     /**
@@ -163,13 +171,10 @@ final readonly class ReportableComponent
      */
     public static function isTypeDeclaration(mixed $attributesJson): bool
     {
-        if (!is_string($attributesJson)) {
-            return false;
-        }
-        $decoded = json_decode($attributesJson, true);
+        $decoded = self::attributes($attributesJson);
         // `ambient` is the same thing written in an ordinary file:
         // `declare global { ... }` or `declare module 'x' { ... }`.
-        return is_array($decoded)
+        return $decoded !== null
             && (($decoded['declaration_file'] ?? false) === true || ($decoded['ambient'] ?? false) === true);
     }
 
@@ -185,11 +190,8 @@ final readonly class ReportableComponent
      */
     public static function isRuntimeInvoked(mixed $attributesJson): bool
     {
-        if (!is_string($attributesJson)) {
-            return false;
-        }
-        $decoded = json_decode($attributesJson, true);
-        return is_array($decoded) && ($decoded['runtime_invoked'] ?? false) === true;
+        $decoded = self::attributes($attributesJson);
+        return $decoded !== null && ($decoded['runtime_invoked'] ?? false) === true;
     }
 
     /**
@@ -208,12 +210,37 @@ final readonly class ReportableComponent
      */
     public static function isDeclaredOverride(string $kind, mixed $attributesJson): bool
     {
-        if ($kind !== 'method' || !is_string($attributesJson)) {
+        if ($kind !== 'method') {
             return false;
         }
-        $decoded = json_decode($attributesJson, true);
+        $decoded = self::attributes($attributesJson);
 
-        return is_array($decoded) && ($decoded['overrides'] ?? false) === true;
+        return $decoded !== null && ($decoded['overrides'] ?? false) === true;
+    }
+
+    /**
+     * A node's `attributes_json` decoded, or null when it is not a JSON object.
+     *
+     * {@see self::graphLocalExclusion()} asks four of the predicates above of
+     * one node in turn, and each read the same string: the one string last
+     * decoded is remembered, so a node is decoded once rather than four times.
+     *
+     * @return array<mixed>|null
+     */
+    private static function attributes(mixed $attributesJson): ?array
+    {
+        static $last = null;
+        static $decoded = null;
+        if (!is_string($attributesJson)) {
+            return null;
+        }
+        if ($attributesJson !== $last) {
+            $value = json_decode($attributesJson, true);
+            $last = $attributesJson;
+            $decoded = is_array($value) ? $value : null;
+        }
+
+        return $decoded;
     }
 
     /**
