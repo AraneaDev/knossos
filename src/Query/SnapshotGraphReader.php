@@ -72,15 +72,29 @@ final readonly class SnapshotGraphReader
     {
         $facts = [];
         foreach (self::COLUMNS as $table => $columns) {
-            // `+id`: ordered by the id index, SQLite would walk every project's rows; this way it finds the project's and sorts them.
             $select = array_map(static fn(string $column): string => $table === 'edges' && $column === 'attributes_json'
                 ? sprintf("CASE WHEN kind IN ('%s') THEN attributes_json END AS attributes_json", implode("', '", ErasedTypeEdge::KINDS))
                 : $column, $columns);
             // Native rows only, as the archive stores them ({@see EnrichedFacts}).
             $native = EnrichedFacts::nativeCondition($table);
-            $statement = $this->pdo->prepare(sprintf('SELECT %s FROM %s WHERE project_id = :project%s ORDER BY +id LIMIT %d', implode(', ', $select), $table, $native, self::ROW_LIMIT + 1));
+            // Sorted by id here rather than in SQL. Ordered by the id index,
+            // SQLite would walk every project's rows; sorting the project's
+            // rows itself, it spilled them to a temporary file, 1.5 s for
+            // 100,000 edges, where PHP sorts the rows it holds anyway in
+            // 0.2 s. `SORT_STRING` compares bytes, as SQLite's ordering does.
+            // Past the limit the table is refused whichever rows came first.
+            // The id is read to sort by and dropped where the table's columns
+            // leave it out.
+            $statement = $this->pdo->prepare(sprintf('SELECT id AS sort_id, %s FROM %s WHERE project_id = :project%s LIMIT %d', implode(', ', $select), $table, $native, self::ROW_LIMIT + 1));
             $statement->execute(['project' => $projectId]);
-            $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+            $rows = [];
+            while (($row = $statement->fetch(PDO::FETCH_ASSOC)) !== false) {
+                $id = (string) $row['sort_id'];
+                unset($row['sort_id']);
+                $rows[$id] = $row;
+            }
+            ksort($rows, SORT_STRING);
+            $rows = array_values($rows);
             if (count($rows) > self::ROW_LIMIT) {
                 $count = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project%s', $table, $native));
                 $count->execute(['project' => $projectId]);

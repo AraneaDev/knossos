@@ -113,9 +113,7 @@ final class ChangedFilesPlanTest extends KnossosTestCase
         $reads = 0;
         $scans = [];
         foreach (RecordingStatement::drain() as [$sql, $params]) {
-            $plan = $pdo->prepare('EXPLAIN QUERY PLAN ' . $sql);
-            $plan->execute($params);
-            foreach ($plan->fetchAll(PDO::FETCH_COLUMN, 3) as $detail) {
+            foreach (RecordingStatement::plan($pdo, $sql, $params) as $detail) {
                 $detail = (string) $detail;
                 if (preg_match('/^SEARCH \w+ USING (COVERING )?INDEX (edges|nodes)_project_/', $detail) !== 1) {
                     continue;

@@ -53,9 +53,7 @@ final class HubRankingPlanTest extends KnossosTestCase
                 continue;
             }
             ++$planned;
-            $plan = $pdo->prepare('EXPLAIN QUERY PLAN ' . $sql);
-            $plan->execute($params);
-            foreach ($plan->fetchAll(PDO::FETCH_COLUMN, 3) as $detail) {
+            foreach (RecordingStatement::plan($pdo, $sql, $params) as $detail) {
                 $detail = (string) $detail;
                 $table = preg_match('/^SEARCH (edges|bm)\b/', $detail) === 1;
                 if (($table && !str_contains($detail, 'COVERING INDEX')) || ($memberships && str_contains($detail, 'TEMP B-TREE'))) {

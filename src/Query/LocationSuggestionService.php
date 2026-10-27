@@ -175,7 +175,8 @@ final readonly class LocationSuggestionService extends AbstractArchitectureQuery
     private function cohesion(string $projectId, array $boundaryIds, array $boundariesByNode, int $maxEdges, int $deadline, Truncation $truncation): array
     {
         $edgeStatement = $this->pdo->prepare(
-            'SELECT source_id, target_id FROM edges WHERE project_id = ? AND ' . EdgeQueries::kindIn('kind', self::IMPACT_EDGE_KINDS) . ' ORDER BY source_id, target_id, id LIMIT ?',
+            'SELECT source_id, target_id FROM edges ' . EdgeQueries::sourceOrderHint($this->pdo, $projectId, self::IMPACT_EDGE_KINDS) .
+            ' WHERE project_id = ? AND ' . EdgeQueries::kindIn('kind', self::IMPACT_EDGE_KINDS) . ' ORDER BY source_id, target_id, id LIMIT ?',
         );
         $position = 0;
         foreach ([$projectId, ...self::IMPACT_EDGE_KINDS] as $value) {

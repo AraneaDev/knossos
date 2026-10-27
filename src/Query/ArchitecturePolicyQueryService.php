@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Protocol\ConfidenceRank;
+use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
 use Throwable;
@@ -360,6 +361,9 @@ final readonly class ArchitecturePolicyQueryService extends AbstractArchitecture
             'target.kind AS target_kind, target.canonical_name AS target_name, ' .
             // An npm package the TypeScript worker imports is a `package` node marked external, vendor code all the same.
             "json_extract(target.attributes_json, '$.external') AS target_external FROM edges e " .
+            // Every edge of the project, in source order: the hint lets the
+            // source index give that order where the selection is broad.
+            ($sourceFiles === [] && $touchingIds === [] ? EdgeQueries::sourceOrderHint($this->pdo, $projectId, $kinds) . ' ' : '') .
             'JOIN nodes source ON source.id = e.source_id JOIN nodes target ON target.id = e.target_id ' .
             // A policy judges native code by native facts: an enricher's edge is a guess, and
             // judging it would let an enricher's output fail a quality gate.

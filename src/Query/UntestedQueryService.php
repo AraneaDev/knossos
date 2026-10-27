@@ -167,7 +167,10 @@ final readonly class UntestedQueryService extends AbstractArchitectureQueryServi
     {
         $kinds = self::IMPACT_EDGE_KINDS;
         $placeholders = implode(', ', array_fill(0, count($kinds), '?'));
-        $sql = "SELECT DISTINCT target_id FROM edges WHERE project_id = ? AND kind IN ({$placeholders}) AND source_id IN (%s)";
+        // Sought by source: asked for distinct targets, SQLite read the
+        // project's whole target index in order instead, 200 ms a chunk on
+        // 100,000 edges and past the time limit on this repository.
+        $sql = "SELECT DISTINCT target_id FROM edges INDEXED BY edges_project_source_idx WHERE project_id = ? AND kind IN ({$placeholders}) AND source_id IN (%s)";
         while ($frontier !== []) {
             if ($this->now() > $deadline) {
                 return 'time_limit';
