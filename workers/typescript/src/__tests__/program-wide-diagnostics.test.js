@@ -243,7 +243,8 @@ describe("the fallback program for files outside every tsconfig", () => {
             "TS_OUTSIDE_EVERY_PROGRAM",
         ]);
         expect(codes(".site/clean.mts")).toEqual([]);
-        const note = byPath[".site/config.mts"].diagnostics[1];
+        const [error, note] = byPath[".site/config.mts"].diagnostics;
+        expect(error.severity).toBe("info");
         expect(note.severity).toBe("info");
         expect(note.message).toContain("1 error");
         expect(note.evidence).toEqual({
@@ -251,6 +252,61 @@ describe("the fallback program for files outside every tsconfig", () => {
             start_line: 1,
             end_line: 1,
         });
+    });
+});
+
+describe("a file in no TypeScript project", () => {
+    it("reports a file no tsconfig includes as info, its unresolved imports included", () => {
+        // A config mounted into a container is compiled only there, where
+        // `vite` is installed; on the host nothing on its path holds it.
+        const root = fixture({
+            "frontend/tsconfig.json": JSON.stringify({ include: ["src"] }),
+            "frontend/src/a.ts": "export const a: number = 'one';\n",
+            "docker/local/frontend/vite.config.docker.ts":
+                "import { defineConfig } from 'vite';\nexport default defineConfig({});\n",
+        });
+
+        const byPath = scan(
+            new TypeScriptScanner(),
+            root,
+            [
+                "frontend/src/a.ts",
+                "docker/local/frontend/vite.config.docker.ts",
+            ],
+            ["frontend/tsconfig.json"],
+        );
+        const orphan =
+            byPath["docker/local/frontend/vite.config.docker.ts"].diagnostics;
+
+        expect(orphan.map((item) => [item.code, item.severity])).toEqual([
+            ["TS2307", "info"],
+            ["TS_OUTSIDE_EVERY_PROGRAM", "info"],
+        ]);
+        expect(orphan[0].message).toContain(
+            "not part of any TypeScript project",
+        );
+        // A real error in a file a tsconfig includes still surfaces.
+        expect(
+            byPath["frontend/src/a.ts"].diagnostics.map((item) => [
+                item.code,
+                item.severity,
+            ]),
+        ).toEqual([["TS2322", "error"]]);
+    });
+
+    it("keeps errors as errors in a project with no tsconfig at all", () => {
+        const root = fixture({
+            "src/a.ts": "import { x } from 'nowhere';\nexport const y = x;\n",
+        });
+
+        const byPath = scan(new TypeScriptScanner(), root, ["src/a.ts"], []);
+
+        expect(
+            byPath["src/a.ts"].diagnostics.map((item) => [
+                item.code,
+                item.severity,
+            ]),
+        ).toEqual([["TS2307", "error"]]);
     });
 });
 

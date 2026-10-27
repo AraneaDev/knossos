@@ -30,7 +30,8 @@ final readonly class TestModuleRule implements ClassificationRule
      */
     private const AMBIGUOUS_SEGMENTS = ['tests', 'test', 'spec', 'e2e', 'fixtures'];
 
-    private const SOURCE_ROOTS = ['src', 'lib', 'app', 'source'];
+    /** Directories a package keeps its product code in. */
+    public const SOURCE_ROOTS = ['src', 'lib', 'app', 'source'];
 
     /** {@inheritDoc} */
     public function id(): string

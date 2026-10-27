@@ -99,8 +99,11 @@ describe("a file outside every tsconfig importing an ambient module", () => {
             (c) => contributions.push(c),
         );
 
+        // The project has a tsconfig and none includes `other/`, so the file
+        // is in no TypeScript project and carries the note as well.
         expect(contributions[0].diagnostics.map((d) => d.code)).toEqual([
             "TS2307",
+            "TS_OUTSIDE_EVERY_PROGRAM",
         ]);
     });
 

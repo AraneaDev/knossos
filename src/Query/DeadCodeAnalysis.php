@@ -83,6 +83,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             'suppressed' => 0,
             'annotated_false_positives' => 0,
             'annotated_intentional' => 0,
+            'test_support' => 0,
         ];
         $suppressions = $facts->deadCodeSuppressions();
         $annotationsByName = $facts->componentAnnotations();
@@ -113,6 +114,13 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             $reachability = $candidate['reachability'] ?? 'unreferenced';
             if ($memberUse !== null && $reachability === 'unreferenced') {
                 $reachability = 'test_only';
+            }
+            // Reached only by tests and kept outside the package's source
+            // roots (a `scripts/` helper the guard tests import): it is
+            // tooling for the tests, not product code they alone still call.
+            if ($reachability === 'test_only' && $facts->outsideSourceRoots((string) ($candidate['row']['relative_path'] ?? ''))) {
+                ++$excluded['test_support'];
+                continue;
             }
             [$confidence, $reason] = $this->confidenceAndReason($candidate, $reachability, $context, $facts);
             $entry = [

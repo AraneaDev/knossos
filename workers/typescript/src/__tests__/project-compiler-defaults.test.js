@@ -96,6 +96,73 @@ describe("compiler defaults follow the project's own TypeScript", () => {
         expect(scan(root, { "": 5 }).codes).toEqual(["TS2304", "TS7006"]);
     });
 
+    it("loads implicit type libraries only from @types at or below the root", () => {
+        // `tsc` walks every node_modules/@types from the config's directory
+        // upward. One above the scan root cannot be read, and listing its
+        // packages anyway reported each as a missing type definition file.
+        const outer = fixture({
+            "node_modules/@types/gensync/index.d.ts":
+                "declare const gensyncGlobal: number;\n",
+        });
+        const root = join(outer, "project");
+        fs.mkdirSync(join(root, "frontend/src"), { recursive: true });
+        fs.writeFileSync(
+            join(root, "frontend/tsconfig.node.json"),
+            '{"compilerOptions":{"composite":true,"skipLibCheck":true,"module":"ESNext","moduleResolution":"bundler"},"include":["vite.config.ts"]}',
+        );
+        fs.writeFileSync(
+            join(root, "frontend/vite.config.ts"),
+            "export const port: number = fooGlobal;\n",
+        );
+        // The root's own @types still counts, from the config's directory up.
+        fs.mkdirSync(join(root, "node_modules/@types/foo"), {
+            recursive: true,
+        });
+        fs.writeFileSync(
+            join(root, "node_modules/@types/foo/index.d.ts"),
+            "declare const fooGlobal: number;\n",
+        );
+
+        const contributions = [];
+        new TypeScriptScanner().scan(
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["frontend/vite.config.ts"],
+                config_files: ["frontend/tsconfig.node.json"],
+                typescript_versions: { frontend: 5 },
+            },
+            (c) => contributions.push(c),
+        );
+
+        expect(contributions.flatMap((c) => c.diagnostics)).toEqual([]);
+    });
+
+    it("still resolves a types entry naming a package's subpath", () => {
+        const root = fixture({
+            "frontend/tsconfig.json":
+                '{"compilerOptions":{"types":["vitest/globals"],"module":"ESNext","moduleResolution":"bundler"},"include":["src"]}',
+            "frontend/src/a.test.ts": "describe('runs', () => {});\n",
+            "frontend/node_modules/vitest/package.json":
+                '{"name":"vitest","exports":{"./globals":{"types":"./globals.d.ts"}}}',
+            "frontend/node_modules/vitest/globals.d.ts":
+                "declare global {\n    function describe(name: string, body: () => void): void;\n}\nexport {};\n",
+        });
+
+        const contributions = [];
+        new TypeScriptScanner().scan(
+            {
+                limits: SCAN_LIMITS,
+                root,
+                files: ["frontend/src/a.test.ts"],
+                config_files: ["frontend/tsconfig.json"],
+            },
+            (c) => contributions.push(c),
+        );
+
+        expect(contributions.flatMap((c) => c.diagnostics)).toEqual([]);
+    });
+
     it("takes the nearest manifest at or above the config's directory", () => {
         const root = tree({
             "packages/app/tsconfig.json":

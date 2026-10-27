@@ -39,16 +39,18 @@ const UNKNOWN_GLOBAL_CODES = new Set(
  * no `types` or `lib`: a missing global or type library is its gap. Its
  * options are partly made up by the scanner rather than read from the user's
  * config, so an option error that names no file describes those made-up
- * options, not anything the user can fix, and is dropped. When a config sits
- * beside the files and leaves them out (`configured`), a file with errors
- * says so: the project's own typecheck never saw them.
+ * options, not anything the user can fix, and is dropped. When the project
+ * has configs and none of them includes the files (`orphaned`), the files
+ * are part of no TypeScript project: whatever they import may only exist
+ * where they are really compiled (a config mounted into a container), so
+ * each diagnostic is reported as info, marked so, and a note says why.
  */
 export function programDiagnostics(
     program,
     root,
     maxFileBytes,
     fallback,
-    configured = false,
+    orphaned = false,
 ) {
     let byFile = new Map();
     let programLevel = [];
@@ -66,17 +68,33 @@ export function programDiagnostics(
         const kept = items.filter(
             (item) => !UNKNOWN_GLOBAL_CODES.has(item.code),
         );
-        const note = configured ? outsideEveryProgram(relative, kept) : null;
-        byFile.set(relative, note === null ? kept : [...kept, note]);
+        if (!orphaned) {
+            byFile.set(relative, kept);
+            continue;
+        }
+        const note = outsideEveryProgram(relative, kept);
+        const marked = kept.map(asOrphanInfo);
+        byFile.set(relative, note === null ? marked : [...marked, note]);
     }
     return { byFile, programLevel: [] };
 }
 
+/** A diagnostic of a file in no TypeScript project, as info that says so. */
+function asOrphanInfo(item) {
+    if (item.severity === "info") return item;
+    return {
+        ...item,
+        severity: "info",
+        message: `${item.message} (not part of any TypeScript project: no tsconfig or jsconfig includes this file)`,
+    };
+}
+
 /**
  * Why a fallback program's errors in a file went unseen: no tsconfig
- * includes the file (an `include` of `**` skips dot-directories), so a
- * typecheck run from the project's own configs never checks it. Null for a
- * file with no errors, where there is nothing to explain.
+ * includes the file (an `include` of `**` skips dot-directories, a config
+ * mounted into a container is compiled only there), so a typecheck run from
+ * the project's own configs never checks it. Null for a file with no errors,
+ * where there is nothing to explain.
  */
 function outsideEveryProgram(relative, items) {
     const errors = items.filter((item) => item.severity === "error").length;
@@ -84,7 +102,7 @@ function outsideEveryProgram(relative, items) {
     return {
         severity: "info",
         code: "TS_OUTSIDE_EVERY_PROGRAM",
-        message: `No tsconfig or jsconfig includes this file, so a typecheck run from the project's own configs (tsc -p, vue-tsc) never checks it; the ${errors === 1 ? "1 error" : `${errors} errors`} reported here come from a fallback program built for it.`,
+        message: `No tsconfig or jsconfig includes this file, so a typecheck run from the project's own configs (tsc -p, vue-tsc) never checks it; the ${errors === 1 ? "1 error" : `${errors} errors`} reported here as info come from a fallback program built for it.`,
         evidence: { path: relative, start_line: 1, end_line: 1 },
     };
 }

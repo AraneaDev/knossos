@@ -773,3 +773,48 @@ describe("declarations the virtual source appends", () => {
         );
     });
 });
+
+describe("a component a page declares under a shared component's name", () => {
+    it("is the one the page's JSX references, not the shared one", () => {
+        const page = (name) =>
+            "function StatusBadge({ ok }: { ok: boolean }) {\n" +
+            "    return <b>{ok ? 'ok' : 'no'}</b>;\n" +
+            "}\n" +
+            `export function ${name}() {\n` +
+            "    return <StatusBadge ok />;\n" +
+            "}\n";
+        const { contributions } = scan(
+            {
+                "tsconfig.json":
+                    '{"compilerOptions":{"jsx":"react-jsx"},"include":["src"]}',
+                "src/components/common/StatusBadge.tsx":
+                    "export function StatusBadge({ status }: { status: string }) {\n    return <span>{status}</span>;\n}\n",
+                "src/pages/DataQuality.tsx": page("DataQuality"),
+                "src/pages/SystemHealth.tsx": page("SystemHealth"),
+            },
+            [
+                "src/components/common/StatusBadge.tsx",
+                "src/pages/DataQuality.tsx",
+                "src/pages/SystemHealth.tsx",
+            ],
+            ["tsconfig.json"],
+        );
+
+        const targets = edges(contributions, "references").map(
+            (edge) => edge.target,
+        );
+        expect(targets.sort()).toEqual([
+            "ts:function:src/pages/DataQuality.tsx#StatusBadge",
+            "ts:function:src/pages/SystemHealth.tsx#StatusBadge",
+        ]);
+        // The shared one is reached by nothing, so it stays dead.
+        expect(
+            contributions
+                .flatMap((c) => c.edges)
+                .filter((edge) => edge.kind !== "contains")
+                .map((edge) => edge.target),
+        ).not.toContain(
+            "ts:function:src/components/common/StatusBadge.tsx#StatusBadge",
+        );
+    });
+});

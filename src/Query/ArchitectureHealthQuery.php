@@ -274,6 +274,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         $excluded = $found['excluded'] + [
             'inherited' => 0, 'contracts' => 0, 'constructors' => 0, 'entry_scripts' => 0,
             'type_declarations' => 0, 'suppressed' => 0, 'annotated_false_positives' => 0, 'annotated_intentional' => 0,
+            'test_support' => 0,
         ];
         // Tallied on the FULL list, not the page: ordering test_only last means
         // the page hides them first, and a summary built from it would then
@@ -315,6 +316,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                     'excluded_constructors' => $excluded['constructors'],
                     'excluded_entry_scripts' => $excluded['entry_scripts'],
                     'excluded_type_declarations' => $excluded['type_declarations'],
+                    'excluded_test_support' => $excluded['test_support'],
                     'excluded_convention_discovered' => $found['convention_excluded'],
                     'suppressed_candidates' => $excluded['suppressed'],
                     'annotated_false_positives' => $excluded['annotated_false_positives'],

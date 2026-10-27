@@ -230,6 +230,26 @@ function withSvelteRunes(fileNames, options, host) {
         : fileNames;
 }
 
+/**
+ * Whether a directory is a `node_modules/@types` outside the root.
+ *
+ * A config that sets no `typeRoots` loads every package of every
+ * `node_modules/@types` from its directory upward, as `tsc` does. Walking on
+ * past the root, the compiler listed the packages of one above it, then could
+ * not read them through a host that refuses every path outside the root, and
+ * reported each as a missing type definition file (TS2688) that `tsc` never
+ * reports. Setting `typeRoots` to the ones inside instead changes how a
+ * `types` entry such as `vitest/globals` resolves, so the directory is hidden
+ * from the host rather than left out of the options.
+ */
+function typeRootOutside(root, directory) {
+    return (
+        path.basename(directory) === "@types" &&
+        path.basename(path.dirname(directory)) === "node_modules" &&
+        relativeInside(root, directory) === null
+    );
+}
+
 export function createRestrictedProgram(
     root,
     parsed,
@@ -279,6 +299,9 @@ export function createRestrictedProgram(
             maxFileBytes,
             exclusions,
         );
+    const directoryExists = host.directoryExists;
+    host.directoryExists = (directory) =>
+        !typeRootOutside(root, directory) && directoryExists(directory);
     host.realpath = (file) =>
         recordingRealpath(host, root, reads, maxFileBytes, file);
     // A stat-then-read (exceedsByteCap followed by ts.sys.readFile) leaves a

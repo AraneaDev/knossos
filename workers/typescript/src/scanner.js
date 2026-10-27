@@ -213,7 +213,7 @@ function noteDeclarationFiles(answer, files) {
  * @property {(relative: string, program: string) => boolean} ownedByProgram
  * @property {Map<string, string>} [fallbackGroupOf]
  * @property {string} [fallbackDirectory]
- * @property {boolean} [fallbackConfigured] whether a config sits beside the fallback group, which leaves its files out
+ * @property {boolean} [fallbackOrphaned] whether the project has a config at all, so the fallback program's files are left out of every TypeScript project
  * @property {string} [owner] the config whose program is being built
  * @property {string} [program] the key of the program being built
  */
@@ -523,6 +523,7 @@ export class TypeScriptScanner {
             parsedConfigs,
             request.packageDirectories,
         );
+        request.fallbackOrphaned = parsedConfigs.length > 0;
         request.fallbackGroupOf = new Map();
         for (const source of [groups, members]) {
             for (const [directory, group] of source) {
@@ -543,7 +544,6 @@ export class TypeScriptScanner {
             ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
             request.program = fallbackProgramKey(root, directory);
             request.fallbackDirectory = directory;
-            request.fallbackConfigured = group.parsed !== undefined;
             tally(
                 this.#scanProgram(
                     `${directory}${FALLBACK_KEY}`,
@@ -666,7 +666,7 @@ export class TypeScriptScanner {
                 root,
                 maxFileBytes,
                 fallback,
-                fallback && request.fallbackConfigured === true,
+                fallback && request.fallbackOrphaned === true,
             );
         // A bundler config the program's options were read from counts as
         // its configuration: what could not be read of it applies to all.
