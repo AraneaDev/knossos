@@ -53,7 +53,10 @@ import {
     storeMemberNames,
 } from "./syntax-predicates.js";
 import { TableDispatch } from "./table-dispatch.js";
-import { TypeScriptApplicationEnricher } from "./typescript-application-enricher.js";
+import {
+    importsModule,
+    TypeScriptApplicationEnricher,
+} from "./typescript-application-enricher.js";
 import {
     callName,
     functionBindingOf,
@@ -600,13 +603,17 @@ export class TypeScriptLanguageFactCollector {
         this.tables.objectArguments(node, signature, source);
 
         const calledName = callName(node.expression);
-        if (source !== null && isHookCallee(node.expression) && target !== null)
+        const framework =
+            source !== null && target !== null && isHookCallee(node.expression)
+                ? hookFramework(signature?.declaration, node)
+                : null;
+        if (framework !== null)
             this.addEdge(
                 "uses_hook",
                 source,
                 target,
                 node,
-                { framework: "react" },
+                { framework },
                 "framework_convention",
             );
         this.application.call(node, source, calledName);
@@ -1160,6 +1167,22 @@ function callsOwnSuperMember(node, member) {
         });
     }
     return false;
+}
+
+/**
+ * Which framework a `use`-named call is a hook of, or null for none. The
+ * file declaring the callee says first, as it does for the declaration's own
+ * react.hook or vue.composable role; a callee declared with neither import,
+ * or one the checker cannot see, takes the calling file's. A `useFormatter()`
+ * with neither in scope is an ordinary call.
+ */
+function hookFramework(declaration, call) {
+    for (const file of [declaration?.getSourceFile(), call.getSourceFile()]) {
+        if (file === undefined) continue;
+        if (importsModule(file, "react")) return "react";
+        if (importsModule(file, "vue")) return "vue";
+    }
+    return null;
 }
 
 function evidence(sourceFile, relative, node) {

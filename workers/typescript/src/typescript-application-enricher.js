@@ -436,7 +436,7 @@ function containsJsx(node) {
  * library in scope says which — or whether it is neither, as with a
  * `useDatabase()` helper in a plain Node service.
  */
-function importsModule(sourceFile, packageName) {
+export function importsModule(sourceFile, packageName) {
     const cache = (sourceFile.knossosImportedModules ??=
         collectImports(sourceFile));
     return cache.has(packageName);
