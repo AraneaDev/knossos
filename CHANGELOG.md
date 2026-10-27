@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.4](https://github.com/AraneaDev/knossos/compare/v0.40.3...v0.40.4) (2026-10-27)
+
+
+### Performance
+
+* decode a node's attributes once and look up convention roles by key in dead-code classification ([#416](https://github.com/AraneaDev/knossos/issues/416)) ([7940f52](https://github.com/AraneaDev/knossos/commit/7940f52ceb5404daff8475a62674b351276ce6f5))
+
 ## [0.40.3](https://github.com/AraneaDev/knossos/compare/v0.40.2...v0.40.3) (2026-10-27)
 
 
