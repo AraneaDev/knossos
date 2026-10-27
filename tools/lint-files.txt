@@ -726,6 +726,7 @@ php	tests/phpunit/Query/EnrichedFactsExclusionTest.php
 php	tests/phpunit/Query/EntryPointCriteriaTest.php
 php	tests/phpunit/Query/ExplainFlowBoundsTest.php
 php	tests/phpunit/Query/ExternalPolicyTargetTest.php
+php	tests/phpunit/Query/FileContextPlanTest.php
 php	tests/phpunit/Query/FileContextServiceTest.php
 php	tests/phpunit/Query/FileDetailServiceTest.php
 php	tests/phpunit/Query/FileFanInQueryTest.php
