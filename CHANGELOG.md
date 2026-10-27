@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.7](https://github.com/AraneaDev/knossos/compare/v0.40.6...v0.40.7) (2026-10-27)
+
+
+### Performance
+
+* count hub degrees and read boundary memberships from indexes alone ([#422](https://github.com/AraneaDev/knossos/issues/422)) ([da43cdc](https://github.com/AraneaDev/knossos/commit/da43cdc7bfbacdee8ddc23da44d1bad1fbb5b02f))
+
 ## [0.40.6](https://github.com/AraneaDev/knossos/compare/v0.40.5...v0.40.6) (2026-10-27)
 
 
