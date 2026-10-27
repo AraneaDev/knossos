@@ -690,6 +690,7 @@ php	tests/phpunit/Query/BranchDiffServiceTest.php
 php	tests/phpunit/Query/CandidateConfidenceSummaryTest.php
 php	tests/phpunit/Query/CandidateGraphFactsTest.php
 php	tests/phpunit/Query/ChangeImpactRankingTest.php
+php	tests/phpunit/Query/ChangedFilesPlanTest.php
 php	tests/phpunit/Query/ComponentBoundsTest.php
 php	tests/phpunit/Query/ComponentDetailServiceTest.php
 php	tests/phpunit/Query/ComponentSpanTest.php

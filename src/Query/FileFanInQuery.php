@@ -230,15 +230,16 @@ final readonly class FileFanInQuery extends AbstractArchitectureQueryService
      */
     private function dependents(string $projectId, string $path, int $limit): array
     {
-        $kinds = implode(',', array_fill(0, count(self::IMPACT_EDGE_KINDS), '?'));
+        // Read from the file out, as select() reads a few files.
+        $kinds = EdgeQueries::kindFilteredIn('e.kind', self::IMPACT_EDGE_KINDS);
         $statement = $this->pdo->prepare(<<<SQL
             SELECT DISTINCT sf.relative_path
-              FROM edges e
-              JOIN nodes tn ON tn.id = e.target_id
-              JOIN files tf ON tf.id = tn.file_id
-              JOIN nodes sn ON sn.id = e.source_id
+              FROM files tf
+              CROSS JOIN nodes tn ON tn.file_id = tf.id
+              CROSS JOIN edges e ON e.project_id = tf.project_id AND e.target_id = tn.id
+              CROSS JOIN nodes sn ON sn.id = e.source_id
               JOIN files sf ON sf.id = sn.file_id
-             WHERE e.project_id = ? AND e.kind IN ($kinds) AND {$this->native('e')} AND tf.relative_path = ? AND sf.id <> tf.id
+             WHERE tf.project_id = ? AND $kinds AND {$this->native('e')} AND tf.relative_path = ? AND sf.id <> tf.id
                AND {$this->owned('sn')}
                AND {$this->owned('tn')}
              ORDER BY sf.relative_path

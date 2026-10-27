@@ -44,8 +44,11 @@ final class EdgePage
                 . 'target.display_name AS target_display_name, target.confidence AS target_confidence';
             $anchor = 'e.source_id = ? ';
         } else {
+            // The node and its members as one list of targets, each sought: an
+            // OR of the two, or a list read per row, made SQLite read every
+            // edge of the project and look its target up, 4 s for a class.
             $anchor = $withMembers
-                ? "(e.target_id = ? OR e.target_id IN (SELECT target_id FROM edges WHERE project_id = e.project_id AND kind = 'contains' AND source_id = ?)) "
+                ? "e.target_id IN (SELECT ? UNION ALL SELECT target_id FROM edges WHERE project_id = ? AND kind = 'contains' AND source_id = ?) "
                 : 'e.target_id = ? ';
         }
         $statement = $pdo->prepare(
@@ -56,7 +59,7 @@ final class EdgePage
             'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY ' . ConfidenceRank::of('e.confidence') . ' DESC, e.kind, e.id LIMIT 501',
         );
-        $anchorValues = $direction === Direction::Incoming && $withMembers ? [$nodeId, $nodeId] : [$nodeId];
+        $anchorValues = $direction === Direction::Incoming && $withMembers ? [$nodeId, $projectId, $nodeId] : [$nodeId];
         $statement->execute([$projectId, ...$anchorValues, ...$kinds, $minRank]);
         $rows = $statement->fetchAll();
         [$rows, $cut] = Page::cut($rows, self::LIMIT);
