@@ -14,7 +14,7 @@ use PDO;
  */
 final class EdgeQueries
 {
-    /** How many of a project's edges {@see self::sourceOrderHint()} looks at. */
+    /** How many of a project's edges {@see self::selectsAFairShare()} looks at. */
     private const SAMPLE = 2048;
 
     /**
@@ -47,7 +47,8 @@ final class EdgeQueries
     /**
      * The index hint for reading a project's edges of `$kinds` in source order:
      * `INDEXED BY edges_project_source_idx` when those kinds are a fair share
-     * of the project's edges, else `INDEXED BY edges_project_kind_idx`.
+     * of the project's edges ({@see self::selectsAFairShare()}), else
+     * `INDEXED BY edges_project_kind_idx`.
      *
      * In source order the source index gives most of the order, and SQLite
      * sorts each source's few edges alone. Through the kind index it sorts
@@ -55,16 +56,31 @@ final class EdgeQueries
      * file: 1.4 s on 85,000 edges, where the source index took none. Which one
      * SQLite picks turns on how its parameters are bound, not on the data. Few
      * selected edges are the other way round: the kind index reaches them
-     * alone, where the source index walks every edge of the project.
-     *
-     * The share is judged from the first {@see self::SAMPLE} entries of the
-     * source index, which run through the sources by id, a hash, so they stand
-     * for the whole: under a millisecond. The hint changes how the edges are
-     * read, never which, nor their order.
+     * alone, where the source index walks every edge of the project. The hint
+     * changes how the edges are read, never which, nor their order.
      *
      * @param list<string> $kinds
      */
     public static function sourceOrderHint(PDO $pdo, string $projectId, array $kinds): string
+    {
+        // Named either way: left to itself, SQLite's choice for a narrow
+        // selection differs between releases (3.46 walks the source index).
+        return self::selectsAFairShare($pdo, $projectId, $kinds) ? 'INDEXED BY edges_project_source_idx' : 'INDEXED BY edges_project_kind_idx';
+    }
+
+    /**
+     * Whether the project's edges of `$kinds` are a tenth or more of its
+     * edges: enough that walking an endpoint index costs less than seeking
+     * each kind and reading its rows.
+     *
+     * Judged from the first {@see self::SAMPLE} entries of the source index,
+     * which run through the sources by id, a hash, so they stand for the
+     * whole: under a millisecond. A project too small to fill the sample is
+     * read quickly either way, and answers no.
+     *
+     * @param list<string> $kinds
+     */
+    public static function selectsAFairShare(PDO $pdo, string $projectId, array $kinds): bool
     {
         $sample = $pdo->prepare(sprintf(
             'SELECT COUNT(*), COALESCE(SUM(kind IN (%s)), 0) FROM (SELECT kind FROM edges INDEXED BY edges_project_source_idx WHERE project_id = ? LIMIT %d)',
@@ -74,9 +90,6 @@ final class EdgeQueries
         $sample->execute([...$kinds, $projectId]);
         [$sampled, $selected] = array_map('intval', (array) $sample->fetch(PDO::FETCH_NUM));
 
-        // Named either way: left to itself, SQLite's choice for a narrow
-        // selection differs between releases (3.46 walks the source index).
-        // A project too small to fill the sample is read quickly either way.
-        return $sampled >= self::SAMPLE && $selected * 10 >= $sampled ? 'INDEXED BY edges_project_source_idx' : 'INDEXED BY edges_project_kind_idx';
+        return $sampled >= self::SAMPLE && $selected * 10 >= $sampled;
     }
 }
