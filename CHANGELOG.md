@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.3](https://github.com/AraneaDev/knossos/compare/v0.40.2...v0.40.3) (2026-10-27)
+
+
+### Performance
+
+* seek a node's edges once, not once per kind, in the dead-code candidate search ([#414](https://github.com/AraneaDev/knossos/issues/414)) ([7945d6a](https://github.com/AraneaDev/knossos/commit/7945d6acd60cfb14a53977cc394c5146bb09f8be))
+
 ## [0.40.2](https://github.com/AraneaDev/knossos/compare/v0.40.1...v0.40.2) (2026-10-27)
 
 
