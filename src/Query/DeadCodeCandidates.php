@@ -130,9 +130,10 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
         $ids = array_map('strval', array_keys($chunk));
         $rows = $this->rows($ids);
         $roles = $this->roles($ids);
-        $boundaries = $this->boundaryNames($ids);
-        $facts->degrees($ids);
-        $provisional = [];
+        // Boundaries and degrees are read for the candidates alone: the rest,
+        // test code above all, are counted here and dropped, and on a real
+        // project they are most of the chunk.
+        $kept = [];
         foreach ($chunk as $id => $reachability) {
             $row = $rows[$id] ?? null;
             if ($row === null) {
@@ -143,9 +144,17 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
                 ++$found['convention_excluded'];
                 continue;
             }
-            if (!$analysis->isCandidate($row, $nodeRoles)) {
-                continue;
+            if ($analysis->isCandidate($row, $nodeRoles)) {
+                $kept[$id] = $reachability;
             }
+        }
+        $keptIds = array_map('strval', array_keys($kept));
+        $boundaries = $this->boundaryNames($keptIds);
+        $facts->degrees($keptIds);
+        $provisional = [];
+        foreach ($kept as $id => $reachability) {
+            $row = $rows[$id];
+            $nodeRoles = $roles[$id] ?? [];
             $provisional[$id] = [
                 'component' => self::component((string) $id, $row, $nodeRoles, $boundaries[$id] ?? []),
                 'row' => $row, 'roles' => $nodeRoles, 'out_degree' => $facts->outDegree((string) $id), 'reachability' => $reachability,

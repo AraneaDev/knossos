@@ -69,6 +69,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             }
         }
         $inheritance = $this->inheritedMethodContext($projectId, array_keys($methodNames), $methodNames);
+        // exclusionOf() asks the in-degree of a contract's declaring type and
+        // of an engine-invoked member's owner, which is that type. A used type
+        // is no candidate, so its degrees were not read with the chunk, and
+        // each was read alone: read them all at once instead.
+        $facts->degrees(array_values(array_unique(array_filter(array_column($inheritance, 'declaring_type')))));
         $excluded = [
             'inherited' => 0,
             'contracts' => 0,

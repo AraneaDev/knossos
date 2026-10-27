@@ -702,6 +702,7 @@ php	tests/phpunit/Query/DeadCodeCandidatePlanTest.php
 php	tests/phpunit/Query/DeadCodeVisitorHooksTest.php
 php	tests/phpunit/Query/DeadlineBoundaryTest.php
 php	tests/phpunit/Query/DeclaredPolicyCheckTest.php
+php	tests/phpunit/Query/DeclaringTypeDegreesTest.php
 php	tests/phpunit/Query/DiagnosticSourceTest.php
 php	tests/phpunit/Query/DiagnosticsContextTest.php
 php	tests/phpunit/Query/DiagnosticsQueryServiceTest.php
