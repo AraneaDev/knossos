@@ -813,6 +813,7 @@ php	tests/phpunit/Query/SupertypeMethodsTest.php
 php	tests/phpunit/Query/TestImpactReportTest.php
 php	tests/phpunit/Query/TestImpactTest.php
 php	tests/phpunit/Query/TestReachSearchTest.php
+php	tests/phpunit/Query/TestSupportCandidatesTest.php
 php	tests/phpunit/Query/TrendRowLimitTest.php
 php	tests/phpunit/Query/TrendSnapshotConsistencyTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php

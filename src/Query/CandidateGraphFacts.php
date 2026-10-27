@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Classification\TestModuleRule;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
@@ -28,6 +29,9 @@ final class CandidateGraphFacts
 
     /** @var array<string, bool> */
     private array $prefixes = [];
+
+    /** @var array<string, bool> directory prefix => whether a source root below it holds a file */
+    private array $sourceRoots = [];
 
     /**
      * Degrees memoized per id, one flat map each rather than an array per id:
@@ -102,6 +106,56 @@ final class CandidateGraphFacts
         }
 
         return $this->prefixes[$prefix];
+    }
+
+    /**
+     * Whether a file sits outside the source roots of a package that keeps
+     * its product code in one: no directory on its path is a source root
+     * (`src`, `lib`, `app`, `source`), and a directory above it holds one
+     * with a file in it. `frontend/scripts/tokens.mjs` beside
+     * `frontend/src/` is; anything under `src/` is not, and neither is a
+     * file of a package that keeps its code at its own top level, where
+     * there is no source root to be outside of.
+     */
+    public function outsideSourceRoots(string $relativePath): bool
+    {
+        $segments = explode('/', $relativePath);
+        array_pop($segments);
+        foreach ($segments as $segment) {
+            if (in_array(strtolower($segment), TestModuleRule::SOURCE_ROOTS, true)) {
+                return false;
+            }
+        }
+        $directory = '';
+        foreach ([...$segments, null] as $segment) {
+            if ($this->holdsSourceRoot($directory)) {
+                return true;
+            }
+            if ($segment !== null) {
+                $directory .= $segment . '/';
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether a source root directly below `$directory` (`''` or ending in `/`) holds a file. */
+    private function holdsSourceRoot(string $directory): bool
+    {
+        if (!array_key_exists($directory, $this->sourceRoots)) {
+            $this->sourceRoots[$directory] = false;
+            $statement = $this->pdo->prepare('SELECT 1 FROM files WHERE project_id = ? AND relative_path >= ? AND relative_path < ? LIMIT 1');
+            foreach (TestModuleRule::SOURCE_ROOTS as $root) {
+                // `0` is the byte after `/`, so the range is every path below it.
+                $statement->execute([$this->projectId, $directory . $root . '/', $directory . $root . '0']);
+                if ($statement->fetchColumn() !== false) {
+                    $this->sourceRoots[$directory] = true;
+                    break;
+                }
+            }
+        }
+
+        return $this->sourceRoots[$directory];
     }
 
     /**

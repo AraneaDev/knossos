@@ -81,11 +81,19 @@ types>` that is not installed) is left out. A missing module, a type error
   not reported for these files: the fallback options are partly made up by the
   scanner, so the error would not be about your config. The config's
   `ignoreDeprecations` comes along with its resolution options, so a deprecation
-  you silenced stays silent here too. When the file's own package has a
-  tsconfig that leaves it out, a file with errors also gets an `info`
+  you silenced stays silent here too. When the project has a tsconfig and
+  none of them includes the file, the file is part of no TypeScript project:
+  every diagnostic on it is reported as `info`, marked "not part of any
+  TypeScript project", so it does not count toward the project's errors. A
+  config mounted into a container is one such file: what it imports exists
+  only where it is compiled. A file with errors also gets an `info`
   diagnostic, `TS_OUTSIDE_EVERY_PROGRAM`: the project's own typecheck (`tsc
 -p`, `vue-tsc`) never sees those errors. An `include` of `**/*.mts` skips
-  dot-directories such as `.vitepress/`, which is the usual cause.
+  dot-directories such as `.vitepress/`, another usual cause. In a project
+  with no tsconfig at all, errors stay errors.
+- A config that sets no `typeRoots` loads its implicit type libraries from
+  every `node_modules/@types` from the config's directory up to the scanned
+  root, as `tsc` does. An `@types` directory above the root is not read.
 - A module importing `k6` or `k6/*` is a k6 load-test script: it is
   `executable`, and its default export, `setup`, `teardown`, `handleSummary` and
   every function a scenario names as its `exec` are marked `runtime_invoked`,
