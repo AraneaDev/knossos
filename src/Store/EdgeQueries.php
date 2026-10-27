@@ -20,4 +20,21 @@ final class EdgeQueries
     {
         return sprintf('%s IN (%s)', $column, implode(',', array_fill(0, count($kinds), '?')));
     }
+
+    /**
+     * {@see self::kindIn()} checked on each row rather than sought in an index,
+     * for a read that already seeks one source or target.
+     *
+     * The unary `+` keeps `kind` out of the index key. Without it SQLite seeks
+     * (project, target, kind) once per kind, 23 by default, where one seek
+     * of (project, target) reaches the few edges a node has; over 50,000
+     * nodes that was 1.5 s against 0.2 s. A read of every edge of a kind
+     * across the project wants the kind index, and keeps {@see self::kindIn()}.
+     *
+     * @param list<string> $kinds
+     */
+    public static function kindFilteredIn(string $column, array $kinds): string
+    {
+        return '+' . self::kindIn($column, $kinds);
+    }
 }

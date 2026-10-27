@@ -315,7 +315,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
     private function inbound(array $edgeKinds): string
     {
         return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id AND ' . EnrichedFacts::excludeSql('e') . ' '
-            . 'AND ' . EdgeQueries::kindIn('e.kind', $edgeKinds) . ' '
+            . 'AND ' . EdgeQueries::kindFilteredIn('e.kind', $edgeKinds) . ' '
             . 'AND ' . ConfidenceRank::atLeast('e.confidence');
     }
 }

@@ -698,6 +698,7 @@ php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CyclesTest.php
 php	tests/phpunit/Query/DashboardServiceTest.php
+php	tests/phpunit/Query/DeadCodeCandidatePlanTest.php
 php	tests/phpunit/Query/DeadCodeVisitorHooksTest.php
 php	tests/phpunit/Query/DeadlineBoundaryTest.php
 php	tests/phpunit/Query/DeclaredPolicyCheckTest.php
