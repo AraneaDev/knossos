@@ -162,7 +162,7 @@ FROM runtime_deps AS runtime
 # x-release-please-start-version
 LABEL org.opencontainers.image.title="Knossos" \
       org.opencontainers.image.description="Local evidence-backed architecture intelligence over MCP" \
-      org.opencontainers.image.version="0.40.3"
+      org.opencontainers.image.version="0.40.4"
 # x-release-please-end
 
 # The source both images carry, from the sources stage above.
@@ -387,7 +387,7 @@ FROM quality_tools AS quality
 # x-release-please-start-version
 LABEL org.opencontainers.image.title="Knossos" \
       org.opencontainers.image.description="Local evidence-backed architecture intelligence over MCP" \
-      org.opencontainers.image.version="0.40.3"
+      org.opencontainers.image.version="0.40.4"
 # x-release-please-end
 
 # The same source the runtime image carries, from the sources stage.
