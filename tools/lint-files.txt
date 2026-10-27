@@ -812,6 +812,7 @@ php	tests/phpunit/Query/TestImpactReportTest.php
 php	tests/phpunit/Query/TestImpactTest.php
 php	tests/phpunit/Query/TestReachSearchTest.php
 php	tests/phpunit/Query/TrendRowLimitTest.php
+php	tests/phpunit/Query/TrendSnapshotConsistencyTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php
 php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
@@ -1406,6 +1407,7 @@ js	workers/typescript/src/__tests__/program-environment.test.js
 js	workers/typescript/src/__tests__/program-too-deep.test.js
 js	workers/typescript/src/__tests__/program-wide-diagnostics.test.js
 js	workers/typescript/src/__tests__/project-compiler-defaults.test.js
+js	workers/typescript/src/__tests__/react-hooks.test.js
 js	workers/typescript/src/__tests__/read-attribution.test.js
 js	workers/typescript/src/__tests__/scanner.test.js
 js	workers/typescript/src/__tests__/shebang-and-rejection.test.js

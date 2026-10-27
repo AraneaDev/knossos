@@ -241,6 +241,48 @@ def declared_global(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     return names
 
 
+def superseded_definitions(tree: ast.Module) -> set[ast.AST]:
+    """The function definitions a later one in the same block replaces before anything can reach them.
+
+    Each scope binds a name to its last ``def``, so an earlier body never runs
+    under that name. An earlier definition stays live when it is decorated (a
+    ``@x.setter`` or ``@overload`` chain hands the earlier function on) or
+    when its name is read before the later definition binds it, as in
+    ``register(f)`` or ``@f.register``.
+    """
+    superseded: set[ast.AST] = set()
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+    for parent in ast.walk(tree):
+        for _, block in ast.iter_fields(parent):
+            if not isinstance(block, list) or not block or not isinstance(block[0], ast.stmt):
+                continue
+            for index, statement in enumerate(block):
+                if not isinstance(statement, functions) or statement.decorator_list:
+                    continue
+                later = next(
+                    (
+                        (position, candidate)
+                        for position, candidate in enumerate(block[index + 1 :], start=index + 1)
+                        if isinstance(candidate, functions) and candidate.name == statement.name
+                    ),
+                    None,
+                )
+                if later is None:
+                    continue
+                position, redefinition = later
+                # What runs before the later name binds: the statements between, and the later def's own header.
+                between: list[ast.AST] = [*block[index + 1 : position], *redefinition.decorator_list, redefinition.args]
+                if redefinition.returns is not None:
+                    between.append(redefinition.returns)
+                if not any(
+                    isinstance(read, ast.Name) and read.id == statement.name and isinstance(read.ctx, ast.Load)
+                    for node in between
+                    for read in ast.walk(node)
+                ):
+                    superseded.add(statement)
+    return superseded
+
+
 def calls_own_super_member(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Whether ``node`` itself calls ``super().<its own name>``, in either ``super`` form.
 

@@ -15,6 +15,7 @@ from .ast_helpers import (
     is_type_checking_guard,
     names_main_guard,
     ref,
+    superseded_definitions,
 )
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
 from .launches import LaunchRecorder
@@ -74,6 +75,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.is_package = PurePosixPath(relative).stem == "__init__"
         self.module_collision = module_collision
         self.tree = tree
+        self.superseded = superseded_definitions(tree)
         self.aliases: dict[str, str] = {}
         self.containers: list[tuple[str, str, str]] = []
         self.local_function_scopes: list[dict[str, str]] = []
@@ -383,6 +385,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.function(node, async_function=True)
 
     def function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, async_function: bool) -> None:
+        if node in self.superseded:
+            # A later `def` of the same name rebinds it, so this body runs as nothing the graph can name.
+            return
         if self.containers and self.containers[-1][2] == "class":
             parent_id, parent_canonical, _ = self.containers[-1]
             kind, canonical = "method", f"{parent_canonical}::{node.name}"

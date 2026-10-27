@@ -298,13 +298,39 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
 
     public function architectureTrends(string $projectId, int $limit = 10, ?string $releaseFrom = null): ResultEnvelope
     {
+        $cache = new SnapshotMetricsCache($this->pdo);
+        // One read transaction from the project row to the last figure, so a
+        // scan that publishes partway cannot pair a scan id listed here with
+        // figures counted from the scan that replaced it. Figures for the
+        // cache are stored once it closes, so the read never holds the write lock.
+        $own = !$this->pdo->inTransaction() && $this->pdo->beginTransaction();
+        try {
+            [$trends, $computed] = $this->trendsInOneRead($cache, $projectId, $limit, $releaseFrom);
+        } finally {
+            if ($own) {
+                $this->pdo->commit();
+            }
+        }
+        foreach ($computed as [$scanId, $capturedAt, $byteSize, $figures]) {
+            $cache->put($scanId, $capturedAt, $byteSize, $figures);
+        }
+        return $trends;
+    }
+
+    /**
+     * The trend, and the archived figures it computed for the cache to store.
+     *
+     * @return array{0: ResultEnvelope, 1: list<array{0: string, 1: string, 2: int, 3: array{counts: array<string, int>, metrics: array<string, int>}}>}
+     */
+    private function trendsInOneRead(SnapshotMetricsCache $cache, string $projectId, int $limit, ?string $releaseFrom): array
+    {
         $project = $this->project($projectId);
         if ($limit < 2 || $limit > 20) {
             throw new InvalidArgumentException('limit must be between 2 and 20.');
         }
         $listed = $this->catalog->listSnapshots($projectId, $limit);
         $series = [];
-        $cache = new SnapshotMetricsCache($this->pdo);
+        $computed = [];
         foreach (array_reverse($listed->data['snapshots']) as $snapshot) {
             if ($snapshot['retained'] && $snapshot['complete_archive'] === false) {
                 // Stopped short of its facts: a snapshot past the row cap kept what COUNT(*) said of it, a partial point.
@@ -328,7 +354,7 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                     continue;
                 }
                 if ($archived) {
-                    $cache->put($snapshot['scan_id'], (string) $snapshot['captured_at'], (int) $snapshot['byte_size'], $figures);
+                    $computed[] = [$snapshot['scan_id'], (string) $snapshot['captured_at'], (int) $snapshot['byte_size'], $figures];
                 }
             }
             $series[] = ['scan_id' => $snapshot['scan_id'], 'active' => $snapshot['active'], 'complete' => true,
@@ -359,9 +385,9 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                 'changes' => $diff->data['changes'], 'truncated' => $diff->truncated,
             ];
         }
-        return new ResultEnvelope($projectId, $project['active_scan_id'] ?? '', sprintf('Reported architecture trends across %d snapshot%s.', count($series), count($series) === 1 ? '' : 's'), [
+        return [new ResultEnvelope($projectId, $project['active_scan_id'] ?? '', sprintf('Reported architecture trends across %d snapshot%s.', count($series), count($series) === 1 ? '' : 's'), [
             'series' => $series, 'release_notes' => $releaseNotes, 'bounds' => ['limit' => $limit, 'available_truncated' => $listed->truncated],
-        ], warnings: ['Trend metrics are bounded static signals and scanner/config fingerprint changes can affect comparability.'], truncated: $listed->truncated || ($releaseNotes['truncated'] ?? false));
+        ], warnings: ['Trend metrics are bounded static signals and scanner/config fingerprint changes can affect comparability.'], truncated: $listed->truncated || ($releaseNotes['truncated'] ?? false)), $computed];
     }
 
     /**
