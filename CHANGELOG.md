@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.6](https://github.com/AraneaDev/knossos/compare/v0.40.5...v0.40.6) (2026-10-27)
+
+
+### Fixes
+
+* drop three classes of false positives from TypeScript scans ([#420](https://github.com/AraneaDev/knossos/issues/420)) ([ff1c4ac](https://github.com/AraneaDev/knossos/commit/ff1c4ac4748aaffd34857a729d0f214b167ba1a8))
+
 ## [0.40.5](https://github.com/AraneaDev/knossos/compare/v0.40.4...v0.40.5) (2026-10-27)
 
 
