@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.8](https://github.com/AraneaDev/knossos/compare/v0.40.7...v0.40.8) (2026-10-27)
+
+
+### Performance
+
+* build the dependency-cycle graph without a nested array per edge ([#424](https://github.com/AraneaDev/knossos/issues/424)) ([4b601f0](https://github.com/AraneaDev/knossos/commit/4b601f0769f4f973f526d9a3186341939d79f96d))
+
 ## [0.40.7](https://github.com/AraneaDev/knossos/compare/v0.40.6...v0.40.7) (2026-10-27)
 
 
