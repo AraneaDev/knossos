@@ -392,8 +392,12 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * repository-wide boundaries left out because they partition nothing.
      *
      * Degree is two grouped counts, one per end, so each reads a covering
-     * index (`edges_project_target_idx`, `edges_project_source_idx`) when no
-     * confidence filter is asked for. The counts finish before the first row
+     * index (`edges_project_target_idx`, `edges_project_source_idx`, which
+     * hold the origin enriched edges are left out by) when no confidence
+     * filter is asked for. Memberships are read in node order from
+     * `boundary_memberships_project_node_idx` alone, which holds the boundary
+     * too; ordering by `bm.boundary_id` rather than its equal `b.id` keeps that
+     * order the index's own, with no sort. The counts finish before the first row
      * arrives, so the first `page` rows (the hubs a caller asked for) are kept
      * even when the deadline has passed by then; the deadline is honoured from
      * the next row on, and still reported.
@@ -459,7 +463,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         $repositoryWide = $this->repositoryWideBoundaryIds($projectId);
         $memberships = $this->pdo->prepare(
             'SELECT bm.node_id, b.id FROM boundary_memberships bm JOIN boundaries b ON b.id = bm.boundary_id ' .
-            'WHERE bm.project_id = ? ORDER BY bm.node_id, b.id',
+            'WHERE bm.project_id = ? ORDER BY bm.node_id, bm.boundary_id',
         );
         $memberships->execute([$projectId]);
         // Rows arrive grouped by node: each group becomes that node's set.
