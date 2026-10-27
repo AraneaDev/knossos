@@ -20,6 +20,9 @@ No framework module is imported and no bundler or application is started.
   resolved `uses_hook` edges.
 - Vue `defineComponent` variables and `useX` composables in Vue-oriented
   TypeScript modules.
+- A `uses_hook` edge names its framework, `react` or `vue`, by what the file
+  declaring the hook imports, or failing that what the calling file imports. A
+  `useX()` call with neither in scope is an ordinary call.
 - Pinia/Redux/Zustand-style `defineStore`, `createStore`, `configureStore`, and
   `create` factory declarations.
 - `fetch` and `axios.get`, `post`, `put`, `patch`, `delete`, `head` and

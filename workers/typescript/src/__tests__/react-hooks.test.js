@@ -19,17 +19,32 @@ function fixture(files) {
     return root;
 }
 
-/** The target of every uses_hook edge the scan emitted. */
-function hookTargets(root, files) {
+/** Every uses_hook edge the scan emitted. */
+function hookEdges(root, files) {
     const contributions = [];
     new TypeScriptScanner().scan({ limits: SCAN_LIMITS, root, files }, (c) =>
         contributions.push(c),
     );
     return contributions
         .flatMap((c) => c.edges)
-        .filter((edge) => edge.kind === "uses_hook")
+        .filter((edge) => edge.kind === "uses_hook");
+}
+
+/** The target of every uses_hook edge the scan emitted. */
+function hookTargets(root, files) {
+    return hookEdges(root, files)
         .map((edge) => edge.target)
         .sort();
+}
+
+/** The framework each hook target was attributed to, by target. */
+function hookFrameworks(root, files) {
+    return Object.fromEntries(
+        hookEdges(root, files).map((edge) => [
+            edge.target,
+            edge.attributes.framework,
+        ]),
+    );
 }
 
 afterEach(() => {
@@ -68,7 +83,8 @@ describe("react hook edges", () => {
         const root = fixture({
             "package.json": '{"name":"fixture"}',
             "src/hooks.ts": [
-                "export function useCounter() { return 1; }",
+                "import { useState } from 'react';",
+                "export function useCounter() { return useState(1); }",
                 "export function user() { return 2; }",
                 "",
             ].join("\n"),
@@ -88,5 +104,82 @@ describe("react hook edges", () => {
             "ts:function:src/hooks.ts#useCounter",
             "ts:function:src/hooks.ts#useCounter",
         ]);
+    });
+});
+
+describe("hook edge framework", () => {
+    // A hook is React's or Vue's by what the file declaring it imports, as
+    // the declaration's own react.hook or vue.composable role is; every
+    // edge used to say react, so a Vue composable read as a React hook.
+    it("attributes a composable declared beside a vue import to vue", () => {
+        const root = fixture({
+            "package.json": '{"name":"fixture"}',
+            "src/counter.ts": [
+                "import { ref } from 'vue';",
+                "export function useCounter() { return ref(0); }",
+                "",
+            ].join("\n"),
+            "src/hooks.ts": [
+                "import { useState } from 'react';",
+                "export function useToggle() { return useState(false); }",
+                "",
+            ].join("\n"),
+            "src/panel.ts": [
+                "import { useCounter } from './counter';",
+                "import { useToggle } from './hooks';",
+                "export function setup() {",
+                "  useCounter();",
+                "  useToggle();",
+                "}",
+                "",
+            ].join("\n"),
+        });
+
+        expect(
+            hookFrameworks(root, [
+                "src/panel.ts",
+                "src/counter.ts",
+                "src/hooks.ts",
+            ]),
+        ).toEqual({
+            "ts:function:src/counter.ts#useCounter": "vue",
+            "ts:function:src/hooks.ts#useToggle": "react",
+        });
+    });
+
+    it("falls back to what the calling file imports", () => {
+        const root = fixture({
+            "package.json": '{"name":"fixture"}',
+            "src/shared.ts": "export function useShared() { return 1; }\n",
+            "src/panel.ts": [
+                "import { computed } from 'vue';",
+                "import { useShared } from './shared';",
+                "export function setup() {",
+                "  return computed(() => useShared());",
+                "}",
+                "",
+            ].join("\n"),
+        });
+
+        expect(hookFrameworks(root, ["src/panel.ts", "src/shared.ts"])).toEqual(
+            { "ts:function:src/shared.ts#useShared": "vue" },
+        );
+    });
+
+    it("draws no hook edge where neither file names a framework", () => {
+        const root = fixture({
+            "package.json": '{"name":"fixture"}',
+            "src/format.ts":
+                "export function useFormatter() { return String; }\n",
+            "src/report.ts": [
+                "import { useFormatter } from './format';",
+                "export function report() { return useFormatter(); }",
+                "",
+            ].join("\n"),
+        });
+
+        expect(hookTargets(root, ["src/report.ts", "src/format.ts"])).toEqual(
+            [],
+        );
     });
 });
