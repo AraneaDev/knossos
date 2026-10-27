@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.2](https://github.com/AraneaDev/knossos/compare/v0.40.1...v0.40.2) (2026-10-27)
+
+
+### Fixes
+
+* **workers:** attribute a uses_hook edge to vue or react by what the hook's file imports ([#412](https://github.com/AraneaDev/knossos/issues/412)) ([c909c4d](https://github.com/AraneaDev/knossos/commit/c909c4d87db61d77562c37aa1ac8c13574988b04))
+
 ## [0.40.1](https://github.com/AraneaDev/knossos/compare/v0.40.0...v0.40.1) (2026-10-27)
 
 
