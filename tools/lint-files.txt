@@ -741,6 +741,7 @@ php	tests/phpunit/Query/GraphScaleTest.php
 php	tests/phpunit/Query/GraphSearchServiceTest.php
 php	tests/phpunit/Query/HealthFiltersTest.php
 php	tests/phpunit/Query/HealthTest.php
+php	tests/phpunit/Query/HubRankingPlanTest.php
 php	tests/phpunit/Query/ImpactAnalysisOptionsTest.php
 php	tests/phpunit/Query/ImpactConfidencePropagationTest.php
 php	tests/phpunit/Query/ImpactEntryPointsTest.php
@@ -780,6 +781,7 @@ php	tests/phpunit/Query/QueryBoundsTest.php
 php	tests/phpunit/Query/QueryDefaultsAgreementTest.php
 php	tests/phpunit/Query/QueryFacadeDocblockTest.php
 php	tests/phpunit/Query/QueryTest.php
+php	tests/phpunit/Query/RecordingStatement.php
 php	tests/phpunit/Query/RefreshPolicyTest.php
 php	tests/phpunit/Query/ReportableComponentTest.php
 php	tests/phpunit/Query/RepresentsTraversalTest.php
