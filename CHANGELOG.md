@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.5](https://github.com/AraneaDev/knossos/compare/v0.40.4...v0.40.5) (2026-10-27)
+
+
+### Performance
+
+* read degrees and boundaries only for the nodes that stay dead-code candidates ([#418](https://github.com/AraneaDev/knossos/issues/418)) ([6305b56](https://github.com/AraneaDev/knossos/commit/6305b5652a13aa3eaf20fee08aa6f15f22d94c58))
+
 ## [0.40.4](https://github.com/AraneaDev/knossos/compare/v0.40.3...v0.40.4) (2026-10-27)
 
 
