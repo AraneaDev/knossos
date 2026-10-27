@@ -59,9 +59,7 @@ final class DeadCodeCandidatePlanTest extends KnossosTestCase
                 continue;
             }
             ++$edgeQueries;
-            $plan = $pdo->prepare('EXPLAIN QUERY PLAN ' . $sql);
-            $plan->execute($params);
-            foreach ($plan->fetchAll(PDO::FETCH_COLUMN, 3) as $detail) {
+            foreach (RecordingStatement::plan($pdo, $sql, $params) as $detail) {
                 // A member walk seeks the one kind it names, `contains`, which costs a single probe.
                 $containsWalk = str_contains((string) $detail, 'edges_project_source_idx') && str_contains($sql, "kind = 'contains'");
                 if (preg_match('/edges_project_(target|source)_idx \(project_id=\? AND (target|source)_id=\? AND kind=\?\)/', (string) $detail) && !$containsWalk) {

@@ -824,9 +824,11 @@ php	tests/phpunit/Query/TurnBriefServiceTest.php
 php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
 php	tests/phpunit/Query/UntestedQueryTest.php
+php	tests/phpunit/Query/UntestedWalkPlanTest.php
 php	tests/phpunit/Query/UntypedReceiverTest.php
 php	tests/phpunit/Query/ViteGlobImportTest.php
 php	tests/phpunit/Query/WholeProjectCandidatesTest.php
+php	tests/phpunit/Query/WholeProjectOrderPlanTest.php
 php	tests/phpunit/Query/WiringReachTest.php
 php	tests/phpunit/Reconciliation/ArtisanCommandTargetTest.php
 php	tests/phpunit/Reconciliation/CaseInsensitiveReferencesTest.php
