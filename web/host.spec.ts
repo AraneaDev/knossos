@@ -53,6 +53,13 @@ afterEach(async () => {
   }
 })
 
+/** The event stream's address on the server at `url`, its token kept. */
+const eventsOf = (url: string): string => {
+  const events = new URL('/events', url)
+  events.search = new URL(url).search
+  return events.href
+}
+
 const hostFor = async (root: string, dataDir: string, pluginDir: string, log?: (text: string) => void): Promise<Hosted> => {
   const hosted = await hostProject({ root, dataDir, pluginRoot: pluginDir, editor: null, port: null, ...(log === undefined ? {} : { log }) })
   started.push(hosted)
@@ -127,9 +134,21 @@ describe('hostProject', () => {
     const lines: string[] = []
     const hosted = await hostFor(scratch(), scratch(), fixturePluginRoot(), text => lines.push(text))
     if (hosted.kind !== 'mine') throw new Error('expected to host the project')
-    const page = await fetch(hosted.url.replace('/?', '/events?'))
+    const page = await fetch(eventsOf(hosted.url))
+    expect(page.status).toBe(200)
     void page.body?.cancel().catch(() => undefined)
     await vi.waitFor(() => expect(lines.some(line => line.startsWith('knossos web:'))).toBe(true))
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('sends the server log to stderr when given no writer', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const hosted = await hostFor(scratch(), scratch(), fixturePluginRoot())
+    if (hosted.kind !== 'mine') throw new Error('expected to host the project')
+    const page = await fetch(eventsOf(hosted.url))
+    expect(page.status).toBe(200)
+    void page.body?.cancel().catch(() => undefined)
+    await vi.waitFor(() => expect(spy.mock.calls.some(([line]) => String(line).startsWith('knossos web:'))).toBe(true))
+    spy.mockRestore()
   })
 })
