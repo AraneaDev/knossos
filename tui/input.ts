@@ -135,7 +135,11 @@ export class Decoder {
     const params = found[1]!
     const used = found[0].length
     if (params.startsWith('<') && (final === 'M' || final === 'm')) {
-      const [cb, x, y] = params.slice(1).split(';').map(Number) as [number, number, number]
+      const fields = params.slice(1).split(';')
+      // A malformed report (not three whole numbers), or the sideways wheel (66, 67): no event.
+      if (fields.length !== 3 || !fields.every(field => /^\d+$/.test(field))) return used
+      const [cb, x, y] = fields.map(Number) as [number, number, number]
+      if ((cb & 64) !== 0 && (cb & 2) !== 0) return used
       const wheel = (cb & 64) !== 0
       out.push({
         kind: 'mouse',

@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fixturePluginRoot, scratch } from './fixtures/helpers'
 import { hostProject } from './host'
-import { addressOf, lockFile } from './lock'
+import { addressOf, claim as realClaim, lockFile } from './lock'
 
 // A page that connects makes the server read the checkout's commit; here that read fails, which the server logs.
 vi.mock('../hooks/mod/watcher', async importOriginal => ({
@@ -11,6 +11,25 @@ vi.mock('../hooks/mod/watcher', async importOriginal => ({
     throw new Error('no commit')
   },
 }))
+
+// Set to make the next claim's `record` fail, as a disk that refuses the write would.
+const failing = { record: false }
+vi.mock('./lock', async importOriginal => {
+  const real = await importOriginal<typeof import('./lock')>()
+  return {
+    ...real,
+    claim: async (...args: Parameters<typeof realClaim>) => {
+      const claimed = await real.claim(...args)
+      if (claimed.kind !== 'mine' || !failing.record) return claimed
+      return {
+        ...claimed,
+        record: () => {
+          throw new Error('disk full')
+        },
+      }
+    },
+  }
+})
 
 type Hosted = Awaited<ReturnType<typeof hostProject>>
 const started: Hosted[] = []
@@ -31,6 +50,18 @@ const hostFor = async (root: string, dataDir: string, pluginDir: string, log?: (
 }
 
 describe('hostProject', () => {
+  it('frees the lock when recording the server fails', async () => {
+    const root = scratch()
+    const data = scratch()
+    failing.record = true
+    try {
+      await expect(hostProject({ root, dataDir: data, pluginRoot: fixturePluginRoot(), editor: null, port: null })).rejects.toThrow('disk full')
+    } finally {
+      failing.record = false
+    }
+    expect(existsSync(lockFile(data, root))).toBe(false)
+  })
+
   it('starts the server and holds the lock when none runs', async () => {
     const root = scratch()
     const data = scratch()

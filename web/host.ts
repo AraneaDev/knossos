@@ -56,7 +56,14 @@ export async function hostProject(o: {
     lock.release()
     throw new Error(`could not start: ${messageOf(error)}`, { cause: error })
   }
-  lock.record(server.port)
-  kept.remember(server.port)
+  try {
+    lock.record(server.port)
+    kept.remember(server.port)
+  } catch (error) {
+    // The server is up but nothing says so: stop it and free the lock rather than leave both held.
+    await server.close().catch(() => undefined)
+    lock.release()
+    throw error
+  }
   return { kind: 'mine', url: server.url, token: server.token, port: server.port, close: server.close, release: lock.release }
 }
