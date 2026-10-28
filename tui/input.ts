@@ -22,8 +22,17 @@ const PASTE_END = '\x1b[201~'
 /** The key a CSI final byte names, for the cursor keys. */
 const CURSOR: Record<string, string> = { A: 'ArrowUp', B: 'ArrowDown', C: 'ArrowRight', D: 'ArrowLeft', H: 'Home', F: 'End' }
 
+/** The SS3 finals of keys the pane has no use for (F1 to F4): known, so dropped rather than read as Alt+O. */
+const SS3_UNUSED = new Set(['P', 'Q', 'R', 'S'])
+
+/** The key a control byte above Ctrl-Z stands for, with Ctrl: 28 to 31. */
+const CONTROL_SIGNS = ['\\', ']', '^', '_']
+
 /** The key a `CSI <n> ~` sequence names. */
 const TILDE: Record<string, string> = { '1': 'Home', '3': 'Delete', '4': 'End', '5': 'PageUp', '6': 'PageDown', '7': 'Home', '8': 'End' }
+
+/** Whether `char` is a capital letter: typed with Shift. */
+const upper = (char: string): boolean => char !== char.toLowerCase()
 
 const key = (name: string, mods: { ctrl?: boolean; alt?: boolean; shift?: boolean } = {}): KeyEvent => ({
   kind: 'key',
@@ -82,11 +91,28 @@ export class Decoder {
     return out
   }
 
-  /** Called once input has been quiet for a moment: a lone ESC is the Escape key, and any other unfinished sequence is dropped. */
+  /**
+   * Called once input has been quiet for a moment: a lone ESC is the Escape key, an ESC with
+   * only `[`, `O` or `]` after it is that key with Alt (an OSC that never ended gives the rest
+   * back as keys), and any other unfinished sequence is dropped. A paste is left to {@link endPaste}.
+   */
   flush(): TermEvent[] {
-    const lone = this.pending === ESC
-    if (!this.pasting) this.pending = ''
-    return lone ? [key('Escape')] : []
+    if (this.pasting) return []
+    const text = this.pending
+    this.pending = ''
+    if (text === ESC) return [key('Escape')]
+    if (text === `${ESC}[` || text === `${ESC}O`) return [key(text[1]!, { alt: true, shift: text[1] === 'O' })]
+    if (text.startsWith(`${ESC}]`)) return [key(']', { alt: true }), ...this.push(text.slice(2))]
+    return []
+  }
+
+  /** Ends a paste whose end marker never came, after a long quiet: what it gathered is the paste, and input is read as keys again. */
+  endPaste(): TermEvent[] {
+    if (!this.pasting) return []
+    this.pasting = false
+    const text = this.pending
+    this.pending = ''
+    return [{ kind: 'paste', text }]
   }
 
   /** Decodes one event from the start of the pending input into `out`; the length it used, or 0 when more input is needed. */
@@ -98,8 +124,10 @@ export class Decoder {
       if (char === '\r' || char === '\n') out.push(key('Enter'))
       else if (char === '\t') out.push(key('Tab'))
       else if (char === '\x7f' || char === '\b') out.push(key('Backspace'))
-      else if (code >= 1 && code <= 26) out.push(key(String.fromCharCode(code + 96), { ctrl: true }))
-      else if (code >= 32) out.push(key(char))
+      else if (code === 0) out.push(key(' ', { ctrl: true }))
+      else if (code <= 26) out.push(key(String.fromCharCode(code + 96), { ctrl: true }))
+      else if (code >= 28 && code <= 31) out.push(key(CONTROL_SIGNS[code - 28]!, { ctrl: true }))
+      else if (code >= 32) out.push(key(char, { shift: upper(char) }))
       return char.length
     }
     if (text.length === 1) return 0
@@ -110,14 +138,17 @@ export class Decoder {
       if (text.length < 3) return 0
       const named = CURSOR[text[2]!]
       if (named !== undefined) out.push(key(named))
-      return 3
+      if (named !== undefined || SS3_UNUSED.has(text[2]!)) return 3
+      // Not a key a terminal sends this way: Alt+O, typed just before what follows it.
+      out.push(key('O', { alt: true, shift: true }))
+      return 2
     }
     if (next === ESC) {
       out.push(key('Escape'))
       return 1
     }
     const char = String.fromCodePoint(text.codePointAt(1)!)
-    out.push(key(char, { alt: true }))
+    out.push(key(char, { alt: true, shift: upper(char) }))
     return 1 + char.length
   }
 
@@ -131,7 +162,11 @@ export class Decoder {
     }
     const found = /^..([<=>?]?[0-9;:]*)([ -/]*[@-~])?/s.exec(text)!
     const final = found[2]
-    if (final === undefined) return /[^ -~]/.test(text.slice(2)) ? 1 : 0
+    if (final === undefined) {
+      // Cut short, it waits for the rest; broken by a byte no sequence has there, it is dropped up to that byte.
+      const stop = /^..[<=>?]?[0-9;:]*[ -/]*/s.exec(text)![0].length
+      return stop < text.length ? stop : 0
+    }
     const params = found[1]!
     const used = found[0].length
     if (params.startsWith('<') && (final === 'M' || final === 'm')) {

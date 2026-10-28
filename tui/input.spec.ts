@@ -37,9 +37,48 @@ describe('Decoder keys', () => {
     const decoder = new Decoder()
     expect(decoder.push('\x1b')).toEqual([])
     expect(decoder.flush()).toEqual([key('Escape')])
-    expect(decoder.push('\x1b[')).toEqual([])
+    expect(decoder.push('\x1b[1;')).toEqual([])
     expect(decoder.flush()).toEqual([])
     expect(decoder.push('a')).toEqual([key('a')])
+  })
+
+  it('reads an ESC with only [, O or ] after it as that key with Alt once input is quiet', () => {
+    for (const [typed, name, shiftKey] of [['[', '[', false], ['O', 'O', true], [']', ']', false]] as const) {
+      const decoder = new Decoder()
+      expect(decoder.push(`\x1b${typed}`)).toEqual([])
+      expect(decoder.flush()).toEqual([key(name, { altKey: true, shiftKey })])
+      expect(decoder.push('a')).toEqual([key('a')])
+    }
+  })
+
+  it('gives back the keys after an Alt+] that started no OSC string', () => {
+    const decoder = new Decoder()
+    expect(decoder.push('\x1b]ab')).toEqual([])
+    expect(decoder.flush()).toEqual([key(']', { altKey: true }), key('a'), key('b')])
+  })
+
+  it('reads ESC O before a character no terminal sends that way as Alt+O and the character', () => {
+    expect(decode('\x1bOx')).toEqual([key('O', { altKey: true, shiftKey: true }), key('x')])
+    expect(decode('\x1bO\x1bx')).toEqual([key('O', { altKey: true, shiftKey: true }), key('x', { altKey: true })])
+    // F1 to F4 are keys the pane has no use for: dropped.
+    expect(decode('\x1bOPa')).toEqual([key('a')])
+  })
+
+  it('drops a CSI sequence broken by a control byte, and reads the byte', () => {
+    expect(decode('\x1b[1;\x03')).toEqual([key('c', { ctrlKey: true })])
+    expect(decode('\x1b[1;\x1b[A')).toEqual([key('ArrowUp')])
+    expect(decode('\x1b[1<a')).toEqual([key('<'), key('a')])
+  })
+
+  it('reads Ctrl+Space and the control bytes 28 to 31 as ctrl keys', () => {
+    expect(decode('\x00\x1c\x1d\x1e\x1f')).toEqual([' ', '\\', ']', '^', '_'].map(name => key(name, { ctrlKey: true })))
+    expect(decode('\x1a')).toEqual([key('z', { ctrlKey: true })])
+  })
+
+  it('reads a capital letter as typed with Shift', () => {
+    expect(decode('Aa\u00c9')).toEqual([key('A', { shiftKey: true }), key('a'), key('\u00c9', { shiftKey: true })])
+    expect(decode('\x1bX')).toEqual([key('X', { altKey: true, shiftKey: true })])
+    expect(decode('1')).toEqual([key('1')])
   })
 
   it('reads two ESC bytes as Escape and goes on', () => {
@@ -73,6 +112,25 @@ describe('Decoder paste', () => {
     expect(decoder.push('\x1b[20')).toEqual([])
     expect(decoder.push('0~ab\x1b[20')).toEqual([])
     expect(decoder.push('1~c')).toEqual([{ kind: 'paste', text: 'ab' }, key('c')])
+  })
+})
+
+describe('Decoder paste', () => {
+  it('ends a paste whose end marker never came only when told, then reads keys again', () => {
+    const decoder = new Decoder()
+    expect(decoder.push('\x1b[200~ab')).toEqual([])
+    // A quiet moment, as between keys, does not end it.
+    expect(decoder.flush()).toEqual([])
+    expect(decoder.push('c')).toEqual([])
+    expect(decoder.endPaste()).toEqual([{ kind: 'paste', text: 'abc' }])
+    expect(decoder.push('\x03')).toEqual([key('c', { ctrlKey: true })])
+    expect(decoder.endPaste()).toEqual([])
+  })
+
+  it('reads a mouse report split across chunks', () => {
+    const decoder = new Decoder()
+    expect(decoder.push('\x1b[<0;5')).toEqual([])
+    expect(decoder.push(';3M')).toEqual([{ kind: 'mouse', action: 'down', button: 0, by: 0, row: 2, column: 4 }])
   })
 })
 
