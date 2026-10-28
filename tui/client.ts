@@ -1,0 +1,362 @@
+/**
+ * The terminal's client of the pane: the web page's own `createPage` (the
+ * event stream, the focus ring, the hotkeys, the inputs it posts) with a
+ * terminal where the document would be. Terminal input is decoded into the
+ * events the page already understands, frames are painted as lines, and what
+ * only a terminal has to decide (the field being edited, the wheel's scroll
+ * of a pinned body, the card in view, the toast) is kept here.
+ */
+import { createPage, pressOrder, releasedOn } from '../web/public/app.mjs'
+import type { Frame } from '../web/hub'
+import { Decoder } from './input'
+import type { KeyEvent, MouseEvent, TermEvent } from './input'
+import { bytesFor, hitsOf, linesOf, screenOf } from './paint'
+import type { Overlay, Screen } from './paint'
+import { FetchEventSource } from './stream'
+
+/** How long a toast stays. */
+const TOAST_MS = 4000
+/** How long input stays quiet before an unfinished escape is the Escape key. */
+const ESCAPE_MS = 30
+/** What a lost event stream says while the page waits to open it again. */
+const RECONNECTING = 'Reconnecting to the server...'
+
+/** What the client needs from its host. `url` is the server's address with `?t=<token>`. */
+export type ClientOptions = {
+  url: string
+  size(): { columns: number; rows: number }
+  theme: 'dark' | 'light'
+  write(bytes: string): void
+  fetch: typeof fetch
+  copy(text: string): void
+  quit(): void
+  now(): number
+  after(ms: number, fire: () => void): void
+}
+
+/** What the host calls: input as it arrives, the terminal resized, the end, and a persistent line to show (null clears it). */
+export type Client = { input(chunk: string): void; resize(): void; close(): void; status(text: string | null): void }
+
+/** The page as far as the client touches it. */
+type Page = {
+  frame: Frame | null
+  focused: string | null
+  post(input: Record<string, unknown>): Promise<Response>
+  focusedOn(element: string): void
+  key(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; inField: boolean }): { focus?: string; press?: string } | null
+  connect(): void
+}
+
+/** The field being edited: its id, its text and the cursor's place in it (a string index). */
+type Editing = { id: string; value: string; cursor: number }
+
+/** The start of the character before `at` in `text`. */
+const before = (text: string, at: number): number => (at >= 2 && /[\udc00-\udfff]/.test(text[at - 1]!) ? at - 2 : Math.max(0, at - 1))
+/** The end of the character at `at` in `text`. */
+const after = (text: string, at: number): number => (at + 2 <= text.length && /[\ud800-\udbff]/.test(text[at]!) ? at + 2 : Math.min(text.length, at + 1))
+
+/** The ids of every segment of `frame` that has `field`, with their values. */
+const fieldsOf = (frame: Frame): Map<string, string> => new Map([...frame.body, ...frame.footer].flatMap(row => row.segments).flatMap(s => (s.field === undefined ? [] : [[s.field.id, s.field.value] as const])))
+
+/** Starts the client: opens the event stream and paints what the server draws. */
+export function startClient(o: ClientOptions): Client {
+  const origin = new URL(o.url).origin
+  const token = new URL(o.url).searchParams.get('t') ?? ''
+  const decoder = new Decoder()
+
+  let closed = false
+  let previous: Screen | null = null
+  let editing: Editing | null = null
+  let scroll = 0
+  let hovered: string | null = null
+  let toast: string | null = null
+  let toastId = 0
+  let persistent: string | null = null
+  let down: string | null = null
+  let lastInput = 0
+
+  const streams = new Set<FetchEventSource>()
+  const size = () => o.size()
+  const frameOf = (): Frame | null => page.frame
+
+  /** The card to show: the one under the pointer, else the focused press's. */
+  function cardKey(frame: Frame): string | null {
+    if (hovered !== null) return hovered
+    const focus = page.focused
+    if (focus === null) return null
+    return hitsOf(frame, size(), scroll).flat().find(h => h.press === focus && h.card !== undefined)?.card?.key ?? null
+  }
+
+  /** The most the pinned body scrolls: its lines beyond the room above the footer. */
+  function maxScroll(frame: Frame): number {
+    const { body, footer } = linesOf(frame)
+    return Math.max(0, body - (size().rows - Math.min(footer, size().rows)))
+  }
+
+  /** Paints the frame again with what changed since the last paint. */
+  function paint(): void {
+    const frame = frameOf()
+    if (closed || frame === null) return
+    scroll = Math.min(scroll, maxScroll(frame))
+    const overlay: Overlay = { focused: page.focused, field: editing, toast: toast ?? persistent, card: cardKey(frame), scroll }
+    const screen = screenOf(frame, size(), overlay)
+    o.write(bytesFor(previous, screen))
+    previous = screen
+  }
+
+  /** A toast shown for {@link TOAST_MS}, or until another replaces it. */
+  function showToast(text: string): void {
+    const id = ++toastId
+    toast = text
+    paint()
+    o.after(TOAST_MS, () => {
+      if (id !== toastId) return
+      toast = null
+      paint()
+    })
+  }
+
+  /** The event stream the page opens, with the server's address put in front and the loss of it told on the toast line. */
+  class Stream {
+    private readonly inner: FetchEventSource | null
+    constructor(path: string) {
+      this.inner = closed ? null : new FetchEventSource(`${origin}${path}`, { fetch: o.fetch })
+      if (this.inner !== null) streams.add(this.inner)
+    }
+    set onmessage(handler: (m: { data: string }) => void) {
+      if (this.inner === null) return
+      this.inner.onmessage = m => {
+        if (persistent === RECONNECTING) persistent = null
+        handler(m)
+      }
+    }
+    set onerror(handler: () => void) {
+      if (this.inner === null) return
+      this.inner.onerror = () => {
+        if (closed) return
+        persistent = RECONNECTING
+        paint()
+        handler()
+      }
+    }
+    close(): void {
+      this.inner?.close()
+    }
+  }
+
+  const page = createPage({
+    EventSource: Stream,
+    // A post that cannot be made is a refusal the page may read as it likes; none of its callers wait on one.
+    fetch: (path: string, init?: RequestInit) => o.fetch(`${origin}${path}`, init).catch(() => new Response('{}', { status: 503 })),
+    token,
+    id: crypto.randomUUID(),
+    size: () => ({ cols: size().columns, rows: size().rows }),
+    theme: () => o.theme,
+    after: o.after,
+    draw: (frame: Frame) => {
+      // A field that left the frame is no longer edited.
+      if (editing !== null && !fieldsOf(frame).has(editing.id)) editing = null
+      paint()
+    },
+    on: {
+      toast: (e: { text: string }) => showToast(e.text),
+      copy: (e: { text: string }) => {
+        o.copy(e.text)
+      },
+      focus: (e: { key?: string | null }) => {
+        const frame = frameOf()
+        const value = e.key === undefined || e.key === null || frame === null ? undefined : fieldsOf(frame).get(e.key)
+        if (value !== undefined && editing?.id !== e.key) editing = { id: e.key!, value, cursor: value.length }
+        else if (value === undefined) editing = null
+        paint()
+      },
+    },
+  }) as Page
+
+  /** Posts the edit that made `value` the field's text. */
+  function typed(field: Editing): void {
+    void page.post({ kind: 'type', field: field.id, value: field.value })
+  }
+
+  /** Puts `text` into the field being edited at the cursor. */
+  function insert(text: string): void {
+    if (editing === null || text === '') return
+    editing = { ...editing, value: editing.value.slice(0, editing.cursor) + text + editing.value.slice(editing.cursor), cursor: editing.cursor + text.length }
+    typed(editing)
+    paint()
+  }
+
+  /** Leaves the field and steps the focus ring by `by`. */
+  function leaveAndStep(by: 1 | -1): void {
+    editing = null
+    page.key({ key: by > 0 ? 'ArrowDown' : 'ArrowUp', ctrlKey: false, metaKey: false, altKey: false, inField: false })
+    paint()
+  }
+
+  /** A key typed in the field being edited. */
+  function fieldKey(field: Editing, e: KeyEvent): void {
+    if (e.ctrlKey || e.altKey) return
+    const { value, cursor } = field
+    switch (e.key) {
+      case 'Enter':
+        void page.post({ kind: 'submit', field: field.id, value })
+        return
+      case 'Escape': {
+        editing = null
+        const first = pressOrder(page.frame)[0]
+        if (first !== undefined) page.focusedOn(first)
+        paint()
+        return
+      }
+      case 'ArrowUp':
+      case 'ArrowDown':
+        return leaveAndStep(e.key === 'ArrowDown' ? 1 : -1)
+      case 'Tab':
+        return leaveAndStep(e.shiftKey ? -1 : 1)
+      case 'ArrowLeft':
+        editing = { ...field, cursor: before(value, cursor) }
+        return paint()
+      case 'ArrowRight':
+        editing = { ...field, cursor: after(value, cursor) }
+        return paint()
+      case 'Home':
+        editing = { ...field, cursor: 0 }
+        return paint()
+      case 'End':
+        editing = { ...field, cursor: value.length }
+        return paint()
+      case 'Backspace': {
+        if (cursor === 0) return
+        const from = before(value, cursor)
+        editing = { ...field, value: value.slice(0, from) + value.slice(cursor), cursor: from }
+        typed(editing)
+        return paint()
+      }
+      case 'Delete': {
+        if (cursor >= value.length) return
+        editing = { ...field, value: value.slice(0, cursor) + value.slice(after(value, cursor)) }
+        typed(editing)
+        return paint()
+      }
+      default:
+        if ([...e.key].length === 1) insert(e.key)
+    }
+  }
+
+  /** A key typed outside a field. */
+  function pageKey(e: KeyEvent): void {
+    if (e.key === 'q' && !e.ctrlKey && !e.altKey) return o.quit()
+    const ring = e.key === 'Tab' ? (e.shiftKey ? 'ArrowUp' : 'ArrowDown') : e.key
+    const done = page.key({ key: ring, ctrlKey: e.ctrlKey, metaKey: false, altKey: e.altKey, inField: false })
+    // Enter or Space on a focused press presses it, as a click with no pointer does in the page.
+    if (done === null && (e.key === 'Enter' || e.key === ' ') && !e.ctrlKey && !e.altKey && page.focused !== null && pressOrder(page.frame).includes(page.focused)) {
+      void page.post({ kind: 'press', press: page.focused })
+    }
+    paint()
+  }
+
+  /** The press, field or card at a cell of the screen, if any. */
+  function hitAt(row: number, column: number) {
+    const frame = frameOf()
+    if (frame === null) return undefined
+    return hitsOf(frame, size(), scroll)[row]?.find(h => column >= h.column && column < h.column + h.width)
+  }
+
+  let held: { by: number; row: number; column: number } | null = null
+  let sending = false
+  /** `by` rows of wheel at a cell: one is sent at a time, and the rows that come in meanwhile wait and go as one. */
+  function wheel(by: number, row: number, column: number): void {
+    held = { by: (held?.by ?? 0) + by, row, column }
+    if (sending) return
+    const next = held
+    held = null
+    sending = true
+    void page
+      .post({ kind: 'wheel', row: next.row, column: next.column, by: next.by })
+      .then(r => r.json() as Promise<{ scrolled?: boolean }>)
+      .then(answer => {
+        const frame = frameOf()
+        if (answer.scrolled !== true && frame !== null && frame.pinned) {
+          scroll = Math.min(maxScroll(frame), Math.max(0, scroll + next.by))
+          paint()
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        sending = false
+        if (held !== null) {
+          const rest = held
+          held = null
+          wheel(rest.by, rest.row, rest.column)
+        }
+      })
+  }
+
+  /** The mouse over the pane. */
+  function mouse(e: MouseEvent): void {
+    if (e.action === 'wheel') return wheel(e.by, e.row, e.column)
+    const hit = hitAt(e.row, e.column)
+    if (e.action === 'move') {
+      const card = hit?.card?.key ?? null
+      if (card !== hovered) {
+        hovered = card
+        paint()
+      }
+      return
+    }
+    if (e.button !== 0) return
+    if (e.action === 'down') {
+      down = hit?.press ?? null
+      if (hit?.field !== undefined) {
+        const value = fieldsOf(frameOf()!).get(hit.field) ?? ''
+        page.focusedOn(hit.field)
+        if (editing?.id !== hit.field) editing = { id: hit.field, value, cursor: value.length }
+        paint()
+      }
+      return
+    }
+    const press = releasedOn(down, hit?.press)
+    down = null
+    if (press !== null) void page.post({ kind: 'press', press })
+  }
+
+  /** One decoded event from the terminal. */
+  function handle(e: TermEvent): void {
+    if (e.kind === 'mouse') return mouse(e)
+    if (e.kind === 'paste') return insert(e.text.replace(/\r\n?|\n/g, ' '))
+    if (e.kind !== 'key') return
+    if (e.ctrlKey && e.key === 'c') return o.quit()
+    if (editing === null) pageKey(e)
+    else fieldKey(editing, e)
+  }
+
+  page.connect()
+
+  return {
+    input(chunk) {
+      if (closed) return
+      for (const e of decoder.push(chunk)) handle(e)
+      // A lone Escape is told from the start of a sequence by what follows it, or the lack of it.
+      const stamp = ++lastInput
+      o.after(ESCAPE_MS, () => {
+        if (closed || stamp !== lastInput) return
+        for (const e of decoder.flush()) handle(e)
+      })
+    },
+    resize() {
+      if (closed) return
+      previous = null
+      const now = size()
+      void page.post({ kind: 'resize', cols: now.columns, rows: now.rows })
+      paint()
+    },
+    close() {
+      closed = true
+      for (const stream of streams) stream.close()
+    },
+    status(text) {
+      persistent = text
+      paint()
+    },
+  }
+}

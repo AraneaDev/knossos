@@ -1365,6 +1365,8 @@ js	tools/pane-preview.spec.mjs
 js	tools/ts-resolve.mjs
 js	tui/args.spec.ts
 js	tui/args.ts
+js	tui/client.spec.ts
+js	tui/client.ts
 js	tui/clipboard.spec.ts
 js	tui/clipboard.ts
 js	tui/input.spec.ts

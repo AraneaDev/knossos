@@ -85,10 +85,13 @@ export const releasedOn = (down, up) =>
  * One page's connection to the pane: the event stream, opened again with
  * {@link retryDelay} after each loss (the first event back is the current
  * frame, which replaces whatever the page shows), and its inputs, each sent
- * once as it happens and never again.
+ * once as it happens and never again. A host that is not a browser hands it
+ * `after(ms, fire)` to wait with.
  */
 export function createPage(o) {
     let attempt = 0;
+    // A host without timers of its own to hand (the browser) waits with `setTimeout`.
+    const later = o.after ?? ((ms, fire) => setTimeout(fire, ms));
     const page = {
         frame: null,
         /** The press or field the page's focus is on, as the pane last heard of it. */
@@ -120,7 +123,7 @@ export function createPage(o) {
             source.onerror = () => {
                 // The stream would retry on its own at once; the page waits instead, longer each time.
                 source.close();
-                setTimeout(() => page.connect(), retryDelay(attempt++));
+                later(retryDelay(attempt++), () => page.connect());
             };
         },
         /** The focus landed on `element` (a press or field id): told to the pane, unless it already knows. */

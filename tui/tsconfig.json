@@ -3,7 +3,9 @@
   "compilerOptions": {
     "types": ["node", "vitest"],
     "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "allowJs": true,
+    "checkJs": false
   },
   "include": ["../hooks/engine.d.ts", "**/*.ts"]
 }
