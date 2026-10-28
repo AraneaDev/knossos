@@ -63,6 +63,10 @@ final class TuiCommand implements CliCommand
                 throw new InvalidArgumentException(sprintf('--%s needs its value after an equals sign: --%s=%s', $name, $name, $form));
             }
         }
+        // One directory at most, as the pane itself takes it: a second would otherwise be dropped without a word.
+        if (count($positionals) > 1) {
+            throw new InvalidArgumentException(sprintf('one directory at most, not %s and %s', $positionals[0], $positionals[1]));
+        }
         if (!($this->isTerminal)()) {
             (new CliHelpRenderer($this->stderr))->render();
             fwrite($this->stderr, PHP_EOL . 'knossos opens the pane in this terminal; knossos usage prints this list.' . PHP_EOL);

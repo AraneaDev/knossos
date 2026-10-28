@@ -51,6 +51,14 @@ final class TuiCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testASecondDirectoryIsRefusedRatherThanDropped(): void
+    {
+        $error = captureThrows(fn() => $this->runWith('v24.3.0', positionals: ['a', 'b']), \InvalidArgumentException::class);
+
+        assertSame('one directory at most, not a and b', $error->getMessage());
+    }
+
+    #[Group('cli')]
     public function testRefusesOldNode(): void
     {
         [$status, $error] = $this->runWith('v22.0.0');
