@@ -73,6 +73,10 @@ export function wheelRows(carry, event, cellHeight) {
     return { by, carry: pixels - by * cellHeight };
 }
 
+/** A finger's drag from `fromY` to `toY` as whole rows, as {@link wheelRows} turns pixels: a finger moving up scrolls down. */
+export const swipeRows = (carry, fromY, toY, cellHeight) =>
+    wheelRows(carry, { deltaMode: 0, deltaY: fromY - toY }, cellHeight);
+
 /** The press a pointer press lands on: the press it went down on, when it came up on the same one (whatever node now draws it); null otherwise. */
 export const releasedOn = (down, up) =>
     down !== null && down !== undefined && down === up ? down : null;
@@ -491,32 +495,78 @@ function paneView(root, { token, draw: drawn, cardPlace }) {
         if (field !== undefined)
             void page.post({ kind: "type", field, value: e.target.value });
     });
+    /**
+     * `by` rows of scroll at the point (`x`, `y`): over a list longer than its
+     * window the pane scrolls it; anywhere else the page scrolls itself. One
+     * is sent at a time, each read against the rows the last one left, so the
+     * rows that come in meanwhile wait and go as one.
+     */
+    let held = null;
+    let sending = false;
+    const scroll = (by, x, y) => {
+        held = { by: (held?.by ?? 0) + by, x, y };
+        if (sending) return;
+        const next = held;
+        held = null;
+        sending = true;
+        const body = bodyOf;
+        const box = body.getBoundingClientRect();
+        const at = {
+            row: Math.floor((next.y - box.top) / cell.height),
+            column: Math.floor((next.x - box.left) / cell.width),
+        };
+        void page
+            .post({ kind: "wheel", ...at, by: next.by })
+            .then((r) => r.json())
+            .then((answer) => {
+                if (!answer.scrolled)
+                    (root.classList.contains("pinned")
+                        ? body
+                        : document.scrollingElement
+                    ).scrollBy(0, next.by * cell.height);
+            })
+            .catch(() => undefined)
+            .finally(() => {
+                sending = false;
+                if (held !== null) {
+                    const rest = held;
+                    held = null;
+                    scroll(rest.by, rest.x, rest.y);
+                }
+            });
+    };
     let carry = 0;
     root.addEventListener(
         "wheel",
         (e) => {
-            const body = bodyOf;
             e.preventDefault();
             const turned = wheelRows(carry, e, cell.height);
             carry = turned.carry;
+            if (turned.by !== 0) scroll(turned.by, e.clientX, e.clientY);
+        },
+        { passive: false },
+    );
+    // A touch screen has no wheel: one finger dragged up or down scrolls as the wheel does, where it first touched, and is no press.
+    let swipe = null;
+    root.addEventListener("touchstart", (e) => {
+        const t = e.touches[0];
+        swipe =
+            e.touches.length === 1
+                ? { x: t.clientX, y: t.clientY, last: t.clientY, carry: 0 }
+                : null;
+    });
+    root.addEventListener(
+        "touchmove",
+        (e) => {
+            if (swipe === null || e.touches.length !== 1) return;
+            e.preventDefault();
+            const y = e.touches[0].clientY;
+            const turned = swipeRows(swipe.carry, swipe.last, y, cell.height);
+            swipe.last = y;
+            swipe.carry = turned.carry;
             if (turned.by === 0) return;
-            const box = body.getBoundingClientRect();
-            const at = {
-                row: Math.floor((e.clientY - box.top) / cell.height),
-                column: Math.floor((e.clientX - box.left) / cell.width),
-            };
-            // Over a list longer than its window the pane scrolls it; anywhere else the page scrolls itself.
-            void page
-                .post({ kind: "wheel", ...at, by: turned.by })
-                .then((r) => r.json())
-                .then((answer) => {
-                    if (!answer.scrolled)
-                        (root.classList.contains("pinned")
-                            ? body
-                            : document.scrollingElement
-                        ).scrollBy(0, turned.by * cell.height);
-                })
-                .catch(() => undefined);
+            down = null;
+            scroll(turned.by, swipe.x, swipe.y);
         },
         { passive: false },
     );
