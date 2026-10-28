@@ -86,13 +86,17 @@ async function answers(url: string): Promise<boolean> {
 /** The errors of a file system that has no hard links. */
 const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS'])
 
+/** How far ahead of this process's clock a file's time may be and still be now: a file system's clock runs on finer ticks, or a little apart. */
+const CLOCK_SLACK_MS = 1_000
+
 /** How long a lock that does not read is taken to be still being written: the exclusive create of a file system without hard links makes it empty first. */
 const WRITING_MS = 2_000
 
-/** Whether the lock in `file` is young enough to be one another start is still writing. */
+/** Whether the lock in `file` is young enough to be one another start is still writing: a time in the future is not young, it is wrong. */
 function writing(file: string): boolean {
   try {
-    return Date.now() - statSync(file).mtimeMs < WRITING_MS
+    const age = Date.now() - statSync(file).mtimeMs
+    return age > -CLOCK_SLACK_MS && age < WRITING_MS
   } catch {
     return false
   }
@@ -139,7 +143,8 @@ const isPort = (port: unknown): port is number => typeof port === 'number' && Nu
 async function holds(file: string, url: string | null): Promise<boolean> {
   if (url !== null) return answers(url)
   try {
-    return Date.now() - statSync(file).mtimeMs < STARTING_MS
+    const age = Date.now() - statSync(file).mtimeMs
+    return age > -CLOCK_SLACK_MS && age < STARTING_MS
   } catch {
     return false
   }
@@ -184,9 +189,28 @@ export async function claim(dataDir: string, root: string, token: string): Promi
       if (existsSync(file) && doomed(held(file))) rmSync(file, { force: true })
     })
   /** Removes the stale lock that read as `seen`, and only that one. */
-  const removeStale = (seen: { pid: unknown; port: unknown } | null) =>
-    removeIf(now => (now === null ? seen === null && !writing(file) : seen !== null && now.pid === seen.pid && now.port === seen.port))
-  const record = (port: number) => renameSync(staged(port), file)
+  const removeStale = (seen: { pid: unknown; port: unknown } | null, patient: boolean) =>
+    removeIf(now => (now === null ? seen === null && !(patient && writing(file)) : seen !== null && now.pid === seen.pid && now.port === seen.port))
+  /** When this start first found the lock unreadable, by its own clock: how long it waits on one is bounded by that, not by the file. */
+  let unreadSince: number | null = null
+  /**
+   * Writes the port into the lock, under the removal guard, and only while the lock still names this process:
+   * a removal cannot fall between the check and the write. Throws when another start took the lock over first
+   * (this one took too long to start), so that the caller stops its server rather than run a second one.
+   */
+  const record = (port: number): void => {
+    for (let tries = 0; ; tries++) {
+      let lost = false
+      const ran = guarded(file, () => {
+        if (held(file)?.pid !== process.pid) lost = true
+        else renameSync(staged(port), file)
+      })
+      if (ran && lost) throw new Error(`another start took the lock ${file} over before this server listened`)
+      if (ran) return
+      if (tries >= GUARD_TRIES) throw new Error(`could not record the port in the lock ${file}`)
+      pause(GUARD_WAIT_MS)
+    }
+  }
   for (let attempt = 0; attempt < GUARD_TRIES; attempt++) {
     try {
       create()
@@ -206,8 +230,10 @@ export async function claim(dataDir: string, root: string, token: string): Promi
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
     const other = held(file)
-    // One that does not read yet may be another start's, created but not yet written: it is waited on, not taken.
-    if (other === null && writing(file)) {
+    // One that does not read yet may be another start's, created but not yet written: it is waited on, not taken, for a while.
+    if (other === null) unreadSince ??= Date.now()
+    const patient = unreadSince === null || Date.now() - unreadSince < WRITING_MS + GUARD_WAIT_MS * 10
+    if (other === null && patient && writing(file)) {
       await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
       attempt--
       continue
@@ -215,7 +241,7 @@ export async function claim(dataDir: string, root: string, token: string): Promi
     const url = other !== null && isPort(other.port) ? addressOf(other.port, token) : null
     if (other !== null && other.pid !== process.pid && alive(other.pid) && (await holds(file, url))) return { kind: 'running', url: url ?? '' }
     // Its process is gone, or its pid is another process's now: the lock is stale.
-    if (!removeStale(other)) await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
+    if (!removeStale(other, patient)) await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
   }
   throw new Error(`could not take the lock ${file}`)
 }

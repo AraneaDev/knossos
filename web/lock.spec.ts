@@ -107,6 +107,38 @@ describe('claim', () => {
     expect(readdirSync(join(data, 'web'))).toEqual([basename(lockFile(data, root))])
   })
 
+  it('records the port only once a removal under way is done, and keeps the lock', async () => {
+    const data = scratch()
+    const root = scratch()
+    const file = lockFile(data, root)
+    const got = await claim(data, root, TOKEN)
+    if (got.kind !== 'mine') throw new Error('not mine')
+    // Another start holds the removal guard for a moment, as it would while deciding whether the lock is stale.
+    const guard = `${file}.removing`
+    writeFileSync(guard, '1')
+    const remover = spawn('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
+    const started = Date.now()
+    got.record(1234)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(150)
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: 1234 })
+    expect(readdirSync(join(data, 'web'))).toEqual([basename(file)])
+    await new Promise(done => remover.on('close', done))
+  })
+
+  it('refuses to record over a lock another start took over, and leaves that one', async () => {
+    const data = scratch()
+    const root = scratch()
+    const file = lockFile(data, root)
+    const got = await claim(data, root, TOKEN)
+    if (got.kind !== 'mine') throw new Error('not mine')
+    const other = { pid: process.ppid, port: null }
+    writeFileSync(file, JSON.stringify(other))
+    expect(() => got.record(1234)).toThrow(/took the lock .* over before this server listened/)
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(other)
+    got.release()
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(other)
+  })
+
   it("releases only its own lock: one another start took over in the meantime stays", async () => {
     const data = scratch()
     const root = scratch()

@@ -71,6 +71,43 @@ describe('claim on a file system without hard links', () => {
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 
+  it('takes an unreadable lock whose time is in the future without waiting for the clock to reach it', async () => {
+    const data = scratch()
+    const root = scratch()
+    const file = lockFile(data, root)
+    mkdirSync(join(data, 'web'), { recursive: true })
+    writeFileSync(file, '')
+    const future = (Date.now() + 3_600_000) / 1000
+    utimesSync(file, future, future)
+    const started = Date.now()
+    expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
+  it('waits on an unreadable lock kept fresh for a bounded time only', { timeout: 10_000 }, async () => {
+    const data = scratch()
+    const root = scratch()
+    const file = lockFile(data, root)
+    mkdirSync(join(data, 'web'), { recursive: true })
+    writeFileSync(file, '')
+    // Something keeps touching it, so its time never says it is old.
+    const touch = setInterval(() => {
+      const now = Date.now() / 1000
+      try {
+        utimesSync(file, now, now)
+      } catch {
+        // Taken already.
+      }
+    }, 50)
+    const started = Date.now()
+    try {
+      expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+    } finally {
+      clearInterval(touch)
+    }
+    expect(Date.now() - started).toBeLessThan(4000)
+  })
+
   it('leaves a lock that replaced the stale one it read, without a hard link', async () => {
     const data = scratch()
     const root = scratch()
