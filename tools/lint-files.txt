@@ -1365,10 +1365,14 @@ js	tools/pane-preview.spec.mjs
 js	tools/ts-resolve.mjs
 js	tui/args.spec.ts
 js	tui/args.ts
+js	tui/clipboard.spec.ts
+js	tui/clipboard.ts
 js	tui/input.spec.ts
 js	tui/input.ts
 js	tui/paint.spec.ts
 js	tui/paint.ts
+js	tui/stream.spec.ts
+js	tui/stream.ts
 js	types/index.d.ts
 js	vitest.config.mjs
 js	web/app.spec.mjs
