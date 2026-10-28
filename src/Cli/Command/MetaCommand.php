@@ -8,7 +8,7 @@ use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliHelpRenderer;
 
-/** `version` and `help`, the two commands that must work before anything is configured. */
+/** `version`, `help` and `usage` (the same list as `help`), the commands that must work before anything is configured. */
 final readonly class MetaCommand implements CliCommand
 {
     public function __construct(private CliHelpRenderer $help, private string $version) {}
@@ -16,19 +16,19 @@ final readonly class MetaCommand implements CliCommand
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
-        return in_array($command, ['version', '--version', 'help', '--help', '-h'], true);
+        return in_array($command, ['version', '--version', 'help', '--help', '-h', 'usage'], true);
     }
 
     /** {@inheritDoc} */
     public function allowedOptions(string $command): array
     {
-        return ['json'];
+        return $command === 'usage' ? [] : ['json'];
     }
 
     /** {@inheritDoc} */
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
-        if (in_array($command, ['help', '--help', '-h'], true)) {
+        if (in_array($command, ['help', '--help', '-h', 'usage'], true)) {
             $this->help->render();
             return CliCommand::EXIT_OK;
         }

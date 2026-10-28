@@ -28,6 +28,18 @@ final class CliCommandRouter
         $this->commands = CliCommandSet::all($help, $version);
     }
 
+    /** The first command that claims the name, or null. */
+    private function handlerFor(string $command): ?CliCommand
+    {
+        foreach ($this->commands as $candidate) {
+            if ($candidate->supports($command)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Pick the command for an invocation, validating its options before it runs.
      *
@@ -38,18 +50,18 @@ final class CliCommandRouter
         // Validate and resolve the command BEFORE any database work, so a
         // typo'd command never creates `.knossos`, opens a connection, or runs
         // migrations. The handler opens the database lazily only when needed.
-        $handler = null;
-        foreach ($this->commands as $candidate) {
-            if ($candidate->supports($command)) {
-                $handler = $candidate;
-                break;
-            }
+        $handler = $this->handlerFor($command);
+        if ($handler === null && is_dir($command)) {
+            // A directory where a command would be: the terminal pane for it, as `knossos <dir>` says.
+            array_unshift($positionals, $command);
+            $command = 'tui';
+            $handler = $this->handlerFor($command);
         }
         if ($handler === null) {
             throw new InvalidArgumentException(sprintf('Unknown command: %s', $command));
         }
         $this->options->validate($options, $handler->allowedOptions($command));
-        $meta = in_array($command, ['version', '--version', 'help', '--help', '-h'], true);
+        $meta = in_array($command, ['version', '--version', 'help', '--help', '-h', 'usage'], true);
         $context = new CliCommandContext(
             $this->options,
             new CliInputLoader(),

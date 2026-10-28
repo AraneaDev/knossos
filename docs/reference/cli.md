@@ -6,6 +6,9 @@ This file is generated from `bin/knossos help`; edit the application help, not t
 Knossos architecture intelligence
 
 Usage:
+  knossos [path] [--editor=<command>] [--theme=dark|light]
+                (the pane in this terminal; needs Node 24+)
+  knossos usage
   knossos version [--json]
   knossos doctor [--db=PATH] [--json]
   knossos list-projects [--limit=N] [--offset=N] [--include-roots]

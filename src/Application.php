@@ -54,7 +54,10 @@ final class Application
      */
     public function run(array $arguments): int
     {
-        $command = array_shift($arguments) ?? 'help';
+        // Bare `knossos`, with or without options (`knossos --theme=light`), opens the pane in the terminal.
+        $first = $arguments[0] ?? null;
+        $bare = $first === null || (str_starts_with($first, '--') && !in_array($first, ['--help', '--version'], true));
+        $command = $bare ? 'tui' : (string) array_shift($arguments);
         $parser = new CliOptionParser();
         try {
             [$positionals, $options] = $parser->parse($arguments);

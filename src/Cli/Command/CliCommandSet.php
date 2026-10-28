@@ -45,6 +45,7 @@ final readonly class CliCommandSet
             new MaintenanceCommand(),
             new ServeCommand(),
             new WebCommand(),
+            new TuiCommand(),
         ];
     }
 }

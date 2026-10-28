@@ -61,10 +61,10 @@ final class ApplicationTest extends TestCase
     // that Application.run() delegates the 5 meta-command entrypoints
     // without throwing and returns the agreed exit code 0.
 
-    public function testRunWithNoArgumentsDefaultsToHelpCommandAndReturnsZero(): void
+    public function testRunWithUsageCommandPrintsTheHelpListAndReturnsZero(): void
     {
-        // Covers the `array_shift($arguments) ?? 'help'` branch.
-        [$exit, $help] = self::runHelp([]);
+        // Bare `knossos` opens the pane (CliTest runs it without a terminal); the list is `usage` now.
+        [$exit, $help] = self::runHelp(['usage']);
         assertSame(0, $exit);
         self::assertStringContainsString('knossos boundary-couplings [path]', $help);
     }
