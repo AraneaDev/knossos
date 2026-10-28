@@ -47,10 +47,13 @@ shows the card.
 
 | Key      | Effect                                                             |
 | -------- | ------------------------------------------------------------------ |
-| `q`      | Quit, when no field has focus.                                     |
+| `q`      | Quit, when no field has focus and the pane gives `q` to no press.  |
 | `Ctrl-C` | Quit, always.                                                      |
 | `Tab`    | Move to the next thing you can press; `Shift-Tab` to the previous. |
 | `Esc`    | Leave the field you are typing in (the finder, a note).            |
+
+On a project that was never scanned the pane offers `q: scan it`, and there
+`q` starts the scan; `Ctrl-C` quits.
 
 The terminal is put back as it was however it ends: `q`, `Ctrl-C`, a signal,
 the window closing or a crash. Started from a shell, `Ctrl-Z` suspends it and

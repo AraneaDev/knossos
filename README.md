@@ -180,7 +180,8 @@ knossos
 ```
 
 It is the same nine tabs, drawn in the terminal, with the mouse and the keys of the pane.
-`q` or `Ctrl-C` quits. It shares the project's server with `knossos web`, so a browser open
+`Ctrl-C` quits, and so does `q` unless the pane gives `q` to a press: on a project that
+was never scanned, `q` starts the scan. It shares the project's server with `knossos web`, so a browser open
 on the same project shows the same pane. See [the terminal guide](docs/guides/terminal-pane.md)
 for the options, the keys and what differs from the browser.
 
