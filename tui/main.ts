@@ -74,6 +74,20 @@ const terminal = terminalMode({ stdin: process.stdin, write: out })
 // The server's log goes to a file beside the project's lock, never to the screen the pane owns.
 const logFile = lockFile(dataDir, root).replace(/\.json$/, '.log')
 let logged = false
+/** When the pane last told of the log: a burst of lines gives one toast. */
+let toldAt = 0
+/** A line was logged before the client could show it. */
+let owed = false
+const tell = () => {
+  if (client === null) {
+    owed = true
+    return
+  }
+  const now = Date.now()
+  if (now - toldAt < TOAST_MS) return
+  toldAt = now
+  client.toast(`Server message logged, see ${logFile}`)
+}
 const log = (text: string) => {
   try {
     mkdirSync(dirname(logFile), { recursive: true, mode: 0o700 })
@@ -81,9 +95,12 @@ const log = (text: string) => {
     logged = true
   } catch {
     // A log that cannot be written must not take the pane down with it.
+    return
   }
+  tell()
 }
 
+let client: ReturnType<typeof startClient> | null = null
 let hosted: Hosted | null = null
 const release = () => {
   if (hosted?.kind === 'mine') hosted.release()
@@ -101,13 +118,15 @@ const { stop, crashed } = ending({
     terminal.leave()
     process.stderr.write(text)
   },
+  name: 'knossos',
 })
-let client: ReturnType<typeof startClient> | null = null
 /** Ends the pane: the terminal is given back before anything else. */
 const quit = (code = 0) => {
   client?.close()
   terminal.leave()
-  stop(code)
+  // A take-over under way is waited for a moment, so the lock it claims is released with the rest.
+  if (hosting === null) return stop(code)
+  void Promise.race([hosting.catch(() => undefined), sleep(3000)]).then(() => stop(code))
 }
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => quit(0))
 process.on('uncaughtException', crashed)
@@ -118,10 +137,14 @@ process.on('exit', () => {
   if (logged) process.stderr.write(`knossos: the pane's log is in ${logFile}\n`)
 })
 
-/** Suspends the pane as a shell's job control would: the terminal back first, then the process stops. */
+/**
+ * Suspends the pane as a shell's job control would: the terminal back first, then
+ * the whole process group stops, `knossos`'s PHP parent with it, so the shell sees
+ * the job stop and takes the terminal.
+ */
 const suspend = () => {
   terminal.leave()
-  process.kill(process.pid, 'SIGSTOP')
+  process.kill(0, 'SIGSTOP')
 }
 process.on('SIGTSTP', suspend)
 process.on('SIGCONT', () => {
@@ -138,11 +161,14 @@ function themeOfTerminal(): Promise<'dark' | 'light'> {
       if (finished) return
       finished = true
       process.stdin.off('data', listen)
+      // Keys typed while the server starts wait in the terminal's buffer for the client.
+      process.stdin.pause()
       done(theme)
     }
     const listen = (chunk: string) => {
       for (const e of decoder.push(chunk)) if (e.kind === 'background') finish(themeOfBackground(e.rgb))
     }
+    process.stdin.setEncoding('utf8')
     process.stdin.on('data', listen)
     setTimeout(() => finish('dark'), BACKGROUND_MS)
     out(ASK_BACKGROUND)
@@ -154,27 +180,34 @@ async function host(): Promise<Hosted> {
   const deadline = Date.now() + STARTING_MS
   for (;;) {
     const found = await hostProject({ root, dataDir, pluginRoot, editor, port: null, log })
+    // Held from this moment, so that whatever ends the process releases it.
+    hosted = found
     if (found.kind === 'mine' || found.url !== '') return found
     if (Date.now() > deadline) throw new Error('the running server did not say where it listens')
     await sleep(100)
   }
 }
 
-/** Whether the lock of the server attached to has gone, so that the project may be taken over. */
+/** Whether the server attached to was lost, so that the project may be taken over. */
 let lost = false
-let taking: Promise<void> | null = null
-/** Takes the project over, or attaches to whoever took it first; one at a time. */
+/** The host() under way, if any: one at a time. */
+let hosting: Promise<Hosted> | null = null
+/** Takes the project over, or attaches to whoever took it first. */
+function acquire(): Promise<Hosted> {
+  hosting ??= host().finally(() => {
+    hosting = null
+  })
+  return hosting
+}
 function retake(): Promise<void> {
-  taking ??= host()
-    .then(found => {
-      hosted = found
+  return acquire().then(
+    () => {
       lost = false
-    })
-    .catch(() => undefined)
-    .finally(() => {
-      taking = null
-    })
-  return taking
+    },
+    (error: unknown) => {
+      log(`knossos: taking the project over failed: ${messageOf(error)}`)
+    },
+  )
 }
 
 const origin = (url: string) => new URL(url).origin
@@ -182,9 +215,9 @@ const origin = (url: string) => new URL(url).origin
 try {
   terminal.enter()
   const theme = asked.theme ?? (await themeOfTerminal())
-  hosted = await host()
-  let current = hosted.url
-  const first = hosted.url
+  const started = await acquire()
+  const first = started.url
+  let current = first
   const copyCommand = clipboardCommand(process.platform, name => (process.env.PATH ?? '').split(delimiter).some(dir => dir !== '' && existsSync(join(dir, name))))
   // The client's retries ask for the event stream again; before one goes out, a server that is gone is replaced.
   const reach: typeof fetch = async (input, init) => {
@@ -204,7 +237,7 @@ try {
   }
   const size = () => ({ columns: process.stdout.columns || 80, rows: process.stdout.rows || 24 })
   client = startClient({
-    url: hosted.url,
+    url: first,
     size,
     theme,
     write: out,
@@ -220,19 +253,19 @@ try {
     quit: () => quit(0),
     after: (ms, fire) => void setTimeout(fire, ms),
   })
-  if (hosted.kind === 'running' && editor !== null) {
-    client.status("This project's pane already runs; files open in its editor.")
-    setTimeout(() => client?.status(null), TOAST_MS)
-  }
-  process.stdin.setEncoding('utf8')
+  if (started.kind === 'running' && editor !== null) client.toast("This project's pane already runs; files open in its editor.")
+  if (owed) tell()
   process.stdin.on('data', (chunk: string) => {
     // Raw mode hands Ctrl-Z over as a byte rather than as a signal.
     if (chunk === '\x1a') return suspend()
     client?.input(chunk)
   })
   process.stdin.on('end', () => quit(0))
+  process.stdin.resume()
   process.stdout.on('resize', () => client?.resize())
 } catch (error) {
+  // Said on the normal screen, then stopped as any other end: the watcher ends and the lock goes.
   terminal.leave()
-  fail(messageOf(error))
+  process.stderr.write(`knossos: ${messageOf(error)}\n`)
+  stop(2)
 }

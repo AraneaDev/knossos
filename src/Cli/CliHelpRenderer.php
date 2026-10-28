@@ -40,7 +40,8 @@ Knossos architecture intelligence
 
 Usage:
   knossos [path] [--editor=<command>] [--theme=dark|light]
-                (the pane in this terminal; needs Node 24+)
+                (the pane in this terminal; needs Node 24+; a directory named like a
+                 command is written ./name)
   knossos usage
   knossos version [--json]
   knossos doctor [--db=PATH] [--json]

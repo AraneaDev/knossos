@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Cli\Command;
 
 use Closure;
+use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliHelpRenderer;
@@ -56,6 +57,12 @@ final class TuiCommand implements CliCommand
     /** {@inheritDoc} */
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
+        // A value written after a space leaves the option bare and the value a positional: say how to write it.
+        foreach (['editor' => '<command>', 'theme' => 'dark|light'] as $name => $form) {
+            if (($options[$name] ?? null) === ['']) {
+                throw new InvalidArgumentException(sprintf('--%s needs its value after an equals sign: --%s=%s', $name, $name, $form));
+            }
+        }
         if (!($this->isTerminal)()) {
             (new CliHelpRenderer($this->stderr))->render();
             fwrite($this->stderr, PHP_EOL . 'knossos opens the pane in this terminal; knossos usage prints this list.' . PHP_EOL);

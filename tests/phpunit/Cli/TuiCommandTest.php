@@ -42,6 +42,15 @@ final class TuiCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testAValueAfterASpaceIsRefusedWithTheFormThatWorks(): void
+    {
+        foreach (['theme' => '--theme needs its value after an equals sign: --theme=dark|light', 'editor' => '--editor needs its value after an equals sign: --editor=<command>'] as $name => $message) {
+            $error = captureThrows(fn() => $this->runWith('v24.3.0', options: [$name => ['']]), \InvalidArgumentException::class);
+            assertSame($message, $error->getMessage());
+        }
+    }
+
+    #[Group('cli')]
     public function testRefusesOldNode(): void
     {
         [$status, $error] = $this->runWith('v22.0.0');

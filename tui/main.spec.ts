@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { lockFile } from '../web/lock'
@@ -28,15 +28,17 @@ function watch(child: ChildProcessWithoutNullStreams) {
       if (test(out)) return
       await wait(50)
     }
-    throw new Error(`no ${what} in: ${JSON.stringify(out)}`)
+    throw new Error(`no ${what} in: ...${JSON.stringify(out.slice(-300))}`)
   }
   return { out: () => out, exited, until }
 }
 
 /** `node tui/main.ts <dir>` on a pseudo-terminal of 100x30 (python's pty module is what a CI image has), its exit status passed through. */
-function tui(dir: string, env: Record<string, string>) {
+function tui(dir: string, env: Record<string, string>, via: 'node' | 'php' = 'node') {
   const script = 'import pty,sys,os; sys.exit(os.waitstatus_to_exitcode(pty.spawn(sys.argv[1:])))'
-  const child = spawn('python3', ['-c', script, 'sh', '-c', 'stty rows 30 cols 100; exec "$@"', 'sh', process.execPath, join(HERE, 'main.ts'), dir], { env: { ...process.env, ...env } })
+  // `php` goes through bin/knossos, which runs node as a child in its own process group, as an installed `knossos` does.
+  const entry = via === 'php' ? ['php', join(HERE, '../bin/knossos'), dir] : [process.execPath, join(HERE, 'main.ts'), dir]
+  const child = spawn('python3', ['-c', script, 'sh', '-c', 'stty rows 30 cols 130; exec "$@"', 'sh', ...entry], { env: { ...process.env, ...env } })
   running.push(child)
   return { child, ...watch(child) }
 }
@@ -49,9 +51,16 @@ function web(dir: string, env: Record<string, string>) {
 }
 
 const envOf = (data: string, plugin: string) => ({ KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: plugin })
-const mark = () => String(20_000 + Math.floor(Math.random() * 9_999))
+// Short, so that a watcher orphaned by a killed server soon ends on its own.
+const mark = () => String(100 + Math.floor(Math.random() * 800))
 /** The pid in the project's lock. */
 const pidOf = (data: string, dir: string): number => (JSON.parse(readFileSync(lockFile(data, dir), 'utf8')) as { pid: number }).pid
+/** A process's state letter and parent, from /proc. */
+const procOf = (pid: number): { state: string; parent: number } => {
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  const [state, parent] = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+  return { state: state!, parent: Number(parent) }
+}
 
 describe('knossos (the terminal pane)', () => {
   it('opens the pane, switches tab by hotkey and restores the terminal on q', { timeout: 30_000 }, async () => {
@@ -95,7 +104,7 @@ describe('knossos (the terminal pane)', () => {
     expect(server.child.exitCode).toBeNull()
   })
 
-  it('takes over when the pane it attached to stops', { timeout: 40_000 }, async () => {
+  it.each(['SIGTERM', 'SIGKILL'] as const)('takes over when the pane it attached to is ended with %s, and both end up on one server', { timeout: 40_000 }, async signal => {
     const dir = scratch()
     const data = scratch()
     const env = envOf(data, markedPluginRoot(mark()))
@@ -105,21 +114,46 @@ describe('knossos (the terminal pane)', () => {
     const second = tui(dir, env)
     await first.until(text => text.includes('Overview'), 'the first pane drawing')
     await second.until(text => text.includes('Overview'), 'the second pane drawing')
-    const drawn = [first.out().length, second.out().length]
-    server.child.kill('SIGTERM')
+    // SIGKILL leaves the dead server's lock behind, for the two to find stale at once.
+    server.child.kill(signal)
     await server.exited
-    // One of them hosts now, the other attached to it: one lock, and both still draw.
-    for (let i = 0; i < 200 && !existsSync(lockFile(data, dir)); i++) await wait(50)
-    expect(existsSync(lockFile(data, dir))).toBe(true)
-    first.child.stdin.write('2')
-    second.child.stdin.write('2')
-    await first.until(text => text.slice(drawn[0]).includes('Component0'), 'the first pane drawing again')
-    await second.until(text => text.slice(drawn[1]).includes('Component0'), 'the second pane drawing again')
+    for (let i = 0; i < 200 && (!existsSync(lockFile(data, dir)) || pidOf(data, dir) === server.child.pid); i++) await wait(50)
     expect(pidOf(data, dir)).not.toBe(server.child.pid)
+    // One server: a press in the first pane moves the second, which two servers would not do.
+    // Panes still reconnecting miss a press (a page does not resend what it pressed while away), so it is pressed until it shows.
+    const seen = second.out().length
+    for (let i = 0; i < 60 && !second.out().slice(seen).includes('Component0'); i++) {
+      first.child.stdin.write('2')
+      await wait(300)
+    }
+    expect(second.out().slice(seen)).toContain('Component0')
+    // And it is the lock's server that answers: the port in the lock is the only one either pane reaches.
+    const lock = JSON.parse(readFileSync(lockFile(data, dir), 'utf8')) as { pid: number; port: number }
+    expect((await fetch(`http://127.0.0.1:${lock.port}/`)).status).toBe(403)
     first.child.stdin.write('q')
     second.child.stdin.write('q')
     await Promise.all([first.exited, second.exited])
     expect(existsSync(lockFile(data, dir))).toBe(false)
+  })
+
+  it('gives the terminal back on Ctrl-Z, stops the whole process group, and takes it again on SIGCONT', { timeout: 40_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const run = tui(dir, envOf(data, markedPluginRoot(mark())), 'php')
+    await run.until(text => text.includes('Overview'), 'the first tab')
+    const node = pidOf(data, dir)
+    const php = procOf(node).parent
+    run.child.stdin.write('\x1a')
+    await run.until(text => text.includes(LEAVE), 'LEAVE')
+    for (let i = 0; i < 100 && !(procOf(node).state === 'T' && procOf(php).state === 'T'); i++) await wait(50)
+    // Both stopped, so a shell's job control would see the job stop.
+    expect([procOf(node).state, procOf(php).state]).toEqual(['T', 'T'])
+    const entered = run.out().split(ENTER).length
+    process.kill(-php, 'SIGCONT')
+    await run.until(text => text.split(ENTER).length > entered, 'ENTER again')
+    run.child.stdin.write('q')
+    expect(await run.exited).toBe(0)
+    expect(run.out().endsWith(LEAVE)).toBe(true)
   })
 
   it('keeps the server log off the screen', { timeout: 30_000 }, async () => {
@@ -132,16 +166,16 @@ describe('knossos (the terminal pane)', () => {
     writeFileSync(shim, body.replace('[ "$1" = watch ]', '[ "$1" = dashboard ] && { echo \'{"status":"no-binary"}\'; exit 0; }\n[ "$1" = watch ]'))
     chmodSync(shim, 0o755)
     const run = tui(dir, envOf(data, plugin))
+    const log = join(data, 'web', `${basename(lockFile(data, dir)).replace(/\.json$/, '')}.log`)
     await run.until(text => text.includes(ENTER), 'ENTER')
-    await run.until(text => text.includes('Knossos'), 'a first paint')
-    await wait(1500)
+    for (let i = 0; i < 200 && !(existsSync(log) && readFileSync(log, 'utf8').includes('no knossos binary found')); i++) await wait(50)
+    // The server's message is a toast naming the file, and nothing else of it is on the screen.
+    await run.until(text => text.includes(`Server message logged, see ${log}`), 'the toast naming the log')
     run.child.stdin.write('q')
     expect(await run.exited).toBe(0)
-    const log = join(data, 'web', `${lockFile(data, dir).split('/').pop()!.replace(/\.json$/, '')}.log`)
-    expect(existsSync(log)).toBe(true)
     expect(readFileSync(log, 'utf8')).toContain('no knossos binary found')
     const screen = run.out().slice(0, run.out().lastIndexOf(LEAVE))
-    expect(screen).not.toContain('no knossos binary found')
+    expect(screen).not.toContain('no knossos binary')
     expect(run.out().slice(run.out().lastIndexOf(LEAVE))).toContain(`knossos: the pane's log is in ${log}`)
   })
 })

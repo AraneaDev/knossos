@@ -227,6 +227,18 @@ describe('startClient', () => {
     expect(h.written.join('')).not.toBe('')
   })
 
+  it("shows the host's toast for 4000 ms without touching a persistent status", async () => {
+    const h = harness()
+    await h.settle()
+    h.client.status('Reconnecting')
+    h.client.toast('from the host')
+    expect(h.text()).toContain('from the host')
+    h.written.length = 0
+    h.timers.find(t => t.ms === 4000)!.fire()
+    expect(h.text()).not.toContain('from the host')
+    expect(h.text()).toContain('Reconnecting')
+  })
+
   it('copies on a copy event, and shows a persistent status until cleared', async () => {
     const h = harness()
     await h.settle()

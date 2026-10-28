@@ -29,6 +29,10 @@ knossos ~/code/shop --editor='zed {file}:{line}' --theme=light
 | `--editor=<command>`  | The command that opens a file from the pane. See [the web guide](web-pane.md#opening-files-in-your-editor). |
 | `--theme=dark\|light` | Light or dark colours. Taken from the terminal's background when left out, and dark when it does not say.   |
 
+A directory whose name is also a command (a folder called `doctor`) is
+written with a path: `knossos ./doctor`. A value goes after an equals sign,
+`--theme=light`, not after a space.
+
 It needs a terminal for both input and output. Run from a script or with
 output piped, it prints the command list to stderr and exits with code 2;
 `knossos usage` prints that list to stdout. It needs Node 24 or newer on

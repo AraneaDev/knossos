@@ -32,8 +32,8 @@ export type ClientOptions = {
   after(ms: number, fire: () => void): void
 }
 
-/** What the host calls: input as it arrives, the terminal resized, the end, and a persistent line to show (null clears it). */
-export type Client = { input(chunk: string): void; resize(): void; close(): void; status(text: string | null): void }
+/** What the host calls: input as it arrives, the terminal resized, the end, a persistent line to show (null clears it), and a toast that goes by itself. */
+export type Client = { input(chunk: string): void; resize(): void; close(): void; status(text: string | null): void; toast(text: string): void }
 
 /** The page as far as the client touches it. */
 type Page = {
@@ -368,6 +368,9 @@ export function startClient(o: ClientOptions): Client {
     status(text) {
       persistent = text
       paint()
+    },
+    toast(text) {
+      if (!closed) showToast(text)
     },
   }
 }
