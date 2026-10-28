@@ -132,6 +132,9 @@ structural question, such as "what breaks if I change `UserRepository`, and whic
 tell me?". The routing skill sends it to the graph. A first scan with real output is in
 [first scan](docs/get-started/first-scan.md#a-worked-example).
 
+Outside a session, run `knossos` in the project for the same pane in your terminal, or
+`knossos web` for it in your browser.
+
 ## The pane
 
 ![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](docs/images/claude-code/overview.png)

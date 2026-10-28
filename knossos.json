@@ -426,6 +426,7 @@
   },
   "dead_code_suppressions": [
     "Knossos\\Scanner\\Sdk\\FixtureBuilder*",
-    "workers/typescript/src/exclusions.js#excludedBy"
+    "workers/typescript/src/exclusions.js#excludedBy",
+    "tui/client.ts#startClient.Stream::close"
   ]
 }
