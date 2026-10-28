@@ -14,7 +14,7 @@
  * owner's alone.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Claim = { kind: 'mine'; record(port: number): void; release(): void } | { kind: 'running'; url: string }
@@ -105,14 +105,29 @@ async function holds(file: string, url: string | null): Promise<boolean> {
 export async function claim(dataDir: string, root: string, token: string): Promise<Claim> {
   const file = lockFile(dataDir, root)
   webDir(dataDir)
-  const write = (port: number | null, flag: 'wx' | 'w') => writeFileSync(file, JSON.stringify({ pid: process.pid, port }), { flag, mode: 0o600 })
+  // Whole at the moment it appears: a start that read it half written would take it for a stale lock and remove a live one.
+  const staged = (port: number | null): string => {
+    const part = `${file}.${process.pid}.part`
+    writeFileSync(part, JSON.stringify({ pid: process.pid, port }), { mode: 0o600 })
+    return part
+  }
+  const create = () => {
+    const part = staged(null)
+    try {
+      // A link fails when the lock exists, as an exclusive create does.
+      linkSync(part, file)
+    } finally {
+      rmSync(part, { force: true })
+    }
+  }
+  const record = (port: number) => renameSync(staged(port), file)
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      write(null, 'wx')
+      create()
       let released = false
       return {
         kind: 'mine',
-        record: port => write(port, 'w'),
+        record,
         release: () => {
           if (released) return
           released = true

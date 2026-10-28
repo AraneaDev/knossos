@@ -252,8 +252,10 @@ export async function startServer(o: {
     const id = url.searchParams.get('id') ?? 'page'
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
     streams.add(res)
-    const send = (event: PageEvent) => void res.write(`data: ${JSON.stringify(event)}\n\n`)
-    const alive = setInterval(() => res.write(': alive\n\n'), KEEPALIVE_MS)
+    // A frame still being laid out when `close` ended the stream is dropped, not written after the end.
+    const write = (text: string) => void (res.writableEnded || res.destroyed || res.write(text))
+    const send = (event: PageEvent) => write(`data: ${JSON.stringify(event)}\n\n`)
+    const alive = setInterval(() => write(': alive\n\n'), KEEPALIVE_MS)
     res.on('close', () => {
       clearInterval(alive)
       streams.delete(res)

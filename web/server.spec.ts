@@ -4,7 +4,7 @@ import type { IncomingMessage } from 'node:http'
 import { stripTypeScriptTypes } from 'node:module'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
+import { activeTab, fixturePluginRoot, frameText, markedPluginRoot, scratch } from './fixtures/helpers'
 import type { Frame } from './hub'
 import { cardPlace } from '../hooks/lib/place'
 import { followHead } from '../hooks/mod/watcher'
@@ -178,6 +178,26 @@ describe('startServer', () => {
     expect(await post(`${base}input?t=${token}`, { id: 'a', kind: 'press', press: 'tab:hubs' })).toBe(204)
     await stream.next(f => activeTab(f) === 'hubs')
     stream.close()
+  })
+
+  it('closes with a stream open and a frame still being laid out, without writing to the ended stream', async () => {
+    running = await startServer({ root: scratch(), pluginRoot: markedPluginRoot(String(30_000 + Math.floor(Math.random() * 9_999))), dataDir: scratch(), port: 0 })
+    await running.ready
+    const { url, token } = running
+    const base = url.slice(0, url.indexOf('?'))
+    const crashes: unknown[] = []
+    const heard = (error: unknown) => crashes.push(error)
+    process.on('uncaughtException', heard)
+    try {
+      const stream = await events(`${base}events?t=${token}&id=a&cols=100&rows=40`)
+      await new Promise(resolve => setTimeout(resolve, 300))
+      await running!.close()
+      await new Promise(resolve => setTimeout(resolve, 200))
+      stream.close()
+    } finally {
+      process.off('uncaughtException', heard)
+    }
+    expect(crashes).toEqual([])
   })
 
   it('says, to a request without the token, where the right address is', async () => {

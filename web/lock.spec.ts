@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { scratch } from './fixtures/helpers'
 import { addressOf, claim, identity, lockFile } from './lock'
@@ -16,6 +16,18 @@ function deadPid(): number {
 }
 
 describe('claim', () => {
+  it('leaves no staging file beside the lock, whether it takes it, records the port or loses it', async () => {
+    const data = scratch()
+    const root = scratch()
+    const got = await claim(data, root, TOKEN)
+    if (got.kind !== 'mine') throw new Error('not mine')
+    got.record(1234)
+    // Held by another live process (this one's parent): the second start loses, and stages nothing that stays.
+    writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: null }))
+    expect((await claim(data, root, TOKEN)).kind).toBe('running')
+    expect(readdirSync(join(data, 'web'))).toEqual([basename(lockFile(data, root))])
+  })
+
   it('takes a free project, and gives it up on release', async () => {
     const data = scratch()
     const root = scratch()
