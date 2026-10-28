@@ -49,6 +49,14 @@ const sameStyle = (a: Style, b: Style): boolean => a.fg === b.fg && a.bg === b.b
 const blank = (columns: number, style: Style): Line => ({ cells: Array.from({ length: columns }, () => ({ ch: ' ', style })), hits: [], cursor: null })
 
 /**
+ * `text` as a terminal may be given it: a tab is two spaces, as the Claude pane
+ * draws a diff's, and any other control character is a replacement mark, so that
+ * nothing in it moves the cursor or starts a sequence.
+ */
+// eslint-disable-next-line no-control-regex -- finding control characters is what it is for
+const printable = (text: string): string => text.replace(/\t/g, '  ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '\ufffd')
+
+/**
  * Writes `text` into `line` from `column`, cut or padded to `width` cells and
  * never past the line's end. A wide character split by the edge becomes a space.
  */
@@ -58,7 +66,7 @@ function lay(line: Line, column: number, text: string, style: Style, width: numb
   const row = line.cells
   if (row[column]!.ch === '' && column > 0) row[column - 1] = { ch: ' ', style: row[column - 1]!.style }
   let at = column
-  for (const grapheme of split(text)) {
+  for (const grapheme of split(printable(text))) {
     const w = cells(grapheme)
     if (w === 0) continue
     if (at + w > end) break

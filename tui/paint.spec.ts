@@ -89,6 +89,18 @@ describe('screenOf', () => {
     expect(linesOf(frame([diff, row('x')], [row('f')]))).toEqual({ body: 3, footer: 1 })
   })
 
+  it('draws a tab in a diff line as two spaces and any other control character as a mark, keeping the line its width', () => {
+    const diff: PageRow = { key: 'd', segments: [], lines: [{ gutter: '1', text: '+\tif (x)\x1b[2J\x07\x9b', look: {} }] }
+    const screen = screenOf(frame([diff, row('after', seg('next'))]), { columns: 20, rows: 2 }, none)
+    const shown = strip(screen.lines[0]!)
+    expect(shown).toBe('1 +  if (x)\ufffd[2J\ufffd\ufffd   ')
+    expect(cells(shown)).toBe(20)
+    // Only the painter's own SGR sequences start with ESC; nothing of the text is a control byte.
+    // eslint-disable-next-line no-control-regex -- looking for control bytes is the point
+    expect(screen.lines[0]!.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '')).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+    expect(strip(screen.lines[1]!)).toBe(`next${' '.repeat(16)}`)
+  })
+
   it('shows a window of a long value that holds the cursor, and the start when the cursor is there', () => {
     const find = seg('', { field: { id: 'find', value: 'abcdefghijkl', placeholder: '', width: 6 } })
     const at = (cursor: number) => screenOf(frame([row('a', find)]), { columns: 6, rows: 1 }, { ...none, field: { id: 'find', value: 'abcdefghijkl', cursor } })
