@@ -1,12 +1,5 @@
 # Changelog
 
-## [0.40.10](https://github.com/AraneaDev/knossos/compare/v0.40.9...v0.40.10) (2026-10-28)
-
-
-### Fixes
-
-* **web:** scroll the pane's lists with a finger on touch screens ([#432](https://github.com/AraneaDev/knossos/issues/432)) ([4d2985a](https://github.com/AraneaDev/knossos/commit/4d2985aae98b47e4ddd9de0869f997900db39b97))
-
 ## [0.40.9](https://github.com/AraneaDev/knossos/compare/v0.40.8...v0.40.9) (2026-10-27)
 
 

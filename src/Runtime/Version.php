@@ -13,7 +13,7 @@ namespace Knossos\Runtime;
  */
 final class Version
 {
-    public const CURRENT = '0.40.10'; // x-release-please-version
+    public const CURRENT = '0.40.9'; // x-release-please-version
 
     private function __construct() {}
 }
