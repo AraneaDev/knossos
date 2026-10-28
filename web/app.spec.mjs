@@ -7,6 +7,7 @@ import {
     pressOrder,
     releasedOn,
     retryDelay,
+    swipeRows,
     wheelRows,
 } from "./public/app.mjs";
 
@@ -273,6 +274,14 @@ describe("the page's own", () => {
             by: -2,
             carry: -10,
         });
+    });
+
+    it("turns a finger's drag into whole rows the way the wheel turns, up scrolling down", () => {
+        expect(swipeRows(0, 200, 170, 20)).toEqual({ by: 1, carry: 10 });
+        expect(swipeRows(10, 170, 160, 20)).toEqual({ by: 1, carry: 0 });
+        expect(swipeRows(0, 100, 150, 20)).toEqual({ by: -2, carry: -10 });
+        const short = swipeRows(0, 100, 105, 20);
+        expect(short.by === 0 && short.carry === -5).toBe(true);
     });
 
     it("presses on release only over the press it went down on, whatever node draws it now", () => {
