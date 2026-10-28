@@ -177,11 +177,13 @@ function storeOf(file: string): Record<string, unknown> {
  * The port for one project's pane at `root`, running the plugin's wrapper
  * from `pluginRoot` with `env`, keeping the store in `storeFile`. `heard` is
  * called whenever a spawned child (the watcher) prints; `maxOutput` bounds
- * what a run may print.
+ * what a run may print; `log` takes the lines meant for the user (stderr by
+ * default).
  */
-export function webPort(o: { root: string; pluginRoot: string; storeFile: string; hub: PortHub; env?: NodeJS.ProcessEnv; heard?: () => void; maxOutput?: number }): Port {
+export function webPort(o: { root: string; pluginRoot: string; storeFile: string; hub: PortHub; env?: NodeJS.ProcessEnv; heard?: () => void; maxOutput?: number; log?: (text: string) => void }): Port {
   const env = o.env ?? process.env
   const heard = o.heard ?? (() => undefined)
+  const log = o.log ?? ((text: string) => console.error(text))
   const values: Record<string, unknown> = { ...INITIAL }
   const cell = (key: keyof CellValues) => ({
     read: async () => values[key],
@@ -201,7 +203,7 @@ export function webPort(o: { root: string; pluginRoot: string; storeFile: string
     },
     ui: {
       log: (text: string, options?: { to?: string }) => {
-        if (options?.to !== 'debug') console.error(text)
+        if (options?.to !== 'debug') log(text)
       },
       toast: (text: string) => o.hub.send({ type: 'toast', text }),
       // The page writes the clipboard: with none connected nothing is copied, and a page whose browser refuses says so itself.

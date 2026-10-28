@@ -1371,6 +1371,8 @@ js	web/args.ts
 js	web/browser.ts
 js	web/draw.spec.mjs
 js	web/fixtures/helpers.ts
+js	web/host.spec.ts
+js	web/host.ts
 js	web/hub.spec.ts
 js	web/hub.ts
 js	web/life.spec.ts

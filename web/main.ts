@@ -55,21 +55,20 @@ const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
 if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
 const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
-const { claim, identity } = await import('./lock')
+const { identity } = await import('./lock')
+const { hostProject } = await import('./host')
 const { openBrowser } = await import('./browser')
-const { startServer } = await import('./server')
 const { stopWatcher } = await import('../hooks/mod/state')
 const { ending } = await import('./life')
 
-let lock: Awaited<ReturnType<typeof claim>> | null = null
-let server: Awaited<ReturnType<typeof startServer>> | null = null
+let hosted: Awaited<ReturnType<typeof hostProject>> | null = null
 const release = () => {
-  if (lock?.kind === 'mine') lock.release()
+  if (hosted?.kind === 'mine') hosted.release()
 }
 
 const { stop, crashed } = ending({
   get close() {
-    return server === null ? null : server.close
+    return hosted?.kind === 'mine' ? hosted.close : null
   },
   stopWatcher: () => void stopWatcher(),
   release,
@@ -87,28 +86,26 @@ const show = async (url: string) => {
   if (asked.open && !(await openBrowser(url))) process.stdout.write('No browser could be opened: open the URL above yourself.\n')
 }
 
-let kept: ReturnType<typeof identity>
+// The port the project was last served on, to say when it moved; a failure to read it surfaces from hostProject.
+const keptPort = (() => {
+  try {
+    return identity(dataDir, root).port
+  } catch {
+    return null
+  }
+})()
 try {
-  kept = identity(dataDir, root)
-  lock = await claim(dataDir, root, kept.token)
+  hosted = await hostProject({ root, dataDir, pluginRoot, editor, port: asked.port })
 } catch (error) {
-  fail(`could not take the project's lock: ${messageOf(error)}`)
+  fail(messageOf(error))
 }
-if (lock.kind === 'running') {
-  process.stdout.write(`Knossos web pane for ${root} is already running: ${lock.url}\n`)
-  if (lock.url !== '') await show(lock.url)
+if (hosted.kind === 'running') {
+  process.stdout.write(`Knossos web pane for ${root} is already running: ${hosted.url}\n`)
+  if (hosted.url !== '') await show(hosted.url)
   process.exit(0)
 }
 
-try {
-  server = await startServer({ root, pluginRoot, dataDir, port: asked.port ?? kept.port ?? 0, movable: asked.port === null, token: kept.token, editor })
-} catch (error) {
-  release()
-  fail(`could not start: ${messageOf(error)}`)
-}
-lock.record(server.port)
-kept.remember(server.port)
-if (asked.port === null && kept.port !== null && server.port !== kept.port) process.stdout.write(`Port ${kept.port} is taken, so the address changed: ${server.url}\n`)
-process.stdout.write(`Knossos web pane for ${root}: ${server.url}\nPress Ctrl-C to stop it.\n`)
+if (asked.port === null && keptPort !== null && hosted.port !== keptPort) process.stdout.write(`Port ${keptPort} is taken, so the address changed: ${hosted.url}\n`)
+process.stdout.write(`Knossos web pane for ${root}: ${hosted.url}\nPress Ctrl-C to stop it.\n`)
 
-await show(server.url)
+await show(hosted.url)
