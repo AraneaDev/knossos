@@ -50,7 +50,9 @@ describe('Decoder keys', () => {
       let time = 0
       const decoder = new Decoder(() => time)
       expect(decoder.push(`\x1b${typed}`)).toEqual([])
-      expect(decoder.flush()).toEqual([key(name, { altKey: true, shiftKey })])
+      // ESC [ may be the start of a paste, so it is held over a flush and given up on with the paste's wait.
+      const given = typed === '[' ? (expect(decoder.flush()).toEqual([]), decoder.endPaste()) : decoder.flush()
+      expect(given).toEqual([key(name, { altKey: true, shiftKey })])
       time += 300
       expect(decoder.push('a')).toEqual([key('a')])
     }
@@ -76,7 +78,8 @@ describe('Decoder keys', () => {
     // Taken for Alt+[ first, the rest of the report is still not read as keys.
     const alt = new Decoder(() => time)
     expect(alt.push('\x1b[')).toEqual([])
-    expect(alt.flush()).toEqual([key('[', { altKey: true })])
+    expect(alt.flush()).toEqual([])
+    expect(alt.endPaste()).toEqual([key('[', { altKey: true })])
     time += 40
     expect(alt.push('<0;5;3M')).toEqual([])
   })
@@ -90,7 +93,8 @@ describe('Decoder keys', () => {
     expect(decoder.push(';3M')).toEqual([key(';'), key('3'), key('M', { shiftKey: true })])
     // A real Alt+[ and, later, a real key.
     expect(decoder.push('\x1b[')).toEqual([])
-    expect(decoder.flush()).toEqual([key('[', { altKey: true })])
+    expect(decoder.flush()).toEqual([])
+    expect(decoder.endPaste()).toEqual([key('[', { altKey: true })])
     time += 300
     expect(decoder.push('3')).toEqual([key('3')])
   })
@@ -154,6 +158,38 @@ describe('Decoder paste', () => {
 })
 
 describe('Decoder paste', () => {
+  it('holds the start of a paste cut short over a flush, so its text is not read as keys', () => {
+    let time = 0
+    const decoder = new Decoder(() => time)
+    expect(decoder.push('\x1b[20')).toEqual([])
+    time += 40
+    expect(decoder.flush()).toEqual([])
+    time += 40
+    expect(decoder.push('0~q\x1b[201~')).toEqual([{ kind: 'paste', text: 'q' }])
+  })
+
+  it('gives up on a held paste start after the wait, and reads keys again', () => {
+    let time = 0
+    const viaWait = new Decoder(() => time)
+    viaWait.push('\x1b[20')
+    expect(viaWait.flush()).toEqual([])
+    expect(viaWait.endPaste()).toEqual([])
+    time += 300
+    expect(viaWait.push('q')).toEqual([key('q')])
+    // A flush after the wait gives it up as well.
+    const viaFlush = new Decoder(() => time)
+    viaFlush.push('\x1b[2')
+    expect(viaFlush.flush()).toEqual([])
+    time += 1100
+    expect(viaFlush.flush()).toEqual([])
+    time += 300
+    expect(viaFlush.push('a')).toEqual([key('a')])
+    // A lone ESC is still Escape at once.
+    const lone = new Decoder(() => time)
+    lone.push('\x1b')
+    expect(lone.flush()).toEqual([key('Escape')])
+  })
+
   it('ends a paste whose end marker never came only when told, then reads keys again', () => {
     const decoder = new Decoder()
     expect(decoder.push('\x1b[200~ab')).toEqual([])

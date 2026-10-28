@@ -16,6 +16,8 @@ export type MouseEvent = { kind: 'mouse'; action: 'down' | 'up' | 'move' | 'whee
 export type TermEvent = KeyEvent | MouseEvent | { kind: 'paste'; text: string } | { kind: 'background'; rgb: [number, number, number] }
 
 const ESC = '\x1b'
+/** How long the start of a paste cut short is held over flushes before it is given up on: as long as a paste waits for its end. */
+const HELD_MS = 1000
 /** How long after a sequence is given up on its rest is still expected, and dropped. */
 const TAIL_MS = 250
 const PASTE_START = '\x1b[200~'
@@ -73,6 +75,8 @@ export class Decoder {
   private pasting = false
   /** The rest of a sequence {@link flush} gave up on, still expected until `until` (by the clock): it is dropped, not read as keys. */
   private tail: { kind: 'csi' | 'osc'; until: number } | null = null
+  /** When the start of a paste cut short was first held over a flush. */
+  private heldSince: number | null = null
 
   private readonly clock: () => number
 
@@ -98,6 +102,7 @@ export class Decoder {
       if (this.pending === '') break
       const used = this.take(out)
       if (used === 0) break
+      this.heldSince = null
       this.pending = this.pending.slice(used)
     }
     return out
@@ -107,12 +112,24 @@ export class Decoder {
    * Called once input has been quiet for a moment: a lone ESC is the Escape key, an ESC with
    * only `[`, `O` or `]` after it is that key with Alt, and any other unfinished sequence is
    * dropped. What may still come of a CSI or OSC given up on here (a slow terminal's report cut
-   * in two) is dropped too, when it comes within {@link TAIL_MS}. A paste is left to {@link endPaste}.
+   * in two) is dropped too, when it comes within {@link TAIL_MS}. A paste is left to {@link endPaste},
+   * and so is the start of one cut short (`ESC [`, `ESC [2` ...): a slow terminal's paste must not
+   * lose its marker and have its text read as keys. Held past {@link HELD_MS} it is given up on here too.
    */
   flush(): TermEvent[] {
     if (this.pasting) return []
+    if (this.pending.length > 1 && PASTE_START.startsWith(this.pending)) {
+      this.heldSince ??= this.clock()
+      if (this.clock() - this.heldSince <= HELD_MS) return []
+    }
+    return this.giveUp()
+  }
+
+  /** Gives up on what is pending: see {@link flush}. */
+  private giveUp(): TermEvent[] {
     const text = this.pending
     this.pending = ''
+    this.heldSince = null
     if (text.startsWith(`${ESC}[`)) this.tail = { kind: 'csi', until: this.clock() + TAIL_MS }
     else if (text.startsWith(`${ESC}]`) && text.length > 2) this.tail = { kind: 'osc', until: this.clock() + TAIL_MS }
     if (text === ESC) return [key('Escape')]
@@ -156,7 +173,8 @@ export class Decoder {
 
   /** Ends a paste whose end marker never came, after a long quiet: what it gathered is the paste, and input is read as keys again. */
   endPaste(): TermEvent[] {
-    if (!this.pasting) return []
+    // The start of one that never came whole is given up on, as flush gives up on any other sequence.
+    if (!this.pasting) return this.pending.length > 1 && PASTE_START.startsWith(this.pending) ? this.giveUp() : []
     this.pasting = false
     const text = this.pending
     this.pending = ''
