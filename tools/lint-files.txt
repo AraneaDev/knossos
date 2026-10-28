@@ -1365,6 +1365,8 @@ js	tools/pane-preview.spec.mjs
 js	tools/ts-resolve.mjs
 js	tui/args.spec.ts
 js	tui/args.ts
+js	tui/input.spec.ts
+js	tui/input.ts
 js	types/index.d.ts
 js	vitest.config.mjs
 js	web/app.spec.mjs
