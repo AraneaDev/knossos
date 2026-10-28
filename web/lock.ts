@@ -86,6 +86,41 @@ async function answers(url: string): Promise<boolean> {
 /** The errors of a file system that has no hard links. */
 const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS'])
 
+/** How often a start or a release tries for the removal guard another process holds, and how long it waits between tries. */
+const GUARD_TRIES = 50
+const GUARD_WAIT_MS = 10
+/** How old a removal guard is when the process that took it must have died holding it. */
+const GUARD_STALE_MS = 5_000
+
+/** Waits `ms` without giving up the thread: for the exit path, which cannot wait any other way. */
+const pause = (ms: number): void => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+/**
+ * Runs `act` while holding the removal guard of the lock `file` (`<file>.removing`, created exclusively, which
+ * any file system can do): true when it ran, false when another process holds the guard. One left behind by a
+ * process that died holding it is removed once it is old, for a later try to take.
+ */
+function guarded(file: string, act: () => void): boolean {
+  const guard = `${file}.removing`
+  try {
+    writeFileSync(guard, String(process.pid), { flag: 'wx', mode: 0o600 })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    try {
+      if (Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS) rmSync(guard, { force: true })
+    } catch {
+      // Gone already: the next try takes it.
+    }
+    return false
+  }
+  try {
+    act()
+  } finally {
+    rmSync(guard, { force: true })
+  }
+  return true
+}
+
 const isPort = (port: unknown): port is number => typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65_536
 
 /** Whether the lock in `file`, held by the live process it names, still holds: its server answers at `url`, or is still starting. */
@@ -127,41 +162,32 @@ export async function claim(dataDir: string, root: string, token: string): Promi
       rmSync(part, { force: true })
     }
   }
-  let removals = 0
   /**
-   * Removes the stale lock that read as `seen`, and only that one: the file is moved aside first and read again,
-   * and one that is not the lock that was read (another start already replaced it with its own) is put back.
+   * Removes the lock if `doomed` says the one in the file is to go, and only that one: it is read again and
+   * removed while this process holds the lock's removal guard, so no other start can replace it in between.
+   * False when another process holds the guard, so that nothing was looked at.
    */
-  const removeStale = (seen: { pid: unknown; port: unknown } | null) => {
-    const aside = `${file}.stale.${process.pid}.${removals++}`
-    try {
-      renameSync(file, aside)
-    } catch {
-      return
-    }
-    const moved = held(aside)
-    const same = moved === null ? seen === null : seen !== null && moved.pid === seen.pid && moved.port === seen.port
-    if (!same) {
-      try {
-        linkSync(aside, file)
-      } catch {
-        // Something else took the name in the meantime: that one is the lock now.
-      }
-    }
-    rmSync(aside, { force: true })
-  }
+  const removeIf = (doomed: (seen: { pid: unknown; port: unknown } | null) => boolean): boolean =>
+    guarded(file, () => {
+      if (existsSync(file) && doomed(held(file))) rmSync(file, { force: true })
+    })
+  /** Removes the stale lock that read as `seen`, and only that one. */
+  const removeStale = (seen: { pid: unknown; port: unknown } | null) =>
+    removeIf(now => (now === null ? seen === null : seen !== null && now.pid === seen.pid && now.port === seen.port))
   const record = (port: number) => renameSync(staged(port), file)
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < GUARD_TRIES; attempt++) {
     try {
       create()
       let released = false
       return {
         kind: 'mine',
         record,
+        // Only while it is still this process's: a start that took a lock this one no longer answered for keeps it.
         release: () => {
           if (released) return
           released = true
-          rmSync(file, { force: true })
+          // Said at exit, where nothing can wait: a guard held by another start is waited on briefly, synchronously.
+          for (let tries = 0; tries < GUARD_TRIES && !removeIf(now => now?.pid === process.pid); tries++) pause(GUARD_WAIT_MS)
         },
       }
     } catch (error) {
@@ -171,7 +197,7 @@ export async function claim(dataDir: string, root: string, token: string): Promi
     const url = other !== null && isPort(other.port) ? addressOf(other.port, token) : null
     if (other !== null && other.pid !== process.pid && alive(other.pid) && (await holds(file, url))) return { kind: 'running', url: url ?? '' }
     // Its process is gone, or its pid is another process's now: the lock is stale.
-    removeStale(other)
+    if (!removeStale(other)) await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
   }
   throw new Error(`could not take the lock ${file}`)
 }
