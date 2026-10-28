@@ -1367,6 +1367,8 @@ js	tui/args.spec.ts
 js	tui/args.ts
 js	tui/input.spec.ts
 js	tui/input.ts
+js	tui/paint.spec.ts
+js	tui/paint.ts
 js	types/index.d.ts
 js	vitest.config.mjs
 js	web/app.spec.mjs
