@@ -28,6 +28,8 @@ schemas
 .claude-plugin
 hooks
 web
+tui
+tools/ts-resolve.mjs
 skills
 types'
 

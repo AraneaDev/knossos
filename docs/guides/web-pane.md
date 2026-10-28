@@ -9,6 +9,10 @@ of the native mod.
 
 ![The web client's Overview, with the Knossos sigil, project statistics, composition charts and dependency views in the browser's dark application frame](../images/web-client/overview.png)
 
+The same pane runs fullscreen in a terminal with `knossos`; see
+[the pane in a terminal](terminal-pane.md). The two share one server per
+project, so a terminal and a browser tab open on the same project show the same pane.
+
 ## Starting it
 
 Run it in the project you want to see, or name the project:

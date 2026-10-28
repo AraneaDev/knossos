@@ -38,6 +38,8 @@ is the short version.
   send to the graph, and which does it keep away?
 - [The pane in a browser](guides/web-pane.md): how do I open the pane in a
   browser tab with `knossos web`, and what does it leave out?
+- [The pane in a terminal](guides/terminal-pane.md): how do I open the pane
+  fullscreen in a terminal with `knossos`, and how does it share a server?
 
 ## Agents
 

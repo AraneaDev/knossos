@@ -42,6 +42,11 @@ the end of each turn.
 Every time the pane opens it reloads the dashboard, so it never shows old
 figures as current.
 
+The same pane also runs outside Claude Code: `knossos` opens it fullscreen in
+a terminal (a tmux split works well) and `knossos web` serves it in a browser
+tab. See [the pane in a terminal](../../guides/terminal-pane.md) and
+[the pane in a browser](../../guides/web-pane.md).
+
 ### The header
 
 The first row names the project in bold, then where the checkout stands (the

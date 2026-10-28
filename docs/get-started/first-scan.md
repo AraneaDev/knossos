@@ -75,6 +75,10 @@ cd /absolute/path/to/your-project
 bin/knossos session-brief
 ```
 
+To look at the graph yourself, run `knossos` in the project: it opens the pane
+in your terminal (see [the pane in a terminal](../guides/terminal-pane.md)), and
+`knossos web` opens it in a browser.
+
 ## A worked example
 
 The output below is real, from a scan of the Knossos repository itself, abridged
