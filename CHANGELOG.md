@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.41.0](https://github.com/AraneaDev/knossos/compare/v0.40.10...v0.41.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* bare knossos no longer prints the usage list; use knossos usage.
+
+### Features
+
+* open the pane in the terminal with bare knossos ([#437](https://github.com/AraneaDev/knossos/issues/437)) ([bfe4219](https://github.com/AraneaDev/knossos/commit/bfe42190b936b2a6a7044b747ff654a7097bb425))
+
 ## [0.40.10](https://github.com/AraneaDev/knossos/compare/v0.40.9...v0.40.10) (2026-10-28)
 
 
