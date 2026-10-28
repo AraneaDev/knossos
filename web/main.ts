@@ -55,7 +55,6 @@ const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
 if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
 const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
-const { identity } = await import('./lock')
 const { hostProject } = await import('./host')
 const { openBrowser } = await import('./browser')
 const { stopWatcher } = await import('../hooks/mod/state')
@@ -86,14 +85,6 @@ const show = async (url: string) => {
   if (asked.open && !(await openBrowser(url))) process.stdout.write('No browser could be opened: open the URL above yourself.\n')
 }
 
-// The port the project was last served on, to say when it moved; a failure to read it surfaces from hostProject.
-const keptPort = (() => {
-  try {
-    return identity(dataDir, root).port
-  } catch {
-    return null
-  }
-})()
 try {
   hosted = await hostProject({ root, dataDir, pluginRoot, editor, port: asked.port })
 } catch (error) {
@@ -105,7 +96,7 @@ if (hosted.kind === 'running') {
   process.exit(0)
 }
 
-if (asked.port === null && keptPort !== null && hosted.port !== keptPort) process.stdout.write(`Port ${keptPort} is taken, so the address changed: ${hosted.url}\n`)
+if (asked.port === null && hosted.kept !== null && hosted.port !== hosted.kept) process.stdout.write(`Port ${hosted.kept} is taken, so the address changed: ${hosted.url}\n`)
 process.stdout.write(`Knossos web pane for ${root}: ${hosted.url}\nPress Ctrl-C to stop it.\n`)
 
 await show(hosted.url)

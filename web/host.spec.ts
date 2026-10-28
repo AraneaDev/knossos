@@ -96,6 +96,20 @@ describe('hostProject', () => {
     expect(existsSync(lockFile(data, root))).toBe(false)
   })
 
+  it('carries the port the project was last served on, null on the first start', async () => {
+    const root = scratch()
+    const data = scratch()
+    const plugin = fixturePluginRoot()
+    const first = await hostFor(root, data, plugin)
+    if (first.kind !== 'mine') throw new Error('expected to host the project')
+    expect(first.kept).toBeNull()
+    await first.close()
+    first.release()
+    const again = await hostFor(root, data, plugin)
+    if (again.kind !== 'mine') throw new Error('expected to host the project')
+    expect(again.kept).toBe(first.port)
+  })
+
   it('points at the running server instead of starting another', async () => {
     const root = scratch()
     const data = scratch()

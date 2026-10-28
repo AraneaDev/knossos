@@ -13,13 +13,14 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
 
 /** A server this process runs (stop it with `close`, then `release`), or the address of the one that already runs. */
 export type Hosted =
-  | { kind: 'mine'; url: string; token: string; port: number; close(): Promise<void>; release(): void }
+  | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; close(): Promise<void>; release(): void }
   | { kind: 'running'; url: string }
 
 /**
  * The server of the project at `root`: started here on the kept port (a
  * free one when that is taken, unless `port` names one), or the running
- * one's address. Throws "could not take the project's lock: ..." or "could
+ * one's address (`kept` is the port it was last served on, to say when
+ * it moved). Throws "could not take the project's lock: ..." or "could
  * not start: ..." when it can do neither.
  */
 export async function hostProject(o: {
@@ -65,5 +66,5 @@ export async function hostProject(o: {
     lock.release()
     throw error
   }
-  return { kind: 'mine', url: server.url, token: server.token, port: server.port, close: server.close, release: lock.release }
+  return { kind: 'mine', url: server.url, token: server.token, port: server.port, kept: kept.port, close: server.close, release: lock.release }
 }
