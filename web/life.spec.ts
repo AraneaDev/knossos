@@ -49,6 +49,51 @@ describe('ending', () => {
     expect(end.done).toEqual(['close', 'stopWatcher', 'release', 'exit 130'])
   })
 
+  it('takes the same signal again within a moment as the same request, and still closes in order', async () => {
+    let time = 1000
+    const done: string[] = []
+    let settle: () => void = () => undefined
+    const end = ending({
+      close: () => new Promise<void>(resolve => void (done.push('close'), (settle = resolve))),
+      stopWatcher: () => void done.push('stopWatcher'),
+      release: () => void done.push('release'),
+      exit: code => void done.push(`exit ${code}`),
+      write: () => undefined,
+      clock: () => time,
+    })
+    end.stop(0, 'SIGINT')
+    time += 100
+    end.stop(0, 'SIGINT')
+    expect(done).toEqual(['close'])
+    settle()
+    await settled()
+    expect(done).toEqual(['close', 'release', 'exit 0'])
+  })
+
+  it('takes the same signal later, or another signal at once, as a second request: exit 130', () => {
+    let time = 1000
+    const later = { done: [] as string[] }
+    const make = (into: string[]) =>
+      ending({
+        close: () => new Promise<void>(() => void into.push('close')),
+        stopWatcher: () => void into.push('stopWatcher'),
+        release: () => void into.push('release'),
+        exit: code => void into.push(`exit ${code}`),
+        write: () => undefined,
+        clock: () => time,
+      })
+    const end = make(later.done)
+    end.stop(0, 'SIGINT')
+    time += 600
+    end.stop(0, 'SIGINT')
+    expect(later.done).toEqual(['close', 'stopWatcher', 'release', 'exit 130'])
+    const other: string[] = []
+    const second = make(other)
+    second.stop(0, 'SIGINT')
+    second.stop(0, 'SIGTERM')
+    expect(other).toEqual(['close', 'stopWatcher', 'release', 'exit 130'])
+  })
+
   it('ends the watcher and the lock at once before the server listens', () => {
     const end = steps({ started: false })
     end.stop(0)

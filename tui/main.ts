@@ -132,14 +132,14 @@ const { stop, crashed } = ending({
   name: 'knossos',
 })
 /** Ends the pane: the terminal is given back before anything else. */
-const quit = (code = 0) => {
+const quit = (code = 0, signal?: string) => {
   client?.close()
   terminal.leave()
   // A take-over under way is waited for a moment, so the lock it claims is released with the rest.
-  if (hosting === null) return stop(code)
-  void Promise.race([hosting.catch(() => undefined), sleep(3000)]).then(() => stop(code))
+  if (hosting === null) return stop(code, signal)
+  void Promise.race([hosting.catch(() => undefined), sleep(3000)]).then(() => stop(code, signal))
 }
-for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => quit(0))
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => quit(0, signal))
 process.on('uncaughtException', crashed)
 process.on('unhandledRejection', crashed)
 process.on('exit', () => {

@@ -74,7 +74,7 @@ const { stop, crashed } = ending({
   exit: code => process.exit(code),
   write: text => void process.stderr.write(text),
 })
-for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => stop(0))
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => stop(0, signal))
 // Whatever fails past here still ends the watcher and removes the lock, and says why.
 process.on('uncaughtException', crashed)
 process.on('unhandledRejection', crashed)

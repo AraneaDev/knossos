@@ -34,27 +34,65 @@ describe('Decoder keys', () => {
   })
 
   it('turns a lone ESC into Escape on flush, and drops a sequence that never finished', () => {
-    const decoder = new Decoder()
+    let time = 0
+    const decoder = new Decoder(() => time)
     expect(decoder.push('\x1b')).toEqual([])
     expect(decoder.flush()).toEqual([key('Escape')])
     expect(decoder.push('\x1b[1;')).toEqual([])
     expect(decoder.flush()).toEqual([])
+    // A key typed well after: not the rest of the dropped sequence.
+    time += 300
     expect(decoder.push('a')).toEqual([key('a')])
   })
 
   it('reads an ESC with only [, O or ] after it as that key with Alt once input is quiet', () => {
     for (const [typed, name, shiftKey] of [['[', '[', false], ['O', 'O', true], [']', ']', false]] as const) {
-      const decoder = new Decoder()
+      let time = 0
+      const decoder = new Decoder(() => time)
       expect(decoder.push(`\x1b${typed}`)).toEqual([])
       expect(decoder.flush()).toEqual([key(name, { altKey: true, shiftKey })])
+      time += 300
       expect(decoder.push('a')).toEqual([key('a')])
     }
   })
 
-  it('gives back the keys after an Alt+] that started no OSC string', () => {
-    const decoder = new Decoder()
-    expect(decoder.push('\x1b]ab')).toEqual([])
-    expect(decoder.flush()).toEqual([key(']', { altKey: true }), key('a'), key('b')])
+  it('drops an OSC string that never ended, and its rest when it comes soon after', () => {
+    let time = 0
+    const decoder = new Decoder(() => time)
+    expect(decoder.push('\x1b]11;rgb:ff')).toEqual([])
+    expect(decoder.flush()).toEqual([])
+    time += 100
+    expect(decoder.push('ff/0000/0000\x07a')).toEqual([key('a')])
+  })
+
+  it('drops the rest of a CSI sequence that flush gave up on when it comes soon after', () => {
+    let time = 0
+    const cut = new Decoder(() => time)
+    expect(cut.push('\x1b[<0;5')).toEqual([])
+    expect(cut.flush()).toEqual([])
+    time += 40
+    expect(cut.push(';3M')).toEqual([])
+    expect(cut.push('a')).toEqual([key('a')])
+    // Taken for Alt+[ first, the rest of the report is still not read as keys.
+    const alt = new Decoder(() => time)
+    expect(alt.push('\x1b[')).toEqual([])
+    expect(alt.flush()).toEqual([key('[', { altKey: true })])
+    time += 40
+    expect(alt.push('<0;5;3M')).toEqual([])
+  })
+
+  it('reads keys again once the rest of a given-up sequence is no longer expected', () => {
+    let time = 0
+    const decoder = new Decoder(() => time)
+    decoder.push('\x1b[<0;5')
+    decoder.flush()
+    time += 300
+    expect(decoder.push(';3M')).toEqual([key(';'), key('3'), key('M', { shiftKey: true })])
+    // A real Alt+[ and, later, a real key.
+    expect(decoder.push('\x1b[')).toEqual([])
+    expect(decoder.flush()).toEqual([key('[', { altKey: true })])
+    time += 300
+    expect(decoder.push('3')).toEqual([key('3')])
   })
 
   it('reads ESC O before a character no terminal sends that way as Alt+O and the character', () => {

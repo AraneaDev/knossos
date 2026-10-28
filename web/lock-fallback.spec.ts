@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { basename, join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -45,6 +45,30 @@ describe('claim on a file system without hard links', () => {
     expect((await claim(data, root, TOKEN)).kind).toBe('running')
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(held)
     expect(readdirSync(join(data, 'web'))).toEqual([basename(file)])
+  })
+
+  it('waits on an empty lock that was just made, as another start still writing it, rather than take it', async () => {
+    const data = scratch()
+    const root = scratch()
+    const file = lockFile(data, root)
+    mkdirSync(join(data, 'web'), { recursive: true })
+    writeFileSync(file, '')
+    const live = { pid: process.ppid, port: null }
+    setTimeout(() => writeFileSync(file, JSON.stringify(live)), 100)
+    expect((await claim(data, root, TOKEN)).kind).toBe('running')
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(live)
+  })
+
+  it('takes an empty lock that is old: nobody is writing it any more', async () => {
+    const data = scratch()
+    const root = scratch()
+    const file = lockFile(data, root)
+    mkdirSync(join(data, 'web'), { recursive: true })
+    writeFileSync(file, '')
+    const old = (Date.now() - 60_000) / 1000
+    utimesSync(file, old, old)
+    expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 
   it('leaves a lock that replaced the stale one it read, without a hard link', async () => {

@@ -16,6 +16,8 @@ export type MouseEvent = { kind: 'mouse'; action: 'down' | 'up' | 'move' | 'whee
 export type TermEvent = KeyEvent | MouseEvent | { kind: 'paste'; text: string } | { kind: 'background'; rgb: [number, number, number] }
 
 const ESC = '\x1b'
+/** How long after a sequence is given up on its rest is still expected, and dropped. */
+const TAIL_MS = 250
 const PASTE_START = '\x1b[200~'
 const PASTE_END = '\x1b[201~'
 
@@ -69,10 +71,20 @@ export const themeOfBackground = (rgb: [number, number, number]): 'dark' | 'ligh
 export class Decoder {
   private pending = ''
   private pasting = false
+  /** The rest of a sequence {@link flush} gave up on, still expected until `until` (by the clock): it is dropped, not read as keys. */
+  private tail: { kind: 'csi' | 'osc'; until: number } | null = null
+
+  private readonly clock: () => number
+
+  /** `clock` is the time in ms (`Date.now` by default), for how long the rest of an abandoned sequence is expected. */
+  constructor(clock: () => number = Date.now) {
+    this.clock = clock
+  }
 
   /** Decodes `chunk` after whatever the last one left unfinished; a sequence cut short waits for the next chunk. */
   push(chunk: string): TermEvent[] {
     this.pending += chunk
+    this.dropTail()
     const out: TermEvent[] = []
     for (;;) {
       if (this.pasting) {
@@ -93,17 +105,53 @@ export class Decoder {
 
   /**
    * Called once input has been quiet for a moment: a lone ESC is the Escape key, an ESC with
-   * only `[`, `O` or `]` after it is that key with Alt (an OSC that never ended gives the rest
-   * back as keys), and any other unfinished sequence is dropped. A paste is left to {@link endPaste}.
+   * only `[`, `O` or `]` after it is that key with Alt, and any other unfinished sequence is
+   * dropped. What may still come of a CSI or OSC given up on here (a slow terminal's report cut
+   * in two) is dropped too, when it comes within {@link TAIL_MS}. A paste is left to {@link endPaste}.
    */
   flush(): TermEvent[] {
     if (this.pasting) return []
     const text = this.pending
     this.pending = ''
+    if (text.startsWith(`${ESC}[`)) this.tail = { kind: 'csi', until: this.clock() + TAIL_MS }
+    else if (text.startsWith(`${ESC}]`) && text.length > 2) this.tail = { kind: 'osc', until: this.clock() + TAIL_MS }
     if (text === ESC) return [key('Escape')]
-    if (text === `${ESC}[` || text === `${ESC}O`) return [key(text[1]!, { alt: true, shift: text[1] === 'O' })]
-    if (text.startsWith(`${ESC}]`)) return [key(']', { alt: true }), ...this.push(text.slice(2))]
+    if (text === `${ESC}[` || text === `${ESC}O` || text === `${ESC}]`) return [key(text[1]!, { alt: true, shift: text[1] === 'O' })]
     return []
+  }
+
+  /** Drops what continues a sequence {@link flush} gave up on, while it is still expected; the first byte that cannot continue it ends the wait. */
+  private dropTail(): void {
+    const tail = this.tail
+    if (tail === null) return
+    if (this.clock() > tail.until) {
+      this.tail = null
+      return
+    }
+    const text = this.pending
+    if (tail.kind === 'csi') {
+      const found = /^[0-9;:<=>?]*[ -/]*([@-~])?/.exec(text)!
+      this.pending = text.slice(found[0].length)
+      // Its final byte, or a byte that cannot be part of it, ends it; all of it so far waits for more.
+      if (found[1] !== undefined || this.pending !== '') this.tail = null
+      return
+    }
+    const bell = text.indexOf('\x07')
+    const stop = text.indexOf(`${ESC}\\`)
+    const ends = [bell < 0 ? -1 : bell + 1, stop < 0 ? -1 : stop + 2].filter(at => at > 0)
+    if (ends.length > 0) {
+      this.pending = text.slice(Math.min(...ends))
+      this.tail = null
+      return
+    }
+    // An ESC that does not start ST begins something else: the string is over.
+    const escape = text.indexOf(ESC)
+    if (escape >= 0 && escape < text.length - 1) {
+      this.pending = text.slice(escape)
+      this.tail = null
+      return
+    }
+    this.pending = escape >= 0 ? ESC : ''
   }
 
   /** Ends a paste whose end marker never came, after a long quiet: what it gathered is the paste, and input is read as keys again. */

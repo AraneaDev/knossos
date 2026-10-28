@@ -226,11 +226,13 @@ describe('claim', () => {
     expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 
-  it('takes over a lock it cannot read', async () => {
+  it('takes over a lock it cannot read once it is too old to be still being written', async () => {
     const data = scratch()
     const root = scratch()
     mkdirSync(join(data, 'web'), { recursive: true })
     writeFileSync(lockFile(data, root), '{not json')
+    const old = (Date.now() - 60_000) / 1000
+    utimesSync(lockFile(data, root), old, old)
     expect((await claim(data, root, TOKEN)).kind).toBe('mine')
   })
 

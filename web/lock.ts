@@ -86,6 +86,18 @@ async function answers(url: string): Promise<boolean> {
 /** The errors of a file system that has no hard links. */
 const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS'])
 
+/** How long a lock that does not read is taken to be still being written: the exclusive create of a file system without hard links makes it empty first. */
+const WRITING_MS = 2_000
+
+/** Whether the lock in `file` is young enough to be one another start is still writing. */
+function writing(file: string): boolean {
+  try {
+    return Date.now() - statSync(file).mtimeMs < WRITING_MS
+  } catch {
+    return false
+  }
+}
+
 /** How often a start or a release tries for the removal guard another process holds, and how long it waits between tries. */
 const GUARD_TRIES = 50
 const GUARD_WAIT_MS = 10
@@ -173,7 +185,7 @@ export async function claim(dataDir: string, root: string, token: string): Promi
     })
   /** Removes the stale lock that read as `seen`, and only that one. */
   const removeStale = (seen: { pid: unknown; port: unknown } | null) =>
-    removeIf(now => (now === null ? seen === null : seen !== null && now.pid === seen.pid && now.port === seen.port))
+    removeIf(now => (now === null ? seen === null && !writing(file) : seen !== null && now.pid === seen.pid && now.port === seen.port))
   const record = (port: number) => renameSync(staged(port), file)
   for (let attempt = 0; attempt < GUARD_TRIES; attempt++) {
     try {
@@ -194,6 +206,12 @@ export async function claim(dataDir: string, root: string, token: string): Promi
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
     const other = held(file)
+    // One that does not read yet may be another start's, created but not yet written: it is waited on, not taken.
+    if (other === null && writing(file)) {
+      await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
+      attempt--
+      continue
+    }
     const url = other !== null && isPort(other.port) ? addressOf(other.port, token) : null
     if (other !== null && other.pid !== process.pid && alive(other.pid) && (await holds(file, url))) return { kind: 'running', url: url ?? '' }
     // Its process is gone, or its pid is another process's now: the lock is stale.
