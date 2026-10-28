@@ -1,12 +1,14 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { scratch } from './fixtures/helpers'
 import { addressOf, claim, identity, lockFile } from './lock'
 
+const LOCK = join(dirname(fileURLToPath(import.meta.url)), 'lock.ts')
 const TOKEN = 'ab'.repeat(24)
 
 /** A pid no process has: one that just ended. */
@@ -15,7 +17,40 @@ function deadPid(): number {
   return ended.pid!
 }
 
+/** A process that claims the project at `at` (epoch ms, so that several start together), prints `mine` or `running`, and stays alive a moment. */
+function claimer(data: string, root: string, at: number): Promise<string> {
+  const code = `import(${JSON.stringify(LOCK)}).then(async m => { while (Date.now() < ${at}); const c = await m.claim(${JSON.stringify(data)}, ${JSON.stringify(root)}, ${JSON.stringify(TOKEN)}); console.log(c.kind); setTimeout(() => {}, 1500) })`
+  const child = spawn(process.execPath, ['-e', code])
+  let out = ''
+  child.stdout.on('data', (chunk: Buffer) => (out += chunk))
+  return new Promise(resolve => child.on('close', () => resolve(out.trim())))
+}
+
 describe('claim', () => {
+  it('lets exactly one of several starts at once take a stale lock, whatever order they read and remove it in', { timeout: 60_000 }, async () => {
+    for (let round = 0; round < 3; round++) {
+      const data = scratch()
+      const root = scratch()
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: deadPid(), port: null }))
+      const at = Date.now() + 700
+      const kinds = await Promise.all([claimer(data, root, at), claimer(data, root, at), claimer(data, root, at)])
+      expect(kinds.filter(kind => kind === 'mine'), kinds.join()).toHaveLength(1)
+      expect(kinds.filter(kind => kind === 'running')).toHaveLength(2)
+    }
+  })
+
+  it('removes only the lock it read: one replaced in the meantime is put back', async () => {
+    const data = scratch()
+    const root = scratch()
+    mkdirSync(join(data, 'web'), { recursive: true })
+    // A stale lock that is replaced by a live one (this one's parent) between the read and the removal cannot be observed
+    // from outside, so the pieces are checked: a stale lock goes, and no side file stays.
+    writeFileSync(lockFile(data, root), JSON.stringify({ pid: deadPid(), port: 4321 }))
+    expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+    expect(readdirSync(join(data, 'web'))).toEqual([basename(lockFile(data, root))])
+  })
+
   it('leaves no staging file beside the lock, whether it takes it, records the port or loses it', async () => {
     const data = scratch()
     const root = scratch()

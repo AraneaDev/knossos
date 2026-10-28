@@ -1396,6 +1396,7 @@ js	web/hub.spec.ts
 js	web/hub.ts
 js	web/life.spec.ts
 js	web/life.ts
+js	web/lock-fallback.spec.ts
 js	web/lock.spec.ts
 js	web/lock.ts
 js	web/main.spec.ts

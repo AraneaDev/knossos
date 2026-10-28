@@ -83,6 +83,9 @@ async function answers(url: string): Promise<boolean> {
   }
 }
 
+/** The errors of a file system that has no hard links. */
+const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS'])
+
 const isPort = (port: unknown): port is number => typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65_536
 
 /** Whether the lock in `file`, held by the live process it names, still holds: its server answers at `url`, or is still starting. */
@@ -116,12 +119,39 @@ export async function claim(dataDir: string, root: string, token: string): Promi
     try {
       // A link fails when the lock exists, as an exclusive create does.
       linkSync(part, file)
+    } catch (error) {
+      if (!NO_HARD_LINKS.has((error as NodeJS.ErrnoException).code ?? '')) throw error
+      // A file system without hard links: the exclusive create of the lock itself, written in one call.
+      writeFileSync(file, JSON.stringify({ pid: process.pid, port: null }), { flag: 'wx', mode: 0o600 })
     } finally {
       rmSync(part, { force: true })
     }
   }
+  let removals = 0
+  /**
+   * Removes the stale lock that read as `seen`, and only that one: the file is moved aside first and read again,
+   * and one that is not the lock that was read (another start already replaced it with its own) is put back.
+   */
+  const removeStale = (seen: { pid: unknown; port: unknown } | null) => {
+    const aside = `${file}.stale.${process.pid}.${removals++}`
+    try {
+      renameSync(file, aside)
+    } catch {
+      return
+    }
+    const moved = held(aside)
+    const same = moved === null ? seen === null : seen !== null && moved.pid === seen.pid && moved.port === seen.port
+    if (!same) {
+      try {
+        linkSync(aside, file)
+      } catch {
+        // Something else took the name in the meantime: that one is the lock now.
+      }
+    }
+    rmSync(aside, { force: true })
+  }
   const record = (port: number) => renameSync(staged(port), file)
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     try {
       create()
       let released = false
@@ -141,7 +171,7 @@ export async function claim(dataDir: string, root: string, token: string): Promi
     const url = other !== null && isPort(other.port) ? addressOf(other.port, token) : null
     if (other !== null && other.pid !== process.pid && alive(other.pid) && (await holds(file, url))) return { kind: 'running', url: url ?? '' }
     // Its process is gone, or its pid is another process's now: the lock is stale.
-    rmSync(file, { force: true })
+    removeStale(other)
   }
   throw new Error(`could not take the lock ${file}`)
 }

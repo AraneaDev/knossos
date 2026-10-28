@@ -12,6 +12,8 @@ export type Ending = {
   release(): void
   exit(code: number): void
   write(text: string): void
+  /** What the messages are prefixed with: `knossos web` by default. */
+  name?: string
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -25,6 +27,7 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
  * it was stopping already).
  */
 export function ending(o: Ending): { stop(code: number): void; crashed(error: unknown): void } {
+  const name = o.name ?? 'knossos web'
   let stopping = false
   const now = (code: number) => {
     o.stopWatcher()
@@ -37,7 +40,7 @@ export function ending(o: Ending): { stop(code: number): void; crashed(error: un
     const close = o.close
     if (close === null) return now(code)
     void close()
-      .catch((error: unknown) => o.write(`knossos web: stopping: ${messageOf(error)}\n`))
+      .catch((error: unknown) => o.write(`${name}: stopping: ${messageOf(error)}\n`))
       .finally(() => {
         o.release()
         o.exit(code)
@@ -46,7 +49,7 @@ export function ending(o: Ending): { stop(code: number): void; crashed(error: un
   return {
     stop,
     crashed: error => {
-      o.write(`knossos web: ${messageOf(error)}\n`)
+      o.write(`${name}: ${messageOf(error)}\n`)
       // A failure while it stops (in the close itself) waits no longer either, and still exits 1.
       if (stopping) return now(1)
       stop(1)

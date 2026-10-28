@@ -1,10 +1,11 @@
-import { request } from 'node:http'
+import { ServerResponse, request } from 'node:http'
 import { readFileSync } from 'node:fs'
 import type { IncomingMessage } from 'node:http'
 import { stripTypeScriptTypes } from 'node:module'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { activeTab, fixturePluginRoot, frameText, markedPluginRoot, scratch } from './fixtures/helpers'
+import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
+import { Hub } from './hub'
 import type { Frame } from './hub'
 import { cardPlace } from '../hooks/lib/place'
 import { followHead } from '../hooks/mod/watcher'
@@ -180,22 +181,38 @@ describe('startServer', () => {
     stream.close()
   })
 
-  it('closes with a stream open and a frame still being laid out, without writing to the ended stream', async () => {
-    running = await startServer({ root: scratch(), pluginRoot: markedPluginRoot(String(30_000 + Math.floor(Math.random() * 9_999))), dataDir: scratch(), port: 0 })
-    await running.ready
-    const { url, token } = running
+  it('closes with a stream open and an event arriving as it ends, without writing to the ended stream', async () => {
+    const { url, token } = await started()
     const base = url.slice(0, url.indexOf('?'))
+    const stream = await events(`${base}events?t=${token}&id=a&cols=100&rows=40`)
+    await stream.next(() => true)
+    // Between a stream's end and the close event that removes its page, the hub may still send to it: make that the very next thing.
+    const hubs = new Set<Hub>()
+    const connect = Hub.prototype.connect
+    vi.spyOn(Hub.prototype, 'connect').mockImplementation(function (this: Hub, ...args) {
+      hubs.add(this)
+      return connect.apply(this, args)
+    })
+    const end = ServerResponse.prototype.end as (...args: unknown[]) => ServerResponse
+    vi.spyOn(ServerResponse.prototype, 'end').mockImplementation(function (this: ServerResponse, ...args: unknown[]) {
+      const done = end.apply(this, args)
+      for (const hub of hubs) hub.send({ type: 'toast', text: 'late' })
+      return done
+    } as never)
     const crashes: unknown[] = []
     const heard = (error: unknown) => crashes.push(error)
     process.on('uncaughtException', heard)
     try {
-      const stream = await events(`${base}events?t=${token}&id=a&cols=100&rows=40`)
-      await new Promise(resolve => setTimeout(resolve, 300))
+      // The hub of this server is the one that was connected to: connect again so that the spy sees it.
+      const second = await events(`${base}events?t=${token}&id=b&cols=100&rows=40`)
+      await second.next(() => true)
       await running!.close()
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise(resolve => setTimeout(resolve, 50))
+      second.close()
       stream.close()
     } finally {
       process.off('uncaughtException', heard)
+      vi.restoreAllMocks()
     }
     expect(crashes).toEqual([])
   })
