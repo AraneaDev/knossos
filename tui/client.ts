@@ -6,7 +6,7 @@
  * only a terminal has to decide (the field being edited, the wheel's scroll
  * of a pinned body, the card in view, the toast) is kept here.
  */
-import { TOAST_MS, createPage, pressOrder, releasedOn, segmentsOf, wheelQueue } from '../web/public/app.mjs'
+import { TOAST_MS, createPage, pressOfKey, pressOrder, releasedOn, segmentsOf, wheelQueue } from '../web/public/app.mjs'
 import type { Frame } from '../web/hub'
 import type { PageSegment } from '../web/page-rows'
 import { Decoder } from './input'
@@ -17,6 +17,8 @@ import { FetchEventSource } from './stream'
 
 /** How long input stays quiet before an unfinished escape is the Escape key. */
 const ESCAPE_MS = 30
+/** How long a paste stays quiet before it is taken to have ended without its end marker. */
+const PASTE_MS = 1000
 /** What a lost event stream says while the page waits to open it again. */
 const RECONNECTING = 'Reconnecting to the server...'
 
@@ -29,6 +31,8 @@ export type ClientOptions = {
   fetch: typeof fetch
   copy(text: string): void
   quit(): void
+  /** Ctrl-Z: give the terminal back as a stopped job would. */
+  suspend(): void
   after(ms: number, fire: () => void): void
 }
 
@@ -53,6 +57,16 @@ const before = (text: string, at: number): number => (at >= 2 && /[\udc00-\udfff
 /** The end of the character at `at` in `text`. */
 const after = (text: string, at: number): number => (at + 2 <= text.length && /[\ud800-\udbff]/.test(text[at]!) ? at + 2 : Math.min(text.length, at + 1))
 
+/** `text` as a field takes it: line breaks and tabs are spaces, and no other control character gets in. */
+// eslint-disable-next-line no-control-regex -- finding control characters is what it is for
+const printable = (text: string): string => text.replace(/\r\n?|\n|\t/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
+
+/** Whether `frame` has a press or a field: something a key typed early can act on. */
+const actionable = (frame: Frame): boolean => (segmentsOf(frame) as PageSegment[]).some(s => s.press !== undefined || s.field !== undefined)
+
+/** The most events kept for a frame with something to act on: typing on a loading pane is not stored without end. */
+const EARLY_MAX = 64
+
 /** The value of every field of `frame`, by its id. */
 const fieldsOf = (frame: Frame): Map<string, string> => new Map((segmentsOf(frame) as PageSegment[]).flatMap(s => (s.field === undefined ? [] : [[s.field.id, s.field.value] as const])))
 
@@ -72,6 +86,8 @@ export function startClient(o: ClientOptions): Client {
   let persistent: string | null = null
   let down: string | null = null
   let lastInput = 0
+  /** What was typed before a frame had anything to press or edit (the first ones say the graph is loading): handed on once one has. */
+  const early: TermEvent[] = []
   /** The hits of the screen last painted: what the pointer is over. */
   let hits: Hit[][] = []
 
@@ -172,11 +188,14 @@ export function startClient(o: ClientOptions): Client {
       // A field that left the frame is no longer edited.
       if (editing !== null && !fieldsOf(frame).has(editing.id)) editing = null
       paint()
+      if (actionable(frame)) for (const e of early.splice(0)) handle(e)
     },
     on: {
       toast: (e: { text: string }) => showToast(e.text),
+      // A terminal cannot tell whether the copy arrived, so the text is shown too, as the page shows it when the copy fails.
       copy: (e: { text: string }) => {
         o.copy(e.text)
+        showToast(`Copy it from here: ${e.text}`)
       },
       scroll: (e: { key?: string | null }) => {
         reveal(e.key)
@@ -203,6 +222,7 @@ export function startClient(o: ClientOptions): Client {
 
   /** Puts `text` into the field being edited at the cursor. */
   function insert(text: string): void {
+    text = printable(text)
     if (editing === null || text === '') return
     editing = { ...editing, value: editing.value.slice(0, editing.cursor) + text + editing.value.slice(editing.cursor), cursor: editing.cursor + text.length }
     typed(editing)
@@ -269,7 +289,8 @@ export function startClient(o: ClientOptions): Client {
 
   /** A key typed outside a field. */
   function pageKey(e: KeyEvent): void {
-    if (e.key === 'q' && !e.ctrlKey && !e.altKey) return o.quit()
+    // `q` quits, unless the frame gives it to a press of its own (`q: scan it`): then the press is what was asked for.
+    if (e.key === 'q' && !e.ctrlKey && !e.altKey && pressOfKey(page.frame, e) === null) return o.quit()
     const ring = e.key === 'Tab' ? (e.shiftKey ? 'ArrowUp' : 'ArrowDown') : e.key
     const done = page.key({ key: ring, ctrlKey: e.ctrlKey, metaKey: false, altKey: e.altKey, inField: false })
     if (done?.focus !== undefined) reveal(done.focus)
@@ -333,10 +354,18 @@ export function startClient(o: ClientOptions): Client {
 
   /** One decoded event from the terminal. */
   function handle(e: TermEvent): void {
+    if (e.kind === 'key' && e.ctrlKey && e.key === 'c') return o.quit()
+    if (e.kind === 'key' && e.ctrlKey && e.key === 'z') return o.suspend()
+    const frame = frameOf()
+    if (frame === null || !actionable(frame)) {
+      // `q` needs nothing to press: a pane whose server never draws can still be left.
+      if (e.kind === 'key' && e.key === 'q' && !e.ctrlKey && !e.altKey) return o.quit()
+      if (early.length < EARLY_MAX) early.push(e)
+      return
+    }
     if (e.kind === 'mouse') return mouse(e)
-    if (e.kind === 'paste') return insert(e.text.replace(/\r\n?|\n/g, ' '))
+    if (e.kind === 'paste') return insert(e.text)
     if (e.kind !== 'key') return
-    if (e.ctrlKey && e.key === 'c') return o.quit()
     if (editing === null) pageKey(e)
     else fieldKey(editing, e)
   }
@@ -352,6 +381,11 @@ export function startClient(o: ClientOptions): Client {
       o.after(ESCAPE_MS, () => {
         if (closed || stamp !== lastInput) return
         for (const e of decoder.flush()) handle(e)
+      })
+      // A paste whose end never comes would take every key after it, Ctrl-C too.
+      o.after(PASTE_MS, () => {
+        if (closed || stamp !== lastInput) return
+        for (const e of decoder.endPaste()) handle(e)
       })
     },
     resize() {

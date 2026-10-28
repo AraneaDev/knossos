@@ -12,7 +12,7 @@
  * when the server wrote anything.
  */
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -67,6 +67,8 @@ const { TOAST_MS } = await import('../web/public/app.mjs')
 const BACKGROUND_MS = 150
 /** How long a server that has taken the lock is given to say where it listens. */
 const STARTING_MS = 10_000
+/** How long after asking its process group to stop the pane waits to learn that it was not stopped. */
+const STOPPED_MS = 50
 
 const out = (bytes: string) => void process.stdout.write(bytes)
 const terminal = terminalMode({ stdin: process.stdin, write: out })
@@ -74,6 +76,14 @@ const terminal = terminalMode({ stdin: process.stdin, write: out })
 // The server's log goes to a file beside the project's lock, never to the screen the pane owns.
 const logFile = lockFile(dataDir, root).replace(/\.json$/, '.log')
 let logged = false
+/** Whether the lock names this process: the server that logs is this pane's own. */
+const owning = (): boolean => {
+  try {
+    return (JSON.parse(readFileSync(lockFile(dataDir, root), 'utf8')) as { pid?: unknown }).pid === process.pid
+  } catch {
+    return false
+  }
+}
 /** When the pane last told of the log: a burst of lines gives one toast. */
 let toldAt = 0
 /** A line was logged before the client could show it. */
@@ -91,7 +101,8 @@ const tell = () => {
 const log = (text: string) => {
   try {
     mkdirSync(dirname(logFile), { recursive: true, mode: 0o700 })
-    appendFileSync(logFile, `${text}\n`, { mode: 0o600 })
+    // The server's first line of a run starts the file again, so that it holds one run and does not grow without end.
+    appendFileSync(logFile, `${text}\n`, { mode: 0o600, flag: !logged && owning() ? 'w' : 'a' })
     logged = true
   } catch {
     // A log that cannot be written must not take the pane down with it.
@@ -137,38 +148,67 @@ process.on('exit', () => {
   if (logged) process.stderr.write(`knossos: the pane's log is in ${logFile}\n`)
 })
 
+/** Whether the pane gave the terminal back to stop, and has not taken it again. */
+let suspended = false
+/** Takes the terminal again after a stop, or after a stop that did not happen. */
+const resume = () => {
+  if (!suspended) return
+  suspended = false
+  process.on('SIGTSTP', suspend)
+  terminal.enter()
+  client?.resize()
+}
 /**
  * Suspends the pane as a shell's job control would: the terminal back first, then
- * the whole process group stops, `knossos`'s PHP parent with it, so the shell sees
- * the job stop and takes the terminal.
+ * the whole process group is asked to stop, `knossos`'s PHP parent with it, so the
+ * shell sees the job stop and takes the terminal. The pane's own SIGTSTP listener
+ * is taken off first, so the signal stops this process as it does any other.
+ *
+ * A process group no shell controls (`exec knossos`, a tmux pane started as the
+ * command) is orphaned: the kernel drops the signal, as nothing could start the
+ * group again, and the pane takes the terminal back and draws itself again.
  */
-const suspend = () => {
+function suspend(): void {
+  if (suspended) return
+  suspended = true
   terminal.leave()
-  process.kill(0, 'SIGSTOP')
+  process.off('SIGTSTP', suspend)
+  process.kill(0, 'SIGTSTP')
+  // A stop happens before the call returns, so this runs once the group goes on, or at once when it was not stopped.
+  setTimeout(resume, STOPPED_MS)
 }
 process.on('SIGTSTP', suspend)
 process.on('SIGCONT', () => {
-  terminal.enter()
+  if (suspended) return resume()
+  // Stopped by something else: what is on the screen may not be the pane's any more.
   client?.resize()
 })
 
-/** The terminal's background as a theme: asked for and waited on for a moment, `dark` when it does not answer. */
-function themeOfTerminal(): Promise<'dark' | 'light'> {
+/** The background colour reply in input, ended by BEL or ST. */
+// eslint-disable-next-line no-control-regex -- the reply is made of control characters
+const REPLY = /\x1b\]11;[^\x07\x1b]*(?:\x07|\x1b\\)/
+
+/**
+ * The terminal's background as a theme: asked for and waited on for a moment, `dark`
+ * when it does not answer. `rest` is whatever else was typed meanwhile, for the client.
+ */
+function themeOfTerminal(): Promise<{ theme: 'dark' | 'light'; rest: string }> {
   return new Promise(done => {
     const decoder = new Decoder()
     let finished = false
+    let held = ''
     const finish = (theme: 'dark' | 'light') => {
       if (finished) return
       finished = true
       process.stdin.off('data', listen)
       // Keys typed while the server starts wait in the terminal's buffer for the client.
       process.stdin.pause()
-      done(theme)
+      done({ theme, rest: held.replace(REPLY, '') })
     }
     const listen = (chunk: string) => {
+      held += chunk
       for (const e of decoder.push(chunk)) if (e.kind === 'background') finish(themeOfBackground(e.rgb))
     }
-    process.stdin.setEncoding('utf8')
     process.stdin.on('data', listen)
     setTimeout(() => finish('dark'), BACKGROUND_MS)
     out(ASK_BACKGROUND)
@@ -180,9 +220,11 @@ async function host(): Promise<Hosted> {
   const deadline = Date.now() + STARTING_MS
   for (;;) {
     const found = await hostProject({ root, dataDir, pluginRoot, editor, port: null, log })
-    // Held from this moment, so that whatever ends the process releases it.
-    hosted = found
-    if (found.kind === 'mine' || found.url !== '') return found
+    // Held from this moment, so that whatever ends the process releases it; a server that has not said where it listens replaces nothing.
+    if (found.kind === 'mine' || found.url !== '') {
+      hosted = found
+      return found
+    }
     if (Date.now() > deadline) throw new Error('the running server did not say where it listens')
     await sleep(100)
   }
@@ -214,11 +256,14 @@ const origin = (url: string) => new URL(url).origin
 
 try {
   terminal.enter()
-  const theme = asked.theme ?? (await themeOfTerminal())
+  // Text, not bytes: a key is never cut in two between chunks, and Ctrl-Z is a character the decoder knows.
+  process.stdin.setEncoding('utf8')
+  out('\x1b[H\x1b[2JStarting the pane...')
+  const { theme, rest } = asked.theme === null ? await themeOfTerminal() : { theme: asked.theme, rest: '' }
   const started = await acquire()
   const first = started.url
   let current = first
-  const copyCommand = clipboardCommand(process.platform, name => (process.env.PATH ?? '').split(delimiter).some(dir => dir !== '' && existsSync(join(dir, name))))
+  const copyCommand = clipboardCommand(process.platform, process.env, name => (process.env.PATH ?? '').split(delimiter).some(dir => dir !== '' && existsSync(join(dir, name))))
   // The client's retries ask for the event stream again; before one goes out, a server that is gone is replaced.
   const reach: typeof fetch = async (input, init) => {
     const url = String(input)
@@ -251,15 +296,14 @@ try {
       child.stdin.end(text)
     },
     quit: () => quit(0),
+    suspend,
     after: (ms, fire) => void setTimeout(fire, ms),
   })
   if (started.kind === 'running' && editor !== null) client.toast("This project's pane already runs; files open in its editor.")
   if (owed) tell()
-  process.stdin.on('data', (chunk: string) => {
-    // Raw mode hands Ctrl-Z over as a byte rather than as a signal.
-    if (chunk === '\x1a') return suspend()
-    client?.input(chunk)
-  })
+  if (rest !== '') client.input(rest)
+  // Raw mode hands Ctrl-Z over as a key rather than as a signal: the client gives it back through `suspend`.
+  process.stdin.on('data', (chunk: string) => client?.input(chunk))
   process.stdin.on('end', () => quit(0))
   process.stdin.resume()
   process.stdout.on('resize', () => client?.resize())

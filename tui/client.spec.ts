@@ -30,6 +30,7 @@ function harness(first: Frame = frame(), size = { columns: 40, rows: 10 }) {
   const timers: Array<{ ms: number; fire: () => void }> = []
   const copied: string[] = []
   const quit = { count: 0 }
+  const suspended = { count: 0 }
   const hold = { answers: false }
   let push: (event: object) => void = () => undefined
   const fetchFake = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -56,13 +57,14 @@ function harness(first: Frame = frame(), size = { columns: 40, rows: 10 }) {
     fetch: fetchFake,
     copy: text => copied.push(text),
     quit: () => quit.count++,
+    suspend: () => suspended.count++,
     after: (ms, fire) => timers.push({ ms, fire }),
   })
   clients.push(client)
   const text = () => strip(written.join(''))
   const sent = (kind: string) => posts.filter(p => p.kind === kind).map(p => Object.fromEntries(Object.entries(p).filter(([key]) => key !== 'id')))
   const settle = () => new Promise(resolve => setTimeout(resolve, 20))
-  return { client, written, posts, pending, timers, copied, quit, hold, text, sent, settle, emit: (event: object) => push(event) }
+  return { client, written, posts, pending, timers, copied, quit, suspended, hold, text, sent, settle, emit: (event: object) => push(event) }
 }
 
 const clients: Client[] = []
@@ -97,6 +99,16 @@ describe('startClient', () => {
     expect(h.sent('type')).toEqual([{ kind: 'type', field: 'find', value: 'q' }])
     h.client.input('\x03')
     expect(h.quit.count).toBe(2)
+  })
+
+  it("presses a press the frame gives q to rather than quit, and Ctrl-C still quits", async () => {
+    const h = harness(frame({ body: [row('empty', press('scan', 'q'))], footer: [] }))
+    await h.settle()
+    h.client.input('q')
+    expect(h.sent('press')).toEqual([{ kind: 'press', press: 'scan' }])
+    expect(h.quit.count).toBe(0)
+    h.client.input('\x03')
+    expect(h.quit.count).toBe(1)
   })
 
   it('steps the focus ring with Tab and Shift-Tab, and presses the focused one on Enter', async () => {
@@ -146,12 +158,52 @@ describe('startClient', () => {
     h.emit({ type: 'focus', key: 'find' })
     await h.settle()
     h.client.input('\x1b')
-    const flush = h.timers.at(-1)!
-    expect(flush.ms).toBe(30)
+    const flush = h.timers.filter(t => t.ms === 30).at(-1)!
     flush.fire()
     expect(h.sent('submit')).toEqual([])
     expect(h.sent('focus').at(-1)).toEqual({ kind: 'focus', element: 'tab:overview' })
     h.client.input('q')
+    expect(h.quit.count).toBe(1)
+  })
+
+  it('suspends on Ctrl-Z, in a field too, and types nothing for it', async () => {
+    const h = harness()
+    await h.settle()
+    h.client.input('\x1a')
+    expect(h.suspended.count).toBe(1)
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.client.input('\x1a')
+    expect(h.suspended.count).toBe(2)
+    expect(h.sent('type')).toEqual([])
+  })
+
+  it('keeps escape sequences and control characters of a paste out of a field', async () => {
+    const h = harness()
+    await h.settle()
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.client.input('\x1b[200~a\x1b[2Jb\tc\x07\x9bd\r\ne\x1b[201~')
+    expect(h.sent('type').map(t => t.value)).toEqual(['a[2Jb cd e'])
+    // A paste of nothing but control characters types nothing.
+    h.client.input('\x1b[200~\x01\x02\x1b[201~')
+    expect(h.sent('type')).toHaveLength(1)
+  })
+
+  it('ends a paste whose end marker never comes after a quiet second, so that Ctrl-C quits again', async () => {
+    const h = harness()
+    await h.settle()
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.client.input('\x1b[200~xy')
+    h.client.input('\x03')
+    expect(h.quit.count).toBe(0)
+    // The first chunk's timer is stale: a later chunk came.
+    for (const t of h.timers.filter(t => t.ms === 1000).slice(0, -1)) t.fire()
+    expect(h.sent('type')).toEqual([])
+    h.timers.filter(t => t.ms === 1000).at(-1)!.fire()
+    expect(h.sent('type').map(t => t.value)).toEqual(['xy'])
+    h.client.input('\x03')
     expect(h.quit.count).toBe(1)
   })
 
@@ -239,12 +291,16 @@ describe('startClient', () => {
     expect(h.text()).toContain('Reconnecting')
   })
 
-  it('copies on a copy event, and shows a persistent status until cleared', async () => {
+  it('copies on a copy event and shows the text on a toast, and shows a persistent status until cleared', async () => {
     const h = harness()
     await h.settle()
     h.emit({ type: 'copy', text: 'to the clipboard' })
     await h.settle()
     expect(h.copied).toEqual(['to the clipboard'])
+    expect(h.text()).toContain('Copy it from here: to the clipboard')
+    h.written.length = 0
+    h.timers.find(t => t.ms === 4000)!.fire()
+    expect(h.text()).not.toContain('Copy it from here')
     h.client.status('Reconnecting')
     expect(h.text()).toContain('Reconnecting')
     h.written.length = 0
@@ -276,6 +332,32 @@ describe('startClient in a body taller than the window', () => {
     const last = strip(h.written.at(-1)!)
     expect(last).toContain('item:9')
     expect(h.written.at(-1)).toContain(`${ESC}[7m`)
+  })
+
+  it('scrolls back up to an element above the window, and leaves the scroll for one outside the body', async () => {
+    const h = harness(tall(), small)
+    await h.settle()
+    h.emit({ type: 'scroll', key: 'item:9' })
+    await h.settle()
+    const shown = strip(h.written.at(-1)!)
+    h.written.length = 0
+    h.emit({ type: 'scroll', key: 'rescan' })
+    h.emit({ type: 'scroll', key: null })
+    await h.settle()
+    // Nothing moved: no line of the body is painted again.
+    expect(shown).toContain('item:9')
+    expect(h.text()).not.toContain('item:')
+    h.emit({ type: 'scroll', key: 'item:1' })
+    await h.settle()
+    expect(strip(h.written.at(-1)!)).toContain('item:1')
+    expect(strip(h.written.at(-1)!)).not.toContain('item:9')
+  })
+
+  it('sends the wheel over the footer with its own row', async () => {
+    const h = harness(tall(), small)
+    await h.settle()
+    h.client.input('\x1b[<65;1;5M')
+    expect(h.sent('wheel')).toEqual([{ kind: 'wheel', row: 4, column: 0, by: 1 }])
   })
 
   it('scrolls when the ring steps past the window', async () => {
@@ -344,7 +426,7 @@ describe('startClient when a post fails', () => {
       if (String(input).includes('/events')) return new Response(`data: ${JSON.stringify(frame({ body }))}\n\n`, { headers: { 'content-type': 'text/event-stream' } })
       throw new TypeError('network')
     }) as typeof fetch
-    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 20, rows: 5 }), theme: 'dark', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, after: () => undefined })
+    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 20, rows: 5 }), theme: 'dark', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, suspend: () => undefined, after: () => undefined })
     await new Promise(resolve => setTimeout(resolve, 30))
     written.length = 0
     client.input('\x1b[<65;1;1M')
@@ -364,7 +446,7 @@ describe('startClient when the stream is lost', () => {
       opened++
       return new Response(`data: ${JSON.stringify(frame())}\n\n`, { headers: { 'content-type': 'text/event-stream' } })
     }) as typeof fetch
-    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 40, rows: 10 }), theme: 'light', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, after: (ms, fire) => timers.push({ ms, fire }) })
+    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 40, rows: 10 }), theme: 'light', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, suspend: () => undefined, after: (ms, fire) => timers.push({ ms, fire }) })
     await new Promise(resolve => setTimeout(resolve, 30))
     expect(strip(written.join(''))).toContain('Reconnecting to the server')
     expect(timers.map(t => t.ms)).toContain(500)
@@ -376,5 +458,189 @@ describe('startClient when the stream is lost', () => {
     client.input('2')
     client.status('late')
     expect(written).toEqual([])
+  })
+})
+
+describe('startClient keys in a field', () => {
+  it('moves over a character beyond the basic plane whole, and ignores keys with nothing to do', async () => {
+    const h = harness()
+    await h.settle()
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.client.input('\u{1f600}a')
+    // Left twice is before the emoji; Right is after it, where Delete takes the "a".
+    h.client.input('\x1b[D')
+    h.client.input('\x1b[D')
+    h.client.input('\x1b[C')
+    h.client.input('\x1b[3~')
+    // At the end Delete, and at the start Backspace, do nothing; Alt and Ctrl keys type nothing.
+    h.client.input('\x1b[F')
+    h.client.input('\x1b[3~')
+    h.client.input('\x1b[H')
+    h.client.input('\x7f')
+    h.client.input('\x1bx')
+    h.client.input('\x02')
+    expect(h.sent('type').map(t => t.value)).toEqual(['\u{1f600}', '\u{1f600}a', '\u{1f600}'])
+    h.client.input('\x1b[F')
+    h.client.input('\x7f')
+    expect(h.sent('type').at(-1)!.value).toBe('')
+  })
+
+  it('leaves a field with Up, Tab and Shift-Tab, so that q quits after each', async () => {
+    const h = harness()
+    await h.settle()
+    for (const leave of ['\x1b[A', '\t', '\x1b[Z']) {
+      h.emit({ type: 'focus', key: 'find' })
+      await h.settle()
+      h.client.input(leave)
+      h.client.input('q')
+    }
+    expect(h.quit.count).toBe(3)
+    expect(h.sent('type')).toEqual([])
+  })
+
+  it('stops editing a field that leaves the frame, or when the focus goes to nothing', async () => {
+    const h = harness()
+    await h.settle()
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.emit(frame({ body: [row('tabs', press('tab:overview', '1'))] }))
+    await h.settle()
+    h.client.input('q')
+    expect(h.quit.count).toBe(1)
+    h.emit(frame())
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.emit({ type: 'focus', key: null })
+    await h.settle()
+    h.client.input('q')
+    expect(h.quit.count).toBe(2)
+  })
+})
+
+describe('startClient pointer', () => {
+  it('edits a field the mouse goes down on, keeping the cursor on a second press, and ignores other buttons', async () => {
+    const h = harness()
+    await h.settle()
+    // The field starts at cell 5 of the second line; column 8 (1-based) is inside it.
+    h.client.input('\x1b[<0;8;2M')
+    h.client.input('\x1b[<0;8;2m')
+    expect(h.sent('focus').at(-1)).toEqual({ kind: 'focus', element: 'find' })
+    h.client.input('ab')
+    h.client.input('\x1b[D')
+    h.client.input('\x1b[<0;8;2M')
+    h.client.input('\x1b[<0;8;2m')
+    h.client.input('x')
+    expect(h.sent('type').map(t => t.value)).toEqual(['a', 'ab', 'axb'])
+    // The right button neither leaves the field nor presses.
+    h.client.input('\x1b[<2;18;1M')
+    h.client.input('\x1b[<2;18;1m')
+    h.client.input('q')
+    expect(h.quit.count).toBe(0)
+    expect(h.sent('press')).toEqual([])
+  })
+
+  it('presses the focused press on Space, and moving over nothing paints nothing', async () => {
+    const h = harness()
+    await h.settle()
+    h.client.input('\t')
+    h.client.input(' ')
+    expect(h.sent('press')).toEqual([{ kind: 'press', press: 'tab:overview' }])
+    h.written.length = 0
+    h.client.input('\x1b[<35;30;5M')
+    h.client.input('\x1b[<35;31;5M')
+    expect(h.written).toEqual([])
+  })
+
+  it('leaves the scroll of a body that is not pinned to the server', async () => {
+    const h = harness(frame({ pinned: false }))
+    await h.settle()
+    h.hold.answers = true
+    h.client.input('\x1b[<65;1;1M')
+    h.written.length = 0
+    h.pending.shift()!(new Response('{"scrolled":false}'))
+    await h.settle()
+    expect(h.written).toEqual([])
+  })
+})
+
+describe('startClient before the first frame', () => {
+  it('keeps what is typed until the first frame is drawn, then hands it on', async () => {
+    const h = harness()
+    h.client.input('2')
+    expect(h.sent('press')).toEqual([])
+    await h.settle()
+    expect(h.sent('press')).toEqual([{ kind: 'press', press: 'tab:hubs' }])
+  })
+
+  it('keeps what is typed on a loading frame with nothing to press, up to a limit, until one has', async () => {
+    const h = harness(frame({ body: [row('loading', seg('Reading the graph'))], footer: [] }))
+    await h.settle()
+    h.client.input('2')
+    h.client.input('x'.repeat(100))
+    await h.settle()
+    expect(h.posts).toEqual([])
+    h.emit(frame())
+    await h.settle()
+    expect(h.sent('press')).toEqual([{ kind: 'press', press: 'tab:hubs' }])
+  })
+
+  it('quits on q or Ctrl-C and suspends on Ctrl-Z at once', () => {
+    const h = harness()
+    h.client.input('q')
+    h.client.input('\x03')
+    h.client.input('\x1a')
+    expect([h.quit.count, h.suspended.count]).toEqual([2, 1])
+  })
+})
+
+describe('startClient odds and ends', () => {
+  it('keeps a newer toast when the older one times out', async () => {
+    const h = harness()
+    await h.settle()
+    h.client.toast('one')
+    h.client.toast('two')
+    const [first, second] = h.timers.filter(t => t.ms === 4000)
+    first!.fire()
+    expect(strip(h.written.at(-1)!)).toContain('two')
+    second!.fire()
+    expect(strip(h.written.at(-1)!)).not.toContain('two')
+  })
+
+  it('passes over a late background reply, and does nothing once closed', async () => {
+    const h = harness()
+    await h.settle()
+    h.client.input('\x1b]11;rgb:ffff/ffff/ffff\x07')
+    expect(h.posts).toEqual([])
+    h.client.input('\x1b')
+    h.client.close()
+    const count = h.written.length
+    for (const t of h.timers) t.fire()
+    h.client.toast('late')
+    h.client.resize()
+    h.client.input('2')
+    expect(h.written).toHaveLength(count)
+    expect(h.sent('press')).toEqual([])
+  })
+
+  it('works with an address that carries no token', async () => {
+    const urls: string[] = []
+    const client = startClient({
+      url: 'http://127.0.0.1:1/',
+      size: () => ({ columns: 40, rows: 10 }),
+      theme: 'dark',
+      write: () => undefined,
+      fetch: (async (input: string | URL | Request) => {
+        urls.push(String(input))
+        return new Response('', { headers: { 'content-type': 'text/event-stream' } })
+      }) as typeof fetch,
+      copy: () => undefined,
+      quit: () => undefined,
+      suspend: () => undefined,
+      after: () => undefined,
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    client.close()
+    expect(urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:1\/events\?/)
   })
 })
