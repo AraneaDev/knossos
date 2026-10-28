@@ -70,16 +70,13 @@ function lay(line: Line, column: number, text: string, style: Style, width: numb
   if (end < row.length && row[end]!.ch === '') row[end] = { ch: ' ', style: row[end]!.style }
 }
 
-/** The last graphemes of `text` that fit in `room` cells. */
-function tail(text: string, room: number): string {
+/** `text` without its first `n` cells (a wide character cut by that edge goes with them). */
+function dropCells(text: string, n: number): string {
   let used = 0
-  let out = ''
-  for (const g of split(text).reverse()) {
-    used += cells(g)
-    if (used > room) break
-    out = g + out
-  }
-  return out
+  let at = 0
+  const graphemes = split(text)
+  while (at < graphemes.length && used < n) used += cells(graphemes[at++]!)
+  return graphemes.slice(at).join('')
 }
 
 /** The SGR text of a line: one escape sequence per run of cells that share a style. */
@@ -126,15 +123,11 @@ function put(line: Line, column: number, s: PageSegment, ctx: Context): void {
     const edited = ctx.overlay.field?.id === s.field.id ? ctx.overlay.field : null
     const value = edited === null ? s.field.value : edited.value
     if (value === '') lay(line, column, s.field.placeholder, { ...style, faint: true }, width)
-    else if (edited === null || cells(value) < width) lay(line, column, value, style, width)
     else {
-      // Longer than the field: the end up to the cursor stays in view.
-      const shown = tail(value.slice(0, edited.cursor), width - 1)
-      lay(line, column, shown, style, width)
-    }
-    if (edited !== null) {
-      const before = value.slice(0, Math.max(0, edited.cursor))
-      line.cursor = column + Math.min(width - 1, cells(cells(value) < width ? before : tail(before, width - 1)))
+      // Longer than the field: the window starts so that the cursor, when there is one, is inside it.
+      const upTo = edited === null ? 0 : cells(value.slice(0, Math.max(0, edited.cursor)))
+      lay(line, column, dropCells(value, Math.max(0, upTo - (width - 1))), style, width)
+      if (edited !== null) line.cursor = column + Math.min(width - 1, upTo)
     }
     line.hits.push({ column, width, field: s.field.id })
     return
@@ -142,7 +135,7 @@ function put(line: Line, column: number, s: PageSegment, ctx: Context): void {
   if (s.press !== undefined) {
     const hotkey = s.press.hotkey
     lay(line, column, hotkey === undefined ? s.press.label : `${hotkey}: ${s.press.label}`, style, width)
-    if (hotkey !== undefined) lay(line, column, hotkey, { ...style, fg: ctx.frame.colours.suggestion }, Math.min(width, cells(hotkey)))
+    if (hotkey !== undefined) lay(line, column, hotkey, { ...style, fg: ctx.frame.colours.suggestion, faint: s.press.dim === true }, Math.min(width, cells(hotkey)))
   } else lay(line, column, s.text, style, width)
   const hit: Hit = { column, width }
   if (s.press !== undefined) hit.press = s.press.id
@@ -155,10 +148,11 @@ function linesOfRow(row: PageRow, ctx: Context): Line[] {
   if (row.lines !== undefined) {
     return row.lines.map(l => {
       const line = blank(ctx.columns, ctx.base)
-      const gutter = styleOf(ctx.base, row.gutter ?? {})
-      lay(line, 0, l.gutter, gutter, cells(l.gutter))
-      lay(line, cells(l.gutter), ' ', ctx.base, 1)
-      lay(line, cells(l.gutter) + 1, l.text, styleOf(ctx.base, l.look), ctx.columns)
+      // The gutter sits inside the tinted line, as the page nests it.
+      const ground = styleOf(ctx.base, l.look)
+      lay(line, 0, l.gutter, styleOf(ground, row.gutter ?? {}), cells(l.gutter))
+      lay(line, cells(l.gutter), ' ', ground, 1)
+      lay(line, cells(l.gutter) + 1, l.text, ground, ctx.columns)
       return line
     })
   }
@@ -180,16 +174,37 @@ export function linesOf(frame: Frame): { body: number; footer: number } {
   return { body: count(frame.body), footer: count(frame.footer) }
 }
 
-/** The frame laid out on `size.rows` lines: unpinned, body then footer cut at the bottom; pinned, the footer at the bottom and the body from `scroll` above it. `bodyEnd` is the line after the last body line. */
+/** Whether the footer stays at the bottom with the body scrolling above it: a pinned frame, and one too tall for the terminal. */
+export function pinnedFor(frame: Frame, size: Size): boolean {
+  const { body, footer } = linesOf(frame)
+  return frame.pinned || body + footer > size.rows
+}
+
+/** The screen lines of the body that are not under the footer: what a pinned body scrolls through. */
+export function roomOf(frame: Frame, size: Size): number {
+  return size.rows - Math.min(linesOf(frame).footer, size.rows)
+}
+
+/** The first body line (0-based, in the whole body) of the press or field `id`; null when the body has none. */
+export function bodyLineOf(frame: Frame, id: string): number | null {
+  let at = 0
+  for (const row of frame.body) {
+    if (row.lines === undefined && row.segments.some(s => s.hidden !== true && (s.press?.id === id || s.field?.id === id))) return at
+    at += row.lines === undefined ? 1 : row.lines.length
+  }
+  return null
+}
+
+/** The frame laid out on `size.rows` lines: unpinned and fitting, body then footer; otherwise the footer at the bottom and the body from `scroll` above it. `bodyEnd` is the line after the last body line. */
 function layout(frame: Frame, size: Size, overlay: Overlay): { lines: Line[]; bodyEnd: number } {
   const base: Style = { fg: frame.colours.text, bg: frame.colours.ground, bold: false, reverse: false, faint: false }
   const ctx: Context = { frame, columns: size.columns, overlay, base }
   const body = linesOfRows(frame.body, ctx)
   const footer = linesOfRows(frame.footer, ctx)
   const empty = () => blank(size.columns, base)
-  if (!frame.pinned) {
-    const lines = [...body, ...footer].slice(0, size.rows)
-    const bodyEnd = Math.min(body.length, size.rows)
+  if (!pinnedFor(frame, size)) {
+    const lines = [...body, ...footer]
+    const bodyEnd = body.length
     while (lines.length < size.rows) lines.push(empty())
     return { lines, bodyEnd }
   }

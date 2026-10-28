@@ -3,13 +3,14 @@ import { cardPlace } from '../hooks/lib/place'
 import { cells } from '../hooks/lib/text'
 import type { Frame } from '../web/hub'
 import type { PageRow, PageSegment } from '../web/page-rows'
-import { bytesFor, hitsOf, linesOf, screenOf } from './paint'
+import { bodyLineOf, bytesFor, hitsOf, linesOf, pinnedFor, screenOf } from './paint'
 import type { Overlay } from './paint'
 
 const colours = { ground: '#101020', text: '#c0c0d0', card: '#303050', suggestion: '#ffaa00' }
 const none: Overlay = { focused: null, field: null, toast: null, card: null, scroll: 0 }
 const ESC = String.fromCharCode(27)
 const strip = (line: string): string => line.replace(new RegExp(`${ESC}\\[[0-9;?]*[A-Za-z]`, 'g'), '')
+const press = (id: string): PageSegment => seg(id, { press: { id, label: id, title: id } })
 const seg = (text: string, more: Partial<PageSegment> = {}): PageSegment => ({ text, look: {}, ...more })
 const row = (key: string, ...segments: PageSegment[]): PageRow => ({ key, segments })
 const frame = (body: PageRow[], footer: PageRow[] = [], pinned = false): Frame => ({ type: 'frame', body, footer, pinned, theme: 'dark', colours })
@@ -86,6 +87,47 @@ describe('screenOf', () => {
     expect(strip(screen.lines[1]!)).toBe('2 - b   ')
     expect(screen.lines[0]).toContain('48;2;0;51;0')
     expect(linesOf(frame([diff, row('x')], [row('f')]))).toEqual({ body: 3, footer: 1 })
+  })
+
+  it('shows a window of a long value that holds the cursor, and the start when the cursor is there', () => {
+    const find = seg('', { field: { id: 'find', value: 'abcdefghijkl', placeholder: '', width: 6 } })
+    const at = (cursor: number) => screenOf(frame([row('a', find)]), { columns: 6, rows: 1 }, { ...none, field: { id: 'find', value: 'abcdefghijkl', cursor } })
+    expect(strip(at(3).lines[0]!)).toBe('abcdef')
+    expect(at(3).cursor).toEqual({ row: 0, column: 3 })
+    expect(strip(at(0).lines[0]!)).toBe('abcdef')
+    expect(strip(at(8).lines[0]!)).toBe('defghi')
+    expect(at(8).cursor).toEqual({ row: 0, column: 5 })
+  })
+
+  it('tints the gutter and its space with the line, and the gutter look over it', () => {
+    const diff: PageRow = { key: 'd', segments: [], gutter: { color: '#888888' }, lines: [{ gutter: '1', text: '+ a', look: { background: '#003300' } }] }
+    const line = screenOf(frame([diff]), { columns: 8, rows: 1 }, none).lines[0]!
+    expect(line.startsWith(`${ESC}[0m${ESC}[38;2;136;136;136;48;2;0;51;0m1`)).toBe(true)
+    expect(line).not.toContain('48;2;16;16;32')
+  })
+
+  it('dims the hotkey of a dim press', () => {
+    const hubs = seg('Hubs', { columns: 7, press: { id: 'p', hotkey: '2', label: 'Hubs', title: 'Hubs', dim: true } })
+    const line = screenOf(frame([row('a', hubs)]), { columns: 8, rows: 1 }, none).lines[0]!
+    expect(line).toContain(`${ESC}[2m${ESC}[38;2;255;170;0;`)
+  })
+
+  it('keeps the footer of an unpinned frame taller than the terminal', () => {
+    const body = Array.from({ length: 10 }, (_, i) => row(`b${i}`, seg(`body${i}`)))
+    const tall = frame(body, [row('f', seg('footer'))])
+    expect(pinnedFor(tall, { columns: 8, rows: 5 })).toBe(true)
+    expect(pinnedFor(tall, { columns: 8, rows: 20 })).toBe(false)
+    const screen = screenOf(tall, { columns: 8, rows: 5 }, { ...none, scroll: 2 })
+    expect(screen.lines.map(l => strip(l).trim())).toEqual(['body2', 'body3', 'body4', 'body5', 'footer'])
+  })
+
+  it('finds the body line of a press or field', () => {
+    const diff: PageRow = { key: 'd', segments: [], lines: [{ gutter: '1', text: 'x', look: {} }, { gutter: '2', text: 'y', look: {} }] }
+    const rows = [row('a', seg('x')), diff, row('b', press('go')), row('c', seg('', { field: { id: 'find', value: '', placeholder: '', width: 4 } }))]
+    const f = frame(rows, [row('f', press('foot'))])
+    expect(bodyLineOf(f, 'go')).toBe(3)
+    expect(bodyLineOf(f, 'find')).toBe(4)
+    expect(bodyLineOf(f, 'foot')).toBeNull()
   })
 
   it('keeps the footer at the bottom and scrolls the body above it when pinned', () => {

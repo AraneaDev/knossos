@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fixturePluginRoot, scratch } from './fixtures/helpers'
 import { hostProject } from './host'
-import { addressOf, claim as realClaim, lockFile } from './lock'
+import { addressOf, claim as realClaim, identity as realIdentity, lockFile } from './lock'
 
 // A page that connects makes the server read the checkout's commit; here that read fails, which the server logs.
 vi.mock('../hooks/mod/watcher', async importOriginal => ({
@@ -13,11 +13,21 @@ vi.mock('../hooks/mod/watcher', async importOriginal => ({
 }))
 
 // Set to make the next claim's `record` fail, as a disk that refuses the write would.
-const failing = { record: false }
+const failing = { record: false, remember: false }
 vi.mock('./lock', async importOriginal => {
   const real = await importOriginal<typeof import('./lock')>()
   return {
     ...real,
+    identity: (...args: Parameters<typeof realIdentity>) => {
+      const kept = real.identity(...args)
+      if (!failing.remember) return kept
+      return {
+        ...kept,
+        remember: () => {
+          throw new Error('read-only')
+        },
+      }
+    },
     claim: async (...args: Parameters<typeof realClaim>) => {
       const claimed = await real.claim(...args)
       if (claimed.kind !== 'mine' || !failing.record) return claimed
@@ -50,6 +60,18 @@ const hostFor = async (root: string, dataDir: string, pluginDir: string, log?: (
 }
 
 describe('hostProject', () => {
+  it('frees the lock when remembering the port fails', async () => {
+    const root = scratch()
+    const data = scratch()
+    failing.remember = true
+    try {
+      await expect(hostProject({ root, dataDir: data, pluginRoot: fixturePluginRoot(), editor: null, port: null })).rejects.toThrow('read-only')
+    } finally {
+      failing.remember = false
+    }
+    expect(existsSync(lockFile(data, root))).toBe(false)
+  })
+
   it('frees the lock when recording the server fails', async () => {
     const root = scratch()
     const data = scratch()

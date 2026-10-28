@@ -139,6 +139,8 @@ export class Decoder {
       // A malformed report (not three whole numbers), or the sideways wheel (66, 67): no event.
       if (fields.length !== 3 || !fields.every(field => /^\d+$/.test(field))) return used
       const [cb, x, y] = fields.map(Number) as [number, number, number]
+      // The extra buttons (128 and up) mean nothing here.
+      if ((cb & 128) !== 0) return used
       if ((cb & 64) !== 0 && (cb & 2) !== 0) return used
       const wheel = (cb & 64) !== 0
       out.push({

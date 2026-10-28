@@ -56,7 +56,6 @@ function harness(first: Frame = frame(), size = { columns: 40, rows: 10 }) {
     fetch: fetchFake,
     copy: text => copied.push(text),
     quit: () => quit.count++,
-    now: () => 0,
     after: (ms, fire) => timers.push({ ms, fire }),
   })
   clients.push(client)
@@ -168,7 +167,7 @@ describe('startClient', () => {
   it('presses on mouse release over the press it went down on', async () => {
     const h = harness()
     await h.settle()
-    // The hubs tab is at column 15 of the first line (after "1: tab:overview" and a space).
+    // The hubs tab starts at cell 16 (0-based) of the first line, after "1: tab:overview" and a space; column 18 (1-based) is inside it.
     h.client.input('\x1b[<0;18;1M')
     h.client.input('\x1b[<0;18;1m')
     expect(h.sent('press')).toEqual([{ kind: 'press', press: 'tab:hubs' }])
@@ -251,6 +250,98 @@ describe('startClient', () => {
   })
 })
 
+describe('startClient in a body taller than the window', () => {
+  const tall = (): Frame => frame({ body: Array.from({ length: 12 }, (_, i) => row(`b${i}`, press(`item:${i}`))) })
+  const small = { columns: 20, rows: 5 }
+
+  it('scrolls to an element the server reveals, then focuses', async () => {
+    const h = harness(tall(), small)
+    await h.settle()
+    expect(h.text()).not.toContain('item:9')
+    h.emit({ type: 'scroll', key: 'item:9' })
+    h.emit({ type: 'focus', key: 'item:9' })
+    await h.settle()
+    const last = strip(h.written.at(-1)!)
+    expect(last).toContain('item:9')
+    expect(h.written.at(-1)).toContain(`${ESC}[7m`)
+  })
+
+  it('scrolls when the ring steps past the window', async () => {
+    const h = harness(tall(), small)
+    await h.settle()
+    for (let i = 0; i < 6; i++) h.client.input('\t')
+    expect(strip(h.written.at(-1)!)).toContain('item:5')
+    expect(strip(h.written.at(-1)!)).not.toContain('item:0')
+  })
+
+  it('shows a field the server focuses below the window with its cursor', async () => {
+    const body = [...Array.from({ length: 12 }, (_, i) => row(`b${i}`, seg(`line${i}`))), row('find', seg('', { field: { id: 'find', value: 'v', placeholder: '', width: 6 } }))]
+    const h = harness(frame({ body }), small)
+    await h.settle()
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    expect(h.written.at(-1)!.endsWith(`${ESC}[4;2H${ESC}[?25h`)).toBe(true)
+  })
+
+  it('sends a wheel row counted from the first body line, and does nothing when the post fails', async () => {
+    const h = harness(tall(), small)
+    await h.settle()
+    h.client.input('\x1b[<65;1;1M')
+    await h.settle()
+    h.client.input('\x1b[<65;1;3M')
+    await h.settle()
+    expect(h.sent('wheel').map(w => w.row)).toEqual([0, 2])
+    // When the server answers "not scrolled", a pinned body moves here and the next row is counted from it.
+    const failing = harness(tall(), small)
+    await failing.settle()
+    failing.hold.answers = true
+    failing.client.input('\x1b[<65;1;1M')
+    failing.pending.shift()!(new Response('{"scrolled":false}'))
+    await failing.settle()
+    failing.client.input('\x1b[<65;1;1M')
+    failing.pending.shift()!(new Response('{"scrolled":false}'))
+    await failing.settle()
+    // Two unscrolled rows moved the body; the next wheel is read against that.
+    failing.hold.answers = false
+    failing.client.input('\x1b[<65;1;1M')
+    await failing.settle()
+    expect(failing.sent('wheel').map(w => w.row)).toEqual([0, 1, 2])
+  })
+})
+
+describe('startClient leaving a field', () => {
+  it('leaves the field on a click elsewhere, focusing the press, so a hotkey presses', async () => {
+    const h = harness()
+    await h.settle()
+    h.emit({ type: 'focus', key: 'find' })
+    await h.settle()
+    h.client.input('\x1b[<0;18;1M')
+    h.client.input('\x1b[<0;18;1m')
+    expect(h.sent('focus').at(-1)).toEqual({ kind: 'focus', element: 'tab:hubs' })
+    h.client.input('2')
+    expect(h.sent('press').at(-1)).toEqual({ kind: 'press', press: 'tab:hubs' })
+    expect(h.sent('type')).toEqual([])
+  })
+})
+
+describe('startClient when a post fails', () => {
+  it('drops it without an unhandled rejection or a local scroll', async () => {
+    const written: string[] = []
+    const body = Array.from({ length: 12 }, (_, i) => row(`b${i}`, seg(`line${i}`)))
+    const fetchFake = (async (input: string | URL | Request): Promise<Response> => {
+      if (String(input).includes('/events')) return new Response(`data: ${JSON.stringify(frame({ body }))}\n\n`, { headers: { 'content-type': 'text/event-stream' } })
+      throw new TypeError('network')
+    }) as typeof fetch
+    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 20, rows: 5 }), theme: 'dark', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, after: () => undefined })
+    await new Promise(resolve => setTimeout(resolve, 30))
+    written.length = 0
+    client.input('\x1b[<65;1;1M')
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(written).toEqual([])
+    client.close()
+  })
+})
+
 describe('startClient when the stream is lost', () => {
   it('says it is reconnecting, waits with the host, and stops on close', async () => {
     const written: string[] = []
@@ -261,7 +352,7 @@ describe('startClient when the stream is lost', () => {
       opened++
       return new Response(`data: ${JSON.stringify(frame())}\n\n`, { headers: { 'content-type': 'text/event-stream' } })
     }) as typeof fetch
-    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 40, rows: 10 }), theme: 'light', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, now: () => 0, after: (ms, fire) => timers.push({ ms, fire }) })
+    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 40, rows: 10 }), theme: 'light', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, after: (ms, fire) => timers.push({ ms, fire }) })
     await new Promise(resolve => setTimeout(resolve, 30))
     expect(strip(written.join(''))).toContain('Reconnecting to the server')
     expect(timers.map(t => t.ms)).toContain(500)

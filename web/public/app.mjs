@@ -16,7 +16,7 @@ export const RETRY_MOST_MS = 5000;
 /** How long a page waits for a window that stops changing size before it says so. */
 const RESIZE_MS = 100;
 /** How long a toast stays. */
-const TOAST_MS = 4000;
+export const TOAST_MS = 4000;
 /** The key the page's id is kept under, for a reload to keep it. */
 const ID_KEY = "knossos-page-id";
 
@@ -38,7 +38,7 @@ export function pageId(storage, navigation, random) {
 }
 
 /** Every segment of the frame's rows, the footer's after the body's. */
-const segmentsOf = (frame) =>
+export const segmentsOf = (frame) =>
     [...frame.body, ...frame.footer].flatMap((row) => row.segments);
 
 /** The press `key` is the hotkey of in `frame`, out-of-sight twins included; null for none, or a key held with a modifier. */
@@ -80,6 +80,50 @@ export const swipeRows = (carry, fromY, toY, cellHeight) =>
 /** The press a pointer press lands on: the press it went down on, when it came up on the same one (whatever node now draws it); null otherwise. */
 export const releasedOn = (down, up) =>
     down !== null && down !== undefined && down === up ? down : null;
+
+/**
+ * The cell a pointer at (`x`, `y`) is over in the body whose box is `box`,
+ * scrolled `scrolled` pixels (a pinned body scrolls inside its box, whose top
+ * stays where it is).
+ */
+export const wheelCell = (x, y, box, cell, scrolled) => ({
+    row: Math.floor((y - box.top + scrolled) / cell.height),
+    column: Math.floor((x - box.left) / cell.width),
+});
+
+/**
+ * The wheel's queue: `scroll(by, row, column)` sends `by` rows of wheel with
+ * `send({ row, column, by })`, one at a time, each read against the rows the
+ * last one left, so the rows that come in meanwhile wait and go as one.
+ * `onUnscrolled(by)` is told of rows the pane did not scroll with; a send
+ * that fails is forgotten.
+ */
+export function wheelQueue(send, onUnscrolled) {
+    let held = null;
+    let sending = false;
+    const scroll = (by, row, column) => {
+        held = { by: (held?.by ?? 0) + by, row, column };
+        if (sending) return;
+        const next = held;
+        held = null;
+        sending = true;
+        void send({ row: next.row, column: next.column, by: next.by })
+            .then((r) => r.json())
+            .then((answer) => {
+                if (!answer.scrolled) onUnscrolled(next.by);
+            })
+            .catch(() => undefined)
+            .finally(() => {
+                sending = false;
+                if (held !== null) {
+                    const rest = held;
+                    held = null;
+                    scroll(rest.by, rest.row, rest.column);
+                }
+            });
+    };
+    return scroll;
+}
 
 /**
  * One page's connection to the pane: the event stream, opened again with
@@ -504,39 +548,24 @@ function paneView(root, { token, draw: drawn, cardPlace }) {
      * is sent at a time, each read against the rows the last one left, so the
      * rows that come in meanwhile wait and go as one.
      */
-    let held = null;
-    let sending = false;
+    const queue = wheelQueue(
+        (at) => page.post({ kind: "wheel", ...at }),
+        (by) =>
+            (root.classList.contains("pinned")
+                ? bodyOf
+                : document.scrollingElement
+            ).scrollBy(0, by * cell.height),
+    );
     const scroll = (by, x, y) => {
-        held = { by: (held?.by ?? 0) + by, x, y };
-        if (sending) return;
-        const next = held;
-        held = null;
-        sending = true;
-        const body = bodyOf;
-        const box = body.getBoundingClientRect();
-        const at = {
-            row: Math.floor((next.y - box.top) / cell.height),
-            column: Math.floor((next.x - box.left) / cell.width),
-        };
-        void page
-            .post({ kind: "wheel", ...at, by: next.by })
-            .then((r) => r.json())
-            .then((answer) => {
-                if (!answer.scrolled)
-                    (root.classList.contains("pinned")
-                        ? body
-                        : document.scrollingElement
-                    ).scrollBy(0, next.by * cell.height);
-            })
-            .catch(() => undefined)
-            .finally(() => {
-                sending = false;
-                if (held !== null) {
-                    const rest = held;
-                    held = null;
-                    scroll(rest.by, rest.x, rest.y);
-                }
-            });
+        const pinned = root.classList.contains("pinned");
+        const at = wheelCell(
+            x,
+            y,
+            bodyOf.getBoundingClientRect(),
+            cell,
+            pinned ? bodyOf.scrollTop : 0,
+        );
+        queue(by, at.row, at.column);
     };
     let carry = 0;
     root.addEventListener(

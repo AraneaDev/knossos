@@ -8,6 +8,8 @@ import {
     releasedOn,
     retryDelay,
     swipeRows,
+    wheelCell,
+    wheelQueue,
     wheelRows,
 } from "./public/app.mjs";
 
@@ -289,5 +291,55 @@ describe("the page's own", () => {
         expect(releasedOn("tab:hubs", "row:0")).toBeNull();
         expect(releasedOn(null, "tab:hubs")).toBeNull();
         expect(releasedOn(undefined, undefined)).toBeNull();
+    });
+});
+
+describe("wheelCell", () => {
+    it("counts a pinned body's rows from its first line, whatever it is scrolled to", () => {
+        const cell = { width: 10, height: 20 };
+        const box = { top: 100, left: 50 };
+        expect(wheelCell(75, 145, box, cell, 0)).toEqual({ row: 2, column: 2 });
+        expect(wheelCell(75, 145, box, cell, 200)).toEqual({
+            row: 12,
+            column: 2,
+        });
+    });
+});
+
+describe("wheelQueue", () => {
+    const answer = (scrolled) => ({ json: async () => ({ scrolled }) });
+
+    it("sends one at a time and folds what arrives meanwhile", async () => {
+        const sent = [];
+        const waiting = [];
+        const scroll = wheelQueue(
+            (at) => (sent.push(at), new Promise((r) => waiting.push(r))),
+            () => undefined,
+        );
+        scroll(1, 3, 4);
+        scroll(1, 5, 6);
+        scroll(1, 7, 8);
+        expect(sent).toEqual([{ row: 3, column: 4, by: 1 }]);
+        waiting.shift()(answer(true));
+        await vi.waitFor(() => expect(sent).toHaveLength(2));
+        expect(sent[1]).toEqual({ row: 7, column: 8, by: 2 });
+    });
+
+    it("reports rows the pane did not scroll with, and forgets a failed send", async () => {
+        const unscrolled = [];
+        const scroll = wheelQueue(
+            async () => answer(false),
+            (by) => unscrolled.push(by),
+        );
+        scroll(3, 0, 0);
+        await vi.waitFor(() => expect(unscrolled).toEqual([3]));
+        const failing = wheelQueue(
+            () => Promise.reject(new Error("down")),
+            (by) => unscrolled.push(by),
+        );
+        failing(1, 0, 0);
+        failing(1, 0, 0);
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        expect(unscrolled).toEqual([3]);
     });
 });

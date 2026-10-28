@@ -55,6 +55,8 @@ describe('Decoder mouse', () => {
     expect(decode('\x1b[<64;1;1M')).toEqual([{ kind: 'mouse', action: 'wheel', button: 0, by: -1, row: 0, column: 0 }])
     expect(decode('\x1b[<66;1;1M')).toEqual([])
     expect(decode('\x1b[<67;1;1M')).toEqual([])
+    expect(decode('\x1b[<128;1;1M')).toEqual([])
+    expect(decode('\x1b[<129;1;1m')).toEqual([])
     expect(decode('\x1b[<;5;M')).toEqual([])
     expect(decode('\x1b[<1:2;3;4M')).toEqual([])
     expect(decode('\x1b[<65;1;1M')).toEqual([{ kind: 'mouse', action: 'wheel', button: 1, by: 1, row: 0, column: 0 }])
