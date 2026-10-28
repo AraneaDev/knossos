@@ -102,6 +102,9 @@ final class QualityDepsKeyTest extends KnossosTestCase
         sort($keyed);
         assertSame($keyed, $copied, 'tools/runtime-image-key and the sources stage name different paths');
         assertSame(true, in_array('web', $copied, true), 'knossos web runs web/main.ts from the installation');
+        assertSame(true, in_array('tui', $copied, true), 'knossos runs tui/main.ts from the installation');
+        // Both entries load the shared TypeScript through this resolver, which sits outside their directories.
+        assertSame(true, in_array('tools/ts-resolve.mjs', $copied, true), 'web/main.ts and tui/main.ts import tools/ts-resolve.mjs');
 
         foreach (self::IMAGES_WITH_SOURCE as $name) {
             $fromSources = array_filter($stages[$name] ?? [], static fn(string $instruction): bool => preg_match('#^COPY\s.*--from=sources\s.*/opt/knossos/ \./$#', $instruction) === 1);

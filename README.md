@@ -50,6 +50,8 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
   (Overview, Hubs, Boundaries, Cycles, Issues, Changes, Branch, Churn and Notes), with a detail
   for every component and file, its blast radius as rings, and the route between any two
   components
+- **The terminal pane**: `knossos` opens the same workspace fullscreen in your terminal, in a
+  tmux split or a terminal of its own
 - **The web client**: `knossos web` opens the same architecture workspace in your browser,
   with keyboard navigation, search, diffs and notes, without a Claude Code session
 - **The band**: after a turn that edited files, one line above the prompt says how far the
@@ -167,6 +169,21 @@ The finder: `f`, a few letters of a name, and Enter opens that component.
 The band: after a turn that edited files, how far the change reaches, with the pane shut.
 
 Every tab, key and setting is in [the pane guide](docs/claude-code/pane/index.md).
+
+## Terminal pane
+
+Keep the architecture next to your work in a terminal, such as a tmux split:
+
+```sh
+cd /path/to/your-project
+knossos
+```
+
+It is the same nine tabs, drawn in the terminal, with the mouse and the keys of the pane.
+`Ctrl-C` quits, and so does `q` unless the pane gives `q` to a press: on a project that
+was never scanned, `q` starts the scan. It shares the project's server with `knossos web`, so a browser open
+on the same project shows the same pane. See [the terminal guide](docs/guides/terminal-pane.md)
+for the options, the keys and what differs from the browser.
 
 ## Web client
 

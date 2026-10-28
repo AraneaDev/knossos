@@ -14,7 +14,7 @@
  * owner's alone.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Claim = { kind: 'mine'; record(port: number): void; release(): void } | { kind: 'running'; url: string }
@@ -83,13 +83,68 @@ async function answers(url: string): Promise<boolean> {
   }
 }
 
+/** The errors of a file system that has no hard links. */
+const NO_HARD_LINKS = new Set(['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'ENOSYS'])
+
+/** How far ahead of this process's clock a file's time may be and still be now: a file system's clock runs on finer ticks, or a little apart. */
+const CLOCK_SLACK_MS = 1_000
+
+/** How long a lock that does not read is taken to be still being written: the exclusive create of a file system without hard links makes it empty first. */
+const WRITING_MS = 2_000
+
+/** Whether the lock in `file` is young enough to be one another start is still writing: a time in the future is not young, it is wrong. */
+function writing(file: string): boolean {
+  try {
+    const age = Date.now() - statSync(file).mtimeMs
+    return age > -CLOCK_SLACK_MS && age < WRITING_MS
+  } catch {
+    return false
+  }
+}
+
+/** How often a start or a release tries for the removal guard another process holds, and how long it waits between tries. */
+const GUARD_TRIES = 50
+const GUARD_WAIT_MS = 10
+/** How old a removal guard is when the process that took it must have died holding it. */
+const GUARD_STALE_MS = 5_000
+
+/** Waits `ms` without giving up the thread: for the exit path, which cannot wait any other way. */
+const pause = (ms: number): void => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+/**
+ * Runs `act` while holding the removal guard of the lock `file` (`<file>.removing`, created exclusively, which
+ * any file system can do): true when it ran, false when another process holds the guard. One left behind by a
+ * process that died holding it is removed once it is old, for a later try to take.
+ */
+function guarded(file: string, act: () => void): boolean {
+  const guard = `${file}.removing`
+  try {
+    writeFileSync(guard, String(process.pid), { flag: 'wx', mode: 0o600 })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    try {
+      if (Date.now() - statSync(guard).mtimeMs > GUARD_STALE_MS) rmSync(guard, { force: true })
+    } catch {
+      // Gone already: the next try takes it.
+    }
+    return false
+  }
+  try {
+    act()
+  } finally {
+    rmSync(guard, { force: true })
+  }
+  return true
+}
+
 const isPort = (port: unknown): port is number => typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65_536
 
 /** Whether the lock in `file`, held by the live process it names, still holds: its server answers at `url`, or is still starting. */
 async function holds(file: string, url: string | null): Promise<boolean> {
   if (url !== null) return answers(url)
   try {
-    return Date.now() - statSync(file).mtimeMs < STARTING_MS
+    const age = Date.now() - statSync(file).mtimeMs
+    return age > -CLOCK_SLACK_MS && age < STARTING_MS
   } catch {
     return false
   }
@@ -105,28 +160,88 @@ async function holds(file: string, url: string | null): Promise<boolean> {
 export async function claim(dataDir: string, root: string, token: string): Promise<Claim> {
   const file = lockFile(dataDir, root)
   webDir(dataDir)
-  const write = (port: number | null, flag: 'wx' | 'w') => writeFileSync(file, JSON.stringify({ pid: process.pid, port }), { flag, mode: 0o600 })
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Whole at the moment it appears: a start that read it half written would take it for a stale lock and remove a live one.
+  const staged = (port: number | null): string => {
+    const part = `${file}.${process.pid}.part`
+    writeFileSync(part, JSON.stringify({ pid: process.pid, port }), { mode: 0o600 })
+    return part
+  }
+  const create = () => {
+    const part = staged(null)
     try {
-      write(null, 'wx')
+      // A link fails when the lock exists, as an exclusive create does.
+      linkSync(part, file)
+    } catch (error) {
+      if (!NO_HARD_LINKS.has((error as NodeJS.ErrnoException).code ?? '')) throw error
+      // A file system without hard links: the exclusive create of the lock itself, written in one call.
+      writeFileSync(file, JSON.stringify({ pid: process.pid, port: null }), { flag: 'wx', mode: 0o600 })
+    } finally {
+      rmSync(part, { force: true })
+    }
+  }
+  /**
+   * Removes the lock if `doomed` says the one in the file is to go, and only that one: it is read again and
+   * removed while this process holds the lock's removal guard, so no other start can replace it in between.
+   * False when another process holds the guard, so that nothing was looked at.
+   */
+  const removeIf = (doomed: (seen: { pid: unknown; port: unknown } | null) => boolean): boolean =>
+    guarded(file, () => {
+      if (existsSync(file) && doomed(held(file))) rmSync(file, { force: true })
+    })
+  /** Removes the stale lock that read as `seen`, and only that one. */
+  const removeStale = (seen: { pid: unknown; port: unknown } | null, patient: boolean) =>
+    removeIf(now => (now === null ? seen === null && !(patient && writing(file)) : seen !== null && now.pid === seen.pid && now.port === seen.port))
+  /** When this start first found the lock unreadable, by its own clock: how long it waits on one is bounded by that, not by the file. */
+  let unreadSince: number | null = null
+  /**
+   * Writes the port into the lock, under the removal guard, and only while the lock still names this process:
+   * a removal cannot fall between the check and the write. Throws when another start took the lock over first
+   * (this one took too long to start), so that the caller stops its server rather than run a second one.
+   */
+  const record = (port: number): void => {
+    for (let tries = 0; ; tries++) {
+      let lost = false
+      const ran = guarded(file, () => {
+        if (held(file)?.pid !== process.pid) lost = true
+        else renameSync(staged(port), file)
+      })
+      if (ran && lost) throw new Error(`another start took the lock ${file} over before this server listened`)
+      if (ran) return
+      if (tries >= GUARD_TRIES) throw new Error(`could not record the port in the lock ${file}`)
+      pause(GUARD_WAIT_MS)
+    }
+  }
+  for (let attempt = 0; attempt < GUARD_TRIES; attempt++) {
+    try {
+      create()
       let released = false
       return {
         kind: 'mine',
-        record: port => write(port, 'w'),
+        record,
+        // Only while it is still this process's: a start that took a lock this one no longer answered for keeps it.
         release: () => {
           if (released) return
           released = true
-          rmSync(file, { force: true })
+          // Said at exit, where nothing can wait: a guard held by another start is waited on briefly, synchronously.
+          for (let tries = 0; tries < GUARD_TRIES && !removeIf(now => now?.pid === process.pid); tries++) pause(GUARD_WAIT_MS)
         },
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
     const other = held(file)
+    // One that does not read yet may be another start's, created but not yet written: it is waited on, not taken, for a while.
+    if (other === null) unreadSince ??= Date.now()
+    const patient = unreadSince === null || Date.now() - unreadSince < WRITING_MS + GUARD_WAIT_MS * 10
+    if (other === null && patient && writing(file)) {
+      await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
+      attempt--
+      continue
+    }
     const url = other !== null && isPort(other.port) ? addressOf(other.port, token) : null
     if (other !== null && other.pid !== process.pid && alive(other.pid) && (await holds(file, url))) return { kind: 'running', url: url ?? '' }
     // Its process is gone, or its pid is another process's now: the lock is stale.
-    rmSync(file, { force: true })
+    if (!removeStale(other, patient)) await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
   }
   throw new Error(`could not take the lock ${file}`)
 }

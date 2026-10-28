@@ -193,6 +193,29 @@ final class CommandRouterTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     // ===== Foreach dispatch + throw ======================================
 
+    public function testExistingDirectoryRoutesToTheTerminalPane(): void
+    {
+        // A directory where a command would be goes to `tui`, whose options are the proof: it refuses the one
+        // `web` takes, by name, rather than the directory as an unknown command. (The pane itself needs a terminal.)
+        $router = $this->newRouter();
+        $error = captureThrows(fn() => $router->route(self::repositoryRoot(), [], ['port' => ['1']]), InvalidArgumentException::class);
+        assertSame('Unknown option: --port', $error->getMessage());
+    }
+
+    public function testUnknownWordStillFails(): void
+    {
+        $router = $this->newRouter();
+        $error = captureThrows(fn() => $router->route('no-such-directory-or-command', [], []), InvalidArgumentException::class);
+        assertSame('Unknown command: no-such-directory-or-command', $error->getMessage());
+    }
+
+    public function testUsageIsTheHelpList(): void
+    {
+        $router = $this->newRouter();
+        assertSame(0, $router->route('usage', [], []));
+        assertSame(1, substr_count($this->helpWritten(), "  knossos usage\n"));
+    }
+
     public function testRouterThrowsOnUnknownCommand(): void
     {
         // M10 / route() foreach miss: no command in $this->commands

@@ -1,0 +1,11 @@
+{
+  "extends": "../hooks/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest"],
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["../hooks/engine.d.ts", "**/*.ts"]
+}

@@ -10,7 +10,7 @@
     "format:write": "prettier --write \"**/*.{js,json,jsonc,yaml,yml,md}\"",
     "lint:md": "node tools/lint-md.mjs",
     "test:mod": "vitest run --config vitest.config.mjs",
-    "typecheck:mod": "tsc -p hooks/tsconfig.json && tsc -p hooks/tsconfig.spec.json && tsc -p web/tsconfig.json"
+    "typecheck:mod": "tsc -p hooks/tsconfig.json && tsc -p hooks/tsconfig.spec.json && tsc -p web/tsconfig.json && tsc -p tui/tsconfig.json"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

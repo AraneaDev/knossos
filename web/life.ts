@@ -12,7 +12,18 @@ export type Ending = {
   release(): void
   exit(code: number): void
   write(text: string): void
+  /** What the messages are prefixed with: `knossos web` by default. */
+  name?: string
+  /** The time in ms, `Date.now` by default: what tells a repeated signal from a second request. */
+  clock?: () => number
 }
+
+/**
+ * How soon the same signal again is the same request: a terminal signals the whole
+ * foreground group, so a process under `bin/knossos` gets it directly and again as PHP
+ * passes it on, a moment later.
+ */
+export const REPEAT_MS = 500
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -20,24 +31,34 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
  * `stop(code)`: the server closed (its watcher ended), then the lock removed,
  * then exit `code`. Asked again while that runs (a second Ctrl-C, or a close
  * that hangs), it waits no longer: the watcher is ended, the lock removed,
- * and it exits 130. Before the server listens there is nothing to close.
+ * and it exits 130. The signal that asked (`signal`) again within
+ * {@link REPEAT_MS} is the same request delivered twice, and is let be.
+ * Before the server listens there is nothing to close.
  * `crashed(error)` says why on stderr and stops with exit 1 (at once when
  * it was stopping already).
  */
-export function ending(o: Ending): { stop(code: number): void; crashed(error: unknown): void } {
+export function ending(o: Ending): { stop(code: number, signal?: string): void; crashed(error: unknown): void } {
+  const name = o.name ?? 'knossos web'
+  const clock = o.clock ?? Date.now
   let stopping = false
+  /** The signal that started the stop, and when. */
+  let asked: { signal: string | undefined; at: number } = { signal: undefined, at: 0 }
   const now = (code: number) => {
     o.stopWatcher()
     o.release()
     o.exit(code)
   }
-  const stop = (code: number) => {
-    if (stopping) return now(130)
+  const stop = (code: number, signal?: string) => {
+    if (stopping) {
+      if (signal !== undefined && signal === asked.signal && clock() - asked.at < REPEAT_MS) return
+      return now(130)
+    }
     stopping = true
+    asked = { signal, at: clock() }
     const close = o.close
     if (close === null) return now(code)
     void close()
-      .catch((error: unknown) => o.write(`knossos web: stopping: ${messageOf(error)}\n`))
+      .catch((error: unknown) => o.write(`${name}: stopping: ${messageOf(error)}\n`))
       .finally(() => {
         o.release()
         o.exit(code)
@@ -46,7 +67,7 @@ export function ending(o: Ending): { stop(code: number): void; crashed(error: un
   return {
     stop,
     crashed: error => {
-      o.write(`knossos web: ${messageOf(error)}\n`)
+      o.write(`${name}: ${messageOf(error)}\n`)
       // A failure while it stops (in the close itself) waits no longer either, and still exits 1.
       if (stopping) return now(1)
       stop(1)

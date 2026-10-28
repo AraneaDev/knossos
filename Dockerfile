@@ -132,8 +132,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 # stage shellchecks the hook scripts as well, and cannot see a file the image
 # does not carry. `types` is the mod's API declaration, which the plugin
 # materialises and the quality stage's type-check reads. `web` is what
-# `knossos web` runs with node. Keep this list in step with PluginCommand's
-# DIRECTORIES, MANIFEST and COPIES, and with the scripts it reads by name.
+# `knossos web` runs with node, `tui` what bare `knossos` runs, and both load
+# the shared TypeScript through `tools/ts-resolve.mjs`. Keep this list in step
+# with PluginCommand's DIRECTORIES, MANIFEST and COPIES, and with the scripts it
+# reads by name.
 FROM scratch AS sources
 WORKDIR /opt/knossos
 COPY workers/php/src ./workers/php/src
@@ -148,6 +150,8 @@ COPY schemas ./schemas
 COPY .claude-plugin ./.claude-plugin
 COPY hooks ./hooks
 COPY web ./web
+COPY tui ./tui
+COPY tools/ts-resolve.mjs ./tools/ts-resolve.mjs
 COPY skills ./skills
 COPY types ./types
 

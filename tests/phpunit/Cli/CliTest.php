@@ -34,6 +34,36 @@ final class CliTest extends KnossosTestCase
         assertContains('KNOSSOS_INVALID_ARGUMENT:', $stderr);
     }
 
+    #[Group('cli')]
+    public function testUsagePrintsTheCommandList(): void
+    {
+        [$exit, $stdout, $stderr] = $this->runFixtureCommandOutput([PHP_BINARY, self::repositoryRoot() . '/bin/knossos', 'usage']);
+        assertSame(0, $exit);
+        assertContains('knossos web [path]', $stdout);
+        assertContains('knossos usage', $stdout);
+        assertSame('', $stderr);
+    }
+
+    /** Bare `knossos` opens the pane, which needs a terminal: a script that ran it for the list gets the list on stderr and a failure. */
+    #[Group('cli')]
+    public function testBareKnossosWithoutATerminalPrintsUsage(): void
+    {
+        [$exit, $stdout, $stderr] = $this->runFixtureCommandOutput([PHP_BINARY, self::repositoryRoot() . '/bin/knossos']);
+        assertSame(2, $exit);
+        assertSame('', $stdout);
+        assertContains('knossos web [path]', $stderr);
+        assertContains('knossos opens the pane in this terminal; knossos usage prints this list.', $stderr);
+    }
+
+    /** Options alone are the pane's too, and are checked as its options. */
+    #[Group('cli')]
+    public function testBareOptionsAreThePanesOwn(): void
+    {
+        [$exit, , $stderr] = $this->runFixtureCommandOutput([PHP_BINARY, self::repositoryRoot() . '/bin/knossos', '--port=1']);
+        assertSame(2, $exit);
+        assertContains('Unknown option: --port', $stderr);
+    }
+
     /**
      * `--db PATH` stored db = 'true', the path became a stray positional, and
      * the command opened (and created) a database file named 'true' in the
