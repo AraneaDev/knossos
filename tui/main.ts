@@ -154,7 +154,6 @@ let suspended = false
 const resume = () => {
   if (!suspended) return
   suspended = false
-  process.on('SIGTSTP', suspend)
   terminal.enter()
   client?.resize()
 }
@@ -162,7 +161,8 @@ const resume = () => {
  * Suspends the pane as a shell's job control would: the terminal back first, then
  * the whole process group is asked to stop, `knossos`'s PHP parent with it, so the
  * shell sees the job stop and takes the terminal. The pane's own SIGTSTP listener
- * is taken off first, so the signal stops this process as it does any other.
+ * is off while the signal is sent, so it stops this process as it does any other;
+ * the stop happens before the call returns, so the listener goes back on right after.
  *
  * A process group no shell controls (`exec knossos`, a tmux pane started as the
  * command) is orphaned: the kernel drops the signal, as nothing could start the
@@ -174,7 +174,8 @@ function suspend(): void {
   terminal.leave()
   process.off('SIGTSTP', suspend)
   process.kill(0, 'SIGTSTP')
-  // A stop happens before the call returns, so this runs once the group goes on, or at once when it was not stopped.
+  process.on('SIGTSTP', suspend)
+  // This runs once the group goes on, or at once when it was not stopped.
   setTimeout(resume, STOPPED_MS)
 }
 process.on('SIGTSTP', suspend)
