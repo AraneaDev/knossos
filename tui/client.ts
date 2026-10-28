@@ -61,7 +61,7 @@ const after = (text: string, at: number): number => (at + 2 <= text.length && /[
 // eslint-disable-next-line no-control-regex -- finding control characters is what it is for
 const printable = (text: string): string => text.replace(/\r\n?|\n|\t/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
 
-/** Whether `frame` has a press or a field: something a key typed early can act on. */
+/** Whether `frame` has a press or a field: something a key typed while the pane starts can act on. */
 const actionable = (frame: Frame): boolean => (segmentsOf(frame) as PageSegment[]).some(s => s.press !== undefined || s.field !== undefined)
 
 /** The most events kept for a frame with something to act on: typing on a loading pane is not stored without end. */
@@ -86,7 +86,11 @@ export function startClient(o: ClientOptions): Client {
   let persistent: string | null = null
   let down: string | null = null
   let lastInput = 0
-  /** What was typed before a frame had anything to press or edit (the first ones say the graph is loading): handed on once one has. */
+  /**
+   * Whether the pane has yet to draw a frame with anything to press or edit (the first ones say the graph is
+   * loading). Until then keys wait in `early` and are handed on once one does; after that nothing waits.
+   */
+  let holding = true
   const early: TermEvent[] = []
   /** The hits of the screen last painted: what the pointer is over. */
   let hits: Hit[][] = []
@@ -188,7 +192,10 @@ export function startClient(o: ClientOptions): Client {
       // A field that left the frame is no longer edited.
       if (editing !== null && !fieldsOf(frame).has(editing.id)) editing = null
       paint()
-      if (actionable(frame)) for (const e of early.splice(0)) handle(e)
+      if (holding && actionable(frame)) {
+        holding = false
+        for (const e of early.splice(0)) handle(e)
+      }
     },
     on: {
       toast: (e: { text: string }) => showToast(e.text),
@@ -356,11 +363,11 @@ export function startClient(o: ClientOptions): Client {
   function handle(e: TermEvent): void {
     if (e.kind === 'key' && e.ctrlKey && e.key === 'c') return o.quit()
     if (e.kind === 'key' && e.ctrlKey && e.key === 'z') return o.suspend()
-    const frame = frameOf()
-    if (frame === null || !actionable(frame)) {
+    if (holding) {
       // `q` needs nothing to press: a pane whose server never draws can still be left.
       if (e.kind === 'key' && e.key === 'q' && !e.ctrlKey && !e.altKey) return o.quit()
-      if (early.length < EARLY_MAX) early.push(e)
+      // A click is aimed at what is drawn now; replayed on a later layout it could press something else.
+      if (e.kind !== 'mouse' && early.length < EARLY_MAX) early.push(e)
       return
     }
     if (e.kind === 'mouse') return mouse(e)

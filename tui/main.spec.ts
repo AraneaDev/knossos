@@ -64,7 +64,7 @@ function web(dir: string, env: Record<string, string>) {
 const envOf = (data: string, plugin: string) => ({ KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: plugin })
 // Short, so that a watcher orphaned by a killed server soon ends on its own.
 const mark = () => String(100 + Math.floor(Math.random() * 800))
-/** The pid in the project's lock, read again while a start has it moved aside for a moment. */
+/** The pid in the project's lock, read again if the file is missing for a moment (a take-over removing a stale lock before writing its own). */
 const pidOf = (data: string, dir: string): number => {
   for (let i = 0; ; i++) {
     try {

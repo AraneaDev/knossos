@@ -585,6 +585,33 @@ describe('startClient before the first frame', () => {
     expect(h.sent('press')).toEqual([{ kind: 'press', press: 'tab:hubs' }])
   })
 
+  it('drops a click made while it holds keys rather than replay it on the frame that comes', async () => {
+    const h = harness(frame({ body: [row('loading', seg('Reading the graph'))], footer: [] }))
+    await h.settle()
+    // Where the hubs tab will be once the tabs are drawn.
+    h.client.input('\x1b[<0;18;1M')
+    h.client.input('\x1b[<0;18;1m')
+    h.emit(frame())
+    await h.settle()
+    expect(h.sent('press')).toEqual([])
+    expect(h.sent('focus')).toEqual([])
+  })
+
+  it('holds nothing once a frame has had something to press: a key on a later frame without one is handled at once', async () => {
+    const h = harness()
+    await h.settle()
+    h.emit(frame({ body: [row('scanning', seg('Scanning the project'))], footer: [] }))
+    await h.settle()
+    // Nothing to press here, so the hotkey does nothing, now or later.
+    h.client.input('2')
+    expect(h.sent('press')).toEqual([])
+    h.emit(frame())
+    await h.settle()
+    expect(h.sent('press')).toEqual([])
+    h.client.input('q')
+    expect(h.quit.count).toBe(1)
+  })
+
   it('quits on q or Ctrl-C and suspends on Ctrl-Z at once', () => {
     const h = harness()
     h.client.input('q')
