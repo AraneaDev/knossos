@@ -1,0 +1,238 @@
+/**
+ * `knossos [<dir>] [--editor=<command>] [--theme=dark|light]`: the pane of the
+ * project in `dir` (the working directory by default), fullscreen in this
+ * terminal. It is a client of the project's `knossos web` server: when none
+ * runs it starts one here and stops it with the pane, and when one runs it
+ * attaches to that one and leaves it running. If the server it attached to
+ * stops, the next of the terminals attached to it takes the project over.
+ *
+ * The terminal is given back whatever ends the process: `q`, Ctrl-C, a
+ * signal or a crash. The server's log never reaches the screen; it goes to
+ * `web/<lock name>.log` in the data directory, and its path is named at exit
+ * when the server wrote anything.
+ */
+import { spawn } from 'node:child_process'
+import { appendFileSync, existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { delimiter, dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const NODE_MAJOR = 24
+const major = Number(process.versions.node.split('.')[0])
+if (major < NODE_MAJOR) {
+  process.stderr.write(`knossos needs Node ${NODE_MAJOR} or newer (found v${process.versions.node}).\n`)
+  process.exit(2)
+}
+
+/** Ends with `message` on stderr and exit code 2: it could not run. */
+function fail(message: string): never {
+  process.stderr.write(`knossos: ${message}\n`)
+  process.exit(2)
+}
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+const sleep = (ms: number) => new Promise<void>(done => setTimeout(done, ms))
+
+const CHECKOUT = dirname(dirname(fileURLToPath(import.meta.url)))
+// The shared modules import each other without an extension; plain Node needs a resolver for that before loading them.
+await import(new URL('../tools/ts-resolve.mjs', import.meta.url).href)
+const { argsOf, USAGE } = await import('./args')
+const asked = argsOf(process.argv.slice(2))
+if ('error' in asked) {
+  process.stderr.write(`knossos: ${asked.error}\n${USAGE}\n`)
+  process.exit(2)
+}
+if (!process.stdin.isTTY || !process.stdout.isTTY) fail('the pane needs a terminal for both input and output')
+const given = resolve(asked.dir ?? '.')
+if (!existsSync(given) || !statSync(given).isDirectory()) fail(`${given} is not a directory`)
+const root = realpathSync(given)
+const dataDir = process.env.KNOSSOS_DATA_DIR || join(homedir(), '.knossos')
+const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
+// The wrapper runs this checkout's knossos unless told otherwise, as an installed plugin runs the checkout it came from.
+if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
+const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
+
+const { hostProject } = await import('../web/host')
+type Hosted = Awaited<ReturnType<typeof hostProject>>
+const { lockFile } = await import('../web/lock')
+const { ending } = await import('../web/life')
+const { stopWatcher } = await import('../hooks/mod/state')
+const { Decoder, themeOfBackground } = await import('./input')
+const { startClient } = await import('./client')
+const { clipboardCommand, osc52 } = await import('./clipboard')
+const { ASK_BACKGROUND, terminalMode } = await import('./terminal')
+const { TOAST_MS } = await import('../web/public/app.mjs')
+
+/** How long the terminal is given to tell its background colour. */
+const BACKGROUND_MS = 150
+/** How long a server that has taken the lock is given to say where it listens. */
+const STARTING_MS = 10_000
+
+const out = (bytes: string) => void process.stdout.write(bytes)
+const terminal = terminalMode({ stdin: process.stdin, write: out })
+
+// The server's log goes to a file beside the project's lock, never to the screen the pane owns.
+const logFile = lockFile(dataDir, root).replace(/\.json$/, '.log')
+let logged = false
+const log = (text: string) => {
+  try {
+    mkdirSync(dirname(logFile), { recursive: true, mode: 0o700 })
+    appendFileSync(logFile, `${text}\n`, { mode: 0o600 })
+    logged = true
+  } catch {
+    // A log that cannot be written must not take the pane down with it.
+  }
+}
+
+let hosted: Hosted | null = null
+const release = () => {
+  if (hosted?.kind === 'mine') hosted.release()
+}
+
+const { stop, crashed } = ending({
+  get close() {
+    return hosted?.kind === 'mine' ? hosted.close : null
+  },
+  stopWatcher: () => void stopWatcher(),
+  release,
+  exit: code => process.exit(code),
+  // Whatever it says is said on the normal screen, where it stays.
+  write: text => {
+    terminal.leave()
+    process.stderr.write(text)
+  },
+})
+let client: ReturnType<typeof startClient> | null = null
+/** Ends the pane: the terminal is given back before anything else. */
+const quit = (code = 0) => {
+  client?.close()
+  terminal.leave()
+  stop(code)
+}
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => quit(0))
+process.on('uncaughtException', crashed)
+process.on('unhandledRejection', crashed)
+process.on('exit', () => {
+  terminal.leave()
+  release()
+  if (logged) process.stderr.write(`knossos: the pane's log is in ${logFile}\n`)
+})
+
+/** Suspends the pane as a shell's job control would: the terminal back first, then the process stops. */
+const suspend = () => {
+  terminal.leave()
+  process.kill(process.pid, 'SIGSTOP')
+}
+process.on('SIGTSTP', suspend)
+process.on('SIGCONT', () => {
+  terminal.enter()
+  client?.resize()
+})
+
+/** The terminal's background as a theme: asked for and waited on for a moment, `dark` when it does not answer. */
+function themeOfTerminal(): Promise<'dark' | 'light'> {
+  return new Promise(done => {
+    const decoder = new Decoder()
+    let finished = false
+    const finish = (theme: 'dark' | 'light') => {
+      if (finished) return
+      finished = true
+      process.stdin.off('data', listen)
+      done(theme)
+    }
+    const listen = (chunk: string) => {
+      for (const e of decoder.push(chunk)) if (e.kind === 'background') finish(themeOfBackground(e.rgb))
+    }
+    process.stdin.on('data', listen)
+    setTimeout(() => finish('dark'), BACKGROUND_MS)
+    out(ASK_BACKGROUND)
+  })
+}
+
+/** The project's server: started here, or the one that runs, waited for until it says where it listens. */
+async function host(): Promise<Hosted> {
+  const deadline = Date.now() + STARTING_MS
+  for (;;) {
+    const found = await hostProject({ root, dataDir, pluginRoot, editor, port: null, log })
+    if (found.kind === 'mine' || found.url !== '') return found
+    if (Date.now() > deadline) throw new Error('the running server did not say where it listens')
+    await sleep(100)
+  }
+}
+
+/** Whether the lock of the server attached to has gone, so that the project may be taken over. */
+let lost = false
+let taking: Promise<void> | null = null
+/** Takes the project over, or attaches to whoever took it first; one at a time. */
+function retake(): Promise<void> {
+  taking ??= host()
+    .then(found => {
+      hosted = found
+      lost = false
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      taking = null
+    })
+  return taking
+}
+
+const origin = (url: string) => new URL(url).origin
+
+try {
+  terminal.enter()
+  const theme = asked.theme ?? (await themeOfTerminal())
+  hosted = await host()
+  let current = hosted.url
+  const first = hosted.url
+  const copyCommand = clipboardCommand(process.platform, name => (process.env.PATH ?? '').split(delimiter).some(dir => dir !== '' && existsSync(join(dir, name))))
+  // The client's retries ask for the event stream again; before one goes out, a server that is gone is replaced.
+  const reach: typeof fetch = async (input, init) => {
+    const url = String(input)
+    const events = url.includes('/events?')
+    if (events && hosted?.kind === 'running' && (lost || !existsSync(lockFile(dataDir, root)))) {
+      lost = true
+      await retake()
+      if (hosted !== null) current = hosted.url
+    }
+    try {
+      return await fetch(origin(first) === origin(current) ? url : url.replace(origin(first), origin(current)), init)
+    } catch (error) {
+      if (events) lost = true
+      throw error
+    }
+  }
+  const size = () => ({ columns: process.stdout.columns || 80, rows: process.stdout.rows || 24 })
+  client = startClient({
+    url: hosted.url,
+    size,
+    theme,
+    write: out,
+    fetch: reach,
+    copy: text => {
+      out(osc52(text))
+      if (copyCommand === null) return
+      const child = spawn(copyCommand[0]!, copyCommand.slice(1), { stdio: ['pipe', 'ignore', 'ignore'] })
+      child.on('error', () => undefined)
+      child.stdin.on('error', () => undefined)
+      child.stdin.end(text)
+    },
+    quit: () => quit(0),
+    after: (ms, fire) => void setTimeout(fire, ms),
+  })
+  if (hosted.kind === 'running' && editor !== null) {
+    client.status("This project's pane already runs; files open in its editor.")
+    setTimeout(() => client?.status(null), TOAST_MS)
+  }
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', (chunk: string) => {
+    // Raw mode hands Ctrl-Z over as a byte rather than as a signal.
+    if (chunk === '\x1a') return suspend()
+    client?.input(chunk)
+  })
+  process.stdin.on('end', () => quit(0))
+  process.stdout.on('resize', () => client?.resize())
+} catch (error) {
+  terminal.leave()
+  fail(messageOf(error))
+}

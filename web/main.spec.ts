@@ -1,12 +1,12 @@
 import { execFileSync, spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import { scratch } from './fixtures/helpers'
+import { markedPluginRoot, scratch } from './fixtures/helpers'
 import { browserCommands, openBrowser } from './browser'
 import { lockFile } from './lock'
 
@@ -16,20 +16,6 @@ const running: ChildProcessWithoutNullStreams[] = []
 afterEach(() => {
   for (const child of running.splice(0)) if (child.exitCode === null) child.kill('SIGKILL')
 })
-
-/**
- * A plugin root whose wrapper answers from web/fixtures, except `watch`,
- * which becomes a long sleep marked `mark`: a watcher that only ends when
- * it is ended.
- */
-function pluginRoot(mark: string): string {
-  const root = scratch('knossos-web-plugin-')
-  mkdirSync(join(root, 'hooks/scripts'), { recursive: true })
-  const shim = join(root, 'hooks/scripts/knossos-run.sh')
-  writeFileSync(shim, `#!/bin/sh\n[ "$1" = watch ] && exec sleep ${mark}\nexec sh '${join(HERE, 'fixtures/knossos-run.sh')}' "$@"\n`)
-  chmodSync(shim, 0o755)
-  return root
-}
 
 /** `node web/main.ts` for `dir`, not opening a browser, and its output as it comes. */
 function main(dir: string, env: Record<string, string>, extra: string[] = []) {
@@ -76,7 +62,7 @@ describe('knossos web', () => {
     const dir = scratch()
     const data = scratch()
     const mark = String(30_000 + Math.floor(Math.random() * 9_999))
-    const run = main(dir, { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: pluginRoot(mark) })
+    const run = main(dir, { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: markedPluginRoot(mark) })
     const [, url] = await run.line(/Knossos web pane for (?:.*): (http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]+)\n/)
     expect(run.out()).toContain(`Knossos web pane for ${realpathSync(dir)}: ${url}`)
     expect(existsSync(lockFile(data, dir))).toBe(true)
@@ -98,7 +84,7 @@ describe('knossos web', () => {
   it('finds the server already running for the project, says where, and exits 0', { timeout: 20_000 }, async () => {
     const dir = scratch()
     const data = scratch()
-    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: pluginRoot(String(40_000 + Math.floor(Math.random() * 9_999))) }
+    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: markedPluginRoot(String(40_000 + Math.floor(Math.random() * 9_999))) }
     const first = main(dir, env)
     const [, url] = await first.line(/: (http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]+)\n/)
     const second = main(dir, env)
@@ -111,7 +97,7 @@ describe('knossos web', () => {
   it('keeps its address across starts: the same token, and the same port while it is free', { timeout: 30_000 }, async () => {
     const dir = scratch()
     const data = scratch()
-    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: pluginRoot(String(50_000 + Math.floor(Math.random() * 9_999))) }
+    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: markedPluginRoot(String(50_000 + Math.floor(Math.random() * 9_999))) }
     const address = /: (http:\/\/127\.0\.0\.1:(\d+)\/\?t=([0-9a-f]+))\n/
     const first = main(dir, env)
     const [, url, port, token] = await first.line(address)
@@ -152,7 +138,7 @@ describe('knossos web', () => {
     await new Promise<void>(resolve => free.listen(0, '127.0.0.1', resolve))
     const port = (free.address() as AddressInfo).port
     await new Promise(resolve => free.close(resolve))
-    const run = main(scratch(), { KNOSSOS_DATA_DIR: scratch(), KNOSSOS_WEB_PLUGIN_ROOT: pluginRoot(String(60_000 + Math.floor(Math.random() * 9_999))) }, ['--port', String(port)])
+    const run = main(scratch(), { KNOSSOS_DATA_DIR: scratch(), KNOSSOS_WEB_PLUGIN_ROOT: markedPluginRoot(String(60_000 + Math.floor(Math.random() * 9_999))) }, ['--port', String(port)])
     const [, at] = await run.line(/: http:\/\/127\.0\.0\.1:(\d+)\//)
     expect(Number(at)).toBe(port)
     run.child.kill('SIGTERM')

@@ -24,6 +24,20 @@ export function fixturePluginRoot(): string {
   return root
 }
 
+/**
+ * A plugin root whose wrapper answers from web/fixtures, except `watch`,
+ * which becomes a long sleep marked `mark`: a watcher that only ends when
+ * it is ended.
+ */
+export function markedPluginRoot(mark: string): string {
+  const root = scratch('knossos-web-plugin-')
+  mkdirSync(join(root, 'hooks/scripts'), { recursive: true })
+  const shim = join(root, 'hooks/scripts/knossos-run.sh')
+  writeFileSync(shim, `#!/bin/sh\n[ "$1" = watch ] && exec sleep ${mark}\nexec sh '${join(HERE, 'knossos-run.sh')}' "$@"\n`)
+  chmodSync(shim, 0o755)
+  return root
+}
+
 /** The fixture dashboard, as the wrapper prints it for `root`. */
 export const fixtureDashboard = (root: string): Dashboard => JSON.parse(readFileSync(join(HERE, 'dashboard.json'), 'utf8').replaceAll('@ROOT@', root)) as Dashboard
 
