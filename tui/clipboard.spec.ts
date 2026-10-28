@@ -8,21 +8,38 @@ describe('osc52', () => {
 })
 
 describe('clipboardCommand', () => {
-  it('picks the first program on the path', () => {
-    expect(clipboardCommand('linux', n => n === 'xclip')).toEqual(['xclip', '-selection', 'clipboard'])
-    expect(clipboardCommand('linux', () => true)).toEqual(['wl-copy'])
-    expect(clipboardCommand('darwin', n => n === 'pbcopy')).toEqual(['pbcopy'])
+  const all = () => true
+
+  it('takes wl-copy only with a Wayland display, and before xclip', () => {
+    expect(clipboardCommand('linux', { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' }, all)).toEqual(['wl-copy'])
+    expect(clipboardCommand('linux', { DISPLAY: ':0' }, all)).toEqual(['xclip', '-selection', 'clipboard'])
   })
 
-  it('finds clip.exe on linux, as WSL has it', () => {
-    expect(clipboardCommand('linux', n => n === 'clip.exe')).toEqual(['clip.exe'])
+  it('takes xclip only with an X display', () => {
+    expect(clipboardCommand('linux', { WAYLAND_DISPLAY: 'wayland-0' }, n => n === 'xclip')).toBeNull()
+    expect(clipboardCommand('linux', { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' }, n => n === 'xclip')).toEqual(['xclip', '-selection', 'clipboard'])
   })
 
-  it('is null with nothing on the path', () => {
-    expect(clipboardCommand('linux', () => false)).toBeNull()
+  it('takes pbcopy on a Mac, whatever the displays say', () => {
+    expect(clipboardCommand('darwin', { DISPLAY: ':0' }, all)).toEqual(['pbcopy'])
   })
 
-  it('looks only for clip.exe on windows', () => {
-    expect(clipboardCommand('win32', () => true)).toEqual(['clip.exe'])
+  it('takes clip.exe on WSL, after a display program WSLg provides', () => {
+    expect(clipboardCommand('linux', { WSL_DISTRO_NAME: 'Ubuntu' }, all)).toEqual(['clip.exe'])
+    expect(clipboardCommand('linux', { WSL_INTEROP: '/run/WSL/1_interop' }, all)).toEqual(['clip.exe'])
+    expect(clipboardCommand('linux', { WSL_DISTRO_NAME: 'Ubuntu', WAYLAND_DISPLAY: 'wayland-0' }, n => n === 'clip.exe')).toEqual(['clip.exe'])
+  })
+
+  it('is null on a plain Linux console, even with every program on the path', () => {
+    expect(clipboardCommand('linux', {}, all)).toBeNull()
+    expect(clipboardCommand('linux', { DISPLAY: '' }, all)).toBeNull()
+  })
+
+  it('is null when the fitting program is not on the path', () => {
+    expect(clipboardCommand('darwin', {}, () => false)).toBeNull()
+  })
+
+  it('takes clip.exe on Windows', () => {
+    expect(clipboardCommand('win32', { DISPLAY: ':0' }, all)).toEqual(['clip.exe'])
   })
 })
