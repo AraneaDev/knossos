@@ -33,6 +33,7 @@ export default defineConfig({
             "tools/eval/*.spec.mjs",
             "web/**/*.spec.ts",
             "web/**/*.spec.mjs",
+            "tui/**/*.spec.ts",
         ],
         environment: "node",
         // hooks/register.tsx is outside this measurement because the engine loads it; tools/quality type-checks it and runs register.test.ts through `claude plugin test`.
@@ -45,12 +46,14 @@ export default defineConfig({
                 "hooks/mod/**/*.ts",
                 "hooks/mod/**/*.tsx",
                 "web/*.ts",
+                "tui/*.ts",
             ],
             exclude: [
                 "**/*.spec.ts",
                 "**/__tests__/**",
                 "web/public/**",
                 "web/main.ts",
+                "tui/main.ts",
             ],
             reportsDirectory: "coverage/mod",
             reporter: ["text-summary", "json-summary"],

@@ -1363,6 +1363,8 @@ js	tools/lint-md.spec.mjs
 js	tools/pane-preview.mjs
 js	tools/pane-preview.spec.mjs
 js	tools/ts-resolve.mjs
+js	tui/args.spec.ts
+js	tui/args.ts
 js	types/index.d.ts
 js	vitest.config.mjs
 js	web/app.spec.mjs
