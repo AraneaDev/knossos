@@ -13,7 +13,12 @@ export default [
     js.configs.recommended,
     ...tseslint.configs.recommended.map((config) => ({
         ...config,
-        files: ["hooks/**/*.{ts,tsx}", "web/**/*.ts", "tui/**/*.ts", "types/**/*.ts"],
+        files: [
+            "hooks/**/*.{ts,tsx}",
+            "web/**/*.ts",
+            "tui/**/*.ts",
+            "types/**/*.ts",
+        ],
     })),
     {
         // hooks/lib is pure and the mod builds on it: an import the other way would make a cycle.
