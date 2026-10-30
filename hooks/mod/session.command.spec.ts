@@ -38,7 +38,7 @@ const options = { fanInThreshold: 20, enforcePolicies: true, agentNotes: true, w
  * open and close recorded, and a wrapper that answers each subcommand from
  * `answers` and records every run.
  */
-function fakePort(initial: Record<string, unknown>, opts: { open?: boolean; closeFails?: boolean; answers?: Record<string, string> } = {}) {
+function fakePort(initial: Record<string, unknown>, opts: { open?: boolean; closeFails?: boolean; noBackground?: boolean; answers?: Record<string, string> } = {}) {
     const blank = {
         brief: null,
         dashboard: null,
@@ -106,8 +106,10 @@ function fakePort(initial: Record<string, unknown>, opts: { open?: boolean; clos
             invalidate: () => undefined,
             toast: () => undefined,
             panes: async () => panes,
-            open: async (args: { id: string }) => {
+            open: async (args: { id: string; backgroundColor?: string }) => {
                 opened.push(args)
+                // A Claude Code from before `backgroundColor` refuses an open naming it.
+                if (opts.noBackground === true && args.backgroundColor !== undefined) throw new Error('unknown property backgroundColor')
                 panes = [{ id: args.id }]
                 return {}
             },
@@ -145,6 +147,15 @@ function fakePort(initial: Record<string, unknown>, opts: { open?: boolean; clos
 beforeEach(() => reset(options))
 
 describe('/knossos with no arguments', () => {
+    it('opens the pane on its own fill where Claude Code refuses a transparent one', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { noBackground: true })
+        expect(await runCommand(port.io, '')).toBe(OPENED)
+        expect(port.opened).toEqual([
+            { id: PANE, title: 'Knossos', backgroundColor: 'transparent' },
+            { id: PANE, title: 'Knossos' },
+        ])
+    })
+
     it.each(['', '   ', '\t\n'])('opens a closed pane on the tab rather than a component (args %j), then refreshes the dashboard on a timer', async args => {
         const port = fakePort({ dashboard: dashboard('s1'), view: view({ inspect: { name: 'App\\Greeter', label: 'Greeter' } }) }, { answers: { dashboard: JSON.stringify(dashboard('s2')) } })
         expect(await runCommand(port.io, args)).toBe(OPENED)

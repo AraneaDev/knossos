@@ -171,7 +171,11 @@ export async function startUp(io: Port, openOnStart: boolean): Promise<void> {
 export async function openPane(io: Port, refreshFirst = true): Promise<void> {
   if (refreshFirst) io.clock.after(0, () => void refreshDashboard(io).catch(() => undefined))
   // Transparent: the pane lies on the terminal's own background, as the chat beside it does.
-  await io.ui.open({ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }).catch(() => undefined)
+  // A Claude Code from before `backgroundColor` refuses it, and gets the pane on its own fill.
+  await io.ui
+    .open({ id: PANE, title: 'Knossos', backgroundColor: 'transparent' })
+    .catch(() => io.ui.open({ id: PANE, title: 'Knossos' }))
+    .catch(() => undefined)
 }
 
 /** `/knossos` toggles the pane, `/knossos inspect <component>` opens it on one component. */
