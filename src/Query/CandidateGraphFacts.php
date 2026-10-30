@@ -59,6 +59,17 @@ final class CandidateGraphFacts
      */
     private array $untypedCaseless = [];
 
+    /**
+     * The project's interfaces, by language: each one's name and its members
+     * by name, read once for the shape check.
+     *
+     * @var array<string, list<array{id: string, name: string, members: array<string, string>}>>|null
+     */
+    private ?array $interfaces = null;
+
+    /** @var array<string, array<string, true>> type id => the member names it declares */
+    private array $typeMembers = [];
+
     /** @var list<string>|null */
     private ?array $suppressions = null;
 
@@ -262,6 +273,82 @@ final class CandidateGraphFacts
     {
         return isset($this->untypedMemberNames()[$name])
             || ($language === 'php' && isset($this->untypedCaseless[strtolower($name)]));
+    }
+
+    /**
+     * An interface the type `$typeId` meets by shape, with a member `$name`
+     * something calls, or null.
+     *
+     * A class need not say `implements` to be passed where an interface is
+     * expected: one with every member the interface names fits it, and a
+     * call through the interface then reaches the class's member of that
+     * name with no edge to it. Shape is read by member names alone, so this
+     * says the class may be reached, never that it is. The first interface
+     * by name, of the same language, answers.
+     */
+    public function shapeContractOf(string $language, string $typeId, string $name): ?string
+    {
+        foreach ($this->interfacesOf($language) as $interface) {
+            if ($interface['id'] === $typeId || !isset($interface['members'][$name])) {
+                continue;
+            }
+            if (array_diff_key($interface['members'], $this->membersOf($typeId)) !== []) {
+                continue;
+            }
+            if ($this->inDegree($interface['members'][$name]) - $this->inheritanceInDegree($interface['members'][$name]) > 0) {
+                return $interface['name'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The project's interfaces in `$language`, by name.
+     *
+     * @return list<array{id: string, name: string, members: array<string, string>}>
+     */
+    private function interfacesOf(string $language): array
+    {
+        if ($this->interfaces === null) {
+            $this->interfaces = [];
+            $statement = $this->pdo->prepare(
+                'SELECT i.id, i.language, i.display_name, m.id AS member_id, m.display_name AS member_name FROM nodes i '
+                . "JOIN edges e ON e.project_id = i.project_id AND e.source_id = i.id AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' '
+                . 'JOIN nodes m ON m.id = e.target_id '
+                . "WHERE i.project_id = ? AND i.kind = 'interface' AND " . EnrichedFacts::excludeSql('i') . ' ORDER BY i.display_name, i.id',
+            );
+            $statement->execute([$this->projectId]);
+            $byId = [];
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $id = (string) $row['id'];
+                $byId[$id] ??= ['language' => (string) $row['language'], 'id' => $id, 'name' => (string) $row['display_name'], 'members' => []];
+                $byId[$id]['members'][(string) $row['member_name']] ??= (string) $row['member_id'];
+            }
+            foreach ($byId as $interface) {
+                $this->interfaces[$interface['language']][] = ['id' => $interface['id'], 'name' => $interface['name'], 'members' => $interface['members']];
+            }
+        }
+
+        return $this->interfaces[$language] ?? [];
+    }
+
+    /**
+     * The member names a type declares.
+     *
+     * @return array<string, true>
+     */
+    private function membersOf(string $typeId): array
+    {
+        if (!isset($this->typeMembers[$typeId])) {
+            $statement = $this->pdo->prepare(
+                "SELECT n.display_name FROM edges e JOIN nodes n ON n.id = e.target_id WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id = ?',
+            );
+            $statement->execute([$this->projectId, $typeId]);
+            $this->typeMembers[$typeId] = array_fill_keys(array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN)), true);
+        }
+
+        return $this->typeMembers[$typeId];
     }
 
     /**

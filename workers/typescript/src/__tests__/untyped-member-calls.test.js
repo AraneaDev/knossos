@@ -59,4 +59,27 @@ describe("a member call on an untyped receiver", () => {
 
         expect(module.attributes).not.toHaveProperty("unresolved_member_calls");
     });
+
+    it("records a call through an object type, as a cast or a type alias writes one", () => {
+        const nodes = scan({
+            "src/close.ts":
+                "class A { stop(): void {} }\n" +
+                "type Sink = { pour(): void }\n" +
+                "export function close(a: A, sink: Sink): void {\n" +
+                "    const p = a as unknown as { drain?: () => void; flush(): void };\n" +
+                "    p.drain?.();\n" +
+                "    p.flush();\n" +
+                "    sink.pour();\n" +
+                "    a.stop();\n" +
+                "}\n",
+        });
+        const module = nodes.find((n) => n.kind === "module");
+
+        // `a.stop` resolves to a class the graph has, and is not recorded.
+        expect(module.attributes.unresolved_member_calls).toEqual([
+            "drain",
+            "flush",
+            "pour",
+        ]);
+    });
 });

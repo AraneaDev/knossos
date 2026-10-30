@@ -42,7 +42,7 @@ final class InheritanceGraph
      * @param array<string, list<string>> $subtypes type id => ids of the types that inherit its members
      * @param array<string, array<string, mixed>> $meta ancestor id => node row (id, kind, display_name, origin)
      * @param array<string, array<string, true>> $memberNames type id => member display names
-     * @param array<string, array<string, true>> $implemented type id => member names its direct implementers carry
+     * @param array<string, array<string, list<string>>> $implemented type id => member name => ids of the members its direct implementers carry by that name
      */
     private function __construct(
         private readonly array $parents,
@@ -198,6 +198,17 @@ final class InheritanceGraph
     }
 
     /**
+     * The members named `$name` that the internal types implementing or
+     * extending `$typeId` carry, declared or inherited.
+     *
+     * @return list<string>
+     */
+    public function implementingMembers(string $typeId, string $name): array
+    {
+        return $this->implemented[$typeId][$name] ?? [];
+    }
+
+    /**
      * The predicate behind {@see isExternal}, over a node row.
      *
      * @param array<string, mixed>|null $meta
@@ -260,22 +271,36 @@ final class InheritanceGraph
      */
     private static function memberNamesOf(PDO $pdo, string $projectId, array $typeIds): array
     {
-        $memberNames = [];
+        return array_map(
+            static fn(array $members): array => array_map(static fn(): bool => true, $members),
+            self::membersOf($pdo, $projectId, $typeIds),
+        );
+    }
+
+    /**
+     * The members each of `$typeIds` declares, by name.
+     *
+     * @param list<string> $typeIds
+     * @return array<string, array<string, list<string>>> type id => member display name => member ids
+     */
+    private static function membersOf(PDO $pdo, string $projectId, array $typeIds): array
+    {
+        $members = [];
         foreach (ChunkedInQuery::rows(
             $pdo,
-            'SELECT e.source_id, n.display_name FROM edges e JOIN nodes n ON n.id = e.target_id ' .
+            'SELECT e.source_id, e.target_id, n.display_name FROM edges e JOIN nodes n ON n.id = e.target_id ' .
             "WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id IN (%s)',
             $typeIds,
             [$projectId],
         ) as $row) {
-            $memberNames[$row['source_id']][(string) $row['display_name']] = true;
+            $members[$row['source_id']][(string) $row['display_name']][] = (string) $row['target_id'];
         }
 
-        return $memberNames;
+        return $members;
     }
 
     /**
-     * Member names the internal types that implement or extend each of
+     * The members, by name, the internal types that implement or extend each of
      * `$typeIds` carry: those they declare, and those they inherit from the
      * classes they extend or the traits they use, stopping at the type itself.
      *
@@ -286,7 +311,7 @@ final class InheritanceGraph
      * take the method from the class it extends.
      *
      * @param list<string> $typeIds
-     * @return array<string, array<string, true>> type id => member display names
+     * @return array<string, array<string, list<string>>> type id => member display name => member ids
      */
     private static function implementedMembers(PDO $pdo, string $projectId, array $typeIds): array
     {
@@ -308,7 +333,7 @@ final class InheritanceGraph
         // implementer may take the method from the class it extends.
         $basesOf = EdgeWalk::reach($pdo, $projectId, ['extends', 'uses_trait'], Direction::Outgoing, $subtypeIds, self::MAX_SUBTYPE_DEPTH);
         $declaringIds = array_values(array_unique([...$subtypeIds, ...array_merge(...array_values($basesOf) ?: [[]])]));
-        $memberNames = self::memberNamesOf($pdo, $projectId, $declaringIds);
+        $members = self::membersOf($pdo, $projectId, $declaringIds);
 
         $result = [];
         foreach ($subtypesOf as $typeId => $subtypes) {
@@ -319,8 +344,8 @@ final class InheritanceGraph
                 // The walk stops at the contract type: its own members, and
                 // what it inherits, are not what the subtype implements it with.
                 foreach ([$subtypeId, ...EdgeWalk::closure($subtypeId, $basesOf, [$typeId])] as $id) {
-                    foreach ($memberNames[$id] ?? [] as $name => $_) {
-                        $result[$typeId][$name] = true;
+                    foreach ($members[$id] ?? [] as $name => $ids) {
+                        $result[$typeId][$name] = [...$result[$typeId][$name] ?? [], ...$ids];
                     }
                 }
             }
