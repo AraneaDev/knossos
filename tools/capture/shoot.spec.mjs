@@ -221,6 +221,23 @@ describe("wait on a fixture", () => {
     });
 });
 
+describe("a step's until", () => {
+    it("waits as long as the step's untilMs says, not the default 20 s", async () => {
+        const { session } = fakeSession(() => "nothing here");
+        await expect(
+            playShot(
+                session,
+                {
+                    steps: [
+                        { do: "send", keys: ["x"], until: "zzz", untilMs: 40 },
+                    ],
+                },
+                { worktree: "/nonexistent" },
+            ),
+        ).rejects.toThrow(/timed out after 40 ms/);
+    });
+});
+
 describe("checkLength", () => {
     it("counts the frames built and refuses a GIF past the shot's limit", async () => {
         const dir = await mkdtemp(path.join(os.tmpdir(), "frames-"));

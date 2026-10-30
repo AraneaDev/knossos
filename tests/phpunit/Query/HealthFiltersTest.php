@@ -217,6 +217,31 @@ final class HealthFiltersTest extends KnossosTestCase
     }
 
     /**
+     * An untyped call in one language reaches nothing in another: a
+     * TypeScript `x.label()` says nothing of a PHP method named `label`.
+     */
+    public function testAnUntypedCallDemotesOnlyMethodsOfItsOwnLanguage(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $module = StableId::symbol($ids['project'], 'ts', 'module', 'src/loop.js');
+        $repository->saveNode($module, $ids['project'], 'ts', 'module', 'src/loop.js', 'loop.js', null, $ids['file'], 1, 1, 'ast', 'certain', ['unresolved_member_calls' => ['label']], 'php:file:src/Checkout.php', $ids['scan']);
+        foreach (['ts' => 'src/mode.ts#label', 'php' => 'App\\Mode::label'] as $language => $name) {
+            $id = StableId::symbol($ids['project'], $language, 'function', $name);
+            $repository->saveNode($id, $ids['project'], $language, 'function', $name, 'label', null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $byName = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $byName[$candidate['component']['canonical_name']] = $candidate;
+        }
+
+        assertSame('possible', $byName['src/mode.ts#label']['confidence']);
+        assertSame('probable', $byName['App\\Mode::label']['confidence']);
+    }
+
+    /**
      * A symbol only tests call stays test-only in its reason, whatever lowers
      * its confidence. The untyped-receiver reason opened with "No inbound
      * static reference was found", so a reset hook its tests call after every

@@ -343,8 +343,15 @@ final class InheritanceGraph
                 }
                 // The walk stops at the contract type: its own members, and
                 // what it inherits, are not what the subtype implements it with.
+                // Nearest first: a base's member the subtype overrides is not
+                // what implements the contract.
+                $declared = [];
                 foreach ([$subtypeId, ...EdgeWalk::closure($subtypeId, $basesOf, [$typeId])] as $id) {
                     foreach ($members[$id] ?? [] as $name => $ids) {
+                        if (isset($declared[$name])) {
+                            continue;
+                        }
+                        $declared[$name] = true;
                         $result[$typeId][$name] = [...$result[$typeId][$name] ?? [], ...$ids];
                     }
                 }

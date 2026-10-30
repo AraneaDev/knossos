@@ -23,6 +23,9 @@ final class TypescriptContractCandidatesTest extends KnossosTestCase
     /** @var array<string, string> canonical name => the reason the last fixture read gave */
     private array $reasons = [];
 
+    /** The contract members the last fixture read left out as contracts. */
+    private int $contracts = 0;
+
     public function testAnInterfaceMemberAClassImplementsIsNotProbablyDead(): void
     {
         $confidence = $this->candidates('ts-dead-implemented-interface');
@@ -30,6 +33,10 @@ final class TypescriptContractCandidatesTest extends KnossosTestCase
         self::assertNotSame('probable', $confidence['src/types.ts#QueryGuard::validate'] ?? null);
         self::assertNotSame('probable', $confidence['src/types.ts#QueryGuard::complexity'] ?? null);
         self::assertSame('probable', $confidence['src/guard.ts#Guard::unused'] ?? null);
+        // The contract members were scanned and left out as contracts, not missed.
+        self::assertSame(2, $this->contracts);
+        // A base method the implementer overrides is not how the contract is reached.
+        self::assertArrayHasKey('src/override.ts#Measured::area', $confidence);
     }
 
     public function testAMethodMeetingAnInterfaceByShapeIsNotProbablyDead(): void
@@ -40,6 +47,12 @@ final class TypescriptContractCandidatesTest extends KnossosTestCase
         self::assertNotSame('probable', $confidence['src/store.ts#Store::record'] ?? null);
         self::assertSame('probable', $confidence['src/store.ts#Store::unused'] ?? null);
         self::assertStringContainsString('every member of the interface Checks', $this->reasons['src/store.ts#Store::record'] ?? '');
+        // A member taken from the base counts toward the shape.
+        self::assertNotSame('probable', $confidence['src/shapes.ts#Child::label'] ?? null);
+        // A member the extended interface adds counts against it.
+        self::assertSame('probable', $confidence['src/shapes.ts#Partial::track'] ?? null);
+        // A private member is no member of the shape.
+        self::assertSame('probable', $confidence['src/shapes.ts#Secret::checkedAt'] ?? null);
     }
 
     public function testAMethodACastNamesIsNotProbablyDead(): void
@@ -64,6 +77,7 @@ final class TypescriptContractCandidatesTest extends KnossosTestCase
         $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root, new ScanOptions(mode: 'full'))->projectId;
         $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100)->data;
 
+        $this->contracts = (int) $data['bounds']['excluded_contract_methods'];
         $confidence = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $confidence[(string) $candidate['component']['canonical_name']] = (string) $candidate['confidence'];

@@ -45,8 +45,18 @@ export function declarationDescriptor(node, sourceFile) {
             ...(isFunctionBinding(node)
                 ? { binding: bindingKeyword(node) }
                 : {}),
+            ...visibilityOf(modifiers),
         },
     };
+}
+
+/** `{ visibility }` for a private or protected member, nothing for a public one. */
+function visibilityOf(modifiers) {
+    if (modifiers.some((m) => m.kind === ts.SyntaxKind.PrivateKeyword))
+        return { visibility: "private" };
+    if (modifiers.some((m) => m.kind === ts.SyntaxKind.ProtectedKeyword))
+        return { visibility: "protected" };
+    return {};
 }
 
 export function declarationKind(node, fallback) {

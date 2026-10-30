@@ -24,6 +24,9 @@ final class CandidateGraphFacts
 {
     private const CHUNK = 500;
 
+    /** Bound on the walks up the `extends` chain the shape check reads. */
+    private const MAX_SHAPE_DEPTH = 10;
+
     /** @var array<string, ?string> */
     private array $ids = [];
 
@@ -50,6 +53,9 @@ final class CandidateGraphFacts
 
     /** @var array<string, true>|null */
     private ?array $untyped = null;
+
+    /** @var array<string, array<string, true>> language => the untyped member names its code calls */
+    private array $untypedByLanguage = [];
 
     /**
      * The untyped member names PHP code calls, lower-cased, since PHP reads
@@ -252,6 +258,7 @@ final class CandidateGraphFacts
                 foreach (is_array($calls) ? $calls : [] as $name) {
                     if (is_string($name)) {
                         $this->untyped[$name] = true;
+                        $this->untypedByLanguage[(string) $row['language']][$name] = true;
                         if ($row['language'] === 'php') {
                             $this->untypedCaseless[strtolower($name)] = true;
                         }
@@ -271,7 +278,9 @@ final class CandidateGraphFacts
      */
     public function mayBeCalledUntyped(string $language, string $name): bool
     {
-        return isset($this->untypedMemberNames()[$name])
+        $this->untypedMemberNames();
+
+        return isset($this->untypedByLanguage[$language][$name])
             || ($language === 'php' && isset($this->untypedCaseless[strtolower($name)]));
     }
 
@@ -280,11 +289,11 @@ final class CandidateGraphFacts
      * something calls, or null.
      *
      * A class need not say `implements` to be passed where an interface is
-     * expected: one with every member the interface names fits it, and a
-     * call through the interface then reaches the class's member of that
-     * name with no edge to it. Shape is read by member names alone, so this
-     * says the class may be reached, never that it is. The first interface
-     * by name, of the same language, answers.
+     * expected: one with every member the interface names, its own or
+     * inherited, fits it, and a call through the interface then reaches the
+     * class's member of that name with no edge to it. Shape is read by public
+     * member names alone, so this says the class may be reached, never that
+     * it is. The first interface by name, of the same language, answers.
      */
     public function shapeContractOf(string $language, string $typeId, string $name): ?string
     {
@@ -325,8 +334,14 @@ final class CandidateGraphFacts
                 $byId[$id] ??= ['language' => (string) $row['language'], 'id' => $id, 'name' => (string) $row['display_name'], 'members' => []];
                 $byId[$id]['members'][(string) $row['member_name']] ??= (string) $row['member_id'];
             }
-            foreach ($byId as $interface) {
-                $this->interfaces[$interface['language']][] = ['id' => $interface['id'], 'name' => $interface['name'], 'members' => $interface['members']];
+            // An interface carries what the interfaces it extends declare too.
+            $parents = EdgeWalk::reach($this->pdo, $this->projectId, ['extends'], Direction::Outgoing, array_keys($byId), self::MAX_SHAPE_DEPTH);
+            foreach ($byId as $id => $interface) {
+                $members = $interface['members'];
+                foreach (EdgeWalk::closure((string) $id, $parents) as $parent) {
+                    $members += $byId[$parent]['members'] ?? [];
+                }
+                $this->interfaces[$interface['language']][] = ['id' => $interface['id'], 'name' => $interface['name'], 'members' => $members];
             }
         }
 
@@ -334,18 +349,33 @@ final class CandidateGraphFacts
     }
 
     /**
-     * The member names a type declares.
+     * The member names a value of a type answers to from outside: those it
+     * declares or takes from the classes it extends, private, protected and
+     * static members left out, since none of them can meet an interface's.
      *
      * @return array<string, true>
      */
     private function membersOf(string $typeId): array
     {
         if (!isset($this->typeMembers[$typeId])) {
-            $statement = $this->pdo->prepare(
-                "SELECT n.display_name FROM edges e JOIN nodes n ON n.id = e.target_id WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id = ?',
-            );
-            $statement->execute([$this->projectId, $typeId]);
-            $this->typeMembers[$typeId] = array_fill_keys(array_map('strval', $statement->fetchAll(PDO::FETCH_COLUMN)), true);
+            $bases = EdgeWalk::reach($this->pdo, $this->projectId, ['extends'], Direction::Outgoing, [$typeId], self::MAX_SHAPE_DEPTH);
+            $types = [$typeId, ...EdgeWalk::closure($typeId, $bases)];
+            $members = [];
+            foreach (array_chunk($types, self::CHUNK) as $chunk) {
+                $statement = $this->pdo->prepare(
+                    'SELECT n.display_name, n.attributes_json FROM edges e JOIN nodes n ON n.id = e.target_id '
+                    . "WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id IN (' . self::placeholders($chunk) . ')',
+                );
+                $statement->execute([$this->projectId, ...$chunk]);
+                foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $attributes = json_decode((string) ($row['attributes_json'] ?? ''), true);
+                    $hidden = is_array($attributes) && (isset($attributes['visibility']) || ($attributes['static'] ?? false) === true);
+                    if (!$hidden) {
+                        $members[(string) $row['display_name']] = true;
+                    }
+                }
+            }
+            $this->typeMembers[$typeId] = $members;
         }
 
         return $this->typeMembers[$typeId];
