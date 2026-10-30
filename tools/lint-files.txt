@@ -1433,6 +1433,7 @@ js	workers/typescript/src/__tests__/input-hashes-parts.test.js
 js	workers/typescript/src/__tests__/input-hashes-requested-files.test.js
 js	workers/typescript/src/__tests__/input-hashes-unread-program.test.js
 js	workers/typescript/src/__tests__/launches.test.js
+js	workers/typescript/src/__tests__/member-visibility.test.js
 js	workers/typescript/src/__tests__/nestjs-handlers.test.js
 js	workers/typescript/src/__tests__/nestjs-routes.test.js
 js	workers/typescript/src/__tests__/path-literals.test.js
