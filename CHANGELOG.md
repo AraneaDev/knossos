@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.0](https://github.com/AraneaDev/knossos/compare/v0.41.0...v0.42.0) (2026-10-30)
+
+
+### Features
+
+* draw the panes on the terminal's own background, and stop reporting called TypeScript methods as dead ([#440](https://github.com/AraneaDev/knossos/issues/440)) ([d446d4a](https://github.com/AraneaDev/knossos/commit/d446d4ae2ed07278d93dd84f715915bdfee889e3))
+
 ## [0.41.0](https://github.com/AraneaDev/knossos/compare/v0.40.10...v0.41.0) (2026-10-28)
 
 
