@@ -12,6 +12,7 @@ import type { PageSegment } from '../web/page-rows'
 import { Decoder } from './input'
 import type { KeyEvent, MouseEvent, TermEvent } from './input'
 import { bodyLineOf, bytesFor, hitsOf, linesOf, pinnedFor, roomOf, screenOf } from './paint'
+import type { Rgb } from './paint'
 import type { Hit, Overlay, Screen } from './paint'
 import { FetchEventSource } from './stream'
 
@@ -27,6 +28,8 @@ export type ClientOptions = {
   url: string
   size(): { columns: number; rows: number }
   theme: 'dark' | 'light'
+  /** The terminal's own background, when it said: the pane's tints are moved onto it. */
+  ground?: Rgb | null
   write(bytes: string): void
   fetch: typeof fetch
   copy(text: string): void
@@ -131,7 +134,7 @@ export function startClient(o: ClientOptions): Client {
     scroll = Math.min(scroll, maxScroll(frame))
     hits = hitsOf(frame, size(), scroll)
     const overlay: Overlay = { focused: page.focused, field: editing, toast: toast ?? persistent, card: cardKey(), scroll }
-    const screen = screenOf(frame, size(), overlay)
+    const screen = screenOf(frame, size(), overlay, o.ground ?? null)
     o.write(bytesFor(previous, screen))
     previous = screen
   }

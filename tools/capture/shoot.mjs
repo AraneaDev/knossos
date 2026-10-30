@@ -291,9 +291,9 @@ function recorder(session, on) {
     };
 }
 
-const until = (session, step, re) =>
+const until = (session, step, re, timeoutMs = 20000) =>
     waitFor(session, (s) => new RegExp(re, "m").test(s), {
-        timeoutMs: 20000,
+        timeoutMs,
         step: `${step} until ${re}`,
     });
 
@@ -446,7 +446,7 @@ export async function playShot(session, shot, { worktree, record = false }) {
             runStep,
         });
         if (step.until !== undefined && step.do !== "press")
-            await until(session, step.do, step.until);
+            await until(session, step.do, step.until, step.untilMs);
         // A key and its checks show as their outcome, not as the time the checks took.
         if (QUICK.includes(step.do)) tape.squeeze(from, 3);
         if (process.env.CAPTURE_TRACE)

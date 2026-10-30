@@ -57,7 +57,7 @@ type Hosted = Awaited<ReturnType<typeof hostProject>>
 const { lockFile } = await import('../web/lock')
 const { ending } = await import('../web/life')
 const { stopWatcher } = await import('../hooks/mod/state')
-const { Decoder, themeOfBackground } = await import('./input')
+const { Decoder, groundFor, themeOfBackground } = await import('./input')
 const { startClient } = await import('./client')
 const { clipboardCommand, osc52 } = await import('./clipboard')
 const { ASK_BACKGROUND, terminalMode } = await import('./terminal')
@@ -190,28 +190,29 @@ process.on('SIGCONT', () => {
 const REPLY = /\x1b\]11;[^\x07\x1b]*(?:\x07|\x1b\\)/
 
 /**
- * The terminal's background as a theme: asked for and waited on for a moment, `dark`
- * when it does not answer. `rest` is whatever else was typed meanwhile, for the client.
+ * The terminal's background and the theme it calls for: asked for and waited on for a
+ * moment, no colour and `dark` when it does not answer. `rest` is whatever else was
+ * typed meanwhile, for the client.
  */
-function themeOfTerminal(): Promise<{ theme: 'dark' | 'light'; rest: string }> {
+function backgroundOfTerminal(): Promise<{ theme: 'dark' | 'light'; ground: [number, number, number] | null; rest: string }> {
   return new Promise(done => {
     const decoder = new Decoder()
     let finished = false
     let held = ''
-    const finish = (theme: 'dark' | 'light') => {
+    const finish = (ground: [number, number, number] | null) => {
       if (finished) return
       finished = true
       process.stdin.off('data', listen)
       // Keys typed while the server starts wait in the terminal's buffer for the client.
       process.stdin.pause()
-      done({ theme, rest: held.replace(REPLY, '') })
+      done({ theme: ground === null ? 'dark' : themeOfBackground(ground), ground, rest: held.replace(REPLY, '') })
     }
     const listen = (chunk: string) => {
       held += chunk
-      for (const e of decoder.push(chunk)) if (e.kind === 'background') finish(themeOfBackground(e.rgb))
+      for (const e of decoder.push(chunk)) if (e.kind === 'background') finish(e.rgb)
     }
     process.stdin.on('data', listen)
-    setTimeout(() => finish('dark'), BACKGROUND_MS)
+    setTimeout(() => finish(null), BACKGROUND_MS)
     out(ASK_BACKGROUND)
   })
 }
@@ -260,7 +261,11 @@ try {
   // Text, not bytes: a key is never cut in two between chunks, and Ctrl-Z is a character the decoder knows.
   process.stdin.setEncoding('utf8')
   out('\x1b[H\x1b[2JStarting the pane...')
-  const { theme, rest } = asked.theme === null ? await themeOfTerminal() : { theme: asked.theme, rest: '' }
+  // Asked even with --theme: the pane lies on the terminal's own colour whenever the theme fits it.
+  const background = await backgroundOfTerminal()
+  const { rest } = background
+  const theme = asked.theme ?? background.theme
+  const ground = groundFor(background.ground, theme)
   const started = await acquire()
   const first = started.url
   let current = first
@@ -286,6 +291,7 @@ try {
     url: first,
     size,
     theme,
+    ground,
     write: out,
     fetch: reach,
     copy: text => {

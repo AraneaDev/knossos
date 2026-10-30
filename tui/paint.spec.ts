@@ -3,7 +3,7 @@ import { cardPlace } from '../hooks/lib/place'
 import { cells } from '../hooks/lib/text'
 import type { Frame } from '../web/hub'
 import type { PageRow, PageSegment } from '../web/page-rows'
-import { bodyLineOf, bytesFor, hitsOf, linesOf, pinnedFor, screenOf } from './paint'
+import { bodyLineOf, bytesFor, hitsOf, linesOf, onGround, pinnedFor, screenOf } from './paint'
 import type { Overlay } from './paint'
 
 const colours = { ground: '#101020', text: '#c0c0d0', card: '#303050', suggestion: '#ffaa00' }
@@ -16,12 +16,18 @@ const row = (key: string, ...segments: PageSegment[]): PageRow => ({ key, segmen
 const frame = (body: PageRow[], footer: PageRow[] = [], pinned = false): Frame => ({ type: 'frame', body, footer, pinned, theme: 'dark', colours })
 
 describe('screenOf', () => {
-  it('fills every line to the terminal width on the ground', () => {
+  it("fills every line to the terminal width on the theme's ground", () => {
     const screen = screenOf(frame([row('a', seg('hello'))]), { columns: 10, rows: 2 }, none)
     expect(strip(screen.lines[0]!)).toBe('hello     ')
     expect(screen.lines[0]).toContain('48;2;16;16;32')
     expect(screen.lines[0]).toContain('38;2;192;192;208')
     expect(strip(screen.lines[1]!)).toBe(' '.repeat(10))
+  })
+
+  it("leaves the ground to the terminal once its colour is known", () => {
+    const screen = screenOf(frame([row('a', seg('hello'))]), { columns: 10, rows: 2 }, none, [0x30, 0x0a, 0x24])
+    expect(screen.lines.join('')).not.toContain('48;2')
+    expect(screen.lines[0]).toContain('38;2;192;192;208')
   })
 
   it("places segments by the frame's columns, not their length", () => {
@@ -168,6 +174,38 @@ describe('screenOf', () => {
     expect(strip(screen.lines[at.row + 1]!).slice(at.column, at.column + 6)).toBe('two   ')
     expect(screen.lines[at.row]).toContain('48;2;48;48;80')
     expect(strip(screenOf(frame(rows), size, none).lines[at.row]!).trim()).toBe('c')
+  })
+
+  it("moves every tint onto the terminal's background by its distance from the theme's ground", () => {
+    const card = { key: 'k', width: 3, lines: ['one'] }
+    const rows = [row('a', seg('hi', { look: { background: '#202030' } }), seg('ab', { columns: 2, card }))]
+    // The theme's ground is #101020; the terminal's is aubergine, 0x30/0x0a/0x24.
+    const screen = screenOf(frame(rows), { columns: 8, rows: 3 }, { ...none, card: 'k' }, [0x30, 0x0a, 0x24])
+    const all = screen.lines.join('')
+    expect(all).toContain('48;2;64;26;52mhi')
+    expect(all).toContain('48;2;80;42;84mone')
+    expect(all).not.toContain('48;2;32;32;48')
+  })
+
+  it('moves a diff line onto the terminal background too', () => {
+    const diff: PageRow = { key: 'd', segments: [], gutter: { color: '#888888' }, lines: [{ gutter: '1', text: '+ a', look: { background: '#003300' } }] }
+    // #003300 is (-16, +35, -32) from the theme's #101020: on 0x30/0x0a/0x24, (32, 45, 4).
+    const screen = screenOf(frame([diff]), { columns: 8, rows: 1 }, none, [0x30, 0x0a, 0x24])
+    expect(screen.lines[0]).toContain('48;2;32;45;4m')
+  })
+})
+
+describe('onGround', () => {
+  it('keeps a colour as it is with no ground known, or anything not #rrggbb', () => {
+    expect(onGround('#202030', '#101020', null)).toBe('#202030')
+    expect(onGround(undefined, '#101020', [0, 0, 0])).toBeUndefined()
+    expect(onGround('suggestion', '#101020', [0, 0, 0])).toBe('suggestion')
+  })
+
+  it('turns an offset the other way where it would run past 0 or 255, so the tint never meets the ground', () => {
+    // -15 from 5 and +25 from 250 would clamp onto the ground: they go +15 and -25 instead.
+    expect(onGround('#f0f0f0', '#ffffff', [5, 250, 128])).toBe('#14eb71')
+    expect(onGround('#373737', '#1e1e1e', [250, 0, 128])).toBe('#e11999')
   })
 })
 

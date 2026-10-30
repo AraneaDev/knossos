@@ -597,6 +597,16 @@ export class TypeScriptLanguageFactCollector {
                     ? bound.name.text
                     : node.expression.name.text,
             );
+        } else if (
+            ts.isPropertyAccessExpression(node.expression) &&
+            declaredOnlyInObjectTypes(
+                this.checker.getSymbolAtLocation(node.expression.name),
+            )
+        ) {
+            // A cast to `{ m(): void }`, or a type alias of one, types the
+            // receiver with members no node stands for, so the call has no
+            // edge either: the value behind it may be any class with an `m`.
+            this.untypedCalls.add(node.expression.name.text);
         }
         const source = this.currentSource();
         const target = this.callEdge(node, signature, source);
@@ -1167,6 +1177,21 @@ function callsOwnSuperMember(node, member) {
         });
     }
     return false;
+}
+
+/**
+ * Whether a member is declared only in object types (`{ m(): void }`, inline
+ * or named by a type alias), whose members no node of the graph stands for.
+ * A member of an interface or a class has a node, and a call to it an edge.
+ */
+function declaredOnlyInObjectTypes(symbol) {
+    const declarations = symbol?.declarations ?? [];
+    return (
+        declarations.length > 0 &&
+        declarations.every((declaration) =>
+            ts.isTypeLiteralNode(declaration.parent),
+        )
+    );
 }
 
 /**

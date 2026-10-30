@@ -825,6 +825,7 @@ php	tests/phpunit/Query/TestSupportCandidatesTest.php
 php	tests/phpunit/Query/TrendRowLimitTest.php
 php	tests/phpunit/Query/TrendSnapshotConsistencyTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php
+php	tests/phpunit/Query/TypescriptContractCandidatesTest.php
 php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
 php	tests/phpunit/Query/UntestedQueryTest.php
@@ -1432,6 +1433,7 @@ js	workers/typescript/src/__tests__/input-hashes-parts.test.js
 js	workers/typescript/src/__tests__/input-hashes-requested-files.test.js
 js	workers/typescript/src/__tests__/input-hashes-unread-program.test.js
 js	workers/typescript/src/__tests__/launches.test.js
+js	workers/typescript/src/__tests__/member-visibility.test.js
 js	workers/typescript/src/__tests__/nestjs-handlers.test.js
 js	workers/typescript/src/__tests__/nestjs-routes.test.js
 js	workers/typescript/src/__tests__/path-literals.test.js

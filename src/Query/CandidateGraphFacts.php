@@ -24,6 +24,9 @@ final class CandidateGraphFacts
 {
     private const CHUNK = 500;
 
+    /** Bound on the walks up the `extends` chain the shape check reads. */
+    private const MAX_SHAPE_DEPTH = 10;
+
     /** @var array<string, ?string> */
     private array $ids = [];
 
@@ -51,6 +54,9 @@ final class CandidateGraphFacts
     /** @var array<string, true>|null */
     private ?array $untyped = null;
 
+    /** @var array<string, array<string, true>> language => the untyped member names its code calls */
+    private array $untypedByLanguage = [];
+
     /**
      * The untyped member names PHP code calls, lower-cased, since PHP reads
      * a method name without regard to case.
@@ -58,6 +64,17 @@ final class CandidateGraphFacts
      * @var array<string, true>
      */
     private array $untypedCaseless = [];
+
+    /**
+     * The project's interfaces, by language: each one's name and its members
+     * by name, read once for the shape check.
+     *
+     * @var array<string, list<array{id: string, name: string, members: array<string, string>}>>|null
+     */
+    private ?array $interfaces = null;
+
+    /** @var array<string, array<string, true>> type id => the member names it declares */
+    private array $typeMembers = [];
 
     /** @var list<string>|null */
     private ?array $suppressions = null;
@@ -241,6 +258,7 @@ final class CandidateGraphFacts
                 foreach (is_array($calls) ? $calls : [] as $name) {
                     if (is_string($name)) {
                         $this->untyped[$name] = true;
+                        $this->untypedByLanguage[(string) $row['language']][$name] = true;
                         if ($row['language'] === 'php') {
                             $this->untypedCaseless[strtolower($name)] = true;
                         }
@@ -260,8 +278,107 @@ final class CandidateGraphFacts
      */
     public function mayBeCalledUntyped(string $language, string $name): bool
     {
-        return isset($this->untypedMemberNames()[$name])
+        $this->untypedMemberNames();
+
+        return isset($this->untypedByLanguage[$language][$name])
             || ($language === 'php' && isset($this->untypedCaseless[strtolower($name)]));
+    }
+
+    /**
+     * An interface the type `$typeId` meets by shape, with a member `$name`
+     * something calls, or null.
+     *
+     * A class need not say `implements` to be passed where an interface is
+     * expected: one with every member the interface names, its own or
+     * inherited, fits it, and a call through the interface then reaches the
+     * class's member of that name with no edge to it. Shape is read by public
+     * member names alone, so this says the class may be reached, never that
+     * it is. The first interface by name, of the same language, answers.
+     */
+    public function shapeContractOf(string $language, string $typeId, string $name): ?string
+    {
+        foreach ($this->interfacesOf($language) as $interface) {
+            if ($interface['id'] === $typeId || !isset($interface['members'][$name])) {
+                continue;
+            }
+            if (array_diff_key($interface['members'], $this->membersOf($typeId)) !== []) {
+                continue;
+            }
+            if ($this->inDegree($interface['members'][$name]) - $this->inheritanceInDegree($interface['members'][$name]) > 0) {
+                return $interface['name'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The project's interfaces in `$language`, by name.
+     *
+     * @return list<array{id: string, name: string, members: array<string, string>}>
+     */
+    private function interfacesOf(string $language): array
+    {
+        if ($this->interfaces === null) {
+            $this->interfaces = [];
+            $statement = $this->pdo->prepare(
+                'SELECT i.id, i.language, i.display_name, m.id AS member_id, m.display_name AS member_name FROM nodes i '
+                . "JOIN edges e ON e.project_id = i.project_id AND e.source_id = i.id AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' '
+                . 'JOIN nodes m ON m.id = e.target_id '
+                . "WHERE i.project_id = ? AND i.kind = 'interface' AND " . EnrichedFacts::excludeSql('i') . ' ORDER BY i.display_name, i.id',
+            );
+            $statement->execute([$this->projectId]);
+            $byId = [];
+            foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $id = (string) $row['id'];
+                $byId[$id] ??= ['language' => (string) $row['language'], 'id' => $id, 'name' => (string) $row['display_name'], 'members' => []];
+                $byId[$id]['members'][(string) $row['member_name']] ??= (string) $row['member_id'];
+            }
+            // An interface carries what the interfaces it extends declare too.
+            $parents = EdgeWalk::reach($this->pdo, $this->projectId, ['extends'], Direction::Outgoing, array_keys($byId), self::MAX_SHAPE_DEPTH);
+            foreach ($byId as $id => $interface) {
+                $members = $interface['members'];
+                foreach (EdgeWalk::closure((string) $id, $parents) as $parent) {
+                    $members += $byId[$parent]['members'] ?? [];
+                }
+                $this->interfaces[$interface['language']][] = ['id' => $interface['id'], 'name' => $interface['name'], 'members' => $members];
+            }
+        }
+
+        return $this->interfaces[$language] ?? [];
+    }
+
+    /**
+     * The member names a value of a type answers to from outside: those it
+     * declares or takes from the classes it extends, private, protected and
+     * static members left out, since none of them can meet an interface's.
+     *
+     * @return array<string, true>
+     */
+    private function membersOf(string $typeId): array
+    {
+        if (!isset($this->typeMembers[$typeId])) {
+            $bases = EdgeWalk::reach($this->pdo, $this->projectId, ['extends'], Direction::Outgoing, [$typeId], self::MAX_SHAPE_DEPTH);
+            $types = [$typeId, ...EdgeWalk::closure($typeId, $bases)];
+            $members = [];
+            foreach (array_chunk($types, self::CHUNK) as $chunk) {
+                $statement = $this->pdo->prepare(
+                    'SELECT n.display_name, n.attributes_json FROM edges e JOIN nodes n ON n.id = e.target_id '
+                    . "WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id IN (' . self::placeholders($chunk) . ')',
+                );
+                $statement->execute([$this->projectId, ...$chunk]);
+                foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $attributes = json_decode((string) ($row['attributes_json'] ?? ''), true);
+                    $hidden = is_array($attributes) && (isset($attributes['visibility']) || ($attributes['static'] ?? false) === true);
+                    if (!$hidden) {
+                        $members[(string) $row['display_name']] = true;
+                    }
+                }
+            }
+            $this->typeMembers[$typeId] = $members;
+        }
+
+        return $this->typeMembers[$typeId];
     }
 
     /**

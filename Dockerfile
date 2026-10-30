@@ -309,7 +309,7 @@ RUN npm --prefix workers/typescript ci --ignore-scripts --no-audit --no-fund \
 # the native binary in place from its postinstall script, which this stage's
 # npm 12 does not run for a dependency on its own, so it is run explicitly.
 # Without it `claude` exits with "native binary not installed".
-RUN npm install --global @anthropic-ai/claude-code@2.1.306 --no-audit --no-fund \
+RUN npm install --global @anthropic-ai/claude-code@2.1.314 --no-audit --no-fund \
     && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs \
     && claude --version
 

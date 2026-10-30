@@ -159,7 +159,7 @@ describe('knossos (the terminal pane)', () => {
   it('stops the whole job on Ctrl-Z under a shell with job control, and takes the terminal again when the shell resumes it', { timeout: 40_000 }, async () => {
     const dir = scratch()
     const data = scratch()
-    // --theme skips asking the terminal, which is where the input once became text: Ctrl-Z must still be read.
+    // --theme with a terminal that never answers the background question: Ctrl-Z must still be read.
     const run = job(dir, envOf(data, markedPluginRoot(mark())), ['--theme=light'], 'echo job-stopped; read line; fg')
     await run.until(text => text.includes('Overview'), 'the first tab')
     const node = pidOf(data, dir)

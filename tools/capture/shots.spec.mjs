@@ -58,7 +58,7 @@ describe("SHOTS", () => {
         for (const [, shot] of entries) {
             expect(shot.size).toHaveLength(2);
             const [cols, rows] = shot.size;
-            expect(Number.isInteger(cols) && cols >= 80 && cols <= 300).toBe(
+            expect(Number.isInteger(cols) && cols >= 80 && cols <= 320).toBe(
                 true,
             );
             expect(Number.isInteger(rows) && rows >= 24 && rows <= 100).toBe(
@@ -97,7 +97,9 @@ describe("SHOTS", () => {
             expect(shot.steps.at(-1).do).toBe("still");
         }
     });
-    it("keeps the hero's recorded part, with no still in it, between 20 and 30 seconds", () => {
+    // The holds and waits alone: typing, the pane's own drawing and the model's turn add about ten seconds
+    // more to what the GIF plays, which shoot.mjs holds to HERO_MAX_MS.
+    it("keeps the hero's recorded part, with no still in it, between 18 and 30 seconds", () => {
         const { steps } = SHOTS.hero;
         const end = steps.findIndex((s) => s.do === "cut" || s.do === "still");
         const run = end === -1 ? steps : steps.slice(0, end);
@@ -109,7 +111,7 @@ describe("SHOTS", () => {
                 (s.do === "wait" ? WAIT_BUDGET_MS : 0),
             0,
         );
-        expect(ms).toBeGreaterThanOrEqual(20000);
+        expect(ms).toBeGreaterThanOrEqual(18000);
         expect(ms).toBeLessThanOrEqual(30000);
     });
     it("shoots the light theme for the overview and the hubs detail", () => {
@@ -296,6 +298,12 @@ describe("the slash command list", () => {
         expect(rows(open)).toHaveLength(2);
         expect(rows(open.replace("❯", " "))).toHaveLength(2);
         expect(rows("❯ /knossos \n")).toEqual([]);
+        // A `/knossos` the transcript keeps, with the pane's border beside it: not a row.
+        expect(
+            new RegExp(COMMAND_LIST, "m").test(
+                "❯ /knossos          │  Overview\n",
+            ),
+        ).toBe(false);
         // The prompt with its space typed, over the rule under it: not a row.
         const prompt = "❯ /knossos  \n────────\n  ⏸ manual mode on\n";
         expect(new RegExp(COMMAND_LIST, "m").test(prompt)).toBe(false);

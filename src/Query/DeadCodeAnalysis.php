@@ -93,6 +93,8 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             $context = $inheritance[$id] ?? [
                 'inherited' => false,
                 'implemented' => false,
+                'implementations' => [],
+                'declaring_kind' => null,
                 'declaring_type' => null,
                 'external_ancestor' => null,
                 'uncontracted_literal' => false,
@@ -153,7 +155,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * @param array<string, mixed> $row
      * @param list<string> $roles
      * @param array<string, mixed>|null $annotation
-     * @param array{inherited: bool, implemented: bool, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @param list<string> $suppressions
      */
     private static function exclusionOf(array $row, array $roles, ?array $annotation, array $context, CandidateGraphFacts $facts, array $suppressions): ?string
@@ -178,11 +180,20 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // A contract an implementation carries. Gated on the declaring type
         // being referenced for the same reason constructors are: when
         // nothing uses the type, the type is the unit worth deleting and
-        // both it and its members stay reportable.
+        // both it and its members stay reportable. Unless the member is only
+        // a declaration (an interface's, or an abstract one) and an
+        // implementation of it is called: callers typed as the class reach
+        // what the contract declares, and deleting it breaks the class. A
+        // concrete method a called override replaces is still dead code.
         if ($context['implemented'] && $context['declaring_type'] !== null) {
             $declaringType = $context['declaring_type'];
             if ($facts->inDegree($declaringType) - $facts->inheritanceInDegree($declaringType) > 0) {
                 return 'contracts';
+            }
+            foreach (self::isBodiless($row, $context) ? $context['implementations'] : [] as $implementation) {
+                if ($facts->inDegree($implementation) - $facts->inheritanceInDegree($implementation) > 0) {
+                    return 'contracts';
+                }
             }
         }
         // Marked by its scanner as called by a runtime or a foreign host
@@ -211,10 +222,27 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
     }
 
     /**
+     * Whether a method is a declaration with no body of its own: a member of
+     * an interface, or one its scanner marked abstract.
+     *
+     * @param array<string, mixed> $row
+     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     */
+    private static function isBodiless(array $row, array $context): bool
+    {
+        if (($context['declaring_kind'] ?? null) === 'interface') {
+            return true;
+        }
+        $attributes = is_string($row['attributes_json'] ?? null) ? json_decode($row['attributes_json'], true) : null;
+
+        return is_array($attributes) && ($attributes['abstract'] ?? false) === true;
+    }
+
+    /**
      * How sure the report is that a candidate is dead, and why.
      *
      * @param array{component: array<string, mixed>, row: array<string, mixed>, roles: list<array<string, mixed>>, out_degree: int, reachability: string} $candidate
-     * @param array{inherited: bool, implemented: bool, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @return array{0: string, 1: string}
      */
     private function confidenceAndReason(array $candidate, string $reachability, array $context, CandidateGraphFacts $facts): array
@@ -235,7 +263,17 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             && in_array($candidate['row']['kind'], ['method', 'function'], true)
             && $facts->mayBeCalledUntyped((string) ($candidate['row']['language'] ?? ''), (string) $candidate['row']['display_name'])) {
             $confidence = 'possible';
-            $reason = $found . ', but a member of this name is called on a receiver the scan could not type, which may be this one.';
+            $reason = $found . ', but a member of this name is called on a receiver the scan could not type, or typed only as an object type no component stands for (as a cast to one writes), which may be this one.';
+        }
+        // A class meeting an interface by shape is passed where the interface
+        // is expected with no `implements` to say so, and the interface's
+        // callers reach this method with no edge to it.
+        if ($confidence === 'probable' && $candidate['row']['kind'] === 'method' && $context['declaring_type'] !== null) {
+            $contract = $facts->shapeContractOf((string) ($candidate['row']['language'] ?? ''), $context['declaring_type'], (string) $candidate['row']['display_name']);
+            if ($contract !== null) {
+                $confidence = 'possible';
+                $reason = sprintf('%s, but its type has every member of the interface %s, whose member of this name is called; a value of this type handed on as %s reaches this method.', $found, $contract, $contract);
+            }
         }
         if ($context['uncontracted_literal'] && $confidence === 'probable') {
             $confidence = 'possible';
@@ -388,7 +426,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * An object literal handed around as a value with no type at all is the
      * third way: the code it is handed to calls its methods unseen.
      *
-     * @return array<string, array{inherited: bool, implemented: bool, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool}>
+     * @return array<string, array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool}>
      */
     private function inheritedMethodContext(string $projectId, array $methodIds, array $methodNames): array
     {
@@ -428,6 +466,8 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 'inherited' => $inherited,
                 'implemented' => $classId !== null
                     && $graph->isImplementedBySubtype($classId, $methodNames[$methodId]),
+                'implementations' => $classId === null ? [] : $graph->implementingMembers($classId, $methodNames[$methodId]),
+                'declaring_kind' => $classId === null ? null : ($kindOfClass[$classId] ?? null),
                 'declaring_type' => $classId,
                 'external_ancestor' => $externalAncestor,
                 // An object literal passed, returned or nested as a value,

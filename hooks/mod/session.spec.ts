@@ -225,7 +225,7 @@ describe('startUp', () => {
         expect(mod.motion.ticker).not.toBeNull()
         // The watcher is on its way: its start waits for a timer.
         expect(mod.watch.starting).toBe(true)
-        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         await port.advance()
         // The dashboard was just stored: the opened pane asks for no second load.
         expect(port.runsOf('dashboard')).toBe(1)
@@ -332,7 +332,7 @@ describe('startUp', () => {
         const port = fakePort({ answers: { dashboard: '' } })
         await startUp(port.io, true)
         expect(port.values.get('dashboard')).toBeNull()
-        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         // Not inside start-up: the second load waits for the timer.
         expect(port.runsOf('dashboard')).toBe(1)
         await port.advance()

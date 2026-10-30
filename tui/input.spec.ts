@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Decoder, themeOfBackground } from './input'
+import { Decoder, groundFor, themeOfBackground } from './input'
 import type { KeyEvent, TermEvent } from './input'
 
 const key = (name: string, mods: Partial<Pick<KeyEvent, 'ctrlKey' | 'altKey' | 'shiftKey'>> = {}): KeyEvent => ({ kind: 'key', key: name, ctrlKey: false, altKey: false, shiftKey: false, ...mods })
@@ -225,5 +225,15 @@ describe('background reply', () => {
     expect(themeOfBackground([255, 255, 255])).toBe('light')
     expect(themeOfBackground([0, 0, 0])).toBe('dark')
     expect(themeOfBackground([30, 30, 46])).toBe('dark')
+  })
+})
+
+describe('groundFor', () => {
+  it("keeps the terminal's colour only when it fits the theme", () => {
+    expect(groundFor([0x30, 0x0a, 0x24], 'dark')).toEqual([0x30, 0x0a, 0x24])
+    expect(groundFor([250, 250, 250], 'light')).toEqual([250, 250, 250])
+    // A theme forced against the terminal: its text would vanish on it, so the theme's ground is painted.
+    expect(groundFor([250, 250, 250], 'dark')).toBeNull()
+    expect(groundFor(null, 'dark')).toBeNull()
   })
 })
