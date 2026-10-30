@@ -27,7 +27,7 @@
  * - `still`: once nothing on screen moves, keeps the screen as `name`.png.
  *
  * `type`, `send` and `press` take `until`, a regex that must be on screen
- * before the next step: a quick sync, not a beat the viewer sees. A `press`
+ * before the next step (within 20 s, or `untilMs`): a quick sync, not a beat the viewer sees. A `press`
  * whose `until` does not come is sent again.
  *
  * Tab digits and keys come from hooks/lib/chrome.ts (TABS, footerRows) and
@@ -39,9 +39,12 @@
  * somewhere a refactor can move it; change it here, once, when it does.
  */
 export const FIXTURE = {
-    // A top hub: the class in src/Result/ResultEnvelope.php, fourth on the Hubs tab
-    // sorted by in-degree (so three `j` mark it). Its blast radius has three rings.
+    // The Hubs tab's first row, sorted by in-degree: marked as the tab opens.
+    firstHub: "ArchitectureQueryService",
+    // A top hub: the class in src/Result/ResultEnvelope.php, at this place on the Hubs
+    // tab (so one `j` fewer marks it). Its blast radius has three rings.
     hub: "ResultEnvelope",
+    hubRank: 6,
     // Letters of the hub's name the finder is given; ResultEnvelope must be the first match.
     hubLetters: "ResultEnv",
     // A command that reaches the hub in a few hops: ServeCommand::run in src/Cli/Command/ServeCommand.php.
@@ -119,9 +122,10 @@ const ready = [wait("prompt", String.raw`^❯(?! *\d\.)`, { timeoutMs: 90000 })]
  * A row of the slash command list: the command, two spaces or more, its
  * description. The selected row starts with `❯`; the prompt's own `❯ /knossos`
  * has no description after it, and spaces only, never a line break, part the
- * two.
+ * two. A description opens with a word or a parenthesis, never with the pane's
+ * border, which follows a `❯ /knossos` left in the transcript.
  */
-export const COMMAND_LIST = String.raw`^ *(?:❯ *)?/knossos(:graph)? {2,}\S`;
+export const COMMAND_LIST = String.raw`^ *(?:❯ *)?/knossos(:graph)? {2,}[\w(]`;
 
 /** The command list's row for `/knossos` itself, selected or not. */
 export const COMMAND_LISTED = String.raw`^ *(?:❯ *)?/knossos +Toggle`;
@@ -148,7 +152,8 @@ export const knossosCommand = {
 
 /** Opens the pane, gives it the keyboard and widens it to `columns`, so the tabs are named. */
 const openPane = (columns, beat = true) => [
-    { ...knossosCommand, until: "Overview" },
+    // The first dashboard read can take a while on a busy machine.
+    { ...knossosCommand, until: "Overview", untilMs: 60000 },
     { do: "focus" },
     { do: "widen", columns },
     beat
@@ -197,10 +202,8 @@ const hubDetail = (theme) =>
         theme === "light" ? "hubs-detail-light" : "hubs-detail",
         [
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
-            press("2", marked("StableId")),
-            press("j"),
-            press("j"),
-            press("j"),
+            press("2", marked(FIXTURE.firstHub)),
+            ...Array.from({ length: FIXTURE.hubRank - 1 }, () => press("j")),
             wait(
                 "hub detail",
                 // Both on screen, in either order: the detail beside the list starts at its own height.
@@ -224,29 +227,27 @@ export const SHOTS = {
             { do: "roll" },
             hold(250),
             ...openPane(PANE[SIZES.hero[0]]),
-            hold(1000),
+            hold(500),
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
-            press("2", marked("StableId")),
-            press("j"),
-            press("j"),
-            press("j"),
+            press("2", marked(FIXTURE.firstHub)),
+            ...Array.from({ length: FIXTURE.hubRank - 1 }, () => press("j")),
             wait("hub marked", marked(FIXTURE.hub), { fixture: "hub" }),
-            hold(1000),
+            hold(500),
             press("4"),
             wait("cycle drawn", lit(FIXTURE.cycleDrawn), {
                 fixture: "cycleDrawn",
             }),
-            hold(1000),
+            hold(500),
             press("3"),
             // The marked boundary's card: drawn under the map and beside the list alike.
             wait("boundaries", String.raw`depends on`),
-            hold(1000),
+            hold(500),
             ...openHub(60),
             press("End"),
             wait("rings", String.raw`◉ ${lit(FIXTURE.hub)}`, {
                 fixture: "hub",
             }),
-            hold(1500),
+            hold(500),
             // The prompt gets the keyboard back for the model turn: typed into the pane, its letters would be keys.
             { do: "focus", prompt: true },
             {
@@ -268,7 +269,7 @@ export const SHOTS = {
             }),
             press("o"),
             wait("diff", String.raw`Changed since the session began`),
-            hold(2000),
+            hold(500),
             { do: "cut" },
             wait("turn over", String.raw`esc to interrupt`, {
                 absent: true,
