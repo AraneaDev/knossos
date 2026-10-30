@@ -148,7 +148,7 @@ describe('/knossos with no arguments', () => {
     it.each(['', '   ', '\t\n'])('opens a closed pane on the tab rather than a component (args %j), then refreshes the dashboard on a timer', async args => {
         const port = fakePort({ dashboard: dashboard('s1'), view: view({ inspect: { name: 'App\\Greeter', label: 'Greeter' } }) }, { answers: { dashboard: JSON.stringify(dashboard('s2')) } })
         expect(await runCommand(port.io, args)).toBe(OPENED)
-        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         expect(port.closed).toEqual([])
         expect((port.values.get('view') as KnossosView).inspect).toBeNull()
         // The refresh waits for a timer due at once, never inside the command.
@@ -197,7 +197,7 @@ describe('/knossos inspect', () => {
         const port = fakePort({ dashboard: dashboard('s1') }, { answers: { dashboard: JSON.stringify(dashboard('s2')) } })
         expect(await runCommand(port.io, 'inspect App\\Greeter')).toBe(OPENED)
         expect((port.values.get('view') as KnossosView).inspect).toEqual({ name: 'App\\Greeter', label: 'App\\Greeter' })
-        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         // Nothing read inside the command: the dashboard was there to key the lookup to.
         expect(port.dashboardRuns()).toBe(0)
         await port.advance()
@@ -213,7 +213,7 @@ describe('/knossos inspect', () => {
         expect(port.dashboardRuns()).toBe(1)
         expect((port.values.get('dashboard') as Dashboard).snapshot_id).toBe('s1')
         expect((port.values.get('view') as KnossosView).inspect).toEqual({ name: 'Foo', label: 'Foo' })
-        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         await port.advance()
         // Just loaded: the pane is opened with no second dashboard read.
         expect(port.dashboardRuns()).toBe(1)
@@ -238,7 +238,7 @@ describe('/knossos inspect', () => {
         const port = fakePort({ dashboard: dashboard('s1') }, { open: true })
         expect(await runCommand(port.io, 'inspect Foo')).toBe(OPENED)
         expect(port.closed).toEqual([])
-        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos' }])
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
     })
 
     it.each(['inspect', 'inspect   ', '  inspect  '])('answers the usage to %j with no name, and opens nothing', async args => {
