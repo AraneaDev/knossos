@@ -58,7 +58,7 @@ describe("SHOTS", () => {
         for (const [, shot] of entries) {
             expect(shot.size).toHaveLength(2);
             const [cols, rows] = shot.size;
-            expect(Number.isInteger(cols) && cols >= 80 && cols <= 300).toBe(
+            expect(Number.isInteger(cols) && cols >= 80 && cols <= 320).toBe(
                 true,
             );
             expect(Number.isInteger(rows) && rows >= 24 && rows <= 100).toBe(

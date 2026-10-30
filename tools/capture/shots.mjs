@@ -79,9 +79,13 @@ export const WAIT_BUDGET_MS = 1500;
 /** The longest the hero may play. */
 export const HERO_MAX_MS = 30000;
 
-const SIZES = { hero: [160, 48], doc: [160, 48], wide: [224, 56] };
+/**
+ * The terminal sizes. Claude Code grows a pane to 45% of the terminal at most,
+ * so each is just wide enough for its pane width below.
+ */
+const SIZES = { hero: [214, 48], doc: [214, 48], wide: [312, 56] };
 /** How wide the pane is drawn at each size: past 130 columns it puts the marked row's detail beside a tab. */
-const PANE = { 160: 96, 224: 140 };
+const PANE = { 214: 96, 312: 140 };
 
 export const STEP_KINDS = [
     "type",
@@ -219,7 +223,7 @@ export const SHOTS = {
             ...ready,
             { do: "roll" },
             hold(250),
-            ...openPane(PANE[160]),
+            ...openPane(PANE[SIZES.hero[0]]),
             hold(1000),
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
             press("2", marked("StableId")),
@@ -274,7 +278,7 @@ export const SHOTS = {
             // wide enough for the list with the marked file's detail and diff beside it.
             { do: "resize", size: SIZES.wide },
             { do: "focus" },
-            { do: "widen", columns: PANE[224] },
+            { do: "widen", columns: PANE[SIZES.wide[0]] },
             press("b", String.raw`± Changes this session`),
             wait(
                 "change and its diff",
