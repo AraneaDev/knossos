@@ -30,6 +30,8 @@ export type Screen = { lines: string[]; cursor: { row: number; column: number } 
 export type Hit = { column: number; width: number; press?: string; field?: string; card?: { key: string; width: number; lines: string[] } }
 
 type Size = { columns: number; rows: number }
+/** A colour's red, green and blue, 0-255 each. */
+export type Rgb = [number, number, number]
 type Style = { fg: string | null; bg: string | null; bold: boolean; reverse: boolean; faint: boolean }
 /** One terminal cell; the right half of a wide character is a cell with no text. */
 type Cell = { ch: string; style: Style }
@@ -42,6 +44,20 @@ const split = (text: string): string[] => Array.from(segmenter.segment(text), s 
 const channels = (hex: string | null | undefined): string | null => {
   const found = hex === null || hex === undefined ? null : /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
   return found === null ? null : `${parseInt(found[1]!, 16)};${parseInt(found[2]!, 16)};${parseInt(found[3]!, 16)}`
+}
+
+/**
+ * A background as it sits on the terminal's own `ground` rather than the
+ * theme's: moved by the difference between the two, so a tint keeps its
+ * distance from whatever the terminal is. With no ground known, as it is.
+ */
+export function onGround(hex: string | undefined, theme: string, ground: Rgb | null): string | undefined {
+  const from = channels(theme)
+  const value = channels(hex)
+  if (ground === null || from === null || value === null) return hex
+  const base = from.split(';').map(Number)
+  const moved = value.split(';').map((c, i) => Math.min(255, Math.max(0, Number(c) - base[i]! + ground[i]!)))
+  return `#${moved.map(c => c.toString(16).padStart(2, '0')).join('')}`
 }
 
 const sameStyle = (a: Style, b: Style): boolean => a.fg === b.fg && a.bg === b.bg && a.bold === b.bold && a.reverse === b.reverse && a.faint === b.faint
@@ -112,11 +128,11 @@ function render(line: Line): string {
   return `${out}\x1b[0m`
 }
 
-/** What a row paints with: the frame's own colours and the overlay. */
-type Context = { frame: Frame; columns: number; overlay: Overlay; base: Style }
+/** What a row paints with: the frame's own colours, the overlay, and a background moved onto the terminal's ground. */
+type Context = { frame: Frame; columns: number; overlay: Overlay; base: Style; tint: (hex: string | undefined) => string | undefined }
 
-/** `base` under a segment's look. */
-const styleOf = (base: Style, look: PageSegment['look']): Style => ({ ...base, fg: look.color ?? base.fg, bg: look.background ?? base.bg, bold: look.bold === true })
+/** `base` under a segment's look, its background on the terminal's ground. */
+const styleOf = (ctx: Context, base: Style, look: PageSegment['look']): Style => ({ ...base, fg: look.color ?? base.fg, bg: ctx.tint(look.background) ?? base.bg, bold: look.bold === true })
 
 /** The cells a segment takes: its columns, else its text's characters; a field takes its width. */
 const widthOf = (s: PageSegment): number => s.field?.width ?? s.columns ?? [...s.text].length
@@ -124,7 +140,7 @@ const widthOf = (s: PageSegment): number => s.field?.width ?? s.columns ?? [...s
 /** One segment laid into `line` at `column`; the cursor's column when it is the field being edited. */
 function put(line: Line, column: number, s: PageSegment, ctx: Context): void {
   const width = widthOf(s)
-  let style = styleOf(ctx.base, s.look)
+  let style = styleOf(ctx, ctx.base, s.look)
   const id = s.press?.id ?? s.field?.id
   if (id !== undefined && ctx.overlay.focused === id) style = { ...style, reverse: true }
   if (s.field !== undefined) {
@@ -157,8 +173,8 @@ function linesOfRow(row: PageRow, ctx: Context): Line[] {
     return row.lines.map(l => {
       const line = blank(ctx.columns, ctx.base)
       // The gutter sits inside the tinted line, as the page nests it.
-      const ground = styleOf(ctx.base, l.look)
-      lay(line, 0, l.gutter, styleOf(ground, row.gutter ?? {}), cells(l.gutter))
+      const ground = styleOf(ctx, ctx.base, l.look)
+      lay(line, 0, l.gutter, styleOf(ctx, ground, row.gutter ?? {}), cells(l.gutter))
       lay(line, cells(l.gutter), ' ', ground, 1)
       lay(line, cells(l.gutter) + 1, l.text, ground, ctx.columns)
       return line
@@ -203,10 +219,17 @@ export function bodyLineOf(frame: Frame, id: string): number | null {
   return null
 }
 
+/**
+ * The ink every cell starts with: the theme's text on no background at all,
+ * so the terminal's own shows through whatever colour it is.
+ */
+const baseOf = (frame: Frame): Style => ({ fg: frame.colours.text, bg: null, bold: false, reverse: false, faint: false })
+
 /** The frame laid out on `size.rows` lines: unpinned and fitting, body then footer; otherwise the footer at the bottom and the body from `scroll` above it. `bodyEnd` is the line after the last body line. */
-function layout(frame: Frame, size: Size, overlay: Overlay): { lines: Line[]; bodyEnd: number } {
-  const base: Style = { fg: frame.colours.text, bg: frame.colours.ground, bold: false, reverse: false, faint: false }
-  const ctx: Context = { frame, columns: size.columns, overlay, base }
+function layout(frame: Frame, size: Size, overlay: Overlay, ground: Rgb | null): { lines: Line[]; bodyEnd: number } {
+  const base = baseOf(frame)
+  const tint = (hex: string | undefined) => onGround(hex, frame.colours.ground, ground)
+  const ctx: Context = { frame, columns: size.columns, overlay, base, tint }
   const body = linesOfRows(frame.body, ctx)
   const footer = linesOfRows(frame.footer, ctx)
   const empty = () => blank(size.columns, base)
@@ -224,10 +247,10 @@ function layout(frame: Frame, size: Size, overlay: Overlay): { lines: Line[]; bo
   return { lines: [...shown, ...footer.slice(0, kept)], bodyEnd: room }
 }
 
-/** The frame painted at `size` under `overlay`. */
-export function screenOf(frame: Frame, size: Size, overlay: Overlay): Screen {
-  const { lines, bodyEnd } = layout(frame, size, overlay)
-  const base: Style = { fg: frame.colours.text, bg: frame.colours.ground, bold: false, reverse: false, faint: false }
+/** The frame painted at `size` under `overlay`, its backgrounds on the terminal's `ground` when that is known. */
+export function screenOf(frame: Frame, size: Size, overlay: Overlay, ground: Rgb | null = null): Screen {
+  const { lines, bodyEnd } = layout(frame, size, overlay, ground)
+  const base = baseOf(frame)
   if (overlay.toast !== null && bodyEnd > 0) {
     const line = blank(size.columns, { ...base, reverse: true })
     lay(line, 0, ` ${overlay.toast}`, { ...base, reverse: true }, size.columns)
@@ -241,7 +264,7 @@ export function screenOf(frame: Frame, size: Size, overlay: Overlay): Screen {
       if (hit?.card === undefined) continue
       const width = Math.min(hit.card.width, size.columns)
       const place = cardPlace(row, hit.column, { rows: hit.card.lines.length, columns: width }, size)
-      const style: Style = { ...base, bg: frame.colours.card }
+      const style: Style = { ...base, bg: onGround(frame.colours.card, frame.colours.ground, ground) ?? null }
       hit.card.lines.forEach((text, i) => {
         const target = lines[place.row + i]
         if (target !== undefined && place.row + i >= 0) lay(target, place.column, text, style, width)
@@ -254,7 +277,7 @@ export function screenOf(frame: Frame, size: Size, overlay: Overlay): Screen {
 
 /** Where the segments with something to point at sit on the screen `screenOf` paints, a list per line. */
 export function hitsOf(frame: Frame, size: Size, scroll: number): Hit[][] {
-  return layout(frame, size, { focused: null, field: null, toast: null, card: null, scroll }).lines.map(line => line.hits)
+  return layout(frame, size, { focused: null, field: null, toast: null, card: null, scroll }, null).lines.map(line => line.hits)
 }
 
 /** The bytes that turn `before` into `after`: each line that differs at its place, then the cursor shown or hidden. A null `before` writes every line. */

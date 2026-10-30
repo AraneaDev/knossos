@@ -33,6 +33,12 @@ A directory whose name is also a command (a folder called `doctor`) is
 written with a path: `knossos ./doctor`. A value goes after an equals sign,
 `--theme=light`, not after a space.
 
+The pane draws on the terminal's own background, whatever colour it is. Its
+highlights (the marked row, hover cards, diff lines, the heat map) are
+shifted onto that colour, so they stay a shade lighter or darker than the
+terminal rather than a fixed grey. A terminal that does not report its
+background keeps the theme's highlight colours.
+
 It needs a terminal for both input and output. Run from a script or with
 output piped, it prints the command list to stderr and exits with code 2;
 `knossos usage` prints that list to stdout. It needs Node 24 or newer on
