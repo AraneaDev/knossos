@@ -275,3 +275,11 @@ export class Decoder {
     return end + (end === bell ? 1 : 2)
   }
 }
+
+/**
+ * The terminal's background for the pane to lie on, or null to paint the
+ * theme's own ground: a colour the theme does not fit (a dark theme forced on
+ * a light terminal) would leave the theme's text on a background it vanishes on.
+ */
+export const groundFor = (rgb: [number, number, number] | null, theme: 'dark' | 'light'): [number, number, number] | null =>
+  rgb !== null && themeOfBackground(rgb) === theme ? rgb : null

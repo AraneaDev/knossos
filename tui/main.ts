@@ -57,7 +57,7 @@ type Hosted = Awaited<ReturnType<typeof hostProject>>
 const { lockFile } = await import('../web/lock')
 const { ending } = await import('../web/life')
 const { stopWatcher } = await import('../hooks/mod/state')
-const { Decoder, themeOfBackground } = await import('./input')
+const { Decoder, groundFor, themeOfBackground } = await import('./input')
 const { startClient } = await import('./client')
 const { clipboardCommand, osc52 } = await import('./clipboard')
 const { ASK_BACKGROUND, terminalMode } = await import('./terminal')
@@ -261,10 +261,11 @@ try {
   // Text, not bytes: a key is never cut in two between chunks, and Ctrl-Z is a character the decoder knows.
   process.stdin.setEncoding('utf8')
   out('\x1b[H\x1b[2JStarting the pane...')
-  // Asked even with --theme: the pane paints on the terminal's own colour either way.
-  const terminalGround = await backgroundOfTerminal()
-  const { ground, rest } = terminalGround
-  const theme = asked.theme ?? terminalGround.theme
+  // Asked even with --theme: the pane lies on the terminal's own colour whenever the theme fits it.
+  const background = await backgroundOfTerminal()
+  const { rest } = background
+  const theme = asked.theme ?? background.theme
+  const ground = groundFor(background.ground, theme)
   const started = await acquire()
   const first = started.url
   let current = first

@@ -16,12 +16,18 @@ const row = (key: string, ...segments: PageSegment[]): PageRow => ({ key, segmen
 const frame = (body: PageRow[], footer: PageRow[] = [], pinned = false): Frame => ({ type: 'frame', body, footer, pinned, theme: 'dark', colours })
 
 describe('screenOf', () => {
-  it("fills every line to the terminal width on the terminal's own background", () => {
+  it("fills every line to the terminal width on the theme's ground", () => {
     const screen = screenOf(frame([row('a', seg('hello'))]), { columns: 10, rows: 2 }, none)
     expect(strip(screen.lines[0]!)).toBe('hello     ')
-    expect(screen.lines[0]).not.toContain('48;2')
+    expect(screen.lines[0]).toContain('48;2;16;16;32')
     expect(screen.lines[0]).toContain('38;2;192;192;208')
     expect(strip(screen.lines[1]!)).toBe(' '.repeat(10))
+  })
+
+  it("leaves the ground to the terminal once its colour is known", () => {
+    const screen = screenOf(frame([row('a', seg('hello'))]), { columns: 10, rows: 2 }, none, [0x30, 0x0a, 0x24])
+    expect(screen.lines.join('')).not.toContain('48;2')
+    expect(screen.lines[0]).toContain('38;2;192;192;208')
   })
 
   it("places segments by the frame's columns, not their length", () => {
@@ -48,7 +54,7 @@ describe('screenOf', () => {
     const hidden = seg('zz', { columns: 2, hidden: true, press: { id: 'z', hotkey: 'z', label: 'z', title: 'z' } })
     const screen = screenOf(frame([row('a', hubs, hidden, plain)]), { columns: 12, rows: 1 }, none)
     expect(strip(screen.lines[0]!)).toBe('2: HubsBack ')
-    expect(screen.lines[0]).toContain('38;2;255;170;0m2')
+    expect(screen.lines[0]).toContain('38;2;255;170;0;48;2;16;16;32m2')
     expect(screen.lines[0]).not.toContain('\x1b[7m')
   })
 
@@ -121,7 +127,7 @@ describe('screenOf', () => {
   it('dims the hotkey of a dim press', () => {
     const hubs = seg('Hubs', { columns: 7, press: { id: 'p', hotkey: '2', label: 'Hubs', title: 'Hubs', dim: true } })
     const line = screenOf(frame([row('a', hubs)]), { columns: 8, rows: 1 }, none).lines[0]!
-    expect(line).toContain(`${ESC}[2m${ESC}[38;2;255;170;0m`)
+    expect(line).toContain(`${ESC}[2m${ESC}[38;2;255;170;0;`)
   })
 
   it('keeps the footer of an unpinned frame taller than the terminal', () => {
@@ -180,6 +186,13 @@ describe('screenOf', () => {
     expect(all).toContain('48;2;80;42;84mone')
     expect(all).not.toContain('48;2;32;32;48')
   })
+
+  it('moves a diff line onto the terminal background too', () => {
+    const diff: PageRow = { key: 'd', segments: [], gutter: { color: '#888888' }, lines: [{ gutter: '1', text: '+ a', look: { background: '#003300' } }] }
+    // #003300 is (-16, +35, -32) from the theme's #101020: on 0x30/0x0a/0x24, (32, 45, 4).
+    const screen = screenOf(frame([diff]), { columns: 8, rows: 1 }, none, [0x30, 0x0a, 0x24])
+    expect(screen.lines[0]).toContain('48;2;32;45;4m')
+  })
 })
 
 describe('onGround', () => {
@@ -189,9 +202,10 @@ describe('onGround', () => {
     expect(onGround('suggestion', '#101020', [0, 0, 0])).toBe('suggestion')
   })
 
-  it('clamps each channel to 0-255', () => {
-    expect(onGround('#f0f0f0', '#ffffff', [5, 250, 128])).toBe('#00eb71')
-    expect(onGround('#373737', '#1e1e1e', [250, 0, 128])).toBe('#ff1999')
+  it('turns an offset the other way where it would run past 0 or 255, so the tint never meets the ground', () => {
+    // -15 from 5 and +25 from 250 would clamp onto the ground: they go +15 and -25 instead.
+    expect(onGround('#f0f0f0', '#ffffff', [5, 250, 128])).toBe('#14eb71')
+    expect(onGround('#373737', '#1e1e1e', [250, 0, 128])).toBe('#e11999')
   })
 })
 

@@ -37,7 +37,8 @@ The pane draws on the terminal's own background, whatever colour it is. Its
 highlights (the marked row, hover cards, diff lines, the heat map) are
 shifted onto that colour, so they stay a shade lighter or darker than the
 terminal rather than a fixed grey. A terminal that does not report its
-background keeps the theme's highlight colours.
+background, or a `--theme` that does not fit it, gets the theme's own dark or
+light background instead, so the text stays readable.
 
 It needs a terminal for both input and output. Run from a script or with
 output piped, it prints the command list to stderr and exits with code 2;

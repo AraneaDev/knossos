@@ -49,14 +49,20 @@ const channels = (hex: string | null | undefined): string | null => {
 /**
  * A background as it sits on the terminal's own `ground` rather than the
  * theme's: moved by the difference between the two, so a tint keeps its
- * distance from whatever the terminal is. With no ground known, as it is.
+ * distance from whatever the terminal is. A channel the move would push past
+ * 0 or 255 moves the other way instead, so the tint never meets the ground.
+ * With no ground known, as it is.
  */
 export function onGround(hex: string | undefined, theme: string, ground: Rgb | null): string | undefined {
   const from = channels(theme)
   const value = channels(hex)
   if (ground === null || from === null || value === null) return hex
   const base = from.split(';').map(Number)
-  const moved = value.split(';').map((c, i) => Math.min(255, Math.max(0, Number(c) - base[i]! + ground[i]!)))
+  const moved = value.split(';').map((c, i) => {
+    const offset = Number(c) - base[i]!
+    const there = ground[i]! + offset
+    return there < 0 || there > 255 ? Math.min(255, Math.max(0, ground[i]! - offset)) : there
+  })
   return `#${moved.map(c => c.toString(16).padStart(2, '0')).join('')}`
 }
 
@@ -220,14 +226,15 @@ export function bodyLineOf(frame: Frame, id: string): number | null {
 }
 
 /**
- * The ink every cell starts with: the theme's text on no background at all,
- * so the terminal's own shows through whatever colour it is.
+ * The ink every cell starts with: the theme's text, on no background at all
+ * once the terminal's own is known, so it shows through whatever colour it
+ * is. Unknown, the theme's ground is painted, so the text stays readable.
  */
-const baseOf = (frame: Frame): Style => ({ fg: frame.colours.text, bg: null, bold: false, reverse: false, faint: false })
+const baseOf = (frame: Frame, ground: Rgb | null): Style => ({ fg: frame.colours.text, bg: ground === null ? frame.colours.ground : null, bold: false, reverse: false, faint: false })
 
 /** The frame laid out on `size.rows` lines: unpinned and fitting, body then footer; otherwise the footer at the bottom and the body from `scroll` above it. `bodyEnd` is the line after the last body line. */
 function layout(frame: Frame, size: Size, overlay: Overlay, ground: Rgb | null): { lines: Line[]; bodyEnd: number } {
-  const base = baseOf(frame)
+  const base = baseOf(frame, ground)
   const tint = (hex: string | undefined) => onGround(hex, frame.colours.ground, ground)
   const ctx: Context = { frame, columns: size.columns, overlay, base, tint }
   const body = linesOfRows(frame.body, ctx)
@@ -250,7 +257,7 @@ function layout(frame: Frame, size: Size, overlay: Overlay, ground: Rgb | null):
 /** The frame painted at `size` under `overlay`, its backgrounds on the terminal's `ground` when that is known. */
 export function screenOf(frame: Frame, size: Size, overlay: Overlay, ground: Rgb | null = null): Screen {
   const { lines, bodyEnd } = layout(frame, size, overlay, ground)
-  const base = baseOf(frame)
+  const base = baseOf(frame, ground)
   if (overlay.toast !== null && bodyEnd > 0) {
     const line = blank(size.columns, { ...base, reverse: true })
     lay(line, 0, ` ${overlay.toast}`, { ...base, reverse: true }, size.columns)
