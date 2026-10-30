@@ -825,6 +825,7 @@ php	tests/phpunit/Query/TestSupportCandidatesTest.php
 php	tests/phpunit/Query/TrendRowLimitTest.php
 php	tests/phpunit/Query/TrendSnapshotConsistencyTest.php
 php	tests/phpunit/Query/TurnBriefServiceTest.php
+php	tests/phpunit/Query/TypescriptContractCandidatesTest.php
 php	tests/phpunit/Query/UnreadablePolicyConfigTest.php
 php	tests/phpunit/Query/UnscannedProjectFileTest.php
 php	tests/phpunit/Query/UntestedQueryTest.php
