@@ -69,6 +69,8 @@ function world(
     file?: Answer[]
     scan?: Answer[]
     allow?: Answer[]
+    /** What `claim` answers (the folder /knossos was run in): already allowed, by default. */
+    claim?: Answer[]
     /** What `session-changes` answers: the scan ledger's changes since the session began. */
     ledger?: Answer[]
     /** What `session-head` answers (the commit the session begins at), and `session-diff` (a file's change since it). */
@@ -149,6 +151,7 @@ function world(
     file: answers.file ?? [{ stdout: '' }],
     scan: answers.scan ?? [{ stdout: '{"status":"ok"}' }],
     allow: answers.allow ?? [{ stdout: '{"path":"/repo","roots_file":"/data/roots.json","added":true}' }],
+    claim: answers.claim ?? [{ stdout: '{"status":"present","root":"/repo","reason":null}' }],
     ledger: answers.ledger ?? [{ stdout: '' }],
     head: answers.head ?? [{ stdout: '' }],
     diff: answers.diff ?? [{ stdout: '' }],
@@ -173,6 +176,7 @@ function world(
     ['file-detail', queues.file],
     ['scan', queues.scan],
     ['allow-root', queues.allow],
+    ['claim', queues.claim],
     ['session-changes', queues.ledger],
     ['session-head', queues.head],
     ['session-diff', queues.diff],

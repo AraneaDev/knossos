@@ -183,7 +183,7 @@ function tickPort() {
 /** startUp with the pane closed, then a clean slate: no timers, no invalidates, nothing drawn yet. */
 async function started() {
     const port = tickPort()
-    await startUp(port.io, false)
+    await startUp(port.io, 'session')
     port.timers.length = 0
     port.invalidated.length = 0
     port.values.set('peek', null)

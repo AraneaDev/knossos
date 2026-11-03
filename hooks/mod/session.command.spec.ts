@@ -164,7 +164,8 @@ describe('/knossos with no arguments', () => {
         expect((port.values.get('view') as KnossosView).inspect).toBeNull()
         // The refresh waits for a timer due at once, never inside the command.
         expect(port.dashboardRuns()).toBe(0)
-        expect(port.timers.filter(t => !t.cancelled).map(t => t.ms)).toEqual([0])
+        // The refresh, and the claim of the folder.
+        expect(port.timers.filter(t => !t.cancelled).map(t => t.ms)).toEqual([0, 0])
         await port.advance()
         expect(port.dashboardRuns()).toBe(1)
         expect((port.values.get('dashboard') as Dashboard).snapshot_id).toBe('s2')
@@ -273,5 +274,40 @@ describe('/knossos with anything else', () => {
         expect(mod.pane.text).toBe('as of 3s ago')
         await port.advance()
         expect(port.runs).toEqual([])
+    })
+})
+
+describe('/knossos claims the folder it is run in', () => {
+    const claims = (port: ReturnType<typeof fakePort>) => port.runs.filter(argv => argv[2] === 'claim')
+
+    it('runs claim --execute on a timer when the command opens the pane, never inside the command', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, '')).toBe(OPENED)
+        expect(claims(port)).toEqual([])
+        await port.advance()
+        expect(claims(port)).toEqual([['sh', '/plugin/hooks/scripts/knossos-run.sh', 'claim', ROOT, '--execute']])
+    })
+
+    it('runs no claim when the command closes the pane', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { open: true })
+        expect(await runCommand(port.io, '')).toBe(CLOSED)
+        await port.advance()
+        expect(claims(port)).toEqual([])
+    })
+
+    it('runs claim for /knossos inspect', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, 'inspect Foo')).toBe(OPENED)
+        await port.advance()
+        expect(claims(port)).toHaveLength(1)
+    })
+
+    it('twice in a row claims once and closes the pane the second time', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, '')).toBe(OPENED)
+        expect(await runCommand(port.io, '')).toBe(CLOSED)
+        await port.advance()
+        expect(claims(port)).toHaveLength(1)
+        expect(port.closed).toEqual([{ id: PANE }])
     })
 })

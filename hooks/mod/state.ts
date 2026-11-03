@@ -309,6 +309,14 @@ export function initialAllow() {
   }
 }
 
+/** Starting Knossos in a folder on purpose (`start.ts`). */
+export function initialDeliberate() {
+  return {
+    /** Set while a claim of the folder is under way: a second start adds nothing. */
+    claiming: false,
+  }
+}
+
 /** The Notes tab (`notes-actions.ts`, `loaders.ts`). */
 export function initialNotes() {
   return {
@@ -334,6 +342,7 @@ function initialSlices(options: PluginOptions, host: Host) {
     alerts: initialAlerts(options),
     navigation: initialNavigation(options),
     allow: initialAllow(),
+    deliberate: initialDeliberate(),
     notes: initialNotes(),
   }
 }

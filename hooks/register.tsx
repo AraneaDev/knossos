@@ -141,7 +141,7 @@ export const register: Register = (on, options) => {
     mod.registration.timer = null
     if (!(await registerCommand(io))) retryRegister(io, 0, gen)
     // A start-up that outlives the session (torn down under it) fails quietly, never as a stray rejection.
-    $.clock.after(0, () => void startUp(io, openOnStart).catch(() => undefined))
+    $.clock.after(0, () => void startUp(io, 'session', openOnStart).catch(() => undefined))
     return next(e)
   })
 

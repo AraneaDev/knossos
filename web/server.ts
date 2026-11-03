@@ -171,7 +171,7 @@ export async function startServer(o: {
   const io = webPort({ root: o.root, pluginRoot: o.pluginRoot, storeFile, hub, env: { ...process.env, KNOSSOS_DATA_DIR: o.dataDir }, heard: follow, ...(o.log === undefined ? {} : { log: o.log }) })
   hub.attach(io)
   const act = handlersOf(io)
-  const ready = startUp(io, false).catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
+  const ready = startUp(io, 'deliberate').catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
   const headPoll = setInterval(follow, o.headPollMs ?? HEAD_POLL_MS)
   const streams = new Set<ServerResponse>()
 

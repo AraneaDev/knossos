@@ -207,6 +207,26 @@ function fakePort(setup: Setup = {}) {
 }
 
 describe('startUp', () => {
+    it("a session start runs neither claim nor scan, even with no graph", async () => {
+        reset(options)
+        const port = fakePort({ answers: { dashboard: JSON.stringify({ status: 'unscanned' }), claim: JSON.stringify({ status: 'added', root: ROOT, reason: null }) } })
+        await startUp(port.io, 'session')
+        await port.advance()
+        expect(port.runsOf('claim')).toBe(0)
+        expect(port.runsOf('scan')).toBe(0)
+    })
+
+    it('a deliberate start claims the folder on a timer, after the dashboard, and scans what it added', async () => {
+        reset(options)
+        const port = fakePort({ answers: { dashboard: JSON.stringify({ status: 'unscanned' }), claim: JSON.stringify({ status: 'added', root: ROOT, reason: null }), scan: JSON.stringify({ status: 'ok', snapshot_id: 's9' }) } })
+        await startUp(port.io, 'deliberate')
+        expect(port.runsOf('claim')).toBe(0)
+        await port.advance()
+        expect(port.runsOf('claim')).toBe(1)
+        expect(port.runsOf('scan')).toBe(1)
+        expect(port.calls.indexOf('run:dashboard')).toBeLessThan(port.calls.indexOf('run:claim'))
+    })
+
     it('stores the theme and the placed root, loads the dashboard, starts one age ticker and the watcher, and opens the pane without a second load', async () => {
         reset(options)
         const port = fakePort({
@@ -216,7 +236,7 @@ describe('startUp', () => {
                 { key: 'theme', value: 'light' },
             ],
         })
-        await startUp(port.io, true)
+        await startUp(port.io, 'session', true)
         expect(port.values.get('theme')).toBe('light')
         // The root as the session gave it, with its links followed.
         expect(port.values.get('sessionRoot')).toBe(REAL_ROOT)
@@ -234,7 +254,7 @@ describe('startUp', () => {
     it('keeps the dark default when the config cannot be read, and does not throw', async () => {
         reset(options)
         const port = fakePort({ config: new Error('config unreadable') })
-        await expect(startUp(port.io, false)).resolves.toBeUndefined()
+        await expect(startUp(port.io, 'session')).resolves.toBeUndefined()
         expect(port.values.get('theme')).toBe('dark')
         expect(port.values.get('dashboard')).toEqual(dashboard)
     })
@@ -242,7 +262,7 @@ describe('startUp', () => {
     it('keeps the default theme when the theme row holds no string', async () => {
         reset(options)
         const port = fakePort({ config: [{ key: 'theme', value: 1 }] })
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(port.values.get('theme')).toBe('dark')
     })
 
@@ -251,14 +271,14 @@ describe('startUp', () => {
         const port = fakePort({ root: new Error('no root') })
         // A stale root from before must not survive.
         port.values.set('sessionRoot', '/stale')
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(port.values.get('sessionRoot')).toBeNull()
     })
 
     it('reads the git head once: the baseline already asked it', async () => {
         reset(options)
         const port = fakePort()
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(mod.session.gitAsked).toBe(true)
         expect(port.runsOf('session-head')).toBe(1)
         expect(port.values.get('gitHead')).toEqual({
@@ -278,7 +298,7 @@ describe('startUp', () => {
                 },
             },
         })
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(port.runsOf('session-head')).toBe(1)
         expect(port.values.get('gitHead')).toEqual({
             rev: REV,
@@ -298,7 +318,7 @@ describe('startUp', () => {
                 },
             },
         })
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(port.runsOf('session-head')).toBe(0)
         expect(port.values.get('gitHead')).toBeNull()
     })
@@ -308,7 +328,7 @@ describe('startUp', () => {
         const port = fakePort({
             answers: { dashboard: JSON.stringify({ status: 'no-binary' }) },
         })
-        await startUp(port.io, true)
+        await startUp(port.io, 'session', true)
         expect(mod.session.disabled).toBe(true)
         expect(port.tickers).toEqual([])
         expect(mod.motion.ticker).toBeNull()
@@ -322,7 +342,7 @@ describe('startUp', () => {
     it('leaves the pane closed when it is not to open on start', async () => {
         reset(options)
         const port = fakePort()
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(port.opened).toEqual([])
         expect(port.tickers).toHaveLength(1)
     })
@@ -330,7 +350,7 @@ describe('startUp', () => {
     it('opens the pane and loads the dashboard again on a timer when the first load stored nothing', async () => {
         reset(options)
         const port = fakePort({ answers: { dashboard: '' } })
-        await startUp(port.io, true)
+        await startUp(port.io, 'session', true)
         expect(port.values.get('dashboard')).toBeNull()
         expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         // Not inside start-up: the second load waits for the timer.
@@ -345,9 +365,9 @@ describe('startUp', () => {
     it('starts the age ticker once across two start-ups', async () => {
         reset(options)
         const port = fakePort()
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         const first = mod.motion.ticker
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         expect(port.tickers).toHaveLength(1)
         expect(mod.motion.ticker).toBe(first)
     })
@@ -363,7 +383,7 @@ describe('startUp', () => {
                 },
             },
         })
-        await startUp(port.io, false)
+        await startUp(port.io, 'session')
         const at = (call: string) => port.calls.indexOf(call)
         expect(at(`store.get:${BASELINES_KEY}`)).toBeGreaterThanOrEqual(0)
         expect(at(`store.get:${BASELINES_KEY}`)).toBeLessThan(at('run:session-head'))

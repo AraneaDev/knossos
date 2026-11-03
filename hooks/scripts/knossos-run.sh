@@ -70,7 +70,7 @@ run_target
 # environment names): without it the binary would fall back to a file beside
 # the working directory, which no server reads. The refusal says so, because
 # the person pressing allow-root would otherwise see nothing happen.
-if [ "$SUBCOMMAND" = allow-root ] && [ -z "${KNOSSOS_ROOTS_FILE:-}" ]; then
+if { [ "$SUBCOMMAND" = allow-root ] || [ "$SUBCOMMAND" = claim ]; } && [ -z "${KNOSSOS_ROOTS_FILE:-}" ]; then
     refuse 'no roots file is known to the hooks; reinstall the plugin with knossos install-agent-plugin --execute'
 fi
 

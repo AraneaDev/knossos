@@ -55,6 +55,8 @@ case "$SUBCOMMAND" in
     # The Notes tab: every note read with its staleness, or one note written.
     notes|note-adopt|note-move|note-check|note-confirm) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     allow-root) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
+    # The folder Knossos was started in, and the per-project setting for the pane: a file read and at most one written.
+    claim|autostart) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     session-changes|session-head|session-diff|boundary-couplings) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     watch) LIMIT=0 ;;
     *) refuse 'unknown subcommand' ;;
@@ -310,6 +312,19 @@ fi
 if [ "$SUBCOMMAND" = allow-root ]; then
     [ "$#" -eq 0 ] || refuse
     set -- --execute
+fi
+# claim takes nothing but the folder, and `--execute` to write: without it the
+# binary only says what it would do. An option such as `--db=...` would write
+# the roots file of another installation.
+if [ "$SUBCOMMAND" = claim ]; then
+    [ "$#" -le 1 ] || refuse
+    case "${1:-}" in '' | --execute) ;; *) refuse ;; esac
+fi
+# autostart takes nothing but the folder, to read the setting, or `--set=on` or
+# `--set=off` to write it.
+if [ "$SUBCOMMAND" = autostart ]; then
+    [ "$#" -le 1 ] || refuse
+    case "${1:-}" in '' | --set=on | --set=off) ;; *) refuse ;; esac
 fi
 # watch takes at most its poll interval, in milliseconds: an option such as
 # `--db=...` would point it at another graph.

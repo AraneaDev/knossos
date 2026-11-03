@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Cli;
 
 use InvalidArgumentException;
+use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
@@ -78,8 +79,9 @@ final class ClaimCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testAskWritesNothing(): void
     {
-        $report = $this->claim($this->home, execute: true);
+        $report = $this->claim($this->home, execute: true, exit: $exit);
 
+        assertSame(CliCommand::EXIT_OK, $exit);
         assertSame('ask', $report['status']);
         assertSame($this->home, $report['root']);
         assertSame(true, is_string($report['reason']) && $report['reason'] !== '');
@@ -91,8 +93,9 @@ final class ClaimCommandTest extends KnossosTestCase
     {
         putenv('KNOSSOS_CONTAINER=1');
 
-        $report = $this->claim($this->repo, execute: true);
+        $report = $this->claim($this->repo, execute: true, exit: $exit);
 
+        assertSame(CliCommand::EXIT_OK, $exit);
         assertSame('fixed', $report['status']);
         assertSame(true, str_contains((string) $report['reason'], 'host path'));
         assertSame(false, is_file($this->rootsFile()));
@@ -104,8 +107,9 @@ final class ClaimCommandTest extends KnossosTestCase
         $bytes = '{"roots": [';
         file_put_contents($this->rootsFile(), $bytes);
 
-        $report = $this->claim($this->repo, execute: true);
+        $report = $this->claim($this->repo, execute: true, exit: $exit);
 
+        assertSame(CliCommand::EXIT_OK, $exit);
         assertSame('error', $report['status']);
         assertSame($this->repo, $report['root']);
         assertSame(true, str_contains((string) $report['reason'], 'is not valid JSON'));
@@ -125,14 +129,17 @@ final class ClaimCommandTest extends KnossosTestCase
         return $this->tempDir . '/roots.json';
     }
 
-    /** @return array<string, mixed> */
-    private function claim(string $path, bool $execute = false): array
+    /**
+     * @param-out int $exit
+     * @return array<string, mixed>
+     */
+    private function claim(string $path, bool $execute = false, ?int &$exit = null): array
     {
         $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), $this->tempDir . '/knossos.sqlite');
         $options = ['json' => ['true']] + ($execute ? ['execute' => ['true']] : []);
         ob_start();
         try {
-            (new ClaimCommand())->run('claim', [$path], $options, $context);
+            $exit = (new ClaimCommand())->run('claim', [$path], $options, $context);
         } finally {
             $output = (string) ob_get_clean();
         }

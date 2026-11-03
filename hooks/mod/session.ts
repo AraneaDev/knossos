@@ -12,6 +12,7 @@ import { SingleFlight } from '../lib/scheduler'
 import { declaredOf, huesOf } from '../lib/palette'
 import { currentSession, peekKey, refreshDashboard, request, showComponent } from './loaders'
 import { readGitHead, settleBaseline } from './session-baseline'
+import { startDeliberately } from './start'
 import { endWatcher, placed } from './port'
 import type { Port } from './port'
 import { cyclesOf, mod, PANE } from './state'
@@ -144,10 +145,11 @@ async function readTheme(io: Port): Promise<void> {
 }
 
 /**
- * The first dashboard. A silent one is not a reason to stop: the next dirty
+ * The first dashboard; for a deliberate start (the web server) also the
+ * claim of its folder, once the dashboard is read. A silent one is not a reason to stop: the next dirty
  * turn asks again. Only the wrapper's `no-binary` turns the mod off.
  */
-export async function startUp(io: Port, openOnStart: boolean): Promise<void> {
+export async function startUp(io: Port, opening: 'session' | 'deliberate', openOnStart = false): Promise<void> {
   // First: where the session began, read back for a session continued here, else the commit it begins at, before anything of it can be committed.
   await settleBaseline(io)
   // Where the checkout stands, for the header: the baseline's own head read, when there was one, said it already.
@@ -159,6 +161,8 @@ export async function startUp(io: Port, openOnStart: boolean): Promise<void> {
   if (mod.session.disabled) return
   mod.motion.ticker ??= io.clock.every(AGE_TICK_MS, () => void tickAge(io).catch(() => undefined))
   await ensureWatcher(io)
+  // Starting Knossos on purpose is the consent to scan the folder; a session that only begins never claims it.
+  if (opening === 'deliberate') io.clock.after(0, () => void startDeliberately(io).catch(() => undefined))
   // A refused or unplaced pane is the person's layout, not a failure of the mod.
   if (openOnStart) await openPane(io, !stored)
 }
@@ -178,6 +182,11 @@ export async function openPane(io: Port, refreshFirst = true): Promise<void> {
     .catch(() => undefined)
 }
 
+/** Opening the pane with the command is a deliberate start: the folder is claimed once this dispatch has resolved. */
+function claimOnTimer(io: Port): void {
+  io.clock.after(0, () => void startDeliberately(io).catch(() => undefined))
+}
+
 /** `/knossos` toggles the pane, `/knossos inspect <component>` opens it on one component. */
 export async function runCommand(io: Port, args: string): Promise<string> {
   const verb = args.trim().split(/\s+/)[0] ?? ''
@@ -187,6 +196,7 @@ export async function runCommand(io: Port, args: string): Promise<string> {
     // The snapshot first, so the lookup is keyed to the graph it reads.
     const loaded = (await io.state.dashboard.read()) === null && (await refreshDashboard(io))
     await showComponent(io, { name, label: name })
+    claimOnTimer(io)
     await openPane(io, !loaded)
     return 'Knossos pane opened.'
   }
@@ -199,6 +209,7 @@ export async function runCommand(io: Port, args: string): Promise<string> {
     return 'Knossos pane closed.'
   }
   await io.state.view.update(v => ({ ...v, inspect: null }))
+  claimOnTimer(io)
   await openPane(io)
   return 'Knossos pane opened.'
 }

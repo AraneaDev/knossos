@@ -1,9 +1,9 @@
-import type { AllowRoot, Annotate, BlastRadius, NoteWrite, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
+import type { AllowRoot, Annotate, Claim, BlastRadius, NoteWrite, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
 import { printableDeep } from './printable'
 
 // The envelope shapes are written once, in the plugin's contract, and re-exported
 // here so the rest of the mod keeps importing them from this module.
-export type { AllowRoot, BoundaryRef, ComponentDetail, Dashboard, FanIn, FileDetail, Listed, Related, Rescan, SessionLedger, TurnBrief, Violation }
+export type { AllowRoot, Claim, BoundaryRef, ComponentDetail, Dashboard, FanIn, FileDetail, Listed, Related, Rescan, SessionLedger, TurnBrief, Violation }
 
 // Each status set below is a contract with the core: `src/Result/PaneStatus.php` lists the same
 // sets under the same names, and a test keeps the two in step. A status the set lacks makes
@@ -353,4 +353,26 @@ export function parseAllowRoot(stdout: string): AllowRoot | null {
   if (v.status === 'no-binary') return { status: 'no-binary' }
   if (typeof v.path !== 'string' || typeof v.added !== 'boolean' || v.preview === true) return null
   return { path: v.path, added: v.added, ...(typeof v.roots_file === 'string' ? { roots_file: v.roots_file } : {}) }
+}
+
+/** The statuses `knossos claim` answers with. */
+const CLAIM_STATUSES: readonly string[] = ['added', 'would-add', 'present', 'ask', 'fixed', 'error']
+
+/**
+ * The claim answer from the wrapper's stdout: `no-binary`, or one of the
+ * statuses with the root it is about and the reason it carries; null for
+ * silence, a refusal from the wrapper, or anything unexpected.
+ */
+export function parseClaim(stdout: string): Claim | null {
+  let value: unknown
+  try {
+    value = printableDeep(JSON.parse(stdout))
+  } catch {
+    return null
+  }
+  if (!isObject(value)) return null
+  const v = value as Record<string, unknown>
+  if (v.status === 'no-binary') return { status: 'no-binary' }
+  if (typeof v.status !== 'string' || !CLAIM_STATUSES.includes(v.status) || typeof v.root !== 'string') return null
+  return { status: v.status as Exclude<Claim['status'], 'no-binary'>, root: v.root, reason: typeof v.reason === 'string' ? v.reason : null }
 }
