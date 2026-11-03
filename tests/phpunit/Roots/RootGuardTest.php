@@ -163,6 +163,19 @@ final class RootGuardTest extends TestCase
         $this->assertStringNotContainsString('runs in a container', $message);
     }
 
+    public function testFixedRootsWithNoRootsFileGetNoAdviceToStartKnossos(): void
+    {
+        $this->pinContainer(false);
+        $allowed = $this->makeTempDir();
+        $outside = $this->makeTempDir();
+        $guard = new RootGuard(allowedRoots: new AllowedRoots([$allowed]));
+
+        $message = captureThrows(static fn() => $guard->resolve($outside), RootException::class)->getMessage();
+
+        $this->assertStringNotContainsString('The person can allow it', $message);
+        $this->assertStringNotContainsString('runs in a container', $message);
+    }
+
     public function testTheRejectionInAContainerKeepsTheMountedPathsNoteInsteadOfTheAdvice(): void
     {
         $this->pinContainer(true);

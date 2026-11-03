@@ -394,3 +394,16 @@ export function parseAutostart(stdout: string): { autostart: boolean; root: stri
   if (v.status !== 'ok' || typeof v.autostart !== 'boolean' || typeof v.root !== 'string') return null
   return { autostart: v.autostart, root: v.root }
 }
+
+/** Why `knossos autostart --set` could not write the setting, from the wrapper's stdout; null for any other answer. */
+export function parseAutostartError(stdout: string): string | null {
+  let value: unknown
+  try {
+    value = printableDeep(JSON.parse(stdout))
+  } catch {
+    return null
+  }
+  if (!isObject(value)) return null
+  const v = value as Record<string, unknown>
+  return v.status === 'error' && typeof v.reason === 'string' && v.reason !== '' ? v.reason : null
+}

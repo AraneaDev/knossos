@@ -95,6 +95,43 @@ final readonly class RootsFile
     }
 
     /**
+     * Add a root unless it is already listed, under an exclusive lock.
+     *
+     * Starts now add roots unprompted, so two at once would each read the same
+     * list and the later write would drop the earlier one's entry. The lock is
+     * a file beside the roots file, held across the read and the write, so the
+     * second start reads what the first wrote.
+     *
+     * @return bool whether the root was added
+     * @throws InvalidArgumentException when the file cannot be understood or written, or the lock cannot be taken
+     */
+    public function add(string $root): bool
+    {
+        $directory = dirname($this->path);
+        if (!is_dir($directory) && !@mkdir($directory, 0o700, true) && !is_dir($directory)) {
+            throw new InvalidArgumentException(sprintf('Unable to create %s.', $directory));
+        }
+        $lock = @fopen($this->path . '.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
+            throw new InvalidArgumentException(sprintf('Unable to lock %s.', $this->path));
+        }
+        try {
+            $roots = $this->read();
+            $root = AllowedRoots::normaliseRoot($root);
+            if (in_array($root, array_map(AllowedRoots::normaliseRoot(...), $roots), true)) {
+                return false;
+            }
+            $roots[] = $root;
+            $this->write($roots);
+
+            return true;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /**
      * Swap one granted root for another in a single write: what a moved
      * checkout needs, since the old path no longer exists and the new one
      * must be readable. Entries are compared normalised and kept verbatim.

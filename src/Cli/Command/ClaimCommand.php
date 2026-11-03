@@ -45,6 +45,7 @@ final class ClaimCommand implements CliCommand
             throw new InvalidArgumentException(sprintf('%s is not an existing directory.', $path));
         }
         $json = $context->options->flag($options, 'json');
+        $started = AllowedRoots::normaliseRoot((string) realpath($path));
         $target = StartClaim::targetOf($path, self::home());
         $root = AllowedRoots::normaliseRoot($target['root']);
 
@@ -52,28 +53,33 @@ final class ClaimCommand implements CliCommand
             return $this->report($context, $json, 'fixed', $root, 'This server runs in a container, where a host path is not this server\'s path. '
                 . 'Mount the folder and allow it from inside.');
         }
+
+        $file = new RootsFile(AllowedRoots::defaultConfigPath($context->databasePath()));
+        try {
+            $listed = array_map(AllowedRoots::normaliseRoot(...), $file->read());
+        } catch (InvalidArgumentException $error) {
+            return $this->report($context, $json, 'error', $root, $error->getMessage());
+        }
+        // The folder itself is already a root of its own: a start in a package of a monorepo stays
+        // that package, instead of widening the grant to the repository around it.
+        if (in_array($started, $listed, true)) {
+            return $this->report($context, $json, 'present', $started, null);
+        }
+        // Only an exact entry counts: a broader root above this one does not make
+        // the project's first scan happen, so the toplevel gets a line of its own.
+        if (in_array($root, $listed, true)) {
+            return $this->report($context, $json, 'present', $root, null);
+        }
+        // Asked about only once it is known not to be listed: an allowed home folder is not a question.
         if ($target['ask']) {
             return $this->report($context, $json, 'ask', $root, sprintf('%s is the filesystem root, your home folder or a folder above it, '
                 . 'so it is not allowed without being asked.', $root));
         }
-
-        $file = new RootsFile(AllowedRoots::defaultConfigPath($context->databasePath()));
-        try {
-            $roots = $file->read();
-        } catch (InvalidArgumentException $error) {
-            return $this->report($context, $json, 'error', $root, $error->getMessage());
-        }
-        // Only an exact entry counts: a broader root above this one does not make
-        // the project's first scan happen, so the toplevel gets a line of its own.
-        if (in_array($root, array_map(AllowedRoots::normaliseRoot(...), $roots), true)) {
-            return $this->report($context, $json, 'present', $root, null);
-        }
         if (!$context->options->flag($options, 'execute')) {
             return $this->report($context, $json, 'would-add', $root, null);
         }
-        $roots[] = $root;
         try {
-            $file->write($roots);
+            $file->add($root);
         } catch (InvalidArgumentException $error) {
             return $this->report($context, $json, 'error', $root, $error->getMessage());
         }

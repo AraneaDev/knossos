@@ -346,6 +346,16 @@ describe('/knossos autostart', () => {
         expect(runsOf(port, 'claim')).toEqual([])
     })
 
+    it('says why the setting could not be written, and claims nothing', async () => {
+        const answer = JSON.stringify({ status: 'error', root: ROOT, reason: '/data/pane-autostart.json is not valid JSON' })
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: answer } })
+        const said = await runCommand(port.io, 'autostart on')
+        expect(said).toContain('/data/pane-autostart.json is not valid JSON')
+        expect(said).toContain('unchanged')
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
     it('says so when knossos does not answer, and claims nothing', async () => {
         const port = fakePort({ dashboard: dashboard('s1') })
         expect(await runCommand(port.io, 'autostart on')).toContain('did not answer')

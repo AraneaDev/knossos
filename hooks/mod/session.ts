@@ -13,7 +13,7 @@ import { declaredOf, huesOf } from '../lib/palette'
 import { currentSession, peekKey, refreshDashboard, request, showComponent } from './loaders'
 import { readGitHead, settleBaseline } from './session-baseline'
 import { startDeliberately } from './start'
-import { parseAutostart } from '../lib/envelopes'
+import { parseAutostart, parseAutostartError } from '../lib/envelopes'
 import { endWatcher, placed, wrapper } from './port'
 import type { Port } from './port'
 import { cyclesOf, mod, PANE } from './state'
@@ -166,7 +166,7 @@ export async function startUp(io: Port, opening: 'session' | 'deliberate'): Prom
   if (opening === 'deliberate') io.clock.after(0, () => void startDeliberately(io).catch(() => undefined))
   // Only a session start reads the project's setting; the web and the terminal were started to look at the pane.
   // A refused or unplaced pane is the person's layout, not a failure of the mod.
-  if (opening === 'session' && (await autostartOf(io))?.autostart === true) await openPane(io, !stored)
+  if (opening === 'session' && (await opensWithSession(io))) await openPane(io, !stored)
 }
 
 /**
@@ -188,8 +188,16 @@ export async function openPane(io: Port, refreshFirst = true): Promise<void> {
 const AUTOSTART_TIMEOUT_MS = 20_000
 
 /** The project's pane setting, with `--set=on|off` written first; null when knossos said nothing usable. */
-async function autostartOf(io: Port, set?: 'on' | 'off'): Promise<{ autostart: boolean; root: string } | null> {
-  return parseAutostart(await wrapper(io, 'autostart', set === undefined ? [] : [`--set=${set}`], AUTOSTART_TIMEOUT_MS))
+async function autostartOf(io: Port, set?: 'on' | 'off'): Promise<{ autostart: boolean; root: string } | { error: string } | null> {
+  const stdout = await wrapper(io, 'autostart', set === undefined ? [] : [`--set=${set}`], AUTOSTART_TIMEOUT_MS)
+  const error = parseAutostartError(stdout)
+  return error === null ? parseAutostart(stdout) : { error }
+}
+
+/** Whether the project asks for the pane to open when a session starts. */
+async function opensWithSession(io: Port): Promise<boolean> {
+  const state = await autostartOf(io)
+  return state !== null && 'autostart' in state && state.autostart
 }
 
 /** `/knossos autostart [on|off]`: reads or writes the setting, and says what it is for which project. */
@@ -197,6 +205,7 @@ async function runAutostart(io: Port, arg: string): Promise<string> {
   if (arg !== '' && arg !== 'on' && arg !== 'off') return USAGE
   const state = await autostartOf(io, arg === '' ? undefined : arg)
   if (state === null) return 'Knossos did not answer; the pane setting is unchanged.'
+  if ('error' in state) return `The pane setting is unchanged: ${state.error}`
   // Turning it on is a deliberate choice to use Knossos here: the folder is claimed like any deliberate start.
   if (arg === 'on') claimOnTimer(io)
   return state.autostart ? `The pane opens when a session starts in ${state.root}.` : `The pane does not open when a session starts in ${state.root}. /knossos autostart on turns it on.`

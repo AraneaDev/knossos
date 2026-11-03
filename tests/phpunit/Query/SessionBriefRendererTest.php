@@ -26,9 +26,9 @@ final class SessionBriefRendererTest extends TestCase
         parent::tearDown();
     }
 
-    private function refusedBrief(): SessionBrief
+    private function refusedBrief(?string $rootsFile = null): SessionBrief
     {
-        return new SessionBrief('stale', 'project_1b4f41', 'Knossos-MCP', '/root/Knossos-MCP', 1_468_800, 118, 402, [], [], [], [], false);
+        return new SessionBrief('stale', 'project_1b4f41', 'Knossos-MCP', '/root/Knossos-MCP', 1_468_800, 118, 402, [], [], [], [], false, rootsFile: $rootsFile);
     }
 
     private function brief(string $state, ?int $age = 3600, int $changed = 0, int $tracked = 402): SessionBrief
@@ -122,7 +122,7 @@ final class SessionBriefRendererTest extends TestCase
             str_starts_with(
                 $text,
                 'STALE (118 files, 17d), and /root/Knossos-MCP is not an allowed root. '
-                    . 'To scan it, ask the person to run /knossos in that folder.',
+                    . 'Add it: knossos allow-root /root/Knossos-MCP --execute',
             ),
         );
         assertSame(false, str_contains($text, 'scan_project'));
@@ -132,17 +132,27 @@ final class SessionBriefRendererTest extends TestCase
     #[Group('query')]
     public function testANotAllowedRootAsksThePersonToRunKnossosOutsideAContainer(): void
     {
-        $text = (new SessionBriefRenderer())->render($this->refusedBrief());
+        $text = (new SessionBriefRenderer())->render($this->refusedBrief('/root/.knossos/roots.json'));
 
         assertSame(true, str_contains($text, 'ask the person to run /knossos'));
         assertSame(false, str_contains($text, 'knossos allow-root'));
     }
 
     #[Group('query')]
+    public function testFixedRootsWithNoRootsFileKeepTheOldRemedy(): void
+    {
+        // /knossos cannot widen a list that was fixed on the command line, so the command is all there is to offer.
+        $text = (new SessionBriefRenderer())->render($this->refusedBrief());
+
+        assertSame(true, str_contains($text, 'Add it: knossos allow-root /root/Knossos-MCP --execute'));
+        assertSame(false, str_contains($text, 'ask the person'));
+    }
+
+    #[Group('query')]
     public function testANotAllowedRootKeepsTheCommandInAContainer(): void
     {
         $this->pinContainer(true);
-        $text = (new SessionBriefRenderer())->render($this->refusedBrief());
+        $text = (new SessionBriefRenderer())->render($this->refusedBrief('/root/.knossos/roots.json'));
 
         assertSame(true, str_contains($text, 'Add it: knossos allow-root /root/Knossos-MCP --execute'));
         assertSame(false, str_contains($text, 'ask the person'));
@@ -184,7 +194,7 @@ final class SessionBriefRendererTest extends TestCase
             str_starts_with(
                 $text,
                 'UNVERIFIED (1240 files, over probe limit; scanned 4d ago), and /root/Knossos-MCP is not an '
-                    . 'allowed root. To scan it, ask the person to run /knossos in that folder.',
+                    . 'allowed root. Add it: knossos allow-root /root/Knossos-MCP --execute',
             ),
         );
         assertSame(false, str_contains($text, 'Rescan if exactness matters.'));
@@ -242,7 +252,7 @@ final class SessionBriefRendererTest extends TestCase
             true,
             str_contains(
                 $text,
-                'NOT SCANNED, and /root/Elsewhere is not an allowed root. To scan it, ask the person to run /knossos in that folder.',
+                'NOT SCANNED, and /root/Elsewhere is not an allowed root. Add it: knossos allow-root /root/Elsewhere --execute',
             ),
         );
     }
@@ -335,7 +345,7 @@ final class SessionBriefRendererTest extends TestCase
             true,
             str_contains(
                 $text,
-                'NO GRAPH, and /root/Knossos-MCP is not an allowed root. To scan it, ask the person to run /knossos in that folder.',
+                'NO GRAPH, and /root/Knossos-MCP is not an allowed root. Add it: knossos allow-root /root/Knossos-MCP --execute',
             ),
         );
     }

@@ -19,7 +19,7 @@ const CLAIM_TIMEOUT_MS = 20_000
 
 /**
  * Claims the folder the session is in and, when that put it on the roots
- * list or it is listed with no graph, scans it. Every other answer (a folder
+ * list or it is listed and knossos says it was never scanned, scans it. Every other answer (a folder
  * to ask about, a setup to fix, silence, a refusal) scans nothing and raises
  * nothing, except a roots file that cannot be used, whose reason the pane
  * shows. Never throws.
@@ -28,14 +28,20 @@ export async function startDeliberately(io: Port): Promise<void> {
   if (mod.deliberate.claiming) return
   mod.deliberate.claiming = true
   try {
-    const { stdout } = await wrapperAnswer(io, 'claim', ['--execute'], CLAIM_TIMEOUT_MS)
+    const { stdout, refusal } = await wrapperAnswer(io, 'claim', ['--execute'], CLAIM_TIMEOUT_MS)
+    // The wrapper refused (no roots file known, say): the person is told why nothing was added.
+    if (refusal !== null) {
+      const root = await io.session.root().catch(() => '')
+      return void (await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason: refusal })))
+    }
     const claim = parseClaim(stdout)
     if (claim === null) return
     if (claim.status === 'no-binary') return await disable(io)
     const { root } = claim
     if (claim.status === 'added') return await afterGrant(io, root)
     if (claim.status === 'present') {
-      if ((await io.state.dashboard.read())?.status !== 'ok') await afterGrant(io, root)
+      // Only a project knossos says it never scanned: a dashboard that is slow, failed or not loaded yet is no reason to scan.
+      if ((await io.state.dashboard.read())?.status === 'unscanned') await afterGrant(io, root)
       return
     }
     // Too broad to allow unasked: left refused, so the pane makes today's offer.

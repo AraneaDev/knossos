@@ -1072,6 +1072,7 @@ php	tests/phpunit/Support/FakeWorker.php
 php	tests/phpunit/Support/Fixtures.php
 php	tests/phpunit/Support/PaneAgreementGraph.php
 php	tests/phpunit/Support/PhpFacts.php
+php	tests/phpunit/Support/PinsContainer.php
 php	tests/phpunit/Support/Processes.php
 php	tests/phpunit/Support/QueryCountingStatement.php
 php	tests/phpunit/Support/RowCountingStatement.php

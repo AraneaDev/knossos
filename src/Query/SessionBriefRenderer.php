@@ -205,8 +205,9 @@ final readonly class SessionBriefRenderer
                 $brief->path,
                 $brief->rootsFile === null ? '' : ' in ' . $brief->rootsFile,
                 // The person allows it by starting Knossos in the folder. A container cannot be told that:
-                // the host path is not its path, so the command stays the remedy there.
-                RootGuard::containerised()
+                // the host path is not its path. Nor can a server whose roots are fixed (no roots file):
+                // starting Knossos cannot widen them. The command stays the remedy in both.
+                RootGuard::containerised() || $brief->rootsFile === null
                     ? sprintf('Add it: knossos allow-root %s --execute', $brief->path)
                     : 'To scan it, ask the person to run /knossos in that folder.',
             );

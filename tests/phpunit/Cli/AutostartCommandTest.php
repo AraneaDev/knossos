@@ -44,6 +44,22 @@ final class AutostartCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testACorruptFileIsAnErrorAnswerNotAFailure(): void
+    {
+        $bytes = '{"roots": [';
+        file_put_contents($this->tempDir . '/pane-autostart.json', $bytes);
+
+        $report = $this->autostart($this->project, 'on');
+
+        assertSame('error', $report['status']);
+        assertSame($this->project, $report['root']);
+        assertSame(true, str_contains((string) $report['reason'], 'is not valid JSON'));
+        assertSame($bytes, (string) file_get_contents($this->tempDir . '/pane-autostart.json'));
+        // Reading never fails: a corrupt file reads as off.
+        assertSame(['status' => 'ok', 'autostart' => false, 'root' => $this->project], $this->autostart($this->project));
+    }
+
+    #[Group('cli')]
     public function testAnUnknownValueIsRefused(): void
     {
         $error = captureThrows(fn() => $this->autostart($this->project, 'maybe'), InvalidArgumentException::class);

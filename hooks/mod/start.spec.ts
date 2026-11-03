@@ -121,13 +121,29 @@ describe('startDeliberately', () => {
     it.each([
         ['fixed', claim('fixed', 'a container')],
         ['silence', ''],
-        ['a refusal from the wrapper', JSON.stringify({ status: 'refused', by: 'wrapper', reason: 'no roots file is known to the hooks' })],
         ['nonsense', 'not json'],
     ])('scans nothing and raises nothing for %s', async (_, stdout) => {
         const port = fakePort({ answers: { claim: stdout } })
         await expect(startDeliberately(port.io)).resolves.toBeUndefined()
         expect(port.subs()).toEqual(['claim'])
         expect(port.rescan()).toEqual({ phase: 'idle', reason: null })
+        expect(port.allow().phase).toBe('idle')
+    })
+
+    it('shows a refusal from the wrapper as the reason nothing was added, and scans nothing', async () => {
+        const port = fakePort({ answers: { claim: JSON.stringify({ status: 'refused', by: 'wrapper', reason: 'no roots file is known to the hooks' }) } })
+        await startDeliberately(port.io)
+        expect(port.subs()).toEqual(['claim'])
+        expect(port.allow()).toEqual({ phase: 'failed', root: ROOT, reason: 'no roots file is known to the hooks' })
+    })
+
+    it.each([
+        ['a dashboard that failed to load', { status: 'error' }],
+        ['no dashboard yet', null],
+    ])('scans nothing for a present root with %s: only "unscanned" is a reason to scan', async (_, dashboard) => {
+        const port = fakePort({ answers: { claim: claim('present') }, dashboard: dashboard as unknown as Dashboard })
+        await startDeliberately(port.io)
+        expect(port.subs()).toEqual(['claim'])
         expect(port.allow().phase).toBe('idle')
     })
 

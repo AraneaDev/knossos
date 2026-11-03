@@ -46,13 +46,24 @@ final class AutostartCommand implements CliCommand
         }
         $root = AllowedRoots::normaliseRoot(StartClaim::targetOf($path, null)['root']);
         $autostart = new PaneAutostart(dirname(AllowedRoots::defaultConfigPath($context->databasePath())) . '/pane-autostart.json');
+        $json = $context->options->flag($options, 'json');
         if ($set !== null) {
-            $autostart->set($root, $set === 'on');
+            try {
+                $autostart->set($root, $set === 'on');
+            } catch (InvalidArgumentException $error) {
+                // Called through a wrapper that turns a nonzero exit into silence: the reason is an answer.
+                if (!$json) {
+                    throw $error;
+                }
+                $context->output(['status' => 'error', 'root' => $root, 'reason' => $error->getMessage()], true, '');
+
+                return CliCommand::EXIT_OK;
+            }
         }
         $on = $autostart->isOn($root);
         $context->output(
             ['status' => 'ok', 'autostart' => $on, 'root' => $root],
-            $context->options->flag($options, 'json'),
+            $json,
             sprintf('Pane autostart for %s is %s.', $root, $on ? 'on' : 'off'),
         );
 

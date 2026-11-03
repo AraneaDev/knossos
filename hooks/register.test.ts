@@ -1269,7 +1269,7 @@ describe('knossos mod', () => {
     expect(text).toContain('41 dependents')
   })
 
-  test('a not-allowed brief shows the allow-root hint', async ($, on) => {
+  test('a not-allowed brief replaces the figures and draws nothing', async ($, on) => {
     const w = world(on, { brief: [{ stdout: brief() }, { stdout: brief({ status: 'not-allowed' }) }] })
     await $.session.start(START)
     await w.clock.settle()
@@ -1278,7 +1278,7 @@ describe('knossos mod', () => {
       await $.turn.complete(TURN)
       await w.clock.settle()
     }
-    expect(await bandText($)).toContain('not allowed: repo')
+    expect(await bandText($)).toBeUndefined()
   })
 
   test('an unscanned brief replaces the figures and draws nothing', async ($, on) => {

@@ -118,6 +118,43 @@ final class ClaimCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testAnUnreadableRootsFileIsAnErrorAndExitsZero(): void
+    {
+        // A directory where the file belongs fails for any user, which chmod does not under root.
+        mkdir($this->rootsFile(), 0o755, true);
+
+        $report = $this->claim($this->repo, execute: true, exit: $exit);
+
+        assertSame(CliCommand::EXIT_OK, $exit);
+        assertSame('error', $report['status']);
+        assertSame($this->repo, $report['root']);
+        assertSame(true, is_string($report['reason']) && $report['reason'] !== '');
+        assertSame(true, is_dir($this->rootsFile()));
+    }
+
+    #[Group('cli')]
+    public function testAFolderThatIsAlreadyARootIsNotWalkedUpPast(): void
+    {
+        mkdir($this->repo . '/packages/api', 0o755, true);
+        $package = (string) realpath($this->repo . '/packages/api');
+        file_put_contents($this->rootsFile(), json_encode(['roots' => [$package]]));
+        $bytes = (string) file_get_contents($this->rootsFile());
+
+        $report = $this->claim($package, execute: true);
+
+        assertSame(['status' => 'present', 'root' => $package, 'reason' => null], $report);
+        assertSame($bytes, (string) file_get_contents($this->rootsFile()));
+    }
+
+    #[Group('cli')]
+    public function testAnAllowedHomeIsPresentRatherThanAQuestion(): void
+    {
+        file_put_contents($this->rootsFile(), json_encode(['roots' => [$this->home]]));
+
+        assertSame(['status' => 'present', 'root' => $this->home, 'reason' => null], $this->claim($this->home, execute: true));
+    }
+
+    #[Group('cli')]
     public function testAMissingDirectoryIsAnError(): void
     {
         $error = captureThrows(fn() => $this->claim($this->tempDir . '/nowhere'), InvalidArgumentException::class);

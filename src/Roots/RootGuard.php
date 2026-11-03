@@ -98,9 +98,12 @@ final readonly class RootGuard
         if ($configPath !== null) {
             $message .= sprintf("\nAdd it to %s as {\"roots\": [\"%s\"]} — the file is re-read per request, so no restart is needed.", $configPath, $requestedRoot);
         }
-        $message .= self::containerised()
-            ? "\nThis server runs in a container and can only see mounted paths, not host paths. Call server_info for the roots it can actually reach."
-            : "\nThe person can allow it by running /knossos or knossos in that folder.";
+        if (self::containerised()) {
+            $message .= "\nThis server runs in a container and can only see mounted paths, not host paths. Call server_info for the roots it can actually reach.";
+        } elseif ($configPath !== null) {
+            // Starting Knossos writes the roots file; with fixed roots (no file) it has nothing to widen.
+            $message .= "\nThe person can allow it by running /knossos or knossos in that folder.";
+        }
 
         return $message;
     }
