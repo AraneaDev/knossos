@@ -9,11 +9,26 @@ use Knossos\Query\SessionBriefService;
 use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\PinsContainer;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
 final class SessionBriefServiceTest extends KnossosTestCase
 {
+    use PinsContainer;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->pinContainer(false);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->restoreContainer();
+        parent::tearDown();
+    }
+
     #[Group('query')]
     public function testTheBriefReportsTheRootsFileItActuallyConsulted(): void
     {

@@ -1308,6 +1308,8 @@ js	hooks/mod/session.spec.ts
 js	hooks/mod/session.tick.spec.ts
 js	hooks/mod/session.ts
 js	hooks/mod/settings.spec.ts
+js	hooks/mod/start.spec.ts
+js	hooks/mod/start.ts
 js	hooks/mod/state.spec.ts
 js	hooks/mod/state.ts
 js	hooks/mod/watcher.rescan.spec.ts

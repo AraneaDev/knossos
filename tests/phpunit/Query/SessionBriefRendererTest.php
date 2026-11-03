@@ -6,12 +6,26 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\SessionBrief;
 use Knossos\Query\SessionBriefRenderer;
-use Knossos\Roots\RootGuard;
+use Knossos\Tests\Phpunit\Support\PinsContainer;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 final class SessionBriefRendererTest extends TestCase
 {
+    use PinsContainer;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->pinContainer(false);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->restoreContainer();
+        parent::tearDown();
+    }
+
     private function refusedBrief(): SessionBrief
     {
         return new SessionBrief('stale', 'project_1b4f41', 'Knossos-MCP', '/root/Knossos-MCP', 1_468_800, 118, 402, [], [], [], [], false);
@@ -118,23 +132,20 @@ final class SessionBriefRendererTest extends TestCase
     #[Group('query')]
     public function testANotAllowedRootAsksThePersonToRunKnossosOutsideAContainer(): void
     {
-        $saved = getenv('KNOSSOS_CONTAINER');
-        putenv('KNOSSOS_CONTAINER');
-        try {
-            if (RootGuard::containerised()) {
-                $this->markTestSkipped('This machine is a container itself.');
-            }
-            $text = (new SessionBriefRenderer())->render($this->refusedBrief());
-            assertSame(true, str_contains($text, 'ask the person to run /knossos'));
-            assertSame(false, str_contains($text, 'knossos allow-root'));
+        $text = (new SessionBriefRenderer())->render($this->refusedBrief());
 
-            putenv('KNOSSOS_CONTAINER=1');
-            $contained = (new SessionBriefRenderer())->render($this->refusedBrief());
-            assertSame(true, str_contains($contained, 'Add it: knossos allow-root /root/Knossos-MCP --execute'));
-            assertSame(false, str_contains($contained, 'ask the person'));
-        } finally {
-            putenv(is_string($saved) ? 'KNOSSOS_CONTAINER=' . $saved : 'KNOSSOS_CONTAINER');
-        }
+        assertSame(true, str_contains($text, 'ask the person to run /knossos'));
+        assertSame(false, str_contains($text, 'knossos allow-root'));
+    }
+
+    #[Group('query')]
+    public function testANotAllowedRootKeepsTheCommandInAContainer(): void
+    {
+        $this->pinContainer(true);
+        $text = (new SessionBriefRenderer())->render($this->refusedBrief());
+
+        assertSame(true, str_contains($text, 'Add it: knossos allow-root /root/Knossos-MCP --execute'));
+        assertSame(false, str_contains($text, 'ask the person'));
     }
 
     #[Group('query')]

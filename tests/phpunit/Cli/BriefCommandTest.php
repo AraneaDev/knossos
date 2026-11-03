@@ -295,6 +295,72 @@ final class BriefCommandTest extends KnossosTestCase
         }
     }
 
+    /**
+     * A folder to scan, a data directory with no database in it, and the context that points at that database.
+     *
+     * @return array{0: string, 1: string, 2: string, 3: CliCommandContext}
+     */
+    private function freshInstall(): array
+    {
+        $root = $this->temporaryDirectory();
+        file_put_contents($root . '/a.php', "<?php\n\ndeclare(strict_types=1);\n\nfinal class Fresh {}\n");
+        $data = $this->temporaryDirectory();
+        $database = $data . '/knossos.sqlite';
+        putenv('KNOSSOS_DATA_DIR=' . $data);
+        putenv('KNOSSOS_ALLOWED_ROOTS=' . realpath($root));
+        $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), $database);
+
+        return [$root, $data, $database, $context];
+    }
+
+    #[Group('cli')]
+    public function testRescanOfAnExactAllowedRootCreatesTheDatabaseOnAFreshInstall(): void
+    {
+        [$root, $data, $database, $context] = $this->freshInstall();
+        try {
+            assertFalse(is_file($database));
+            [$status, $out] = $this->runJson('rescan', [$root], [], $context);
+            assertSame(0, $status);
+            assertSame('ok', $out['status']);
+            assertSame(realpath($root), $out['project_root']);
+            assertSame(true, is_file($database));
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($data);
+        }
+    }
+
+    #[Group('cli')]
+    public function testRescanOfAPathInsideAnAllowedRootStillCreatesNoDatabase(): void
+    {
+        [$root, $data, $database, $context] = $this->freshInstall();
+        mkdir($root . '/sub');
+        try {
+            [, $out] = $this->runJson('rescan', [$root . '/sub'], [], $context);
+            assertSame('unscanned', $out['status']);
+            assertFalse(is_file($database));
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($data);
+        }
+    }
+
+    #[Group('cli')]
+    public function testAReadOnlyBriefNeverCreatesTheDatabaseEvenForAnExactAllowedRoot(): void
+    {
+        [$root, $data, $database, $context] = $this->freshInstall();
+        try {
+            foreach (['dashboard', 'churn', 'branch-diff'] as $command) {
+                [, $out] = $this->runJson($command, [$root], [], $context);
+                assertSame('unscanned', $out['status'], $command);
+            }
+            assertFalse(is_file($database));
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($data);
+        }
+    }
+
     #[Group('cli')]
     public function testRescanNeverCreatesADatabase(): void
     {

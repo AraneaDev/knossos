@@ -16,7 +16,6 @@ import { mod } from './state'
 const CLAIM_TIMEOUT_MS = 20_000
 
 /** Whether a claim is under way: a second start while it runs adds nothing. */
-let claiming = false
 
 /**
  * Claims the folder the session is in and, when that put it on the roots

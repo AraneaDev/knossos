@@ -179,6 +179,10 @@ Usage:
                  file beside the database, re-read on every request)
   knossos allow-root <path> [--execute] [--db=FILE] [--json]
   knossos claim <path> [--execute] [--db=FILE] [--json]
+                (prints one status: added, would-add, present, ask for a folder too
+                 broad to allow unasked, fixed for a container, or error with the
+                 reason; every status exits 0, because the hooks that call it turn
+                 a nonzero exit into silence)
   knossos autostart <path> [--set=on|off] [--db=FILE] [--json]
   knossos enricher list [--db=FILE] [--json]
   knossos enricher add <name> [--timeout=N] [--env=NAME=VALUE]... [--kinds=a,b]

@@ -12,6 +12,7 @@ use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\ClaimCommand;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\PinsContainer;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -22,11 +23,12 @@ use PHPUnit\Framework\Attributes\Group;
  */
 final class ClaimCommandTest extends KnossosTestCase
 {
+    use PinsContainer;
+
     private string $tempDir;
     private string $home;
     private string $repo;
     private string|false $savedHome;
-    private string|false $savedContainer;
 
     protected function setUp(): void
     {
@@ -36,15 +38,14 @@ final class ClaimCommandTest extends KnossosTestCase
         $this->repo = $this->home . '/work/repo';
         mkdir($this->repo . '/.git', 0o755, true);
         $this->savedHome = getenv('HOME');
-        $this->savedContainer = getenv('KNOSSOS_CONTAINER');
         putenv('HOME=' . $this->home);
-        putenv('KNOSSOS_CONTAINER');
+        $this->pinContainer(false);
     }
 
     protected function tearDown(): void
     {
         putenv(is_string($this->savedHome) ? 'HOME=' . $this->savedHome : 'HOME');
-        putenv(is_string($this->savedContainer) ? 'KNOSSOS_CONTAINER=' . $this->savedContainer : 'KNOSSOS_CONTAINER');
+        $this->restoreContainer();
         exec('rm -rf ' . escapeshellarg($this->tempDir));
         parent::tearDown();
     }
@@ -91,7 +92,7 @@ final class ClaimCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testAContainerIsFixed(): void
     {
-        putenv('KNOSSOS_CONTAINER=1');
+        $this->pinContainer(true);
 
         $report = $this->claim($this->repo, execute: true, exit: $exit);
 

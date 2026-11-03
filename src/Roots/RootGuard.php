@@ -98,12 +98,9 @@ final readonly class RootGuard
         if ($configPath !== null) {
             $message .= sprintf("\nAdd it to %s as {\"roots\": [\"%s\"]} — the file is re-read per request, so no restart is needed.", $configPath, $requestedRoot);
         }
-        if (!self::containerised()) {
-            $message .= "\nThe person can allow it by running /knossos or knossos in that folder.";
-        }
-        if (self::containerised()) {
-            $message .= "\nThis server runs in a container and can only see mounted paths, not host paths. Call server_info for the roots it can actually reach.";
-        }
+        $message .= self::containerised()
+            ? "\nThis server runs in a container and can only see mounted paths, not host paths. Call server_info for the roots it can actually reach."
+            : "\nThe person can allow it by running /knossos or knossos in that folder.";
 
         return $message;
     }
@@ -124,10 +121,21 @@ final readonly class RootGuard
         return $root !== false && is_dir($root);
     }
 
-    /** Whether the server runs inside a container, where host paths are not its paths. */
+    /**
+     * Whether the server runs inside a container, where host paths are not its paths.
+     *
+     * `KNOSSOS_CONTAINER` decides when it is set: `0` means not a container, even
+     * where `/.dockerenv` exists, and any other value means one. Unset, the marker
+     * file decides.
+     */
     public static function containerised(): bool
     {
-        return is_file('/.dockerenv') || getenv('KNOSSOS_CONTAINER') !== false;
+        $declared = getenv('KNOSSOS_CONTAINER');
+        if ($declared !== false) {
+            return $declared !== '0';
+        }
+
+        return is_file('/.dockerenv');
     }
     /** Whether a canonical candidate lies within a canonical root, on segment boundaries. */
 

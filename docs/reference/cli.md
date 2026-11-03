@@ -146,6 +146,10 @@ Usage:
                  file beside the database, re-read on every request)
   knossos allow-root <path> [--execute] [--db=FILE] [--json]
   knossos claim <path> [--execute] [--db=FILE] [--json]
+                (prints one status: added, would-add, present, ask for a folder too
+                 broad to allow unasked, fixed for a container, or error with the
+                 reason; every status exits 0, because the hooks that call it turn
+                 a nonzero exit into silence)
   knossos autostart <path> [--set=on|off] [--db=FILE] [--json]
   knossos enricher list [--db=FILE] [--json]
   knossos enricher add <name> [--timeout=N] [--env=NAME=VALUE]... [--kinds=a,b]
@@ -157,5 +161,3 @@ Usage:
 Docker supplies PHP, Node, Composer, and SQLite; mount source read-only at an
 allowed path and graph data read-write at /data.
 ```
-
-`knossos claim` allows the folder Knossos was started in, under the same rules as `allow-root`, and prints one status: `added`, `would-add` (without `--execute`), `present`, `ask` (the folder is the filesystem root, your home folder or above it, so it needs asking), `fixed` (a container, where a host path is not the server's path) or `error` (the roots file cannot be read or written, with the reason). Every status exits 0, because the hooks that call it turn a nonzero exit into silence. Only a folder that does not exist is a CLI error.
