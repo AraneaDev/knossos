@@ -98,7 +98,9 @@ expect_output 'scan runs the rescan command on the project' "rescan|$ABS_PROJ|--
 expect_refused 'scan refuses an option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj" --db=/tmp/other.sqlite
 expect_refused 'scan refuses a second argument' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" scan "$STUBS/proj" extra
 expect_output 'missing binary says so for a scan' "$NO_BINARY" env KNOSSOS_BIN=/nonexistent/knossos PATH="$STUBS/bare" HOME=/nonexistent /bin/sh "$RUN" scan "$STUBS/proj"
-expect_silent_success 'failing binary on a scan' env KNOSSOS_BIN="$STUBS/failing" /bin/sh "$RUN" scan /tmp
+# A scan that dies without an answer is the one failure besides a kill or the bound that is said: the pane
+# would otherwise read silence as "knossos said nothing". Exit 0 all the same, and any other subcommand stays silent.
+expect_output 'failing binary on a scan says it crashed' '{"status":"crashed","exit":3}' env KNOSSOS_BIN="$STUBS/failing" /bin/sh "$RUN" scan /tmp
 # allow-root: the root alone, always with --execute, and only into a roots file the installation (or the environment) names.
 expect_output 'allow-root grants the root with --execute' "allow-root|$ABS_PROJ|--execute|--json|" \
     env KNOSSOS_BIN="$STUBS/echoing" KNOSSOS_ROOTS_FILE=/tmp/roots.json /bin/sh "$RUN" allow-root "$STUBS/proj"

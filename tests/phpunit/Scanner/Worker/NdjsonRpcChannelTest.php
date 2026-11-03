@@ -218,6 +218,33 @@ final class NdjsonRpcChannelTest extends TestCase
         assertSame(9, $error->terminatingSignal);
     }
 
+    /** A worker that exited on its own, not by a signal, is no kill: the pipe break stays the worker's. */
+    public function testPipeBrokenAfterAnOrdinaryExitCarriesNoSignal(): void
+    {
+        $pair = @stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        if (!is_array($pair)) {
+            $this->markTestSkipped('stream_socket_pair is not available on this platform.');
+        }
+        $process = $this->pipeOnlyProcess();
+        $process->stdinPipe = $pair[0];
+        $process->stdoutPipe = fopen('php://temp', 'r+');
+        $process->stderrPipe = fopen('php://temp', 'r+');
+        $process->statusOverride = ['running' => false, 'signaled' => false, 'exitcode' => 7];
+
+        $channel = new NdjsonRpcChannel($process, new WorkerLimits());
+        $channel->beginRequest();
+        fclose($pair[1]);
+
+        $error = captureThrows(
+            static fn() => $channel->send(['jsonrpc' => '2.0', 'method' => 'ping']),
+            WorkerException::class,
+        );
+
+        assertSame('WORKER_PIPE_BROKEN', $error->diagnosticCode);
+        assertSame(null, $error->terminatingSignal);
+        assertContains('Unable to write to scanner worker.', $error->getMessage());
+    }
+
     /**
      * A write fails because the worker is gone, and what it printed on the way
      * out is the only account of why. The worker dying of heap exhaustion and

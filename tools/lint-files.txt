@@ -370,6 +370,7 @@ php	src/Scan/AnalysisHash.php
 php	src/Scan/CachedReads.php
 php	src/Scan/ContributionCacheService.php
 php	src/Scan/ContributionPartition.php
+php	src/Scan/FatalWatch.php
 php	src/Scan/InvalidationWalk.php
 php	src/Scan/LanguageBatchRun.php
 php	src/Scan/LanguageDescriptor.php

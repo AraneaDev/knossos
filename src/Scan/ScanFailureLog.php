@@ -86,28 +86,38 @@ final readonly class ScanFailureLog
      */
     public function watchForFatal(string $root, string $startedBy): \Closure
     {
-        $armed = true;
+        $watch = new FatalWatch();
         $startedAt = hrtime(true);
-        register_shutdown_function(function () use (&$armed, $root, $startedBy, $startedAt): void {
-            $error = $armed ? error_get_last() : null;
-            if ($error === null || !in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_RECOVERABLE_ERROR], true)) {
-                return;
+        register_shutdown_function(function () use ($watch, $root, $startedBy, $startedAt): void {
+            if ($watch->armed()) {
+                $this->recordFatal(error_get_last(), $root, $startedBy, $startedAt);
             }
-            // The fatal is often the memory limit itself; a line needs a little room to be written.
-            @ini_set('memory_limit', '-1');
-            $this->record([
-                'root' => $root,
-                'started_by' => $startedBy,
-                'class' => ScanFailureClass::OTHER,
-                'message' => $error['message'],
-                'elapsed_ms' => (int) round(Milliseconds::since($startedAt)),
-                'signal' => null,
-            ]);
         });
 
-        return static function () use (&$armed): void {
-            $armed = false;
-        };
+        return $watch->disarm(...);
+    }
+
+    /**
+     * Keep `$error`, the last error PHP reported, when it is a fatal one.
+     *
+     * @param array{type: int, message: string, file: string, line: int}|null $error
+     * @param int $startedAt an `hrtime(true)` reading from when the scan began
+     */
+    public function recordFatal(?array $error, string $root, string $startedBy, int $startedAt): void
+    {
+        if ($error === null || !in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_RECOVERABLE_ERROR], true)) {
+            return;
+        }
+        // The fatal is often the memory limit itself; a line needs a little room to be written.
+        @ini_set('memory_limit', '-1');
+        $this->record([
+            'root' => $root,
+            'started_by' => $startedBy,
+            'class' => ScanFailureClass::OTHER,
+            'message' => $error['message'],
+            'elapsed_ms' => (int) round(Milliseconds::since($startedAt)),
+            'signal' => null,
+        ]);
     }
 
     /**

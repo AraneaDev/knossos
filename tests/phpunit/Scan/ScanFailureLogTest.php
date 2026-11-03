@@ -22,7 +22,7 @@ final class ScanFailureLogTest extends KnossosTestCase
     protected function tearDown(): void
     {
         foreach (glob($this->directory . '/*') ?: [] as $file) {
-            @unlink($file);
+            is_dir($file) ? @rmdir($file) : @unlink($file);
         }
         @rmdir($this->directory);
         parent::tearDown();
@@ -105,6 +105,75 @@ final class ScanFailureLogTest extends KnossosTestCase
 
         assertSame(['scan-failures.jsonl', 'scan-failures.jsonl.lock'], array_values(array_diff(scandir($this->directory), ['.', '..'])));
         assertSame(['two', 'one'], array_column($log->recent(5), 'message'));
+    }
+
+    #[Group('scan')]
+    public function testAnExceptionIsKeptWithItsClassSignalAndTime(): void
+    {
+        $path = $this->directory . '/scan-failures.jsonl';
+        $log = new ScanFailureLog($path);
+        $log->recordThrowable('/work/app', 'watch', new \Knossos\Scanner\Worker\WorkerException('WORKER_EXITED', 'gone', terminatingSignal: 11), hrtime(true));
+        $log->recordThrowable('/work/app', 'cli', new \RuntimeException('plain'), hrtime(true));
+
+        [$plain, $worker] = $log->recent(5);
+        assertSame(['other', null, 'cli', 'plain'], [$plain['class'], $plain['signal'], $plain['started_by'], $plain['message']]);
+        assertSame(['killed', 11, 'watch'], [$worker['class'], $worker['signal'], $worker['started_by']]);
+        assertSame(true, is_int($worker['elapsed_ms']));
+    }
+
+    #[Group('scan')]
+    public function testACancelledScanIsNotAFailure(): void
+    {
+        $path = $this->directory . '/scan-failures.jsonl';
+        (new ScanFailureLog($path))->recordThrowable('/work/app', 'cli', new \Knossos\Cancellation\ScanCancelledException('stop'), hrtime(true));
+
+        assertSame(false, is_file($path));
+    }
+
+    #[Group('scan')]
+    public function testALogThatCannotBeReplacedIsLeftAsItWasAndLeavesNoTemporaryFile(): void
+    {
+        // A directory where the log should be: the rename onto it fails.
+        $path = $this->directory . '/scan-failures.jsonl';
+        mkdir($path);
+        (new ScanFailureLog($path))->record(self::entry('lost'));
+
+        assertSame(true, is_dir($path));
+        assertSame(['scan-failures.jsonl', 'scan-failures.jsonl.lock'], array_values(array_diff(scandir($this->directory), ['.', '..'])));
+    }
+
+    #[Group('scan')]
+    public function testOnlyAFatalErrorIsKept(): void
+    {
+        $log = new ScanFailureLog($this->directory . '/scan-failures.jsonl');
+        $error = static fn(int $type): array => ['type' => $type, 'message' => 'Allowed memory size exhausted', 'file' => 'x.php', 'line' => 3];
+        $log->recordFatal(null, '/work/app', 'pane', hrtime(true));
+        $log->recordFatal($error(E_WARNING), '/work/app', 'pane', hrtime(true));
+        assertSame([], $log->recent(5));
+
+        $memory = ini_get('memory_limit');
+        try {
+            $log->recordFatal($error(E_ERROR), '/work/app', 'pane', hrtime(true));
+        } finally {
+            ini_set('memory_limit', (string) $memory);
+        }
+        $kept = $log->recent(5);
+        assertSame(1, count($kept));
+        assertSame(['other', 'pane', 'Allowed memory size exhausted'], [$kept[0]['class'], $kept[0]['started_by'], $kept[0]['message']]);
+    }
+
+    #[Group('scan')]
+    public function testAWatchIsArmedUntilItIsDisarmed(): void
+    {
+        $watch = new \Knossos\Scan\FatalWatch();
+        assertSame(true, $watch->armed());
+        $watch->disarm();
+        assertSame(false, $watch->armed());
+
+        $log = new ScanFailureLog($this->directory . '/scan-failures.jsonl');
+        $disarm = $log->watchForFatal('/work/app', 'pane');
+        $disarm();
+        assertSame([], $log->recent(5));
     }
 
     #[Group('scan')]
