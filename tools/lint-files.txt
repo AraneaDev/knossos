@@ -85,6 +85,7 @@ php	src/Cli/CliErrorRenderer.php
 php	src/Cli/CliHelpRenderer.php
 php	src/Cli/CliInputLoader.php
 php	src/Cli/CliOptionParser.php
+php	src/Cli/Command/AutostartCommand.php
 php	src/Cli/Command/BriefCommand.php
 php	src/Cli/Command/BundleCommand.php
 php	src/Cli/Command/ClaimCommand.php
@@ -355,6 +356,7 @@ php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
 php	src/Runtime/ErrorCode.php
 php	src/Runtime/MemoryLimit.php
+php	src/Runtime/PaneAutostart.php
 php	src/Runtime/RuntimeFactory.php
 php	src/Runtime/RuntimeVersionRequirement.php
 php	src/Runtime/ServerEnvironment.php
@@ -513,6 +515,7 @@ php	tests/phpunit/Classification/TestModuleRuleTest.php
 php	tests/phpunit/Classification/ToolConfigModuleRuleTest.php
 php	tests/phpunit/Classification/TypeScriptFrameworkRoleRuleTest.php
 php	tests/phpunit/ClaudeCodeTypesTest.php
+php	tests/phpunit/Cli/AutostartCommandTest.php
 php	tests/phpunit/Cli/BriefCommandTest.php
 php	tests/phpunit/Cli/ClaimCommandTest.php
 php	tests/phpunit/Cli/CliArgumentsTest.php
@@ -875,6 +878,7 @@ php	tests/phpunit/Runtime/DoctorInstallation.php
 php	tests/phpunit/Runtime/DoctorServiceTest.php
 php	tests/phpunit/Runtime/ErrorCodeParityTest.php
 php	tests/phpunit/Runtime/MemoryLimitTest.php
+php	tests/phpunit/Runtime/PaneAutostartTest.php
 php	tests/phpunit/Runtime/RuntimeFactoryTest.php
 php	tests/phpunit/Runtime/RuntimeVersionRequirementTest.php
 php	tests/phpunit/Runtime/WorkerSourceHashTest.php
