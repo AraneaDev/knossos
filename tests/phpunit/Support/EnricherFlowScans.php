@@ -54,15 +54,17 @@ trait EnricherFlowScans
     }
 
     /**
-     * An explicit scan of the copy, which runs the requested enrichers.
+     * An explicit scan of the copy, which runs the requested enrichers. The
+     * default mode lets an unchanged tree keep its snapshot; pass `full` where
+     * the test needs a new snapshot to compare against.
      *
      * @param array{root: string, installation: string} $project
      */
-    protected function scanEnricherFlow(PDO $pdo, array $project): ResultEnvelope
+    protected function scanEnricherFlow(PDO $pdo, array $project, string $mode = 'auto'): ResultEnvelope
     {
         $service = new ProjectScanService($pdo, self::repositoryRoot(), [$project['root']], enrichers: new EnrichersFile($project['installation'] . '/enrichers.json'));
 
-        return $service->scan($project['root'], new ScanOptions(runEnrichers: true));
+        return $service->scan($project['root'], new ScanOptions(mode: $mode, runEnrichers: true));
     }
 
     /** Remove the copies this test made. */
