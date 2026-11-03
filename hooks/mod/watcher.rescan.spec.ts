@@ -20,7 +20,9 @@ const ENDED = 12_000
  * (moving the clock to {@link ENDED} as it lands) or a promise the test
  * resolves; the dashboard reload answers silence.
  */
-function rescanPort(scan: string | Promise<string> = JSON.stringify({ status: 'ok', snapshot_id: 's2' }), failRescan?: (next: RescanState) => boolean) {
+function rescanPort(scan: string | Promise<string> | string[] = JSON.stringify({ status: 'ok', snapshot_id: 's2' }), failRescan?: (next: RescanState) => boolean) {
+    // A list answers each scan in turn, the last one again for any after.
+    const answers = Array.isArray(scan) ? [...scan] : null
     const values = new Map<string, unknown>(
         Object.entries({ rescan: { phase: 'idle', reason: null }, refresh: { fetchedAt: null, failed: false }, dashboard: null, sessionScans: [], live: LIVE_OFF, sessionStart: null, flash: null }),
     )
@@ -63,7 +65,7 @@ function rescanPort(scan: string | Promise<string> = JSON.stringify({ status: 'o
                 const sub = argv[2]!
                 runs.push(sub)
                 if (sub === 'scan') {
-                    const stdout = await scan
+                    const stdout = await (answers === null ? scan : (answers.length > 1 ? answers.shift() : answers[0])!)
                     now = ENDED
                     return { exitCode: 0, stdout, stderr: '' }
                 }
@@ -236,5 +238,91 @@ describe('requestRescan', () => {
         await port.advance(0)
         expect(tried).toEqual(['scanning', 'failed', 'scanning', 'failed'])
         expect(port.runs).toEqual([])
+    })
+
+    describe('the retry', () => {
+        const killed = answer({ status: 'killed', signal: 15 })
+        const ok = answer({ status: 'ok', snapshot_id: 's2' })
+        const WORDING = 'Stopped by the system, probably low on memory'
+
+        it('runs a killed scan a second time after 10 s, stays scanning meanwhile, and ends idle on success', async () => {
+            const port = rescanPort([killed, ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            expect(port.runs).toEqual(['scan'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'scanning', reason: null })
+            await port.advance(9_999)
+            expect(port.runs).toEqual(['scan'])
+            await port.advance(10_000)
+            expect(port.runs).toEqual(['scan', 'scan', 'dashboard'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
+        })
+
+        it('ends failed with the wording after a second failure, having scanned exactly twice', async () => {
+            const port = rescanPort([killed, killed])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(10_000)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan', 'scan'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: WORDING, refusedRoot: null })
+        })
+
+        it('retries a scan-failed whose class is lock, once', async () => {
+            const lock = answer({ status: 'scan-failed', reason: 'Another scan is using the graph; held 40s', failure_class: 'lock' })
+            const port = rescanPort([lock, lock])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(10_000)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan', 'scan'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: 'Another scan is using the graph; held 40s', refusedRoot: null })
+        })
+
+        it.each([
+            ['worker', answer({ status: 'scan-failed', reason: 'parser crashed', failure_class: 'worker' }), 'parser crashed'],
+            ['other', answer({ status: 'scan-failed', reason: 'disk full', failure_class: 'other' }), 'disk full'],
+            ['timed-out', answer({ status: 'timed-out' }), 'Took longer than 5 minutes'],
+        ])('does not retry a %s failure', async (_, stdout, reason) => {
+            const port = rescanPort([stdout, ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason, refusedRoot: null })
+        })
+
+        it('reloads the dashboard for a degraded ok, retries once, and ends failed with that reason if it stays degraded', async () => {
+            const degraded = answer({ status: 'ok', snapshot_id: 's2', degraded_reason: WORDING })
+            const port = rescanPort([degraded, degraded])
+            requestRescan(port.io)
+            await port.advance(0)
+            expect(port.runs).toEqual(['scan', 'dashboard'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'scanning', reason: null })
+            await port.advance(10_000)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan', 'dashboard', 'scan', 'dashboard'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: WORDING, refusedRoot: null })
+        })
+
+        it('ends idle when the retry of a degraded ok comes back whole', async () => {
+            const port = rescanPort([answer({ status: 'ok', snapshot_id: 's2', degraded_reason: WORDING }), ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(10_000)
+            expect(port.runs).toEqual(['scan', 'dashboard', 'scan', 'dashboard'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
+        })
+
+        it('runs no second scan when the session ended during the wait', async () => {
+            const port = rescanPort([killed, ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            mod.session.disabled = true
+            await port.advance(10_000)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
+        })
     })
 })

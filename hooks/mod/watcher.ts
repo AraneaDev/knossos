@@ -293,32 +293,63 @@ async function rescanSafely(io: Port, root?: string): Promise<void> {
   }
 }
 
+/** How long a killed or locked pane scan waits before its one retry. */
+const RESCAN_RETRY_MS = 10_000
+
+/** How one scan of a rescan ended: landed (whole, or with a language missing), failed with a reason, or found no binary. */
+type Landed = { kind: 'ok'; degraded: string | null } | { kind: 'failed'; reason: string; refusedRoot: string | null; retry: boolean } | { kind: 'off' }
+
 /**
  * Rescans the project through the wrapper's `scan` (incrementally, or the first
  * full scan when `root` was only just allowed), then
  * reloads the dashboard so the pane draws the new snapshot. The header shows
  * `scanning…` meanwhile and the reason when it does not land.
+ *
+ * A scan the system killed, one that found the graph locked, or one that
+ * landed with a language missing because its worker was killed is tried once
+ * more after {@link RESCAN_RETRY_MS}: those are the failures that pass. A
+ * worker's own fault, a timeout and anything else would only fail again.
  */
 async function runRescan(io: Port, root?: string): Promise<void> {
   if (mod.session.disabled) return
   await io.state.rescan.update((): RescanState => ({ phase: 'scanning', reason: null }))
   await startMotion(io, null)
+  let landed = await scanOnce(io, root)
+  if (landed.kind === 'failed' ? landed.retry : landed.kind === 'ok' && landed.degraded !== null) {
+    // Still `scanning` while it waits; the watcher's own retry is a separate path.
+    await new Promise<void>(resolve => io.clock.after(RESCAN_RETRY_MS, resolve))
+    if (mod.session.disabled) {
+      await io.state.rescan.update((): RescanState => ({ phase: 'idle', reason: null }))
+      return
+    }
+    landed = await scanOnce(io, root)
+  }
+  if (landed.kind === 'off') {
+    await io.state.rescan.update((): RescanState => ({ phase: 'idle', reason: null }))
+    await disable(io)
+  } else if (landed.kind === 'failed') {
+    await io.state.rescan.update((): RescanState => ({ phase: 'failed', reason: landed.reason, refusedRoot: landed.refusedRoot }))
+  } else if (landed.degraded !== null) {
+    await io.state.rescan.update((): RescanState => ({ phase: 'failed', reason: landed.degraded, refusedRoot: null }))
+  } else {
+    await io.state.rescan.update((): RescanState => ({ phase: 'idle', reason: null }))
+  }
+}
+
+/** One run of the wrapper's `scan`; reloads the dashboard when it landed, and says whether another try could help. */
+async function scanOnce(io: Port, root?: string): Promise<Landed> {
   const started = await io.clock.now()
   const parsed = parseRescan(await exclusively(() => wrapper(io, 'scan', [], RESCAN_TIMEOUT_MS, root)))
   if (parsed?.status === 'ok' && typeof parsed.snapshot_id === 'string') await attributeScan(io, parsed.snapshot_id, started, await io.clock.now())
-  if (parsed?.status === 'no-binary') {
-    await io.state.rescan.update((): RescanState => ({ phase: 'idle', reason: null }))
-    await disable(io)
-    return
-  }
+  if (parsed?.status === 'no-binary') return { kind: 'off' }
   if (parsed?.status !== 'ok') {
     // A refused root is kept, so the pane can offer to allow it.
     const refused = parsed?.status === 'not-allowed' ? (parsed.refused_root ?? null) : null
-    await io.state.rescan.update((): RescanState => ({ phase: 'failed', reason: rescanReason(parsed), refusedRoot: refused }))
-    return
+    const retry = parsed?.status === 'killed' || (parsed?.status === 'scan-failed' && parsed.failure_class === 'lock')
+    return { kind: 'failed', reason: rescanReason(parsed), refusedRoot: refused, retry }
   }
   await refreshDashboard(io)
-  await io.state.rescan.update((): RescanState => ({ phase: 'idle', reason: null }))
+  return { kind: 'ok', degraded: typeof parsed.degraded_reason === 'string' && parsed.degraded_reason !== '' ? parsed.degraded_reason : null }
 }
 
 /**
