@@ -15,8 +15,6 @@ import { mod } from './state'
 /** The wrapper bounds claim at 15 s. */
 const CLAIM_TIMEOUT_MS = 20_000
 
-/** Whether a claim is under way: a second start while it runs adds nothing. */
-
 /**
  * Claims the folder the session is in and, when that put it on the roots
  * list or it is listed and knossos says it was never scanned, scans it. Every other answer (a folder
