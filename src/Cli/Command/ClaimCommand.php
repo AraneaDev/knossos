@@ -23,6 +23,8 @@ use Knossos\Roots\StartClaim;
  */
 final class ClaimCommand implements CliCommand
 {
+    use PreviewsAFolder;
+
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
@@ -30,20 +32,9 @@ final class ClaimCommand implements CliCommand
     }
 
     /** {@inheritDoc} */
-    public function allowedOptions(string $command): array
-    {
-        return ['db', 'json', 'execute'];
-    }
-
-    /** {@inheritDoc} */
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
-        $path = $positionals[0] ?? throw new InvalidArgumentException(
-            'Usage: knossos claim <path> [--execute] [--db=FILE] [--json]',
-        );
-        if (!is_dir($path)) {
-            throw new InvalidArgumentException(sprintf('%s is not an existing directory.', $path));
-        }
+        $path = $this->folder($positionals, 'Usage: knossos claim <path> [--execute] [--db=FILE] [--json]');
         $json = $context->options->flag($options, 'json');
         $started = AllowedRoots::normaliseRoot((string) realpath($path));
         $target = StartClaim::targetOf($path, self::home());

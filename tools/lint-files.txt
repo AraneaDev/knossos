@@ -96,6 +96,7 @@ php	src/Cli/Command/MaintenanceCommand.php
 php	src/Cli/Command/MetaCommand.php
 php	src/Cli/Command/NodeHandOver.php
 php	src/Cli/Command/PluginCommand.php
+php	src/Cli/Command/PreviewsAFolder.php
 php	src/Cli/Command/ProjectListCommand.php
 php	src/Cli/Command/QueryCommand.php
 php	src/Cli/Command/RootsCommand.php
@@ -106,6 +107,7 @@ php	src/Cli/Command/SessionDiffCommand.php
 php	src/Cli/Command/TuiCommand.php
 php	src/Cli/Command/WatchCommand.php
 php	src/Cli/Command/WebCommand.php
+php	src/Cli/DirectoryArgument.php
 php	src/Cli/ProjectDatabaseLocator.php
 php	src/Cli/ProjectReference.php
 php	src/Configuration/EnricherDefinition.php
@@ -171,6 +173,7 @@ php	src/Enrichment/NativeNodeIndex.php
 php	src/Enrichment/Profiles.php
 php	src/Enrichment/ValidatedEnrichment.php
 php	src/Filesystem/AtomicFile.php
+php	src/Filesystem/JsonFile.php
 php	src/Filesystem/RegularFileOpener.php
 php	src/Filesystem/RelativePathRule.php
 php	src/Git/DirtyPathResolver.php

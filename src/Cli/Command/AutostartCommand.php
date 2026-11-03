@@ -7,6 +7,7 @@ namespace Knossos\Cli\Command;
 use InvalidArgumentException;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
+use Knossos\Cli\DirectoryArgument;
 use Knossos\Roots\AllowedRoots;
 use Knossos\Roots\StartClaim;
 use Knossos\Runtime\PaneAutostart;
@@ -34,12 +35,7 @@ final class AutostartCommand implements CliCommand
     /** {@inheritDoc} */
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
-        $path = $positionals[0] ?? throw new InvalidArgumentException(
-            'Usage: knossos autostart <path> [--set=on|off] [--db=FILE] [--json]',
-        );
-        if (!is_dir($path)) {
-            throw new InvalidArgumentException(sprintf('%s is not an existing directory.', $path));
-        }
+        $path = DirectoryArgument::of($positionals, 'Usage: knossos autostart <path> [--set=on|off] [--db=FILE] [--json]');
         $set = $context->options->single($options, 'set');
         if ($set !== null && $set !== 'on' && $set !== 'off') {
             throw new InvalidArgumentException('--set takes on or off.');
