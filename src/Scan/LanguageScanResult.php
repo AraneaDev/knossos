@@ -13,7 +13,7 @@ final readonly class LanguageScanResult
      * @param list<object> $cacheEntries
      * @param array<string, mixed> $scannerMetadata
      * @param array<string, float> $stageMilliseconds
-     * @param list<array{owner: string, code: string, message: string}> $workerDiagnostics
+     * @param list<array{owner: string, code: string, message: string, terminating_signal?: int}> $workerDiagnostics
      *        Languages whose worker failed. Not Diagnostic objects: a worker
      *        failure has no source file to point at, and Evidence requires one.
      * @param array<string, array{files: int, source_bytes: int, source_bytes_used: int}> $batchBudgets

@@ -8,6 +8,8 @@ use Knossos\Discovery\SourceClassifier;
 use Knossos\Filesystem\RegularFileOpener;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Scan\LanguageDescriptor;
+use Knossos\Scan\ScanFailureClass;
+use Knossos\Scan\ScanFailureLog;
 use Knossos\Scanner\Worker\ProcessScannerClient;
 use PDO;
 use Throwable;
@@ -98,6 +100,7 @@ final readonly class DoctorService
         if ($this->databasePath !== ':memory:') {
             $this->check($checks, 'data.writable', fn(): string => is_writable(dirname($this->databasePath)) ? dirname($this->databasePath) : throw new \RuntimeException('Data directory is not writable.'));
         }
+        $checks[] = $this->scanFailures();
         $checks[] = RegularFileOpener::usesHelper()
             ? ['name' => 'filesystem.opener', 'status' => 'skipped', 'detail' => 'helper process per file; install ext-ffi with ffi.enable=1 for faster scans']
             : ['name' => 'filesystem.opener', 'status' => 'ok', 'detail' => 'ffi'];
@@ -110,6 +113,32 @@ final readonly class DoctorService
         $count = static fn(string $status): int => count(array_filter($checks, static fn(array $check): bool => $check['status'] === $status));
 
         return ['ok' => $count('error') === 0, 'warnings' => $count('warning'), 'checks' => $checks];
+    }
+
+    /**
+     * What the scan failure log holds: a warning for a failure under a day old, so a pane that
+     * keeps failing has its reason named here, and ok for an empty log or older lines.
+     *
+     * @return array{name: string, status: string, detail: string}
+     */
+    private function scanFailures(): array
+    {
+        $recent = ScanFailureLog::forDatabase($this->databasePath)?->recent(50) ?? [];
+        if ($recent === []) {
+            return ['name' => 'scan.failures', 'status' => 'ok', 'detail' => 'none recorded'];
+        }
+        $fresh = array_values(array_filter($recent, static fn(array $failure): bool => (strtotime((string) ($failure['at'] ?? '')) ?: 0) > time() - 86400));
+        if ($fresh === []) {
+            return ['name' => 'scan.failures', 'status' => 'ok', 'detail' => 'none in the last 24 hours'];
+        }
+        $lines = array_map(static fn(array $failure): string => sprintf(
+            '%s (%s, started by %s)',
+            ScanFailureClass::wording((string) ($failure['class'] ?? 'other'), (string) ($failure['message'] ?? ''), isset($failure['signal']) ? (int) $failure['signal'] : null),
+            (string) ($failure['root'] ?? 'unknown'),
+            (string) ($failure['started_by'] ?? 'unknown'),
+        ), array_slice($fresh, 0, 3));
+
+        return ['name' => 'scan.failures', 'status' => 'warning', 'detail' => sprintf('%d in the last 24 hours, latest first: %s', count($fresh), implode('; ', $lines))];
     }
 
     /**

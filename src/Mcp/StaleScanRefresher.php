@@ -110,7 +110,7 @@ final readonly class StaleScanRefresher
             return [['refresh_if_stale: the project root is unknown; serving the last complete graph.'], $snapshot];
         }
         try {
-            $this->scanner->scan($root, new ScanOptions(cancellation: $cancellation));
+            $this->scanner->scan($root, new ScanOptions(cancellation: $cancellation, startedBy: 'refresh'));
             return [[], null];
         } catch (ScanCancelledException $cancelled) {
             // A client-requested cancellation is not a rescan failure to paper

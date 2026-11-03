@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Knossos\Query;
 
 use Knossos\Roots\AllowedRoots;
+use Knossos\Scan\ScanFailureClass;
+use Knossos\Scan\ScanFailureLog;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\ScanTarget;
+use Knossos\Scanner\Worker\WorkerException;
 use PDO;
 use Throwable;
 
@@ -42,7 +45,9 @@ final readonly class RescanService
      * Rescan the project that owns `$path`, or say why not.
      *
      * Statuses: `ok`, `not-allowed` (with `roots_file` and `refused_root`),
-     * `missing`, `unscanned` and `scan-failed` (with `reason`).
+     * `missing`, `unscanned` and `scan-failed` (with `reason`, the wording for the
+     * `failure_class` the scan failed with). An `ok` scan whose worker was killed
+     * carries a `degraded_reason`.
      *
      * @return array<string, mixed>
      */
@@ -51,7 +56,7 @@ final readonly class RescanService
         $absolute = realpath($path) ?: $path;
         $envelope = [
             'path' => $absolute, 'project_root' => null, 'project_id' => null, 'snapshot_id' => null,
-            'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'roots_file' => null, 'refused_root' => null,
+            'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'failure_class' => null, 'signal' => null, 'degraded_reason' => null, 'roots_file' => null, 'refused_root' => null,
         ];
         [$allowed, $project, $refusal] = (new ScanTarget($this->pdo, $this->databasePath))->resolve($absolute);
         $first = $project === null && ($refusal['status'] ?? null) === 'unscanned' && self::isAllowedRoot($allowed, $absolute);
@@ -60,12 +65,22 @@ final readonly class RescanService
         }
         $root = $first ? $absolute : (string) $project['root_realpath'];
         $started = hrtime(true);
+        $disarm = ScanFailureLog::forDatabase($this->databasePath)?->watchForFatal($root, 'pane') ?? static function (): void {};
         try {
             // Recorded in the ledger, so a turn brief whose edits this scan took in can still report them.
-            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: $first ? 'full' : 'incremental'));
+            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: $first ? 'full' : 'incremental', startedBy: 'pane'));
         } catch (Throwable $failure) {
-            return ['status' => 'scan-failed', 'reason' => $failure->getMessage(), 'project_root' => $root] + $envelope;
+            $class = ScanFailureClass::of($failure);
+            $signal = $failure instanceof WorkerException ? $failure->terminatingSignal : null;
+
+            $disarm();
+
+            return ['status' => 'scan-failed', 'reason' => ScanFailureClass::wording($class, $failure->getMessage(), $signal), 'failure_class' => $class, 'signal' => $signal, 'project_root' => $root] + $envelope;
         }
+
+        $disarm();
+        $signals = array_values($scan->data['worker_signals'] ?? []);
+        $degradedBy = $signals === [] ? null : (int) $signals[0];
 
         return [
             'status' => 'ok',
@@ -74,6 +89,9 @@ final readonly class RescanService
             'snapshot_id' => $scan->snapshotId,
             'scanned_at' => time(),
             'scan_ms' => intdiv(hrtime(true) - $started, 1_000_000),
+            // A first scan lands with a language missing when its worker was killed; saying so lets the pane try again.
+            'degraded_reason' => $degradedBy === null ? null : ScanFailureClass::wording(ScanFailureClass::KILLED, '', $degradedBy),
+            'signal' => $degradedBy,
         ] + $envelope;
     }
 

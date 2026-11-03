@@ -234,4 +234,72 @@ final class RescanServiceTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /** An installation whose PHP worker kills itself, so a scan sees a worker an outside signal ended. */
+    private function installationWithKilledWorker(): string
+    {
+        $installation = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($installation . '/workers/php/bin', 0o777, true);
+        file_put_contents($installation . '/workers/php/bin/worker', "<?php\nposix_kill(posix_getpid(), SIGKILL);\n");
+
+        return $installation;
+    }
+
+    #[Group('query')]
+    public function testAKilledWorkerIsScanFailedWithTheWordingAndItsClass(): void
+    {
+        if (!function_exists('posix_kill')) {
+            $this->markTestSkipped('posix is required to kill a worker.');
+        }
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        $installation = $this->installationWithKilledWorker();
+        try {
+            $file = $root . '/src/Core/Greeter.php';
+            file_put_contents($file, file_get_contents($file) . "\n// touched\n");
+            $result = (new RescanService($pdo, ':memory:', $installation))->rescan($root);
+            assertSame('scan-failed', $result['status']);
+            assertSame('killed', $result['failure_class']);
+            assertSame('Stopped by the system, probably low on memory', $result['reason']);
+            assertSame(null, $result['degraded_reason']);
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($installation);
+        }
+    }
+
+    #[Group('query')]
+    public function testAFirstScanWhoseWorkerWasKilledIsOkButSaysItIsDegraded(): void
+    {
+        if (!function_exists('posix_kill')) {
+            $this->markTestSkipped('posix is required to kill a worker.');
+        }
+        [$pdo, $root] = $this->unscannedFixture();
+        $installation = $this->installationWithKilledWorker();
+        try {
+            putenv('KNOSSOS_ALLOWED_ROOTS=' . (string) realpath($root) . '/');
+            $result = (new RescanService($pdo, ':memory:', $installation))->rescan($root);
+            assertSame('ok', $result['status']);
+            assertSame('Stopped by the system, probably low on memory', $result['degraded_reason']);
+            assertSame(null, $result['failure_class']);
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($installation);
+        }
+    }
+
+    #[Group('query')]
+    public function testAScanThatFailsOtherwiseIsClassedOther(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $file = $root . '/src/Core/Greeter.php';
+            file_put_contents($file, file_get_contents($file) . "\n// touched\n");
+            $result = (new RescanService($pdo, ':memory:', $root . '/no-installation'))->rescan($root);
+            assertSame('scan-failed', $result['status']);
+            assertSame(true, in_array($result['failure_class'], ['worker', 'other'], true));
+            assertSame(null, $result['degraded_reason']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }

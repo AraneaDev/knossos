@@ -16,7 +16,7 @@ import { CARD_BG, declaredOf, huesOf, SELECTED_BG } from '../lib/palette'
 import { rasterOf, rasterTheme } from '../lib/raster'
 import { FILE_PRESS } from '../lib/editor'
 import type { Port } from './port'
-import { fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
+import { failedWhy, fieldRooms, noteSpinners, paneSource, spunRow } from './frame'
 import { cardPlace } from '../lib/place'
 import type { Handlers } from './input'
 import { fieldKey, mod } from './state'
@@ -311,7 +311,7 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
     return null
   }
   const d = await io.state.dashboard.read()
-  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), await io.clock.now(), d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined)
+  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), await io.clock.now(), d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined, await failedWhy(io))
   mod.pane.bandText = model?.text ?? null
   if (model === null) return null
   const { Box, Button, Text } = resolve()

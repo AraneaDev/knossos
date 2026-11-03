@@ -1418,6 +1418,12 @@ describe('the allow-root offer', () => {
         widthsFit(emptyRows('unscanned', offer(phase), columns), columns)
       }
     }
+    // A scan that failed says why in the empty pane, and keeps the one action that runs another.
+    const failed = textOf(emptyRows('unscanned', null, 80, undefined, false, 'Stopped by the system, probably low on memory'))
+    expect(failed).toContain('The scan failed')
+    expect(failed).toContain('Stopped by the system, probably low on memory')
+    expect(failed).not.toContain('No architecture graph yet')
+    expect(keysOf(emptyRows('unscanned', null, 80, undefined, false, 'x'))).toEqual(['q:scan-ask'])
     // Refused, the one action is the offer; there is no second one beside it.
     expect(keysOf(emptyRows('unscanned', offer('idle'), 60))).toEqual(['a:allow'])
   })
@@ -1744,6 +1750,17 @@ describe('the header: the project, where its checkout stands, its languages and 
     expect(at(79)).toMatch(/^Knossos-MCP +(79 · narrow +|narrow ━*▮─* medium +79\/80 +)?stale 11h {3}r: rescan$/)
     expect(at(40)).toMatch(/^Knossos-MCP +stale 11h {3}r: rescan$/)
     for (const columns of [10, 16, 20, 24, 30]) expect(rowWidth(titleRow(pane(), columns, 'narrow')), `${columns}`).toBeLessThanOrEqual(columns)
+  })
+
+  it('cuts a reason that does not fit rather than dropping it', () => {
+    const reason = 'Another scan is using the graph; A scan is already running (pid 4242, held 40s) and then some more words'
+    const failed = pane({ status: { tone: 'alert', text: 'scan failed', note: reason } })
+    for (const columns of [100, 120, 160]) {
+      const line = plainText(titleRow(failed, columns, columns <= 130 ? 'medium' : 'wide'))
+      expect(rowWidth(titleRow(failed, columns, columns <= 130 ? 'medium' : 'wide')), `${columns}`).toBeLessThanOrEqual(columns)
+      expect(line, `${columns}`).toContain('Another scan is using')
+      expect(line, `${columns}`).toContain('scan failed')
+    }
   })
 
   it('draws the status as a pill in its tone, the words on the fill, and why beside it', () => {

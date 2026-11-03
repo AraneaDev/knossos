@@ -150,6 +150,10 @@ Usage:
                  broad to allow unasked, fixed for a container, or error with the
                  reason; every status exits 0, because the hooks that call it turn
                  a nonzero exit into silence)
+  knossos record-scan-failure <path> --class=C [--signal=N] [--started-by=S] [--db=FILE]
+                (for the hook wrappers: keeps a scan that was killed or timed out in
+                 scan-failures.jsonl beside the database, where doctor reads it; C is
+                 killed, lock, worker, other, timed-out or brief-timeout)
   knossos autostart <path> [--set=on|off] [--db=FILE] [--json]
   knossos enricher list [--db=FILE] [--json]
   knossos enricher add <name> [--timeout=N] [--env=NAME=VALUE]... [--kinds=a,b]

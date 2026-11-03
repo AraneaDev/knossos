@@ -25,7 +25,7 @@ const FILE_OBJECTS = ['file']
 const LEDGER = new Set([...DASH, 'no-git'])
 const LEDGER_ARRAYS = ['tests']
 const LEDGER_OBJECTS = ['files']
-const RESCAN = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'error', 'no-binary'])
+const RESCAN = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'killed', 'timed-out', 'crashed', 'error', 'no-binary'])
 // `session-head`: a commit, or no git to read one from.
 const HEAD = new Set(['ok', 'no-git'])
 
@@ -326,6 +326,19 @@ export const BUSY_CODE = 'KNOSSOS_DATABASE_BUSY'
 /** What the pane says for such a write. */
 export const BUSY_SAID = 'a scan is committing; try again in a moment'
 
+/**
+ * Whether a scan ended by `signal` is worth trying again: SIGKILL from the kernel and SIGTERM from a memory
+ * guard such as earlyoom, or a signal nobody named. Any other signal is somebody's decision, or a crash.
+ */
+export function memoryGuardSignal(signal: number | null | undefined): boolean {
+  return signal === undefined || signal === null || signal === 9 || signal === 15
+}
+
+/** What to say of a scan ended by `signal`: the usual cause for the two a memory guard sends, the bare fact for any other. */
+function killedWording(signal: number | null | undefined): string {
+  return memoryGuardSignal(signal) ? 'Stopped by the system, probably low on memory' : `Ended by signal ${signal}`
+}
+
 /** Why a rescan did not land, in a few words for the pane's header. */
 export function rescanReason(rescan: Rescan | null): string {
   if (rescan === null) return 'knossos said nothing'
@@ -333,6 +346,11 @@ export function rescanReason(rescan: Rescan | null): string {
   if (rescan.status === 'missing') return 'the project is gone'
   if (rescan.status === 'unscanned') return 'never scanned'
   if (rescan.status === 'scan-failed') return rescan.reason ?? 'the scan failed'
+  // Said by the wrapper, which saw the process end: what usually ends one, and no more than that.
+  if (rescan.status === 'killed') return killedWording(rescan.signal)
+  if (rescan.status === 'timed-out') return 'Took longer than 5 minutes'
+  if (rescan.status === 'crashed') return `Knossos stopped unexpectedly (exit ${rescan.exit ?? '?'}); see knossos doctor`
+  if (rescan.status === 'error' && typeof rescan.reason === 'string' && rescan.reason !== '') return rescan.reason
   return 'knossos could not run it'
 }
 

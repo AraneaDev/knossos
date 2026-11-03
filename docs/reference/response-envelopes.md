@@ -25,6 +25,17 @@ prints the raw envelope: no compaction, no `staleness`, no `next_steps`, no
 | `next_steps`  | MCP only       | Up to three suggested follow-up calls. Omitted when empty.       |
 | `meta`        | MCP only       | Envelope accounting: size, verbosity, evidence shown vs. total.  |
 
+### `scan_project` data: `worker_signals`
+
+A scan that succeeds with a language missing, because its worker was ended by
+a signal, carries `data.worker_signals`: an object from the scanner that was
+ended (`scanner_php`, say) to the signal number. The key is absent when no
+worker was signalled. `degraded_languages` still names the missing languages;
+the signal says the cause was outside the scan. 9 and 15 are what a host
+memory guard such as earlyoom sends, so those two usually mean low memory;
+any other number is somebody else's decision or a crash. Knossos never sends
+these signals to a worker during a scan.
+
 ## Verbosity
 
 Every tool that returns query results accepts `verbosity`, which is `compact` by

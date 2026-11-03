@@ -47,3 +47,23 @@ find_knossos() {
     done
     return 1
 }
+
+# Keeps a failure in the log beside the database, where `knossos doctor` reads
+# it:
+#
+#   record_scan_failure <project dir> <class> [<signal> [<started by>]]
+#
+# Bounded to 3 s where `timeout` exists, and a failure of its own is ignored:
+# the caller has already said what it had to say, and a session must never wait
+# on, or break over, a note about a failure.
+record_scan_failure() {
+    _knossos_signal=${3:-}
+    _knossos_started=${4:-}
+    _knossos_bin=$(find_knossos) || return 0
+    if _knossos_timeout=$(find_timeout); then
+        "$_knossos_timeout" 3 "$_knossos_bin" record-scan-failure "$1" --class="$2" ${_knossos_signal:+"--signal=$_knossos_signal"} ${_knossos_started:+"--started-by=$_knossos_started"} >/dev/null 2>&1
+    else
+        "$_knossos_bin" record-scan-failure "$1" --class="$2" ${_knossos_signal:+"--signal=$_knossos_signal"} ${_knossos_started:+"--started-by=$_knossos_started"} >/dev/null 2>&1
+    fi
+    return 0
+}

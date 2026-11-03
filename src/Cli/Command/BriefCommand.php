@@ -12,6 +12,7 @@ use Knossos\Query\PaneCommands;
 use Knossos\Query\RescanService;
 use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\RuntimeFactory;
+use Knossos\Scan\ScanFailureLog;
 use Throwable;
 
 /**
@@ -63,15 +64,32 @@ final class BriefCommand implements CliCommand
             [$path, $name] = PaneCommands::target($command, $positionals);
             // A project id in place of the path: answer for that project's root.
             [$path, $databasePath] = (new ProjectDatabaseLocator())->target($path, $options, $context);
-            $result = is_file($databasePath) || ($command === 'rescan' && $this->isExactAllowedRoot($path, $databasePath))
-                ? $this->answer($command, $path, $name, $databasePath, $options, $context)
-                : ['status' => 'unscanned', 'path' => realpath($path) ?: $path];
-            $context->output($result, $json, (string) $result['status']);
         } catch (Throwable) {
             if ($json) {
                 $context->output(['status' => 'error'], true, '');
             }
+
+            return CliCommand::EXIT_OK;
         }
+        try {
+            $result = is_file($databasePath) || ($command === 'rescan' && $this->isExactAllowedRoot($path, $databasePath))
+                ? $this->answer($command, $path, $name, $databasePath, $options, $context)
+                : ['status' => 'unscanned', 'path' => realpath($path) ?: $path];
+            $context->output($result, $json, (string) $result['status']);
+        } catch (Throwable $failure) {
+            // A database that cannot be opened fails every command; for the ones that scan, the reason is kept
+            // where `knossos doctor` reads it, and it is said, so the pane need not guess.
+            // A refused argument is the caller's mistake and needs no account; anything else is the installation's.
+            $refused = $failure instanceof \InvalidArgumentException;
+            $reason = mb_strcut($failure->getMessage(), 0, 300);
+            if (!$refused && in_array($command, ['rescan', 'turn-brief'], true)) {
+                ScanFailureLog::forDatabase($databasePath)?->recordThrowable(realpath($path) ?: $path, $command === 'rescan' ? 'pane' : 'turn', $failure, hrtime(true));
+            }
+            if ($json) {
+                $context->output($refused ? ['status' => 'error'] : ['status' => 'error', 'reason' => $reason], true, '');
+            }
+        }
+
         return CliCommand::EXIT_OK;
     }
 

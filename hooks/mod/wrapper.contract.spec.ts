@@ -335,3 +335,187 @@ describe('the local and the container wrapper accept and refuse the same argumen
     }
   })
 })
+
+/**
+ * A scan that was killed from outside or ran out of time says so, and only a
+ * scan does: the reason is known to the wrapper alone, which saw the process
+ * end. Each wrapper is run for real with stubs that end themselves the way a
+ * signal or the bound would, and the recording call the wrapper makes
+ * afterwards is read back from what the stub saw.
+ */
+describe('a scan the system killed or the bound stopped', () => {
+  let stubs: string
+  let seen: string
+
+  beforeAll(() => {
+    stubs = join(work, 'ending')
+    seen = join(work, 'ending-ran')
+    mkdirSync(stubs, { recursive: true })
+    // Stands for the binary and for docker: it records every run, ends itself as MODE says for the scan, and takes a recording call quietly.
+    writeFileSync(
+      join(stubs, 'stub'),
+      `#!/bin/sh
+printf '%s\\n' "$*" >> '${seen}'
+case "$*" in
+  *record-scan-failure*) [ -z "\${RECORD_SLEEP:-}" ] || sleep "$RECORD_SLEEP"; exit 0 ;;
+  *'rm -f'*) exit 0 ;;
+esac
+case "\${MODE:-}" in
+  term) kill -TERM $$ ;;
+  kill) kill -KILL $$ ;;
+  segv) kill -SEGV $$ ;;
+  crash) exit 255 ;;
+  fatal) printf 'Fatal error: Allowed memory size exhausted\\n'; exit 255 ;;
+  deaf) trap '' TERM; exec sleep 20 ;;
+  hang) exec sleep 10 ;;
+  fail) printf '%s\\n' '{"status":"error"}'; exit 3 ;;
+esac
+printf '%s\\n' '{"status":"ok"}'
+`,
+      { mode: 0o755 },
+    )
+    for (const name of ['knossos', 'docker']) writeFileSync(join(stubs, name), readFileSync(join(stubs, 'stub'), 'utf8'), { mode: 0o755 })
+  })
+
+  beforeEach(() => rmSync(seen, { force: true }))
+
+  const runs = (): string[] => (existsSync(seen) ? readFileSync(seen, 'utf8').split('\n').filter(l => l !== '') : [])
+  const recordings = (): string[] => runs().filter(l => l.includes('record-scan-failure'))
+  /** The recording call is made in the background by the container wrappers: wait for it. */
+  const recorded = async (): Promise<string[]> => {
+    for (let i = 0; i < 40 && recordings().length === 0; i++) await new Promise(resolve => setTimeout(resolve, 50))
+    return recordings()
+  }
+
+  /** Runs the wrapper of `variant` for `sub` with the stubs ending as `mode` says; the exit status and what it printed. */
+  const run = (variant: 'local' | 'container', sub: string, mode: string, env: Record<string, string> = {}) =>
+    new Promise<{ code: number; stdout: string }>(resolve =>
+      execFile(
+        'sh',
+        [join(work, variant, 'hooks/scripts/knossos-run.sh'), sub, project],
+        { env: { ...process.env, MODE: mode, KNOSSOS_BIN: join(stubs, 'knossos'), KNOSSOS_ROOTS_FILE: join(work, 'roots.json'), PATH: `${stubs}:${process.env.PATH ?? ''}`, ...env }, timeout: 20_000 },
+        (err, stdout) => resolve({ code: err === null ? 0 : ((err as { code?: number }).code ?? 1), stdout }),
+      ),
+    )
+
+  describe.each(['local', 'container'] as const)('through the %s wrapper', variant => {
+    it('says killed with the signal, exits 0, and keeps the reason', async () => {
+      const result = await run(variant, 'scan', 'term')
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'killed', signal: 15 })
+      const [recording] = await recorded()
+      expect(recording).toContain(`record-scan-failure ${project} --class=killed --signal=15 --started-by=pane`)
+    })
+
+    it.each([
+      ['SIGKILL', 'kill', 9],
+      ['SIGTERM', 'term', 15],
+      ['SIGSEGV', 'segv', 11],
+    ])('names the signal a scan ended on: %s', async (_, mode, signal) => {
+      const result = await run(variant, 'scan', mode)
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'killed', signal })
+      const [recording] = await recorded()
+      expect(recording).toContain(`--class=killed --signal=${signal} --started-by=pane`)
+    })
+
+    it('says crashed with the exit status for a scan that died without an answer, and records nothing', async () => {
+      const result = await run(variant, 'scan', 'crash')
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'crashed', exit: 255 })
+      expect(await recorded()).toEqual([])
+    })
+
+    it('says crashed for a fatal printed on stdout too, and still exits 0', async () => {
+      const result = await run(variant, 'scan', 'fatal')
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'crashed', exit: 255 })
+    })
+
+    it('says timed-out when the bound fires, exits 0, and keeps the reason', async () => {
+      const result = await run(variant, 'scan', 'hang', { KNOSSOS_RUN_TIMEOUT: '1' })
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'timed-out' })
+      const [recording] = await recorded()
+      expect(recording).toContain(`record-scan-failure ${project} --class=timed-out --started-by=pane`)
+      expect(recording).not.toContain('--signal')
+    })
+
+    it('reads a run that outlasted its bound before dying of KILL as timed out, not as low memory', async () => {
+      // -k only exists in the container wrapper; the local one ends the run at the bound with TERM.
+      if (variant === 'local') return
+      const result = await run(variant, 'scan', 'deaf', { KNOSSOS_RUN_TIMEOUT: '1' })
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'timed-out' })
+      const [recording] = await recorded()
+      expect(recording).toContain('--class=timed-out')
+    }, 15_000)
+
+    it('stays silent for the binary failing with an answer of its own', async () => {
+      const result = await run(variant, 'scan', 'fail')
+      expect(result).toEqual({ code: 0, stdout: '' })
+      expect(await recorded()).toEqual([])
+    })
+
+    it('stays silent for any other subcommand that is killed or stopped', async () => {
+      expect(await run(variant, 'dashboard', 'term')).toEqual({ code: 0, stdout: '' })
+      expect(await run(variant, 'dashboard', 'hang', { KNOSSOS_RUN_TIMEOUT: '1' })).toEqual({ code: 0, stdout: '' })
+      expect(await recorded()).toEqual([])
+    })
+  })
+})
+
+/** The session hook, which has its own bound, keeps a brief that ran out of time too, and still prints its one line. */
+describe('the session brief hook when the brief runs out of time', () => {
+  it.each([
+    ['local', 'session-brief.sh'],
+    ['container', 'session-brief-container.sh'],
+  ] as const)('%s: prints its one line, exits 0 and keeps the reason', async (variant, script) => {
+    const stubs = join(work, 'ending')
+    const seen = join(work, 'ending-ran')
+    rmSync(seen, { force: true })
+    const dir = join(work, `brief-${variant}`, 'hooks/scripts')
+    mkdirSync(dir, { recursive: true })
+    for (const name of ['guard.sh', 'lib.sh', script]) {
+      const text = readFileSync(join(SCRIPTS, name), 'utf8')
+      writeFileSync(join(dir, name), name === script ? text.replace(/__KNOSSOS_IMAGE__/g, 'img:1').replace(/__KNOSSOS_DATA__/g, '/srv/data') : text)
+    }
+    // A timeout tool that always reports the bound firing, so the hook need not wait out its real 3 s or 10 s.
+    const bin = join(work, `brief-${variant}-bin`)
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'timeout'), `#!/bin/sh\ncase "$*" in *record-scan-failure*) shift; while [ $# -gt 0 ] && case "$1" in -*|[0-9]*) true ;; *) false ;; esac; do shift; done; exec "$@" ;; esac\nexit 124\n`, { mode: 0o755 })
+    const result = await new Promise<{ code: number; stdout: string }>(resolve =>
+      execFile(
+        'sh',
+        [join(dir, script)],
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: project, KNOSSOS_BIN: join(stubs, 'knossos'), PATH: `${bin}:${stubs}:${process.env.PATH ?? ''}` }, timeout: 20_000 },
+        (err, stdout) => resolve({ code: err === null ? 0 : ((err as { code?: number }).code ?? 1), stdout }),
+      ),
+    )
+    expect(result.code).toBe(0)
+    expect(result.stdout).toMatch(/^Knossos brief timed out after \d+ s; run knossos session-brief /)
+    let recordings: string[] = []
+    for (let i = 0; i < 40 && recordings.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 50))
+      recordings = existsSync(seen) ? readFileSync(seen, 'utf8').split('\n').filter(l => l.includes('record-scan-failure')) : []
+    }
+    expect(recordings[0]).toContain(`record-scan-failure ${project} --class=brief-timeout`)
+  })
+
+  it.each([
+    ['local', 'session-brief.sh'],
+    ['container', 'session-brief-container.sh'],
+  ] as const)('%s: does not wait for the recording, which has its own bound', async (variant, script) => {
+    const dir = join(work, `brief-${variant}`, 'hooks/scripts')
+    const bin = join(work, `brief-${variant}-bin`)
+    const started = Date.now()
+    const result = await new Promise<{ code: number; stdout: string }>(resolve =>
+      execFile(
+        'sh',
+        [join(dir, script)],
+        { env: { ...process.env, RECORD_SLEEP: '2', CLAUDE_PROJECT_DIR: project, KNOSSOS_BIN: join(work, 'ending', 'knossos'), PATH: `${bin}:${join(work, 'ending')}:${process.env.PATH ?? ''}` }, timeout: 20_000 },
+        (err, stdout) => resolve({ code: err === null ? 0 : ((err as { code?: number }).code ?? 1), stdout }),
+      ),
+    )
+    expect(result.code).toBe(0)
+    expect(result.stdout).toMatch(/^Knossos brief timed out/)
+    expect(Date.now() - started).toBeLessThan(1500)
+  })
+})

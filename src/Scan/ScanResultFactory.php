@@ -87,6 +87,11 @@ final readonly class ScanResultFactory
         if ($fastPath !== null) {
             $data['fast_path'] = $fastPath;
         }
+        // Only when one happened: a worker an outside signal ended, by owner, so a caller can say why a language is missing.
+        $signals = array_column(array_filter($language->workerDiagnostics, static fn(array $diagnostic): bool => isset($diagnostic['terminating_signal'])), 'terminating_signal', 'owner');
+        if ($signals !== []) {
+            $data['worker_signals'] = $signals;
+        }
         return new ResultEnvelope(
             $result->projectId,
             $result->scanId,

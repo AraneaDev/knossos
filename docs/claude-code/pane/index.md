@@ -103,6 +103,10 @@ pill says. On a narrow pane the label is the first thing to give way, before
 the reason beside the pill; `r` still rescans. It runs an incremental scan under the same rules as a turn's, with
 `scanning…` and the age of the figures on show meanwhile. A rescan that fails
 turns the pill to `● scan failed`, says why beside it, and keeps the figures.
+A scan the system killed or that found the graph locked is tried once more
+after 10 seconds, with the pill still on `scanning…`. The reasons are kept in
+`scan-failures.jsonl` beside the database, and `knossos doctor` lists the ones
+from the last day.
 
 ### Layouts by width
 

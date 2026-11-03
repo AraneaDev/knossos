@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Knossos\Configuration\EnrichersFile;
 use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanFailureLog;
 use PDO;
 
 /**
@@ -21,6 +22,7 @@ use PDO;
 final readonly class ScannerFactory
 {
     private EnrichersFile $enrichers;
+    private ?ScanFailureLog $failures;
 
     /**
      * @param PDO $pdo the graph database the scans write
@@ -33,6 +35,7 @@ final readonly class ScannerFactory
         string $databasePath,
     ) {
         $this->enrichers = EnrichersFile::forDatabase($databasePath);
+        $this->failures = ScanFailureLog::forDatabase($databasePath);
     }
 
     /**
@@ -42,7 +45,7 @@ final readonly class ScannerFactory
      */
     public function ledgered(AllowedRoots|array $roots): LedgeredScanner
     {
-        return LedgeredScanner::local($this->pdo, $this->installationRoot, $roots, enrichers: $this->enrichers);
+        return LedgeredScanner::local($this->pdo, $this->installationRoot, $roots, enrichers: $this->enrichers, failures: $this->failures);
     }
 
     /**
@@ -54,6 +57,6 @@ final readonly class ScannerFactory
      */
     public function underOwnLease(AllowedRoots|array $roots): ProjectScanService
     {
-        return new ProjectScanService($this->pdo, $this->installationRoot, $roots, enrichers: $this->enrichers);
+        return new ProjectScanService($this->pdo, $this->installationRoot, $roots, enrichers: $this->enrichers, failures: $this->failures);
     }
 }

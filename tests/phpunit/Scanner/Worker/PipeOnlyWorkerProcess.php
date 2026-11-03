@@ -18,6 +18,9 @@ final class PipeOnlyWorkerProcess implements ProcessSupervisorInterface
 
     public bool $started = false;
 
+    /** @var array<string, mixed> fields of the status a test wants the worker to report instead of running */
+    public array $statusOverride = [];
+
     /** Number of liveness probes, i.e. completed readMessage() loop iterations. */
     public int $statusChecks = 0;
 
@@ -54,7 +57,7 @@ final class PipeOnlyWorkerProcess implements ProcessSupervisorInterface
     {
         ++$this->statusChecks;
 
-        return [
+        return $this->statusOverride + [
             'command' => '',
             'pid' => 0,
             'running' => true,

@@ -106,9 +106,10 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
  * habitual `q` there sends nothing. Outside Claude Code (`host`) there is no
  * one to ask: the offer is to scan it directly. While a rescan runs
  * (`scanning`) the pane says so, with its spinner, and offers nothing: the
- * graph it waits for lands on its own.
+ * graph it waits for lands on its own. A rescan that failed (`failure`, its
+ * reason) says so, and why, in place of the state it left behind.
  */
-export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web', scanning = false): Row[] {
+export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web', scanning = false, failure: string | null = null): Row[] {
   const width = Math.max(1, Math.min(CONTENT_MAX, columns))
   if (scanning) {
     return [
@@ -116,7 +117,9 @@ export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: num
       ...wrapWords('Knossos is scanning this project; the graph appears here when it is done.', width).map((line, i) => dimRow(`empty-${i}`, line, width)),
     ]
   }
-  const { head: heading, why, busy: spins } = NO_GRAPH[state]
+  const named = NO_GRAPH[state]
+  // A scan that failed is the answer to "why is there no graph", better than the state it left behind.
+  const { head: heading, why, busy: spins } = failure === null || allow !== null ? named : { head: 'The scan failed', why: failure, busy: undefined }
   const head: Row[] = [
     { key: 'empty-head', segments: [{ text: fit(spins === true ? busy(heading) : heading, width), bold: true, color: HEADING }] },
     ...wrapWords(why, width).map((line, i) => dimRow(`empty-${i}`, line, width)),
