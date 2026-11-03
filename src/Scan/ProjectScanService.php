@@ -102,10 +102,7 @@ final class ProjectScanService implements ProjectScanner
         try {
             return $this->run($root, $options, $startedAt);
         } catch (\Throwable $failure) {
-            // A cancelled scan is the caller's decision, not a failure to explain.
-            if (!$failure instanceof ScanCancelledException) {
-                $this->recordFailure($root, $options, ScanFailureClass::of($failure), $failure->getMessage(), $failure instanceof WorkerException ? $failure->terminatingSignal : null, $startedAt);
-            }
+            $this->failures?->recordThrowable($root, $options->startedBy, $failure, $startedAt);
             throw $failure;
         }
     }

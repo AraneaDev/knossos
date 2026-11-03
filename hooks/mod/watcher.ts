@@ -7,7 +7,7 @@
 import type { LiveState, RescanState, WatchEvent } from '../../types'
 import { activeBetween, FOLLOWED_SCAN_MS, lookbackMs, scanWindow } from '../lib/activity'
 import type { JobState } from '../lib/band'
-import { parseRescan, parseSessionLedger, parseTurnBrief, rescanReason } from '../lib/envelopes'
+import { memoryGuardSignal, parseRescan, parseSessionLedger, parseTurnBrief, rescanReason } from '../lib/envelopes'
 import type { TurnBrief } from '../lib/envelopes'
 import { ledgerFlashKeys } from '../lib/flash'
 import { changesInput } from '../lib/changes'
@@ -297,7 +297,7 @@ async function rescanSafely(io: Port, root?: string): Promise<void> {
 const RESCAN_RETRY_MS = 10_000
 
 /** How one scan of a rescan ended: landed (whole, or with a language missing), failed with a reason, or found no binary. */
-type Landed = { kind: 'ok'; degraded: string | null } | { kind: 'failed'; reason: string; refusedRoot: string | null; retry: boolean } | { kind: 'off' }
+type Landed = { kind: 'ok'; degraded: string | null; retry: boolean } | { kind: 'failed'; reason: string; refusedRoot: string | null; retry: boolean } | { kind: 'off' }
 
 /**
  * Rescans the project through the wrapper's `scan` (incrementally, or the first
@@ -315,7 +315,7 @@ async function runRescan(io: Port, root?: string): Promise<void> {
   await io.state.rescan.update((): RescanState => ({ phase: 'scanning', reason: null }))
   await startMotion(io, null)
   let landed = await scanOnce(io, root)
-  if (landed.kind === 'failed' ? landed.retry : landed.kind === 'ok' && landed.degraded !== null) {
+  if (landed.kind === 'failed' ? landed.retry : landed.kind === 'ok' && landed.retry) {
     // Still `scanning` while it waits; the watcher's own retry is a separate path.
     await new Promise<void>(resolve => io.clock.after(RESCAN_RETRY_MS, resolve))
     if (mod.session.disabled) {
@@ -345,11 +345,15 @@ async function scanOnce(io: Port, root?: string): Promise<Landed> {
   if (parsed?.status !== 'ok') {
     // A refused root is kept, so the pane can offer to allow it.
     const refused = parsed?.status === 'not-allowed' ? (parsed.refused_root ?? null) : null
-    const retry = parsed?.status === 'killed' || (parsed?.status === 'scan-failed' && parsed.failure_class === 'lock')
+    // Killed by a memory guard's signal, or the graph locked: both pass. Any other signal, or a crash, would only repeat.
+    const retry =
+      (parsed?.status === 'killed' && memoryGuardSignal(parsed.signal)) ||
+      (parsed?.status === 'scan-failed' && (parsed.failure_class === 'lock' || (parsed.failure_class === 'killed' && memoryGuardSignal(parsed.signal))))
     return { kind: 'failed', reason: rescanReason(parsed), refusedRoot: refused, retry }
   }
   await refreshDashboard(io)
-  return { kind: 'ok', degraded: typeof parsed.degraded_reason === 'string' && parsed.degraded_reason !== '' ? parsed.degraded_reason : null }
+  const degraded = typeof parsed.degraded_reason === 'string' && parsed.degraded_reason !== '' ? parsed.degraded_reason : null
+  return { kind: 'ok', degraded, retry: degraded !== null && memoryGuardSignal(parsed.signal) }
 }
 
 /**

@@ -12,6 +12,14 @@ const ok = (over: Partial<TurnBrief> = {}): TurnBrief => ({
 })
 const idle = { phase: 'idle' as const, lastAttemptAt: 1_000_000 }
 
+describe('bandModel with no brief', () => {
+  it('names why the scan failed when the pane knows', () => {
+    const failed = { phase: 'failed' as const, lastAttemptAt: 1 }
+    expect(bandModel(null, failed, 2)?.text).toBe('knossos · scan failed')
+    expect(bandModel(null, failed, 2, undefined, undefined, 'Stopped by the system, probably low on memory')?.text).toBe('knossos · scan failed: Stopped by the system, probably low on memory')
+  })
+})
+
 describe('formatAge', () => {
   it('seconds', () => expect(formatAge(12_000)).toBe('12s'))
   it('minutes', () => expect(formatAge(14 * 60_000)).toBe('14m'))

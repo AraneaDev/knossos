@@ -38,17 +38,34 @@ final class ScanFailureClass
         };
     }
 
+    /** `$message` without the project id the lock names: a 70-character id leaves no room for the rest in a pane header. */
+    private static function withoutProjectId(string $message): string
+    {
+        return (string) preg_replace(['/ for project project_[0-9a-f]+/', '/ \(project project_[0-9a-f]+\)/'], '', $message);
+    }
+
+    /**
+     * Whether `$signal` is one a host memory guard sends: SIGKILL from the kernel, SIGTERM from earlyoom and its kind.
+     * A scan ended by one is worth another try; any other signal is somebody's decision.
+     */
+    public static function isMemoryGuard(?int $signal): bool
+    {
+        return $signal === null || $signal === 9 || $signal === 15;
+    }
+
     /**
      * What to tell the person for a failure of `$class`.
      *
-     * A killed scan says what usually kills one and no more: the signal came
-     * from outside the scan, and which of several things sent it is not known.
+     * A scan ended by SIGKILL or SIGTERM says what usually sends those and no
+     * more: the signal came from outside the scan, and which of several things
+     * sent it is not known. Any other signal is named, since low memory is no
+     * likelier an explanation for it than anything else.
      */
     public static function wording(string $class, string $message, ?int $signal): string
     {
         return match ($class) {
-            self::KILLED => 'Stopped by the system, probably low on memory',
-            self::LOCK => 'Another scan is using the graph; ' . $message,
+            self::KILLED => self::isMemoryGuard($signal) ? 'Stopped by the system, probably low on memory' : sprintf('Ended by signal %d', $signal),
+            self::LOCK => 'Another scan is using the graph; ' . self::withoutProjectId($message),
             self::TIMED_OUT => 'Took longer than 5 minutes',
             default => $message,
         };

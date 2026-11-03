@@ -14,6 +14,7 @@ import { currentSession, peekKey, refreshDashboard, request, showComponent } fro
 import { readGitHead, settleBaseline } from './session-baseline'
 import { startDeliberately } from './start'
 import { parseAutostart, parseAutostartError } from '../lib/envelopes'
+import { failedWhy } from './frame'
 import { endWatcher, placed, wrapper } from './port'
 import type { Port } from './port'
 import { cyclesOf, mod, PANE } from './state'
@@ -110,7 +111,7 @@ async function tickAge(io: Port): Promise<void> {
   if (mod.pane.bandText === null && mod.pane.text === null) return
   const now = await io.clock.now()
   const d = await io.state.dashboard.read()
-  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), now, d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined)
+  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), now, d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined, await failedWhy(io))
   const pane = d?.status === 'ok' ? paneStatus(d, await io.state.refresh.read(), await io.state.rescan.read(), now, await io.state.live.read()).text : null
   const bandStale = mod.pane.bandText !== null && (model?.text ?? null) !== mod.pane.bandText
   const paneStale = mod.pane.text !== null && pane !== mod.pane.text

@@ -9,6 +9,7 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ProjectWriterLease;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Scan\ScanFailureLog;
 use Knossos\Scan\ScanLedger;
@@ -51,6 +52,7 @@ final readonly class LedgeredScanner implements ProjectScanner
      * @param ProjectScanService $service the scan itself
      * @param list<array<string, mixed>>|null $policies the policies to check; null reads the project's knossos.json
      * @param ProjectWriterLock|null $lock the project's write lease; the database's own unless a test gives one
+     * @param ScanFailureLog|null $failures where a failure outside the scan itself (waiting for the lease, writing the ledger) is kept
      */
     public function __construct(
         private PDO $pdo,
@@ -58,6 +60,7 @@ final readonly class LedgeredScanner implements ProjectScanner
         private AllowedRoots $roots,
         private ?array $policies = null,
         private ?ProjectWriterLock $lock = null,
+        private ?ScanFailureLog $failures = null,
     ) {}
 
     /**
@@ -70,7 +73,7 @@ final readonly class LedgeredScanner implements ProjectScanner
     public static function local(PDO $pdo, string $installationRoot, AllowedRoots|array $roots, ?array $policies = null, ?EnrichersFile $enrichers = null, ?ScanFailureLog $failures = null): self
     {
         $allowed = AllowedRoots::of($roots);
-        return new self($pdo, new ProjectScanService($pdo, $installationRoot, $allowed, enrichers: $enrichers, failures: $failures), $allowed, $policies);
+        return new self($pdo, new ProjectScanService($pdo, $installationRoot, $allowed, enrichers: $enrichers, failures: $failures), $allowed, $policies, failures: $failures);
     }
 
     /**
@@ -80,13 +83,13 @@ final readonly class LedgeredScanner implements ProjectScanner
      */
     public function scan(string $root, ScanOptions $options = new ScanOptions()): ResultEnvelope
     {
+        $startedAt = hrtime(true);
         $real = realpath($root) ?: $root;
         $project = (new ProjectRepository($this->pdo))->resolvePath($real);
         if ($project === null || (string) $project['root_realpath'] !== $real) {
             // A first scan has no project yet, but its id is the root's: wait for
             // another writer's lease on it as a rescan does, and hand the lease on.
-            $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))
-                ->acquire(ProjectScanService::projectIdOf($real), self::LEASE_WAIT_MS, $options->cancellation);
+            $lease = $this->acquire(ProjectScanService::projectIdOf($real), $real, $options, $startedAt);
             try {
                 return $this->service->scan($root, $options->withLease($lease));
             } finally {
@@ -95,17 +98,38 @@ final readonly class LedgeredScanner implements ProjectScanner
         }
         $projectId = (string) $project['id'];
         // Another writer's scan is mostly about to end: wait for it (unless the scan is cancelled), and scan what it left.
-        $lease = ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS, $options->cancellation);
+        $lease = $this->acquire($projectId, $real, $options, $startedAt);
         try {
             $ledger = new ScanLedger($this->pdo);
             $from = $ledger->activeSnapshot($projectId);
             $before = $ledger->hashes($projectId);
             $baselines = $this->baselines($projectId, $real, $before);
             $result = $this->service->scan($root, $options->withLease($lease));
-            $ledger->record($projectId, $from, $result->snapshotId, $before, $ledger->hashes($projectId), $baselines);
+            try {
+                $ledger->record($projectId, $from, $result->snapshotId, $before, $ledger->hashes($projectId), $baselines);
+            } catch (Throwable $failure) {
+                // The scan itself kept its own account; this failure came after it.
+                $this->failures?->recordThrowable($real, $options->startedBy, $failure, $startedAt);
+                throw $failure;
+            }
             return $result;
         } finally {
             $lease->release();
+        }
+    }
+
+    /**
+     * The project's write lease, waiting for another writer's scan to end.
+     * The wait happens before the scan service runs, so a lease that cannot be
+     * had is recorded here, with the failure log the scan itself writes to.
+     */
+    private function acquire(string $projectId, string $root, ScanOptions $options, int $startedAt): ProjectWriterLease
+    {
+        try {
+            return ($this->lock ?? new ProjectWriterLock($this->pdo))->acquire($projectId, self::LEASE_WAIT_MS, $options->cancellation);
+        } catch (Throwable $failure) {
+            $this->failures?->recordThrowable($root, $options->startedBy, $failure, $startedAt);
+            throw $failure;
         }
     }
 

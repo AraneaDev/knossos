@@ -6,6 +6,7 @@
  */
 import { allowInput, emptyRows, noGraphOf } from '../lib/empty-state'
 import { tierOf } from '../lib/table'
+import type { RescanState } from '../../types'
 import type { PaneInput } from '../lib/pane-types'
 import type { Row, Segment } from '../lib/types'
 import { BUSY_SPIN_MS, isBusy, spun } from '../lib/motion'
@@ -17,6 +18,13 @@ import { mod } from './state'
 
 /** What the pane's tree is drawn from: nothing (the mod is off), the empty state's rows, or the input of a tab or a detail. */
 export type PaneSource = { kind: 'off' } | { kind: 'empty'; rows: Row[] } | { kind: 'pane'; key: 'pane' | 'detail'; input: PaneInput }
+
+/** Why the pane's last rescan failed, for the band that has no brief to draw; null when it did not, or said nothing. */
+export async function failedWhy(io: Port): Promise<string | null> {
+  // A port that keeps no rescan state (a band drawn alone) has no reason to give.
+  const rescan = (await io.state.rescan.read()) as RescanState | undefined
+  return rescan?.phase === 'failed' ? rescan.reason : null
+}
 
 /** The pane's source for a pane `columns` wide, noting in state what the pane now shows (its text, its width, the empty state). */
 export async function paneSource(io: Port, columns: number, terminal: boolean): Promise<PaneSource> {
@@ -33,7 +41,7 @@ export async function paneSource(io: Port, columns: number, terminal: boolean): 
     mod.pane.emptyShown = true
     // Only the web's `scan it` starts a scan from the empty pane, so only there does the pane say one runs; Claude Code's is drawn as it was.
     const web = mod.session.host === 'web'
-    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, web ? 'web' : undefined, web && rescan.phase === 'scanning') }
+    return { kind: 'empty', rows: emptyRows(noGraphOf(d, await io.state.refresh.read()), offer, columns, web ? 'web' : undefined, web && rescan.phase === 'scanning', rescan.phase === 'failed' ? rescan.reason : null) }
   }
   const input = await currentInput(io, terminal)
   if (input === null) return { kind: 'empty', rows: [] }

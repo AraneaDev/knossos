@@ -88,6 +88,12 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColu
     const drawn = widthGauge(paneColumns, room)
     return drawn.length === 0 ? [] : [...drawn, { text: '   ' }]
   }
+  // The note cut to what is left beside the name and `right`; nothing when less than a few words would remain.
+  const cutNote = (right: Segment[]): Segment[] => {
+    if (input.status.note === undefined) return []
+    const room = columns - 1 - segmentsWidth(crumbs) - segmentsWidth(right) - 2
+    return room < 8 ? [] : [{ text: `${fit(input.status.note, room)}  `, dim: true }]
+  }
   // Each layout from the fullest down; the first that fits wins.
   const variants: [Segment[], Segment[]][] = [
     [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(Infinity), ...note, pill(input.status, input.pulse), ...rescan]],
@@ -97,6 +103,9 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColu
     [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status, input.pulse), ...rescan]],
     [crumbs, [...note, pill(input.status, input.pulse), ...rescan]],
     [crumbs, [...note, pill(input.status, input.pulse), ...rescanKey]],
+    // A reason too long for any of those is cut to the room the name and the pill leave, rather than dropped.
+    [crumbs, [...cutNote([pill(input.status, input.pulse), ...rescan]), pill(input.status, input.pulse), ...rescan]],
+    [crumbs, [...cutNote([pill(input.status, input.pulse), ...rescanKey]), pill(input.status, input.pulse), ...rescanKey]],
     [crumbs, [pill(input.status, input.pulse), ...rescan]],
     [crumbs, [pill(input.status, input.pulse), ...rescanKey]],
   ]

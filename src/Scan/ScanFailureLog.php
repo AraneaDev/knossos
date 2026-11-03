@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Scan;
 
+use Knossos\Cancellation\ScanCancelledException;
+use Knossos\Reconciliation\Milliseconds;
+use Knossos\Scanner\Worker\WorkerException;
 use Throwable;
 
 /**
@@ -50,28 +53,95 @@ final readonly class ScanFailureLog
             if ($line === false) {
                 return;
             }
-            $handle = @fopen($this->path, 'c+');
-            if ($handle === false) {
+            // The lock is its own file: the log is replaced by rename, and a lock on a
+            // file that is replaced would be held on one nobody reads any more.
+            $lock = @fopen($this->path . '.lock', 'c');
+            if ($lock === false) {
                 return;
             }
             try {
-                if (!flock($handle, LOCK_EX)) {
+                if (!flock($lock, LOCK_EX)) {
                     return;
                 }
-                $lines = self::lines((string) stream_get_contents($handle));
+                $existing = is_file($this->path) ? (string) @file_get_contents($this->path) : '';
+                $lines = self::lines($existing);
                 $lines[] = $line;
-                $kept = array_slice($lines, -self::KEEP);
-                ftruncate($handle, 0);
-                rewind($handle);
-                fwrite($handle, implode("\n", $kept) . "\n");
-                fflush($handle);
-                flock($handle, LOCK_UN);
+                $this->replaceWith(implode("\n", array_slice($lines, -self::KEEP)) . "\n");
             } finally {
-                fclose($handle);
+                fclose($lock);
             }
         } catch (Throwable) {
             // See the class comment.
         }
+    }
+
+    /**
+     * Keep the PHP fatal that ends the process, if one does, as a failure of the scan of `$root`.
+     *
+     * A fatal (memory exhaustion above all) skips every catch block, so nothing
+     * of the scan can say what happened; a shutdown function still runs. The
+     * returned closure disarms it once the scan has ended some other way.
+     *
+     * @return \Closure(): void
+     */
+    public function watchForFatal(string $root, string $startedBy): \Closure
+    {
+        $armed = true;
+        $startedAt = hrtime(true);
+        register_shutdown_function(function () use (&$armed, $root, $startedBy, $startedAt): void {
+            $error = $armed ? error_get_last() : null;
+            if ($error === null || !in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_RECOVERABLE_ERROR], true)) {
+                return;
+            }
+            // The fatal is often the memory limit itself; a line needs a little room to be written.
+            @ini_set('memory_limit', '-1');
+            $this->record([
+                'root' => $root,
+                'started_by' => $startedBy,
+                'class' => ScanFailureClass::OTHER,
+                'message' => $error['message'],
+                'elapsed_ms' => (int) round(Milliseconds::since($startedAt)),
+                'signal' => null,
+            ]);
+        });
+
+        return static function () use (&$armed): void {
+            $armed = false;
+        };
+    }
+
+    /**
+     * Put `$contents` in the log whole, or leave the log as it was.
+     *
+     * Written beside it and renamed over it, so a full disk costs the new line
+     * and never the lines already kept.
+     */
+    private function replaceWith(string $contents): void
+    {
+        $temporary = $this->path . '.' . getmypid() . '.tmp';
+        if (@file_put_contents($temporary, $contents) !== strlen($contents) || !@rename($temporary, $this->path)) {
+            @unlink($temporary);
+        }
+    }
+
+    /**
+     * Append the failure `$failure` ended a scan of `$root` with, `$startedAt` being an `hrtime(true)` reading from when it began.
+     *
+     * A cancelled scan is the caller's decision, not a failure to explain, and is not kept.
+     */
+    public function recordThrowable(string $root, string $startedBy, Throwable $failure, int $startedAt): void
+    {
+        if ($failure instanceof ScanCancelledException) {
+            return;
+        }
+        $this->record([
+            'root' => $root,
+            'started_by' => $startedBy,
+            'class' => ScanFailureClass::of($failure),
+            'message' => $failure->getMessage(),
+            'elapsed_ms' => (int) round(Milliseconds::since($startedAt)),
+            'signal' => $failure instanceof WorkerException ? $failure->terminatingSignal : null,
+        ]);
     }
 
     /**

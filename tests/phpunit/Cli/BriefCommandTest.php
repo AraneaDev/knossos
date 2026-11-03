@@ -330,6 +330,28 @@ final class BriefCommandTest extends KnossosTestCase
         }
     }
 
+    /** A database that is no database fails every command; the scan commands say why, and keep it. */
+    #[Group('cli')]
+    public function testACorruptDatabaseIsAnErrorWithItsReasonAndALogLine(): void
+    {
+        [$root, $data, $database, $context] = $this->freshInstall();
+        try {
+            file_put_contents($database, str_repeat('not a database ', 400));
+            [$status, $out] = $this->runJson('rescan', [$root], [], $context);
+
+            assertSame(0, $status);
+            assertSame('error', $out['status']);
+            assertSame(true, is_string($out['reason']) && $out['reason'] !== '');
+            $kept = (new \Knossos\Scan\ScanFailureLog(dirname($database) . '/scan-failures.jsonl'))->recent(5);
+            assertSame(1, count($kept));
+            assertSame('pane', $kept[0]['started_by']);
+            assertSame($out['reason'], $kept[0]['message']);
+        } finally {
+            $this->removeTempTree($root);
+            $this->removeTempTree($data);
+        }
+    }
+
     #[Group('cli')]
     public function testRescanOfAPathInsideAnAllowedRootStillCreatesNoDatabase(): void
     {

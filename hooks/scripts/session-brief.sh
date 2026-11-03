@@ -49,8 +49,9 @@ if TIMEOUT_BIN="$(find_timeout)"; then
     # 143, a status a brief could also end with, so that one counts only from BusyBox.
     if [ "$STATUS" -eq 124 ] || { [ "$STATUS" -eq 143 ] && "$TIMEOUT_BIN" --help 2>&1 | grep -q BusyBox; }; then
         printf "Knossos brief timed out after 3 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
-        # Kept for `knossos doctor` too, with who held the graph; bounded, and ignored if it fails.
-        record_scan_failure "$PROJECT_DIR" brief-timeout
+        # Kept for `knossos doctor` too, with who held the graph. In the background with
+        # its own bound, as the container hook does: the brief already used its 3 s.
+        (record_scan_failure "$PROJECT_DIR" brief-timeout) </dev/null >/dev/null 2>&1 &
         exit 0
     fi
     [ "$STATUS" -eq 0 ] || exit 0

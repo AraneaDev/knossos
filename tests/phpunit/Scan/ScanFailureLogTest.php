@@ -96,6 +96,18 @@ final class ScanFailureLogTest extends KnossosTestCase
     }
 
     #[Group('scan')]
+    public function testReplacesTheLogWholeAndLeavesNoTemporaryFile(): void
+    {
+        $path = $this->directory . '/scan-failures.jsonl';
+        $log = new ScanFailureLog($path);
+        $log->record(self::entry('one'));
+        $log->record(self::entry('two'));
+
+        assertSame(['scan-failures.jsonl', 'scan-failures.jsonl.lock'], array_values(array_diff(scandir($this->directory), ['.', '..'])));
+        assertSame(['two', 'one'], array_column($log->recent(5), 'message'));
+    }
+
+    #[Group('scan')]
     public function testAnUnwritablePathDoesNotThrow(): void
     {
         $log = new ScanFailureLog($this->directory . '/missing/deeper/scan-failures.jsonl');

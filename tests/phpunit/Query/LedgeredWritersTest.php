@@ -234,4 +234,38 @@ final class LedgeredWritersTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /** A scan that cannot get the lease fails before the scan service runs, and still leaves its reason. */
+    #[Group('query')]
+    public function testAHeldLeaseLeavesALockLineInTheFailureLog(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
+        try {
+            $pdo = $this->freshTestDatabase();
+            $real = (string) realpath($root);
+            (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+            $projectId = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
+            $held = (new ProjectWriterLock($pdo))->acquire($projectId);
+            $log = new \Knossos\Scan\ScanFailureLog($root . '/scan-failures.jsonl');
+            $scanner = new LedgeredScanner(
+                $pdo,
+                new ProjectScanService($pdo, self::repositoryRoot(), [$root], failures: $log),
+                AllowedRoots::of([$root]),
+                lock: new ProjectWriterLock($pdo, sleep: static function (int $ms): void {}),
+                failures: $log,
+            );
+
+            assertThrows(fn() => $scanner->scan($root, new ScanOptions(startedBy: 'pane')), \Knossos\Store\ScanBusyException::class);
+            $held->release();
+
+            $lines = $log->recent(5);
+            assertSame(1, count($lines));
+            assertSame('lock', $lines[0]['class']);
+            assertSame('pane', $lines[0]['started_by']);
+            assertSame($real, $lines[0]['root']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }

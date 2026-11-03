@@ -54,10 +54,10 @@ function figures(b: TurnBrief, declared: ReadonlySet<string>, hues: Hues): { bod
  * Units: `scanned_at` is Unix seconds (it comes from PHP's time()); `now` and
  * `lastAttemptAt` are the mod clock in milliseconds.
  */
-export function bandModel(brief: TurnBrief | null, job: JobState, now: number, declared: ReadonlySet<string> = new Set(), hues: Hues = NO_HUES): BandModel {
+export function bandModel(brief: TurnBrief | null, job: JobState, now: number, declared: ReadonlySet<string> = new Set(), hues: Hues = NO_HUES, why: string | null = null): BandModel {
   if (brief === null) {
     if (job.phase === 'scanning') return { tone: 'normal', text: 'knossos · scanning…', showDetails: false }
-    if (job.phase === 'failed') return { tone: 'warn', text: 'knossos · scan failed', showDetails: false }
+    if (job.phase === 'failed') return { tone: 'warn', text: `knossos · scan failed${why ? `: ${why}` : ''}`, showDetails: false }
     return null
   }
   // A folder that is not allowed is quiet: the person allows it by starting Knossos in it, and the pane offers the same.

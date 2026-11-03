@@ -166,7 +166,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
             foreach ($write as $writable) {
                 $bytes = @fwrite($writable, substr($line, $written));
                 if ($bytes === false) {
-                    throw new WorkerException(WorkerErrorCode::PipeBroken->value, $this->withStderr('Unable to write to scanner worker.'));
+                    throw $this->brokenPipe();
                 }
                 $written += $bytes;
             }
@@ -588,6 +588,32 @@ final class NdjsonRpcChannel implements RpcChannelInterface
         }
         $this->stderrBuffer = substr($this->stderrBuffer . $chunk, -$max);
     }
+
+    /**
+     * The failure of a write to a worker that is gone.
+     *
+     * A worker killed during the write is reaped a moment after its pipe
+     * breaks, so its status is polled briefly: the signal that ended it is what
+     * tells a kill from outside from a fault of the worker's own.
+     */
+    private function brokenPipe(): WorkerException
+    {
+        for ($waited = 0; $waited < 10; $waited++) {
+            $status = $this->process->status();
+            if (!$status['running']) {
+                break;
+            }
+            usleep(20_000);
+        }
+        $signalled = !$status['running'] && $status['signaled'] && $status['termsig'] > 0;
+
+        return new WorkerException(
+            WorkerErrorCode::PipeBroken->value,
+            $this->withStderr($signalled ? self::exitDescription($status) : 'Unable to write to scanner worker.'),
+            terminatingSignal: $signalled ? $status['termsig'] : null,
+        );
+    }
+
     /**
      * Attach the captured stderr to an error, which is usually the only clue to why a worker failed.
      *
@@ -595,7 +621,6 @@ final class NdjsonRpcChannel implements RpcChannelInterface
      * multibyte character, and a worker may write bytes that are not UTF-8 at
      * all. The message is JSON-encoded later, so the tail is scrubbed first.
      */
-
     private function withStderr(string $message): string
     {
         $stderr = trim(mb_scrub($this->stderrBuffer, 'UTF-8'));

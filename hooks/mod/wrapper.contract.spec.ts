@@ -357,13 +357,18 @@ describe('a scan the system killed or the bound stopped', () => {
       `#!/bin/sh
 printf '%s\\n' "$*" >> '${seen}'
 case "$*" in
-  *record-scan-failure*) exit 0 ;;
+  *record-scan-failure*) [ -z "\${RECORD_SLEEP:-}" ] || sleep "$RECORD_SLEEP"; exit 0 ;;
   *'rm -f'*) exit 0 ;;
 esac
 case "\${MODE:-}" in
   term) kill -TERM $$ ;;
+  kill) kill -KILL $$ ;;
+  segv) kill -SEGV $$ ;;
+  crash) exit 255 ;;
+  fatal) printf 'Fatal error: Allowed memory size exhausted\\n'; exit 255 ;;
+  deaf) trap '' TERM; exec sleep 20 ;;
   hang) exec sleep 10 ;;
-  fail) exit 3 ;;
+  fail) printf '%s\\n' '{"status":"error"}'; exit 3 ;;
 esac
 printf '%s\\n' '{"status":"ok"}'
 `,
@@ -402,6 +407,29 @@ printf '%s\\n' '{"status":"ok"}'
       expect(recording).toContain(`record-scan-failure ${project} --class=killed --signal=15 --started-by=pane`)
     })
 
+    it.each([
+      ['SIGKILL', 'kill', 9],
+      ['SIGTERM', 'term', 15],
+      ['SIGSEGV', 'segv', 11],
+    ])('names the signal a scan ended on: %s', async (_, mode, signal) => {
+      const result = await run(variant, 'scan', mode)
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'killed', signal })
+      const [recording] = await recorded()
+      expect(recording).toContain(`--class=killed --signal=${signal} --started-by=pane`)
+    })
+
+    it('says crashed with the exit status for a scan that died without an answer, and records nothing', async () => {
+      const result = await run(variant, 'scan', 'crash')
+      expect(result.code).toBe(0)
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'crashed', exit: 255 })
+      expect(await recorded()).toEqual([])
+    })
+
+    it('says crashed for a fatal printed on stdout too, and still exits 0', async () => {
+      const result = await run(variant, 'scan', 'fatal')
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'crashed', exit: 255 })
+    })
+
     it('says timed-out when the bound fires, exits 0, and keeps the reason', async () => {
       const result = await run(variant, 'scan', 'hang', { KNOSSOS_RUN_TIMEOUT: '1' })
       expect(result.code).toBe(0)
@@ -411,7 +439,16 @@ printf '%s\\n' '{"status":"ok"}'
       expect(recording).not.toContain('--signal')
     })
 
-    it('stays silent for the binary failing on its own', async () => {
+    it('reads a run that outlasted its bound before dying of KILL as timed out, not as low memory', async () => {
+      // -k only exists in the container wrapper; the local one ends the run at the bound with TERM.
+      if (variant === 'local') return
+      const result = await run(variant, 'scan', 'deaf', { KNOSSOS_RUN_TIMEOUT: '1' })
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'timed-out' })
+      const [recording] = await recorded()
+      expect(recording).toContain('--class=timed-out')
+    }, 15_000)
+
+    it('stays silent for the binary failing with an answer of its own', async () => {
       const result = await run(variant, 'scan', 'fail')
       expect(result).toEqual({ code: 0, stdout: '' })
       expect(await recorded()).toEqual([])
@@ -460,5 +497,25 @@ describe('the session brief hook when the brief runs out of time', () => {
       recordings = existsSync(seen) ? readFileSync(seen, 'utf8').split('\n').filter(l => l.includes('record-scan-failure')) : []
     }
     expect(recordings[0]).toContain(`record-scan-failure ${project} --class=brief-timeout`)
+  })
+
+  it.each([
+    ['local', 'session-brief.sh'],
+    ['container', 'session-brief-container.sh'],
+  ] as const)('%s: does not wait for the recording, which has its own bound', async (variant, script) => {
+    const dir = join(work, `brief-${variant}`, 'hooks/scripts')
+    const bin = join(work, `brief-${variant}-bin`)
+    const started = Date.now()
+    const result = await new Promise<{ code: number; stdout: string }>(resolve =>
+      execFile(
+        'sh',
+        [join(dir, script)],
+        { env: { ...process.env, RECORD_SLEEP: '2', CLAUDE_PROJECT_DIR: project, KNOSSOS_BIN: join(work, 'ending', 'knossos'), PATH: `${bin}:${join(work, 'ending')}:${process.env.PATH ?? ''}` }, timeout: 20_000 },
+        (err, stdout) => resolve({ code: err === null ? 0 : ((err as { code?: number }).code ?? 1), stdout }),
+      ),
+    )
+    expect(result.code).toBe(0)
+    expect(result.stdout).toMatch(/^Knossos brief timed out/)
+    expect(Date.now() - started).toBeLessThan(1500)
   })
 })

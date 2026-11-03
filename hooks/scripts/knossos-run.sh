@@ -34,9 +34,10 @@
 # through, a KNOSSOS_RUN_TIMEOUT it cannot use) prints
 # {"status":"refused","by":"wrapper","reason":"..."} so the mod can log it:
 # the mod asking for something the wrapper will never run is a defect, not
-# a quiet moment. The third is a `scan` that was killed by a signal or ran out
-# of time: it prints {"status":"killed","signal":N} or {"status":"timed-out"}
-# and keeps the reason in the log `knossos doctor` reads.
+# a quiet moment. The third is a `scan` that was killed by a signal, ran out
+# of time or died without an answer: it prints {"status":"killed","signal":N},
+# {"status":"timed-out"} or {"status":"crashed","exit":N}, and keeps the reason
+# of the first two in the log `knossos doctor` reads.
 #
 # `watch` is the one that does not end on its own: it becomes the live
 # watcher (`knossos watch --shared`), which prints one JSON event per line
@@ -90,6 +91,7 @@ if [ "$SUBCOMMAND" = watch ]; then
 fi
 
 TIMEOUT_BIN="$(find_timeout)" || TIMEOUT_BIN=
+STARTED=$(date +%s 2>/dev/null) || STARTED=
 if [ -n "$TIMEOUT_BIN" ]; then
     OUTPUT="$("$TIMEOUT_BIN" "$LIMIT" "$BIN" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)"
     STATUS=$?
@@ -104,10 +106,13 @@ if [ "$STATUS" -ne 0 ]; then
     # nothing", and the reason is known here and nowhere else. Every other
     # subcommand, and any other status, stays silent.
     if [ "$SUBCOMMAND" = scan ]; then
-        knossos_classify_run "$STATUS" "$TIMEOUT_BIN"
+        ELAPSED=
+        [ -z "$STARTED" ] || ELAPSED=$(($(date +%s 2>/dev/null || echo "$STARTED") - STARTED))
+        knossos_classify_run "$STATUS" "$TIMEOUT_BIN" "$OUTPUT" "$ELAPSED" "$LIMIT"
         if [ -n "$KNOSSOS_FAILURE_CLASS" ]; then
             knossos_say_failure
-            record_scan_failure "$TARGET" "$KNOSSOS_FAILURE_CLASS" "$KNOSSOS_FAILURE_SIGNAL" pane
+            # A crash left its own account where it could (a PHP fatal writes it as it ends).
+            [ "$KNOSSOS_FAILURE_CLASS" = crashed ] || record_scan_failure "$TARGET" "$KNOSSOS_FAILURE_CLASS" "$KNOSSOS_FAILURE_SIGNAL" pane
         fi
     fi
     exit 0

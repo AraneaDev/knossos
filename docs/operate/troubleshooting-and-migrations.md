@@ -73,6 +73,40 @@ other language.
 | MCP `-32600`, `id: null`        | A request id was not an integer or a string (`null` included).                                                                                                                                                     | Send integer or string ids; MCP requires one of the two.                                                                                                              |
 | Server drops when idle          | The host closed a stdio connection that sat silent between calls.                                                                                                                                                  | None; `serve` pings every 25s. Ensure the client tolerates server `ping` requests.                                                                                    |
 
+## Why a scan failed: `scan-failures.jsonl`
+
+A scan that fails leaves a line in `scan-failures.jsonl`, beside the database in
+the data directory. It keeps the last 200 lines, one JSON object each, oldest
+first:
+
+```json
+{
+    "at": "2026-11-03T22:27:26+00:00",
+    "root": "/work/app",
+    "started_by": "pane",
+    "class": "killed",
+    "message": "…",
+    "elapsed_ms": 4100,
+    "signal": 9
+}
+```
+
+`started_by` is `pane`, `mcp`, `refresh`, `turn`, `watch` or `cli`. `class` is:
+
+| class           | meaning                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `killed`        | A scan or a worker ended on a signal. 9 and 15 usually mean the host ran low on memory (earlyoom sends 15); any other number is named as it is. |
+| `lock`          | Another scan held the graph for the whole wait.                                                                                                 |
+| `worker`        | A language worker failed on its own. Run `knossos doctor` and the worker named in the message.                                                  |
+| `other`         | Anything else, including a PHP fatal such as memory exhaustion, with its message.                                                               |
+| `timed-out`     | The hook wrapper stopped a scan at its bound (5 minutes by default).                                                                            |
+| `brief-timeout` | The session brief hook ran out of time, with who held the graph when that is known.                                                             |
+
+`knossos doctor` lists the failures from the last 24 hours under
+`scan.failures`, newest first, and reports `none recorded` when the file is
+empty or missing. Read the file itself with `tail -n 5 scan-failures.jsonl`;
+a line that is not valid JSON is skipped by the doctor and safe to delete.
+
 ## Idle stdio connections
 
 Some MCP hosts close a stdio connection that produces no traffic for around a

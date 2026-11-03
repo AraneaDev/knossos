@@ -190,6 +190,35 @@ final class NdjsonRpcChannelTest extends TestCase
     }
 
     /**
+     * A write fails because the worker was killed mid-request. The signal is the
+     * only fact that says it was not the worker's own fault, so it is kept.
+     */
+    public function testPipeBrokenKeepsTheSignalThatKilledTheWorker(): void
+    {
+        $pair = @stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        if (!is_array($pair)) {
+            $this->markTestSkipped('stream_socket_pair is not available on this platform.');
+        }
+        $process = $this->pipeOnlyProcess();
+        $process->stdinPipe = $pair[0];
+        $process->stdoutPipe = fopen('php://temp', 'r+');
+        $process->stderrPipe = fopen('php://temp', 'r+');
+        $process->statusOverride = ['running' => false, 'signaled' => true, 'termsig' => 9];
+
+        $channel = new NdjsonRpcChannel($process, new WorkerLimits());
+        $channel->beginRequest();
+        fclose($pair[1]);
+
+        $error = captureThrows(
+            static fn() => $channel->send(['jsonrpc' => '2.0', 'method' => 'ping']),
+            WorkerException::class,
+        );
+
+        assertSame('WORKER_PIPE_BROKEN', $error->diagnosticCode);
+        assertSame(9, $error->terminatingSignal);
+    }
+
+    /**
      * A write fails because the worker is gone, and what it printed on the way
      * out is the only account of why. The worker dying of heap exhaustion and
      * the host being unable to write to it are the same event seen from the

@@ -268,6 +268,43 @@ describe('requestRescan', () => {
             expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: WORDING, refusedRoot: null })
         })
 
+        it.each([
+            ['killed class with SIGTERM', { status: 'scan-failed', reason: WORDING, failure_class: 'killed', signal: 15 }],
+            ['killed class with SIGKILL', { status: 'scan-failed', reason: WORDING, failure_class: 'killed', signal: 9 }],
+            ['killed class, signal unknown', { status: 'scan-failed', reason: WORDING, failure_class: 'killed' }],
+            ['killed with SIGTERM', { status: 'killed', signal: 15 }],
+        ])('retries once a failure that is a %s', async (_, body) => {
+            const port = rescanPort([answer(body), ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(10_000)
+            expect(port.runs).toEqual(['scan', 'scan', 'dashboard'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'idle', reason: null })
+        })
+
+        it.each([
+            ['killed with SIGSEGV', { status: 'killed', signal: 11 }, 'Ended by signal 11'],
+            ['scan-failed killed by SIGSEGV', { status: 'scan-failed', reason: 'Ended by signal 11', failure_class: 'killed', signal: 11 }, 'Ended by signal 11'],
+            ['crashed', { status: 'crashed', exit: 255 }, 'Knossos stopped unexpectedly (exit 255); see knossos doctor'],
+        ])('does not retry %s', async (_, body, reason) => {
+            const port = rescanPort([answer(body), ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason, refusedRoot: null })
+        })
+
+        it('does not retry a degraded ok whose worker ended on a signal that is nobody-memory', async () => {
+            const degraded = answer({ status: 'ok', snapshot_id: 's2', degraded_reason: 'Ended by signal 11', signal: 11 })
+            const port = rescanPort([degraded, ok])
+            requestRescan(port.io)
+            await port.advance(0)
+            await port.advance(60_000)
+            expect(port.runs).toEqual(['scan', 'dashboard'])
+            expect(port.values.get('rescan')).toEqual({ phase: 'failed', reason: 'Ended by signal 11', refusedRoot: null })
+        })
+
         it('retries a scan-failed whose class is lock, once', async () => {
             const lock = answer({ status: 'scan-failed', reason: 'Another scan is using the graph; held 40s', failure_class: 'lock' })
             const port = rescanPort([lock, lock])

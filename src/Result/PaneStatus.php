@@ -36,7 +36,7 @@ final class PaneStatus
     public const LEDGER = [...self::DASH, 'no-git'];
 
     /** A rescan the pane asked for; `killed` and `timed-out` are said by the wrapper, which saw the process end. */
-    public const RESCAN = ['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'killed', 'timed-out', 'error', 'no-binary'];
+    public const RESCAN = ['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'killed', 'timed-out', 'crashed', 'error', 'no-binary'];
 
     /** A file's change since the session began. */
     public const DIFF = ['ok', 'no-git', 'unknown-rev', 'error', 'no-binary'];

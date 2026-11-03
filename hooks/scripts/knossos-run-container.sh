@@ -10,8 +10,8 @@
 # Same contract as knossos-run.sh: every failure exits 0 with nothing on stdout,
 # except a missing docker, which prints {"status":"no-binary"}, a call it
 # refuses, which prints {"status":"refused","by":"wrapper","reason":"..."}, and
-# a scan that was killed or timed out, which prints {"status":"killed","signal":N}
-# or {"status":"timed-out"}.
+# a scan that was killed, timed out or died without an answer, which prints
+# {"status":"killed","signal":N}, {"status":"timed-out"} or {"status":"crashed","exit":N}.
 #
 # The session commands take exactly what the local wrapper lets through. The
 # two that read git (`session-head`, `session-diff`) run as the caller's own
@@ -111,6 +111,7 @@ if [ "$SUBCOMMAND" = watch ]; then
 fi
 
 TIMEOUT_BIN="$(find_timeout)" || TIMEOUT_BIN=
+STARTED=$(date +%s 2>/dev/null) || STARTED=
 if [ -n "$TIMEOUT_BIN" ]; then
     OUTPUT="$("$TIMEOUT_BIN" -k 2 "$LIMIT" docker run --rm --init --name "$NAME" ${USER_ARG:+"$USER_ARG"} \
         -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
@@ -132,10 +133,12 @@ if [ "$STATUS" -ne 0 ]; then
     # As in knossos-run.sh, a scan killed from outside or out of time says so;
     # every other failure is silence. Its reason is kept in the data directory.
     if [ "$SUBCOMMAND" = scan ]; then
-        knossos_classify_run "$STATUS" "$TIMEOUT_BIN"
+        ELAPSED=
+        [ -z "$STARTED" ] || ELAPSED=$(($(date +%s 2>/dev/null || echo "$STARTED") - STARTED))
+        knossos_classify_run "$STATUS" "$TIMEOUT_BIN" "$OUTPUT" "$ELAPSED" "$LIMIT"
         if [ -n "$KNOSSOS_FAILURE_CLASS" ]; then
             knossos_say_failure
-            knossos_record_in_container "$TARGET" "$KNOSSOS_FAILURE_CLASS" "$KNOSSOS_FAILURE_SIGNAL" pane
+            [ "$KNOSSOS_FAILURE_CLASS" = crashed ] || knossos_record_in_container "$TARGET" "$KNOSSOS_FAILURE_CLASS" "$KNOSSOS_FAILURE_SIGNAL" pane
         fi
     fi
     exit 0
