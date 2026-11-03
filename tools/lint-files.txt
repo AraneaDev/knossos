@@ -99,6 +99,7 @@ php	src/Cli/Command/PluginCommand.php
 php	src/Cli/Command/PreviewsAFolder.php
 php	src/Cli/Command/ProjectListCommand.php
 php	src/Cli/Command/QueryCommand.php
+php	src/Cli/Command/RecordScanFailureCommand.php
 php	src/Cli/Command/RootsCommand.php
 php	src/Cli/Command/ScanCommand.php
 php	src/Cli/Command/ServeCommand.php
@@ -391,6 +392,8 @@ php	src/Scan/RequestReads.php
 php	src/Scan/ScanAnalysis.php
 php	src/Scan/ScanAnalysisPipeline.php
 php	src/Scan/ScanBatchQueue.php
+php	src/Scan/ScanFailureClass.php
+php	src/Scan/ScanFailureLog.php
 php	src/Scan/ScanInputHashes.php
 php	src/Scan/ScanLedger.php
 php	src/Scan/ScanLedgerSpan.php
@@ -547,6 +550,7 @@ php	tests/phpunit/Cli/ProjectReferenceTest.php
 php	tests/phpunit/Cli/QualityDepsKeyTest.php
 php	tests/phpunit/Cli/QualityImageLinksTest.php
 php	tests/phpunit/Cli/QueryCommandContractTest.php
+php	tests/phpunit/Cli/RecordScanFailureCommandTest.php
 php	tests/phpunit/Cli/ReleaseWorkflowTest.php
 php	tests/phpunit/Cli/RepositoryCheckTest.php
 php	tests/phpunit/Cli/RootsCommandReportTest.php
@@ -932,6 +936,9 @@ php	tests/phpunit/Scan/ScanAnalysisTest.php
 php	tests/phpunit/Scan/ScanBatchQueueTest.php
 php	tests/phpunit/Scan/ScanDirtyPathCaptureTest.php
 php	tests/phpunit/Scan/ScanDtoTest.php
+php	tests/phpunit/Scan/ScanFailureClassTest.php
+php	tests/phpunit/Scan/ScanFailureLogTest.php
+php	tests/phpunit/Scan/ScanFailureRecordingTest.php
 php	tests/phpunit/Scan/ScanHeadCaptureTest.php
 php	tests/phpunit/Scan/ScanInputHashesTest.php
 php	tests/phpunit/Scan/ScanLeafTest.php

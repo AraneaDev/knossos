@@ -10,6 +10,7 @@ use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ProjectWriterLock;
+use Knossos\Scan\ScanFailureLog;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\TreeFingerprint;
@@ -64,11 +65,12 @@ final readonly class LedgeredScanner implements ProjectScanner
      *
      * @param AllowedRoots|list<string> $roots
      * @param ?EnrichersFile $enrichers the installation's enrichers; null for none
+     * @param ?ScanFailureLog $failures where a failed scan's reason is kept; null keeps none
      */
-    public static function local(PDO $pdo, string $installationRoot, AllowedRoots|array $roots, ?array $policies = null, ?EnrichersFile $enrichers = null): self
+    public static function local(PDO $pdo, string $installationRoot, AllowedRoots|array $roots, ?array $policies = null, ?EnrichersFile $enrichers = null, ?ScanFailureLog $failures = null): self
     {
         $allowed = AllowedRoots::of($roots);
-        return new self($pdo, new ProjectScanService($pdo, $installationRoot, $allowed, enrichers: $enrichers), $allowed, $policies);
+        return new self($pdo, new ProjectScanService($pdo, $installationRoot, $allowed, enrichers: $enrichers, failures: $failures), $allowed, $policies);
     }
 
     /**

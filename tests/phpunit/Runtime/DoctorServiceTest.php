@@ -134,12 +134,12 @@ final class DoctorServiceTest extends KnossosTestCase
             'node.version', 'git.version', 'python.version',
             'sqlite.integrity', 'sqlite.foreign_keys', 'sqlite.migrations',
             'worker.php', 'worker.typescript', 'worker.python', 'worker.rust',
-            'filesystem.opener',
+            'scan.failures', 'filesystem.opener',
         ];
         foreach ($expected as $name) {
             $this->assertContains($name, $names, "missing check: {$name}");
         }
-        assertSame(17, count($names));
+        assertSame(18, count($names));
     }
 
     /** The doctor says which file opener this host uses, so a slow helper-per-file scan is visible. */
@@ -642,6 +642,44 @@ final class DoctorServiceTest extends KnossosTestCase
 
         $this->assertSame('ok', $check['status']);
         $this->assertMatchesRegularExpression('/^\d+ applied$/', $check['detail']);
+    }
+
+    public function testScanFailuresAreOkWhenNoneAreRecorded(): void
+    {
+        $check = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run(), 'scan.failures');
+
+        $this->assertSame('ok', $check['status']);
+        $this->assertSame('none recorded', $check['detail']);
+    }
+
+    public function testAScanFailureUnderADayOldIsAWarningWithItsWording(): void
+    {
+        $directory = $this->installationRoot . '/data';
+        mkdir($directory);
+        (new \Knossos\Scan\ScanFailureLog($directory . '/scan-failures.jsonl'))->record([
+            'root' => '/work/app', 'started_by' => 'pane', 'class' => 'killed', 'message' => 'worker gone', 'elapsed_ms' => 900, 'signal' => 9,
+        ]);
+
+        $result = (new DoctorService($this->pdo, $this->installationRoot, $directory . '/knossos.sqlite'))->run();
+        $check = $this->findCheck($result, 'scan.failures');
+
+        $this->assertSame('warning', $check['status']);
+        $this->assertStringContainsString('Stopped by the system, probably low on memory', $check['detail']);
+        $this->assertStringContainsString('/work/app', $check['detail']);
+        $this->assertGreaterThanOrEqual(1, $result['warnings']);
+    }
+
+    public function testOlderScanFailuresAreOk(): void
+    {
+        $directory = $this->installationRoot . '/data';
+        mkdir($directory);
+        $old = ['at' => gmdate('c', time() - 3 * 86400), 'root' => '/work/app', 'started_by' => 'pane', 'class' => 'killed', 'message' => 'x', 'elapsed_ms' => null, 'signal' => 9];
+        file_put_contents($directory . '/scan-failures.jsonl', json_encode($old) . "\n");
+
+        $check = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, $directory . '/knossos.sqlite'))->run(), 'scan.failures');
+
+        $this->assertSame('ok', $check['status']);
+        $this->assertStringContainsString('none in the last 24 hours', $check['detail']);
     }
 
     /**

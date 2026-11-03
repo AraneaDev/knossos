@@ -41,6 +41,7 @@ final readonly class CliCommandSet
             new SessionDiffCommand(),
             new RootsCommand(),
             new ClaimCommand(),
+            new RecordScanFailureCommand(),
             new AutostartCommand(),
             new EnricherCommand(),
             new PluginCommand($version),

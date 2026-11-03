@@ -62,7 +62,7 @@ final readonly class RescanService
         $started = hrtime(true);
         try {
             // Recorded in the ledger, so a turn brief whose edits this scan took in can still report them.
-            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: $first ? 'full' : 'incremental'));
+            $scan = (new ScannerFactory($this->pdo, $this->installationRoot, $this->databasePath))->ledgered($allowed)->scan($root, new ScanOptions(mode: $first ? 'full' : 'incremental', startedBy: 'pane'));
         } catch (Throwable $failure) {
             return ['status' => 'scan-failed', 'reason' => $failure->getMessage(), 'project_root' => $root] + $envelope;
         }

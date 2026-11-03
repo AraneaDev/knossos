@@ -155,7 +155,7 @@ final readonly class ProjectWriterLock
     }
 
     /** ` (pid 4242, held 40s)`: who holds the lease, for a busy message; empty when nobody is left holding it. */
-    private function describeHolder(string $projectId): string
+    public function describeHolder(string $projectId): string
     {
         try {
             $holder = $this->holder($projectId);

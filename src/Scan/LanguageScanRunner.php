@@ -91,7 +91,7 @@ final readonly class LanguageScanRunner
     /**
      * Run one language, or record why it is degraded and return null.
      *
-     * @param list<array{owner: string, code: string, message: string}> $workerDiagnostics
+     * @param list<array{owner: string, code: string, message: string, terminating_signal?: int}> $workerDiagnostics
      * @param array<string, array{files: int, source_bytes: int, source_bytes_used: int}> $batchBudgets
      * @param ?array<string, true> $only the paths to confine the language to, for a later pass; null for all of its files
      * @return array<string, mixed>|null the language's outcome ({@see runLanguage()})
@@ -149,7 +149,7 @@ final readonly class LanguageScanRunner
                     $descriptor,
                     $plan->preparation->executionPolicy->workerMemoryMb,
                 ),
-            ];
+            ] + ($error instanceof WorkerException && $error->terminatingSignal !== null ? ['terminating_signal' => $error->terminatingSignal] : []);
 
             return null;
         } finally {
@@ -177,7 +177,7 @@ final readonly class LanguageScanRunner
      * before it reused, and its answers are laid over theirs.
      *
      * @param array<string, array<string, mixed>> $outcomes by descriptor key
-     * @param list<array{owner: string, code: string, message: string}> $workerDiagnostics
+     * @param list<array{owner: string, code: string, message: string, terminating_signal?: int}> $workerDiagnostics
      * @param array<string, array{files: int, source_bytes: int, source_bytes_used: int}> $batchBudgets
      * @return array<string, array<string, mixed>>
      */

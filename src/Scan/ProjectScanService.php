@@ -45,6 +45,8 @@ final class ProjectScanService implements ProjectScanner
      * @param ?DirtyPathResolver $dirtyPaths injected for the same reason.
      * @param ?EnrichersFile $enrichers the installation's enrichers file; null
      *        means the installation defines no enrichers.
+     * @param ?ScanFailureLog $failures where a scan's failure is kept with its
+     *        reason; null keeps none, as for an in-memory database.
      */
     public function __construct(
         private PDO $pdo,
@@ -53,6 +55,7 @@ final class ProjectScanService implements ProjectScanner
         ?GitHeadResolver $gitHead = null,
         ?DirtyPathResolver $dirtyPaths = null,
         ?EnrichersFile $enrichers = null,
+        private ?ScanFailureLog $failures = null,
     ) {
         $this->planner = new ScanPlanner($pdo, $allowedRoots, $gitHead, $dirtyPaths);
         $this->workerPool = new LanguageWorkerPool();
@@ -96,6 +99,20 @@ final class ProjectScanService implements ProjectScanner
     public function scan(string $root, ScanOptions $options = new ScanOptions()): ResultEnvelope
     {
         $startedAt = hrtime(true);
+        try {
+            return $this->run($root, $options, $startedAt);
+        } catch (\Throwable $failure) {
+            // A cancelled scan is the caller's decision, not a failure to explain.
+            if (!$failure instanceof ScanCancelledException) {
+                $this->recordFailure($root, $options, ScanFailureClass::of($failure), $failure->getMessage(), $failure instanceof WorkerException ? $failure->terminatingSignal : null, $startedAt);
+            }
+            throw $failure;
+        }
+    }
+
+    /** The scan itself, `$startedAt` being the clock reading the caller took when it began. */
+    private function run(string $root, ScanOptions $options, int $startedAt): ResultEnvelope
+    {
         $cancellation = $options->cancellation ?? new CancellationToken();
         $cancellation->throwIfCancelled();
         $preparation = $this->planner->prepare(
@@ -135,6 +152,7 @@ final class ProjectScanService implements ProjectScanner
                 // must surface ScanCancelledException, not a worker degradation.
                 $cancellation->throwIfCancelled();
                 $this->refuseDegradedRescan($plan, $language, $projectId);
+                $this->recordKilledWorkers($language, $preparation->discovery->rootRealpath, $options, $startedAt);
                 // The workers read every file themselves, so their facts descend
                 // from bytes this process never hashed. Discovery's own files are
                 // checked before analysis; undiscovered worker inputs are checked at
@@ -179,6 +197,34 @@ final class ProjectScanService implements ProjectScanner
         });
 
         return $existed ? $envelope : $this->orphanHint($envelope, $preparation->discovery->rootRealpath);
+    }
+
+    /**
+     * Keep a line for each worker an outside signal ended in a scan that went on without it.
+     *
+     * The scan still succeeds, with that language missing from the graph, so no
+     * exception reaches {@see self::scan()} to explain the gap afterwards.
+     */
+    private function recordKilledWorkers(LanguageScanResult $language, string $root, ScanOptions $options, int $startedAt): void
+    {
+        foreach ($language->workerDiagnostics as $diagnostic) {
+            if (isset($diagnostic['terminating_signal'])) {
+                $this->recordFailure($root, $options, ScanFailureClass::KILLED, $diagnostic['message'], $diagnostic['terminating_signal'], $startedAt);
+            }
+        }
+    }
+
+    /** Append one failure to the log, if there is one; recording never throws. */
+    private function recordFailure(string $root, ScanOptions $options, string $class, string $message, ?int $signal, int $startedAt): void
+    {
+        $this->failures?->record([
+            'root' => $root,
+            'started_by' => $options->startedBy,
+            'class' => $class,
+            'message' => $message,
+            'elapsed_ms' => (int) round(Milliseconds::since($startedAt)),
+            'signal' => $signal,
+        ]);
     }
 
     /**
@@ -327,6 +373,7 @@ final class ProjectScanService implements ProjectScanner
                 WorkerErrorCode::DegradedIncremental->value,
                 'Scan aborted to preserve the last good graph. Failed workers: ' . implode(', ', $failed)
                     . '. Fix the worker (run `knossos doctor`) and rescan; the graph is unchanged.',
+                terminatingSignal: array_values(array_filter(array_column($language->workerDiagnostics, 'terminating_signal')))[0] ?? null,
             );
         }
     }

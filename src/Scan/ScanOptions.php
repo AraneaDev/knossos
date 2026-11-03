@@ -27,6 +27,7 @@ final readonly class ScanOptions
      *        project's external enrichers; a background scan (watch, refresh,
      *        hook rescan) leaves it false and carries their last facts over
      * @param ProjectWriterLease|null $lease the project's write lease when the caller already holds it
+     * @param string $startedBy what asked for the scan (`pane`, `mcp`, `refresh`, `turn`, `watch` or `cli`), kept with a failure so its reason says where it came from
      */
     public function __construct(
         public ?string $name = null,
@@ -40,6 +41,7 @@ final readonly class ScanOptions
         public ?int $workerMemoryMb = null,
         public bool $runEnrichers = false,
         public ?ProjectWriterLease $lease = null,
+        public string $startedBy = 'cli',
     ) {}
 
     /** The same options, scanning under `$lease`. */
@@ -57,6 +59,7 @@ final readonly class ScanOptions
             $this->workerMemoryMb,
             $this->runEnrichers,
             $lease,
+            $this->startedBy,
         );
     }
 }
