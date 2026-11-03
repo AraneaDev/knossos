@@ -13,13 +13,14 @@ import { declaredOf, huesOf } from '../lib/palette'
 import { currentSession, peekKey, refreshDashboard, request, showComponent } from './loaders'
 import { readGitHead, settleBaseline } from './session-baseline'
 import { startDeliberately } from './start'
-import { endWatcher, placed } from './port'
+import { parseAutostart } from '../lib/envelopes'
+import { endWatcher, placed, wrapper } from './port'
 import type { Port } from './port'
 import { cyclesOf, mod, PANE } from './state'
 import { ensureWatcher, scanSafely } from './watcher'
 
 /** What `/knossos` answers to anything it does not take. */
-const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect <component> to open it on one component.'
+const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect <component> to open it on one component; /knossos autostart [on|off] to open it when a session starts in this project.'
 
 /** formatAge's finest step is a second; the tick redraws only when the text would change. */
 const AGE_TICK_MS = 1_000
@@ -149,7 +150,7 @@ async function readTheme(io: Port): Promise<void> {
  * claim of its folder, once the dashboard is read. A silent one is not a reason to stop: the next dirty
  * turn asks again. Only the wrapper's `no-binary` turns the mod off.
  */
-export async function startUp(io: Port, opening: 'session' | 'deliberate', openOnStart = false): Promise<void> {
+export async function startUp(io: Port, opening: 'session' | 'deliberate'): Promise<void> {
   // First: where the session began, read back for a session continued here, else the commit it begins at, before anything of it can be committed.
   await settleBaseline(io)
   // Where the checkout stands, for the header: the baseline's own head read, when there was one, said it already.
@@ -163,8 +164,9 @@ export async function startUp(io: Port, opening: 'session' | 'deliberate', openO
   await ensureWatcher(io)
   // Starting Knossos on purpose is the consent to scan the folder; a session that only begins never claims it.
   if (opening === 'deliberate') io.clock.after(0, () => void startDeliberately(io).catch(() => undefined))
+  // Only a session start reads the project's setting; the web and the terminal were started to look at the pane.
   // A refused or unplaced pane is the person's layout, not a failure of the mod.
-  if (openOnStart) await openPane(io, !stored)
+  if (opening === 'session' && (await autostartOf(io))?.autostart === true) await openPane(io, !stored)
 }
 
 /**
@@ -182,6 +184,24 @@ export async function openPane(io: Port, refreshFirst = true): Promise<void> {
     .catch(() => undefined)
 }
 
+/** The wrapper bounds autostart at 15 s. */
+const AUTOSTART_TIMEOUT_MS = 20_000
+
+/** The project's pane setting, with `--set=on|off` written first; null when knossos said nothing usable. */
+async function autostartOf(io: Port, set?: 'on' | 'off'): Promise<{ autostart: boolean; root: string } | null> {
+  return parseAutostart(await wrapper(io, 'autostart', set === undefined ? [] : [`--set=${set}`], AUTOSTART_TIMEOUT_MS))
+}
+
+/** `/knossos autostart [on|off]`: reads or writes the setting, and says what it is for which project. */
+async function runAutostart(io: Port, arg: string): Promise<string> {
+  if (arg !== '' && arg !== 'on' && arg !== 'off') return USAGE
+  const state = await autostartOf(io, arg === '' ? undefined : arg)
+  if (state === null) return 'Knossos did not answer; the pane setting is unchanged.'
+  // Turning it on is a deliberate choice to use Knossos here: the folder is claimed like any deliberate start.
+  if (arg === 'on') claimOnTimer(io)
+  return state.autostart ? `The pane opens when a session starts in ${state.root}.` : `The pane does not open when a session starts in ${state.root}. /knossos autostart on turns it on.`
+}
+
 /** Opening the pane with the command is a deliberate start: the folder is claimed once this dispatch has resolved. */
 function claimOnTimer(io: Port): void {
   io.clock.after(0, () => void startDeliberately(io).catch(() => undefined))
@@ -190,6 +210,7 @@ function claimOnTimer(io: Port): void {
 /** `/knossos` toggles the pane, `/knossos inspect <component>` opens it on one component. */
 export async function runCommand(io: Port, args: string): Promise<string> {
   const verb = args.trim().split(/\s+/)[0] ?? ''
+  if (verb === 'autostart') return runAutostart(io, args.trim().slice('autostart'.length).trim())
   if (verb === 'inspect') {
     const name = args.trim().slice('inspect'.length).trim()
     if (name === '') return USAGE

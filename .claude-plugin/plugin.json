@@ -34,12 +34,6 @@
       "description": "Tell the model about boundary-policy violations after a turn.",
       "default": true
     },
-    "openPaneOnStart": {
-      "type": "boolean",
-      "title": "Open pane on start",
-      "description": "Open the architecture pane when a session starts.",
-      "default": false
-    },
     "watch": {
       "type": "boolean",
       "title": "Live watcher",

@@ -376,3 +376,21 @@ export function parseClaim(stdout: string): Claim | null {
   if (typeof v.status !== 'string' || !CLAIM_STATUSES.includes(v.status) || typeof v.root !== 'string') return null
   return { status: v.status as Exclude<Claim['status'], 'no-binary'>, root: v.root, reason: typeof v.reason === 'string' ? v.reason : null }
 }
+
+/**
+ * The autostart answer from the wrapper's stdout: whether the pane opens when
+ * a session starts in the project, and the root the setting is kept for; null
+ * for silence, `no-binary`, a refusal, or anything unexpected.
+ */
+export function parseAutostart(stdout: string): { autostart: boolean; root: string } | null {
+  let value: unknown
+  try {
+    value = printableDeep(JSON.parse(stdout))
+  } catch {
+    return null
+  }
+  if (!isObject(value)) return null
+  const v = value as Record<string, unknown>
+  if (v.status !== 'ok' || typeof v.autostart !== 'boolean' || typeof v.root !== 'string') return null
+  return { autostart: v.autostart, root: v.root }
+}

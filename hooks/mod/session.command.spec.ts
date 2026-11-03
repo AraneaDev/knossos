@@ -7,7 +7,7 @@ import { runCommand } from './session'
 import { mod, PANE, reset } from './state'
 
 const ROOT = '/work/app'
-const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect <component> to open it on one component.'
+const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect <component> to open it on one component; /knossos autostart [on|off] to open it when a session starts in this project.'
 const OPENED = 'Knossos pane opened.'
 const CLOSED = 'Knossos pane closed.'
 const dashboard = (snapshot: string): Dashboard =>
@@ -309,5 +309,54 @@ describe('/knossos claims the folder it is run in', () => {
         await port.advance()
         expect(claims(port)).toHaveLength(1)
         expect(port.closed).toEqual([{ id: PANE }])
+    })
+})
+
+describe('/knossos autostart', () => {
+    const state = (autostart: boolean) => JSON.stringify({ status: 'ok', autostart, root: ROOT })
+    const runsOf = (port: ReturnType<typeof fakePort>, sub: string) => port.runs.filter(argv => argv[2] === sub).map(argv => argv.slice(3))
+
+    it('on writes the setting, claims the folder, and names the project', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: state(true) } })
+        const said = await runCommand(port.io, 'autostart on')
+        expect(said).toContain(ROOT)
+        expect(said).toContain('opens')
+        expect(runsOf(port, 'autostart')).toEqual([[ROOT, '--set=on']])
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([[ROOT, '--execute']])
+        expect(port.opened).toEqual([])
+    })
+
+    it('off writes the setting and claims nothing', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: state(false) } })
+        const said = await runCommand(port.io, 'autostart off')
+        expect(said).toContain(ROOT)
+        expect(runsOf(port, 'autostart')).toEqual([[ROOT, '--set=off']])
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it.each([true, false])('with no argument reports the setting (%s) and writes nothing', async on => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: state(on) } })
+        const said = await runCommand(port.io, ' autostart  ')
+        expect(said).toContain(ROOT)
+        expect(said).toContain(on ? 'opens' : 'does not open')
+        expect(runsOf(port, 'autostart')).toEqual([[ROOT]])
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it('says so when knossos does not answer, and claims nothing', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, 'autostart on')).toContain('did not answer')
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it.each(['autostart maybe', 'autostart on now', 'autostart ON'])('answers the usage to %j and runs nothing', async args => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, args)).toBe(USAGE)
+        await port.advance()
+        expect(port.runs).toEqual([])
     })
 })

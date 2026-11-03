@@ -71,6 +71,8 @@ function world(
     allow?: Answer[]
     /** What `claim` answers (the folder /knossos was run in): already allowed, by default. */
     claim?: Answer[]
+    /** What `autostart` answers (the project's pane setting): off, by default. */
+    autostart?: Answer[]
     /** What `session-changes` answers: the scan ledger's changes since the session began. */
     ledger?: Answer[]
     /** What `session-head` answers (the commit the session begins at), and `session-diff` (a file's change since it). */
@@ -152,6 +154,7 @@ function world(
     scan: answers.scan ?? [{ stdout: '{"status":"ok"}' }],
     allow: answers.allow ?? [{ stdout: '{"path":"/repo","roots_file":"/data/roots.json","added":true}' }],
     claim: answers.claim ?? [{ stdout: '{"status":"present","root":"/repo","reason":null}' }],
+    autostart: answers.autostart ?? [{ stdout: '{"status":"ok","autostart":false,"root":"/repo"}' }],
     ledger: answers.ledger ?? [{ stdout: '' }],
     head: answers.head ?? [{ stdout: '' }],
     diff: answers.diff ?? [{ stdout: '' }],
@@ -177,6 +180,7 @@ function world(
     ['scan', queues.scan],
     ['allow-root', queues.allow],
     ['claim', queues.claim],
+    ['autostart', queues.autostart],
     ['session-changes', queues.ledger],
     ['session-head', queues.head],
     ['session-diff', queues.diff],
@@ -1579,8 +1583,8 @@ describe('knossos mod', () => {
     await band.unmount()
   })
 
-  test('the pane opens on start when asked', { options: { openPaneOnStart: true } }, async ($, on) => {
-    const w = world(on)
+  test('the pane opens on start when the project asks for it', async ($, on) => {
+    const w = world(on, { autostart: [{ stdout: '{"status":"ok","autostart":true,"root":"/repo"}' }] })
     await $.session.start(START)
     await w.clock.settle()
     expect(w.opened).toEqual(['knossos'])

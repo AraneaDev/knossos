@@ -63,8 +63,12 @@ describe('the plugin settings', () => {
     // On unless set to false; off unless set to true.
     expect(settings.enabled!.default).toBe(true)
     expect(register).toContain('options.enabled === false')
-    expect(settings.openPaneOnStart!.default).toBe(false)
-    expect(register).toContain('options.openPaneOnStart === true')
+  })
+
+  it('no longer carry openPaneOnStart: the pane opens by the per-project setting', () => {
+    expect(settings.openPaneOnStart).toBeUndefined()
+    expect(readFileSync(at('hooks/register.tsx'), 'utf8')).not.toContain('openPaneOnStart')
+    expect(docTable().has('openPaneOnStart')).toBe(false)
   })
 
   it('state the ranges the mod accepts, in plugin.json and in the documentation', () => {

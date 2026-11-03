@@ -206,6 +206,38 @@ function fakePort(setup: Setup = {}) {
     return { io, values, calls, tickers, opened, advance, runsOf }
 }
 
+describe('startUp and the per-project pane setting', () => {
+    const answer = (autostart: boolean) => JSON.stringify({ status: 'ok', autostart, root: ROOT })
+
+    it('opens the pane at a session start when autostart answers true', async () => {
+        reset(options)
+        const port = fakePort({ answers: { autostart: answer(true) } })
+        await startUp(port.io, 'session')
+        expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
+    })
+
+    it.each([
+        ['false', answer(false)],
+        ['silence', ''],
+        ['no-binary', JSON.stringify({ status: 'no-binary' })],
+        ['a refusal', JSON.stringify({ status: 'refused', by: 'wrapper', reason: 'x' })],
+    ])('leaves the pane closed when autostart answers %s', async (_, stdout) => {
+        reset(options)
+        const port = fakePort({ answers: { autostart: stdout } })
+        await startUp(port.io, 'session')
+        expect(port.opened).toEqual([])
+    })
+
+    it('a deliberate start never reads the setting, and opens no pane', async () => {
+        reset(options)
+        const port = fakePort({ answers: { autostart: answer(true) } })
+        await startUp(port.io, 'deliberate')
+        await port.advance()
+        expect(port.runsOf('autostart')).toBe(0)
+        expect(port.opened).toEqual([])
+    })
+})
+
 describe('startUp', () => {
     it("a session start runs neither claim nor scan, even with no graph", async () => {
         reset(options)
@@ -230,13 +262,14 @@ describe('startUp', () => {
     it('stores the theme and the placed root, loads the dashboard, starts one age ticker and the watcher, and opens the pane without a second load', async () => {
         reset(options)
         const port = fakePort({
+            answers: { autostart: JSON.stringify({ status: 'ok', autostart: true, root: ROOT }) },
             config: [
                 // A string row under another key, first in line: only the 'theme' key counts.
                 { key: 'verbose', value: 'solarized' },
                 { key: 'theme', value: 'light' },
             ],
         })
-        await startUp(port.io, 'session', true)
+        await startUp(port.io, 'session')
         expect(port.values.get('theme')).toBe('light')
         // The root as the session gave it, with its links followed.
         expect(port.values.get('sessionRoot')).toBe(REAL_ROOT)
@@ -326,9 +359,9 @@ describe('startUp', () => {
     it('stops when the dashboard load turns the mod off: no ticker, no watcher, no pane', async () => {
         reset(options)
         const port = fakePort({
-            answers: { dashboard: JSON.stringify({ status: 'no-binary' }) },
+            answers: { dashboard: JSON.stringify({ status: 'no-binary' }), autostart: JSON.stringify({ status: 'ok', autostart: true, root: ROOT }) },
         })
-        await startUp(port.io, 'session', true)
+        await startUp(port.io, 'session')
         expect(mod.session.disabled).toBe(true)
         expect(port.tickers).toEqual([])
         expect(mod.motion.ticker).toBeNull()
@@ -349,8 +382,8 @@ describe('startUp', () => {
 
     it('opens the pane and loads the dashboard again on a timer when the first load stored nothing', async () => {
         reset(options)
-        const port = fakePort({ answers: { dashboard: '' } })
-        await startUp(port.io, 'session', true)
+        const port = fakePort({ answers: { dashboard: '', autostart: JSON.stringify({ status: 'ok', autostart: true, root: ROOT }) } })
+        await startUp(port.io, 'session')
         expect(port.values.get('dashboard')).toBeNull()
         expect(port.opened).toEqual([{ id: PANE, title: 'Knossos', backgroundColor: 'transparent' }])
         // Not inside start-up: the second load waits for the timer.
