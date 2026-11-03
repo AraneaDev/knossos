@@ -87,6 +87,7 @@ php	src/Cli/CliInputLoader.php
 php	src/Cli/CliOptionParser.php
 php	src/Cli/Command/BriefCommand.php
 php	src/Cli/Command/BundleCommand.php
+php	src/Cli/Command/ClaimCommand.php
 php	src/Cli/Command/CliCommandSet.php
 php	src/Cli/Command/EmitTransaction.php
 php	src/Cli/Command/EnricherCommand.php
@@ -349,6 +350,7 @@ php	src/Roots/RootException.php
 php	src/Roots/RootGuard.php
 php	src/Roots/RootNotFoundException.php
 php	src/Roots/RootsFile.php
+php	src/Roots/StartClaim.php
 php	src/Runtime/DataDirectory.php
 php	src/Runtime/DoctorService.php
 php	src/Runtime/ErrorCode.php
@@ -512,6 +514,7 @@ php	tests/phpunit/Classification/ToolConfigModuleRuleTest.php
 php	tests/phpunit/Classification/TypeScriptFrameworkRoleRuleTest.php
 php	tests/phpunit/ClaudeCodeTypesTest.php
 php	tests/phpunit/Cli/BriefCommandTest.php
+php	tests/phpunit/Cli/ClaimCommandTest.php
 php	tests/phpunit/Cli/CliArgumentsTest.php
 php	tests/phpunit/Cli/CliDocumentedOptionsTest.php
 php	tests/phpunit/Cli/CliHelpersTest.php
@@ -865,6 +868,7 @@ php	tests/phpunit/Roots/RootExceptionTest.php
 php	tests/phpunit/Roots/RootGuardContainmentTest.php
 php	tests/phpunit/Roots/RootGuardTest.php
 php	tests/phpunit/Roots/RootsFileTest.php
+php	tests/phpunit/Roots/StartClaimTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php

@@ -145,6 +145,7 @@ Usage:
                 (roots also come from KNOSSOS_ALLOWED_ROOTS and the roots
                  file beside the database, re-read on every request)
   knossos allow-root <path> [--execute] [--db=FILE] [--json]
+  knossos claim <path> [--execute] [--db=FILE] [--json]
   knossos enricher list [--db=FILE] [--json]
   knossos enricher add <name> [--timeout=N] [--env=NAME=VALUE]... [--kinds=a,b]
                        [--replace] [--db=FILE] [--json] -- <command> [args...]
