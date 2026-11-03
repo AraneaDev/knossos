@@ -63,7 +63,9 @@ Every state except `fresh` has two more forms, because a `scan_project` the
 server would refuse is advice nobody can follow:
 
 - When the path is outside the allowed roots, the instruction becomes the fix:
-  `{state}, and {path} is not an allowed root in {roots_file}. Add it: knossos allow-root {path} --execute`.
+  `{state}, and {path} is not an allowed root in {roots_file}. To scan it, ask the person to run /knossos in that folder.`
+  In a container the instruction stays `Add it: knossos allow-root {path} --execute`, because a host path is not the
+  server's path there.
   `roots_file` names the file this brief read, since a machine can have more
   than one; compare it with `server_info` when a scan is refused anyway. The
   clause is dropped when there was no roots file to read. The MCP server

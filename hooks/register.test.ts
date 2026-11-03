@@ -1566,7 +1566,7 @@ describe('knossos mod', () => {
     expect(w.dashboardRuns()[0]).toContain('--fan-in-threshold=20')
   })
 
-  test('the allow-root hint names the roots file and the refused root', async ($, on) => {
+  test('a refused root leaves the band quiet', async ($, on) => {
     const refused = brief({ status: 'not-allowed', path: `${ROOT}/src`, roots_file: '/data/roots.json', refused_root: ROOT })
     const w = world(on, { brief: [{ stdout: refused }] })
     await $.session.start(START)
@@ -1574,13 +1574,7 @@ describe('knossos mod', () => {
     await edit($, `${ROOT}/src/Router.php`)
     await $.turn.complete(TURN)
     await w.clock.settle()
-    // The band names the root; the command, too long for a band, is copied whole.
-    expect(await bandText($)).toContain('not allowed: repo')
-    const band = await $.ui.mount({ plugin: 'knossos', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND_PROPS, bodyColumns: 50 } })
-    expect(drawn((await band.find({ key: 'band' }))?.text ?? '')).not.toContain('allow-root')
-    await band.press({ key: 'copy' })
-    expect(w.copies.map(c => c.text)).toEqual([`KNOSSOS_ROOTS_FILE='/data/roots.json' knossos allow-root '${ROOT}' --execute`])
-    await band.unmount()
+    expect(await bandText($)).not.toContain('not allowed')
   })
 
   test('the pane opens on start when the project asks for it', async ($, on) => {

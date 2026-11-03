@@ -6,11 +6,17 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\SessionBrief;
 use Knossos\Query\SessionBriefRenderer;
+use Knossos\Roots\RootGuard;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 final class SessionBriefRendererTest extends TestCase
 {
+    private function refusedBrief(): SessionBrief
+    {
+        return new SessionBrief('stale', 'project_1b4f41', 'Knossos-MCP', '/root/Knossos-MCP', 1_468_800, 118, 402, [], [], [], [], false);
+    }
+
     private function brief(string $state, ?int $age = 3600, int $changed = 0, int $tracked = 402): SessionBrief
     {
         return new SessionBrief(
@@ -102,11 +108,33 @@ final class SessionBriefRendererTest extends TestCase
             str_starts_with(
                 $text,
                 'STALE (118 files, 17d), and /root/Knossos-MCP is not an allowed root. '
-                    . 'Add it: knossos allow-root /root/Knossos-MCP --execute',
+                    . 'To scan it, ask the person to run /knossos in that folder.',
             ),
         );
         assertSame(false, str_contains($text, 'scan_project'));
         assertSame(true, strlen($text) <= SessionBriefRenderer::BUDGETS['stale']);
+    }
+
+    #[Group('query')]
+    public function testANotAllowedRootAsksThePersonToRunKnossosOutsideAContainer(): void
+    {
+        $saved = getenv('KNOSSOS_CONTAINER');
+        putenv('KNOSSOS_CONTAINER');
+        try {
+            if (RootGuard::containerised()) {
+                $this->markTestSkipped('This machine is a container itself.');
+            }
+            $text = (new SessionBriefRenderer())->render($this->refusedBrief());
+            assertSame(true, str_contains($text, 'ask the person to run /knossos'));
+            assertSame(false, str_contains($text, 'knossos allow-root'));
+
+            putenv('KNOSSOS_CONTAINER=1');
+            $contained = (new SessionBriefRenderer())->render($this->refusedBrief());
+            assertSame(true, str_contains($contained, 'Add it: knossos allow-root /root/Knossos-MCP --execute'));
+            assertSame(false, str_contains($contained, 'ask the person'));
+        } finally {
+            putenv(is_string($saved) ? 'KNOSSOS_CONTAINER=' . $saved : 'KNOSSOS_CONTAINER');
+        }
     }
 
     #[Group('query')]
@@ -145,7 +173,7 @@ final class SessionBriefRendererTest extends TestCase
             str_starts_with(
                 $text,
                 'UNVERIFIED (1240 files, over probe limit; scanned 4d ago), and /root/Knossos-MCP is not an '
-                    . 'allowed root. Add it: knossos allow-root /root/Knossos-MCP --execute',
+                    . 'allowed root. To scan it, ask the person to run /knossos in that folder.',
             ),
         );
         assertSame(false, str_contains($text, 'Rescan if exactness matters.'));
@@ -203,7 +231,7 @@ final class SessionBriefRendererTest extends TestCase
             true,
             str_contains(
                 $text,
-                'NOT SCANNED, and /root/Elsewhere is not an allowed root. Add it: knossos allow-root /root/Elsewhere --execute',
+                'NOT SCANNED, and /root/Elsewhere is not an allowed root. To scan it, ask the person to run /knossos in that folder.',
             ),
         );
     }
@@ -241,7 +269,7 @@ final class SessionBriefRendererTest extends TestCase
             str_contains(
                 $text,
                 'NOT SCANNED, and /root/Elsewhere is not an allowed root in /root/.knossos/roots.json. '
-                    . 'Add it: knossos allow-root /root/Elsewhere --execute',
+                    . 'To scan it, ask the person to run /knossos in that folder.',
             ),
         );
     }
@@ -296,7 +324,7 @@ final class SessionBriefRendererTest extends TestCase
             true,
             str_contains(
                 $text,
-                'NO GRAPH, and /root/Knossos-MCP is not an allowed root. Add it: knossos allow-root /root/Knossos-MCP --execute',
+                'NO GRAPH, and /root/Knossos-MCP is not an allowed root. To scan it, ask the person to run /knossos in that folder.',
             ),
         );
     }

@@ -3,8 +3,7 @@ import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
 
 export type { JobState }
-/** `copy`: a command the band offers to copy, whole, where its text could only name part of it. */
-export type BandModel = { tone: 'normal' | 'warn' | 'alert'; text: string; showDetails: boolean; copy?: string } | null
+export type BandModel = { tone: 'normal' | 'warn' | 'alert'; text: string; showDetails: boolean } | null
 
 /** 12s, 14m, 3h. */
 export function formatAge(ms: number): string {
@@ -47,8 +46,6 @@ function figures(b: TurnBrief, declared: ReadonlySet<string>, hues: Hues): { bod
   return { body: parts.length === 0 ? null : parts.join(' · '), reach }
 }
 
-const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-
 /**
  * What the band says, or null to let the engine draw nothing. `declared`
  * holds the project's declared boundaries (from the dashboard): when there
@@ -63,15 +60,7 @@ export function bandModel(brief: TurnBrief | null, job: JobState, now: number, d
     if (job.phase === 'failed') return { tone: 'warn', text: 'knossos · scan failed', showDetails: false }
     return null
   }
-  if (brief.status === 'not-allowed') {
-    // The roots file the brief actually read (a baked data directory moves it) and the root that has to be allowed.
-    // The command does not fit a band: the band names the root's last part and copies the command whole;
-    // its details open the pane, which offers to allow the root.
-    const refused = brief.refused_root ?? brief.path
-    const file = brief.roots_file ? `KNOSSOS_ROOTS_FILE=${quote(brief.roots_file)} ` : ''
-    const name = refused.replace(/\/+$/, '').split('/').pop() || refused
-    return { tone: 'warn', text: `knossos · not allowed: ${name}`, showDetails: true, copy: `${file}knossos allow-root ${quote(refused)} --execute` }
-  }
+  // A folder that is not allowed is quiet: the person allows it by starting Knossos in it, and the pane offers the same.
   if (brief.status === 'scan-failed') {
     const why = brief.reason ? `: ${brief.reason}` : ''
     return { tone: 'warn', text: `knossos · scan failed${why}`, showDetails: false }

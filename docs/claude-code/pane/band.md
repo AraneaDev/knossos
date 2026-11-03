@@ -30,12 +30,6 @@ figures it kept.
 `[ details ]` opens the pane. `[ hide ]` hides the band for the rest of the
 session.
 
-When the project's root is not allowed, the band names it instead of figures
-(`knossos · not allowed: my-project`). The command that allows it does not fit
-a band, so `[ copy ]` copies it whole:
-
-```sh
-KNOSSOS_ROOTS_FILE='/home/me/.knossos/roots.json' knossos allow-root '/home/me/my-project' --execute
-```
-
-`[ details ]` opens the pane, which offers to run it for you after asking.
+When the project's root is not allowed, the band stays quiet. A session start
+never allows a folder, so it has nothing to report. Run `/knossos` in the
+session, or `knossos` in the folder, and the folder is allowed and scanned.

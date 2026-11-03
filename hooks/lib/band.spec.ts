@@ -62,21 +62,9 @@ describe('bandModel', () => {
     const m = bandModel(ok({ changed_files: [], impact: {}, deleted_files: ['gone.php'] }), idle, 1_000_000)
     expect(m?.text).toContain('1 deleted')
   })
-  it('names the refused root in a line that fits, and copies the allow-root command whole', () => {
-    const m = bandModel(ok({ status: 'not-allowed', path: '/work/r x/' }), idle, 1_000_000)
-    expect(m?.text).toBe('knossos · not allowed: r x')
-    expect(m?.copy).toBe("knossos allow-root '/work/r x/' --execute")
-    // Its details open the pane, which offers to allow the root.
-    expect(m?.showDetails).toBe(true)
-  })
-  it('names the roots file the brief read and the root it refused', () => {
-    const m = bandModel(
-      ok({ status: 'not-allowed', path: '/r/src', roots_file: "/data/it's/roots.json", refused_root: '/r' }),
-      idle,
-      1_000_000,
-    )
-    expect(m?.text).toBe('knossos · not allowed: r')
-    expect(m?.copy).toBe("KNOSSOS_ROOTS_FILE='/data/it'\\''s/roots.json' knossos allow-root '/r' --execute")
+  it('draws nothing for a folder that is not allowed: starting Knossos in it is how it gets allowed', () => {
+    expect(bandModel(ok({ status: 'not-allowed', path: '/work/r x/' }), idle, 1_000_000)).toBeNull()
+    expect(bandModel(ok({ status: 'not-allowed', path: '/r/src', roots_file: '/data/roots.json', refused_root: '/r' }), idle, 1_000_000)).toBeNull()
   })
   it('says the first scan failed', () =>
     expect(bandModel(null, { phase: 'failed', lastAttemptAt: 1 }, 2)).toEqual({ tone: 'warn', text: 'knossos · scan failed', showDetails: false }))

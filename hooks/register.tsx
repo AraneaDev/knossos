@@ -9,7 +9,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { begin, counts, finish } from './lib/activity'
 import { committedSince, movedTree } from './lib/agent'
-import { copyCommand, handlersOf } from './mod/actions'
+import { handlersOf } from './mod/actions'
 import { focusLanded, focusMoved, wheelScrolled } from './mod/navigate-actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
 import { cellChange, INITIAL } from './mod/cells'
@@ -276,7 +276,6 @@ export const register: Register = (on, options) => {
     const io = portOf($)
     const band = await drawBand(io, () => $.ui.resolve(e), e.props, {
       details: () => openPane(io),
-      copy: (command, surface) => void copyCommand(io, command, surface).catch(() => undefined),
       hide: () => update($, view, v => ({ ...v, isBandHidden: true })),
     })
     return band ?? next(e)

@@ -146,6 +146,30 @@ final class RootGuardTest extends TestCase
         $this->assertStringContainsString('Configured roots: ' . $allowed, $error->getMessage());
     }
 
+    public function testTheRejectionTellsThePersonHowToAllowItOutsideAContainer(): void
+    {
+        $saved = getenv('KNOSSOS_CONTAINER');
+        $allowed = $this->makeTempDir();
+        $outside = $this->makeTempDir();
+        $guard = new RootGuard(allowedRoots: new \Knossos\Roots\AllowedRoots([$allowed], $allowed . '/roots.json'));
+        try {
+            putenv('KNOSSOS_CONTAINER');
+            if (RootGuard::containerised()) {
+                $this->markTestSkipped('This machine is a container itself.');
+            }
+            $message = captureThrows(static fn() => $guard->resolve($outside), RootException::class)->getMessage();
+            $this->assertStringContainsString('Add it to ' . $allowed . '/roots.json', $message);
+            $this->assertStringContainsString('The person can allow it by running /knossos or knossos in that folder.', $message);
+
+            putenv('KNOSSOS_CONTAINER=1');
+            $contained = captureThrows(static fn() => $guard->resolve($outside), RootException::class)->getMessage();
+            $this->assertStringContainsString('Add it to ' . $allowed . '/roots.json', $contained);
+            $this->assertStringNotContainsString('The person can allow it', $contained);
+        } finally {
+            putenv(is_string($saved) ? 'KNOSSOS_CONTAINER=' . $saved : 'KNOSSOS_CONTAINER');
+        }
+    }
+
     public function testResolveSkipsNonExistentAllowedRootAndFallsThroughToOutsideError(): void
     {
         // A single stale/removed allow-root is skipped, so resolution finds no

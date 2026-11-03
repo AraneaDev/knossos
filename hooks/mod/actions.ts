@@ -25,12 +25,6 @@ import { mod } from './state'
 import { requestRescan } from './watcher'
 import type { RenderSurface } from 'claude-code'
 
-/** Copies a command the band offers (the allow-root command it could only name part of). */
-export async function copyCommand(io: Port, command: string, surface?: RenderSurface): Promise<void> {
-  const copied = await io.ui.copy({ text: command, ...(surface === undefined ? {} : { surface }) })
-  io.ui.toast(copied.isCopied ? `Copied ${command}` : `Could not copy the command: ${copied.reason ?? 'the surface refused'}`)
-}
-
 /** Copies the command for the tests that reach this session's changes. */
 async function copyTestCommand(io: Port, surface?: RenderSurface): Promise<void> {
   const input = await currentInput(io, true)

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RenderSurface } from 'claude-code'
 import { FEEDBACK_MS } from '../lib/chrome'
-import { copyCommand, handlersOf, PRESSES, pressOf } from './actions'
+import { handlersOf, PRESSES, pressOf } from './actions'
 import type { Port } from './port'
 import { currentInput } from './input'
 import { mod } from './state'
@@ -213,33 +213,5 @@ describe('e: opening what is marked in the editor', () => {
         const { io, run } = port(exited(0))
         await press(io, 'edit', SURFACE)
         expect(run).toHaveBeenCalledWith(['code', '-g', '/work/app/src/File.php'], { timeoutMs: 10_000 })
-    })
-})
-
-describe('copying a command the band offers', () => {
-    const copier = (answer: { isCopied: boolean; reason?: string }) => {
-        const toasts: string[] = []
-        const copy = vi.fn(async () => answer)
-        const io = { ui: { copy, toast: (text: string) => void toasts.push(text) } } as unknown as Port
-        return { io, copy, toasts }
-    }
-
-    it('says what it copied, on the surface it was asked from', async () => {
-        const { io, copy, toasts } = copier({ isCopied: true })
-        await copyCommand(io, 'knossos allow-root /work/app', 'desktop')
-        expect(copy).toHaveBeenCalledExactlyOnceWith({ text: 'knossos allow-root /work/app', surface: 'desktop' })
-        expect(toasts).toEqual(['Copied knossos allow-root /work/app'])
-    })
-
-    it('says it could not, and why, when the surface refuses', async () => {
-        const { io, toasts } = copier({ isCopied: false, reason: 'no clipboard' })
-        await copyCommand(io, 'knossos allow-root /work/app')
-        expect(toasts).toEqual(['Could not copy the command: no clipboard'])
-    })
-
-    it('names the surface as the cause when the refusal gives no reason', async () => {
-        const { io, toasts } = copier({ isCopied: false })
-        await copyCommand(io, 'knossos allow-root /work/app')
-        expect(toasts).toEqual(['Could not copy the command: the surface refused'])
     })
 })
