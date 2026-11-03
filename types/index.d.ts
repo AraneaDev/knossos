@@ -737,9 +737,15 @@ export type NoteWrite = { status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no
 
 /** The `scan` subcommand's answer: an incremental rescan the person asked for from the pane. */
 export type Rescan = {
-  status: 'ok' | 'not-allowed' | 'missing' | 'unscanned' | 'scan-failed' | 'error' | 'no-binary'
+  status: 'ok' | 'not-allowed' | 'missing' | 'unscanned' | 'scan-failed' | 'killed' | 'timed-out' | 'error' | 'no-binary'
   snapshot_id?: string | null
   reason?: string | null
+  /** With `scan-failed`: `killed`, `lock`, `worker` or `other`; `lock` is worth one more try. */
+  failure_class?: string | null
+  /** With `ok`: why a language is missing from the graph, when a worker was killed during the scan. */
+  degraded_reason?: string | null
+  /** With `killed`: the signal that ended the scan, as the wrapper saw it. */
+  signal?: number
   /** With `not-allowed`: the root to allow and the roots file the refusal read. */
   refused_root?: string | null
   roots_file?: string | null

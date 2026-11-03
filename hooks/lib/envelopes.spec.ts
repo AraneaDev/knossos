@@ -104,7 +104,7 @@ describe('component detail', () => {
 
 describe('parseRescan and rescanReason', () => {
   it('reads every status the scan subcommand answers', () => {
-    for (const status of ['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'error', 'no-binary']) {
+    for (const status of ['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'killed', 'timed-out', 'error', 'no-binary']) {
       expect(parseRescan(JSON.stringify({ status }))?.status).toBe(status)
     }
   })
@@ -120,6 +120,15 @@ describe('parseRescan and rescanReason', () => {
     expect(rescanReason({ status: 'scan-failed', reason: 'disk full' })).toBe('disk full')
     expect(rescanReason({ status: 'scan-failed' })).toBe('the scan failed')
     expect(rescanReason({ status: 'error' })).toBe('knossos could not run it')
+  })
+  it('says what the wrapper saw end a scan from outside', () => {
+    expect(rescanReason({ status: 'killed', signal: 15 })).toBe('Stopped by the system, probably low on memory')
+    expect(rescanReason({ status: 'timed-out' })).toBe('Took longer than 5 minutes')
+  })
+  it('keeps the class a failed scan reports, and the reason a degraded one gives', () => {
+    expect(parseRescan('{"status":"scan-failed","reason":"x","failure_class":"lock"}')?.failure_class).toBe('lock')
+    expect(parseRescan('{"status":"ok","degraded_reason":"y"}')?.degraded_reason).toBe('y')
+    expect(parseRescan('{"status":"killed","signal":15}')?.signal).toBe(15)
   })
 })
 

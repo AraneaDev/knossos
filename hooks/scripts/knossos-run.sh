@@ -26,7 +26,7 @@
 #        knossos-run.sh note-check <project-dir> --component=<name> [--value=<reason> | --remove] [--execute]
 #        knossos-run.sh note-confirm <project-dir> --component=<name> [--execute]
 #
-# Every failure exits 0. All but two print nothing: the mod reads silence as
+# Every failure exits 0. All but three print nothing: the mod reads silence as
 # "no data", keeps its last figures with their age and asks again later, so a
 # broken install can never break a session. A missing binary prints
 # {"status":"no-binary"} so the mod can turn itself off, and a call this
@@ -34,7 +34,9 @@
 # through, a KNOSSOS_RUN_TIMEOUT it cannot use) prints
 # {"status":"refused","by":"wrapper","reason":"..."} so the mod can log it:
 # the mod asking for something the wrapper will never run is a defect, not
-# a quiet moment.
+# a quiet moment. The third is a `scan` that was killed by a signal or ran out
+# of time: it prints {"status":"killed","signal":N} or {"status":"timed-out"}
+# and keeps the reason in the log `knossos doctor` reads.
 #
 # `watch` is the one that does not end on its own: it becomes the live
 # watcher (`knossos watch --shared`), which prints one JSON event per line
@@ -87,11 +89,28 @@ if [ "$SUBCOMMAND" = watch ]; then
     exec "$BIN" watch "$TARGET" "$@" 2>/dev/null
 fi
 
-if TIMEOUT_BIN="$(find_timeout)"; then
-    OUTPUT="$("$TIMEOUT_BIN" "$LIMIT" "$BIN" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)" || exit 0
+TIMEOUT_BIN="$(find_timeout)" || TIMEOUT_BIN=
+if [ -n "$TIMEOUT_BIN" ]; then
+    OUTPUT="$("$TIMEOUT_BIN" "$LIMIT" "$BIN" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)"
+    STATUS=$?
 else
     # No timeout tool: the mod's own $.process.run timeoutMs is the bound.
-    OUTPUT="$("$BIN" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)" || exit 0
+    OUTPUT="$("$BIN" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)"
+    STATUS=$?
+fi
+if [ "$STATUS" -ne 0 ]; then
+    # The one other failure that is not silent: a scan that was killed from
+    # outside or ran out of time. The pane would otherwise show "knossos said
+    # nothing", and the reason is known here and nowhere else. Every other
+    # subcommand, and any other status, stays silent.
+    if [ "$SUBCOMMAND" = scan ]; then
+        knossos_classify_run "$STATUS" "$TIMEOUT_BIN"
+        if [ -n "$KNOSSOS_FAILURE_CLASS" ]; then
+            knossos_say_failure
+            record_scan_failure "$TARGET" "$KNOSSOS_FAILURE_CLASS" "$KNOSSOS_FAILURE_SIGNAL" pane
+        fi
+    fi
+    exit 0
 fi
 
 [ -n "$OUTPUT" ] || exit 0

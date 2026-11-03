@@ -8,8 +8,10 @@
 # __KNOSSOS_DATA__ substituted at emit time. Not used in place.
 #
 # Same contract as knossos-run.sh: every failure exits 0 with nothing on stdout,
-# except a missing docker, which prints {"status":"no-binary"}, and a call it
-# refuses, which prints {"status":"refused","by":"wrapper","reason":"..."}.
+# except a missing docker, which prints {"status":"no-binary"}, a call it
+# refuses, which prints {"status":"refused","by":"wrapper","reason":"..."}, and
+# a scan that was killed or timed out, which prints {"status":"killed","signal":N}
+# or {"status":"timed-out"}.
 #
 # The session commands take exactly what the local wrapper lets through. The
 # two that read git (`session-head`, `session-diff`) run as the caller's own
@@ -108,19 +110,35 @@ if [ "$SUBCOMMAND" = watch ]; then
         "$IMAGE" watch "$TARGET" "$@" 2>/dev/null
 fi
 
-if TIMEOUT_BIN="$(find_timeout)"; then
+TIMEOUT_BIN="$(find_timeout)" || TIMEOUT_BIN=
+if [ -n "$TIMEOUT_BIN" ]; then
     OUTPUT="$("$TIMEOUT_BIN" -k 2 "$LIMIT" docker run --rm --init --name "$NAME" ${USER_ARG:+"$USER_ARG"} \
         -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
         -v "$PROJECT_DIR:$PROJECT_DIR:ro" \
         -v "$DATA:/data" \
-        "$IMAGE" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)" || { "$TIMEOUT_BIN" 2 docker rm -f "$NAME" >/dev/null 2>&1; exit 0; }
+        "$IMAGE" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)"
+    STATUS=$?
+    [ "$STATUS" -eq 0 ] || "$TIMEOUT_BIN" 2 docker rm -f "$NAME" >/dev/null 2>&1
 else
     # No timeout tool: the mod's own $.process.run timeoutMs is the bound.
     OUTPUT="$(docker run --rm --init --name "$NAME" ${USER_ARG:+"$USER_ARG"} \
         -e "KNOSSOS_GIT_SAFE_DIRECTORY=$PROJECT_DIR" \
         -v "$PROJECT_DIR:$PROJECT_DIR:ro" \
         -v "$DATA:/data" \
-        "$IMAGE" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)" || exit 0
+        "$IMAGE" "$COMMAND" "$TARGET" "$@" --json 2>/dev/null)"
+    STATUS=$?
+fi
+if [ "$STATUS" -ne 0 ]; then
+    # As in knossos-run.sh, a scan killed from outside or out of time says so;
+    # every other failure is silence. Its reason is kept in the data directory.
+    if [ "$SUBCOMMAND" = scan ]; then
+        knossos_classify_run "$STATUS" "$TIMEOUT_BIN"
+        if [ -n "$KNOSSOS_FAILURE_CLASS" ]; then
+            knossos_say_failure
+            knossos_record_in_container "$TARGET" "$KNOSSOS_FAILURE_CLASS" "$KNOSSOS_FAILURE_SIGNAL" pane
+        fi
+    fi
+    exit 0
 fi
 
 [ -n "$OUTPUT" ] || exit 0

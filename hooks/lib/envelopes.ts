@@ -25,7 +25,7 @@ const FILE_OBJECTS = ['file']
 const LEDGER = new Set([...DASH, 'no-git'])
 const LEDGER_ARRAYS = ['tests']
 const LEDGER_OBJECTS = ['files']
-const RESCAN = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'error', 'no-binary'])
+const RESCAN = new Set(['ok', 'not-allowed', 'missing', 'unscanned', 'scan-failed', 'killed', 'timed-out', 'error', 'no-binary'])
 // `session-head`: a commit, or no git to read one from.
 const HEAD = new Set(['ok', 'no-git'])
 
@@ -333,6 +333,9 @@ export function rescanReason(rescan: Rescan | null): string {
   if (rescan.status === 'missing') return 'the project is gone'
   if (rescan.status === 'unscanned') return 'never scanned'
   if (rescan.status === 'scan-failed') return rescan.reason ?? 'the scan failed'
+  // Said by the wrapper, which saw the process end: what usually ends one, and no more than that.
+  if (rescan.status === 'killed') return 'Stopped by the system, probably low on memory'
+  if (rescan.status === 'timed-out') return 'Took longer than 5 minutes'
   return 'knossos could not run it'
 }
 

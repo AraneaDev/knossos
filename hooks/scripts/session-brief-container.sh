@@ -69,6 +69,8 @@ if TIMEOUT_BIN="$(find_timeout)"; then
         # and 137 from either when the client ignored the TERM and -k killed it.
         if [ "$STATUS" -eq 124 ] || [ "$STATUS" -eq 137 ] || { [ "$STATUS" -eq 143 ] && "$TIMEOUT_BIN" --help 2>&1 | grep -q BusyBox; }; then
             printf "Knossos brief timed out after 10 s; run knossos session-brief '%s' to see why.\n" "$PROJECT_DIR"
+            # Kept for `knossos doctor` too; in the background, since the ceiling has no room left.
+            knossos_record_in_container "$PROJECT_DIR" brief-timeout
         fi
         exit 0
     fi
