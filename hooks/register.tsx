@@ -9,7 +9,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { begin, counts, finish } from './lib/activity'
 import { committedSince, movedTree } from './lib/agent'
-import { copyCommand, handlersOf } from './mod/actions'
+import { handlersOf } from './mod/actions'
 import { focusLanded, focusMoved, wheelScrolled } from './mod/navigate-actions'
 import { commitNoteFor, headAt, noteEdit, noteRead, noteSafely, projectRoot, reflogAt } from './mod/agent'
 import { cellChange, INITIAL } from './mod/cells'
@@ -131,7 +131,6 @@ function portOf($: EngineInterface): Port {
 export const register: Register = (on, options) => {
   if (options.enabled === false) return
   reset(options)
-  const openOnStart = options.openPaneOnStart === true
 
   on('session.start', async ($, e, next) => {
     const io = portOf($)
@@ -141,7 +140,7 @@ export const register: Register = (on, options) => {
     mod.registration.timer = null
     if (!(await registerCommand(io))) retryRegister(io, 0, gen)
     // A start-up that outlives the session (torn down under it) fails quietly, never as a stray rejection.
-    $.clock.after(0, () => void startUp(io, openOnStart).catch(() => undefined))
+    $.clock.after(0, () => void startUp(io, 'session').catch(() => undefined))
     return next(e)
   })
 
@@ -277,7 +276,6 @@ export const register: Register = (on, options) => {
     const io = portOf($)
     const band = await drawBand(io, () => $.ui.resolve(e), e.props, {
       details: () => openPane(io),
-      copy: (command, surface) => void copyCommand(io, command, surface).catch(() => undefined),
       hide: () => update($, view, v => ({ ...v, isBandHidden: true })),
     })
     return band ?? next(e)

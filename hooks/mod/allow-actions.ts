@@ -65,6 +65,15 @@ async function runAllow(io: Port, root: string): Promise<void> {
     await io.state.allow.update((): AllowState => ({ phase: 'failed', root, reason }))
     return
   }
+  await afterGrant(io, root)
+}
+
+/**
+ * What follows a root that is allowed, whoever allowed it (the person in the
+ * pane, or starting Knossos in its folder): the first scan, which creates the
+ * project, and the turn's brief after it.
+ */
+export async function afterGrant(io: Port, root: string): Promise<void> {
   await io.state.allow.update((): AllowState => ({ phase: 'done', root, reason: null }))
   await io.state.rescan.update((r): RescanState => ({ ...r, refusedRoot: null }))
   // A watcher refused for this root may watch it now, once the scan below lands a dashboard.

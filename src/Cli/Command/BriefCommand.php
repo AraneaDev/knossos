@@ -9,6 +9,8 @@ use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\ProjectDatabaseLocator;
 use Knossos\Query\PaneCommands;
+use Knossos\Query\RescanService;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Runtime\RuntimeFactory;
 use Throwable;
 
@@ -21,9 +23,11 @@ use Throwable;
  * argument, which they check themselves rather than leave to the router:
  * the caller is a hook that must never break a session, so failure is a
  * status in the JSON, not an exit code.
- * None creates a database; only `turn-brief` and `rescan` write, by
- * scanning a project that already exists in an allowed root (`rescan` also
- * makes the first scan of a path that is exactly an allowed root), and
+ * Only `rescan` creates a database, and only for a path that is exactly an
+ * allowed root: a fresh install has none until the person's first start. The
+ * read-only commands never do. `turn-brief` and `rescan` write by scanning a
+ * project that already exists in an allowed root (`rescan` also makes the
+ * first scan of a path that is exactly an allowed root), and
  * `annotate`, a note on a component, only with `--execute`.
  */
 final class BriefCommand implements CliCommand
@@ -59,7 +63,7 @@ final class BriefCommand implements CliCommand
             [$path, $name] = PaneCommands::target($command, $positionals);
             // A project id in place of the path: answer for that project's root.
             [$path, $databasePath] = (new ProjectDatabaseLocator())->target($path, $options, $context);
-            $result = is_file($databasePath)
+            $result = is_file($databasePath) || ($command === 'rescan' && $this->isExactAllowedRoot($path, $databasePath))
                 ? $this->answer($command, $path, $name, $databasePath, $options, $context)
                 : ['status' => 'unscanned', 'path' => realpath($path) ?: $path];
             $context->output($result, $json, (string) $result['status']);
@@ -72,10 +76,27 @@ final class BriefCommand implements CliCommand
     }
 
     /**
-     * Opens the existing database (migrating it) and runs the requested command.
+     * Whether `$path` is exactly one of the roots allowed for the database at
+     * `$databasePath`, which is what lets `rescan` make a database that a fresh
+     * install does not have yet.
+     */
+    private function isExactAllowedRoot(string $path, string $databasePath): bool
+    {
+        $absolute = realpath($path);
+        if ($absolute === false) {
+            return false;
+        }
+        $allowed = new AllowedRoots(AllowedRoots::fromEnvironment(), AllowedRoots::defaultConfigPath($databasePath));
+
+        return RescanService::isAllowedRoot($allowed, $absolute);
+    }
+
+    /**
+     * Opens the database and runs the requested command.
      *
-     * Only reached after the `is_file` guard, so the migration never creates a
-     * database; it only brings a stale schema up to date before a scan writes.
+     * Only reached for a database that exists, or for a `rescan` of a path that
+     * is exactly an allowed root, which creates it. Every other command only
+     * brings a stale schema up to date before it reads or scans.
      *
      * @param array<string, list<string>> $options
      * @return array<string, mixed>

@@ -26,6 +26,8 @@ use Knossos\Runtime\RuntimeFactory;
  */
 final class RootsCommand implements CliCommand
 {
+    use PreviewsAFolder;
+
     /**
      * What a command that writes a file beside the database says when nothing
      * named that location. Shared with `enricher`, whose file sits beside this one.
@@ -40,32 +42,18 @@ final class RootsCommand implements CliCommand
     }
 
     /** {@inheritDoc} */
-    public function allowedOptions(string $command): array
-    {
-        return ['db', 'json', 'execute'];
-    }
-
-    /** {@inheritDoc} */
     public function run(string $command, array $positionals, array $options, CliCommandContext $context): int
     {
-        $path = $positionals[0] ?? throw new InvalidArgumentException(
-            'Usage: knossos allow-root <path> [--execute] [--db=FILE] [--json]',
-        );
         // Roots are compared against the canonical path a scan is asked to
         // cover, which is always absolute, so a relative entry would never
-        // match anything and would silently grant nothing.
-        if (!str_starts_with($path, '/')) {
-            throw new InvalidArgumentException(sprintf(
-                '%s is not absolute. allow-root needs an absolute path so it can be compared against scan requests.',
-                $path,
-            ));
-        }
-        // A root that does not exist looks identical to a working one until
-        // something tries to scan it, which is the confusion this check
-        // prevents up front instead of at scan time.
-        if (!is_dir($path)) {
-            throw new InvalidArgumentException(sprintf('%s is not an existing directory.', $path));
-        }
+        // match anything and would silently grant nothing. A root that does not
+        // exist looks identical to a working one until something tries to scan
+        // it, which is the confusion the directory check prevents up front.
+        $path = $this->folder(
+            $positionals,
+            'Usage: knossos allow-root <path> [--execute] [--db=FILE] [--json]',
+            '%s is not absolute. allow-root needs an absolute path so it can be compared against scan requests.',
+        );
         // Both the comparison below and the entry written out use the reader's
         // own spelling of a root, borrowed from AllowedRoots rather than
         // reinvented, so `/p` and `/p/` cannot become two lines granting one

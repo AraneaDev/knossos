@@ -4,19 +4,24 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Roots;
 
+use Knossos\Roots\AllowedRoots;
 use Knossos\Roots\RootException;
 use Knossos\Roots\RootGuard;
 use Knossos\Roots\RootNotFoundException;
+use Knossos\Tests\Phpunit\Support\PinsContainer;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 #[Group('root-guard')]
 final class RootGuardTest extends TestCase
 {
+    use PinsContainer;
+
     private ?string $tempDir = null;
 
     protected function tearDown(): void
     {
+        $this->restoreContainer();
         if ($this->tempDir !== null && is_dir($this->tempDir)) {
             rmdir($this->tempDir);
         }
@@ -144,6 +149,72 @@ final class RootGuardTest extends TestCase
         // on, which is how agents end up guessing at paths.
         $this->assertStringContainsString('Project root is outside the configured allowed roots: ' . $outside, $error->getMessage());
         $this->assertStringContainsString('Configured roots: ' . $allowed, $error->getMessage());
+    }
+
+    public function testTheRejectionTellsThePersonHowToAllowItOutsideAContainer(): void
+    {
+        $this->pinContainer(false);
+        [$guard, $outside, $allowed] = $this->guardWithConfig();
+
+        $message = captureThrows(static fn() => $guard->resolve($outside), RootException::class)->getMessage();
+
+        $this->assertStringContainsString('Add it to ' . $allowed . '/roots.json', $message);
+        $this->assertStringContainsString('The person can allow it by running /knossos or knossos in that folder.', $message);
+        $this->assertStringNotContainsString('runs in a container', $message);
+    }
+
+    public function testFixedRootsWithNoRootsFileGetNoAdviceToStartKnossos(): void
+    {
+        $this->pinContainer(false);
+        $allowed = $this->makeTempDir();
+        $outside = $this->makeTempDir();
+        $guard = new RootGuard(allowedRoots: new AllowedRoots([$allowed]));
+
+        $message = captureThrows(static fn() => $guard->resolve($outside), RootException::class)->getMessage();
+
+        $this->assertStringNotContainsString('The person can allow it', $message);
+        $this->assertStringNotContainsString('runs in a container', $message);
+    }
+
+    public function testTheRejectionInAContainerKeepsTheMountedPathsNoteInsteadOfTheAdvice(): void
+    {
+        $this->pinContainer(true);
+        [$guard, $outside, $allowed] = $this->guardWithConfig();
+
+        $message = captureThrows(static fn() => $guard->resolve($outside), RootException::class)->getMessage();
+
+        $this->assertStringContainsString('Add it to ' . $allowed . '/roots.json', $message);
+        $this->assertStringContainsString('runs in a container', $message);
+        $this->assertStringNotContainsString('The person can allow it', $message);
+    }
+
+    public function testContainerisedHonoursTheVariableAheadOfTheMarkerFile(): void
+    {
+        $saved = getenv('KNOSSOS_CONTAINER');
+        try {
+            // 0 wins over /.dockerenv, wherever the suite runs.
+            putenv('KNOSSOS_CONTAINER=0');
+            $this->assertFalse(RootGuard::containerised());
+            // Any other set value means a container.
+            putenv('KNOSSOS_CONTAINER=1');
+            $this->assertTrue(RootGuard::containerised());
+            putenv('KNOSSOS_CONTAINER=yes');
+            $this->assertTrue(RootGuard::containerised());
+            // Unset: the marker file decides.
+            putenv('KNOSSOS_CONTAINER');
+            $this->assertSame(is_file('/.dockerenv'), RootGuard::containerised());
+        } finally {
+            putenv(is_string($saved) ? 'KNOSSOS_CONTAINER=' . $saved : 'KNOSSOS_CONTAINER');
+        }
+    }
+
+    /** @return array{0: RootGuard, 1: string, 2: string} a guard whose roots file is known, a path it refuses, the allowed root */
+    private function guardWithConfig(): array
+    {
+        $allowed = $this->makeTempDir();
+        $outside = $this->makeTempDir();
+
+        return [new RootGuard(allowedRoots: new AllowedRoots([$allowed], $allowed . '/roots.json')), $outside, $allowed];
     }
 
     public function testResolveSkipsNonExistentAllowedRootAndFallsThroughToOutsideError(): void

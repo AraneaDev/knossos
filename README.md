@@ -118,8 +118,10 @@ Start a new session. The brief appears at its start, and `/knossos` opens the pa
 
 ## Quick start
 
-The installer scanned your project. To scan another, allow it and scan it with the same data
-directory the server uses:
+The installer scanned your project. To scan another, start Knossos in it: type `/knossos` in a
+Claude Code session there, or run `knossos` in its folder. Starting it is the consent to scan,
+so the folder is allowed and scanned for you. A session that only begins never allows or scans
+anything. If you prefer to do it by hand, with the data directory the server uses:
 
 ```sh
 export KNOSSOS_DATA_DIR="$HOME/.knossos"

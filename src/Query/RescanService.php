@@ -16,10 +16,11 @@ use Throwable;
  * The pane offers it when the snapshot is stale or the tree has drifted, so
  * the figures it draws catch up without waiting for the next edit. It writes
  * under the same rules as `turn-brief`: only inside a root the operator
- * allowed, and incrementally, so it never creates a database. It scans a
- * project that is already known. The one exception is the first scan right
+ * allowed, and incrementally. It scans a project that is already known. The one exception is the first scan right
  * after the person allowed a root in the pane: a path that is exactly one
- * of the allowed roots and has no project yet gets its first full scan.
+ * of the allowed roots and has no project yet gets its first full scan, and
+ * that is the only case where `knossos rescan` creates the database file
+ * (see {@see \Knossos\Cli\Command\BriefCommand}).
  * A path merely inside an allowed root still answers `unscanned`. Unlike a turn brief it
  * reports nothing about the change itself: the pane reloads its dashboard
  * after it.
@@ -53,7 +54,7 @@ final readonly class RescanService
             'scanned_at' => null, 'scan_ms' => null, 'reason' => null, 'roots_file' => null, 'refused_root' => null,
         ];
         [$allowed, $project, $refusal] = (new ScanTarget($this->pdo, $this->databasePath))->resolve($absolute);
-        $first = $project === null && ($refusal['status'] ?? null) === 'unscanned' && $this->isAllowedRoot($allowed, $absolute);
+        $first = $project === null && ($refusal['status'] ?? null) === 'unscanned' && self::isAllowedRoot($allowed, $absolute);
         if ($project === null && !$first) {
             return ($refusal ?? []) + $envelope;
         }
@@ -77,7 +78,7 @@ final readonly class RescanService
     }
 
     /** Whether `$absolute` is, after realpath, exactly one of the roots allowed right now. */
-    private function isAllowedRoot(AllowedRoots $allowed, string $absolute): bool
+    public static function isAllowedRoot(AllowedRoots $allowed, string $absolute): bool
     {
         foreach ($allowed->current() as $root) {
             if ((realpath($root) ?: $root) === $absolute) {

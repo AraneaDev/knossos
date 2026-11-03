@@ -809,6 +809,14 @@ export type WatchEvent = {
 export type AllowRoot = { status?: 'no-binary'; path?: string; roots_file?: string; added?: boolean }
 
 /**
+ * What `knossos claim` answers for the folder Knossos was started in: `added`
+ * and `present` are allowed, `would-add` is a preview, `ask` is a folder too
+ * broad to allow unasked, `fixed` is a setup the person has to change, and
+ * `error` is a roots file that cannot be used, with why in `reason`.
+ */
+export type Claim = { status: 'added' | 'would-add' | 'present' | 'ask' | 'fixed' | 'error'; root: string; reason: string | null } | { status: 'no-binary' }
+
+/**
  * The pane's allow-root action for `root`: asking the person to confirm, then
  * running, then done or failed with why. `idle` draws only the offer.
  */

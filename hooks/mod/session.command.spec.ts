@@ -7,7 +7,7 @@ import { runCommand } from './session'
 import { mod, PANE, reset } from './state'
 
 const ROOT = '/work/app'
-const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect <component> to open it on one component.'
+const USAGE = 'Usage: /knossos to toggle the architecture pane; /knossos inspect <component> to open it on one component; /knossos autostart [on|off] to open it when a session starts in this project.'
 const OPENED = 'Knossos pane opened.'
 const CLOSED = 'Knossos pane closed.'
 const dashboard = (snapshot: string): Dashboard =>
@@ -164,7 +164,8 @@ describe('/knossos with no arguments', () => {
         expect((port.values.get('view') as KnossosView).inspect).toBeNull()
         // The refresh waits for a timer due at once, never inside the command.
         expect(port.dashboardRuns()).toBe(0)
-        expect(port.timers.filter(t => !t.cancelled).map(t => t.ms)).toEqual([0])
+        // The refresh, and the claim of the folder.
+        expect(port.timers.filter(t => !t.cancelled).map(t => t.ms)).toEqual([0, 0])
         await port.advance()
         expect(port.dashboardRuns()).toBe(1)
         expect((port.values.get('dashboard') as Dashboard).snapshot_id).toBe('s2')
@@ -271,6 +272,100 @@ describe('/knossos with anything else', () => {
         expect(port.opened).toEqual([])
         expect(port.closed).toEqual([])
         expect(mod.pane.text).toBe('as of 3s ago')
+        await port.advance()
+        expect(port.runs).toEqual([])
+    })
+})
+
+describe('/knossos claims the folder it is run in', () => {
+    const claims = (port: ReturnType<typeof fakePort>) => port.runs.filter(argv => argv[2] === 'claim')
+
+    it('runs claim --execute on a timer when the command opens the pane, never inside the command', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, '')).toBe(OPENED)
+        expect(claims(port)).toEqual([])
+        await port.advance()
+        expect(claims(port)).toEqual([['sh', '/plugin/hooks/scripts/knossos-run.sh', 'claim', ROOT, '--execute']])
+    })
+
+    it('runs no claim when the command closes the pane', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { open: true })
+        expect(await runCommand(port.io, '')).toBe(CLOSED)
+        await port.advance()
+        expect(claims(port)).toEqual([])
+    })
+
+    it('runs claim for /knossos inspect', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, 'inspect Foo')).toBe(OPENED)
+        await port.advance()
+        expect(claims(port)).toHaveLength(1)
+    })
+
+    it('twice in a row claims once and closes the pane the second time', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, '')).toBe(OPENED)
+        expect(await runCommand(port.io, '')).toBe(CLOSED)
+        await port.advance()
+        expect(claims(port)).toHaveLength(1)
+        expect(port.closed).toEqual([{ id: PANE }])
+    })
+})
+
+describe('/knossos autostart', () => {
+    const state = (autostart: boolean) => JSON.stringify({ status: 'ok', autostart, root: ROOT })
+    const runsOf = (port: ReturnType<typeof fakePort>, sub: string) => port.runs.filter(argv => argv[2] === sub).map(argv => argv.slice(3))
+
+    it('on writes the setting, claims the folder, and names the project', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: state(true) } })
+        const said = await runCommand(port.io, 'autostart on')
+        expect(said).toContain(ROOT)
+        expect(said).toContain('opens')
+        expect(runsOf(port, 'autostart')).toEqual([[ROOT, '--set=on']])
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([[ROOT, '--execute']])
+        expect(port.opened).toEqual([])
+    })
+
+    it('off writes the setting and claims nothing', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: state(false) } })
+        const said = await runCommand(port.io, 'autostart off')
+        expect(said).toContain(ROOT)
+        expect(runsOf(port, 'autostart')).toEqual([[ROOT, '--set=off']])
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it.each([true, false])('with no argument reports the setting (%s) and writes nothing', async on => {
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: state(on) } })
+        const said = await runCommand(port.io, ' autostart  ')
+        expect(said).toContain(ROOT)
+        expect(said).toContain(on ? 'opens' : 'does not open')
+        expect(runsOf(port, 'autostart')).toEqual([[ROOT]])
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it('says why the setting could not be written, and claims nothing', async () => {
+        const answer = JSON.stringify({ status: 'error', root: ROOT, reason: '/data/pane-autostart.json is not valid JSON' })
+        const port = fakePort({ dashboard: dashboard('s1') }, { answers: { autostart: answer } })
+        const said = await runCommand(port.io, 'autostart on')
+        expect(said).toContain('/data/pane-autostart.json is not valid JSON')
+        expect(said).toContain('unchanged')
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it('says so when knossos does not answer, and claims nothing', async () => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, 'autostart on')).toContain('did not answer')
+        await port.advance()
+        expect(runsOf(port, 'claim')).toEqual([])
+    })
+
+    it.each(['autostart maybe', 'autostart on now', 'autostart ON'])('answers the usage to %j and runs nothing', async args => {
+        const port = fakePort({ dashboard: dashboard('s1') })
+        expect(await runCommand(port.io, args)).toBe(USAGE)
         await port.advance()
         expect(port.runs).toEqual([])
     })

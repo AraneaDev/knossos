@@ -1,5 +1,6 @@
 import { ServerResponse, request } from 'node:http'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import { stripTypeScriptTypes } from 'node:module'
 import { networkInterfaces } from 'node:os'
@@ -252,6 +253,31 @@ describe('startServer', () => {
     const moved = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: first.port, movable: true })
     expect(moved.port).not.toBe(first.port)
     await moved.close()
+  })
+
+  it('claims the folder it was started in, once start-up has loaded the dashboard', async () => {
+    // The mod's state is one per process: a claim an earlier server's start-up still has in flight would hold this one off.
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await vi.waitFor(() => expect(mod.deliberate.claiming).toBe(false))
+    const root = scratch()
+    const plugin = fixturePluginRoot()
+    const log = join(scratch(), 'subcommands')
+    const shim = join(plugin, 'hooks/scripts/knossos-run.sh')
+    const fixture = readFileSync(shim, 'utf8')
+    writeFileSync(shim, fixture.replace('exec sh', `printf '%s %s %s\\n' "$1" "$3" "\${KNOSSOS_ROOTS_FILE-unset}" >> '${log}'\nexec sh`))
+    const dataDir = scratch()
+    const saved = process.env.KNOSSOS_ROOTS_FILE
+    delete process.env.KNOSSOS_ROOTS_FILE
+    try {
+      running = await startServer({ root, pluginRoot: plugin, dataDir, port: 0 })
+      await running.ready
+      // The roots file defaults to the data directory's, which the real wrapper needs to accept a claim at all.
+      await vi.waitFor(() => expect(readFileSync(log, 'utf8')).toContain(`claim --execute ${join(dataDir, 'roots.json')}`))
+    } finally {
+      if (saved !== undefined) process.env.KNOSSOS_ROOTS_FILE = saved
+    }
+    const lines = readFileSync(log, 'utf8').split('\n')
+    expect(lines.findIndex(l => l.startsWith('dashboard'))).toBeLessThan(lines.findIndex(l => l.startsWith('claim --execute')))
   })
 
   it("reads the checkout's commit only while a page is connected, and at once when one connects", async () => {

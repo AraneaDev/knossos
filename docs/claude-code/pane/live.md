@@ -63,8 +63,13 @@ The press checks again before it sends anything, so a habitual `q` during a
 slow first load sends nothing. The pane looks for the graph again at the end
 of every turn until it finds one.
 
-When the project's root is not allowed, the pane offers `a: allow root`
-instead. That only asks: it shows the root it would allow, with `y: allow` and
+Opening the pane with `/knossos`, or running `knossos` in the folder, allows
+the project's toplevel and scans it, so most projects never reach this offer. A
+folder that is too broad to allow unasked (the filesystem root, your home folder
+or a folder above it) is left alone, and so is a setup where a container's paths
+are not the host's. A roots file that cannot be read or written shows the
+reason. In those cases, and when a session merely started in a folder that is
+not allowed, the pane offers `a: allow root` instead. That only asks: it shows the root it would allow, with `y: allow` and
 `n: cancel`. Only `y` runs `knossos allow-root <root> --execute`, against the
 roots file the installation names, and then scans that root at once. For a
 project nobody has scanned yet that scan is its first one and creates it; the

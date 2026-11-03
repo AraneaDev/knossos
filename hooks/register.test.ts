@@ -69,6 +69,10 @@ function world(
     file?: Answer[]
     scan?: Answer[]
     allow?: Answer[]
+    /** What `claim` answers (the folder /knossos was run in): already allowed, by default. */
+    claim?: Answer[]
+    /** What `autostart` answers (the project's pane setting): off, by default. */
+    autostart?: Answer[]
     /** What `session-changes` answers: the scan ledger's changes since the session began. */
     ledger?: Answer[]
     /** What `session-head` answers (the commit the session begins at), and `session-diff` (a file's change since it). */
@@ -149,6 +153,8 @@ function world(
     file: answers.file ?? [{ stdout: '' }],
     scan: answers.scan ?? [{ stdout: '{"status":"ok"}' }],
     allow: answers.allow ?? [{ stdout: '{"path":"/repo","roots_file":"/data/roots.json","added":true}' }],
+    claim: answers.claim ?? [{ stdout: '{"status":"present","root":"/repo","reason":null}' }],
+    autostart: answers.autostart ?? [{ stdout: '{"status":"ok","autostart":false,"root":"/repo"}' }],
     ledger: answers.ledger ?? [{ stdout: '' }],
     head: answers.head ?? [{ stdout: '' }],
     diff: answers.diff ?? [{ stdout: '' }],
@@ -173,6 +179,8 @@ function world(
     ['file-detail', queues.file],
     ['scan', queues.scan],
     ['allow-root', queues.allow],
+    ['claim', queues.claim],
+    ['autostart', queues.autostart],
     ['session-changes', queues.ledger],
     ['session-head', queues.head],
     ['session-diff', queues.diff],
@@ -1261,7 +1269,7 @@ describe('knossos mod', () => {
     expect(text).toContain('41 dependents')
   })
 
-  test('a not-allowed brief shows the allow-root hint', async ($, on) => {
+  test('a not-allowed brief replaces the figures and draws nothing', async ($, on) => {
     const w = world(on, { brief: [{ stdout: brief() }, { stdout: brief({ status: 'not-allowed' }) }] })
     await $.session.start(START)
     await w.clock.settle()
@@ -1270,7 +1278,7 @@ describe('knossos mod', () => {
       await $.turn.complete(TURN)
       await w.clock.settle()
     }
-    expect(await bandText($)).toContain('not allowed: repo')
+    expect(await bandText($)).toBeUndefined()
   })
 
   test('an unscanned brief replaces the figures and draws nothing', async ($, on) => {
@@ -1558,7 +1566,7 @@ describe('knossos mod', () => {
     expect(w.dashboardRuns()[0]).toContain('--fan-in-threshold=20')
   })
 
-  test('the allow-root hint names the roots file and the refused root', async ($, on) => {
+  test('a refused root leaves the band quiet', async ($, on) => {
     const refused = brief({ status: 'not-allowed', path: `${ROOT}/src`, roots_file: '/data/roots.json', refused_root: ROOT })
     const w = world(on, { brief: [{ stdout: refused }] })
     await $.session.start(START)
@@ -1566,17 +1574,11 @@ describe('knossos mod', () => {
     await edit($, `${ROOT}/src/Router.php`)
     await $.turn.complete(TURN)
     await w.clock.settle()
-    // The band names the root; the command, too long for a band, is copied whole.
-    expect(await bandText($)).toContain('not allowed: repo')
-    const band = await $.ui.mount({ plugin: 'knossos', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND_PROPS, bodyColumns: 50 } })
-    expect(drawn((await band.find({ key: 'band' }))?.text ?? '')).not.toContain('allow-root')
-    await band.press({ key: 'copy' })
-    expect(w.copies.map(c => c.text)).toEqual([`KNOSSOS_ROOTS_FILE='/data/roots.json' knossos allow-root '${ROOT}' --execute`])
-    await band.unmount()
+    expect(await bandText($)).not.toContain('not allowed')
   })
 
-  test('the pane opens on start when asked', { options: { openPaneOnStart: true } }, async ($, on) => {
-    const w = world(on)
+  test('the pane opens on start when the project asks for it', async ($, on) => {
+    const w = world(on, { autostart: [{ stdout: '{"status":"ok","autostart":true,"root":"/repo"}' }] })
     await $.session.start(START)
     await w.clock.settle()
     expect(w.opened).toEqual(['knossos'])

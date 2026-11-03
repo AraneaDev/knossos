@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Roots\RootGuard;
+
 /**
  * Renders a session brief as terse text for injection at session start.
  *
@@ -198,11 +200,16 @@ final readonly class SessionBriefRenderer
             // other and can still both differ from the file a running server
             // reads. Naming it lets a reader compare against server_info.
             return sprintf(
-                '%s, and %s is not an allowed root%s. Add it: knossos allow-root %s --execute',
+                '%s, and %s is not an allowed root%s. %s',
                 $state,
                 $brief->path,
                 $brief->rootsFile === null ? '' : ' in ' . $brief->rootsFile,
-                $brief->path,
+                // The person allows it by starting Knossos in the folder. A container cannot be told that:
+                // the host path is not its path. Nor can a server whose roots are fixed (no roots file):
+                // starting Knossos cannot widen them. The command stays the remedy in both.
+                RootGuard::containerised() || $brief->rootsFile === null
+                    ? sprintf('Add it: knossos allow-root %s --execute', $brief->path)
+                    : 'To scan it, ask the person to run /knossos in that folder.',
             );
         }
         return $state . match ($brief->state) {

@@ -98,8 +98,11 @@ It lives at `KNOSSOS_ROOTS_FILE`, or at `<KNOSSOS_DATA_DIR>/roots.json`. The
 installer registers the server with no `--allow-root` argument, so the
 registration stays correct as projects are added.
 
-To add a project, run `knossos allow-root /absolute/path` to preview the change
-and add `--execute` to write it. Editing the file by hand works too.
+To add a project, start Knossos in it (`/knossos` in a session, or `knossos` in
+the folder): that adds the project's toplevel to the file. A session that only
+begins adds nothing. In a container, or when you want to write the file
+yourself, run `knossos allow-root /absolute/path` to preview the change and add
+`--execute` to write it. Editing the file by hand works too.
 
 `--allow-root=PATH` and `KNOSSOS_ALLOWED_ROOTS` are unioned with the file. Use
 them for a root that has to survive without a mutable file, and the file for

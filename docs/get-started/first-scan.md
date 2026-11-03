@@ -141,7 +141,9 @@ with the result; see [response envelopes](../reference/response-envelopes.md#ver
 
 The CLI scans any directory you give it. The MCP server answers only for
 directories on its allow-list, and a project you scanned from the shell is not
-on it until you add it:
+on it until you add it. Starting Knossos in the folder does that for you: run
+`/knossos` in a Claude Code session there, or `knossos` in the folder. To do it
+by hand, for a locked-down setup or a container:
 
 ```sh
 bin/knossos allow-root /absolute/path/to/your-project --execute

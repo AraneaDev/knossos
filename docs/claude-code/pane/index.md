@@ -32,8 +32,15 @@ The pane needs three things, and shows nothing useful without them:
 ## Open the pane
 
 `/knossos` opens the pane and closes it again. `/knossos inspect <component>`
-opens it on one component's detail. Set `openPaneOnStart` (see
-[settings](#settings)) to open it whenever a session starts.
+opens it on one component's detail. `/knossos autostart on` opens it whenever
+a session starts in this project, `/knossos autostart off` stops that, and
+`/knossos autostart` says which it is. The setting is kept per project, beside
+the roots file, and only a Claude Code session start reads it: the terminal pane
+and the web client open when you run them.
+
+The `openPaneOnStart` plugin setting is gone. A value you set for it in your
+Claude Code settings no longer applies; run `/knossos autostart on` in each
+project where you want the pane to open with the session.
 
 Right after a reload of the plugin, Claude Code can refuse to register the
 command until a session is bound. The mod retries for about a minute, then at
@@ -232,7 +239,6 @@ name:
 | `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a message, 1 to 100,000          |
 | `agentNotes`      | `true`                  | gives the model its [messages](../model-messages.md); the toast on an edit stays |
 | `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                               |
-| `openPaneOnStart` | `false`                 | opens the pane when a session starts                                             |
 | `watch`           | `true`                  | runs the live watcher                                                            |
 | `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds              |
 | `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once                    |

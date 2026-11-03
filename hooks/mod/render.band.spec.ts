@@ -87,7 +87,7 @@ function partsOf(tree: unknown) {
 }
 
 function handlers() {
-    return { details: vi.fn(), copy: vi.fn(), hide: vi.fn() } satisfies BandHandlers
+    return { details: vi.fn(), hide: vi.fn() } satisfies BandHandlers
 }
 
 beforeEach(() => {
@@ -177,15 +177,9 @@ describe('drawBand: a turn that changed the graph', () => {
         expect(scanning.shown).toBe('knossos · scanning… ')
     })
 
-    it('offers to copy the command a refused root needs, handing the press its surface', async () => {
-        const act = handlers()
+    it('draws nothing for a refused root: sessions stay quiet until Knossos is started there', async () => {
         const refused = brief({ status: 'not-allowed', refused_root: '/work/app', path: '/work/app' } as Partial<TurnBrief>)
-        const { buttons, shown } = partsOf(await drawBand(fakePort({ brief: refused }).io, () => elements as never, { hasSurvey: false, bodyColumns: 200 }, act))
-        expect([...buttons.keys()]).toEqual(['details', 'copy', 'hide'])
-        expect(shown).toBe('knossos · not allowed: app ')
-        ;(buttons.get('copy')!.props.onPress as (p: unknown) => void)({ surface: 'mobile' })
-        expect(act.copy).toHaveBeenCalledWith("knossos allow-root '/work/app' --execute", 'mobile')
-        expect(act.details).not.toHaveBeenCalled()
+        expect(await drawBand(fakePort({ brief: refused }).io, () => elements as never, { hasSurvey: false, bodyColumns: 200 }, handlers())).toBeNull()
     })
 
     it('always offers hide, and its press hides the band', async () => {
@@ -194,7 +188,6 @@ describe('drawBand: a turn that changed the graph', () => {
         ;(buttons.get('hide')!.props.onPress as () => void)()
         expect(act.hide).toHaveBeenCalledTimes(1)
         expect(act.details).not.toHaveBeenCalled()
-        expect(act.copy).not.toHaveBeenCalled()
     })
 })
 

@@ -9,11 +9,26 @@ use Knossos\Query\SessionBriefService;
 use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\PinsContainer;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 
 final class SessionBriefServiceTest extends KnossosTestCase
 {
+    use PinsContainer;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->pinContainer(false);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->restoreContainer();
+        parent::tearDown();
+    }
+
     #[Group('query')]
     public function testTheBriefReportsTheRootsFileItActuallyConsulted(): void
     {
@@ -322,7 +337,8 @@ final class SessionBriefServiceTest extends KnossosTestCase
         try {
             $text = (new SessionBriefService($pdo, $databasePath))->brief($root);
 
-            assertSame(true, str_contains($text, 'knossos allow-root'));
+            assertSame(true, str_contains($text, 'ask the person to run /knossos'));
+            assertSame(false, str_contains($text, 'knossos allow-root'));
             assertSame(true, str_contains($text, (string) realpath($root)));
         } finally {
             $this->removeTempTree($root);
@@ -382,7 +398,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
                 $text,
                 'NO GRAPH, and ' . realpath($root) . ' is not an allowed root in ' . dirname($databasePath) . '/roots.json.',
             ));
-            assertSame(true, str_contains($text, 'knossos allow-root'));
+            assertSame(true, str_contains($text, 'ask the person to run /knossos'));
         } finally {
             $this->removeTempTree($root);
         }
@@ -414,7 +430,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
 
             assertSame('stale', $brief->state);
             assertSame(false, $brief->pathAllowed);
-            assertSame(true, str_contains($text, 'is not an allowed root in ' . dirname($databasePath) . '/roots.json. Add it: knossos allow-root'));
+            assertSame(true, str_contains($text, 'is not an allowed root in ' . dirname($databasePath) . '/roots.json. To scan it, ask the person to run /knossos'));
             assertSame(false, str_contains($text, 'scan_project'));
         } finally {
             $this->removeTempTree($root);
@@ -466,7 +482,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
 
             assertSame(true, $brief->pathExists);
             assertSame(false, $brief->pathAllowed);
-            assertSame(true, str_contains($text, 'is not an allowed root in ' . dirname($databasePath) . '/roots.json. Add it: knossos allow-root'));
+            assertSame(true, str_contains($text, 'is not an allowed root in ' . dirname($databasePath) . '/roots.json. To scan it, ask the person to run /knossos'));
             assertSame(false, str_contains($text, 'does not exist.'));
         } finally {
             $this->removeTempTree($root);

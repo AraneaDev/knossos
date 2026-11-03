@@ -169,4 +169,32 @@ final class RootsFileTest extends KnossosTestCase
             self::markTestSkipped('Permission bits do not restrict root.');
         }
     }
+
+    /** A second add waits for the lock a first one holds, and then reads what that one wrote. */
+    #[Group('discovery')]
+    public function testAddWaitsForTheLockAndKeepsWhatTheHolderWrote(): void
+    {
+        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($directory, 0o700, true);
+        $path = $directory . '/roots.json';
+        $holder = proc_open(
+            [PHP_BINARY, '-r', '$l = fopen($argv[1] . ".lock", "c"); flock($l, LOCK_EX); echo "locked\n"; usleep(700000); '
+                . 'file_put_contents($argv[1], json_encode(["roots" => ["/held/by/another"]])); flock($l, LOCK_UN);', $path],
+            [1 => ['pipe', 'w']],
+            $pipes,
+        );
+        try {
+            self::assertIsResource($holder);
+            self::assertSame("locked\n", fgets($pipes[1]));
+            $file = new RootsFile($path);
+
+            self::assertTrue($file->add('/mine'));
+
+            self::assertSame(['/held/by/another', '/mine'], $file->read(), 'The holder\'s entry survives.');
+            self::assertFalse($file->add('/mine/'), 'A listed root is not added twice.');
+        } finally {
+            proc_close($holder);
+            $this->removeTempTree($directory);
+        }
+    }
 }

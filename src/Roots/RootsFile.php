@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Roots;
 
 use InvalidArgumentException;
-use JsonException;
 use Knossos\Filesystem\AtomicFile;
+use Knossos\Filesystem\JsonFile;
 
 /**
  * The roots.json allow-list as a file: read tolerantly, written atomically.
@@ -38,32 +38,7 @@ final readonly class RootsFile
      */
     public function read(): array
     {
-        if (!is_file($this->path)) {
-            return [];
-        }
-        $contents = file_get_contents($this->path);
-        if ($contents === false) {
-            throw new InvalidArgumentException(sprintf('Unable to read %s.', $this->path));
-        }
-        try {
-            $decoded = json_decode($contents, true, 8, JSON_THROW_ON_ERROR);
-        } catch (JsonException $error) {
-            throw new InvalidArgumentException(
-                sprintf('%s is not valid JSON (%s). Fix or remove it before retrying.', $this->path, $error->getMessage()),
-                previous: $error,
-            );
-        }
-        $decodedRoots = is_array($decoded) ? ($decoded['roots'] ?? $decoded) : null;
-        if (!is_array($decodedRoots)) {
-            throw new InvalidArgumentException(sprintf('%s does not have the expected {"roots": [...]} shape.', $this->path));
-        }
-        $roots = [];
-        foreach ($decodedRoots as $root) {
-            if (is_string($root)) {
-                $roots[] = $root;
-            }
-        }
-        return $roots;
+        return JsonFile::roots($this->path, true);
     }
 
     /**
@@ -82,15 +57,40 @@ final readonly class RootsFile
      */
     public function write(array $roots): void
     {
-        $directory = dirname($this->path);
-        // Owner-only, as RuntimeFactory creates it: the graph that will live here is the project's structure.
-        if (!is_dir($directory) && !@mkdir($directory, 0o700, true)) {
-            throw new InvalidArgumentException(sprintf('Unable to create %s.', $directory));
+        JsonFile::writeRoots($this->path, $roots);
+    }
+
+    /**
+     * Add a root unless it is already listed, under an exclusive lock.
+     *
+     * Starts now add roots unprompted, so two at once would each read the same
+     * list and the later write would drop the earlier one's entry. The lock is
+     * a file beside the roots file, held across the read and the write, so the
+     * second start reads what the first wrote.
+     *
+     * @return bool whether the root was added
+     * @throws InvalidArgumentException when the file cannot be understood or written, or the lock cannot be taken
+     */
+    public function add(string $root): bool
+    {
+        JsonFile::ensureDirectoryOf($this->path);
+        $lock = @fopen($this->path . '.lock', 'c');
+        if ($lock === false || !flock($lock, LOCK_EX)) {
+            throw new InvalidArgumentException(sprintf('Unable to lock %s.', $this->path));
         }
-        // A rewrite keeps the mode of a file the operator deliberately chmod'd;
-        // a first write is owner-only, like the directory it lives in.
-        if (!AtomicFile::writeJson($this->path, ['roots' => $roots], 0o600, true)) {
-            throw new InvalidArgumentException(sprintf('Unable to write %s.', $this->path));
+        try {
+            $roots = $this->read();
+            $root = AllowedRoots::normaliseRoot($root);
+            if (in_array($root, array_map(AllowedRoots::normaliseRoot(...), $roots), true)) {
+                return false;
+            }
+            $roots[] = $root;
+            $this->write($roots);
+
+            return true;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
     }
 

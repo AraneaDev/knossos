@@ -293,10 +293,9 @@ function drawRows(act: Handlers, ui: Elements[RenderSurface], surface: RenderSur
   return hovers ? [...drawn, ...drawCards(ui, rows, columns)] : drawn
 }
 
-/** What the band's buttons do: open the pane, copy the command it offers, hide it. A press waits on what they return. */
+/** What the band's buttons do: open the pane, hide it. A press waits on what they return. */
 export type BandHandlers = {
   details: () => unknown
-  copy: (command: string, surface?: RenderSurface) => void
   hide: () => unknown
 }
 
@@ -318,9 +317,8 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
   const { Box, Button, Text } = resolve()
   const color = model.tone === 'alert' ? 'error' : model.tone === 'warn' ? 'warning' : 'inactive'
   // The text gives way to the buttons, each drawn `[ label ]` and a space: a cut line still names what happened.
-  const labels = [...(model.showDetails ? ['details'] : []), ...(model.copy === undefined ? [] : ['copy']), 'hide']
+  const labels = [...(model.showDetails ? ['details'] : []), 'hide']
   const room = Math.max(1, props.bodyColumns - labels.reduce((n, l) => n + cells(l) + 5, 0) - 1)
-  const copy = model.copy
   return (
     <Box key="band" width={props.bodyColumns} overflow="hidden">
       <Box key="band-text" width={cells(fit(model.text, room)) + 1} flexShrink={0} overflow="hidden">
@@ -329,7 +327,6 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
         </Text>
       </Box>
       {model.showDetails && <Button key="details" label="details" onPress={() => act.details()} />}
-      {copy !== undefined && <Button key="copy" label="copy" onPress={(pressed: UiPressArgument) => act.copy(copy, pressed.surface)} />}
       <Button key="hide" label="hide" onPress={() => act.hide()} />
     </Box>
   )
