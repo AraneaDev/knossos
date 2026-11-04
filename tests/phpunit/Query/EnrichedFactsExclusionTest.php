@@ -132,7 +132,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
             $this->request(false);
             $baseline = $this->scanEnricherFlow($pdo, $this->project);
             $this->request($name === 'enriched');
-            $this->scanEnricherFlow($pdo, $this->project);
+            $this->scanEnricherFlow($pdo, $this->project, 'full');
             $gates[$name] = $this->comparable($this->query($pdo)->services()->gateQueries->qualityGate($baseline->projectId, $this->scanId($baseline), $budgets, self::POLICIES));
         }
         assertGreaterThan(0, $this->enrichedRows($this->enriched));

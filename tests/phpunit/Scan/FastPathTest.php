@@ -443,4 +443,96 @@ final class FastPathTest extends KnossosTestCase
             $this->removeTempTree($root);
         }
     }
+
+    /** @param list<array<string, string>> $boundaries */
+    private static function writeConfiguredBoundaries(string $root, array $boundaries): void
+    {
+        file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'boundaries' => $boundaries], JSON_THROW_ON_ERROR));
+    }
+
+    /** @return list<string> boundary names stored for the project's active scan */
+    private static function activeBoundaryNames(\PDO $pdo): array
+    {
+        $statement = $pdo->query("SELECT name FROM boundaries WHERE last_scan_id = (SELECT active_scan_id FROM projects LIMIT 1) AND source = 'explicit' ORDER BY name");
+        return array_map('strval', $statement === false ? [] : $statement->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    #[Group('scan')]
+    public function testARepositoryWithBoundariesInItsConfigurationTakesTheFastPath(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture('mixed');
+        try {
+            self::writeConfiguredBoundaries($root, [['name' => 'Backend', 'path_prefix' => 'src/']]);
+            $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            $service->scan($root);
+            $this->backdateDirectories($root, 10);
+            $scansBefore = (int) $pdo->query('SELECT COUNT(*) FROM scans')->fetchColumn();
+
+            $result = $service->scan($root);
+
+            assertSame('no_change', $result->data['fast_path'] ?? null);
+            assertSame($scansBefore, (int) $pdo->query('SELECT COUNT(*) FROM scans')->fetchColumn());
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('scan')]
+    public function testChangingConfiguredBoundariesForcesAFullScan(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture('mixed');
+        try {
+            $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            self::writeConfiguredBoundaries($root, [['name' => 'Backend', 'path_prefix' => 'src/']]);
+            $service->scan($root);
+            assertSame(['Backend'], self::activeBoundaryNames($pdo));
+
+            self::writeConfiguredBoundaries($root, [['name' => 'Server', 'path_prefix' => 'src/']]);
+            $this->backdateDirectories($root, 10);
+            $changed = $service->scan($root);
+
+            assertSame(false, array_key_exists('fast_path', $changed->data));
+            assertSame(['Server'], self::activeBoundaryNames($pdo));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('scan')]
+    public function testBoundariesGivenWithTheCallForceAFullScan(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture('mixed');
+        try {
+            $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            self::writeConfiguredBoundaries($root, [['name' => 'Backend', 'path_prefix' => 'src/']]);
+            $service->scan($root);
+            $this->backdateDirectories($root, 10);
+
+            $result = $service->scan($root, new ScanOptions(explicitBoundaries: [['name' => 'Custom', 'path_prefix' => 'src/']]));
+
+            assertSame(false, array_key_exists('fast_path', $result->data));
+            assertSame(['Custom'], self::activeBoundaryNames($pdo));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('scan')]
+    public function testAnEmptyBoundaryListGivenWithTheCallForcesAFullScan(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture('mixed');
+        try {
+            $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            self::writeConfiguredBoundaries($root, [['name' => 'Backend', 'path_prefix' => 'src/']]);
+            $service->scan($root);
+            $this->backdateDirectories($root, 10);
+
+            $result = $service->scan($root, new ScanOptions(explicitBoundaries: []));
+
+            assertSame(false, array_key_exists('fast_path', $result->data));
+            assertSame([], self::activeBoundaryNames($pdo));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }

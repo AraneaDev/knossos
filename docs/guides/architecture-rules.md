@@ -98,7 +98,9 @@ dispatch.
 `quality_gate` compares the active graph with a complete retained baseline
 (see [scan history](history.md)) and evaluates only the limits supplied by the
 caller. Each limit is an integer from 0 to 100000, and the baseline must differ
-from the active snapshot. Supported budgets are:
+from the active snapshot. A rescan with nothing changed keeps the same
+snapshot, so comparing right after one is refused until something changes.
+Supported budgets are:
 
 | Budget                                     | What it limits                                                                                                                                                                                                                                                                                                                                    |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

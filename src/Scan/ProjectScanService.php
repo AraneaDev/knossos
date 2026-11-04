@@ -167,7 +167,7 @@ final class ProjectScanService implements ProjectScanner
                 // A note added or removed changes the file components with nothing changed on disk.
                 $sameNamedFiles = array_map(static fn($node): string => $node->canonicalName, $named->nodes) === $namedFiles->current($projectId);
                 $fastPath = $sameNamedFiles && !($options->runEnrichers && $preparation->configuration->enrichers !== [])
-                    ? $this->tryNoChangeFastPath($plan, $language, $preparation, $projectConfig, $options->name, $repository, $lease)
+                    ? $this->tryNoChangeFastPath($plan, $language, $preparation, $projectConfig, $options->name, $options->explicitBoundaries, $repository, $lease)
                     : null;
                 if ($fastPath !== null) {
                     $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
@@ -542,9 +542,10 @@ final class ProjectScanService implements ProjectScanner
      * write like any other, so it too happens only under a renewed lease.
      *
      * @param array<string, mixed> $projectConfig
+     * @param list<array<string, mixed>>|null $explicitBoundaries boundaries given with the call; null when none were
      * @throws ScanBusyException when another writer took the lease meanwhile
      */
-    private function tryNoChangeFastPath(ScanPlan $plan, LanguageScanResult $language, ScanPreparation $preparation, array $projectConfig, ?string $name, SqliteGraphRepository $repository, ProjectWriterLease $lease): ?ReconciliationResult
+    private function tryNoChangeFastPath(ScanPlan $plan, LanguageScanResult $language, ScanPreparation $preparation, array $projectConfig, ?string $name, ?array $explicitBoundaries, SqliteGraphRepository $repository, ProjectWriterLease $lease): ?ReconciliationResult
     {
         // A degraded language contributes nothing to added/changed, so those tallies
         // cannot see it, and the scanner-set hash only differs when the failed
@@ -555,11 +556,11 @@ final class ProjectScanService implements ProjectScanner
         if ($plan->effectiveMode !== 'incremental' || $language->added !== 0 || $language->changed !== 0 || $plan->deletedFiles !== 0 || $language->workerDiagnostics !== []) {
             return null;
         }
-        // Explicit boundary overrides and rename requests arrive as call arguments,
-        // not via knossos.json, so they never move configuration_hash and are absent
-        // from $projectConfig. The freshly computed analysis already incorporates them,
-        // so a fast-path return here would silently discard them and serve stale state.
-        if ($preparation->explicitBoundaries !== []) {
+        // Boundaries given with the call (even an empty list, which clears the
+        // configured ones) are not part of $projectConfig, so the stored state cannot
+        // vouch for them. Boundaries declared in knossos.json are: that file feeds
+        // configuration_hash, so editing it fails the config comparison below.
+        if ($explicitBoundaries !== null) {
             return null;
         }
         $row = (new ProjectRepository($this->pdo))->withActiveScan($plan->projectId);
