@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.43.0](https://github.com/AraneaDev/knossos/compare/v0.42.0...v0.43.0) (2026-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* starting Knossos in a folder adds and scans it, and the pane opens per project ([#442](https://github.com/AraneaDev/knossos/issues/442))
+
+### Features
+
+* say why a scan failed, keep the reason, and retry a killed pane scan once ([#444](https://github.com/AraneaDev/knossos/issues/444)) ([4672a64](https://github.com/AraneaDev/knossos/commit/4672a644e09ef20ead46a00eb357b4666f81ece9))
+* starting Knossos in a folder adds and scans it, and the pane opens per project ([#442](https://github.com/AraneaDev/knossos/issues/442)) ([318efd6](https://github.com/AraneaDev/knossos/commit/318efd6981f5edeeebe718c3a4f5ec71636a03b8))
+
+
+### Fixes
+
+* take the no-change shortcut on projects with boundaries in knossos.json ([#445](https://github.com/AraneaDev/knossos/issues/445)) ([a2f62ba](https://github.com/AraneaDev/knossos/commit/a2f62ba00fe1e736493143938f75b75e03fcceb2))
+
 ## [0.42.0](https://github.com/AraneaDev/knossos/compare/v0.41.0...v0.42.0) (2026-10-30)
 
 
