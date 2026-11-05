@@ -300,3 +300,122 @@ describe('v on the Notes tab', () => {
     })
 })
 
+
+describe('z and i on the Notes tab', () => {
+    const exported = (over: object = {}) => JSON.stringify({ status: 'ok', executed: true, file: '/work/app/knossos-notes.json', total: 3, replaced: false, ...over })
+    const preview = (over: object = {}) => JSON.stringify({ status: 'ok', executed: false, file: '/work/app/knossos-notes.json', origin: { exported_at: '2026-11-04T10:00:00Z', root: '/other' }, total: 5, new: 2, replaced: 1, kept: 1, unmatched: 0, stale: 0, ...over })
+
+    it('z writes the file on a timer, with no args, and says where', async () => {
+        const port = fakePort()
+        port.answers.push(exported())
+        await port.press('notes-export')
+        expect(port.runs).toEqual([])
+        await port.runTimers()
+        expect(port.runs).toEqual([['sh', RUN, 'notes-export', ROOT]])
+        expect(port.said()).toBe('✓ 3 notes written to /work/app/knossos-notes.json')
+    })
+
+    it('z says when it replaced the old file, or why it refused, or that a scan commits', async () => {
+        const port = fakePort()
+        port.answers.push(exported({ replaced: true }))
+        await port.press('notes-export')
+        await port.runTimers()
+        expect(port.said()).toBe('✓ 3 notes written to /work/app/knossos-notes.json (replaced the old one)')
+        port.answers.push(JSON.stringify({ status: 'refused', reason: 'cannot write' }))
+        await port.press('notes-export')
+        await port.runTimers()
+        expect(port.said()).toBe('✗ cannot write')
+        port.answers.push(busy)
+        await port.press('notes-export')
+        await port.runTimers()
+        expect(port.said()).toBe('a scan is committing; try again in a moment')
+    })
+
+    it('i previews, y imports with --execute and reads the notes again', async () => {
+        const port = fakePort()
+        port.answers.push(preview())
+        await port.press('notes-import')
+        await port.runTimers()
+        expect(port.runs).toEqual([['sh', RUN, 'notes-import', ROOT]])
+        expect(port.view().notesImport?.new).toBe(2)
+        port.answers.push(preview({ executed: true }))
+        await port.press('notes-yes')
+        await port.runTimers()
+        expect(port.runs.at(-1)).toEqual(['sh', RUN, 'notes-import', ROOT, '--execute'])
+        expect(port.view().notesImport).toBeNull()
+        expect(mod.notes.version).toBe(1)
+        expect(vi.mocked(request)).toHaveBeenCalledWith(port.io, 'notes')
+        expect(port.said()).toBe('✓ imported 3 notes')
+    })
+
+    it('i says why when the file is missing, and shows no card', async () => {
+        const port = fakePort()
+        port.answers.push(JSON.stringify({ status: 'refused', reason: 'no knossos-notes.json in /work/app' }))
+        await port.press('notes-import')
+        await port.runTimers()
+        expect(port.view().notesImport ?? null).toBeNull()
+        expect(port.said()).toBe('✗ no knossos-notes.json in /work/app')
+    })
+
+    it('z and i say when the project is not scanned yet', async () => {
+        const port = fakePort()
+        for (const press of ['notes-export', 'notes-import']) {
+            port.answers.push(JSON.stringify({ status: 'unscanned' }))
+            await port.press(press)
+            await port.runTimers()
+            expect(port.said(), press).toBe("✗ this project isn't scanned yet; r rescans it")
+        }
+        expect(port.view().notesImport ?? null).toBeNull()
+    })
+
+    it('n drops the card, and a busy y keeps it', async () => {
+        const port = fakePort()
+        port.answers.push(preview())
+        await port.press('notes-import')
+        await port.runTimers()
+        port.answers.push(busy)
+        await port.press('notes-yes')
+        await port.runTimers()
+        expect(port.view().notesImport?.new).toBe(2)
+        expect(port.said()).toBe('a scan is committing; try again in a moment')
+        await port.press('notes-no')
+        expect(port.view().notesImport).toBeNull()
+        expect(port.view().notesAsk).toBeNull()
+    })
+
+    it('a second y while the import runs does not import twice', async () => {
+        const port = fakePort()
+        port.answers.push(preview())
+        await port.press('notes-import')
+        await port.runTimers()
+        port.answers.push(preview({ executed: true }))
+        await port.press('notes-yes')
+        await port.press('notes-yes')
+        await port.runTimers()
+        expect(port.runs.filter(r => r.includes('--execute'))).toHaveLength(1)
+        expect(port.said()).toBe('✓ imported 3 notes')
+    })
+
+    it('a busy import hands the card back to y', async () => {
+        const port = fakePort()
+        port.answers.push(preview())
+        await port.press('notes-import')
+        await port.runTimers()
+        port.answers.push(busy)
+        await port.press('notes-yes')
+        await port.runTimers()
+        port.answers.push(preview({ executed: true }))
+        await port.press('notes-yes')
+        await port.runTimers()
+        expect(port.runs.filter(r => r.includes('--execute'))).toHaveLength(2)
+    })
+
+    it('changing tab drops the preview', async () => {
+        const port = fakePort()
+        port.answers.push(preview())
+        await port.press('notes-import')
+        await port.runTimers()
+        await port.press('tab:hubs')
+        expect(port.view().notesImport).toBeNull()
+    })
+})

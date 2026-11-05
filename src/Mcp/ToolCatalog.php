@@ -754,6 +754,25 @@ final readonly class ToolCatalog
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
             ],
             [
+                'name' => 'export_notes', 'title' => 'Export notes',
+                'description' => 'Write every annotation of the project at path to knossos-notes.json in its root (or file). Use to move notes to another machine, share them, or back them up.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'minLength' => 1],
+                    'file' => ['type' => 'string', 'minLength' => 1],
+                ], 'required' => ['path'], 'additionalProperties' => false],
+                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => false],
+            ],
+            [
+                'name' => 'import_notes', 'title' => 'Import notes',
+                'description' => 'Import a knossos-notes.json into the project path scans as, later edit winning. Preview by default.',
+                'inputSchema' => ['type' => 'object', 'properties' => [
+                    'path' => ['type' => 'string', 'minLength' => 1],
+                    'file' => ['type' => 'string', 'minLength' => 1],
+                    'execute' => ['type' => 'boolean', 'default' => false],
+                ], 'required' => ['path'], 'additionalProperties' => false],
+                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
+            ],
+            [
                 'name' => 'cleanup_stale_scans', 'title' => 'Clean up stale scans',
                 'description' => 'Remove failed, cancelled, or abandoned scan records. Preview by default. Use for housekeeping when the scan history is cluttered.',
                 'inputSchema' => ['type' => 'object', 'properties' => [

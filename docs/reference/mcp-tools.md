@@ -603,6 +603,29 @@ Carry a moved checkout's notes to the project its new root scans as, then remove
 
 Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
 
+## `export_notes`
+
+Write every annotation of the project at path to knossos-notes.json in its root (or file). Use to move notes to another machine, share them, or back them up.
+
+| Input | Type | Required | Constraints/default |
+| --- | --- | --- | --- |
+| `path` | string | yes | minLength=1 |
+| `file` | string | no | minLength=1 |
+
+Annotations: read-only `no`; destructive `no`; idempotent `no`; open-world `no`.
+
+## `import_notes`
+
+Import a knossos-notes.json into the project path scans as, later edit winning. Preview by default.
+
+| Input | Type | Required | Constraints/default |
+| --- | --- | --- | --- |
+| `path` | string | yes | minLength=1 |
+| `file` | string | no | minLength=1 |
+| `execute` | boolean | no | default=false |
+
+Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
+
 ## `cleanup_stale_scans`
 
 Remove failed, cancelled, or abandoned scan records. Preview by default. Use for housekeeping when the scan history is cluttered.

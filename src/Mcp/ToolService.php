@@ -207,6 +207,8 @@ final readonly class ToolService
                 'scan_project' => $this->scan($arguments, $cancellation),
                 'remove_project' => $this->removeProject($arguments, $spec),
                 'move_project' => $this->moveProject($arguments, $spec),
+                'export_notes' => $this->exportNotes($arguments),
+                'import_notes' => $this->importNotes($arguments, $spec),
                 'cleanup_stale_scans' => $this->cleanupStaleScans($arguments, $spec),
                 'maintain_database' => $this->maintainDatabase($arguments, $spec),
                 default => throw new InvalidArgumentException(sprintf('Unknown tool: %s', $name)),
@@ -333,6 +335,72 @@ final readonly class ToolService
         }
 
         return fn(): ResultEnvelope => $this->maintenance->moveProject($from, $to, $execute, $this->scanner);
+    }
+
+    /**
+     * Validates the tool arguments and forwards to {@see DatabaseMaintenanceService::exportNotes()}.
+     *
+     * @param array<string, mixed> $arguments
+     * @return \Closure(): ResultEnvelope
+     */
+    private function exportNotes(array $arguments): \Closure
+    {
+        [$path, $file] = $this->notesLocation($arguments);
+
+        return fn(): ResultEnvelope => $this->maintenance->exportNotes($path, $file);
+    }
+
+    /**
+     * Validates the tool arguments and forwards to {@see DatabaseMaintenanceService::importNotes()}.
+     *
+     * @param array<string, mixed> $arguments
+     * @param ToolArgumentSpec $spec the tool's declared defaults and bounds
+     * @return \Closure(): ResultEnvelope
+     */
+    private function importNotes(array $arguments, ToolArgumentSpec $spec): \Closure
+    {
+        [$path, $file] = $this->notesLocation($arguments);
+        $execute = $spec->boolean($arguments, 'execute');
+
+        return fn(): ResultEnvelope => $this->maintenance->importNotes($path, $file, $execute, $this->scanner);
+    }
+
+    /**
+     * The checkout and optional notes file of a notes tool, after the checks a
+     * caller cannot be trusted to skip.
+     *
+     * Both must be absolute, since a relative one would resolve against a
+     * working directory the caller cannot see. The checkout must be a root the
+     * server may read, and the file's directory must lie inside it: the tool
+     * would otherwise write, or read, anywhere the server process can.
+     *
+     * @param array<string, mixed> $arguments
+     * @return array{0: string, 1: string|null} the path and the file, null for the default
+     */
+    private function notesLocation(array $arguments): array
+    {
+        $path = ToolArguments::string($arguments, 'path');
+        $file = array_key_exists('file', $arguments) ? ToolArguments::string($arguments, 'file') : null;
+        foreach ([$path, $file] as $candidate) {
+            if ($candidate !== null && !str_starts_with($candidate, '/')) {
+                throw new \InvalidArgumentException(sprintf('NOTES_PATH_NOT_ABSOLUTE: %s must be an absolute path.', $candidate));
+            }
+        }
+        if ($file !== null && !str_ends_with($file, '.json')) {
+            throw new \InvalidArgumentException(sprintf('NOTES_FILE_NOT_JSON: %s must end in .json.', $file));
+        }
+        if ($this->environment !== null && !$this->environment->admitsRoot($path)) {
+            throw new \InvalidArgumentException(sprintf('NOTES_ROOT_NOT_ALLOWED: %1$s is not an allowed root. Run `knossos allow-root %1$s --execute` first.', $path));
+        }
+        if ($file !== null) {
+            $root = realpath($path);
+            $directory = realpath(dirname($file));
+            if ($root === false || $directory === false || ($directory !== $root && !str_starts_with($directory, rtrim($root, '/') . '/'))) {
+                throw new \InvalidArgumentException(sprintf('NOTES_FILE_OUTSIDE_ROOT: %s must be inside %s.', $file, $path));
+            }
+        }
+
+        return [$path, $file];
     }
 
     /**

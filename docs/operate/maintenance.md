@@ -70,7 +70,7 @@ filename; directory components and overwrites are rejected. Open a backup with K
 `PRAGMA integrity_check` before relying on it for recovery.
 
 The equivalent MCP tools are `remove_project`, `move_project`,
-`cleanup_stale_scans`, and `maintain_database`. The three deletion tools carry destructive annotations and
+`cleanup_stale_scans`, and `maintain_database`, plus `export_notes` and `import_notes` for carrying annotations in a `knossos-notes.json`. The three deletion tools carry destructive annotations and
 require `execute: true` to mutate state. Maintenance takes advisory writer
 leases for every bounded project before checkpoint, optimize, vacuum, or backup work;
 an active scan therefore causes a safe busy error instead of concurrent

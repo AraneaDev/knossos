@@ -37,7 +37,7 @@ final class ToolBindings
     /** The tools ToolService answers with an adapter of its own rather than from this table. */
     public const HAND_WRITTEN = [
         'server_info', 'diagnose_runtime', 'scan_project',
-        'remove_project', 'move_project', 'cleanup_stale_scans', 'maintain_database',
+        'remove_project', 'move_project', 'export_notes', 'import_notes', 'cleanup_stale_scans', 'maintain_database',
     ];
 
     private function __construct() {}

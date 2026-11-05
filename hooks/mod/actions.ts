@@ -16,7 +16,7 @@ import { openHunk, pageDiff } from './diff-actions'
 import { closeFinder, openFinder, openOrMove, startRoute, submitQuery, typeQuery } from './finder-actions'
 import { request } from './loaders'
 import { moveCell, moveSelection, openEditTarget, openFile, openFilter, openPeeked, openRelated, openRow, openStat, showAllFiles, submitFilter, toggleUntested, typeFilter, unfoldCycle } from './navigate-actions'
-import { askFlag, askMove, askRemove, confirm as confirmNotes, confirmMarked, editMarked, openNotesFilter, submitNotesFilter, submitReason, typeNotesFilter, typeReason } from './notes-actions'
+import { askFlag, askMove, askRemove, askImport, confirm as confirmNotes, confirmImport, confirmMarked, exportNotes, editMarked, openNotesFilter, submitNotesFilter, submitReason, typeNotesFilter, typeReason } from './notes-actions'
 import { say } from './port'
 import type { Port } from './port'
 import { currentInput } from './input'
@@ -99,7 +99,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
       const tab = rest as PaneTab
       // The model writes notes through MCP, which moves no snapshot: entering the tab reads them again.
       if (tab === 'notes') mod.notes.version += 1
-      if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
+      if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, notesImport: null, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
     },
   ],
   ['file:', (io, rest) => openFile(io, rest)],
@@ -153,8 +153,10 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
   ['notes-remove', io => askRemove(io)],
   ['notes-flag', io => askFlag(io)],
   ['notes-confirm', io => confirmMarked(io)],
-  ['notes-yes', io => confirmNotes(io)],
-  ['notes-no', viewing(v => ({ ...v, notesAsk: null }))],
+  ['notes-export', io => exportNotes(io)],
+  ['notes-import', io => askImport(io)],
+  ['notes-yes', async io => (((await io.state.view.read()).notesImport ?? null) !== null ? confirmImport(io) : confirmNotes(io))],
+  ['notes-no', viewing(v => ({ ...v, notesAsk: null, notesImport: null }))],
   ['notes-move:', (io, rest) => askMove(io, rest)],
   // A note on a missing name the finder found: the Notes tab, on the missing notes, narrowed to its name.
   ['finder-note:', viewing((v, rest) => ({ ...v, finding: false, picking: null, inspect: null, route: null, tab: 'notes', notesFilter: 'missing', notesText: rest, filtering: false, selected: 0 }))],

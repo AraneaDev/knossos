@@ -90,6 +90,8 @@ const NOT_QUESTIONS: Record<string, string> = {
   architecture_summary: 'counts the graph by kind; the lookups after it explore the project rather than check an answer',
   export_agent_brief: 'writes a brief for an instructions file, an export rather than an answer',
   export_diagram: 'draws the graph, an export rather than an answer',
+  export_notes: 'writes the notes to a file, an export rather than an answer',
+  import_notes: 'reads a notes file into the project, a write rather than a question',
   annotate_component: 'records what a dig found: it ends a dig rather than starting one',
 }
 

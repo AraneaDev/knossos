@@ -6,6 +6,8 @@ namespace Knossos\Query;
 
 use Closure;
 use InvalidArgumentException;
+use Knossos\Notes\NotesFile;
+use Knossos\Notes\NotesTransferService;
 use PDO;
 
 /**
@@ -22,7 +24,8 @@ use PDO;
  * routes from one component to another), `annotate` (a note on a
  * component, previewed unless `execute` says to record it), and the Notes
  * tab's `notes`, `note-adopt`, `note-move`, `note-check` and `note-confirm`
- * ({@see NotesService}).
+ * ({@see NotesService}), and its `notes-export` and `notes-import`, which
+ * write or read a project's notes file ({@see NotesTransferService}).
  *
  * A write that meets a scan's lock answers `error` with
  * {@see \Knossos\Store\SqliteBusy::CODE}, so the pane can tell it from a
@@ -205,7 +208,57 @@ final readonly class PaneCommands
             'note-move' => ['options' => ['component', 'to', 'kind', 'author', 'execute'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag, Closure $required): array => (new NotesService($p->pdo))->move($path, $required('component'), $required('to'), $single('kind') ?? 'note', $single('author') ?? 'user', $flag('execute'))],
             'note-check' => ['options' => ['component', 'value', 'remove', 'execute'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag, Closure $required): array => (new NotesService($p->pdo))->check($path, $required('component'), $single('value') ?? '', $flag('remove'), $flag('execute'))],
             'note-confirm' => ['options' => ['component', 'execute'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag, Closure $required): array => (new NotesService($p->pdo))->confirm($path, $required('component'), execute: $flag('execute'))],
+            'notes-export' => ['options' => ['file'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single): array => $p->notesTransfer($path, static function (NotesTransferService $transfer, array $project) use ($single): array {
+                $result = $transfer->export($project['id'], $project['root'], $single('file') ?? $project['root'] . '/' . NotesFile::DEFAULT_NAME);
+
+                return ['status' => 'ok', 'executed' => true, 'file' => $result['file'], 'total' => $result['total'], 'replaced' => $result['replaced']];
+            })],
+            'notes-import' => ['options' => ['file', 'execute'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag): array => $p->notesTransfer($path, static function (NotesTransferService $transfer, array $project) use ($single, $flag): array {
+                $result = $transfer->import($project['id'], $single('file') ?? $project['root'] . '/' . NotesFile::DEFAULT_NAME, $flag('execute'), $project['root']);
+
+                return [
+                    'status' => 'ok',
+                    'executed' => $result['executed'],
+                    'file' => $result['file'],
+                    // The pane shows where the file came from, not who exported it.
+                    'origin' => ['exported_at' => $result['origin']['exported_at'], 'root' => $result['origin']['root']],
+                    'total' => $result['total'],
+                    'new' => $result['new'],
+                    'replaced' => $result['replaced'],
+                    'kept' => $result['kept'],
+                    'unmatched' => $result['unmatched'],
+                    'stale' => $result['stale'],
+                ];
+            })],
         ];
+    }
+
+    /**
+     * A notes-file transfer for the project owning `$path`. A refusal (a
+     * missing or invalid file) and a file that cannot be written are `refused`
+     * with why, since the pane shows that reason; a lock collision is the busy
+     * answer; `unscanned` comes from the project lookup.
+     *
+     * @param Closure(NotesTransferService, array{id: string, root: string, snapshot_id: string}): array<string, mixed> $run
+     * @return array<string, mixed>
+     */
+    private function notesTransfer(string $path, Closure $run): array
+    {
+        return PaneProject::answer($this->pdo, $path, [], function (array $project) use ($run): array {
+            try {
+                return $run(new NotesTransferService($this->pdo), $project);
+            } catch (InvalidArgumentException $refused) {
+                return ['status' => 'refused', 'reason' => $refused->getMessage()];
+            } catch (\Throwable $failed) {
+                // An unwritable file is the person's to fix (a read-only folder),
+                // so the pane shows its reason rather than a bare error.
+                if (str_starts_with($failed->getMessage(), 'NOTES_FILE_WRITE_FAILED')) {
+                    return ['status' => 'refused', 'reason' => $failed->getMessage()];
+                }
+
+                return NotesService::busy($failed);
+            }
+        });
     }
 
     /**

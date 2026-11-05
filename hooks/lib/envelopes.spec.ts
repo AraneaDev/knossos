@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countLabel, detailLines, fileDetailLines, parseAllowRoot, parseBranchDiff, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseRescan, parseSessionHead, parseTurnBrief, rescanReason, wrapperRefusal } from './envelopes'
+import { countLabel, detailLines, fileDetailLines, parseAllowRoot, parseBranchDiff, parseComponentDetail, parseCouplings, parseDashboard, parseFileDetail, parseNotesExport, parseNotesImport, parseRescan, parseSessionHead, parseTurnBrief, rescanReason, wrapperRefusal } from './envelopes'
 
 describe("the wrapper's refusal", () => {
   it('names the reason the wrapper gave', () => expect(wrapperRefusal('{"status":"refused","by":"wrapper","reason":"graph-search does not take these arguments"}\n')).toBe('graph-search does not take these arguments'))
@@ -241,5 +241,25 @@ describe('parseBranchDiff', () => {
     expect(at({ status: 'ok', comparison: { crossing: empty, cycles: empty, hubs: empty, dead_code: empty, violations: null } })?.status).toBe('ok')
     expect(at({ status: 'ok', comparison: { crossing: { count: 1, items: [{ source: {} }] }, cycles: empty, hubs: empty, dead_code: empty, violations: null } })).toBeNull()
     expect(at({ status: 'ok', comparison: { crossing: empty, cycles: empty, hubs: empty, violations: null } })).toBeNull()
+  })
+})
+
+describe('the notes export and import answers', () => {
+  const exported = { status: 'ok', executed: true, file: '/work/app/knossos-notes.json', total: 3, replaced: false }
+  const imported = { status: 'ok', executed: false, file: '/work/app/knossos-notes.json', origin: { exported_at: '2026-11-04T10:00:00Z', root: '/other/app' }, total: 5, new: 2, replaced: 1, kept: 1, unmatched: 1, stale: 0 }
+  it('reads an export answer, and refuses one without its flag or count', () => {
+    expect(parseNotesExport(JSON.stringify(exported))?.total).toBe(3)
+    expect(parseNotesExport(JSON.stringify({ ...exported, executed: 'yes' }))).toBeNull()
+    expect(parseNotesExport(JSON.stringify({ ...exported, total: 'x' }))).toBeNull()
+    expect(parseNotesExport(JSON.stringify({ status: 'refused', reason: 'no' }))?.status).toBe('refused')
+    expect(parseNotesExport(JSON.stringify({ status: 'weird' }))).toBeNull()
+    expect(parseNotesExport('')).toBeNull()
+  })
+  it('reads an import answer, and refuses one without its flag or counts', () => {
+    expect(parseNotesImport(JSON.stringify(imported))?.new).toBe(2)
+    expect(parseNotesImport(JSON.stringify({ ...imported, executed: null }))).toBeNull()
+    expect(parseNotesImport(JSON.stringify({ ...imported, kept: 'x' }))).toBeNull()
+    expect(parseNotesImport(JSON.stringify({ status: 'error', code: 'KNOSSOS_DATABASE_BUSY' }))?.code).toBe('KNOSSOS_DATABASE_BUSY')
+    expect(parseNotesImport('not json')).toBeNull()
   })
 })

@@ -57,7 +57,7 @@ export async function openRow(io: Port, index?: number): Promise<void> {
   // An Overview chart's bar opens the tab it counts: Hubs narrowed to a bucket, a flow's cell on Boundaries, Changes.
   const jump = item.jump
   if (jump !== undefined) {
-    await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target, ...(jump.notesFilter === undefined ? {} : { notesFilter: jump.notesFilter, notesText: '' }) }))
+    await io.state.view.update((v): KnossosView => ({ ...v, tab: jump.tab, notesImport: null, selected: jump.selected ?? 0, degree: jump.degree ?? null, filtering: false, drift: false, target: jump.target, ...(jump.notesFilter === undefined ? {} : { notesFilter: jump.notesFilter, notesText: '' }) }))
     return
   }
   // A row that heads a group (a Branch boundary) folds or unfolds it; the marker stays on it.
@@ -216,7 +216,7 @@ export async function toggleUntested(io: Port): Promise<void> {
   const onChanges = v.tab === 'changes' && v.inspect === null && (v.route ?? null) === null && v.finding !== true
   if (onChanges && (await io.state.untestedOnly.read())) return showAllFiles(io)
   await io.state.untestedOnly.update(() => true)
-  await io.state.view.update((w): KnossosView => ({ ...w, tab: 'changes', inspect: null, route: null, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
+  await io.state.view.update((w): KnossosView => ({ ...w, tab: 'changes', notesImport: null, inspect: null, route: null, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
 }
 
 /** Every changed file listed again, the marker kept on the file it was on. */

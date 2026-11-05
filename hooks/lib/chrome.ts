@@ -190,6 +190,8 @@ const KEY_HELP: [string, string][] = [
   ['n s x', "on Notes: narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both"],
   ['m w g', "on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)"],
   ['v', "on Notes: say a stale note of the model's is still true, so it rests on its files as they are now"],
+  ['z', 'on Notes: write every note to knossos-notes.json in the project root'],
+  ['i', 'on Notes: import knossos-notes.json from the project root; shows what changes, y imports'],
   ['r', 'rescan the project now, fresh or not'],
   ['a', 'allow a refused root (asks first)'],
 ]
@@ -255,14 +257,14 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
     if (input.filter !== '' || input.degree !== null) actions.push(button('clear', 'clear', 'x'))
   }
   // While the card asks, its own y and n are the keys: nothing else on the tab may take them.
-  if (onTab && input.tab === 'notes' && input.notes.ask === null) {
+  if (onTab && input.tab === 'notes' && input.notes.ask === null && input.notes.importing === null) {
     // On a boundary's or a folder's row there is no note: o folds it, and nothing else applies.
     const note = markedNote(input.notes, input.selected) ?? undefined
     if (note !== undefined && !note.missing) actions.push(button('notes-edit', note.author === 'user' ? 'edit' : 'adopt', 'm'))
     if (note !== undefined) actions.push(button('notes-remove', 'remove', 'w'))
     if (note !== undefined && !note.missing && note.author === 'model') actions.push(button('notes-flag', note.checked ? 'unflag' : 'flag', 'g'))
     if (note !== undefined && confirmable(note)) actions.push(button('notes-confirm', 'still true', 'v'))
-    actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'))
+    actions.push(button('notes-narrow', 'narrow', 'n'), button('notes-filter', `show: ${input.notes.filter}`, 's'), button('notes-export', 'export', 'z'), button('notes-import', 'import', 'i'))
     if (input.notes.filter !== 'all' || input.notes.text !== '') actions.push(button('notes-clear', 'clear', 'x'))
   }
   // From a component's own detail, a route to any other component (the finder picks where it ends).
