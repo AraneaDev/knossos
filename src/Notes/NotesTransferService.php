@@ -22,6 +22,9 @@ final readonly class NotesTransferService
     /** How many conflicts a result lists; the total is always reported. */
     private const CONFLICTS_LISTED = 50;
 
+    /** The largest notes file read, in bytes; a real one is far smaller. */
+    public const MAX_BYTES = 10 * 1024 * 1024;
+
     /** Bind the database holding the annotations. */
     public function __construct(private PDO $pdo) {}
 
@@ -31,6 +34,7 @@ final readonly class NotesTransferService
      * place, so a failure never leaves a half-written file behind.
      *
      * @return array{file: string, total: int, by_author: array{user: int, model: int}, replaced: bool}
+     * @throws InvalidArgumentException NOTES_FILE_NOT_NOTES when a file in the way is not a notes file
      * @throws \JsonException when a stored basis is not valid JSON
      * @throws RuntimeException when the file cannot be written
      */
@@ -51,6 +55,13 @@ final readonly class NotesTransferService
         ], $rows);
 
         $replaced = file_exists($file);
+        // Only a previous notes file may be replaced; anything else is somebody's data.
+        if ($replaced) {
+            $existing = is_file($file) && filesize($file) <= self::MAX_BYTES ? @file_get_contents($file) : false;
+            if ($existing === false || !NotesFile::looksLikeNotesFile($existing)) {
+                throw new InvalidArgumentException('NOTES_FILE_NOT_NOTES: ' . $file . ' exists and is not a knossos notes file; remove it or pick another --file.');
+            }
+        }
         $temp = $file . '.tmp-' . bin2hex(random_bytes(4));
         if (@file_put_contents($temp, $text . "\n") === false || !@rename($temp, $file)) {
             @unlink($temp);
@@ -68,15 +79,12 @@ final readonly class NotesTransferService
      * Rows keep the file's timestamps. Lock and busy errors propagate.
      *
      * @return array{executed: bool, file: string, origin: array{exported_at: string, root: string, project_id: string, knossos_version: string}, total: int, new: int, replaced: int, kept: int, unmatched: int, stale: int, conflicts: array{total: int, items: list<array{canonical_name: string, kind: string, author: string, kept: 'file'|'project'}>}}
-     * @throws InvalidArgumentException NOTES_FILE_MISSING, NOTES_FILE_INVALID or NOTES_FILE_VERSION
+     * @param string|null $confineTo a directory the file must really lie in (symlinks followed); null for none
+     * @throws InvalidArgumentException NOTES_FILE_MISSING, NOTES_FILE_OUTSIDE_ROOT, NOTES_FILE_TOO_LARGE, NOTES_FILE_INVALID or NOTES_FILE_VERSION
      */
-    public function import(string $projectId, string $file, bool $execute): array
+    public function import(string $projectId, string $file, bool $execute, ?string $confineTo = null): array
     {
-        $text = is_file($file) ? @file_get_contents($file) : false;
-        if ($text === false) {
-            throw new InvalidArgumentException('NOTES_FILE_MISSING: ' . $file . ' does not exist.');
-        }
-        $decoded = NotesFile::decode($text);
+        $decoded = self::load($file, $confineTo);
         // On execute the plan is made inside the lease and transaction, so the
         // counts describe what was written; a preview just reads.
         $plan = $execute ? $this->planAndWrite($projectId, $decoded['rows']) : $this->plan($projectId, $decoded['rows']);
@@ -93,6 +101,41 @@ final readonly class NotesTransferService
             'stale' => $plan['stale'],
             'conflicts' => ['total' => count($plan['conflicts']), 'items' => array_slice($plan['conflicts'], 0, self::CONFLICTS_LISTED)],
         ];
+    }
+
+    /**
+     * Read and validate a notes file without touching any project, so a caller
+     * can refuse before it changes anything.
+     *
+     * @param string|null $confineTo a directory the file must really lie in (symlinks followed); null for none
+     * @return array{origin: array{exported_at: string, root: string, project_id: string, knossos_version: string}, rows: list<NoteRow>}
+     * @throws InvalidArgumentException NOTES_FILE_MISSING, NOTES_FILE_OUTSIDE_ROOT, NOTES_FILE_TOO_LARGE, NOTES_FILE_INVALID or NOTES_FILE_VERSION
+     */
+    public static function load(string $file, ?string $confineTo): array
+    {
+        if (!is_file($file)) {
+            throw new InvalidArgumentException('NOTES_FILE_MISSING: ' . $file . ' does not exist.');
+        }
+        if ($confineTo !== null) {
+            $real = realpath($file);
+            $root = realpath($confineTo);
+            if ($real === false || $root === false || !str_starts_with($real, rtrim($root, '/') . '/')) {
+                throw new InvalidArgumentException('NOTES_FILE_OUTSIDE_ROOT: ' . $file . ' must be a file inside ' . $confineTo . '.');
+            }
+        }
+        $size = @filesize($file);
+        if ($size === false || $size > self::MAX_BYTES) {
+            throw new InvalidArgumentException('NOTES_FILE_TOO_LARGE: ' . $file . ' is over ' . (self::MAX_BYTES / 1024 / 1024) . ' MB.');
+        }
+        $text = @file_get_contents($file, false, null, 0, self::MAX_BYTES + 1);
+        if ($text === false) {
+            throw new InvalidArgumentException('NOTES_FILE_MISSING: ' . $file . ' could not be read.');
+        }
+        if (strlen($text) > self::MAX_BYTES) {
+            throw new InvalidArgumentException('NOTES_FILE_TOO_LARGE: ' . $file . ' is over ' . (self::MAX_BYTES / 1024 / 1024) . ' MB.');
+        }
+
+        return NotesFile::decode($text);
     }
 
     /**

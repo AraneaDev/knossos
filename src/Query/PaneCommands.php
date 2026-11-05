@@ -214,7 +214,7 @@ final readonly class PaneCommands
                 return ['status' => 'ok', 'executed' => true, 'file' => $result['file'], 'total' => $result['total'], 'replaced' => $result['replaced']];
             })],
             'notes-import' => ['options' => ['file', 'execute'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag): array => $p->notesTransfer($path, static function (NotesTransferService $transfer, array $project) use ($single, $flag): array {
-                $result = $transfer->import($project['id'], $single('file') ?? $project['root'] . '/' . NotesFile::DEFAULT_NAME, $flag('execute'));
+                $result = $transfer->import($project['id'], $single('file') ?? $project['root'] . '/' . NotesFile::DEFAULT_NAME, $flag('execute'), $project['root']);
 
                 return [
                     'status' => 'ok',

@@ -82,7 +82,7 @@ final class NotesTransferExportTest extends KnossosTestCase
     {
         $this->seed();
         $file = $this->tempDir . '/notes.json';
-        file_put_contents($file, 'stub');
+        file_put_contents($file, '{"format":"knossos-notes","version":1}');
 
         $result = (new NotesTransferService($this->pdo))->export($this->projectId, '/work/app', $file);
 
@@ -139,5 +139,40 @@ final class NotesTransferExportTest extends KnossosTestCase
         }
 
         self::assertSame([], glob($this->tempDir . '/*'));
+    }
+
+    /** A file that is not a notes file is never replaced, and is left as it was. */
+    #[Group('notes')]
+    public function testExportRefusesToReplaceANonNotesFile(): void
+    {
+        $this->seed();
+        $file = $this->tempDir . '/composer.json';
+        file_put_contents($file, '{"name":"app/app","require":{}}');
+
+        try {
+            (new NotesTransferService($this->pdo))->export($this->projectId, '/work/app', $file);
+            self::fail('expected a refusal');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringStartsWith('NOTES_FILE_NOT_NOTES: ' . $file . ' exists and is not a knossos notes file', $e->getMessage());
+        }
+
+        self::assertSame('{"name":"app/app","require":{}}', file_get_contents($file));
+        self::assertSame([$file], glob($this->tempDir . '/*'));
+    }
+
+    /** A previous notes file is replaced, and the result says so. */
+    #[Group('notes')]
+    public function testExportStillReplacesAPreviousNotesFile(): void
+    {
+        $this->seed();
+        $file = $this->tempDir . '/' . NotesFile::DEFAULT_NAME;
+        $service = new NotesTransferService($this->pdo);
+        $service->export($this->projectId, '/work/app', $file);
+        $this->note('App\\C', 'note', 'user');
+
+        $again = $service->export($this->projectId, '/work/app', $file);
+
+        self::assertTrue($again['replaced']);
+        self::assertCount(4, NotesFile::decode((string) file_get_contents($file))['rows']);
     }
 }

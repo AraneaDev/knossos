@@ -121,7 +121,9 @@ final class MaintenanceCommand implements CliCommand
         $root = $positionals[0] ?? (getcwd() ?: '.');
         $real = realpath($root);
         $scanner = (new ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$real === false ? $root : $real]);
-        $result = $context->maintenance()->importNotes($root, $context->options->single($options, 'file'), $context->options->flag($options, 'execute'), $scanner);
+        // The spec lets the CLI name any file, so only the default one is held to the root.
+        $file = $context->options->single($options, 'file');
+        $result = $context->maintenance()->importNotes($root, $file, $context->options->flag($options, 'execute'), $scanner, $file === null);
         $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
         return CliCommand::EXIT_OK;
     }

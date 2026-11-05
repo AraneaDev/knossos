@@ -770,7 +770,7 @@ final readonly class ToolCatalog
                     'file' => ['type' => 'string', 'minLength' => 1],
                     'execute' => ['type' => 'boolean', 'default' => false],
                 ], 'required' => ['path'], 'additionalProperties' => false],
-                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => false, 'openWorldHint' => false],
+                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
             ],
             [
                 'name' => 'cleanup_stale_scans', 'title' => 'Clean up stale scans',

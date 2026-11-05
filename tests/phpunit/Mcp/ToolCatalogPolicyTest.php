@@ -28,7 +28,7 @@ final class ToolCatalogPolicyTest extends KnossosTestCase
     private const WRITE_TOOLS = ['annotate_component', 'architecture_trends', 'cleanup_stale_scans', 'export_notes', 'import_notes', 'maintain_database', 'move_project', 'remove_project', 'scan_project'];
 
     /** Tools that delete data, which a client must confirm before running. */
-    private const DESTRUCTIVE_TOOLS = ['cleanup_stale_scans', 'move_project', 'remove_project'];
+    private const DESTRUCTIVE_TOOLS = ['cleanup_stale_scans', 'import_notes', 'move_project', 'remove_project'];
 
     /** Tools that give a different result, or fail, when repeated. */
     private const NON_IDEMPOTENT_TOOLS = ['export_notes', 'import_notes', 'maintain_database', 'move_project', 'remove_project'];

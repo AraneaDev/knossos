@@ -232,4 +232,61 @@ final class NotesTransferImportTest extends KnossosTestCase
         self::assertSame(60, $result['conflicts']['total']);
         self::assertCount(50, $result['conflicts']['items']);
     }
+
+    /** A notes file that is a symlink to somewhere outside the root is refused when confined. */
+    #[Group('notes')]
+    public function testSymlinkPointingOutsideTheRootIsRefused(): void
+    {
+        $outside = $this->file([self::row('App\\A', 'note', 'user', '2026-10-01T00:00:00Z')]);
+        $link = $this->root . '/' . NotesFile::DEFAULT_NAME;
+        symlink($outside, $link);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/^NOTES_FILE_OUTSIDE_ROOT:/');
+        (new NotesTransferService($this->pdo))->import($this->projectId, $link, false, $this->root);
+    }
+
+    /** Unconfined (the CLI's explicit --file) the same file is read. */
+    #[Group('notes')]
+    public function testUnconfinedImportReadsAnyFile(): void
+    {
+        $outside = $this->file([self::row('App\\A', 'note', 'user', '2026-10-01T00:00:00Z')]);
+
+        $result = (new NotesTransferService($this->pdo))->import($this->projectId, $outside, false, null);
+
+        self::assertSame(1, $result['total']);
+    }
+
+    /** A symlink whose target is inside the root is allowed. */
+    #[Group('notes')]
+    public function testSymlinkInsideTheRootIsAllowed(): void
+    {
+        $inside = $this->root . '/real-notes.json';
+        copy($this->file([self::row('App\\A', 'note', 'user', '2026-10-01T00:00:00Z')]), $inside);
+        $link = $this->root . '/' . NotesFile::DEFAULT_NAME;
+        symlink($inside, $link);
+
+        $result = (new NotesTransferService($this->pdo))->import($this->projectId, $link, false, $this->root);
+
+        self::assertSame(1, $result['total']);
+    }
+
+    /** A file over 10 MB is refused unread; one at the cap is not refused for size. */
+    #[Group('notes')]
+    public function testOversizedFileIsRefused(): void
+    {
+        $path = $this->root . '/big.json';
+        file_put_contents($path, str_repeat(' ', NotesTransferService::MAX_BYTES + 1));
+
+        try {
+            (new NotesTransferService($this->pdo))->import($this->projectId, $path, false, $this->root);
+            self::fail('expected a refusal');
+        } catch (InvalidArgumentException $e) {
+            self::assertStringStartsWith('NOTES_FILE_TOO_LARGE:', $e->getMessage());
+        }
+
+        file_put_contents($path, str_repeat(' ', NotesTransferService::MAX_BYTES));
+        $this->expectExceptionMessageMatches('/^NOTES_FILE_INVALID:/');
+        (new NotesTransferService($this->pdo))->import($this->projectId, $path, false, $this->root);
+    }
 }

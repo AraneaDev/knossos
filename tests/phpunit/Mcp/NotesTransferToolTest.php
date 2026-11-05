@@ -124,4 +124,21 @@ final class NotesTransferToolTest extends KnossosTestCase
             new ServerEnvironment(new AllowedRoots($roots), ':memory:', self::repositoryRoot(), $pdo),
         );
     }
+
+    /** A file that does not end in .json is refused, and nothing is written. */
+    #[Group('mcp')]
+    public function testAFileThatIsNotJsonIsRefused(): void
+    {
+        $root = $this->checkout();
+        try {
+            $tools = $this->tools($this->freshTestDatabase(), [$root]);
+            foreach (['export_notes', 'import_notes'] as $tool) {
+                $error = captureThrows(fn() => $tools->call($tool, ['path' => $root, 'file' => $root . '/src/A.php']), InvalidArgumentException::class);
+                self::assertStringStartsWith('NOTES_FILE_NOT_JSON:', $error->getMessage());
+            }
+            self::assertStringContainsString('final class A', (string) file_get_contents($root . '/src/A.php'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
 }

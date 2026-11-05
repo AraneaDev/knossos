@@ -386,6 +386,9 @@ final readonly class ToolService
                 throw new \InvalidArgumentException(sprintf('NOTES_PATH_NOT_ABSOLUTE: %s must be an absolute path.', $candidate));
             }
         }
+        if ($file !== null && !str_ends_with($file, '.json')) {
+            throw new \InvalidArgumentException(sprintf('NOTES_FILE_NOT_JSON: %s must end in .json.', $file));
+        }
         if ($this->environment !== null && !$this->environment->admitsRoot($path)) {
             throw new \InvalidArgumentException(sprintf('NOTES_ROOT_NOT_ALLOWED: %1$s is not an allowed root. Run `knossos allow-root %1$s --execute` first.', $path));
         }

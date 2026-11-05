@@ -56,7 +56,7 @@ final readonly class DatabaseMaintenanceService
         return new ResultEnvelope(
             $projectId,
             '',
-            sprintf('Exported %d notes to %s.', $result['total'], $result['file']) . ($result['replaced'] ? ' (replaced the previous file)' : ''),
+            sprintf('Exported %d %s to %s.', $result['total'], $result['total'] === 1 ? 'note' : 'notes', $result['file']) . ($result['replaced'] ? ' (replaced the previous file)' : ''),
             $result,
         );
     }
@@ -67,34 +67,42 @@ final readonly class DatabaseMaintenanceService
      * A root nothing has scanned is scanned first, even for a preview: the
      * unmatched and stale counts need a graph to compare the notes against.
      *
+     * The file is read and checked before any scan, so a missing or bad file
+     * leaves no new project behind.
+     *
      * @param string|null $file the notes file; null means knossos-notes.json in the root
+     * @param bool $confine require the file to lie inside the root; the CLI turns it off for a file it was told to read
      */
-    public function importNotes(string $root, ?string $file, bool $execute, ProjectScanner $scanner): ResultEnvelope
+    public function importNotes(string $root, ?string $file, bool $execute, ProjectScanner $scanner, bool $confine = true): ResultEnvelope
     {
         $real = self::realRoot($root);
         $projectId = ProjectScanService::projectIdOf($real);
+        $path = $file ?? self::defaultFile($real);
+        $confineTo = $confine ? $real : null;
+        NotesTransferService::load($path, $confineTo);
         $scanned = false;
         if (!(new ProjectRepository($this->pdo))->exists($projectId)) {
             $scanner->scan($real, new ScanOptions(runEnrichers: true));
             $scanned = true;
         }
-        $result = (new NotesTransferService($this->pdo))->import($projectId, $file ?? self::defaultFile($real), $execute);
-        $shape = sprintf(
-            '%d notes %s into %s (%d new, %d replaced, %d kept; %d on missing components, %d stale).',
-            $result['total'],
-            $execute ? 'imported' : 'would be imported',
-            $real,
-            $result['new'],
-            $result['replaced'],
-            $result['kept'],
-            $result['unmatched'],
-            $result['stale'],
-        );
+        $result = (new NotesTransferService($this->pdo))->import($projectId, $path, $execute, $confineTo);
+        $done = $result['new'] + $result['replaced'];
+        $noun = $result['total'] === 1 ? 'note' : 'notes';
+        $counts = sprintf('%d new, %d replaced, %d kept; %d on missing components, %d stale', $result['new'], $result['replaced'], $result['kept'], $result['unmatched'], $result['stale']);
+        if (!$execute) {
+            $summary = sprintf('Dry run: %d %s would be imported into %s (%s).', $result['total'], $noun, $real, $counts);
+        } elseif ($done === 0) {
+            $summary = $result['kept'] === 0
+                ? sprintf('Nothing imported into %s: the file has no notes.', $real)
+                : sprintf('Nothing imported into %s: all %d %s already kept.', $real, $result['kept'], $result['kept'] === 1 ? 'note' : 'notes');
+        } else {
+            $summary = sprintf('Imported %d %s into %s (%s).', $done, $done === 1 ? 'note' : 'notes', $real, $counts);
+        }
 
         return new ResultEnvelope(
             $projectId,
             '',
-            $execute ? 'Imported ' . $shape : 'Dry run: ' . $shape,
+            $summary,
             $result + ['scanned' => $scanned],
             warnings: $execute ? [] : ['Set execute=true to import.'],
         );

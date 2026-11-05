@@ -624,7 +624,7 @@ Import a knossos-notes.json into the project path scans as, later edit winning. 
 | `file` | string | no | minLength=1 |
 | `execute` | boolean | no | default=false |
 
-Annotations: read-only `no`; destructive `no`; idempotent `no`; open-world `no`.
+Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
 
 ## `cleanup_stale_scans`
 
