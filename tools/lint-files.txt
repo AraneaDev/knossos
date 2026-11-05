@@ -791,6 +791,7 @@ php	tests/phpunit/Query/OneTypeCycleTest.php
 php	tests/phpunit/Query/PageTest.php
 php	tests/phpunit/Query/PaneCommandsTest.php
 php	tests/phpunit/Query/PaneCoreAgreementTest.php
+php	tests/phpunit/Query/PaneNotesTransferTest.php
 php	tests/phpunit/Query/PaneProjectTest.php
 php	tests/phpunit/Query/PolicyBoundaryReferencesTest.php
 php	tests/phpunit/Query/PolicyTest.php

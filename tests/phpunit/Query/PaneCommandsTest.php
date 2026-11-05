@@ -282,7 +282,7 @@ final class PaneCommandsTest extends KnossosTestCase
     #[Group('query')]
     public function testAnUnknownCommandIsRefused(): void
     {
-        assertSame(19, count(PaneCommands::commands()));
+        assertSame(21, count(PaneCommands::commands()));
         $wrapper = new \Knossos\Cli\Command\BriefCommand();
         foreach (PaneCommands::commands() as $command) {
             assertSame(true, $wrapper->supports($command), $command);

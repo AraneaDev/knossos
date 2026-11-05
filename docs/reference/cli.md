@@ -128,6 +128,8 @@ Usage:
   knossos note-check [path] --component=NAME [--value=TEXT] [--remove] [--execute]
                      [--db=FILE] [--json]
   knossos note-confirm [path] --component=NAME [--execute] [--db=FILE] [--json]
+  knossos notes-export [path] [--file=PATH] [--db=FILE] [--json]
+  knossos notes-import [path] [--file=PATH] [--execute] [--db=FILE] [--json]
   knossos session-head [path] [--json]
   knossos session-diff [path] --rev=SHA --file=PATH [--json]
   knossos install-agent-plugin [--scope=user] [--data-dir=DIR] [--execute] [--json]
