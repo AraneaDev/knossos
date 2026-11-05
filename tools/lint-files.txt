@@ -684,6 +684,7 @@ php	tests/phpunit/NanoDtosTest.php
 php	tests/phpunit/NoCoverageTargetAttributesTest.php
 php	tests/phpunit/Notes/NotesFileTest.php
 php	tests/phpunit/Notes/NotesTransferExportTest.php
+php	tests/phpunit/Notes/NotesTransferImportTest.php
 php	tests/phpunit/ProjectConfig/ProjectConfigTest.php
 php	tests/phpunit/Property/PropertyTest.php
 php	tests/phpunit/Protocol/ProtocolTest.php
