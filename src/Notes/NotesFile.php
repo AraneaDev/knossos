@@ -90,8 +90,16 @@ final class NotesFile
             throw new InvalidArgumentException('NOTES_FILE_INVALID: notes must be a list.');
         }
         $rows = [];
+        $seen = [];
         foreach ($notes as $index => $note) {
-            $rows[] = self::decodeRow($note, $index);
+            $row = self::decodeRow($note, $index);
+            // Two copies of one key would make the counts wrong and the winner an accident of order.
+            $key = $row['canonical_name'] . '/' . $row['kind'] . '/' . $row['author'];
+            if (isset($seen[$key])) {
+                throw new InvalidArgumentException('NOTES_FILE_INVALID: duplicate note ' . $key);
+            }
+            $seen[$key] = true;
+            $rows[] = $row;
         }
 
         /** @var Origin $origin */

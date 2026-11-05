@@ -42,6 +42,19 @@ final class NotesFileTest extends KnossosTestCase
         assertSame($rows, $decoded['rows']);
     }
 
+    /** Two notes on one key are refused, naming the key. */
+    #[Group('notes')]
+    public function testRefusesDuplicateKeys(): void
+    {
+        $file = $this->validFile();
+        $file['notes'][] = $file['notes'][0];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('NOTES_FILE_INVALID: duplicate note App\\Foo/note/user');
+
+        NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR));
+    }
+
     /** A project with no annotations still writes a valid file. */
     #[Group('notes')]
     public function testEmptyNotesRoundTrip(): void

@@ -77,11 +77,9 @@ final readonly class NotesTransferService
             throw new InvalidArgumentException('NOTES_FILE_MISSING: ' . $file . ' does not exist.');
         }
         $decoded = NotesFile::decode($text);
-        $plan = $this->plan($projectId, $decoded['rows']);
-
-        if ($execute && $plan['write'] !== []) {
-            $this->write($projectId, $plan['write']);
-        }
+        // On execute the plan is made inside the lease and transaction, so the
+        // counts describe what was written; a preview just reads.
+        $plan = $execute ? $this->planAndWrite($projectId, $decoded['rows']) : $this->plan($projectId, $decoded['rows']);
 
         return [
             'executed' => $execute,
@@ -140,23 +138,28 @@ final readonly class NotesTransferService
     }
 
     /**
-     * Upsert the planned rows under the project's writer lease in one
-     * transaction, so a failure leaves the notes as they were.
+     * Plan and upsert under the project's writer lease in one transaction, so
+     * a failure leaves the notes as they were. The upsert also refuses to
+     * overwrite a row stamped later than the file's, because
+     * `annotate_component` writes without the lease.
      *
      * @param list<NoteRow> $rows
+     * @return array{write: list<NoteRow>, new: int, replaced: int, kept: int, unmatched: int, stale: int, conflicts: list<array{canonical_name: string, kind: string, author: string, kept: 'file'|'project'}>}
      */
-    private function write(string $projectId, array $rows): void
+    private function planAndWrite(string $projectId, array $rows): array
     {
         $upsert = $this->pdo->prepare(
             'INSERT INTO annotations(project_id, canonical_name, kind, value, author, basis_json, created_at, updated_at) ' .
             'VALUES (:project, :name, :kind, :value, :author, :basis, :created, :updated) ' .
             'ON CONFLICT(project_id, canonical_name, kind, author) DO UPDATE SET ' .
-            'value = excluded.value, basis_json = excluded.basis_json, created_at = excluded.created_at, updated_at = excluded.updated_at',
+            'value = excluded.value, basis_json = excluded.basis_json, created_at = excluded.created_at, updated_at = excluded.updated_at ' .
+            'WHERE excluded.updated_at > annotations.updated_at',
         );
         $lease = (new ProjectWriterLock($this->pdo))->acquire($projectId);
         $this->pdo->beginTransaction();
         try {
-            foreach ($rows as $row) {
+            $plan = $this->plan($projectId, $rows);
+            foreach ($plan['write'] as $row) {
                 $upsert->execute([
                     'project' => $projectId,
                     'name' => $row['canonical_name'],
@@ -169,6 +172,8 @@ final readonly class NotesTransferService
                 ]);
             }
             $this->pdo->commit();
+
+            return $plan;
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();

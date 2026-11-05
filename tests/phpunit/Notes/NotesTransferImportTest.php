@@ -175,6 +175,25 @@ final class NotesTransferImportTest extends KnossosTestCase
         self::assertSame($after, $this->stored());
     }
 
+    /** A row edited past the file's copy after the plan survives the upsert. */
+    #[Group('notes')]
+    public function testNewerEditMadeDuringTheImportSurvives(): void
+    {
+        $this->existing('App\\A', 'note', 'user', '2026-10-05T00:00:00Z');
+        $file = $this->file([self::row('App\\A', 'note', 'user', '2026-10-09T00:00:00Z', 'older than the edit')]);
+        // Stands in for annotate_component writing between the plan and the upsert.
+        $this->pdo->exec(
+            "CREATE TRIGGER race BEFORE INSERT ON annotations BEGIN UPDATE annotations SET value = 'fresh', updated_at = '2026-11-05T00:00:00Z' " .
+            'WHERE project_id = NEW.project_id AND canonical_name = NEW.canonical_name AND kind = NEW.kind AND author = NEW.author; END',
+        );
+
+        (new NotesTransferService($this->pdo))->import($this->projectId, $file, true);
+
+        $row = $this->stored()[0];
+        self::assertSame('fresh', $row['value']);
+        self::assertSame('2026-11-05T00:00:00Z', $row['updated_at']);
+    }
+
     /** A file with no notes reports zeros. */
     #[Group('notes')]
     public function testImportOfEmptyFileReportsNothing(): void
