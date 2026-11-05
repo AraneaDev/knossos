@@ -78,13 +78,18 @@ final readonly class NotesTransferService
      * project lacks, and stale model notes, are imported and only counted.
      * Rows keep the file's timestamps. Lock and busy errors propagate.
      *
-     * @return array{executed: bool, file: string, origin: array{exported_at: string, root: string, project_id: string, knossos_version: string}, total: int, new: int, replaced: int, kept: int, unmatched: int, stale: int, conflicts: array{total: int, items: list<array{canonical_name: string, kind: string, author: string, kept: 'file'|'project'}>}}
+     * @return array{executed: bool, file: string, sha256: string, origin: array{exported_at: string, root: string, project_id: string, knossos_version: string}, total: int, new: int, replaced: int, kept: int, unmatched: int, stale: int, conflicts: array{total: int, items: list<array{canonical_name: string, kind: string, author: string, kept: 'file'|'project'}>}}
      * @param string|null $confineTo a directory the file must really lie in (symlinks followed); null for none
-     * @throws InvalidArgumentException NOTES_FILE_MISSING, NOTES_FILE_OUTSIDE_ROOT, NOTES_FILE_TOO_LARGE, NOTES_FILE_INVALID or NOTES_FILE_VERSION
+     * @param string|null $expectHash the `sha256` a preview answered: the file must still hash to it, so what is
+     *        imported is what the person saw; null to take the file as it is
+     * @throws InvalidArgumentException NOTES_FILE_MISSING, NOTES_FILE_OUTSIDE_ROOT, NOTES_FILE_TOO_LARGE, NOTES_FILE_INVALID, NOTES_FILE_VERSION or NOTES_FILE_CHANGED
      */
-    public function import(string $projectId, string $file, bool $execute, ?string $confineTo = null): array
+    public function import(string $projectId, string $file, bool $execute, ?string $confineTo = null, ?string $expectHash = null): array
     {
         $decoded = self::load($file, $confineTo);
+        if ($expectHash !== null && !hash_equals($expectHash, $decoded['sha256'])) {
+            throw new InvalidArgumentException('NOTES_FILE_CHANGED: ' . $file . ' changed since it was previewed; preview it again.');
+        }
         // On execute the plan is made inside the lease and transaction, so the
         // counts describe what was written; a preview just reads.
         $plan = $execute ? $this->planAndWrite($projectId, $decoded['rows']) : $this->plan($projectId, $decoded['rows']);
@@ -92,6 +97,7 @@ final readonly class NotesTransferService
         return [
             'executed' => $execute,
             'file' => $file,
+            'sha256' => $decoded['sha256'],
             'origin' => $decoded['origin'],
             'total' => count($decoded['rows']),
             'new' => $plan['new'],
@@ -108,7 +114,7 @@ final readonly class NotesTransferService
      * can refuse before it changes anything.
      *
      * @param string|null $confineTo a directory the file must really lie in (symlinks followed); null for none
-     * @return array{origin: array{exported_at: string, root: string, project_id: string, knossos_version: string}, rows: list<NoteRow>}
+     * @return array{origin: array{exported_at: string, root: string, project_id: string, knossos_version: string}, rows: list<NoteRow>, sha256: string}
      * @throws InvalidArgumentException NOTES_FILE_MISSING, NOTES_FILE_OUTSIDE_ROOT, NOTES_FILE_TOO_LARGE, NOTES_FILE_INVALID or NOTES_FILE_VERSION
      */
     public static function load(string $file, ?string $confineTo): array
@@ -116,18 +122,22 @@ final readonly class NotesTransferService
         if (!is_file($file)) {
             throw new InvalidArgumentException('NOTES_FILE_MISSING: ' . $file . ' does not exist.');
         }
+        // Confined, the file is read by the path that was checked, not by the
+        // name given: a link swapped after the check cannot redirect the read.
+        $path = $file;
         if ($confineTo !== null) {
             $real = realpath($file);
             $root = realpath($confineTo);
-            if ($real === false || $root === false || !str_starts_with($real, rtrim($root, '/') . '/')) {
+            if ($real === false || $root === false || !str_starts_with($real, rtrim($root, '/') . '/') || !is_file($real)) {
                 throw new InvalidArgumentException('NOTES_FILE_OUTSIDE_ROOT: ' . $file . ' must be a file inside ' . $confineTo . '.');
             }
+            $path = $real;
         }
-        $size = @filesize($file);
+        $size = @filesize($path);
         if ($size === false || $size > self::MAX_BYTES) {
             throw new InvalidArgumentException('NOTES_FILE_TOO_LARGE: ' . $file . ' is over ' . (self::MAX_BYTES / 1024 / 1024) . ' MB.');
         }
-        $text = @file_get_contents($file, false, null, 0, self::MAX_BYTES + 1);
+        $text = @file_get_contents($path, false, null, 0, self::MAX_BYTES + 1);
         if ($text === false) {
             throw new InvalidArgumentException('NOTES_FILE_MISSING: ' . $file . ' could not be read.');
         }
@@ -135,7 +145,7 @@ final readonly class NotesTransferService
             throw new InvalidArgumentException('NOTES_FILE_TOO_LARGE: ' . $file . ' is over ' . (self::MAX_BYTES / 1024 / 1024) . ' MB.');
         }
 
-        return NotesFile::decode($text);
+        return NotesFile::decode($text) + ['sha256' => hash('sha256', $text)];
     }
 
     /**

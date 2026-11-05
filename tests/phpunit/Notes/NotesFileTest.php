@@ -141,7 +141,7 @@ final class NotesFileTest extends KnossosTestCase
     /** @return list<array{string, string}> a field and a value that is not a UTC timestamp */
     public static function badTimestamps(): array
     {
-        return [['created_at', '2026-01-01'], ['updated_at', 'yesterday'], ['updated_at', '2026-01-02 00:00:00'], ['created_at', '2026-01-01T00:00:00+02:00']];
+        return [['created_at', '2026-01-01'], ['updated_at', 'yesterday'], ['updated_at', '2026-01-02 00:00:00'], ['created_at', '2026-01-01T00:00:00+02:00'], ['updated_at', "2026-01-02T00:00:00Z\n"]];
     }
 
     /** A timestamp that is not YYYY-MM-DDTHH:MM:SSZ is refused, naming the note and field. */
@@ -168,5 +168,17 @@ final class NotesFileTest extends KnossosTestCase
         $file['notes'][0]['updated_at'] = '2099-01-01T00:00:00Z';
         $this->expectExceptionMessageMatches('/^NOTES_FILE_INVALID: note 0 updated_at /');
         NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR), $now);
+    }
+
+    /** The future bound is taken in UTC whatever zone "now" is given in. */
+    #[Group('notes')]
+    public function testFutureBoundIsInUtc(): void
+    {
+        // 2026-11-05 12:00 in UTC-10 is 22:00 UTC, so the bound is 2026-11-06T22:00:00Z.
+        $now = new \DateTimeImmutable('2026-11-05T12:00:00', new \DateTimeZone('Pacific/Honolulu'));
+        $file = $this->validFile();
+        $file['notes'][0]['updated_at'] = '2026-11-06T21:00:00Z';
+
+        self::assertCount(1, NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR), $now)['rows']);
     }
 }

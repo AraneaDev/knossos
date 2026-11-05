@@ -13,6 +13,7 @@ use PDO;
 use function PHPUnit\Framework\assertFileExists;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
+use function PHPUnit\Framework\assertStringStartsWith;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -30,6 +31,16 @@ final class PaneNotesTransferTest extends KnossosTestCase
         return (new PaneCommands($pdo))->answer($command, $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
     }
 
+    /**
+     * How many annotations the database holds, read afresh each call.
+     *
+     * @phpstan-impure
+     */
+    private static function annotations(PDO $pdo): int
+    {
+        return (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn();
+    }
+
     /** Export answers the file, the total and whether it replaced one; the options are file and execute. */
     #[Group('query')]
     public function testExportAnswersItsShape(): void
@@ -37,7 +48,7 @@ final class PaneNotesTransferTest extends KnossosTestCase
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
         try {
             assertSame(['file'], PaneCommands::options('notes-export'));
-            assertSame(['file', 'execute'], PaneCommands::options('notes-import'));
+            assertSame(['file', 'execute', 'expect'], PaneCommands::options('notes-import'));
             $project = (string) $pdo->query('SELECT id FROM projects')->fetchColumn();
             ArchitectureQueryService::forDatabase($pdo)->services()->annotationQueries->upsertAnnotation($project, 'App\\Greeter', 'note', 'keep me', execute: true);
 
@@ -64,14 +75,24 @@ final class PaneNotesTransferTest extends KnossosTestCase
             $pdo->exec('DELETE FROM annotations');
 
             $dry = $this->ask($pdo, 'notes-import', $root);
-            assertSame(['status', 'executed', 'file', 'origin', 'total', 'new', 'replaced', 'kept', 'unmatched', 'stale'], array_keys($dry));
+            assertSame(['status', 'executed', 'file', 'sha256', 'origin', 'total', 'new', 'replaced', 'kept', 'unmatched', 'stale'], array_keys($dry));
+            assertSame(hash_file('sha256', $root . '/knossos-notes.json'), $dry['sha256']);
             assertSame(['exported_at', 'root'], array_keys($dry['origin']));
             assertSame(['ok', false, 1, 1], [$dry['status'], $dry['executed'], $dry['total'], $dry['new']]);
-            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertSame(0, self::annotations($pdo));
 
-            $done = $this->ask($pdo, 'notes-import', $root, ['execute' => '1']);
+            // The file changed after the preview: execute with the preview's hash is refused, and writes nothing.
+            $previewed = $dry['sha256'];
+            file_put_contents($root . '/knossos-notes.json', (string) file_get_contents($root . '/knossos-notes.json') . ' ');
+            $changed = $this->ask($pdo, 'notes-import', $root, ['execute' => '1', 'expect' => $previewed]);
+            assertSame('refused', $changed['status']);
+            assertStringStartsWith('NOTES_FILE_CHANGED: ', $changed['reason']);
+            assertSame(0, self::annotations($pdo));
+
+            $again = $this->ask($pdo, 'notes-import', $root);
+            $done = $this->ask($pdo, 'notes-import', $root, ['execute' => '1', 'expect' => $again['sha256']]);
             assertSame(true, $done['executed']);
-            assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertSame(1, self::annotations($pdo));
         } finally {
             $this->removeTempTree($root);
         }

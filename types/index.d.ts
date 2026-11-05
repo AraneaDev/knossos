@@ -742,6 +742,8 @@ export type NotesImport = {
   status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'
   executed?: boolean
   file?: string
+  /** The file's hash as previewed; `y` passes it back so a file changed since is refused. */
+  sha256?: string
   origin?: { exported_at: string; root: string }
   total?: number
   new?: number
