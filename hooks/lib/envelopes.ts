@@ -334,7 +334,7 @@ export function parseNotesExport(stdout: string): NotesExport | null {
 export function parseNotesImport(stdout: string): NotesImport | null {
   const parsed = parse(stdout, NOTE, [], []) as NotesImport | null
   if (parsed === null || parsed.status !== 'ok') return parsed
-  return typeof parsed.executed === 'boolean' && counted(parsed, ['total', 'new', 'replaced', 'kept', 'unmatched', 'stale']) && parsed.origin !== undefined ? parsed : null
+  return typeof parsed.executed === 'boolean' && counted(parsed, ['total', 'new', 'replaced', 'kept', 'unmatched', 'stale']) && parsed.origin !== undefined && typeof parsed.sha256 === 'string' ? parsed : null
 }
 
 /** The code a write that met a scan's commit answers with: the pane keeps what was typed and says to retry. */

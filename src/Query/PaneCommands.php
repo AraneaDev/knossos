@@ -213,13 +213,15 @@ final readonly class PaneCommands
 
                 return ['status' => 'ok', 'executed' => true, 'file' => $result['file'], 'total' => $result['total'], 'replaced' => $result['replaced']];
             })],
-            'notes-import' => ['options' => ['file', 'execute'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag): array => $p->notesTransfer($path, static function (NotesTransferService $transfer, array $project) use ($single, $flag): array {
-                $result = $transfer->import($project['id'], $single('file') ?? $project['root'] . '/' . NotesFile::DEFAULT_NAME, $flag('execute'), $project['root']);
+            // `expect` is the hash the preview answered: what `y` imports is the file the person saw.
+            'notes-import' => ['options' => ['file', 'execute', 'expect'], 'target' => self::PATH, 'answer' => static fn(self $p, string $path, Closure $single, Closure $flag): array => $p->notesTransfer($path, static function (NotesTransferService $transfer, array $project) use ($single, $flag): array {
+                $result = $transfer->import($project['id'], $single('file') ?? $project['root'] . '/' . NotesFile::DEFAULT_NAME, $flag('execute'), $project['root'], $single('expect'));
 
                 return [
                     'status' => 'ok',
                     'executed' => $result['executed'],
                     'file' => $result['file'],
+                    'sha256' => $result['sha256'],
                     // The pane shows where the file came from, not who exported it.
                     'origin' => ['exported_at' => $result['origin']['exported_at'], 'root' => $result['origin']['root']],
                     'total' => $result['total'],

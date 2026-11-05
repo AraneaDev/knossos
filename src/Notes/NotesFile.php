@@ -24,7 +24,7 @@ final class NotesFile
     public const DEFAULT_NAME = 'knossos-notes.json';
 
     private const ORIGIN_FIELDS = ['exported_at', 'root', 'project_id', 'knossos_version'];
-    private const TIMESTAMP = '/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/';
+    private const TIMESTAMP = '/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/';
     /** How far past "now" an updated_at may lie, to allow for clock skew between machines. */
     private const SKEW = '+1 day';
     private const STRING_FIELDS = ['canonical_name', 'kind', 'author', 'value', 'created_at', 'updated_at'];
@@ -78,7 +78,8 @@ final class NotesFile
      */
     public static function decode(string $json, ?DateTimeImmutable $now = null): array
     {
-        $latest = ($now ?? new DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify(self::SKEW)->format('Y-m-d\TH:i:s\Z');
+        // In UTC whatever zone the caller's clock is in: the stamps compared against it are.
+        $latest = ($now ?? new DateTimeImmutable())->setTimezone(new \DateTimeZone('UTC'))->modify(self::SKEW)->format('Y-m-d\TH:i:s\Z');
         try {
             $data = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {

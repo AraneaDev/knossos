@@ -158,6 +158,40 @@ final class NotesTransferImportTest extends KnossosTestCase
         self::assertSame(['file', 'project'], array_column($result['conflicts']['items'], 'kept'));
     }
 
+    /** A preview names the file's hash, and executing with that hash imports it. */
+    #[Group('notes')]
+    public function testExecuteWithThePreviewsHashImports(): void
+    {
+        $file = $this->seedMixed();
+        $service = new NotesTransferService($this->pdo);
+
+        $preview = $service->import($this->projectId, $file, false);
+        self::assertSame(hash_file('sha256', $file), $preview['sha256']);
+
+        $result = $service->import($this->projectId, $file, true, null, $preview['sha256']);
+        self::assertTrue($result['executed']);
+        self::assertSame([3, 1], [$result['new'], $result['replaced']]);
+    }
+
+    /** A file that changed after its preview is refused on execute, and nothing is written. */
+    #[Group('notes')]
+    public function testExecuteRefusesAFileChangedSinceThePreview(): void
+    {
+        $file = $this->seedMixed();
+        $service = new NotesTransferService($this->pdo);
+        $preview = $service->import($this->projectId, $file, false);
+        $before = $this->stored();
+        file_put_contents($file, (string) file_get_contents($file) . ' ');
+
+        try {
+            $service->import($this->projectId, $file, true, null, $preview['sha256']);
+            self::fail('expected the changed file to be refused');
+        } catch (\InvalidArgumentException $refused) {
+            self::assertStringStartsWith('NOTES_FILE_CHANGED: ', $refused->getMessage());
+        }
+        self::assertSame($before, $this->stored());
+    }
+
     /** Running the same file again changes nothing. */
     #[Group('notes')]
     public function testSecondImportOfSameFileKeepsEverything(): void

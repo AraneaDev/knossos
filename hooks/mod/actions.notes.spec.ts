@@ -303,7 +303,7 @@ describe('v on the Notes tab', () => {
 
 describe('z and i on the Notes tab', () => {
     const exported = (over: object = {}) => JSON.stringify({ status: 'ok', executed: true, file: '/work/app/knossos-notes.json', total: 3, replaced: false, ...over })
-    const preview = (over: object = {}) => JSON.stringify({ status: 'ok', executed: false, file: '/work/app/knossos-notes.json', origin: { exported_at: '2026-11-04T10:00:00Z', root: '/other' }, total: 5, new: 2, replaced: 1, kept: 1, unmatched: 0, stale: 0, ...over })
+    const preview = (over: object = {}) => JSON.stringify({ status: 'ok', executed: false, file: '/work/app/knossos-notes.json', origin: { exported_at: '2026-11-04T10:00:00Z', root: '/other' }, sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', total: 5, new: 2, replaced: 1, kept: 1, unmatched: 0, stale: 0, ...over })
 
     it('z writes the file on a timer, with no args, and says where', async () => {
         const port = fakePort()
@@ -341,7 +341,7 @@ describe('z and i on the Notes tab', () => {
         port.answers.push(preview({ executed: true }))
         await port.press('notes-yes')
         await port.runTimers()
-        expect(port.runs.at(-1)).toEqual(['sh', RUN, 'notes-import', ROOT, '--execute'])
+        expect(port.runs.at(-1)).toEqual(['sh', RUN, 'notes-import', ROOT, '--execute', '--expect=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'])
         expect(port.view().notesImport).toBeNull()
         expect(mod.notes.version).toBe(1)
         expect(vi.mocked(request)).toHaveBeenCalledWith(port.io, 'notes')
