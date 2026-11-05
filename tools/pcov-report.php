@@ -34,6 +34,7 @@ const SOURCE_COMPONENTS = [
     'Git' => 'bundle-git-watch',
     'Maintenance' => 'maintenance-runtime',
     'Mcp' => 'transport',
+    'Notes' => 'maintenance-runtime',
     'Query' => 'query-analysis',
     'Reconciliation' => 'reconciliation',
     'Result' => 'query-analysis',
