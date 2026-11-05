@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.1](https://github.com/AraneaDev/knossos/compare/v0.44.0...v0.44.1) (2026-11-05)
+
+
+### Fixes
+
+* pane notes export/import, and a digits-only path in the drift probe ([#449](https://github.com/AraneaDev/knossos/issues/449)) ([c6a3666](https://github.com/AraneaDev/knossos/commit/c6a366688fa969cb80e2f22d430864d324acdca5))
+
 ## [0.44.0](https://github.com/AraneaDev/knossos/compare/v0.43.0...v0.44.0) (2026-11-05)
 
 
