@@ -25,6 +25,8 @@
 #        knossos-run.sh note-move <project-dir> --component=<name> --to=<name> [--author=user|model] [--kind=<kind>] [--execute]
 #        knossos-run.sh note-check <project-dir> --component=<name> [--value=<reason> | --remove] [--execute]
 #        knossos-run.sh note-confirm <project-dir> --component=<name> [--execute]
+#        knossos-run.sh notes-export <project-dir>
+#        knossos-run.sh notes-import <project-dir> [--execute --expect=<sha256>]
 #
 # Every failure exits 0. All but three print nothing: the mod reads silence as
 # "no data", keeps its last figures with their age and asks again later, so a

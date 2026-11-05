@@ -54,6 +54,8 @@ case "$SUBCOMMAND" in
     churn|blast-radius|path-between|annotate) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     # The Notes tab: every note read with its staleness, or one note written.
     notes|note-adopt|note-move|note-check|note-confirm) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
+    # Every note written to, or read from, the project's knossos-notes.json.
+    notes-export|notes-import) LIMIT=${KNOSSOS_RUN_TIMEOUT:-30} ;;
     allow-root) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
     # The folder Knossos was started in (roots file), and the per-project pane setting (its own small file).
     claim|autostart) LIMIT=${KNOSSOS_RUN_TIMEOUT:-15} ;;
@@ -272,6 +274,21 @@ if [ "$SUBCOMMAND" = note-confirm ]; then
     case "$1" in --component=) refuse ;; --component=*) ;; *) refuse ;; esac
     is_text_line "$1" 520 || refuse
     in_order 2 e "$@" || refuse
+fi
+# notes-export takes nothing but the project: the file is always the
+# project's own knossos-notes.json, never one a caller names.
+if [ "$SUBCOMMAND" = notes-export ]; then
+    [ "$#" -eq 0 ] || refuse
+fi
+# notes-import takes nothing for a preview, or `--execute` and then the hash
+# the preview answered (64 hex digits), so what is written is what was shown.
+if [ "$SUBCOMMAND" = notes-import ]; then
+    case "$#" in
+        0) ;;
+        2) [ "$1" = --execute ] || refuse
+           case "$2" in --expect=*[!0-9a-f]*) refuse ;; --expect=*) [ "${#2}" -eq 73 ] || refuse ;; *) refuse ;; esac ;;
+        *) refuse ;;
+    esac
 fi
 # scan takes nothing but the project: an option such as `--db=...` would point the write at another graph.
 if [ "$SUBCOMMAND" = scan ]; then

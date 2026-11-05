@@ -20,7 +20,7 @@ import { annotateArgs } from './annotate-actions'
 import { searchArgs } from './finder-actions'
 import { dashboardArgs, LOADERS } from './loaders'
 import type { Ask } from './loaders'
-import { argsOf } from './notes-actions'
+import { argsOf, importArgs } from './notes-actions'
 import { wrapper } from './port'
 import type { Port } from './port'
 import { mod, reset } from './state'
@@ -127,6 +127,9 @@ const CALLS: { name: string; ask: (io: Port) => Promise<Ask> | Ask; binary: stri
   { name: 'note uncheck', ask: () => note({ action: 'uncheck' }), binary: 'note-check @ --component=App\\Greeter --remove --execute --json' },
   { name: 'note confirm', ask: () => note({ action: 'confirm' }), binary: 'note-confirm @ --component=App\\Greeter --execute --json' },
   { name: 'note move', ask: () => note({ action: 'move', to: 'App\\Hello' }), binary: 'note-move @ --component=App\\Greeter --to=App\\Hello --author=model --execute --json' },
+  { name: 'notes-export', ask: () => asked('notes-export', []), binary: 'notes-export @ --json' },
+  { name: 'notes-import preview', ask: () => asked('notes-import', importArgs(null)), binary: 'notes-import @ --json' },
+  { name: 'notes-import write', ask: () => asked('notes-import', importArgs('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')), binary: 'notes-import @ --execute --expect=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --json' },
   { name: 'boundary-couplings', ask: io => LOADERS.couplings.ask(io, { from: 'namespace:App\\Core', to: 'module:hooks (+ts)', snapshot: 's1', root: project } as never), binary: 'boundary-couplings @ --from=namespace:App\\Core --to=module:hooks (+ts) --json' },
   { name: 'session-diff', ask: io => LOADERS.diff.ask(io, { rev: REV, name: 'src/a b.php', root: project } as never), binary: `session-diff @ --rev=${REV} --file=src/a b.php --json` },
   { name: 'component-detail', ask: io => LOADERS.detail.ask(io, { shown: { name: 'App\\Greeter', label: 'Greeter' }, snapshot: 's1' } as never), binary: 'component-detail @ App\\Greeter --json' },
@@ -256,6 +259,9 @@ describe('the local and the container wrapper accept and refuse the same argumen
     ['--since=scan_ab12'],
     ['--since=a b'],
     ['--working-tree'],
+    ['--execute', '--expect=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+    ['--execute'],
+    ['--file=/x.json'],
     [`--rev=${REV}`, '--file=src/a b.php'],
     [`--rev=${REV}`, '--file=../x'],
     [`--rev=${REV}`, '--file=/etc/passwd'],
