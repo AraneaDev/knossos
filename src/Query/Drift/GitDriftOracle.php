@@ -214,13 +214,16 @@ final readonly class GitDriftOracle implements DriftOracle
         if ($candidates === null) {
             return null;
         }
+        // Keyed by path, so a path of digits alone ("0") came back an int:
+        // strings again here, before anything typed for a path reads them.
+        $paths = array_map('strval', array_keys($candidates));
         // Unioned with `+`, so a path that is both a `files` row and a
         // manifest keeps the row's hash: one path, one stored answer.
-        $hashes = ($crossCheck ? $tracked : $this->trackedHashes($projectId, $activeScanId, array_keys($candidates)))
+        $hashes = ($crossCheck ? $tracked : $this->trackedHashes($projectId, $activeScanId, $paths))
             + $recorded['units']
             + $recorded['worker_inputs'];
 
-        return $this->decide($projectId, $root, array_keys($candidates), $hashes);
+        return $this->decide($projectId, $root, $paths, $hashes);
     }
 
     /**

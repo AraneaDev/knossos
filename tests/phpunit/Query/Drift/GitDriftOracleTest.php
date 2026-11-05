@@ -108,6 +108,27 @@ final class GitDriftOracleTest extends KnossosTestCase
         }
     }
 
+    /**
+     * A path of digits alone ("0") becomes an integer key in PHP's arrays, and
+     * the candidate set is keyed by path: it must still reach the decision as
+     * the string it is, not crash the probe on an int.
+     */
+    #[Group('git')]
+    public function testADigitsOnlyPathIsDecidedAsAPath(): void
+    {
+        [$pdo, $projectId, $root, $scanId] = $this->seedWithHead(self::HEAD);
+        try {
+            file_put_contents($root . '/0', "1\n");
+
+            $drift = $this->drift($pdo, $projectId, $scanId, $root, [], ['0'], ['src/a.php']);
+
+            self::assertNotNull($drift);
+            self::assertSame(0, $drift->total(), 'A file discovery would never have tracked is not an addition.');
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** An untracked source file is exactly what a new component looks like before its first scan. */
     #[Group('git')]
     public function testAnUntrackedSourceFileIsAnAddition(): void
