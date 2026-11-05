@@ -99,7 +99,7 @@ export const PRESSES: ReadonlyMap<string, Press> = new Map<string, Press>([
       const tab = rest as PaneTab
       // The model writes notes through MCP, which moves no snapshot: entering the tab reads them again.
       if (tab === 'notes') mod.notes.version += 1
-      if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
+      if (TABS.some(t => t.id === tab)) await io.state.view.update(v => ({ ...v, tab, notesImport: null, selected: 0, filtering: false, finding: false, drift: false, target: undefined, degree: null }))
     },
   ],
   ['file:', (io, rest) => openFile(io, rest)],

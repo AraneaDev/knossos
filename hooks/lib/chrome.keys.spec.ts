@@ -49,4 +49,17 @@ describe('the key list and the key table in the documentation', () => {
     expect(rows.find(([key]) => key === 'z')?.[1]).toBe('on Notes: write every note to knossos-notes.json in the project root')
     expect(rows.find(([key]) => key === 'i')?.[1]).toBe('on Notes: import knossos-notes.json from the project root; shows what changes, y imports')
   })
+
+  it('binds no key to two different actions', () => {
+    const seen = new Map<string, string>()
+    for (const [keys, what] of paneRows()) {
+      // Rows like "n s x" list several keys; the same letter may recur only where the tab differs ("on Hubs" / "on Notes").
+      const scope = /^on (\w+)/.exec(what)?.[1] ?? ''
+      for (const key of keys.split(' ')) {
+        const id = `${scope}:${key}`
+        expect(seen.has(id), `${id} is bound twice`).toBe(false)
+        seen.set(id, what)
+      }
+    }
+  })
 })

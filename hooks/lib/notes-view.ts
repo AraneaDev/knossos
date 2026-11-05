@@ -141,10 +141,11 @@ function importRows(i: NotesImport, columns: number): Row[] {
   ]
   const lines = [`Import knossos-notes.json · exported ${(i.origin?.exported_at ?? '').slice(0, 10)} from ${i.origin?.root ?? 'somewhere'}`, ...counts.filter(([n]) => (n ?? 0) > 0).map(([n, what]) => `  ${n} ${what}`)]
   const nothing = (i.new ?? 0) + (i.replaced ?? 0) === 0
+  const hideYes = nothing || i.running === true
   if (nothing) lines.push('nothing to import')
   return [
     ...lines.flatMap((line, k) => wrapWords(line, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `notes-import-${k}-${j}`, segments: [{ text: `   ${part}`, color: STATUS_COLOURS.warn }] }))),
-    { key: 'notes-ask-keys', segments: [{ text: '   ' }, ...(nothing ? [] : [button('notes-yes', 'yes', 'y'), { text: '  ' }]), button('notes-no', 'no', 'n')] },
+    { key: 'notes-ask-keys', segments: [{ text: '   ' }, ...(hideYes ? [] : [button('notes-yes', 'yes', 'y'), { text: '  ' }]), button('notes-no', 'no', 'n')] },
   ]
 }
 

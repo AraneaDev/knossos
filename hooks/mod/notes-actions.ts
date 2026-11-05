@@ -180,6 +180,13 @@ async function importPreview(io: Port): Promise<void> {
 
 /** `y` on the import card: the import is made on a timer, never inside the press. */
 export async function confirmImport(io: Port): Promise<void> {
+  // The card is marked running at once: a second y before the write returns finds it so and does nothing.
+  let first = false
+  await io.state.view.update((v): KnossosView => {
+    first = v.notesImport !== null && v.notesImport !== undefined && v.notesImport.running !== true
+    return first ? { ...v, notesImport: { ...v.notesImport!, running: true } } : v
+  })
+  if (!first) return
   io.clock.after(0, () => void importWrite(io).catch(() => undefined))
 }
 
@@ -187,8 +194,10 @@ export async function confirmImport(io: Port): Promise<void> {
 async function importWrite(io: Port): Promise<void> {
   const root = (await io.state.dashboard.read())?.project_root ?? undefined
   const parsed = parseNotesImport(await wrapper(io, 'notes-import', ['--execute'], WRITE_TIMEOUT_MS, root))
-  if (parsed?.status === 'no-binary') return disable(io)
-  if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return say(io, BUSY_SAID, 'alert')
+  // A write that did not happen leaves the card to answer y again.
+  const rearm = (): Promise<unknown> => io.state.view.update((v): KnossosView => (v.notesImport ? { ...v, notesImport: { ...v.notesImport, running: false } } : v))
+  if (parsed?.status === 'no-binary') return void (await rearm(), disable(io))
+  if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return void (await rearm(), say(io, BUSY_SAID, 'alert'))
   await io.state.view.update((v): KnossosView => ({ ...v, notesImport: null }))
   if (parsed?.status !== 'ok' || parsed.executed !== true) return say(io, failedSaid(parsed), 'alert')
   mod.notes.version += 1

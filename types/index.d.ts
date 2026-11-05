@@ -749,6 +749,8 @@ export type NotesImport = {
   kept?: number
   unmatched?: number
   stale?: number
+  /** Pane only: the import is being made, so a second yes does nothing. */
+  running?: boolean
   reason?: string
   code?: string
   message?: string
