@@ -166,6 +166,9 @@ async function exportWrite(io: Port): Promise<void> {
   await say(io, `✓ ${parsed.total ?? 0} notes written to ${parsed.file ?? 'knossos-notes.json'}${parsed.replaced === true ? ' (replaced the old one)' : ''}`, 'ok')
 }
 
+/** The wrapper's argv for an import: none for the preview; for the write, `--execute` and the hash the preview answered. */
+export const importArgs = (hash: string | null): string[] => (hash === null ? [] : ['--execute', `--expect=${hash}`])
+
 /** `i`: reads knossos-notes.json from the project root without importing, and puts up what it would change. */
 export async function askImport(io: Port): Promise<void> {
   io.clock.after(0, () => void importPreview(io).catch(() => undefined))
@@ -174,7 +177,7 @@ export async function askImport(io: Port): Promise<void> {
 /** Runs the dry import; an answer becomes the card, a refusal the footer's word. */
 async function importPreview(io: Port): Promise<void> {
   const root = (await io.state.dashboard.read())?.project_root ?? undefined
-  const parsed = parseNotesImport(await wrapper(io, 'notes-import', [], WRITE_TIMEOUT_MS, root))
+  const parsed = parseNotesImport(await wrapper(io, 'notes-import', importArgs(null), WRITE_TIMEOUT_MS, root))
   if (parsed?.status === 'no-binary') return disable(io)
   if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return say(io, BUSY_SAID, 'alert')
   if (parsed?.status !== 'ok') return say(io, failedSaid(parsed), 'alert')
@@ -198,7 +201,11 @@ async function importWrite(io: Port): Promise<void> {
   const root = (await io.state.dashboard.read())?.project_root ?? undefined
   // The previewed hash goes back with the write: a file changed since the preview is refused, not imported unseen.
   const hash = (await io.state.view.read()).notesImport?.sha256
-  const parsed = parseNotesImport(await wrapper(io, 'notes-import', ['--execute', ...(hash === undefined ? [] : [`--expect=${hash}`])], WRITE_TIMEOUT_MS, root))
+  if (hash === undefined) {
+    await io.state.view.update((v): KnossosView => ({ ...v, notesImport: null }))
+    return say(io, '✗ preview the file again with i', 'alert')
+  }
+  const parsed = parseNotesImport(await wrapper(io, 'notes-import', importArgs(hash), WRITE_TIMEOUT_MS, root))
   // A write that did not happen leaves the card to answer y again.
   const rearm = (): Promise<unknown> => io.state.view.update((v): KnossosView => (v.notesImport ? { ...v, notesImport: { ...v.notesImport, running: false } } : v))
   if (parsed?.status === 'no-binary') return void (await rearm(), disable(io))

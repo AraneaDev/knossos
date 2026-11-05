@@ -342,6 +342,18 @@ expect_output 'note-confirm confirms a note' "note-confirm|$ABS_PROJ|--component
     env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --execute
 expect_refused 'note-confirm refuses another option' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --component=A --value=x
 expect_refused 'note-confirm refuses no component' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" note-confirm "$STUBS/proj" --execute
+# notes-export: nothing but the project; the file is always the project's own.
+expect_output 'notes-export exports the notes' "notes-export|$ABS_PROJ|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-export "$STUBS/proj"
+expect_refused 'notes-export refuses a file' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-export "$STUBS/proj" --file=/tmp/x.json
+# notes-import: a preview takes nothing; the write takes --execute and the previewed hash.
+expect_output 'notes-import previews' "notes-import|$ABS_PROJ|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-import "$STUBS/proj"
+expect_output 'notes-import imports what was previewed' "notes-import|$ABS_PROJ|--execute|--expect=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|--json|" \
+    env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-import "$STUBS/proj" --execute --expect=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+expect_refused 'notes-import refuses a file' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-import "$STUBS/proj" --file=/tmp/x.json
+expect_refused 'notes-import refuses a hash that is not one' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-import "$STUBS/proj" --execute --expect=xyz
+expect_refused 'notes-import refuses the hash before --execute' env KNOSSOS_BIN="$STUBS/echoing" /bin/sh "$RUN" notes-import "$STUBS/proj" --expect=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --execute
 
 # watch: the live watcher, `knossos watch --shared`, with at most its poll interval.
 expect_output 'watch runs the shared watcher on the project' "watch|$ABS_PROJ|--shared|--poll-ms=1500|" \
