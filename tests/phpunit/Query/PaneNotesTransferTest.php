@@ -31,6 +31,16 @@ final class PaneNotesTransferTest extends KnossosTestCase
         return (new PaneCommands($pdo))->answer($command, $root, static fn(string $name): ?string => $options[$name] ?? null, static fn(string $name): bool => isset($options[$name]));
     }
 
+    /**
+     * How many annotations the database holds, read afresh each call.
+     *
+     * @phpstan-impure
+     */
+    private static function annotations(PDO $pdo): int
+    {
+        return (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn();
+    }
+
     /** Export answers the file, the total and whether it replaced one; the options are file and execute. */
     #[Group('query')]
     public function testExportAnswersItsShape(): void
@@ -69,7 +79,7 @@ final class PaneNotesTransferTest extends KnossosTestCase
             assertSame(hash_file('sha256', $root . '/knossos-notes.json'), $dry['sha256']);
             assertSame(['exported_at', 'root'], array_keys($dry['origin']));
             assertSame(['ok', false, 1, 1], [$dry['status'], $dry['executed'], $dry['total'], $dry['new']]);
-            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertSame(0, self::annotations($pdo));
 
             // The file changed after the preview: execute with the preview's hash is refused, and writes nothing.
             $previewed = $dry['sha256'];
@@ -77,12 +87,12 @@ final class PaneNotesTransferTest extends KnossosTestCase
             $changed = $this->ask($pdo, 'notes-import', $root, ['execute' => '1', 'expect' => $previewed]);
             assertSame('refused', $changed['status']);
             assertStringStartsWith('NOTES_FILE_CHANGED: ', $changed['reason']);
-            assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertSame(0, self::annotations($pdo));
 
             $again = $this->ask($pdo, 'notes-import', $root);
             $done = $this->ask($pdo, 'notes-import', $root, ['execute' => '1', 'expect' => $again['sha256']]);
             assertSame(true, $done['executed']);
-            assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn());
+            assertSame(1, self::annotations($pdo));
         } finally {
             $this->removeTempTree($root);
         }
