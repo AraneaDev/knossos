@@ -543,6 +543,7 @@ php	tests/phpunit/Cli/EnricherCommandTest.php
 php	tests/phpunit/Cli/GateReportTest.php
 php	tests/phpunit/Cli/GitIgnoreTest.php
 php	tests/phpunit/Cli/MoveProjectCommandTest.php
+php	tests/phpunit/Cli/NotesTransferCommandTest.php
 php	tests/phpunit/Cli/PackagingTest.php
 php	tests/phpunit/Cli/PhpFunctionMetricsTest.php
 php	tests/phpunit/Cli/PhpunitShardTest.php

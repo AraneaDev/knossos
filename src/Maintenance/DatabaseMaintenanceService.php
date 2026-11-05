@@ -6,7 +6,9 @@ namespace Knossos\Maintenance;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use Knossos\Notes\{NotesFile, NotesTransferService};
 use Knossos\Result\ResultEnvelope;
+use Knossos\Scan\{ProjectScanService, ProjectScanner, ScanOptions};
 use Knossos\Scan\ProjectWriterLease;
 use Knossos\Scan\ProjectWriterLock;
 use Knossos\Store\ProjectRepository;
@@ -34,6 +36,85 @@ final readonly class DatabaseMaintenanceService
     public function moveProject(string $from, string $to, bool $execute, \Knossos\Scan\ProjectScanner $scanner, ?\Knossos\Roots\RootsFile $roots = null): ResultEnvelope
     {
         return (new ProjectMoveService($this->pdo))->move($from, $to, $execute, $scanner, $roots);
+    }
+
+    /**
+     * Write a project's annotations to a notes file.
+     *
+     * @param string $root the checkout, which must already be scanned
+     * @param string|null $file where to write; null means knossos-notes.json in the root
+     */
+    public function exportNotes(string $root, ?string $file): ResultEnvelope
+    {
+        $real = self::realRoot($root);
+        $projectId = ProjectScanService::projectIdOf($real);
+        if (!(new ProjectRepository($this->pdo))->exists($projectId)) {
+            throw new InvalidArgumentException(sprintf('NOTES_PROJECT_NOT_SCANNED: scan %s first.', $real));
+        }
+        $result = (new NotesTransferService($this->pdo))->export($projectId, $real, $file ?? self::defaultFile($real));
+
+        return new ResultEnvelope(
+            $projectId,
+            '',
+            sprintf('Exported %d notes to %s.', $result['total'], $result['file']) . ($result['replaced'] ? ' (replaced the previous file)' : ''),
+            $result,
+        );
+    }
+
+    /**
+     * Preview, or perform, importing a notes file into the project a root scans as.
+     *
+     * A root nothing has scanned is scanned first, even for a preview: the
+     * unmatched and stale counts need a graph to compare the notes against.
+     *
+     * @param string|null $file the notes file; null means knossos-notes.json in the root
+     */
+    public function importNotes(string $root, ?string $file, bool $execute, ProjectScanner $scanner): ResultEnvelope
+    {
+        $real = self::realRoot($root);
+        $projectId = ProjectScanService::projectIdOf($real);
+        $scanned = false;
+        if (!(new ProjectRepository($this->pdo))->exists($projectId)) {
+            $scanner->scan($real, new ScanOptions(runEnrichers: true));
+            $scanned = true;
+        }
+        $result = (new NotesTransferService($this->pdo))->import($projectId, $file ?? self::defaultFile($real), $execute);
+        $shape = sprintf(
+            '%d notes %s into %s (%d new, %d replaced, %d kept; %d on missing components, %d stale).',
+            $result['total'],
+            $execute ? 'imported' : 'would be imported',
+            $real,
+            $result['new'],
+            $result['replaced'],
+            $result['kept'],
+            $result['unmatched'],
+            $result['stale'],
+        );
+
+        return new ResultEnvelope(
+            $projectId,
+            '',
+            $execute ? 'Imported ' . $shape : 'Dry run: ' . $shape,
+            $result + ['scanned' => $scanned],
+            warnings: $execute ? [] : ['Set execute=true to import.'],
+        );
+    }
+
+    /** The checkout as a real directory path, or a refusal. */
+    private static function realRoot(string $root): string
+    {
+        $real = realpath($root);
+        if ($real === false || !is_dir($real)) {
+            throw new InvalidArgumentException(sprintf('NOTES_ROOT_NOT_DIRECTORY: %s is not an existing directory.', $root));
+        }
+
+        return $real;
+    }
+
+    /** Where a notes file lives when the caller names none. */
+    private static function defaultFile(string $root): string
+    {
+        return $root . '/' . NotesFile::DEFAULT_NAME;
     }
 
     /** Delete a project and its graph, previewing the row counts unless executing. */

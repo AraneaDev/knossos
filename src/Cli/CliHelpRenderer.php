@@ -57,6 +57,8 @@ Usage:
   knossos remove-project <project-id> [--execute] [--db=PATH] [--json]
   knossos move-project <old-root|project-id> <new-root> [--execute] [--db=PATH]
                        [--json]
+  knossos export-notes [<folder>] [--file=PATH] [--db=PATH] [--json]
+  knossos import-notes [<folder>] [--file=PATH] [--execute] [--db=PATH] [--json]
   knossos cleanup-stale-scans <project-id> [--older-than-hours=N]
                               [--execute] [--db=PATH] [--json]
   knossos maintain-database <integrity|checkpoint|optimize|vacuum|backup>

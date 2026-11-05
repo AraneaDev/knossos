@@ -18,7 +18,7 @@ final class MaintenanceCommand implements CliCommand
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
-        return in_array($command, ['doctor', 'remove-project', 'move-project', 'cleanup-stale-scans', 'maintain-database'], true);
+        return in_array($command, ['doctor', 'remove-project', 'move-project', 'export-notes', 'import-notes', 'cleanup-stale-scans', 'maintain-database'], true);
     }
 
     /** {@inheritDoc} */
@@ -27,6 +27,8 @@ final class MaintenanceCommand implements CliCommand
         return match ($command) {
             'doctor' => ['db', 'json'],
             'remove-project', 'move-project' => ['db', 'json', 'execute'],
+            'export-notes' => ['db', 'json', 'file'],
+            'import-notes' => ['db', 'json', 'file', 'execute'],
             'cleanup-stale-scans' => ['db', 'json', 'older-than-hours', 'execute'],
             default => ['db', 'json', 'execute', 'backup-name'],
         };
@@ -39,6 +41,8 @@ final class MaintenanceCommand implements CliCommand
             'doctor' => $this->doctor($options, $context),
             'remove-project' => $this->removeProject($positionals, $options, $context),
             'move-project' => $this->moveProject($positionals, $options, $context),
+            'export-notes' => $this->exportNotes($positionals, $options, $context),
+            'import-notes' => $this->importNotes($positionals, $options, $context),
             'cleanup-stale-scans' => $this->cleanup($positionals, $options, $context),
             default => $this->maintain($positionals, $options, $context),
         };
@@ -91,6 +95,33 @@ final class MaintenanceCommand implements CliCommand
         $scanner = (new ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$target === false ? $to : $target]);
         $roots = new RootsFile(AllowedRoots::defaultConfigPath($context->databasePath()));
         $result = $context->maintenance()->moveProject($from, $to, $context->options->flag($options, 'execute'), $scanner, $roots);
+        $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
+        return CliCommand::EXIT_OK;
+    }
+
+    /**
+     * Write a scanned checkout's annotations to a notes file.
+     *
+     * @param list<string> $positionals @param array<string, list<string>> $options
+     */
+    private function exportNotes(array $positionals, array $options, CliCommandContext $context): int
+    {
+        $result = $context->maintenance()->exportNotes($positionals[0] ?? (getcwd() ?: '.'), $context->options->single($options, 'file'));
+        $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
+        return CliCommand::EXIT_OK;
+    }
+
+    /**
+     * Import a notes file into the checkout's project, previewing unless --execute.
+     *
+     * @param list<string> $positionals @param array<string, list<string>> $options
+     */
+    private function importNotes(array $positionals, array $options, CliCommandContext $context): int
+    {
+        $root = $positionals[0] ?? (getcwd() ?: '.');
+        $real = realpath($root);
+        $scanner = (new ScannerFactory($context->database(), $context->installationRoot(), $context->databasePath()))->ledgered([$real === false ? $root : $real]);
+        $result = $context->maintenance()->importNotes($root, $context->options->single($options, 'file'), $context->options->flag($options, 'execute'), $scanner);
         $context->output($result->jsonSerialize(), $context->options->flag($options, 'json'), $result->summary);
         return CliCommand::EXIT_OK;
     }
