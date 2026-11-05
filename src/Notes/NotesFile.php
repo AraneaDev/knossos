@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Notes;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
 use JsonException;
 use Knossos\Query\AnnotationService;
@@ -23,6 +24,9 @@ final class NotesFile
     public const DEFAULT_NAME = 'knossos-notes.json';
 
     private const ORIGIN_FIELDS = ['exported_at', 'root', 'project_id', 'knossos_version'];
+    private const TIMESTAMP = '/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/';
+    /** How far past "now" an updated_at may lie, to allow for clock skew between machines. */
+    private const SKEW = '+1 day';
     private const STRING_FIELDS = ['canonical_name', 'kind', 'author', 'value', 'created_at', 'updated_at'];
 
     /**
@@ -54,13 +58,27 @@ final class NotesFile
     }
 
     /**
+     * Whether text is a notes file at all (right format marker), without the
+     * stricter checks of decoding. Export uses it to decide if a file in the
+     * way may be replaced.
+     */
+    public static function looksLikeNotesFile(string $json): bool
+    {
+        $data = json_decode($json, true);
+
+        return is_array($data) && ($data['format'] ?? null) === self::FORMAT;
+    }
+
+    /**
      * Read and validate file text, returning rows in the table's shape.
      *
+     * @param DateTimeImmutable|null $now the clock the timestamps are checked against; null means the real one
      * @return array{origin: Origin, rows: list<NoteRow>}
      * @throws InvalidArgumentException NOTES_FILE_INVALID or NOTES_FILE_VERSION
      */
-    public static function decode(string $json): array
+    public static function decode(string $json, ?DateTimeImmutable $now = null): array
     {
+        $latest = ($now ?? new DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify(self::SKEW)->format('Y-m-d\TH:i:s\Z');
         try {
             $data = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $e) {
@@ -92,7 +110,7 @@ final class NotesFile
         $rows = [];
         $seen = [];
         foreach ($notes as $index => $note) {
-            $row = self::decodeRow($note, $index);
+            $row = self::decodeRow($note, $index, $latest);
             // Two copies of one key would make the counts wrong and the winner an accident of order.
             $key = $row['canonical_name'] . '/' . $row['kind'] . '/' . $row['author'];
             if (isset($seen[$key])) {
@@ -111,7 +129,7 @@ final class NotesFile
      *
      * @return NoteRow
      */
-    private static function decodeRow(mixed $note, int $index): array
+    private static function decodeRow(mixed $note, int $index, string $latest): array
     {
         if (!is_array($note)) {
             throw new InvalidArgumentException("NOTES_FILE_INVALID: notes[{$index}] must be an object.");
@@ -120,6 +138,15 @@ final class NotesFile
             if (!is_string($note[$field] ?? null)) {
                 throw new InvalidArgumentException("NOTES_FILE_INVALID: notes[{$index}].{$field} must be a string.");
             }
+        }
+        foreach (['created_at', 'updated_at'] as $field) {
+            if (preg_match(self::TIMESTAMP, $note[$field]) !== 1) {
+                throw new InvalidArgumentException("NOTES_FILE_INVALID: note {$index} {$field} must be a UTC timestamp like 2026-01-31T09:30:00Z.");
+            }
+        }
+        // A far-future updated_at would win every later conflict, so a typo or a hostile file could freeze a note.
+        if (strcmp($note['updated_at'], $latest) > 0) {
+            throw new InvalidArgumentException("NOTES_FILE_INVALID: note {$index} updated_at {$note['updated_at']} is in the future.");
         }
         if (!in_array($note['kind'], AnnotationService::KINDS, true)) {
             throw new InvalidArgumentException("NOTES_FILE_INVALID: notes[{$index}].kind must be one of: " . implode(', ', AnnotationService::KINDS) . '.');

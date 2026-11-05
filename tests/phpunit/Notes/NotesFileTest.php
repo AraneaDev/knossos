@@ -137,4 +137,36 @@ final class NotesFileTest extends KnossosTestCase
         $this->expectExceptionMessageMatches('/^NOTES_FILE_VERSION:/');
         NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR));
     }
+
+    /** @return list<array{string, string}> a field and a value that is not a UTC timestamp */
+    public static function badTimestamps(): array
+    {
+        return [['created_at', '2026-01-01'], ['updated_at', 'yesterday'], ['updated_at', '2026-01-02 00:00:00'], ['created_at', '2026-01-01T00:00:00+02:00']];
+    }
+
+    /** A timestamp that is not YYYY-MM-DDTHH:MM:SSZ is refused, naming the note and field. */
+    #[Group('notes')]
+    #[\PHPUnit\Framework\Attributes\DataProvider('badTimestamps')]
+    public function testRefusesBadTimestampFormat(string $field, string $value): void
+    {
+        $file = $this->validFile();
+        $file['notes'][0][$field] = $value;
+
+        $this->expectExceptionMessageMatches("/^NOTES_FILE_INVALID: note 0 {$field} /");
+        NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR));
+    }
+
+    /** An updated_at more than a day ahead of now is refused; within the skew it is accepted. */
+    #[Group('notes')]
+    public function testRefusesFarFutureUpdatedAt(): void
+    {
+        $now = new \DateTimeImmutable('2026-11-05T12:00:00Z');
+        $file = $this->validFile();
+        $file['notes'][0]['updated_at'] = '2026-11-06T11:59:59Z';
+        self::assertCount(1, NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR), $now)['rows']);
+
+        $file['notes'][0]['updated_at'] = '2099-01-01T00:00:00Z';
+        $this->expectExceptionMessageMatches('/^NOTES_FILE_INVALID: note 0 updated_at /');
+        NotesFile::decode(json_encode($file, JSON_THROW_ON_ERROR), $now);
+    }
 }
