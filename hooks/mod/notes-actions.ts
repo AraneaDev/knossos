@@ -146,7 +146,10 @@ async function write(io: Port, q: NotesAsk): Promise<void> {
 }
 
 /** The footer's word for an answer that is neither done nor busy. */
-const failedSaid = (a: { status: string; reason?: string } | null): string => (a?.status === 'refused' ? `✗ ${a.reason ?? 'knossos refused it'}` : '✗ knossos said nothing')
+const failedSaid = (a: { status: string; reason?: string } | null): string => {
+  if (a?.status === 'unscanned') return "✗ this project isn't scanned yet; r rescans it"
+  return a?.status === 'refused' ? `✗ ${a.reason ?? 'knossos refused it'}` : '✗ knossos said nothing'
+}
 
 /** `z`: every note is written to knossos-notes.json in the project root, at once, on a timer. */
 export async function exportNotes(io: Port): Promise<void> {

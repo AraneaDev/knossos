@@ -357,6 +357,17 @@ describe('z and i on the Notes tab', () => {
         expect(port.said()).toBe('✗ no knossos-notes.json in /work/app')
     })
 
+    it('z and i say when the project is not scanned yet', async () => {
+        const port = fakePort()
+        for (const press of ['notes-export', 'notes-import']) {
+            port.answers.push(JSON.stringify({ status: 'unscanned' }))
+            await port.press(press)
+            await port.runTimers()
+            expect(port.said(), press).toBe("✗ this project isn't scanned yet; r rescans it")
+        }
+        expect(port.view().notesImport ?? null).toBeNull()
+    })
+
     it('n drops the card, and a busy y keeps it', async () => {
         const port = fakePort()
         port.answers.push(preview())
