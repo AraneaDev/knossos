@@ -26,7 +26,7 @@
 relationships between them, each with the file and line that proves it. In Claude Code,
 `/knossos` opens that graph as a live pane beside your session, and the agent gets a short note
 at the moment it reads, edits or commits a file that matters: how much depends on it, which
-rules bind it, and which tests reach it. The same graph answers 37 MCP tools and a CLI, for
+rules bind it, and which tests reach it. The same graph answers 39 MCP tools and a CLI, for
 Claude Code, Codex or any MCP client.
 
 Facts that static analysis cannot prove are labelled with their confidence and origin.
@@ -62,7 +62,7 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
 - **Messages for the agent**: when the agent reads a heavily depended-on or policed file, edits
   one, ends a turn or makes a commit, it gets one short line about what that file or change
   carries. Each is said once and never blocks a tool call
-- **37 MCP tools**: impact analysis, call sites, flows between components, cycles, hubs,
+- **39 MCP tools**: impact analysis, call sites, flows between components, cycles, hubs,
   dead-code candidates, untested code, change review, test impact, one file's context,
   snapshots and trends.
   Every tool except `server_info` has an equivalent CLI command
@@ -233,7 +233,7 @@ Before an edit, `file_context` gives one file's boundary and the rules that bind
 dependents, the tests that reach it and its latest commits, in one call instead of a grep for
 its callers. Every message and its limits are in [messages for the model](docs/claude-code/model-messages.md).
 
-Over MCP, in any client, the 37 tools answer questions such as:
+Over MCP, in any client, the 39 tools answer questions such as:
 
 - What depends, directly or transitively, on `UserRepository`?
 - What are the exact call sites of `ScannerClient::scan`?

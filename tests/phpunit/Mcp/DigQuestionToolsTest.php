@@ -23,6 +23,8 @@ final class DigQuestionToolsTest extends KnossosTestCase
         'scan_project' => 'writes',
         'annotate_component' => 'writes',
         'maintain_database' => 'writes',
+        'export_notes' => 'writes',
+        'import_notes' => 'writes',
         'list_snapshots' => 'history',
         'snapshot_diff' => 'history',
         'architecture_trends' => 'history',

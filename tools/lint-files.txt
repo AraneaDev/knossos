@@ -665,6 +665,7 @@ php	tests/phpunit/Mcp/MaxCharsTest.php
 php	tests/phpunit/Mcp/McpTest.php
 php	tests/phpunit/Mcp/MoveProjectToolTest.php
 php	tests/phpunit/Mcp/NextStepPlannerTest.php
+php	tests/phpunit/Mcp/NotesTransferToolTest.php
 php	tests/phpunit/Mcp/Protocol20260728Test.php
 php	tests/phpunit/Mcp/RefreshIfStaleTest.php
 php	tests/phpunit/Mcp/ResourcesPromptsTest.php
