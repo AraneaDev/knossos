@@ -174,6 +174,8 @@ any other press, a tab or `f`, which then does what it does:
 | `n` `s` `x` | on [Notes](notes.md#notes): narrow by text (type, then Enter), show every note, yours, the model's, the stale, the missing or the flagged, clear both |
 | `m` `w` `g` | on Notes: edit your note or adopt the model's as yours, remove a note (asks first), flag the model's note for it to check (or take the flag back)     |
 | `v`         | on Notes: say a stale note of the model's is still true, so it rests on its files as they are now                                                     |
+| `z`         | on Notes: write every note to knossos-notes.json in the project root                                                                                  |
+| `i`         | on Notes: import knossos-notes.json from the project root; shows what changes, y imports                                                              |
 | `r`         | rescan the project now, fresh or not                                                                                                                  |
 | `a`         | allow a refused root (asks first)                                                                                                                     |
 

@@ -182,7 +182,7 @@ describe('the Notes tab', () => {
   it('offers v on a stale note of the model\'s, to say it is still true, and on no other', () => {
     const press = (selected: number) => footerRows(pane(state(answer()), view({ selected })), 140, true).bar.flatMap(r => r.segments).find(s => s.press?.id === 'notes-confirm')?.press
     expect(press(6)).toMatchObject({ hotkey: 'v' })
-    expect(plainText(footerRows(pane(state(answer()), view({ selected: 6 })), 140, true).bar[0]!)).toContain('still true')
+    expect(footerRows(pane(state(answer()), view({ selected: 6 })), 140, true).bar.map(plainText).join(' ')).toContain('still true')
     for (const other of [0, 4, 5, 2]) expect(press(other), `${other}`).toBeUndefined()
   })
 
@@ -229,5 +229,35 @@ describe('the Notes tab', () => {
     expect(parseNotes(JSON.stringify(suggesting('App\\New\\Gone')))?.groups.missing[0]?.suggested_component).toBe('App\\New\\Gone')
     expect(parseNotes(JSON.stringify(suggesting(null)))).not.toBeNull()
     expect(parseNotes(JSON.stringify(suggesting(7)))).toBeNull()
+  })
+})
+
+describe('the import card', () => {
+  const imp = (over: Partial<NonNullable<KnossosView['notesImport']>> = {}): NonNullable<KnossosView['notesImport']> => ({ status: 'ok', executed: false, file: '/work/app/knossos-notes.json', origin: { exported_at: '2026-11-04T10:00:00Z', root: '/other/app' }, total: 9, new: 4, replaced: 2, kept: 1, unmatched: 1, stale: 1, ...over })
+  const card = (i: NonNullable<KnossosView['notesImport']>) => text(state(answer()), 120, 60, view({ notesImport: i }))
+
+  it('says what the import would change, a line for each count', () => {
+    const t = card(imp())
+    expect(t).toContain('Import knossos-notes.json · exported 2026-11-04 from /other/app')
+    expect(t).toContain('4 new')
+    expect(t).toContain('2 replace yours (theirs is newer)')
+    expect(t).toContain('1 kept as yours (yours is newer)')
+    expect(t).toContain("1 on components this project doesn't have")
+    expect(t).toContain('1 will show stale (files differ here)')
+    expect(t).toContain('yes')
+  })
+
+  it('leaves out a line whose count is 0', () => {
+    const t = card(imp({ kept: 0, unmatched: 0, stale: 0 }))
+    expect(t).not.toContain('kept as yours')
+    expect(t).not.toContain('will show stale')
+  })
+
+  it('says nothing to import, and offers only n', () => {
+    const i = imp({ new: 0, replaced: 0 })
+    expect(card(i)).toContain('nothing to import')
+    const keys = paneLayout(pane(state(answer()), view({ notesImport: i })), 120, 60).body.flatMap(r => r.segments)
+    expect(keys.some(s => s.press?.id === 'notes-no')).toBe(true)
+    expect(keys.some(s => s.press?.id === 'notes-yes')).toBe(false)
   })
 })

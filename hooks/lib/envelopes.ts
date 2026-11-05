@@ -1,4 +1,4 @@
-import type { AllowRoot, Annotate, Claim, BlastRadius, NoteWrite, Notes, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
+import type { AllowRoot, Annotate, Claim, BlastRadius, NoteWrite, Notes, NotesExport, NotesImport, BoundaryCouplings, BoundaryRef, BranchDiff, BranchItem, Churn, ComponentDetail, Dashboard, FanIn, FileDetail, GitHead, GraphSearch, Listed, PathBetween, Related, Rescan, SessionDiff, SessionLedger, SessionRev, TurnBrief, Violation } from '../../types'
 import { printableDeep } from './printable'
 
 // The envelope shapes are written once, in the plugin's contract, and re-exported
@@ -318,6 +318,23 @@ export function parseNoteWrite(stdout: string): NoteWrite | null {
   const parsed = parse(stdout, NOTE, [], []) as NoteWrite | null
   if (parsed === null || parsed.status !== 'ok') return parsed
   return typeof parsed.executed === 'boolean' ? parsed : null
+}
+
+/** True when every named field of `o` is a number. */
+const counted = (o: object, keys: string[]): boolean => keys.every(k => typeof (o as Record<string, unknown>)[k] === 'number')
+
+/** `notes-export`'s answer from the wrapper's stdout; null for silence or anything unexpected. */
+export function parseNotesExport(stdout: string): NotesExport | null {
+  const parsed = parse(stdout, NOTE, [], []) as NotesExport | null
+  if (parsed === null || parsed.status !== 'ok') return parsed
+  return typeof parsed.executed === 'boolean' && counted(parsed, ['total']) && typeof parsed.file === 'string' ? parsed : null
+}
+
+/** `notes-import`'s answer from the wrapper's stdout; null for silence or anything unexpected. */
+export function parseNotesImport(stdout: string): NotesImport | null {
+  const parsed = parse(stdout, NOTE, [], []) as NotesImport | null
+  if (parsed === null || parsed.status !== 'ok') return parsed
+  return typeof parsed.executed === 'boolean' && counted(parsed, ['total', 'new', 'replaced', 'kept', 'unmatched', 'stale']) && parsed.origin !== undefined ? parsed : null
 }
 
 /** The code a write that met a scan's commit answers with: the pane keeps what was typed and says to retry. */

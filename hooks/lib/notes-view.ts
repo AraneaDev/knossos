@@ -10,7 +10,7 @@
  * day it was written. The marker walks the rows in that order; a note on a
  * missing name has no detail to open.
  */
-import type { NoteCounts, Notes, NotesAsk, NotesFilter, NotesState } from '../../types'
+import type { NoteCounts, Notes, NotesAsk, NotesFilter, NotesImport, NotesState } from '../../types'
 import { moreRows, noteOf, shownOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { CARD_ICON, NOTE, SEVERITY, mark } from './marks'
@@ -45,6 +45,8 @@ export type NotesInput = {
   filtering: boolean
   /** The write the card asks the person to confirm, or null. */
   ask: NotesAsk | null
+  /** The preview of a notes file waiting for the person's yes, or null. */
+  importing: NotesImport | null
   counts: NoteCounts
   groups: { missing: NoteItem[]; stale: NoteItem[]; rest: NoteItem[] }
   truncated: boolean
@@ -55,8 +57,8 @@ export type NotesInput = {
 const NO_COUNTS: NoteCounts = { total: 0, missing: 0, stale: 0, flagged: 0 }
 
 /** The tab's view of the stored answer, with the filter and text the view holds and whether the field is open. */
-export function notesInput(state: NotesState | null, filter: NotesFilter, text: string, filtering: boolean, ask: NotesAsk | null = null, folds: string[] = []): NotesInput {
-  const base = { warn: false, loading: false, filter, text, filtering, ask, counts: NO_COUNTS, groups: { missing: [], stale: [], rest: [] }, truncated: false, walk: [] }
+export function notesInput(state: NotesState | null, filter: NotesFilter, text: string, filtering: boolean, ask: NotesAsk | null = null, folds: string[] = [], importing: NotesImport | null = null): NotesInput {
+  const base = { warn: false, loading: false, filter, text, filtering, ask, importing, counts: NO_COUNTS, groups: { missing: [], stale: [], rest: [] }, truncated: false, walk: [] }
   const answer: Notes | null = state?.answer ?? null
   if (answer === null) {
     return state === null || state.phase === 'loading' ? { ...base, said: busy('Reading the notes…'), loading: true } : { ...base, said: 'knossos did not answer; the tab asks again with the next snapshot.', warn: true }
@@ -125,6 +127,24 @@ function askRows(ask: NotesAsk | null, columns: number): Row[] {
   return [
     ...wrapWords(question, Math.max(1, columns - 3)).map((line, i): Row => ({ key: `notes-ask-${i}`, segments: [{ text: `   ${line}`, color: STATUS_COLOURS.warn }] })),
     { key: 'notes-ask-keys', segments: [{ text: '   ' }, button('notes-yes', 'yes', 'y'), { text: '  ' }, button('notes-no', 'no', 'n')] },
+  ]
+}
+
+/** The import card: where the file came from and what each kind of row would do, a line for each count above 0; y only when something would land. */
+function importRows(i: NotesImport, columns: number): Row[] {
+  const counts: [number | undefined, string][] = [
+    [i.new, 'new'],
+    [i.replaced, 'replace yours (theirs is newer)'],
+    [i.kept, 'kept as yours (yours is newer)'],
+    [i.unmatched, "on components this project doesn't have"],
+    [i.stale, 'will show stale (files differ here)'],
+  ]
+  const lines = [`Import knossos-notes.json · exported ${(i.origin?.exported_at ?? '').slice(0, 10)} from ${i.origin?.root ?? 'somewhere'}`, ...counts.filter(([n]) => (n ?? 0) > 0).map(([n, what]) => `  ${n} ${what}`)]
+  const nothing = (i.new ?? 0) + (i.replaced ?? 0) === 0
+  if (nothing) lines.push('nothing to import')
+  return [
+    ...lines.flatMap((line, k) => wrapWords(line, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `notes-import-${k}-${j}`, segments: [{ text: `   ${part}`, color: STATUS_COLOURS.warn }] }))),
+    { key: 'notes-ask-keys', segments: [{ text: '   ' }, ...(nothing ? [] : [button('notes-yes', 'yes', 'y'), { text: '  ' }]), button('notes-no', 'no', 'n')] },
   ]
 }
 
@@ -227,7 +247,7 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
         const said = wrapWords(input.said, Math.max(1, columns - 3)).map((line, i): Row => ({ key: `notes-said-${i}`, segments: [{ text: input.warn && i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: line, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] }))
         return { key: 'notes', title, body: said }
       }
-      const head: Row[] = [...askRows(input.ask, columns)]
+      const head: Row[] = [...(input.importing === null ? askRows(input.ask, columns) : importRows(input.importing, columns))]
       if (input.filtering) head.push({ key: 'notes-field', segments: [{ text: '   narrow: ', dim: true }, { text: input.text, field: { id: 'notes-filter', value: input.text, placeholder: 'part of a name or a note' } }] })
       const items = notesItems(input)
       const narrowed = [...(input.filter === 'all' ? [] : [`showing ${input.filter}`]), ...(input.text === '' || input.filtering ? [] : [`narrowed to "${input.text}"`])]

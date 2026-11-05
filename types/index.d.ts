@@ -724,6 +724,8 @@ export type KnossosView = {
   notesText?: string
   /** On the Notes tab, the write the tab asks the person to confirm (with `check`, the reason typed so far). */
   notesAsk?: NotesAsk | null
+  /** On the Notes tab, the preview of a notes file the person is asked to import (`i`), or null. */
+  notesImport?: NotesImport | null
   /** While the finder picks where a note on a missing name moves to (`o` on it): that note. */
   moving?: { component: string; author: 'user' | 'model'; kind: string } | null
 }
@@ -731,6 +733,26 @@ export type KnossosView = {
 /** A write on the Notes tab waiting for the person: removing a note, flagging it for the model or taking that back, moving it. */
 /** A note write from the Notes tab: `confirm` (v, still true) is made at once; the others are asked first. */
 export type NotesAsk = { action: 'remove' | 'check' | 'uncheck' | 'move' | 'confirm'; component: string; author: 'user' | 'model'; kind: string; to?: string; value?: string }
+
+/** What `notes-export` answered: the file written, or why not. */
+export type NotesExport = { status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'; executed?: boolean; file?: string; total?: number; replaced?: boolean; reason?: string; code?: string; message?: string }
+
+/** What `notes-import` answered: what the file would change (or did), or why not. */
+export type NotesImport = {
+  status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'
+  executed?: boolean
+  file?: string
+  origin?: { exported_at: string; root: string }
+  total?: number
+  new?: number
+  replaced?: number
+  kept?: number
+  unmatched?: number
+  stale?: number
+  reason?: string
+  code?: string
+  message?: string
+}
 
 /** What a note write from the pane answered: done, refused with why, or an error with its code (`KNOSSOS_DATABASE_BUSY` while a scan commits). */
 export type NoteWrite = { status: 'ok' | 'refused' | 'unscanned' | 'error' | 'no-binary'; executed?: boolean; reason?: string; code?: string; message?: string }

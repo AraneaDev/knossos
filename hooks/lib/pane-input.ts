@@ -142,7 +142,7 @@ export function paneInput(args: PaneInputArgs): PaneInput {
     branch: branchInput(extras.branch ?? null, d.project_root, view.folds ?? []),
     peek,
     churn: churnInput(extras.churn ?? null, d.project_root),
-    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null, view.folds ?? []),
+    notes: notesInput(extras.notes ?? null, view.notesFilter ?? 'all', view.notesText ?? '', view.tab === 'notes' && (view.filtering ?? false), view.notesAsk ?? null, view.folds ?? [], view.notesImport ?? null),
     route: route === null ? null : routeInput(extras.route ?? null, route.from, route.to, route.index, d.project_root),
   }
 }

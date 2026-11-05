@@ -7,8 +7,8 @@
  * asks first, in the tab's card, and `y` makes it; a write that meets a
  * scan's commit keeps the question and says to retry.
  */
-import type { KnossosView, NoteState, NotesAsk } from '../../types'
-import { BUSY_CODE, BUSY_SAID, parseNoteWrite } from '../lib/envelopes'
+import type { KnossosView, NoteState, NotesAsk, NotesImport } from '../../types'
+import { BUSY_CODE, BUSY_SAID, parseNoteWrite, parseNotesExport, parseNotesImport } from '../lib/envelopes'
 import { confirmable, labelOf, markedNote, notesInput } from '../lib/notes-view'
 import type { NoteItem } from '../lib/notes-tree'
 import { focusField, narrowing } from './field-actions'
@@ -143,6 +143,57 @@ async function write(io: Port, q: NotesAsk): Promise<void> {
   mod.notes.version += 1
   await request(io, 'notes')
   await say(io, doneSaid(q), 'ok')
+}
+
+/** The footer's word for an answer that is neither done nor busy. */
+const failedSaid = (a: { status: string; reason?: string } | null): string => (a?.status === 'refused' ? `✗ ${a.reason ?? 'knossos refused it'}` : '✗ knossos said nothing')
+
+/** `z`: every note is written to knossos-notes.json in the project root, at once, on a timer. */
+export async function exportNotes(io: Port): Promise<void> {
+  io.clock.after(0, () => void exportWrite(io).catch(() => undefined))
+}
+
+/** Runs the export and says how it went. */
+async function exportWrite(io: Port): Promise<void> {
+  const root = (await io.state.dashboard.read())?.project_root ?? undefined
+  const parsed = parseNotesExport(await wrapper(io, 'notes-export', [], WRITE_TIMEOUT_MS, root))
+  if (parsed?.status === 'no-binary') return disable(io)
+  if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return say(io, BUSY_SAID, 'alert')
+  if (parsed?.status !== 'ok' || parsed.executed !== true) return say(io, failedSaid(parsed), 'alert')
+  await say(io, `✓ ${parsed.total ?? 0} notes written to ${parsed.file ?? 'knossos-notes.json'}${parsed.replaced === true ? ' (replaced the old one)' : ''}`, 'ok')
+}
+
+/** `i`: reads knossos-notes.json from the project root without importing, and puts up what it would change. */
+export async function askImport(io: Port): Promise<void> {
+  io.clock.after(0, () => void importPreview(io).catch(() => undefined))
+}
+
+/** Runs the dry import; an answer becomes the card, a refusal the footer's word. */
+async function importPreview(io: Port): Promise<void> {
+  const root = (await io.state.dashboard.read())?.project_root ?? undefined
+  const parsed = parseNotesImport(await wrapper(io, 'notes-import', [], WRITE_TIMEOUT_MS, root))
+  if (parsed?.status === 'no-binary') return disable(io)
+  if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return say(io, BUSY_SAID, 'alert')
+  if (parsed?.status !== 'ok') return say(io, failedSaid(parsed), 'alert')
+  await io.state.view.update((v): KnossosView => ({ ...v, notesAsk: null, notesImport: parsed as NotesImport }))
+}
+
+/** `y` on the import card: the import is made on a timer, never inside the press. */
+export async function confirmImport(io: Port): Promise<void> {
+  io.clock.after(0, () => void importWrite(io).catch(() => undefined))
+}
+
+/** Makes the import: done, the card goes and the notes are read again; busy, the card stays. */
+async function importWrite(io: Port): Promise<void> {
+  const root = (await io.state.dashboard.read())?.project_root ?? undefined
+  const parsed = parseNotesImport(await wrapper(io, 'notes-import', ['--execute'], WRITE_TIMEOUT_MS, root))
+  if (parsed?.status === 'no-binary') return disable(io)
+  if (parsed?.status === 'error' && parsed.code === BUSY_CODE) return say(io, BUSY_SAID, 'alert')
+  await io.state.view.update((v): KnossosView => ({ ...v, notesImport: null }))
+  if (parsed?.status !== 'ok' || parsed.executed !== true) return say(io, failedSaid(parsed), 'alert')
+  mod.notes.version += 1
+  await request(io, 'notes')
+  await say(io, `✓ imported ${(parsed.new ?? 0) + (parsed.replaced ?? 0)} notes`, 'ok')
 }
 
 /** The field that narrows the Notes tab by text: the list is read again for each change. */
