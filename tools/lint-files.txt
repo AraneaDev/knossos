@@ -220,6 +220,7 @@ php	src/Mcp/ToolErrorMapper.php
 php	src/Mcp/ToolInputException.php
 php	src/Mcp/ToolService.php
 php	src/Notes/NotesFile.php
+php	src/Notes/NotesTransferService.php
 php	src/Query/AbstractArchitectureQueryService.php
 php	src/Query/AgentBriefService.php
 php	src/Query/AnnotationNotes.php
@@ -682,6 +683,7 @@ php	tests/phpunit/Mcp/TrimmedPaginationTest.php
 php	tests/phpunit/NanoDtosTest.php
 php	tests/phpunit/NoCoverageTargetAttributesTest.php
 php	tests/phpunit/Notes/NotesFileTest.php
+php	tests/phpunit/Notes/NotesTransferExportTest.php
 php	tests/phpunit/ProjectConfig/ProjectConfigTest.php
 php	tests/phpunit/Property/PropertyTest.php
 php	tests/phpunit/Protocol/ProtocolTest.php
