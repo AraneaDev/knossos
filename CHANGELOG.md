@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.44.0](https://github.com/AraneaDev/knossos/compare/v0.43.0...v0.44.0) (2026-11-05)
+
+
+### Features
+
+* export and import a project's notes ([#446](https://github.com/AraneaDev/knossos/issues/446)) ([bb9f70d](https://github.com/AraneaDev/knossos/commit/bb9f70d130d929be6f20144a9471ade343425234))
+
+
+### Fixes
+
+* import only the notes file the preview showed ([#448](https://github.com/AraneaDev/knossos/issues/448)) ([6ee90d8](https://github.com/AraneaDev/knossos/commit/6ee90d852b8c9c148b22e8461690025d75238574))
+
 ## [0.43.0](https://github.com/AraneaDev/knossos/compare/v0.42.0...v0.43.0) (2026-11-04)
 
 
