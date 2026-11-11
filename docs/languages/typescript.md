@@ -344,8 +344,14 @@ option error that names no file, such as a deprecated
 program, on the program's first file in path order, and its message says it
 applies to the whole program. That file is the same however your files are
 batched, so an incremental scan that does not touch it neither repeats nor
-drops the diagnostic. If a deprecation is not worth acting on yet, you can silence it
-with `"ignoreDeprecations"` in your `tsconfig.json`. A global type the compiler only
+drops the diagnostic. An option error says which config sets the option
+(`(set in tsconfig.json)`), and a program whose config only inherits it
+through `extends` from another config this scan builds leaves it to that
+config's program, so it is reported once. Knossos checks with the TypeScript it
+bundles, which may be newer than your project's: a deprecation is reported as a
+warning, and says which version deprecated it, since your own compiler may
+not. If a deprecation is not worth acting on yet, you can silence it with
+`"ignoreDeprecations"` in your `tsconfig.json`. A global type the compiler only
 looks for while checking one file's code (`IterableIterator` for a generator
 under an ES5 `lib`) is not reported: an edit to that file would not rebuild
 the file the diagnostic sits on. A compiler budget running out (TS2589,
