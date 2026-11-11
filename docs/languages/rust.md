@@ -340,6 +340,8 @@ scan rescans a file only when one of those changes:
 - every file of every module above the file's own, since a
   `#[cfg(test)] mod name;` there decides whether the file is test code, and a
   `#[path]` declaration there where the file sits in the module tree;
+- for a file no `mod` declaration loads, the other files of its directory and
+  of the one above it, since a `#[path]` declaration there would place it;
 - the `src/lib.rs` and `src/main.rs` of the package whose `src/` holds the
   file, or a file one of its `mod` declarations loads, since whether they
   exist decides those module paths.
@@ -386,10 +388,11 @@ is read.
 - An import name bound to two different paths in one file resolves to nothing,
   unless every `use` binding it is gated by a `cfg`, see above. So does a name
   re-exported from different paths when one of those re-exports is ungated.
-- A file that existed with no `mod` declaration loading it, and that a
-  `#[path]` declaration in a file outside the modules above it then loads,
-  keeps the module its path gave it in an incremental scan until it changes
-  itself or a full scan runs: nothing it read before says it was placed.
+- A file no `mod` declaration loads reads the files of its own directory and
+  the one above it, where a `#[path]` that would load it is written; one a
+  `#[path]` in a new file or a farther directory comes to load keeps the module
+  its path gave it in an incremental scan until it changes itself or a full
+  scan runs.
 - Re-exports are resolved through the declaring file's own `use` items, its
   own declarations and rooted paths only. Glob imports are followed four
   levels deep at most.

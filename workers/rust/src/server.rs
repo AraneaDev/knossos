@@ -167,6 +167,7 @@ fn walk_requested(
         prepared,
         declarations,
         test_modules,
+        orphans,
         ..
     } = index;
     let mut walked: Vec<(Contribution, BTreeSet<String>)> = Vec::with_capacity(prepared.len());
@@ -192,7 +193,10 @@ fn walk_requested(
                     layout,
                 );
                 let lookups = declarations.take_lookups();
-                let keys = reads.of_file(&relative, &module, &lookups, &placed, input_hashes);
+                let mut keys = reads.of_file(&relative, &module, &lookups, &placed, input_hashes);
+                // A file nothing loads is placed by a `#[path]` added near
+                // it, which nothing else it read would reach.
+                keys.extend(orphans.get(&relative).into_iter().flatten().cloned());
                 (contribution, keys)
             }
         });

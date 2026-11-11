@@ -192,8 +192,10 @@ final class RustModuleIdentityTest extends KnossosTestCase
 
     /**
      * A `#[path]` module is written by its declared name in other files too:
-     * `crate::a::x` there is the function the loaded file declares, and
-     * `crate::parse::discouraged` is the module `parse.rs` loads.
+     * `crate::a::x` there is the function the crate root's declaration loads,
+     * and `crate::parse::discouraged` is the module `parse.rs` loads, which a
+     * declaration outside a crate root names after itself rather than after
+     * its file.
      */
     public function testAPathModuleIsReachedThroughItsDeclaredNameFromAnotherFile(): void
     {
@@ -207,11 +209,11 @@ final class RustModuleIdentityTest extends KnossosTestCase
 
         $edges = $this->edges($pdo);
         self::assertContains('calls crate::other::f -> crate::impl_a::x', $edges);
-        self::assertContains('calls crate::other::f -> crate::discouraged::y', $edges);
+        self::assertContains('calls crate::other::f -> crate::parse::discouraged::y', $edges);
         self::assertContains('imports crate::other -> crate::impl_a', $edges);
         self::assertContains('references crate::other::f -> crate::impl_a::Thing', $edges);
         self::assertSame([], $this->nodesStartingWith($pdo, 'crate::a'));
-        self::assertSame([], $this->nodesStartingWith($pdo, 'crate::parse::discouraged'));
+        self::assertSame([], $this->nodesStartingWith($pdo, 'crate::discouraged'));
     }
 
     /**

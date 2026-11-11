@@ -353,11 +353,6 @@ final readonly class GraphAssembler
     }
 
     /**
-     * Build the persisted row for one reported node.
-     *
-     * @return array<string, mixed>
-     */
-    /**
      * Whether a kept node and a re-declaration of it are both compiled only
      * under a `cfg` the scanner states, as alternatives of one item.
      *
@@ -371,6 +366,11 @@ final readonly class GraphAssembler
         return is_string($keptCfg) && $keptCfg !== '' && is_string($cfg) && $cfg !== '';
     }
 
+    /**
+     * Build the persisted row for one reported node.
+     *
+     * @return array<string, mixed>
+     */
     private function nodeRecord(string $id, string $language, NodeFact $node, string $owner, string $scanner): array
     {
         return [

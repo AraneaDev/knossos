@@ -165,6 +165,11 @@ pub(crate) struct ProjectIndex {
     /// module its declaration names (see [`Layout::place_path_modules`]),
     /// which the walk and the reads go by.
     pub(crate) layout: Layout,
+    /// Every project file that no `mod` declaration of another file loads
+    /// and that is no crate root: Rust compiles none of them, and a
+    /// `#[path]` declaration added beside one is what would place it, so it
+    /// reads the files around it (see `FileReads::of_file`).
+    pub(crate) orphans: BTreeMap<String, Vec<String>>,
 }
 
 /// One project file between reading it and indexing it.
@@ -247,6 +252,7 @@ pub(crate) fn index_project(
         .map(|entry| (entry.relative.clone(), entry.mods.clone()))
         .collect();
     let placed = layout.place_path_modules(&mods);
+    let orphans = orphan_neighbours(&placed, &mods);
     let memo_valid = built_under == placed;
     let mut indexed: Vec<(String, String, Option<FileIndex>)> = Vec::with_capacity(pending.len());
     let mut kept: IndexMemo = HashMap::new();
@@ -309,7 +315,53 @@ pub(crate) fn index_project(
         declarations,
         test_modules,
         layout: placed,
+        orphans,
     }
+}
+
+/// Each project file no `mod` declaration loads (and no crate root), with
+/// the project's other files in its own directory and the one above it: the
+/// files a `#[path]` declaration that loads it is most likely written in,
+/// since such a path is relative to the declaring file's directory. An edit
+/// to one of them may place the file in a module, so the file reads them.
+fn orphan_neighbours(
+    layout: &Layout,
+    mods: &BTreeMap<String, Vec<ModDeclaration>>,
+) -> BTreeMap<String, Vec<String>> {
+    let mut loaded = BTreeSet::new();
+    for (file, list) in mods {
+        for declaration in list {
+            if let Some(child) = layout.child_file(
+                file,
+                &declaration.inline,
+                &declaration.name,
+                declaration.path.as_deref(),
+            ) {
+                loaded.insert(child);
+            }
+        }
+    }
+    let directory = |file: &str| file.rsplit_once('/').map_or("", |(dir, _)| dir).to_owned();
+    let mut orphans = BTreeMap::new();
+    for file in mods.keys() {
+        if loaded.contains(file) || layout.is_crate_root(file) {
+            continue;
+        }
+        let own = directory(file);
+        let parent = directory(&own);
+        let neighbours: Vec<String> = mods
+            .keys()
+            .filter(|other| *other != file)
+            .filter(|other| {
+                let theirs = directory(other);
+                theirs == own || (!own.is_empty() && theirs == parent)
+            })
+            .cloned()
+            .collect();
+        orphans.insert(file.clone(), neighbours);
+    }
+
+    orphans
 }
 
 /// An unrequested file read and hashed, with its `mod` declarations and its
