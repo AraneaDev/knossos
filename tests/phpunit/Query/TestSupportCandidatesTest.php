@@ -193,6 +193,40 @@ final class TestSupportCandidatesTest extends KnossosTestCase
     }
 
     /**
+     * A Rust file holding only `impl BrokerState { .. }` for its parent's type
+     * contains nothing: the methods it declares belong to the type. Called
+     * from another file, they keep the module live; a module whose file
+     * declares nothing anyone reaches is still dead.
+     */
+    #[Group('query')]
+    public function testAModuleIsUsedWhenWhatItsFileDeclaresIsReachedFromOutside(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $node = function (string $path, string $kind, string $name) use ($repository, $ids): string {
+            $file = $this->file($repository, $ids, $path);
+            $id = StableId::symbol($ids['project'], 'rust', $kind, $name);
+            $repository->saveNode($id, $ids['project'], 'rust', $kind, $name, $name, null, $file, 1, 1, 'ast', 'certain', [], "rust:file:{$path}", $ids['scan']);
+
+            return $id;
+        };
+        $owned = $node('src/broker/owned.rs', 'module', 'crate::broker::owned');
+        $method = $node('src/broker/owned.rs', 'method', 'crate::broker::BrokerState::accepted_owned');
+        $node('src/broker/idle.rs', 'module', 'crate::broker::idle');
+        $state = $node('src/broker.rs', 'class', 'crate::broker::BrokerState');
+        $caller = $node('src/broker.rs', 'function', 'crate::broker::go');
+        $repository->saveEdge(StableId::edge($ids['project'], 'contains', $state, $method, 'c'), $ids['project'], 'contains', $state, $method, $ids['file'], 1, 1, 'ast', 'certain', [], 'rust:file:src/broker/owned.rs', $ids['scan']);
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $caller, $method, 'k'), $ids['project'], 'calls', $caller, $method, $ids['file'], 2, 2, 'ast', 'certain', [], 'rust:file:src/broker.rs', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        unset($owned);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
+
+        self::assertNotContains('crate::broker::owned', $names);
+        self::assertContains('crate::broker::idle', $names);
+    }
+
+    /**
      * Two pages each declaring their own `StatusBadge` do not use a shared
      * component of that name: the shared one, which nothing imports, stays
      * a candidate beside the local ones that are used.

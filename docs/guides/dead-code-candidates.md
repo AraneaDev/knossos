@@ -361,6 +361,13 @@ has to call its public API for that API to be wanted. Such components are classi
 
 What a library keeps private stays reportable, and so do its tests.
 
+## A module and what its file declares
+
+A module is used when something outside its file reaches what the file
+declares, also a declaration it makes for a container elsewhere: a Rust file
+holding only `impl BrokerState { .. }` for its parent's type contains nothing
+itself, but the methods it adds are called.
+
 ## Methods the runtime calls
 
 A method a JavaScript runtime calls with no call site naming it is at most a

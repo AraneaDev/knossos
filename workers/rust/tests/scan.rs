@@ -5491,3 +5491,21 @@ fn a_file_a_test_module_includes_is_test_code() {
             .as_bool()
     );
 }
+
+#[test]
+fn a_method_called_on_a_dyn_or_impl_trait_value_is_the_traits() {
+    let source = r#"
+pub trait Driver { fn receive(&mut self) -> u8; }
+pub fn drive(driver: &mut dyn Driver) -> u8 { driver.receive() }
+pub fn boxed(driver: Box<dyn Driver>) -> Box<dyn Driver> { driver }
+pub fn later(mut driver: impl Driver) -> u8 { driver.receive() }
+"#;
+    let contributions = scan_fixture("dyn-trait-receiver", &[("src/lib.rs", source)]);
+    for from in ["rust:function:crate::drive", "rust:function:crate::later"] {
+        let calls = targets_of(&contributions, "calls", from);
+        assert!(
+            calls.contains(&"rust:method:crate::Driver::receive".to_owned()),
+            "{from}: {calls:?}"
+        );
+    }
+}

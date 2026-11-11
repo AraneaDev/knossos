@@ -101,6 +101,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $suppressions = $facts->deadCodeSuppressions();
         $annotationsByName = $facts->componentAnnotations();
         $memberReachability = $this->containerMemberReachability($projectId, $provisional, $edgeKinds, $minConfidenceRank);
+        $memberReachability += $this->fileMemberReachability($projectId, $provisional, $memberReachability, $edgeKinds, $minConfidenceRank);
         foreach ($provisional as $id => $candidate) {
             $annotation = $annotationsByName[(string) $candidate['row']['canonical_name']]
                 ?? self::enclosingAnnotation((string) $candidate['row']['canonical_name'], $annotationsByName);
@@ -769,6 +770,49 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 'any' => (int) $row['any_reference'] > 0,
                 'production' => (int) $row['production_reference'] > 0,
             ];
+        }
+
+        return $reachability;
+    }
+
+    /**
+     * For each module candidate whose own members nothing reaches, whether
+     * something outside its file reaches a declaration the file makes for a
+     * container elsewhere: a Rust file holding only `impl Parent { .. }` for
+     * its parent's type contains nothing, though the methods it adds are
+     * called. A module is used when what its file declares is.
+     *
+     * @param array<string, array<string, mixed>> $provisional
+     * @param array<string, array{any: bool, production: bool}> $known
+     * @param list<string> $edgeKinds
+     * @return array<string, array{any: bool, production: bool}>
+     */
+    private function fileMemberReachability(string $projectId, array $provisional, array $known, array $edgeKinds, int $minConfidenceRank): array
+    {
+        $statement = null;
+        $reachability = [];
+        foreach ($provisional as $id => $candidate) {
+            $path = $candidate['row']['relative_path'] ?? null;
+            if ($candidate['row']['kind'] !== 'module' || isset($known[$id]) || !is_string($path)) {
+                continue;
+            }
+            $statement ??= $this->pdo->prepare(
+                'SELECT COUNT(*) AS any_reference, '
+                . 'MAX(CASE WHEN NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = usage.source_id AND c.role = ?) THEN 1 ELSE 0 END) AS production_reference '
+                . 'FROM files f JOIN nodes n ON n.project_id = f.project_id AND n.file_id = f.id '
+                . 'JOIN edges usage ON usage.project_id = n.project_id AND usage.target_id = n.id '
+                . 'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . EnrichedFacts::excludeSql('usage') . ' '
+                . 'AND ' . ConfidenceRank::atLeast('usage.confidence') . ' '
+                . 'LEFT JOIN nodes source ON source.id = usage.source_id '
+                . 'WHERE f.project_id = ? AND f.relative_path = ? AND n.id <> ? '
+                . 'AND (source.file_id IS NULL OR source.file_id <> f.id)',
+            );
+            $statement->execute([ReportableComponent::TEST_ROLE, ...$edgeKinds, $minConfidenceRank, $projectId, $path, (string) $id]);
+            $row = $statement->fetch(\PDO::FETCH_ASSOC);
+            $statement->closeCursor();
+            if (is_array($row) && (int) $row['any_reference'] > 0) {
+                $reachability[(string) $id] = ['any' => true, 'production' => (int) $row['production_reference'] > 0];
+            }
         }
 
         return $reachability;

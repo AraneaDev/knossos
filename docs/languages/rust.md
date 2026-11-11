@@ -175,7 +175,8 @@ only if the target turns out to be a declared node. That is how a method call on
 a receiver of known type reaches its method: `self`, a typed parameter or
 closure parameter (`|s: &Store|`), a `let` with a type annotation, a `let`
 assigned from a struct literal or an associated call such as `Widget::make()`,
-or a binding a struct pattern takes from a field
+or a parameter typed `dyn Trait` or `impl Trait`, whose methods are the
+trait's, a binding a struct pattern takes from a field
 (`let Index { store, .. } = index;`), also in a `match` arm, an `if let` or
 `while let` chain or a `for` pattern. Each binding lasts as long as its scope,
 a plain block included. A type behind `&`, `&mut`, `Box<T>`, `Rc<T>` or
