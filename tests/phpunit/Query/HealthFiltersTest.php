@@ -336,6 +336,34 @@ final class HealthFiltersTest extends KnossosTestCase
     }
 
     /**
+     * `JSON.stringify` calls `toJSON`, `await` calls `then`: the runtime
+     * reaches these with no call site naming them, so one with no inbound
+     * edge is only possibly dead, and the reason says why. An ordinary
+     * method beside it stays probable.
+     */
+    #[Group('query')]
+    public function testAMethodTheRuntimeCallsImplicitlyIsOnlyPossiblyDead(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        foreach (['toJSON', 'then', 'render'] as $index => $name) {
+            $id = StableId::symbol($ids['project'], 'typescript', 'method', "src/err.ts#AppError::{$name}");
+            $repository->saveNode($id, $ids['project'], 'typescript', 'method', "src/err.ts#AppError::{$name}", $name, null, $ids['file'], 3 + $index, 3 + $index, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $byName = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $byName[$candidate['component']['canonical_name']] = $candidate;
+        }
+
+        assertSame('possible', $byName['src/err.ts#AppError::toJSON']['confidence'] ?? null);
+        assertSame(true, str_contains($byName['src/err.ts#AppError::toJSON']['reason'], 'runtime calls `toJSON` implicitly'));
+        assertSame('possible', $byName['src/err.ts#AppError::then']['confidence'] ?? null);
+        assertSame('probable', $byName['src/err.ts#AppError::render']['confidence'] ?? null);
+    }
+
+    /**
      * Candidates page on their own size: `candidate_limit` lists that many
      * while `limit` sizes the hubs and hotspots, `pagination.next_offset`
      * says where the next page starts, and each candidate says where it is

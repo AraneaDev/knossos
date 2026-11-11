@@ -360,6 +360,15 @@ has to call its public API for that API to be wanted. Such components are classi
 
 What a library keeps private stays reportable, and so do its tests.
 
+## Methods the runtime calls
+
+A method a JavaScript runtime calls with no call site naming it is at most a
+`possible` candidate, whatever its class extends, and its reason says so:
+`toJSON` (`JSON.stringify`), `toString`, `valueOf` and `[Symbol.toPrimitive]`
+(conversion), `then` (`await`), `[Symbol.iterator]` and
+`[Symbol.asyncIterator]` (`for ... of`), `[Symbol.dispose]` and
+`[Symbol.asyncDispose]` (`using`), and `inspect` (Node's `util.inspect`).
+
 ## Filtering and paging
 
 A large project can have hundreds of candidates, and a framework's lifecycle methods,

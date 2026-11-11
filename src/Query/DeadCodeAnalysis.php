@@ -28,6 +28,19 @@ use Knossos\Store\EnrichedFacts;
 final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
 {
     /**
+     * Methods a JavaScript runtime calls implicitly: `JSON.stringify` calls
+     * `toJSON`, string and number conversion `toString`, `valueOf` and
+     * `[Symbol.toPrimitive]`, `await` a `then`, `for ... of` and `for await`
+     * the iterators, `using` the disposers, and Node's `util.inspect` an
+     * `inspect` hook.
+     */
+    private const IMPLICIT_PROTOCOL_METHODS = [
+        'toJSON', 'toString', 'valueOf', 'then', 'inspect',
+        '[Symbol.iterator]', '[Symbol.asyncIterator]', '[Symbol.dispose]', '[Symbol.asyncDispose]',
+        '[Symbol.toPrimitive]', '[util.inspect.custom]', '[inspect.custom]',
+    ];
+
+    /**
      * The TypeScript/JavaScript constructor. PHP and Python both spell their
      * engine-dispatched members with a leading `__` instead, which
      * `isEngineInvokedMemberOfReferencedType` matches by prefix.
@@ -332,6 +345,14 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 $found,
                 $context['external_ancestor'],
             );
+        }
+        // The runtime calls these by name or symbol with no call site naming
+        // them (`JSON.stringify` calls `toJSON`, `await` calls `then`, `for
+        // ... of` calls `[Symbol.iterator]`), whatever the class extends.
+        $name = (string) $candidate['row']['display_name'];
+        if ($candidate['row']['kind'] === 'method' && in_array($name, self::IMPLICIT_PROTOCOL_METHODS, true)) {
+            $confidence = 'possible';
+            $reason = sprintf('%s, but the runtime calls `%s` implicitly (serialising, converting, awaiting, iterating, disposing or inspecting a value), with no call site that names it.', $found, $name);
         }
 
         return [$confidence, $reason];
