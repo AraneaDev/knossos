@@ -503,7 +503,13 @@ fn collect_gated_paths(
         } else {
             BTreeSet::new()
         };
-        collect_item_paths(module, item, item_gated, with_impls, out, gated);
+        // An inline module's items are walked here, so only this function
+        // recurses.
+        if let Some((nested, inner)) =
+            collect_item_paths(module, item, item_gated, with_impls, out, gated)
+        {
+            collect_gated_paths(&nested, inner, item_gated, with_impls, out, gated);
+        }
         if item_gated {
             gated.extend(out.difference(&before).cloned());
         }
@@ -511,15 +517,16 @@ fn collect_gated_paths(
 }
 
 /// The paths one item adds to [`declaration_paths`], see
-/// [`collect_gated_paths`].
-fn collect_item_paths(
+/// [`collect_gated_paths`], or for an inline module its path and items, for
+/// the caller to walk.
+fn collect_item_paths<'a>(
     module: &str,
-    item: &Item,
+    item: &'a Item,
     under_cfg: bool,
     with_impls: bool,
     out: &mut BTreeSet<String>,
     gated: &mut BTreeSet<String>,
-) {
+) -> Option<(String, &'a [Item])> {
     {
         match item {
             Item::Struct(node) => record(out, module, &ident_name(&node.ident)),
@@ -557,13 +564,13 @@ fn collect_item_paths(
             }
             Item::Mod(node) => {
                 if let Some((_, inner)) = &node.content {
-                    let nested = format!("{module}::{}", ident_name(&node.ident));
-                    collect_gated_paths(&nested, inner, under_cfg, with_impls, out, gated);
+                    return Some((format!("{module}::{}", ident_name(&node.ident)), inner));
                 }
             }
             _ => {}
         }
     }
+    None
 }
 
 /// The bare type name of an `impl` block's target, or `None` when the target
