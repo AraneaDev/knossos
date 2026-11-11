@@ -109,6 +109,56 @@ final class TestSupportCandidatesTest extends KnossosTestCase
     }
 
     /**
+     * An implementation is out of the report while the contract it fulfils is
+     * reached: called through the interface, it is reached through it. One
+     * whose interface member nothing reaches is judged on its own callers:
+     * a method only a test calls is test-only, one nothing calls is
+     * unreferenced, beside the interface member.
+     */
+    #[Group('query')]
+    public function testAnImplementationIsExcludedOnlyWhileItsContractIsReached(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $node = function (string $kind, string $name, array $attributes = []) use ($repository, $ids): string {
+            $id = StableId::symbol($ids['project'], 'typescript', $kind, $name);
+            $repository->saveNode($id, $ids['project'], 'typescript', $kind, $name, (string) preg_replace('/^.*(::|#)/', '', $name), null, $ids['file'], 1, 1, 'ast', 'certain', $attributes, 'php:file:src/Checkout.php', $ids['scan']);
+
+            return $id;
+        };
+        $edge = function (string $kind, string $source, string $target, int $line) use ($repository, $ids): void {
+            $repository->saveEdge(StableId::edge($ids['project'], $kind, $source, $target, "e{$line}"), $ids['project'], $kind, $source, $target, $ids['file'], $line, $line, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        };
+        $interface = $node('interface', 'src/types.ts#ISecurity');
+        $class = $node('class', 'src/sec.ts#Security');
+        $edge('implements', $class, $interface, 1);
+        $members = [];
+        foreach (['viaInterface', 'auditLog', 'sanitize'] as $index => $method) {
+            $declared = $node('method', "src/types.ts#ISecurity::{$method}");
+            $edge('contains', $interface, $declared, 10 + $index);
+            $implemented = $node('method', "src/sec.ts#Security::{$method}", ['overrides' => true]);
+            $edge('contains', $class, $implemented, 20 + $index);
+            $members[$method] = [$declared, $implemented];
+        }
+        $product = $node('function', 'src/main.ts#main');
+        $suite = $this->testModule($repository, $ids, 'tests/security.test.ts');
+        $edge('calls', $product, $members['viaInterface'][0], 30);
+        $edge('calls', $suite, $members['auditLog'][1], 31);
+        $edge('calls', $product, $class, 32);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $reachability = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $reachability[$candidate['component']['canonical_name']] = $candidate['reachability'];
+        }
+
+        self::assertArrayNotHasKey('src/sec.ts#Security::viaInterface', $reachability);
+        self::assertSame('test_only', $reachability['src/sec.ts#Security::auditLog'] ?? null);
+        self::assertSame('unreferenced', $reachability['src/sec.ts#Security::sanitize'] ?? null);
+        self::assertSame('unreferenced', $reachability['src/types.ts#ISecurity::sanitize'] ?? null);
+    }
+
+    /**
      * Two pages each declaring their own `StatusBadge` do not use a shared
      * component of that name: the shared one, which nothing imports, stays
      * a candidate beside the local ones that are used.

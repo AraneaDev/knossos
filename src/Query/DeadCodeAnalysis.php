@@ -106,6 +106,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 ?? self::enclosingAnnotation((string) $candidate['row']['canonical_name'], $annotationsByName);
             $context = $inheritance[$id] ?? [
                 'inherited' => false,
+                'contracts' => [],
                 'implemented' => false,
                 'implementations' => [],
                 'declaring_kind' => null,
@@ -217,7 +218,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * @param array<string, mixed> $row
      * @param list<string> $roles
      * @param array<string, mixed>|null $annotation
-     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @param list<string> $suppressions
      */
     private static function exclusionOf(array $row, array $roles, ?array $annotation, array $context, CandidateGraphFacts $facts, array $suppressions): ?string
@@ -236,8 +237,16 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // The scanner saw the supertype member this one fulfils, which may
         // live outside the graph, where the walk above cannot look.
         $local = ReportableComponent::graphLocalExclusion($row, $roles);
+        // A method fulfilling a contract is reached through it, so it is out
+        // of the report while the contract is reached. One whose every
+        // contract is the project's own and reached by nothing (an interface
+        // member nobody calls through) is reached by nothing either, and is
+        // judged on its own callers, a test's included.
         if ($context['inherited'] || $local === 'inherited') {
-            return 'inherited';
+            $contracts = $context['contracts'] ?? [];
+            if ($contracts === [] || $context['external_ancestor'] !== null || self::anyReached($contracts, $facts)) {
+                return 'inherited';
+            }
         }
         // A contract an implementation carries. Gated on the declaring type
         // being referenced for the same reason constructors are: when
@@ -289,11 +298,28 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
     }
 
     /**
+     * Whether any of `$members` has an inbound edge other than inheritance.
+     *
+     * @param list<string> $members
+     */
+    private static function anyReached(array $members, CandidateGraphFacts $facts): bool
+    {
+        $facts->degrees($members);
+        foreach ($members as $member) {
+            if ($facts->inDegree($member) - $facts->inheritanceInDegree($member) > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a method is a declaration with no body of its own: a member of
      * an interface, or one its scanner marked abstract.
      *
      * @param array<string, mixed> $row
-     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      */
     private static function isBodiless(array $row, array $context): bool
     {
@@ -309,7 +335,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * How sure the report is that a candidate is dead, and why.
      *
      * @param array{component: array<string, mixed>, row: array<string, mixed>, roles: list<array<string, mixed>>, out_degree: int, reachability: string} $candidate
-     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @return array{0: string, 1: string}
      */
     private function confidenceAndReason(array $candidate, string $reachability, array $context, CandidateGraphFacts $facts): array
@@ -501,7 +527,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * An object literal handed around as a value with no type at all is the
      * third way: the code it is handed to calls its methods unseen.
      *
-     * @return array<string, array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool}>
+     * @return array<string, array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool}>
      */
     private function inheritedMethodContext(string $projectId, array $methodIds, array $methodNames): array
     {
@@ -539,6 +565,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             }
             $result[$methodId] = [
                 'inherited' => $inherited,
+                'contracts' => $classId === null ? [] : self::contractMembers($graph, $ancestors, $methodNames[$methodId], $methodId),
                 'implemented' => $classId !== null
                     && $graph->isImplementedBySubtype($classId, $methodNames[$methodId]),
                 'implementations' => $classId === null ? [] : $graph->implementingMembers($classId, $methodNames[$methodId]),
@@ -555,6 +582,32 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             ];
         }
         return $result;
+    }
+
+    /**
+     * The members of the project's own ancestors among `$ancestors` that a
+     * method named `$name` fulfils: an interface's or trait's declaration, a
+     * base class's method it overrides. Empty when only an external type, a
+     * framework hook or a subtype's contract makes the method inherited.
+     *
+     * @param list<string> $ancestors
+     * @return list<string>
+     */
+    private static function contractMembers(InheritanceGraph $graph, array $ancestors, string $name, string $methodId): array
+    {
+        $members = [];
+        foreach ($ancestors as $ancestorId) {
+            if ($graph->isExternal($ancestorId)) {
+                continue;
+            }
+            foreach ($graph->memberIds($ancestorId, $name) as $member) {
+                if ($member !== $methodId) {
+                    $members[] = $member;
+                }
+            }
+        }
+
+        return $members;
     }
 
     /**

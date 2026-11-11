@@ -452,10 +452,16 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'contains', $stripe, $stripeCharge, 'c2'), $ids['project'], 'contains', $stripe, $stripeCharge, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->saveEdge(StableId::edge($ids['project'], 'implements', $stripe, $gateway, 'i1'), $ids['project'], 'implements', $stripe, $gateway, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
+        $names = static fn(array $data): array => array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
+        // Nothing reaches the contract, so nothing reaches the implementation.
+        $unreached = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
+        assertSame(true, in_array('App\\StripeGateway::charge', $names($unreached), true));
+
+        // Called through the interface, it is reached through it.
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $ids['checkout'], $gatewayCharge, 'k1'), $ids['project'], 'calls', $ids['checkout'], $gatewayCharge, $file, 3, 3, 'ast', 'certain', [], $owner, $ids['scan']);
         $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
-        $candidateNames = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
-        assertSame(false, in_array('App\\StripeGateway::charge', $candidateNames, true));
+        assertSame(false, in_array('App\\StripeGateway::charge', $names($data), true));
         assertSame(1, $data['bounds']['excluded_inherited_methods']);
     }
 
