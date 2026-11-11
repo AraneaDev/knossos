@@ -349,11 +349,6 @@ final class ProjectConfigurationLoader
     }
 
     /**
-     * A configuration value required to be a list of strings.
-     *
-     * @return list<string>
-     */
-    /**
      * The diagnostics the project marks as not worth reporting: each a `code`
      * and optionally a `path` (exact, or a prefix with a trailing `*`) and a
      * `reason`.
@@ -384,6 +379,11 @@ final class ProjectConfigurationLoader
         return $suppressions;
     }
 
+    /**
+     * A configuration value required to be a list of strings.
+     *
+     * @return list<string>
+     */
     private static function stringList(mixed $value, string $field, int $limit): array
     {
         if (!is_array($value) || !array_is_list($value) || count($value) > $limit) {
