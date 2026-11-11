@@ -57,7 +57,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      *
      * @param list<string> $edgeKinds
      */
-    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, string $pathPrefix = '', bool $includeAnnotated = false, bool $includeExamples = false): ResultEnvelope
+    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         // The candidate page has its own size, so paging through the
@@ -83,7 +83,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         $ranked = $this->rankNodes($slice, $walk['metrics'], $cycleMembers, $includeExternal, $includeTests, $limit);
         $candidateDeadline = $this->now() + ($candidateTimeoutMs * 1_000_000);
-        $pathPrefix = ltrim($pathPrefix, '/') === '' ? null : ltrim($pathPrefix, '/');
+        $pathPrefix = $pathPrefix === null || ltrim($pathPrefix, '/') === '' ? null : ltrim($pathPrefix, '/');
         $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples);
         foreach (['hub_total', 'hotspot_total'] as $total) {
             if ($ranked[$total] > $limit) {
